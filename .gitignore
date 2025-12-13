@@ -142,11 +142,8 @@ profiles/*/
 *.sqlite-shm
 *.sqlite-wal
 *.sqlite-journal
-db.json
 
 # Configuration files (may contain sensitive data)
-follow_settings.json
-instagram_settings.json
 supabase/config.toml
 
 # OS-specific
