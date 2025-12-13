@@ -1,5 +1,5 @@
 import time
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
 
@@ -72,13 +72,18 @@ class InstagramAccountsClient:
         self,
         account_id: str,
         status: str = "sunscribed",
-        assigned_to: Optional[str] = None,
+        assigned_to: Any = "__NOT_SET__",
     ):
         """
         Update account status (default -> 'sunscribed').
         Optionally update assigned_to (e.g., set to None to unassign).
         """
-        payload = {"status": status, "assigned_to": assigned_to}
+        if status == "done" and assigned_to == "__NOT_SET__":
+            assigned_to = None
+
+        payload = {"status": status}
+        if assigned_to != "__NOT_SET__":
+            payload["assigned_to"] = assigned_to
 
         result = self._request(
             "PATCH",
@@ -87,13 +92,13 @@ class InstagramAccountsClient:
         )
         return result[0] if result else None
 
-    def get_profiles_with_assigned_accounts(self) -> List[Dict]:
+    def get_profiles_with_assigned_accounts(self, status: str = "assigned") -> List[Dict]:
         """
-        Return list of profiles (full records) that have accounts assigned with status='assigned'.
+        Return list of profiles (full records) that have accounts assigned with given status.
         """
         params = {
             "select": "assigned_to",
-            "status": "eq.assigned",
+            "status": f"eq.{status}",
             "assigned_to": "not.is.null",
         }
         accounts = self._request("GET", self.accounts_url, params=params) or []
