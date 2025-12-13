@@ -1,0 +1,162 @@
+import time
+from typing import Callable, Dict, List, Optional
+
+import requests
+
+from supabase.config import PROJECT_URL, SECRET_KEY
+
+
+class InstagramAccountsError(Exception):
+    """Raised when Supabase instagram_accounts API call fails."""
+
+
+class InstagramAccountsClient:
+    """Client for managing instagram_accounts and related profile checks."""
+
+    def __init__(self):
+        if not PROJECT_URL or not SECRET_KEY:
+            raise InstagramAccountsError(
+                "Supabase config missing. Set SUPABASE_URL and SUPABASE_SECRET_KEY in environment."
+            )
+
+        self.accounts_url = f"{PROJECT_URL}/rest/v1/instagram_accounts"
+        self.profiles_url = f"{PROJECT_URL}/rest/v1/profiles"
+        self.headers = {
+            "apikey": SECRET_KEY,
+            "Authorization": f"Bearer {SECRET_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        data: Optional[Dict] = None,
+        params: Optional[Dict] = None,
+    ):
+        try:
+            if method.upper() == "GET":
+                resp = requests.get(url, headers=self.headers, params=params, timeout=20)
+            elif method.upper() == "POST":
+                resp = requests.post(url, headers=self.headers, json=data, timeout=20)
+            elif method.upper() == "PATCH":
+                resp = requests.patch(url, headers=self.headers, json=data, timeout=20)
+            elif method.upper() == "DELETE":
+                resp = requests.delete(url, headers=self.headers, timeout=20)
+            else:
+                raise InstagramAccountsError(f"Unsupported HTTP method: {method}")
+
+            if resp.status_code >= 400:
+                raise InstagramAccountsError(f"HTTP {resp.status_code}: {resp.text}")
+
+            return resp.json() if resp.content else None
+        except requests.RequestException as exc:
+            raise InstagramAccountsError(f"Request failed: {exc}")
+
+    # ----- Accounts helpers -------------------------------------------------
+    def get_accounts_for_profile(
+        self, profile_id: str, status: str = "assigned"
+    ) -> List[Dict]:
+        """Fetch accounts assigned to a profile with given status."""
+        params = {
+            "select": "id,user_name,assigned_to,status,link_sent",
+            "assigned_to": f"eq.{profile_id}",
+            "status": f"eq.{status}",
+            "order": "created_at.asc",
+        }
+        return self._request("GET", self.accounts_url, params=params) or []
+
+    def update_account_status(
+        self,
+        account_id: str,
+        status: str = "sunscribed",
+        assigned_to: Optional[str] = None,
+    ):
+        """
+        Update account status (default -> 'sunscribed').
+        Optionally update assigned_to (e.g., set to None to unassign).
+        """
+        payload = {"status": status, "assigned_to": assigned_to}
+
+        result = self._request(
+            "PATCH",
+            f"{self.accounts_url}?id=eq.{account_id}",
+            data=payload,
+        )
+        return result[0] if result else None
+
+    def get_profiles_with_assigned_accounts(self) -> List[Dict]:
+        """
+        Return list of profiles (full records) that have accounts assigned with status='assigned'.
+        """
+        params = {
+            "select": "assigned_to",
+            "status": "eq.assigned",
+            "assigned_to": "not.is.null",
+        }
+        accounts = self._request("GET", self.accounts_url, params=params) or []
+        profile_ids = {acc.get("assigned_to") for acc in accounts if acc.get("assigned_to")}
+        if not profile_ids:
+            return []
+
+        return self._fetch_profiles_by_ids(list(profile_ids))
+
+    # ----- Profile helpers --------------------------------------------------
+    def _fetch_profiles_by_ids(self, profile_ids: List[str]) -> List[Dict]:
+        if not profile_ids:
+            return []
+
+        # Supabase expects quoted values inside the IN filter
+        quoted = ",".join([f'"{pid}"' for pid in profile_ids])
+        params = {
+            "select": "profile_id,name,status,mode,proxy,Using",
+            "profile_id": f"in.({quoted})",
+        }
+        return self._request("GET", self.profiles_url, params=params) or []
+
+    def get_profile(self, profile_id: str) -> Optional[Dict]:
+        params = {
+            "select": "profile_id,name,status,mode,proxy,Using",
+            "profile_id": f"eq.{profile_id}",
+        }
+        profiles = self._request("GET", self.profiles_url, params=params) or []
+        return profiles[0] if profiles else None
+
+    def is_profile_busy(self, profile_id: str) -> bool:
+        """Check if profile is running or Using flag is true."""
+        profile = self.get_profile(profile_id)
+        if not profile:
+            return False
+        status = (profile.get("status") or "").lower()
+        using = bool(profile.get("Using"))
+        return status == "running" or using
+
+    def wait_for_profile_idle(
+        self,
+        profile_id: str,
+        log: Optional[Callable[[str], None]] = None,
+        should_stop: Optional[Callable[[], bool]] = None,
+        poll_interval: float = 5.0,
+        timeout: float = 300.0,
+    ) -> bool:
+        """
+        Poll until profile becomes idle or timeout / stop requested.
+        Returns True if profile became idle, False otherwise.
+        """
+        log = log or (lambda _: None)
+        should_stop = should_stop or (lambda: False)
+
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            if should_stop():
+                return False
+            if not self.is_profile_busy(profile_id):
+                return True
+            log(f"⏳ Профиль занят, жду освобождения... ({int(time.monotonic() - start)}s)")
+            time.sleep(poll_interval)
+
+        log("⚠️ Ожидание профиля истекло, продолжаю.")
+        return False
+

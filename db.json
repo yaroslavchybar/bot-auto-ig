@@ -1,0 +1,11 @@
+{
+    "private": [
+        {
+            "name": "tt",
+            "proxy": null,
+            "test_ip": false,
+            "type": "Camoufox (рекомендуется)"
+        }
+    ],
+    "threads": []
+}
