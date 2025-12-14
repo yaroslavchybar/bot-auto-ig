@@ -92,6 +92,18 @@ class InstagramAccountsClient:
         )
         return result[0] if result else None
 
+    def update_account_message(self, user_name: str, message: bool = True):
+        """
+        Update the message field for an account by username.
+        """
+        payload = {"message": message}
+        result = self._request(
+            "PATCH",
+            f"{self.accounts_url}?user_name=eq.{user_name}",
+            data=payload,
+        )
+        return result[0] if result else None
+
     def get_profiles_with_assigned_accounts(self, status: str = "assigned") -> List[Dict]:
         """
         Return list of profiles (full records) that have accounts assigned with given status.

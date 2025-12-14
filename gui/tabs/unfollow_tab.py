@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QLabel,
     QSpinBox,
+    QCheckBox,
 )
 from PyQt6.QtCore import Qt
 
@@ -33,9 +34,23 @@ class UnfollowTab(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(12)
 
+        # Mode Selection
+        mode_group = QGroupBox("🛠️ Режим работы")
+        mode_layout = QVBoxLayout(mode_group)
+        
+        self.unfollow_cb = QCheckBox("Unfollow (Отписка от списка)")
+        self.unfollow_cb.setChecked(True)
+        
+        self.approve_cb = QCheckBox("Approve requests (Подтверждать заявки)")
+        self.approve_cb.setChecked(True)
+        
+        mode_layout.addWidget(self.unfollow_cb)
+        mode_layout.addWidget(self.approve_cb)
+        layout.addWidget(mode_group)
+
         # Controls
         controls_row = QHBoxLayout()
-        self.start_btn = QPushButton("▶️ Старт Unfollow")
+        self.start_btn = QPushButton("▶️ Старт")
         self.start_btn.setMinimumHeight(40)
         self.start_btn.clicked.connect(self.start_unfollowing)
         
@@ -82,7 +97,7 @@ class UnfollowTab(QWidget):
         if self.worker and self.worker.isRunning():
             return
 
-        self.log("▶️ Запуск задачи Mass Unfollow...")
+        self.log("▶️ Запуск задач...")
         self.save_settings()
 
         min_d = self.min_delay_spin.value()
@@ -91,8 +106,19 @@ class UnfollowTab(QWidget):
             min_d, max_d = max_d, min_d
             self.min_delay_spin.setValue(min_d)
             self.max_delay_spin.setValue(max_d)
+            
+        do_unfollow = self.unfollow_cb.isChecked()
+        do_approve = self.approve_cb.isChecked()
+        
+        if not do_unfollow and not do_approve:
+            self.log("⚠️ Выберите хотя бы одно действие!")
+            return
 
-        self.worker = UnfollowWorker(delay_range=(min_d, max_d))
+        self.worker = UnfollowWorker(
+            delay_range=(min_d, max_d),
+            do_unfollow=do_unfollow,
+            do_approve=do_approve
+        )
         self.worker.log_signal.connect(self.log)
         self.worker.finished_signal.connect(self.on_finished)
         self.worker.start()
@@ -120,9 +146,16 @@ class UnfollowTab(QWidget):
     def connect_settings_signals(self):
         self.min_delay_spin.valueChanged.connect(self.save_settings)
         self.max_delay_spin.valueChanged.connect(self.save_settings)
+        self.unfollow_cb.stateChanged.connect(self.save_settings)
+        self.approve_cb.stateChanged.connect(self.save_settings)
 
     def load_settings(self):
-        defaults = {"min_delay": 10, "max_delay": 30}
+        defaults = {
+            "min_delay": 10, 
+            "max_delay": 30,
+            "do_unfollow": True,
+            "do_approve": True
+        }
         self.loading_settings = True
         
         try:
@@ -135,6 +168,9 @@ class UnfollowTab(QWidget):
 
         self.min_delay_spin.setValue(data.get("min_delay", 10))
         self.max_delay_spin.setValue(data.get("max_delay", 30))
+        self.unfollow_cb.setChecked(data.get("do_unfollow", True))
+        self.approve_cb.setChecked(data.get("do_approve", True))
+        
         self.loading_settings = False
 
     def save_settings(self):
@@ -143,7 +179,9 @@ class UnfollowTab(QWidget):
         
         data = {
             "min_delay": self.min_delay_spin.value(),
-            "max_delay": self.max_delay_spin.value()
+            "max_delay": self.max_delay_spin.value(),
+            "do_unfollow": self.unfollow_cb.isChecked(),
+            "do_approve": self.approve_cb.isChecked()
         }
         try:
             self.settings_path.write_text(json.dumps(data, indent=4), encoding="utf-8")
