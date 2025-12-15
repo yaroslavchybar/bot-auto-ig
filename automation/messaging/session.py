@@ -11,6 +11,54 @@ from automation.Follow.utils import (
 from supabase.instagram_accounts_client import InstagramAccountsClient
 
 
+def load_message_2_texts() -> List[str]:
+    """Load message texts from message_2.txt file."""
+    try:
+        with open("message_2.txt", "r", encoding="utf-8") as f:
+            content = f.read().strip()
+            if content:
+                # Split by double newlines to separate different message variations
+                messages = [msg.strip() for msg in content.split("\n\n") if msg.strip()]
+                return messages if messages else ["Hi there! Thanks for reaching out!"]
+            else:
+                return ["Hi there! Thanks for reaching out!"]
+    except FileNotFoundError:
+        return ["Hi there! Thanks for reaching out!"]
+
+
+def detect_incoming_messages(page) -> bool:
+    """
+    Check if there are any incoming messages in the current chat.
+    Returns True if incoming messages are detected.
+    """
+    try:
+        # Look for incoming message indicators
+        # Incoming messages typically have sender names that are not "You sent"
+        incoming_selectors = [
+            'h6:has-text("You sent")',  # This will be our sent messages
+        ]
+
+        # Count total messages and our sent messages
+        total_messages = page.locator('[role="row"]').count()
+        our_messages = page.locator('h6:has-text("You sent")').count()
+
+        # If there are messages and not all are from us, there are incoming messages
+        if total_messages > 0 and our_messages < total_messages:
+            return True
+
+        # Alternative check: look for messages that don't contain "You sent"
+        all_sender_elements = page.locator('h6').all_text_contents()
+        for sender in all_sender_elements:
+            if sender and "You sent" not in sender:
+                return True
+
+        return False
+
+    except Exception as e:
+        print(f"Error detecting incoming messages: {e}")
+        return False
+
+
 def send_messages(
     profile_name: str,
     proxy_string: str,
@@ -129,8 +177,12 @@ def send_messages(
             except:
                 pass
 
+            # Load alternative messages for when users message first
+            message_2_texts = load_message_2_texts()
+            log(f"📄 Загружено {len(message_2_texts)} альтернативных сообщений из message_2.txt")
+
             processed_count = 0
-            
+
             for target in targets:
                 if should_stop():
                     break
@@ -223,6 +275,13 @@ def send_messages(
                             log(f"✅ Выбрал пользователя: {username}")
                             random_delay(2, 4) # Wait for chat to open
 
+                            # Check for incoming messages before sending
+                            has_incoming = detect_incoming_messages(page)
+                            if has_incoming:
+                                log(f"📨 Обнаружены входящие сообщения от {username}, отправляю альтернативное сообщение")
+                            else:
+                                log(f"📨 Входящих сообщений от {username} не обнаружено, отправляю обычное сообщение")
+
                             # 4. Type and Send Message
                             # In Instagram Direct, after selecting user, chat opens immediately
                             # Find the message input area
@@ -250,8 +309,13 @@ def send_messages(
                                 msg_box.click()
                                 random_delay(0.5, 1)
 
-                                # Randomly select a message from the variations
-                                selected_message = random.choice(message_texts)
+                                # Select message based on whether incoming messages were detected
+                                if has_incoming:
+                                    selected_message = random.choice(message_2_texts)
+                                    log(f"📝 Использую альтернативное сообщение: {selected_message[:50]}...")
+                                else:
+                                    selected_message = random.choice(message_texts)
+                                    log(f"📝 Использую обычное сообщение: {selected_message[:50]}...")
 
                                 # Type the message with human-like delays
                                 msg_box.type(selected_message, delay=random.randint(100, 200))
@@ -269,10 +333,14 @@ def send_messages(
                                     send_btn.click()
                                     log(f"✅ Отправил сообщение для {username}")
 
-                                    # Update DB
+                                    # Update DB based on message type
                                     try:
-                                        client.update_account_message(username, False) # Set message=False after sending
-                                        log(f"💾 {username}: message -> false")
+                                        if has_incoming:
+                                            client.update_account_link_sent(username, "done")
+                                            log(f"💾 {username}: link_sent -> done (альтернативное сообщение отправлено)")
+                                        else:
+                                            client.update_account_link_sent(username, "needed to send")
+                                            log(f"💾 {username}: link_sent -> needed to send")
                                     except Exception as db_e:
                                         log(f"⚠️ Ошибка БД для {username}: {db_e}")
 

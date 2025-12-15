@@ -69,11 +69,12 @@ class InstagramAccountsClient:
         return self._request("GET", self.accounts_url, params=params) or []
 
     def get_accounts_to_message(self, profile_id: str) -> List[Dict]:
-        """Fetch accounts assigned to profile that need a message (message=true)."""
+        """Fetch accounts assigned to profile that need a message (message=true) and link_sent='not send' or 'needed to send'."""
         params = {
-            "select": "id,user_name,assigned_to,status,message",
+            "select": "id,user_name,assigned_to,status,message,link_sent",
             "assigned_to": f"eq.{profile_id}",
             "message": "is.true",
+            "link_sent": "in.(not send,needed to send)",
             "order": "created_at.asc",
         }
         return self._request("GET", self.accounts_url, params=params) or []
@@ -107,6 +108,18 @@ class InstagramAccountsClient:
         Update the message field for an account by username.
         """
         payload = {"message": message}
+        result = self._request(
+            "PATCH",
+            f"{self.accounts_url}?user_name=eq.{user_name}",
+            data=payload,
+        )
+        return result[0] if result else None
+
+    def update_account_link_sent(self, user_name: str, link_sent_status: str):
+        """
+        Update the link_sent field for an account by username.
+        """
+        payload = {"link_sent": link_sent_status}
         result = self._request(
             "PATCH",
             f"{self.accounts_url}?user_name=eq.{user_name}",
