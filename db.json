@@ -1,7 +1,7 @@
 {
     "private": [
         {
-            "name": "tt8",
+            "name": "main",
             "proxy": null,
             "test_ip": false,
             "type": "Camoufox (рекомендуется)"

@@ -194,3 +194,164 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
     background: none;
 }
 """
+
+# --- PROFILES TAB STYLES ---
+
+CARD_STYLE = """
+    QFrame {
+        background-color: #2b2d30;
+        border-radius: 8px;
+        border: 1px solid #3e4042;
+    }
+    QFrame:hover {
+        border: 1px solid #5c5f61;
+        background-color: #323437;
+    }
+    QLabel {
+        background-color: transparent;
+        border: none;
+        color: #e0e0e0;
+    }
+    QLabel#profileName {
+        font-size: 14px;
+        font-weight: bold;
+        color: #ffffff;
+    }
+    QLabel#proxyInfo {
+        color: #8a8a8a;
+        font-size: 12px;
+    }
+"""
+
+STATUS_RUNNING = "color: #98c379; font-weight: bold;"  # Green
+STATUS_IDLE = "color: #61afef; font-weight: bold;"     # Blue - using blue for idle/ready
+STATUS_STOPPED = "color: #abb2bf;"                     # Gray
+
+BUTTON_STYLE = """
+    QPushButton {
+        background-color: #3e4042;
+        color: white;
+        border-radius: 6px;
+        padding: 6px 12px;
+        border: none;
+        font-weight: bold;
+    }
+    QPushButton:hover {
+        background-color: #4e5052;
+    }
+    QPushButton:pressed {
+        background-color: #2b2d30;
+    }
+"""
+
+ACTION_BTN_STYLE = """
+    QPushButton {
+        background-color: transparent;
+        border-radius: 4px;
+        padding: 4px;
+    }
+    QPushButton:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    QPushButton:pressed {
+        background-color: rgba(255, 255, 255, 0.2);
+    }
+"""
+
+PRIMARY_BTN_STYLE = """
+    QPushButton {
+        background-color: #61afef;
+        color: white;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-weight: bold;
+        font-size: 14px;
+    }
+    QPushButton:hover {
+        background-color: #74bdf7;
+    }
+    QPushButton:pressed {
+        background-color: #4d8cc7;
+    }
+"""
+
+INPUT_STYLE = """
+    QLineEdit {
+        background-color: #21252b;
+        border: 1px solid #3e4042;
+        border-radius: 6px;
+        padding: 8px;
+        color: #abb2bf;
+        font-size: 13px;
+    }
+    QLineEdit:focus {
+        border: 1px solid #61afef;
+    }
+"""
+
+DIALOG_STYLE = """
+    QDialog {
+        background-color: #1e2125;
+        color: #e0e0e0;
+    }
+    QLabel {
+        color: #e0e0e0;
+        font-size: 14px;
+    }
+    QGroupBox {
+        border: 1px solid #3e4042;
+        border-radius: 8px;
+        margin-top: 20px;
+        font-weight: bold;
+        padding-top: 10px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 5px;
+        color: #e0e0e0;
+    }
+    QRadioButton {
+        color: #e0e0e0;
+        spacing: 8px;
+    }
+    QRadioButton::indicator {
+        width: 14px;
+        height: 14px;
+        border-radius: 8px;
+        border: 1px solid #5c5f61;
+        background-color: #2b2d30;
+    }
+    QRadioButton::indicator:checked {
+        border: 1px solid #61afef;
+        background-color: #61afef;
+    }
+    QComboBox {
+        background-color: #21252b;
+        border: 1px solid #3e4042;
+        border-radius: 6px;
+        padding: 6px;
+        color: #abb2bf;
+    }
+    QComboBox::drop-down {
+        border: none;
+    }
+"""
+
+CHECKBOX_STYLE = """
+    QCheckBox {
+        color: #e0e0e0;
+        spacing: 8px;
+    }
+    QCheckBox::indicator {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid #5c5f61;
+        background-color: #2b2d30;
+    }
+    QCheckBox::indicator:checked {
+        border: 1px solid #61afef;
+        background-color: #61afef;
+    }
+"""

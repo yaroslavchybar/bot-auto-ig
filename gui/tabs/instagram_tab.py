@@ -1,22 +1,19 @@
 import json
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QLabel, 
+    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QLabel,
     QGroupBox, QMessageBox, QScrollArea, QFrame, QRadioButton, QButtonGroup,
-    QLineEdit, QComboBox, QTextEdit, QFileDialog, QCheckBox
+    QLineEdit, QComboBox, QTextEdit, QCheckBox
 )
 from PyQt6.QtCore import Qt
 from datetime import datetime
-from utils.files import load_accounts, load_proxies, assign_proxies_to_accounts
 from core.models import ThreadsAccount, ScrollingConfig
-from gui.workers.instagram_worker import InstagramScrollingWorker, OnboardingWorker
+from gui.workers.instagram_worker import InstagramScrollingWorker
 
 class InstagramTab(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self.threads_accounts = []
-        self.threads_proxies = []
         self.worker = None
         self.onboarding_worker = None
         self.settings_path = Path(__file__).resolve().parents[2] / "instagram_settings.json"
@@ -42,51 +39,6 @@ class InstagramTab(QWidget):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(15)
         
-        # === НАСТРОЙКА INSTAGRAM SECTION ===
-        threads_setup_group = QGroupBox("📱 Настройка Instagram") 
-        setup_layout = QVBoxLayout(threads_setup_group)
-        
-        # Accounts file row
-        acc_row = QHBoxLayout()
-        acc_label = QLabel("👥 Аккаунты (1 шт):")
-        self.threads_accounts_input = QLineEdit()
-        self.threads_accounts_input.setPlaceholderText("Нет загруженных аккаунтов")
-        self.threads_accounts_input.setReadOnly(True)
-        self.threads_accounts_btn = QPushButton("📁 Выбрать accounts.txt")
-        self.threads_accounts_btn.clicked.connect(self.select_accounts_file)
-        acc_row.addWidget(acc_label, 1)
-        acc_row.addWidget(self.threads_accounts_input, 3)
-        acc_row.addWidget(self.threads_accounts_btn)
-        setup_layout.addLayout(acc_row)
-        
-        # Proxies file row
-        proxy_row = QHBoxLayout()
-        proxy_label = QLabel("🔌 Прокси: не загружены")
-        self.threads_proxies_label = proxy_label
-        self.threads_proxies_input = QLineEdit()
-        self.threads_proxies_input.setPlaceholderText("Нет загруженных прокси")
-        self.threads_proxies_input.setReadOnly(True)
-        self.threads_proxies_btn = QPushButton("📁 Выбрать proxies.txt")
-        self.threads_proxies_btn.clicked.connect(self.select_proxies_file)
-        proxy_row.addWidget(self.threads_proxies_label, 1)
-        proxy_row.addWidget(self.threads_proxies_input, 3)
-        proxy_row.addWidget(self.threads_proxies_btn)
-        setup_layout.addLayout(proxy_row)
-        
-        # Parallel profiles row
-        parallel_row = QHBoxLayout()
-        parallel_label = QLabel("⚡ Параллельно профилей:")
-        self.parallel_profiles_input = QLineEdit("1")
-        self.parallel_profiles_input.setMaximumWidth(60)
-        parallel_row.addWidget(parallel_label)
-        parallel_row.addWidget(self.parallel_profiles_input)
-        parallel_row.addStretch()
-        self.onboarding_btn = QPushButton("🎯 Onboarding")
-        self.onboarding_btn.clicked.connect(self.start_onboarding)
-        parallel_row.addWidget(self.onboarding_btn)
-        setup_layout.addLayout(parallel_row)
-        
-        layout.addWidget(threads_setup_group)
         
         
         # === НАСТРОЙКИ СКРОЛЛИНГА SECTION ===
@@ -211,7 +163,12 @@ class InstagramTab(QWidget):
         scrolling_controls_row.addWidget(self.start_scrolling_btn)
         scrolling_controls_row.addWidget(self.stop_scrolling_btn)
         
-        # Cycle interval
+        # Parallel profiles and cycle interval
+        scrolling_controls_row.addWidget(QLabel("⚡ Параллельно профилей:"))
+        self.parallel_profiles_input = QLineEdit("1")
+        self.parallel_profiles_input.setMaximumWidth(60)
+        scrolling_controls_row.addWidget(self.parallel_profiles_input)
+
         scrolling_controls_row.addWidget(QLabel("⌚ Цикличность Интервал:"))
         self.scrolling_cycle_input = QLineEdit("11 мин")
         self.scrolling_cycle_input.setMaximumWidth(80)
@@ -248,39 +205,7 @@ class InstagramTab(QWidget):
         scrollbar = self.threads_log_area.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
-    def select_accounts_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Выбрать файл", "", "Text Files (*.txt);;All Files (*)")
-        if file_path:
-            self.threads_accounts = load_accounts(file_path)
-            self.threads_accounts_input.setText(f"{len(self.threads_accounts)} аккаунтов")
-            self.log(f"✅ Загружено {len(self.threads_accounts)} аккаунтов")
 
-    def select_proxies_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Выбрать файл", "", "Text Files (*.txt);;All Files (*)")
-        if file_path:
-            self.threads_proxies = load_proxies(file_path)
-            if self.threads_accounts:
-                assign_proxies_to_accounts(self.threads_accounts, self.threads_proxies)
-            self.threads_proxies_label.setText(f"🔌 Прокси: {len(self.threads_proxies)} загружено")
-            self.threads_proxies_input.setText(f"{len(self.threads_proxies)} прокси")
-            self.log(f"✅ Загружено {len(self.threads_proxies)} прокси")
-
-    def start_onboarding(self):
-        if not hasattr(self, 'threads_accounts') or not self.threads_accounts:
-            QMessageBox.warning(self, "Ошибка", "Сначала загрузите аккаунты!")
-            return
-        
-        try:
-            parallel_count = int(self.parallel_profiles_input.text())
-        except:
-            parallel_count = 1
-            
-        self.log("🎯 Запуск onboarding...")
-        
-        self.onboarding_worker = OnboardingWorker(self.threads_accounts, parallel_count)
-        self.onboarding_worker.log_signal.connect(self.log)
-        self.onboarding_worker.finished_signal.connect(lambda: self.log("✅ Onboarding завершен"))
-        self.onboarding_worker.start()
 
     def start_scrolling(self):
         # Use private profiles only

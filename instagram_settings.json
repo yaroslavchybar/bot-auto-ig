@@ -10,8 +10,8 @@
     "min_time_minutes": 5,
     "max_time_minutes": 5,
     "cycle_interval_minutes": 11,
-    "enable_feed": true,
-    "enable_reels": false,
+    "enable_feed": false,
+    "enable_reels": true,
     "parallel_profiles": 1,
     "watch_stories": false
 }

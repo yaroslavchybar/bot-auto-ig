@@ -1,11 +1,18 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QListWidget, QGroupBox, QMessageBox, QScrollArea, QFrame,
-    QRadioButton, QButtonGroup, QCheckBox, QComboBox, QLineEdit, QListWidgetItem, QApplication,
-    QDialog, QDialogButtonBox
+    QGroupBox, QMessageBox, QScrollArea, QFrame,
+    QRadioButton, QButtonGroup, QCheckBox, QComboBox, QLineEdit,
+    QDialog, QDialogButtonBox, QGridLayout, QSizePolicy, QApplication
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QIcon, QFont, QColor, QCursor
 from utils.totp import generate_totp_code
+
+from gui.styles import (
+    CARD_STYLE, STATUS_RUNNING, STATUS_IDLE, STATUS_STOPPED,
+    BUTTON_STYLE, ACTION_BTN_STYLE, PRIMARY_BTN_STYLE, INPUT_STYLE,
+    DIALOG_STYLE, CHECKBOX_STYLE
+)
 
 
 class ProfileCreationDialog(QDialog):
@@ -22,17 +29,28 @@ class ProfileCreationDialog(QDialog):
             self.setWindowTitle("Создание нового профиля")
 
         self.setModal(True)
-        self.resize(500, 400)
+        self.resize(550, 450)
+        self.setModal(True)
+        self.resize(550, 450)
+        self.setStyleSheet(
+            DIALOG_STYLE + 
+            CHECKBOX_STYLE +
+            INPUT_STYLE + 
+            PRIMARY_BTN_STYLE.replace("QPushButton", "QPushButton#saveBtn")
+        )
 
         # Form elements
         self.profile_name_input = QLineEdit()
-        self.profile_name_input.setPlaceholderText("Введите название профиля")
+        self.profile_name_input.setPlaceholderText("Например: Instagram Main")
 
         self.profile_type_combo = QComboBox()
         self.profile_type_combo.addItems(["Camoufox (рекомендуется)", "Standard Firefox"])
+        self.profile_type_combo = QComboBox()
+        self.profile_type_combo.addItems(["Camoufox (рекомендуется)", "Standard Firefox"])
+        # Styles are handled by DIALOG_STYLE now
 
-        self.proxy_radio = QRadioButton("🔴 PROXY")
-        self.direct_radio = QRadioButton("🟢 Прямое подключение")
+        self.proxy_radio = QRadioButton("Использовать PROXY")
+        self.direct_radio = QRadioButton("Прямое подключение")
         self.direct_radio.setChecked(True)
 
         self.connection_group = QButtonGroup()
@@ -40,10 +58,10 @@ class ProfileCreationDialog(QDialog):
         self.connection_group.addButton(self.direct_radio)
 
         self.proxy_input = QLineEdit()
-        self.proxy_input.setPlaceholderText("ip:port:login:pass или socks5://ip:port:login:pass")
+        self.proxy_input.setPlaceholderText("ip:port:login:pass")
         self.proxy_input.setEnabled(False)
 
-        self.test_ip_checkbox = QCheckBox("🟢 Тестировать IP при запуске")
+        self.test_ip_checkbox = QCheckBox("Проверить IP перед запуском")
 
         # Connect signals
         self.proxy_radio.toggled.connect(self.toggle_proxy_input)
@@ -56,69 +74,75 @@ class ProfileCreationDialog(QDialog):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
 
-        # Profile Name Row
-        name_row = QHBoxLayout()
-        name_label = QLabel("📝 Название профиля:")
-        name_row.addWidget(name_label, 1)
-        name_row.addWidget(self.profile_name_input, 3)
-        layout.addLayout(name_row)
+        # Header code could go here, but window title is usually enough
 
-        # Profile Type Row
-        type_row = QHBoxLayout()
-        type_label = QLabel("⚙️ Тип профиля:")
-        type_row.addWidget(type_label, 1)
-        type_row.addWidget(self.profile_type_combo, 3)
-        layout.addLayout(type_row)
+        # Main Info
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(10)
+        info_layout.addWidget(QLabel("Название профиля"))
+        info_layout.addWidget(self.profile_name_input)
+        
+        info_layout.addWidget(QLabel("Тип браузера"))
+        info_layout.addWidget(self.profile_type_combo)
+        layout.addLayout(info_layout)
 
         # Connection Settings Group
-        conn_group = QGroupBox("⚡ Настройки подключения")
+        conn_group = QGroupBox("Настройки сети")
         conn_layout = QVBoxLayout(conn_group)
+        conn_layout.setContentsMargins(15, 20, 15, 15)
+        conn_layout.setSpacing(15)
 
         # Connection Mode Row
-        mode_row = QHBoxLayout()
-        mode_label = QLabel("⚡ Режим:")
-        mode_row.addWidget(mode_label)
-        mode_row.addWidget(self.proxy_radio)
-        mode_row.addWidget(self.direct_radio)
-        mode_row.addStretch()
-        conn_layout.addLayout(mode_row)
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(self.direct_radio)
+        mode_layout.addWidget(self.proxy_radio)
+        mode_layout.addStretch()
+        conn_layout.addLayout(mode_layout)
 
-        # Proxy String Row
-        proxy_row = QHBoxLayout()
-        proxy_label = QLabel("🔑 PROXY строка:")
-        proxy_row.addWidget(proxy_label, 1)
-        proxy_row.addWidget(self.proxy_input, 3)
-        conn_layout.addLayout(proxy_row)
+        # Proxy String
+        conn_layout.addWidget(QLabel("Данные PROXY"))
+        conn_layout.addWidget(self.proxy_input)
 
         # Test IP Checkbox
         conn_layout.addWidget(self.test_ip_checkbox)
 
         layout.addWidget(conn_group)
 
-        # Dialog buttons
-        if self.editing_profile:
-            buttons = QDialogButtonBox(
-                QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
-            )
-            buttons.button(QDialogButtonBox.StandardButton.Save).setText("💾 Сохранить изменения")
-        else:
-            buttons = QDialogButtonBox(
-                QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-            )
-            buttons.button(QDialogButtonBox.StandardButton.Ok).setText("🔴 Создать профиль")
+        # Buttons
+        button_box = QHBoxLayout()
+        button_box.addStretch()
 
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        cancel_btn = QPushButton("Отмена")
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setStyleSheet("background: transparent; color: #abb2bf; border: none; font-weight: bold;")
+        cancel_btn.clicked.connect(self.reject)
+
+        save_btn = QPushButton("Сохранить")
+        save_btn.setObjectName("saveBtn")
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        save_btn.clicked.connect(self.accept)
+
+        if self.editing_profile:
+            save_btn.setText("Сохранить")
+        else:
+            save_btn.setText("Создать")
+
+        button_box.addWidget(cancel_btn)
+        button_box.addWidget(save_btn)
+
+        layout.addLayout(button_box)
 
     def toggle_proxy_input(self, checked):
         """Enable/disable proxy input based on radio selection"""
         self.proxy_input.setEnabled(checked)
         if not checked:
             self.proxy_input.clear()
+            self.proxy_input.setStyleSheet(INPUT_STYLE)
+        else:
+             self.proxy_input.setFocus()
 
     def load_profile_data(self, profile):
         """Load profile data into form for editing"""
@@ -166,6 +190,119 @@ class ProfileCreationDialog(QDialog):
         self.editing_index = index
 
 
+class ProfileCard(QFrame):
+    start_signal = pyqtSignal(str)
+    stop_signal = pyqtSignal(str)
+    edit_signal = pyqtSignal(str)
+    delete_signal = pyqtSignal(str)
+
+    def __init__(self, profile_data, is_running=False, parent=None):
+        super().__init__(parent)
+        self.profile_data = profile_data
+        self.name = profile_data.get("name", "Unknown")
+        self.is_running = is_running
+        self.setStyleSheet(CARD_STYLE)
+        self.setFixedHeight(55) # Reduced height for compactness
+        
+        self.setup_ui()
+
+    def setup_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 4, 10, 4) # Reduced margins further
+        layout.setSpacing(12) # Reduced spacing
+
+        # Icon / Status Indicator
+        status_color = "#98c379" if self.is_running else "#61afef"
+        self.status_indicator = QLabel("●")
+        self.status_indicator.setStyleSheet(f"color: {status_color}; font-size: 14px;") # Smaller indicator
+        layout.addWidget(self.status_indicator)
+
+        # Info Layout (Name + Proxy)
+        info_layout = QVBoxLayout()
+        info_layout.setSpacing(0) # Minimal vertical spacing
+        info_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+
+        name_label = QLabel(self.name)
+        name_label.setObjectName("profileName")
+        info_layout.addWidget(name_label)
+
+        proxy_str = self.profile_data.get("proxy", "Direct Connection")
+        if not proxy_str:
+            proxy_str = "Direct Connection"
+        else:
+            # Truncate if too long
+            if len(proxy_str) > 35: # Slightly tighter truncation
+                proxy_str = proxy_str[:32] + "..."
+        
+        proxy_label = QLabel(f"🌐 {proxy_str}")
+        proxy_label.setObjectName("proxyInfo")
+        info_layout.addWidget(proxy_label)
+
+        layout.addLayout(info_layout, stretch=1)
+
+        # Action Buttons Layout
+        actions_layout = QHBoxLayout()
+        actions_layout.setSpacing(6) # Tighter button spacing
+
+        # Start/Stop Button
+        if self.is_running:
+            self.stop_btn = QPushButton("⏹ STOP")
+            self.stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.stop_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(224, 108, 117, 0.2);
+                    color: #e06c75;
+                    border: 1px solid #e06c75;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: rgba(224, 108, 117, 0.3);
+                }
+            """)
+            self.stop_btn.clicked.connect(lambda: self.stop_signal.emit(self.name))
+            actions_layout.addWidget(self.stop_btn)
+        else:
+            self.start_btn = QPushButton("▶ START")
+            self.start_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.start_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(97, 175, 239, 0.2);
+                    color: #61afef;
+                    border: 1px solid #61afef;
+                    border-radius: 4px;
+                    padding: 4px 10px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: rgba(97, 175, 239, 0.3);
+                }
+            """)
+            self.start_btn.clicked.connect(lambda: self.start_signal.emit(self.name))
+            actions_layout.addWidget(self.start_btn)
+
+        # Edit Button
+        self.edit_btn = QPushButton("⚙")
+        self.edit_btn.setToolTip("Настройки")
+        self.edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.edit_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.edit_btn.clicked.connect(lambda: self.edit_signal.emit(self.name))
+        actions_layout.addWidget(self.edit_btn)
+
+        # Delete Button
+        self.delete_btn = QPushButton("🗑")
+        self.delete_btn.setToolTip("Удалить")
+        self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.delete_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #e06c75;")
+        self.delete_btn.clicked.connect(lambda: self.delete_signal.emit(self.name))
+        actions_layout.addWidget(self.delete_btn)
+
+        layout.addLayout(actions_layout)
+
+
 class ProfilesTab(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -173,133 +310,145 @@ class ProfilesTab(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        # Create the main tab widget
+        # Apply global stylesheet for this tab if needed, but components handle their own
+        self.setStyleSheet("background-color: #1e2125;") 
+
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)
-        
-        # Create a scroll area
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        
-        # Create the content widget that will be scrollable
-        content_widget = QWidget()
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(15)
+        main_layout.setContentsMargins(30, 30, 30, 30)
+        main_layout.setSpacing(25)
 
-        # === CREATE PROFILE BUTTON ===
-        create_section = QGroupBox("🟢 Создание профиля")
-        create_layout = QVBoxLayout(create_section)
+        # === 1. TOP HEADER (Title + Create Button) ===
+        header_layout = QHBoxLayout()
+        
+        title_label = QLabel("Профили")
+        title_label.setStyleSheet("color: white; font-size: 28px; font-weight: bold;")
+        
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
 
-        self.create_profile_btn = QPushButton("🔴 Создать новый профиль")
-        self.create_profile_btn.setStyleSheet("background-color: #333; padding: 12px; font-size: 14px;")
-        self.create_profile_btn.clicked.connect(self.show_create_profile_dialog)
-        create_layout.addWidget(self.create_profile_btn)
+        self.create_btn = QPushButton("+ Новый профиль")
+        self.create_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.create_btn.setStyleSheet(PRIMARY_BTN_STYLE)
+        self.create_btn.clicked.connect(lambda: self.show_create_profile_dialog())
+        header_layout.addWidget(self.create_btn)
 
-        layout.addWidget(create_section)
+        main_layout.addLayout(header_layout)
 
-        # === PROFILE MANAGEMENT SECTION ===
-        mgmt_group = QGroupBox("📁 Управление профилями")
-        mgmt_layout = QHBoxLayout(mgmt_group)
-        
-        # Left Panel - Private Profiles
-        left_panel = QVBoxLayout()
-        left_header = QLabel("🔒 Приватные профили")
-        left_header.setObjectName("sectionHeader")
-        left_panel.addWidget(left_header)
-        
-        self.private_list = QListWidget()
-        left_panel.addWidget(self.private_list)
-        
-        left_buttons = QHBoxLayout()
-        self.private_start_btn = QPushButton("🚀")
-        self.private_start_btn.setToolTip("Запустить")
-        self.private_start_btn.clicked.connect(lambda: self.launch_profile("private"))
-        
-        self.private_stop_btn = QPushButton("⏹️")
-        self.private_stop_btn.setToolTip("Остановить")
-        self.private_stop_btn.clicked.connect(lambda: self.stop_profile("private"))
-        
-        self.private_edit_btn = QPushButton("✏️")
-        self.private_edit_btn.setToolTip("Редактировать")
-        self.private_edit_btn.clicked.connect(lambda: self.load_profile_for_editing("private"))
-        
-        self.private_delete_btn = QPushButton("🗑️")
-        self.private_delete_btn.setToolTip("Удалить")
-        self.private_delete_btn.clicked.connect(lambda: self.delete_profile("private"))
-        
-        left_buttons.addWidget(self.private_start_btn)
-        left_buttons.addWidget(self.private_stop_btn)
-        left_buttons.addWidget(self.private_edit_btn)
-        left_buttons.addWidget(self.private_delete_btn)
-        left_panel.addLayout(left_buttons)
-        
-        mgmt_layout.addLayout(left_panel)
-        
-        layout.addWidget(mgmt_group)
+        # === 2. PROFILES LIST (Scroll Area) ===
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setStyleSheet("""
+            QScrollArea { background: transparent; border: none; }
+            QScrollBar:vertical {
+                border: none;
+                background: #2b2d30;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #4b4d50;
+                border-radius: 4px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
 
-        # === 2FA / TOTP GENERATOR SECTION ===
-        totp_group = QGroupBox("🔑 2FA / TOTP генератор")
-        totp_layout = QVBoxLayout(totp_group)
+        self.profiles_container = QWidget()
+        self.profiles_container.setStyleSheet("background: transparent;")
         
-        secret_row = QHBoxLayout()
-        secret_label = QLabel("🔒 Секрет (Base32):")
-        self.secret_input = QLineEdit()
-        self.secret_input.setPlaceholderText("JBSWY3DPEHPK3PXP...")
-        secret_row.addWidget(secret_label, 1)
-        secret_row.addWidget(self.secret_input, 4)
-        totp_layout.addLayout(secret_row)
+        # We use a vertical layout for the container of cards
+        self.profiles_layout = QVBoxLayout(self.profiles_container)
+        self.profiles_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.profiles_layout.setSpacing(8)
+        self.profiles_layout.setContentsMargins(0, 0, 10, 0) # Right margin for scrollbar
+
+        self.scroll_area.setWidget(self.profiles_container)
+        main_layout.addWidget(self.scroll_area)
+
+        # === 3. BOTTOM SECTION (TOTP) ===
+        # We can make this look like a card effectively
+        totp_frame = QFrame()
+        totp_frame.setStyleSheet("""
+            QFrame {
+                background-color: #262a30;
+                border-radius: 12px;
+                border: 1px solid #3e4042;
+                padding: 10px;
+            }
+        """)
+        totp_layout = QHBoxLayout(totp_frame)
+        totp_layout.setContentsMargins(20, 15, 20, 15)
         
-        code_row = QHBoxLayout()
-        code_label = QLabel("🔢 Код (6 цифр):")
-        self.code_output = QLineEdit()
-        self.code_output.setReadOnly(True)
-        self.code_output.setPlaceholderText("")
+        totp_label = QLabel("🔐 2FA Генератор")
+        totp_label.setStyleSheet("color: #e0e0e0; font-weight: bold; font-size: 14px; border: none;")
         
-        self.get_code_btn = QPushButton("📋 Получить код")
-        self.get_code_btn.clicked.connect(self.generate_totp)
+        self.totp_secret = QLineEdit()
+        self.totp_secret.setPlaceholderText("Вставьте секретный ключ (Base32)...")
+        self.totp_secret.setStyleSheet(INPUT_STYLE + "border: none; background: #1e2125;")
         
-        self.copy_code_btn = QPushButton("📎 Копировать")
-        self.copy_code_btn.clicked.connect(self.copy_totp)
-        
-        code_row.addWidget(code_label, 1)
-        code_row.addWidget(self.code_output, 2)
-        code_row.addWidget(self.get_code_btn)
-        code_row.addWidget(self.copy_code_btn)
-        totp_layout.addLayout(code_row)
-        
-        layout.addWidget(totp_group)
-        
-        # Refresh profile lists
+        self.totp_code_display = QLineEdit()
+        self.totp_code_display.setPlaceholderText("------")
+        self.totp_code_display.setReadOnly(True)
+        self.totp_code_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.totp_code_display.setFixedWidth(100)
+        self.totp_code_display.setStyleSheet(INPUT_STYLE + "color: #61afef; font-weight: bold; background: #1e2125; border: none;")
+
+        generate_btn = QPushButton("Создать")
+        generate_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        generate_btn.setStyleSheet(BUTTON_STYLE)
+        generate_btn.clicked.connect(self.generate_totp)
+
+        copy_btn = QPushButton("Копировать")
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_btn.setStyleSheet(BUTTON_STYLE)
+        copy_btn.clicked.connect(self.copy_totp)
+
+        totp_layout.addWidget(totp_label)
+        totp_layout.addWidget(self.totp_secret)
+        totp_layout.addWidget(generate_btn)
+        totp_layout.addWidget(self.totp_code_display)
+        totp_layout.addWidget(copy_btn)
+
+        main_layout.addWidget(totp_frame)
+
+        # Initial refresh
         self.refresh_lists()
-        
-        # Set the content widget to the scroll area
-        scroll_area.setWidget(content_widget)
-        
-        # Add scroll area to the main layout
-        main_layout.addWidget(scroll_area)
-
-    def toggle_proxy_input(self, checked):
-        """Enable/disable proxy input based on radio selection"""
-        self.proxy_input.setEnabled(checked)
-        if not checked:
-            self.proxy_input.clear()
 
     def refresh_lists(self):
-        """Refresh private profile list"""
-        self.private_list.clear()
+        """Clear and rebuild the profiles list"""
+        # Clear existing items
+        while self.profiles_layout.count():
+            item = self.profiles_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+        
+        # Get profiles
+        profiles = self.main_window.profile_manager.profiles.get("private", [])
 
-        # Get profiles from manager
-        profiles = self.main_window.profile_manager.profiles
+        if not profiles:
+            empty_label = QLabel("Нет профилей. Создайте первый!")
+            empty_label.setStyleSheet("color: #abb2bf; font-style: italic; margin-top: 20px;")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.profiles_layout.addWidget(empty_label)
+            return
 
-        for profile in profiles.get("private", []):
-            status = "🟢 Running" if self.main_window.process_manager.is_running(profile["name"]) else "⚫ Idle"
-            proxy_info = f" | Proxy: {profile.get('proxy', 'Direct')[:30]}..." if profile.get('proxy') else ""
-            item = QListWidgetItem(f"{profile['name']} {status}{proxy_info}")
-            self.private_list.addItem(item)
+        for profile in profiles:
+            name = profile['name']
+            is_running = self.main_window.process_manager.is_running(name)
+            
+            card = ProfileCard(profile, is_running)
+            card.start_signal.connect(self.handle_start_profile)
+            card.stop_signal.connect(self.handle_stop_profile)
+            card.edit_signal.connect(self.handle_edit_profile)
+            card.delete_signal.connect(self.handle_delete_profile)
+            
+            self.profiles_layout.addWidget(card)
 
+    # --- HANDLERS ---
+    
     def show_create_profile_dialog(self, editing_profile=None, editing_category=None, editing_index=None):
         """Show the profile creation/editing dialog"""
         dialog = ProfileCreationDialog(self, editing_profile, editing_category)
@@ -340,103 +489,56 @@ class ProfilesTab(QWidget):
 
         self.refresh_lists()
 
-    def create_profile(self):
-        """Legacy method - kept for compatibility, but creation now uses dialog"""
-        pass
-
-    def load_profile_for_editing(self, category):
-        """Load private profile for editing using the dialog"""
-        if category != "private":
-            return
-
-        row = self.private_list.currentRow()
-
-        if row < 0:
-            QMessageBox.warning(self, "Ошибка", "Выберите профиль для редактирования!")
-            return
-
-        profiles = self.main_window.profile_manager.profiles.get("private", [])
-        if row >= len(profiles):
-            return
-
-        profile = profiles[row]
-        self.show_create_profile_dialog(profile, "private", row)
-
-    def launch_profile(self, category):
+    def handle_start_profile(self, name):
         """Launch a private profile"""
-        if category != "private":
-            return
-
-        row = self.private_list.currentRow()
-
-        if row < 0:
-            QMessageBox.warning(self, "Ошибка", "Выберите профиль для запуска!")
-            return
-
+        # Find profile data
         profiles = self.main_window.profile_manager.profiles.get("private", [])
-        if row >= len(profiles):
+        profile = next((p for p in profiles if p['name'] == name), None)
+        
+        if not profile:
             return
 
-        profile = profiles[row]
-        name = profile['name']
         proxy = profile.get('proxy') or "None"
 
         if self.main_window.process_manager.is_running(name):
              QMessageBox.information(self, "Инфо", f"Профиль '{name}' уже запущен!")
+             self.refresh_lists() # Refresh UI just in case
              return
 
         success, msg = self.main_window.process_manager.start_profile(name, proxy)
         if success:
             self.main_window.log(f"🚀 Запущен профиль: {name}")
-            # Sync status to database
+            # Sync status to database/manager
             self.main_window.profile_manager.update_profile_status(name, "running", True)
             self.refresh_lists()
         else:
             QMessageBox.warning(self, "Ошибка", f"Не удалось запустить: {msg}")
 
-    def stop_profile(self, category):
+    def handle_stop_profile(self, name):
         """Stop a private profile"""
-        if category != "private":
-            return
-
-        row = self.private_list.currentRow()
-
-        if row < 0:
-            QMessageBox.warning(self, "Ошибка", "Выберите профиль для остановки!")
-            return
-
-        profiles = self.main_window.profile_manager.profiles.get("private", [])
-        if row >= len(profiles):
-            return
-
-        profile = profiles[row]
-        name = profile['name']
-
         if self.main_window.process_manager.stop_profile(name):
             self.main_window.log(f"⏹️ Остановлен профиль: {name}")
-            # Sync status to database
             self.main_window.profile_manager.update_profile_status(name, "idle", False)
             self.refresh_lists()
         else:
             QMessageBox.information(self, "Инфо", f"Профиль '{name}' не запущен!")
+            self.refresh_lists()
 
-    def delete_profile(self, category):
-        """Delete a private profile"""
-        if category != "private":
-            return
-
-        row = self.private_list.currentRow()
-
-        if row < 0:
-            QMessageBox.warning(self, "Ошибка", "Выберите профиль для удаления!")
-            return
-
+    def handle_edit_profile(self, name):
+        """Load private profile for editing"""
         profiles = self.main_window.profile_manager.profiles.get("private", [])
-        name = profiles[row]['name']
+        
+        # Find index and profile
+        for i, profile in enumerate(profiles):
+            if profile['name'] == name:
+                self.show_create_profile_dialog(profile, "private", i)
+                return
 
+    def handle_delete_profile(self, name):
+        """Delete a private profile"""
         # Stop if running
         if self.main_window.process_manager.is_running(name):
-            self.stop_profile(category)
+            self.handle_stop_profile(name)
 
         confirm = QMessageBox.question(
             self, "Подтверждение", f"Удалить профиль '{name}'?",
@@ -444,16 +546,25 @@ class ProfilesTab(QWidget):
         )
 
         if confirm == QMessageBox.StandardButton.Yes:
-            self.main_window.profile_manager.delete_profile("private", row)
+            # Find index
+            profiles = self.main_window.profile_manager.profiles.get("private", [])
+            for i, profile in enumerate(profiles):
+                if profile['name'] == name:
+                    self.main_window.profile_manager.delete_profile("private", i)
+                    break
+            
             self.refresh_lists()
             self.main_window.log(f"🗑️ Удален профиль: {name}")
 
     def generate_totp(self):
-        secret = self.secret_input.text()
-        
+        secret = self.totp_secret.text().strip()
+        if not secret:
+            QMessageBox.warning(self, "Ошибка", "Введите секретный ключ!")
+            return
+
         try:
             code = generate_totp_code(secret)
-            self.code_output.setText(code)
+            self.totp_code_display.setText(code)
             self.main_window.log(f"🔑 Сгенерирован TOTP код: {code}")
         except ValueError as e:
             QMessageBox.warning(self, "Ошибка", str(e))
@@ -461,8 +572,8 @@ class ProfilesTab(QWidget):
             QMessageBox.warning(self, "Ошибка", f"Ошибка генерации: {e}")
 
     def copy_totp(self):
-        code = self.code_output.text()
-        if code:
+        code = self.totp_code_display.text()
+        if code and code != "------":
             clipboard = QApplication.clipboard()
             clipboard.setText(code)
             self.main_window.log("📎 Код скопирован в буфер обмена")
