@@ -93,20 +93,13 @@ class InstagramTab(QWidget):
         scrolling_group = QGroupBox("📜 Настройки скроллинга")
         scrolling_layout = QVBoxLayout(scrolling_group)
         
-        # Profile type row
+        # Profile type row - only private profiles
         scroll_profile_row = QHBoxLayout()
         scroll_profile_label = QLabel("📂 Профиль:")
-        self.scrolling_private_radio = QRadioButton("Приватные")
-        self.scrolling_threads_radio = QRadioButton("Instagram")
-        self.scrolling_threads_radio.setChecked(True)
-        self.scrolling_profile_group = QButtonGroup()
-        self.scrolling_profile_group.addButton(self.scrolling_private_radio)
-        self.scrolling_profile_group.addButton(self.scrolling_threads_radio)
+        scroll_profile_value = QLabel("Приватные")
+        scroll_profile_value.setStyleSheet("font-weight: bold; color: #007acc;")
         scroll_profile_row.addWidget(scroll_profile_label)
-        scroll_profile_row.addWidget(self.scrolling_private_radio)
-        scroll_profile_row.addWidget(self.scrolling_threads_radio)
-        scroll_profile_row.addStretch()
-        scroll_profile_row.addWidget(self.scrolling_threads_radio)
+        scroll_profile_row.addWidget(scroll_profile_value)
         scroll_profile_row.addStretch()
         scrolling_layout.addLayout(scroll_profile_row)
 
@@ -290,29 +283,17 @@ class InstagramTab(QWidget):
         self.onboarding_worker.start()
 
     def start_scrolling(self):
-        target_accounts = []
-        if self.scrolling_private_radio.isChecked():
-            # Use private profiles
-            profiles = self.main_window.profile_manager.profiles.get("private", [])
-            if not profiles:
-                 QMessageBox.warning(self, "Ошибка", "Нет созданных приватных профилей!")
-                 return
-            
-            # Convert private profiles to ThreadsAccount objects
-            for p in profiles:
-                acc = ThreadsAccount(username=p["name"], password="", proxy=p.get("proxy"))
-                target_accounts.append(acc)
-                
-        else:
-            # Use uploaded threads accounts
-            if not self.threads_accounts:
-                QMessageBox.warning(self, "Ошибка", "Сначала загрузите аккаунты!")
-                return
-            target_accounts = self.threads_accounts
-
-        if not target_accounts:
-             QMessageBox.warning(self, "Ошибка", "Нет доступных аккаунтов для работы!")
+        # Use private profiles only
+        profiles = self.main_window.profile_manager.profiles.get("private", [])
+        if not profiles:
+             QMessageBox.warning(self, "Ошибка", "Нет созданных приватных профилей!")
              return
+
+        # Convert private profiles to ThreadsAccount objects
+        target_accounts = []
+        for p in profiles:
+            acc = ThreadsAccount(username=p["name"], password="", proxy=p.get("proxy"))
+            target_accounts.append(acc)
 
         # Get activity types
         enable_feed = self.feed_checkbox.isChecked()
@@ -360,8 +341,8 @@ class InstagramTab(QWidget):
         
         # Build config
         config = ScrollingConfig(
-            use_private_profiles=self.scrolling_private_radio.isChecked(),
-            use_threads_profiles=self.scrolling_threads_radio.isChecked(),
+            use_private_profiles=True,
+            use_threads_profiles=False,
             like_chance=feed_like_chance,
             comment_chance=comment_chance,
             follow_chance=feed_follow_chance,
@@ -411,8 +392,6 @@ class InstagramTab(QWidget):
         for checkbox in [
             self.feed_checkbox,
             self.reels_checkbox,
-            self.scrolling_private_radio,
-            self.scrolling_threads_radio,
             self.watch_stories_checkbox,
         ]:
             checkbox.toggled.connect(self.save_settings)
@@ -474,10 +453,7 @@ class InstagramTab(QWidget):
         self.reels_checkbox.setChecked(data.get("enable_reels", False))
         self.watch_stories_checkbox.setChecked(data.get("watch_stories", True))
 
-        if data.get("use_private_profiles"):
-            self.scrolling_private_radio.setChecked(True)
-        else:
-            self.scrolling_threads_radio.setChecked(True)
+        # Always use private profiles now
 
         self.scroll_time_min_input.setText(f"{data.get('min_time_minutes', defaults['min_time_minutes'])} мин")
         self.scroll_time_max_input.setText(f"{data.get('max_time_minutes', defaults['max_time_minutes'])} мин")
@@ -500,7 +476,7 @@ class InstagramTab(QWidget):
                 return default
 
         payload = {
-            "use_private_profiles": self.scrolling_private_radio.isChecked(),
+            "use_private_profiles": True,  # Always use private profiles now
             "like_chance": int(self.feed_likes_chance_slider.currentText().replace('%', '')),
             "carousel_watch_chance": int(self.feed_carousel_chance_slider.currentText().replace('%', '')),
             "follow_chance": int(self.feed_follows_chance_slider.currentText().replace('%', '')),

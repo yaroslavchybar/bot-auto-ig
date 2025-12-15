@@ -40,13 +40,15 @@ def _queue_actions(page, post, actions_config):
 
 def _pick_visible_post(page, posts):
     """
-    Pick a post that is currently in (or near) the viewport, preferring the one
-    closest to the bottom to avoid jumping back to earlier posts.
+    Pick a post that has the highest percentage visible in the viewport,
+    preferring posts that are more fully on screen.
     """
     try:
         viewport_h = page.evaluate("() => window.innerHeight") or 0
+        viewport_w = page.evaluate("() => window.innerWidth") or 0
     except Exception:
         viewport_h = 0
+        viewport_w = 0
 
     candidates = []
     for p in posts:
@@ -54,19 +56,43 @@ def _pick_visible_post(page, posts):
             box = p.bounding_box()
             if not box:
                 continue
-            center_y = box["y"] + (box["height"] / 2)
-            # Keep posts that are on screen (with small tolerance below the fold)
-            if 0 <= center_y <= viewport_h * 1.1:
-                candidates.append((center_y, p))
+
+            # Calculate visible area of the post
+            post_top = box["y"]
+            post_bottom = box["y"] + box["height"]
+            post_left = box["x"]
+            post_right = box["x"] + box["width"]
+
+            # Calculate intersection with viewport
+            visible_top = max(0, post_top)
+            visible_bottom = min(viewport_h, post_bottom)
+            visible_left = max(0, post_left)
+            visible_right = min(viewport_w, post_right)
+
+            # Calculate visible area
+            visible_height = max(0, visible_bottom - visible_top)
+            visible_width = max(0, visible_right - visible_left)
+            visible_area = visible_height * visible_width
+
+            # Calculate total post area
+            total_area = box["height"] * box["width"]
+
+            if total_area > 0:
+                visibility_percentage = (visible_area / total_area) * 100
+
+                # Only consider posts with significant visibility (>20% visible)
+                if visibility_percentage > 20:
+                    candidates.append((visibility_percentage, post_bottom, p))
+
         except Exception:
             continue
 
     if not candidates:
         return None
 
-    # Prefer the lowest visible post to keep forward progress
-    candidates.sort(key=lambda item: item[0], reverse=True)
-    return candidates[0][1]
+    # Sort by visibility percentage (highest first), then by bottom position (lowest first)
+    candidates.sort(key=lambda item: (item[0], -item[1]), reverse=True)
+    return candidates[0][2]
 
 
 def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
@@ -107,7 +133,6 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
                 if not post:
                     continue
                 try:
-                    post.scroll_into_view_if_needed()
                     human_mouse_move(page)  # simulate looking at the post
                     random_delay(0.5, 1.5)
                 except Exception:

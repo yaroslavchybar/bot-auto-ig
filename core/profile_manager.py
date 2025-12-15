@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from supabase.profiles_client import SupabaseProfilesClient, SupabaseProfilesError
 
 PROFILE_DB = "db.json"
@@ -60,6 +61,19 @@ class ProfileManager:
                     print(f"Warning: Failed to sync profile deletion to database - {e}")
                     return False  # Don't delete locally if DB sync fails
 
+            # Delete the browser profile directory
+            profile_name = profile_to_delete["name"]
+            profiles_dir = "profiles"
+            profile_path = os.path.join(profiles_dir, profile_name)
+
+            if os.path.exists(profile_path):
+                try:
+                    shutil.rmtree(profile_path)
+                    print(f"Deleted browser profile directory: '{profile_name}'")
+                except Exception as e:
+                    print(f"Warning: Failed to delete browser profile directory '{profile_path}': {e}")
+                    # Continue with the deletion anyway, as the JSON data removal is more important
+
             del self.profiles[category][index]
             self.save_profiles()
             return True
@@ -73,6 +87,30 @@ class ProfileManager:
     def update_profile(self, category, index, profile_data):
         if category in self.profiles and 0 <= index < len(self.profiles[category]):
             old_profile = self.profiles[category][index]
+            old_name = old_profile["name"]
+            new_name = profile_data["name"]
+
+            # Check if profile name changed and handle directory rename
+            if old_name != new_name:
+                profiles_dir = "profiles"
+                old_path = os.path.join(profiles_dir, old_name)
+                new_path = os.path.join(profiles_dir, new_name)
+
+                # Check if old directory exists
+                if os.path.exists(old_path):
+                    # Check if new directory already exists (shouldn't happen due to duplicate name validation)
+                    if os.path.exists(new_path):
+                        print(f"Warning: Cannot rename profile directory - '{new_path}' already exists")
+                        return False
+
+                    try:
+                        # Rename the browser profile directory
+                        shutil.move(old_path, new_path)
+                        print(f"Renamed browser profile directory: '{old_name}' -> '{new_name}'")
+                    except Exception as e:
+                        print(f"Warning: Failed to rename browser profile directory: {e}")
+                        # Continue with the update anyway, as the JSON data is more important
+
             self.profiles[category][index] = profile_data
             self.save_profiles()
 
