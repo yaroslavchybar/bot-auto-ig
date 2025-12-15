@@ -3,5 +3,5 @@
     "max_delay": 30,
     "do_unfollow": false,
     "do_approve": false,
-    "do_message": true
+    "do_message": false
 }
