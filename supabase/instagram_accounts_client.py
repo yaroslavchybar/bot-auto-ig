@@ -61,9 +61,19 @@ class InstagramAccountsClient:
     ) -> List[Dict]:
         """Fetch accounts assigned to a profile with given status."""
         params = {
-            "select": "id,user_name,assigned_to,status,link_sent",
+            "select": "id,user_name,assigned_to,status,link_sent,message",
             "assigned_to": f"eq.{profile_id}",
             "status": f"eq.{status}",
+            "order": "created_at.asc",
+        }
+        return self._request("GET", self.accounts_url, params=params) or []
+
+    def get_accounts_to_message(self, profile_id: str) -> List[Dict]:
+        """Fetch accounts assigned to profile that need a message (message=true)."""
+        params = {
+            "select": "id,user_name,assigned_to,status,message",
+            "assigned_to": f"eq.{profile_id}",
+            "message": "is.true",
             "order": "created_at.asc",
         }
         return self._request("GET", self.accounts_url, params=params) or []

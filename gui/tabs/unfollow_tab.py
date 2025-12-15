@@ -46,6 +46,10 @@ class UnfollowTab(QWidget):
         
         mode_layout.addWidget(self.unfollow_cb)
         mode_layout.addWidget(self.approve_cb)
+
+        self.message_cb = QCheckBox("Send Messages (Рассылка)")
+        self.message_cb.setChecked(False)
+        mode_layout.addWidget(self.message_cb)
         layout.addWidget(mode_group)
 
         # Controls
@@ -109,15 +113,17 @@ class UnfollowTab(QWidget):
             
         do_unfollow = self.unfollow_cb.isChecked()
         do_approve = self.approve_cb.isChecked()
+        do_message = self.message_cb.isChecked()
         
-        if not do_unfollow and not do_approve:
+        if not do_unfollow and not do_approve and not do_message:
             self.log("⚠️ Выберите хотя бы одно действие!")
             return
 
         self.worker = UnfollowWorker(
             delay_range=(min_d, max_d),
             do_unfollow=do_unfollow,
-            do_approve=do_approve
+            do_approve=do_approve,
+            do_message=do_message
         )
         self.worker.log_signal.connect(self.log)
         self.worker.finished_signal.connect(self.on_finished)
@@ -148,13 +154,15 @@ class UnfollowTab(QWidget):
         self.max_delay_spin.valueChanged.connect(self.save_settings)
         self.unfollow_cb.stateChanged.connect(self.save_settings)
         self.approve_cb.stateChanged.connect(self.save_settings)
+        self.message_cb.stateChanged.connect(self.save_settings)
 
     def load_settings(self):
         defaults = {
             "min_delay": 10, 
             "max_delay": 30,
             "do_unfollow": True,
-            "do_approve": True
+            "do_approve": True,
+            "do_message": False
         }
         self.loading_settings = True
         
@@ -170,6 +178,7 @@ class UnfollowTab(QWidget):
         self.max_delay_spin.setValue(data.get("max_delay", 30))
         self.unfollow_cb.setChecked(data.get("do_unfollow", True))
         self.approve_cb.setChecked(data.get("do_approve", True))
+        self.message_cb.setChecked(data.get("do_message", False))
         
         self.loading_settings = False
 
@@ -181,7 +190,8 @@ class UnfollowTab(QWidget):
             "min_delay": self.min_delay_spin.value(),
             "max_delay": self.max_delay_spin.value(),
             "do_unfollow": self.unfollow_cb.isChecked(),
-            "do_approve": self.approve_cb.isChecked()
+            "do_approve": self.approve_cb.isChecked(),
+            "do_message": self.message_cb.isChecked()
         }
         try:
             self.settings_path.write_text(json.dumps(data, indent=4), encoding="utf-8")

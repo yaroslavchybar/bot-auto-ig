@@ -1,0 +1,308 @@
+import os
+import random
+from typing import Callable, List, Dict, Optional
+
+from camoufox import Camoufox
+from automation.actions import random_delay
+from automation.Follow.utils import (
+    build_proxy_config,
+    ensure_profile_path,
+)
+from supabase.instagram_accounts_client import InstagramAccountsClient
+
+
+def send_messages(
+    profile_name: str,
+    proxy_string: str,
+    targets: List[Dict],
+    message_texts: List[str],
+    log: Callable[[str], None],
+    should_stop: Optional[Callable[[], bool]] = None,
+):
+    """
+    Send messages to a list of target users.
+    targets: List of dicts with 'user_name' and 'id'.
+    message_texts: List of message variations to randomly select from.
+    """
+    should_stop = should_stop or (lambda: False)
+    
+    if not targets:
+        log("ℹ️ Нет пользователей для рассылки сообщений.")
+        return
+
+    profile_path = ensure_profile_path(profile_name)
+    proxy_config = build_proxy_config(proxy_string)
+    client = InstagramAccountsClient()
+
+    log(f"✉️ [Messages] Запуск браузера для профиля: {profile_name}")
+
+    with Camoufox(
+        headless=False,
+        user_data_dir=profile_path,
+        persistent_context=True,
+        proxy=proxy_config,
+        geoip=False,
+        block_images=False,
+        os="windows",
+        window=(1280, 800),
+        humanize=True,
+    ) as context:
+        page = context.pages[0] if context.pages else context.new_page()
+
+        try:
+            if page.url == "about:blank":
+                page.goto("https://www.instagram.com", timeout=15000)
+
+            random_delay(2, 4)
+
+            # Navigate to Direct Inbox using sidebar Messages button
+            log("📨 Перехожу в Direct Inbox через кнопку Messages...")
+
+            # Wait for page to fully load
+            page.wait_for_load_state('networkidle', timeout=15000)
+
+            # Try multiple selectors to find the Messages button
+            messages_button = None
+
+            # Selector 1: Direct href link
+            try:
+                messages_button = page.locator('a[href="/direct/inbox/"]').first
+                if messages_button.is_visible(timeout=3000):
+                    log("✅ Найдена кнопка Messages по href")
+                else:
+                    messages_button = None
+            except:
+                messages_button = None
+
+            # Selector 2: Aria label containing "Direct messaging"
+            if not messages_button:
+                try:
+                    messages_button = page.locator('a[aria-label*="Direct messaging"]').first
+                    if messages_button.is_visible(timeout=3000):
+                        log("✅ Найдена кнопка Messages по aria-label")
+                    else:
+                        messages_button = None
+                except:
+                    messages_button = None
+
+            # Selector 3: SVG with Messages aria-label
+            if not messages_button:
+                try:
+                    messages_button = page.locator('svg[aria-label="Messages"]').locator('xpath=ancestor::a').first
+                    if messages_button.is_visible(timeout=3000):
+                        log("✅ Найдена кнопка Messages по SVG")
+                    else:
+                        messages_button = None
+                except:
+                    messages_button = None
+
+            # Selector 4: Look for any link containing "direct" in href
+            if not messages_button:
+                try:
+                    messages_button = page.locator('a[href*="direct"]').first
+                    if messages_button.is_visible(timeout=3000):
+                        log("✅ Найдена кнопка Messages по href содержащему 'direct'")
+                    else:
+                        messages_button = None
+                except:
+                    messages_button = None
+
+            if messages_button:
+                # Use cursor to click on the Messages button
+                messages_button.click()
+                log("✅ Кликнул на кнопку Messages в сайдбаре")
+
+                # Wait for navigation to complete
+                page.wait_for_load_state('networkidle', timeout=10000)
+                log("✅ Переход в Direct Inbox завершен")
+            else:
+                raise Exception("Не удалось найти кнопку Messages в сайдбаре")
+
+            random_delay(3, 5) # wait longer for first load
+
+            # Handle "Turn on Notifications" popup if it appears
+            try:
+                not_now_btn = page.locator('button:has-text("Not Now")').first
+                if not_now_btn.is_visible(timeout=3000):
+                    not_now_btn.click()
+                    random_delay(1, 2)
+            except:
+                pass
+
+            processed_count = 0
+            
+            for target in targets:
+                if should_stop():
+                    break
+                
+                username = target.get("user_name")
+                account_id = target.get("id")
+                
+                if not username:
+                    continue
+
+                log(f"👤 Обработка сообщения для: {username}")
+                
+                try:
+                    # 1. Click on the search input field to start a new conversation
+                    # The search field opens the user selection modal
+
+                    # Find and click the search input in Direct inbox
+                    search_input = page.locator('input[name="searchInput"]').first
+                    if not search_input.is_visible():
+                        # Fallback: try to find by placeholder
+                        search_input = page.locator('input[placeholder="Search"]').first
+
+                    if not search_input.is_visible():
+                        # Another fallback: find the label containing the search input
+                        search_input = page.locator('label input[placeholder="Search"]').first
+
+                    if search_input.is_visible():
+                        search_input.click()
+                        log("✅ Кликнул на поле поиска для начала нового сообщения")
+                    else:
+                        log(f"⚠️ Поле поиска не найдено, пропускаю {username}...")
+                        continue
+
+                    # Wait for modal to open
+                    random_delay(3, 4)
+
+                    # 2. Now search for user in the opened modal
+                    # Try multiple selectors for the modal search input
+                    modal_search = None
+
+                    # Try common selectors for modal search input
+                    selectors_to_try = [
+                        'input[name="queryBox"]',
+                        'input[placeholder="Search..."]',
+                        'input[placeholder*="Search"]',
+                        'input[aria-label*="Search"]',
+                        'input[type="text"]',
+                        'input[role="textbox"]'
+                    ]
+
+                    for selector in selectors_to_try:
+                        try:
+                            modal_search = page.locator(selector).first
+                            if modal_search.is_visible(timeout=2000):
+                                log(f"✅ Найдено поле поиска в модале: {selector}")
+                                break
+                        except:
+                            continue
+
+                    if not modal_search or not modal_search.is_visible():
+                        log(f"⚠️ Поле поиска в модальном окне не найдено, пропускаю {username}...")
+                        # Try to close modal by pressing Escape
+                        page.keyboard.press("Escape")
+                        random_delay(1, 2)
+                        continue
+
+                    # Clear and type the username
+                    modal_search.clear()
+                    random_delay(0.5, 1)
+                    modal_search.type(username, delay=random.randint(100, 200))
+                    log(f"✅ Набрал имя пользователя: {username}")
+
+                    random_delay(2, 3)
+                        
+                    search_input.fill(username)
+                    random_delay(2, 3)
+                    
+                    # 3. Select user from results
+                    # The result usually has the username text or checks a radio button
+                    # Wait for results
+                    try:
+                        # Find the specific user row. It usually contains the text username.
+                        # We want to click the row that matches exactly if poss, or the first valid one.
+                        # Let's find a div that contains the text
+                        user_row = page.locator(f'div[role="button"]:has-text("{username}")').first
+
+                        # Sometimes it's a checkbox (circle)
+                        if user_row.is_visible(timeout=5000):
+                            user_row.click()
+                            log(f"✅ Выбрал пользователя: {username}")
+                            random_delay(2, 4) # Wait for chat to open
+
+                            # 4. Type and Send Message
+                            # In Instagram Direct, after selecting user, chat opens immediately
+                            # Find the message input area
+                            msg_box = None
+
+                            # Try multiple selectors for the message input
+                            msg_selectors = [
+                                'div[role="textbox"][contenteditable="true"]',
+                                'div[aria-label="Message"][contenteditable="true"]',
+                                'div[aria-placeholder="Message..."][contenteditable="true"]',
+                                '[data-lexical-editor="true"]'
+                            ]
+
+                            for selector in msg_selectors:
+                                try:
+                                    msg_box = page.locator(selector).first
+                                    if msg_box.is_visible(timeout=3000):
+                                        log(f"✅ Найдено поле ввода сообщения: {selector}")
+                                        break
+                                except:
+                                    continue
+
+                            if msg_box and msg_box.is_visible():
+                                # Click on the message box to focus it
+                                msg_box.click()
+                                random_delay(0.5, 1)
+
+                                # Randomly select a message from the variations
+                                selected_message = random.choice(message_texts)
+
+                                # Type the message with human-like delays
+                                msg_box.type(selected_message, delay=random.randint(100, 200))
+                                log(f"✅ Набрал сообщение: {selected_message}")
+
+                                random_delay(1, 2)
+
+                                # Find and click the Send button
+                                send_btn = page.locator('div[role="button"]:has-text("Send")').first
+                                if not send_btn.is_visible():
+                                    # Try alternative selector
+                                    send_btn = page.locator('button:has-text("Send")').first
+
+                                if send_btn.is_visible():
+                                    send_btn.click()
+                                    log(f"✅ Отправил сообщение для {username}")
+
+                                    # Update DB
+                                    try:
+                                        client.update_account_message(username, False) # Set message=False after sending
+                                        log(f"💾 {username}: message -> false")
+                                    except Exception as db_e:
+                                        log(f"⚠️ Ошибка БД для {username}: {db_e}")
+
+                                    processed_count += 1
+                                else:
+                                    log(f"⚠️ Кнопка Send не найдена для {username}")
+                            else:
+                                log(f"⚠️ Не удалось найти поле ввода сообщения для {username}")
+
+                        else:
+                            log(f"⚠️ Пользователь {username} не найден в поиске.")
+                            # Close modal by pressing Escape
+                            page.keyboard.press("Escape")
+
+                    except Exception as e:
+                         log(f"⚠️ Ошибка при выборе пользователя {username}: {e}")
+                         # Close modal by pressing Escape
+                         page.keyboard.press("Escape")
+
+                    random_delay(3, 5) # Delay between messages
+
+                except Exception as e:
+                    log(f"❌ Ошибка в процессе отправки для {username}: {e}")
+                    # Try to recover navigation
+                    try:
+                        page.goto("https://www.instagram.com/direct/inbox/", timeout=10000)
+                    except:
+                        pass
+            
+            log(f"✅ Рассылка завершена. Отправлено: {processed_count}")
+
+        except Exception as e:
+            log(f"❌ Критическая ошибка браузера: {e}")
