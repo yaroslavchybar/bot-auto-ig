@@ -12,6 +12,7 @@ from datetime import datetime
 from core.models import ThreadsAccount, ScrollingConfig
 from gui.workers.instagram_worker import InstagramScrollingWorker
 from gui.workers.follow_worker import AutoFollowWorker
+from gui.workers.unfollow_worker import UnfollowWorker
 from gui.styles import (
     CARD_STYLE, STATUS_RUNNING, STATUS_IDLE, STATUS_STOPPED,
     BUTTON_STYLE, ACTION_BTN_STYLE, PRIMARY_BTN_STYLE, INPUT_STYLE,
@@ -40,8 +41,10 @@ class InstagramTab(QWidget):
         self.main_window = main_window
         self.worker = None
         self.follow_worker = None
+        self.unfollow_worker = None
         self.settings_path = Path(__file__).resolve().parents[2] / "instagram_settings.json"
         self.follow_settings_path = Path(__file__).resolve().parents[2] / "follow_settings.json"
+        self.unfollow_settings_path = Path(__file__).resolve().parents[2] / "unfollow_settings.json"
         self.loading_settings = False
         self.is_running = False
         
@@ -49,6 +52,9 @@ class InstagramTab(QWidget):
         self.feed_settings_dialog = None
         self.reels_settings_dialog = None
         self.follow_settings_dialog = None
+        self.unfollow_settings_dialog = None
+        self.approve_settings_dialog = None
+        self.message_settings_dialog = None
         
         self.setup_ui()
         self.load_settings()
@@ -245,6 +251,65 @@ class InstagramTab(QWidget):
         
         t_grid.addLayout(checks_layout, 1, 1)
 
+        # Row 3: Additional Tools (Unfollow, Approve, Message)
+        checks_layout_2 = QHBoxLayout()
+        checks_layout_2.setSpacing(20)
+        
+        # Unfollow
+        unfollow_container = QWidget()
+        unfollow_layout = QHBoxLayout(unfollow_container)
+        unfollow_layout.setContentsMargins(0, 0, 0, 0)
+        unfollow_layout.setSpacing(5)
+        self.unfollow_checkbox = QCheckBox("Unfollow")
+        self.unfollow_checkbox.setStyleSheet(CHECKBOX_STYLE)
+        self.unfollow_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.unfollow_settings_btn = QPushButton("⚙")
+        self.unfollow_settings_btn.setToolTip("Настройки")
+        self.unfollow_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.unfollow_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.unfollow_settings_btn.clicked.connect(self.open_unfollow_settings)
+        unfollow_layout.addWidget(self.unfollow_checkbox)
+        unfollow_layout.addWidget(self.unfollow_settings_btn)
+        
+        # Approve
+        approve_container = QWidget()
+        approve_layout = QHBoxLayout(approve_container)
+        approve_layout.setContentsMargins(0, 0, 0, 0)
+        approve_layout.setSpacing(5)
+        self.approve_checkbox = QCheckBox("Approve")
+        self.approve_checkbox.setStyleSheet(CHECKBOX_STYLE)
+        self.approve_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.approve_settings_btn = QPushButton("⚙")
+        self.approve_settings_btn.setToolTip("Настройки")
+        self.approve_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.approve_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.approve_settings_btn.clicked.connect(self.open_approve_settings)
+        approve_layout.addWidget(self.approve_checkbox)
+        approve_layout.addWidget(self.approve_settings_btn)
+
+        # Message
+        message_container = QWidget()
+        message_layout = QHBoxLayout(message_container)
+        message_layout.setContentsMargins(0, 0, 0, 0)
+        message_layout.setSpacing(5)
+        self.message_checkbox = QCheckBox("Message")
+        self.message_checkbox.setStyleSheet(CHECKBOX_STYLE)
+        self.message_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.message_settings_btn = QPushButton("⚙")
+        self.message_settings_btn.setToolTip("Настройки")
+        self.message_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.message_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.message_settings_btn.clicked.connect(self.open_message_settings)
+        message_layout.addWidget(self.message_checkbox)
+        message_layout.addWidget(self.message_settings_btn)
+        
+        checks_layout_2.addWidget(unfollow_container)
+        checks_layout_2.addWidget(approve_container)
+        checks_layout_2.addWidget(message_container)
+        checks_layout_2.addStretch()
+
+        t_grid.addLayout(checks_layout_2, 2, 1)
+
         target_layout.addLayout(t_grid)
         content_layout.addWidget(target_card)
 
@@ -439,6 +504,40 @@ class InstagramTab(QWidget):
         fl_row.addWidget(self.following_limit_input)
         self.follow_settings_dialog.add_layout(fl_row)
 
+        # --- UNFOLLOW SETTINGS DIALOG ---
+        self.unfollow_settings_dialog = SettingsDialog("Настройки отписки", self)
+        
+        uf_delay_layout = QHBoxLayout()
+        uf_delay_layout.addWidget(QLabel("⏱️ Задержка (сек):"))
+        self.unfollow_min_delay_input = QLineEdit("10")
+        self.unfollow_min_delay_input.setStyleSheet(INPUT_STYLE)
+        self.unfollow_min_delay_input.setFixedWidth(50)
+        self.unfollow_max_delay_input = QLineEdit("30")
+        self.unfollow_max_delay_input.setStyleSheet(INPUT_STYLE)
+        self.unfollow_max_delay_input.setFixedWidth(50)
+        uf_delay_layout.addWidget(self.unfollow_min_delay_input)
+        uf_delay_layout.addWidget(QLabel("-"))
+        uf_delay_layout.addWidget(self.unfollow_max_delay_input)
+        self.unfollow_settings_dialog.add_layout(uf_delay_layout)
+
+        # --- APPROVE SETTINGS DIALOG ---
+        self.approve_settings_dialog = SettingsDialog("Настройки подтверждения", self)
+        self.approve_settings_dialog.add_widget(QLabel("Нет доступных настроек для подтверждения заявок.\nПроцесс выполняется автоматически."))
+
+        # --- MESSAGE SETTINGS DIALOG ---
+        self.message_settings_dialog = SettingsDialog("Настройки рассылки", self)
+        
+        self.message_settings_dialog.add_widget(QLabel("Текст сообщения (message.txt):"))
+        self.message_text_edit = QTextEdit()
+        self.message_text_edit.setStyleSheet(INPUT_STYLE)
+        self.message_text_edit.setMinimumHeight(150)
+        self.message_settings_dialog.add_widget(self.message_text_edit)
+        
+        save_msg_btn = QPushButton("💾 Сохранить текст")
+        save_msg_btn.setStyleSheet(PRIMARY_BTN_STYLE)
+        save_msg_btn.clicked.connect(self.save_message_text)
+        self.message_settings_dialog.add_widget(save_msg_btn)
+
     def open_feed_settings(self):
         self.feed_settings_dialog.exec()
 
@@ -447,6 +546,33 @@ class InstagramTab(QWidget):
 
     def open_follow_settings(self):
         self.follow_settings_dialog.exec()
+
+    def open_unfollow_settings(self):
+        self.unfollow_settings_dialog.exec()
+
+    def open_approve_settings(self):
+        self.approve_settings_dialog.exec()
+
+    def open_message_settings(self):
+        # Load message.txt content when opening
+        try:
+            msg_path = Path("message.txt")
+            if msg_path.exists():
+                content = msg_path.read_text(encoding="utf-8")
+                self.message_text_edit.setPlainText(content)
+            else:
+                self.message_text_edit.setPlainText("")
+        except Exception as e:
+            self.log(f"Ошибка чтения message.txt: {e}")
+        self.message_settings_dialog.exec()
+        
+    def save_message_text(self):
+        try:
+            content = self.message_text_edit.toPlainText()
+            Path("message.txt").write_text(content, encoding="utf-8")
+            QMessageBox.information(self, "Успешно", "Текст сообщения сохранен в message.txt")
+        except Exception as e:
+            QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить message.txt: {e}")
 
     def log(self, message):
         """Add message to Threads log"""
@@ -505,9 +631,12 @@ class InstagramTab(QWidget):
         enable_feed = self.feed_checkbox.isChecked()
         enable_reels = self.reels_checkbox.isChecked()
         enable_follow = self.follow_checkbox.isChecked()
+        enable_unfollow = self.unfollow_checkbox.isChecked()
+        enable_approve = self.approve_checkbox.isChecked()
+        enable_message = self.message_checkbox.isChecked()
         
-        if not enable_feed and not enable_reels and not enable_follow:
-            QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип активности (Лента, Reels или Подписки)!")
+        if not any([enable_feed, enable_reels, enable_follow, enable_unfollow, enable_approve, enable_message]):
+            QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип активности!")
             return
 
         self.save_settings()
@@ -552,17 +681,49 @@ class InstagramTab(QWidget):
             self.follow_worker.start()
             self.log("▶️ Запуск автоподписки...")
 
-        # 3. Start Scrolling Worker if enabled
+        # 3. Start Unfollow/Approve/Message Worker if enabled
+        if enable_unfollow or enable_approve or enable_message:
+            try:
+                uf_min = int(self.unfollow_min_delay_input.text().split()[0])
+            except:
+                uf_min = 10
+            try:
+                uf_max = int(self.unfollow_max_delay_input.text().split()[0])
+            except:
+                uf_max = 30
+            
+            if uf_min > uf_max:
+                uf_min, uf_max = uf_max, uf_min
+                self.unfollow_min_delay_input.setText(str(uf_min))
+                self.unfollow_max_delay_input.setText(str(uf_max))
+
+            self.unfollow_worker = UnfollowWorker(
+                delay_range=(uf_min, uf_max),
+                do_unfollow=enable_unfollow,
+                do_approve=enable_approve,
+                do_message=enable_message
+            )
+            self.unfollow_worker.log_signal.connect(self.log)
+            self.unfollow_worker.finished_signal.connect(self.on_unfollow_finished)
+            self.unfollow_worker.start()
+            
+            tasks = []
+            if enable_unfollow: tasks.append("Отписка")
+            if enable_approve: tasks.append("Подтверждение")
+            if enable_message: tasks.append("Рассылка")
+            self.log(f"▶️ Запуск задач: {', '.join(tasks)}...")
+
+        # 4. Start Scrolling Worker if enabled
         if enable_feed or enable_reels:
             # Use private profiles only
             profiles = self.main_window.profile_manager.profiles.get("private", [])
             if not profiles:
-                 if not enable_follow:
+                 if not enable_follow and not (enable_unfollow or enable_approve or enable_message):
                     QMessageBox.warning(self, "Ошибка", "Нет созданных приватных профилей для скроллинга!")
                     self.is_running = False
                     self.update_action_button_state(running=False)
                     return
-                 else:
+                 elif not (enable_unfollow or enable_approve or enable_message):
                     self.log("⚠️ Нет приватных профилей для скроллинга, работает только подписка.")
             else:
                 # Convert private profiles to ThreadsAccount objects
@@ -648,12 +809,17 @@ class InstagramTab(QWidget):
     def on_follow_finished(self):
         self.log("✅ Автоподписка завершена")
         self.check_all_finished()
+        
+    def on_unfollow_finished(self):
+        self.log("✅ Задачи (Unfollow/Approve/Message) завершены")
+        self.check_all_finished()
 
     def check_all_finished(self):
         scrolling_active = self.worker and self.worker.isRunning()
         follow_active = self.follow_worker and self.follow_worker.isRunning()
+        unfollow_active = self.unfollow_worker and self.unfollow_worker.isRunning()
         
-        if not scrolling_active and not follow_active:
+        if not scrolling_active and not follow_active and not unfollow_active:
             self.is_running = False
             self.update_action_button_state(running=False)
 
@@ -663,6 +829,8 @@ class InstagramTab(QWidget):
             self.worker.stop()
         if self.follow_worker:
             self.follow_worker.stop()
+        if self.unfollow_worker:
+            self.unfollow_worker.stop()
             
         self.action_btn.setText("Останавливаем...")
         self.action_btn.setEnabled(False)
@@ -683,6 +851,9 @@ class InstagramTab(QWidget):
             self.reels_checkbox,
             self.follow_checkbox,
             self.watch_stories_checkbox,
+            self.unfollow_checkbox,
+            self.approve_checkbox,
+            self.message_checkbox,
         ]:
             checkbox.toggled.connect(self.save_settings)
 
@@ -700,6 +871,8 @@ class InstagramTab(QWidget):
             self.likes_min_input,
             self.likes_max_input,
             self.following_limit_input,
+            self.unfollow_min_delay_input,
+            self.unfollow_max_delay_input,
         ]:
             line_edit.editingFinished.connect(self.save_settings)
 
@@ -714,8 +887,8 @@ class InstagramTab(QWidget):
             "reels_follow_chance": 50,
             "carousel_max_slides": 3,
             "stories_max": 3,
-            "min_time_minutes": 1,  # Legacy
-            "max_time_minutes": 3,  # Legacy
+            "min_time_minutes": 1,
+            "max_time_minutes": 3,
             "feed_min_time_minutes": 1,
             "feed_max_time_minutes": 3,
             "reels_min_time_minutes": 1,
@@ -788,6 +961,29 @@ class InstagramTab(QWidget):
         self.likes_max_input.setText(str(follow_data.get("likes_max", follow_defaults["likes_max"])))
         self.following_limit_input.setText(str(follow_data.get("following_limit", follow_defaults["following_limit"])))
 
+        # Load Unfollow Settings
+        unfollow_defaults = {
+            "min_delay": 10,
+            "max_delay": 30,
+            "do_unfollow": False,
+            "do_approve": False,
+            "do_message": False
+        }
+        unfollow_data = unfollow_defaults.copy()
+        if self.unfollow_settings_path.exists():
+            try:
+                loaded = json.loads(self.unfollow_settings_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    unfollow_data.update(loaded)
+            except Exception as e:
+                print(f"Failed to load Unfollow settings: {e}")
+
+        self.unfollow_checkbox.setChecked(unfollow_data.get("do_unfollow", False))
+        self.approve_checkbox.setChecked(unfollow_data.get("do_approve", False))
+        self.message_checkbox.setChecked(unfollow_data.get("do_message", False))
+        self.unfollow_min_delay_input.setText(str(unfollow_data.get("min_delay", 10)))
+        self.unfollow_max_delay_input.setText(str(unfollow_data.get("max_delay", 30)))
+
         self.loading_settings = False
 
     def save_settings(self):
@@ -810,8 +1006,8 @@ class InstagramTab(QWidget):
             "reels_follow_chance": int(self.reels_follows_chance_slider.currentText().replace('%', '')),
             "carousel_max_slides": parse_int_field(self.feed_carousel_max_input, 3),
             "stories_max": parse_int_field(self.feed_stories_max_input, 3),
-            "min_time_minutes": parse_int_field(self.feed_time_min_input, 1),  # Legacy compatibility
-            "max_time_minutes": parse_int_field(self.feed_time_max_input, 3),  # Legacy compatibility
+            "min_time_minutes": parse_int_field(self.feed_time_min_input, 1),
+            "max_time_minutes": parse_int_field(self.feed_time_max_input, 3),
             "feed_min_time_minutes": parse_int_field(self.feed_time_min_input, 1),
             "feed_max_time_minutes": parse_int_field(self.feed_time_max_input, 3),
             "reels_min_time_minutes": parse_int_field(self.reels_time_min_input, 1),
@@ -831,6 +1027,7 @@ class InstagramTab(QWidget):
 
         # Save Follow Settings
         follow_payload = {
+            "enable_follow": self.follow_checkbox.isChecked(),
             "highlights_min": parse_int_field(self.highlights_min_input, 2),
             "highlights_max": parse_int_field(self.highlights_max_input, 4),
             "likes_min": parse_int_field(self.likes_min_input, 1),
@@ -842,3 +1039,17 @@ class InstagramTab(QWidget):
             self.follow_settings_path.write_text(json.dumps(follow_payload, indent=4, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
             print(f"Failed to save Follow settings: {e}")
+
+        # Save Unfollow Settings
+        unfollow_payload = {
+            "min_delay": parse_int_field(self.unfollow_min_delay_input, 10),
+            "max_delay": parse_int_field(self.unfollow_max_delay_input, 30),
+            "do_unfollow": self.unfollow_checkbox.isChecked(),
+            "do_approve": self.approve_checkbox.isChecked(),
+            "do_message": self.message_checkbox.isChecked()
+        }
+        
+        try:
+            self.unfollow_settings_path.write_text(json.dumps(unfollow_payload, indent=4, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            print(f"Failed to save Unfollow settings: {e}")

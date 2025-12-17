@@ -62,17 +62,37 @@ class UnfollowWorker(QThread):
                 # Let's improve fetching logic by fetching all valid profiles for now.
                 pass
 
-            # Since we can't easily query "profiles having sub-accounts with message=true" without new index/helper,
-            # Let's just fetch profiles with 'unsubscribed' status for broad coverage.
-            profiles = self.client.get_profiles_with_assigned_accounts(status="unsubscribed")
-            
+            # Get profiles based on what operations we need to perform
+            profiles = []
+
+            if self.do_unfollow:
+                # For unfollow, we need profiles with unsubscribed accounts
+                unsub_profiles = self.client.get_profiles_with_assigned_accounts(status="unsubscribed")
+                profiles.extend(unsub_profiles)
+
+            if self.do_approve:
+                # For approve, we need profiles with any assigned accounts (not just unsubscribed)
+                # Get profiles with assigned accounts regardless of status
+                all_assigned_profiles = self.client.get_profiles_with_assigned_accounts(status=None)
+                for profile in all_assigned_profiles:
+                    if profile not in profiles:  # Avoid duplicates
+                        profiles.append(profile)
+
+            if self.do_message:
+                # For messaging, we need profiles that have accounts with message=true
+                # For now, we'll use the same logic as approve - profiles with assigned accounts
+                message_profiles = self.client.get_profiles_with_assigned_accounts(status=None)
+                for profile in message_profiles:
+                    if profile not in profiles:  # Avoid duplicates
+                        profiles.append(profile)
+
         except InstagramAccountsError as err:
             self.log_signal.emit(f"❌ Ошибка Supabase: {err}")
             self.finished_signal.emit()
             return
 
         if not profiles:
-            self.log_signal.emit("ℹ️ Нет профилей с назначенными аккаунтами (status='unsubscribed').")
+            self.log_signal.emit("ℹ️ Нет профилей с назначенными аккаунтами.")
             self.finished_signal.emit()
             return
 

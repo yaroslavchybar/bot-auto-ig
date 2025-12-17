@@ -127,15 +127,18 @@ class InstagramAccountsClient:
         )
         return result[0] if result else None
 
-    def get_profiles_with_assigned_accounts(self, status: str = "assigned") -> List[Dict]:
+    def get_profiles_with_assigned_accounts(self, status: Optional[str] = "assigned") -> List[Dict]:
         """
         Return list of profiles (full records) that have accounts assigned with given status.
+        If status is None, return profiles with any assigned accounts.
         """
         params = {
             "select": "assigned_to",
-            "status": f"eq.{status}",
             "assigned_to": "not.is.null",
         }
+        if status is not None:
+            params["status"] = f"eq.{status}"
+
         accounts = self._request("GET", self.accounts_url, params=params) or []
         profile_ids = {acc.get("assigned_to") for acc in accounts if acc.get("assigned_to")}
         if not profile_ids:

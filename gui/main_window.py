@@ -10,7 +10,6 @@ from core.profile_manager import ProfileManager
 from core.process_manager import ProcessManager
 from gui.tabs.profiles_tab import ProfilesTab
 from gui.tabs.instagram_tab import InstagramTab
-from gui.tabs.unfollow_tab import UnfollowTab
 from gui.styles import DARK_STYLE
 
 class AntidetectApp(QMainWindow):
@@ -41,12 +40,9 @@ class AntidetectApp(QMainWindow):
         self.tabs = QTabWidget()
         self.profiles_tab = ProfilesTab(self)
         self.instagram_tab = InstagramTab(self)
-        self.unfollow_tab = UnfollowTab(self)
         
         self.tabs.addTab(self.profiles_tab, "🔵 Профили")
         self.tabs.addTab(self.instagram_tab, "🟢 Instagram Работа")
-        self.tabs.addTab(self.unfollow_tab, "⛔ Unfollow")
-        self.tabs.addTab(QWidget(), "🟣 Контент (WIP)") # Placeholder
         
         # Connect tab change signal to refresh data
         self.tabs.currentChanged.connect(self.on_tab_changed)
@@ -87,9 +83,9 @@ class AntidetectApp(QMainWindow):
         if self.instagram_tab.follow_worker:
             self.instagram_tab.follow_worker.stop()
             self.instagram_tab.follow_worker.wait()
-        if self.unfollow_tab.worker:
-            self.unfollow_tab.worker.stop()
-            self.unfollow_tab.worker.wait()
+        if self.instagram_tab.unfollow_worker:
+            self.instagram_tab.unfollow_worker.stop()
+            self.instagram_tab.unfollow_worker.wait()
 
         event.accept()
 
@@ -109,8 +105,6 @@ class AntidetectApp(QMainWindow):
         elif index == 1:  # Instagram tab
             # Instagram tab uses profiles, so sync them
             self.sync_profiles_from_database()
-        elif index == 2: # Unfollow tab
-             self.sync_profiles_from_database()
 
 def main():
     app = QApplication(sys.argv)

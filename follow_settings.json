@@ -1,4 +1,5 @@
 {
+    "enable_follow": false,
     "highlights_min": 0,
     "highlights_max": 0,
     "likes_min": 1,

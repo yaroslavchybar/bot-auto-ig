@@ -16,7 +16,7 @@
     "cycle_interval_minutes": 11,
     "enable_feed": false,
     "enable_reels": false,
-    "enable_follow": true,
+    "enable_follow": false,
     "parallel_profiles": 1,
     "watch_stories": false
 }
