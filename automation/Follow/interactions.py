@@ -12,6 +12,7 @@ def pre_follow_interactions(
     log: Callable[[str], None],
     highlights_range=(2, 4),
     likes_range=(1, 1),
+    should_stop: Callable[[], bool] | None = None,
 ):
     """Run lightweight interactions before follow."""
     highlights_min, highlights_max = _normalize_range(highlights_range, (2, 4))
@@ -22,13 +23,16 @@ def pre_follow_interactions(
     liked_posts: Set[str] = set()
 
     def do_highlights():
-        watch_highlights(page, log, highlights_to_watch=highlights_to_watch)
+        if should_stop and should_stop(): return
+        watch_highlights(page, log, highlights_to_watch=highlights_to_watch, should_stop=should_stop)
 
     def do_scroll():
-        scroll_posts(page, log, liked_posts=liked_posts)
+        if should_stop and should_stop(): return
+        scroll_posts(page, log, liked_posts=liked_posts, should_stop=should_stop)
         random_delay(1.0, 2.0)  # give posts time to settle
 
     def do_scroll_and_likes():
+        if should_stop and should_stop(): return
         # Combine scroll and likes in one flow to mimic organic browsing.
         scroll_posts(
             page,
@@ -37,6 +41,7 @@ def pre_follow_interactions(
             like_probability=0.65,
             max_likes=likes_to_put,
             liked_posts=liked_posts,
+            should_stop=should_stop,
         )
         random_delay(1.0, 2.0)
 
@@ -56,5 +61,8 @@ def pre_follow_interactions(
 
     random.shuffle(actions)
     for action in actions:
+        if should_stop and should_stop():
+            log("⏹️ Остановка по запросу пользователя.")
+            break
         action()
 

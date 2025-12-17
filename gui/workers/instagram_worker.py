@@ -103,22 +103,15 @@ class InstagramScrollingWorker(QThread):
     def scroll_for_account(self, account: ThreadsAccount):
         """Scroll and engage for a specific account"""
         try:
-            # 1. Calculate total session duration
-            total_duration = random.randint(self.config.min_time_minutes, self.config.max_time_minutes)
-            self.log(f"⏱️ Total session time for @{account.username}: {total_duration} min")
-            
-            # 2. Determine action parameters
+            # 2. Determine action parameters and calculate durations
             action_args = {}
             target_action = "scroll" # default
-            
+
             if self.config.enable_feed and self.config.enable_reels:
                 # Both enabled: Mixed mode
-                if total_duration < 2:
-                    total_duration = 2 
-                    
-                feed_duration = random.randint(1, total_duration - 1)
-                reels_duration = total_duration - feed_duration
-                
+                feed_duration = random.randint(self.config.feed_min_time_minutes, self.config.feed_max_time_minutes)
+                reels_duration = random.randint(self.config.reels_min_time_minutes, self.config.reels_max_time_minutes)
+
                 target_action = "mixed"
                 action_args = {
                     "feed_duration": feed_duration,
@@ -127,12 +120,16 @@ class InstagramScrollingWorker(QThread):
                 self.log(f"📋 Mixed Mode: Feed {feed_duration}m + Reels {reels_duration}m")
 
             elif self.config.enable_feed:
+                feed_duration = random.randint(self.config.feed_min_time_minutes, self.config.feed_max_time_minutes)
                 target_action = "scroll"
-                action_args = {"duration": total_duration}
-                
+                action_args = {"duration": feed_duration}
+                self.log(f"⏱️ Feed session time for @{account.username}: {feed_duration} min")
+
             elif self.config.enable_reels:
+                reels_duration = random.randint(self.config.reels_min_time_minutes, self.config.reels_max_time_minutes)
                 target_action = "reels"
-                action_args = {"duration": total_duration}
+                action_args = {"duration": reels_duration}
+                self.log(f"⏱️ Reels session time for @{account.username}: {reels_duration} min")
             
             # 3. Execute action
             if self.running:

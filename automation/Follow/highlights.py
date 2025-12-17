@@ -10,6 +10,7 @@ def watch_highlights(
     log: Callable[[str], None],
     highlights_to_watch: Optional[int] = None,
     max_wait: float = 4.0,
+    should_stop: Callable[[], bool] | None = None,
 ):
     """Open random highlight if exists, watch multiple highlights by swiping, then close."""
 
@@ -93,6 +94,10 @@ def watch_highlights(
         max_attempts = 8
         opened = False
         for btn in highlight_buttons:
+            if should_stop and should_stop():
+                log("⏹️ Остановка по запросу пользователя.")
+                return
+
             for attempt in range(max_attempts):
                 try:
                     # Wait for element to be stable and clickable
@@ -156,6 +161,10 @@ def watch_highlights(
         max_highlights_to_watch = target_highlights  # Configurable count
 
         while highlights_watched < max_highlights_to_watch:
+            if should_stop and should_stop():
+                log("⏹️ Остановка по запросу пользователя.")
+                break
+
             watch_time = random.uniform(3.0, 8.0)
             random_delay(watch_time, watch_time + 1.0)
             highlights_watched += 1

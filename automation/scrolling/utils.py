@@ -3,7 +3,9 @@ import random
 import math
 
 
-def human_scroll(page, total_delta: int | None = None):
+from typing import Callable
+
+def human_scroll(page, total_delta: int | None = None, should_stop: Callable[[], bool] | None = None):
     """
     Simplified human-like scroll using mouse wheel events only.
     """
@@ -14,11 +16,16 @@ def human_scroll(page, total_delta: int | None = None):
         page.mouse.move(x, y)
         time.sleep(random.uniform(0.05, 0.15))
 
+        if should_stop and should_stop():
+            return
+
         total = total_delta or random.randint(300, 600)
         steps = random.randint(3, 6)
         remaining = total
 
         for i in range(steps):
+            if should_stop and should_stop():
+                return
             if remaining <= 0:
                 break
             step = max(40, int(remaining / (steps - i) + random.randint(-30, 30)))

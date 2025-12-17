@@ -1,6 +1,6 @@
 {
-    "highlights_min": 1,
-    "highlights_max": 2,
+    "highlights_min": 0,
+    "highlights_max": 0,
     "likes_min": 1,
     "likes_max": 3,
     "following_limit": 900

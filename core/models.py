@@ -31,8 +31,12 @@ class ScrollingConfig:
     follow_chance: int  # 0-100%
     reels_like_chance: int  # 0-100%
     reels_follow_chance: int  # 0-100%
-    min_time_minutes: int
-    max_time_minutes: int
+    min_time_minutes: int  # Legacy - kept for compatibility
+    max_time_minutes: int  # Legacy - kept for compatibility
+    feed_min_time_minutes: int
+    feed_max_time_minutes: int
+    reels_min_time_minutes: int
+    reels_max_time_minutes: int
     cycle_interval_minutes: int
     enable_feed: bool = True
     enable_reels: bool = False

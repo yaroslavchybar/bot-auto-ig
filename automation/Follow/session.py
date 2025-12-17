@@ -85,7 +85,12 @@ def follow_usernames(
                     log,
                     highlights_range=highlights_range,
                     likes_range=likes_range,
+                    should_stop=should_stop,
                 )
+
+                if should_stop():
+                    log("⏹️ Остановка по запросу пользователя.")
+                    break
 
                 state, btn = find_follow_control(page)
                 if state in ("requested", "following"):
@@ -94,6 +99,10 @@ def follow_usernames(
                     continue
 
                 if state == "follow" and btn:
+                    if should_stop():
+                        log("⏹️ Остановка по запросу пользователя.")
+                        break
+
                     try:
                         btn.click(force=True)
                         log(f"✅ Подписался на @{username}")

@@ -11,6 +11,7 @@ from PyQt6.QtGui import QFont, QColor, QIcon
 from datetime import datetime
 from core.models import ThreadsAccount, ScrollingConfig
 from gui.workers.instagram_worker import InstagramScrollingWorker
+from gui.workers.follow_worker import AutoFollowWorker
 from gui.styles import (
     CARD_STYLE, STATUS_RUNNING, STATUS_IDLE, STATUS_STOPPED,
     BUTTON_STYLE, ACTION_BTN_STYLE, PRIMARY_BTN_STYLE, INPUT_STYLE,
@@ -38,13 +39,16 @@ class InstagramTab(QWidget):
         super().__init__()
         self.main_window = main_window
         self.worker = None
+        self.follow_worker = None
         self.settings_path = Path(__file__).resolve().parents[2] / "instagram_settings.json"
+        self.follow_settings_path = Path(__file__).resolve().parents[2] / "follow_settings.json"
         self.loading_settings = False
         self.is_running = False
         
         # Initialize dialogs
         self.feed_settings_dialog = None
         self.reels_settings_dialog = None
+        self.follow_settings_dialog = None
         
         self.setup_ui()
         self.load_settings()
@@ -98,31 +102,6 @@ class InstagramTab(QWidget):
             layout.addWidget(lbl)
             layout.addWidget(inp)
             return container, inp
-
-        # Time Range
-        time_container = QWidget()
-        time_layout = QVBoxLayout(time_container)
-        time_layout.setContentsMargins(0, 0, 0, 0)
-        time_layout.setSpacing(2)
-        time_lbl = QLabel("⏱️ Мин-Макс (мин)")
-        time_lbl.setStyleSheet("color: #abb2bf; font-size: 11px; font-weight: bold;")
-        
-        time_inputs = QHBoxLayout()
-        time_inputs.setSpacing(5)
-        self.scroll_time_min_input = QLineEdit("1")
-        self.scroll_time_min_input.setStyleSheet(INPUT_STYLE + "QLineEdit { background: transparent; padding: 4px; font-size: 12px; }")
-        self.scroll_time_min_input.setFixedWidth(30)
-        self.scroll_time_max_input = QLineEdit("3")
-        self.scroll_time_max_input.setStyleSheet(INPUT_STYLE + "QLineEdit { background: transparent; padding: 4px; font-size: 12px; }")
-        self.scroll_time_max_input.setFixedWidth(30)
-        
-        time_inputs.addWidget(self.scroll_time_min_input)
-        time_inputs.addWidget(QLabel("-"))
-        time_inputs.addWidget(self.scroll_time_max_input)
-        
-        time_layout.addWidget(time_lbl)
-        time_layout.addLayout(time_inputs)
-        settings_layout.addWidget(time_container)
 
         # Cycle Interval
         cycle_widget, self.scrolling_cycle_input = create_header_input("🕓 Цикл (мин)", "11", 60)
@@ -240,8 +219,28 @@ class InstagramTab(QWidget):
         reels_layout.addWidget(self.reels_checkbox)
         reels_layout.addWidget(self.reels_settings_btn)
         
+        # Follow Checkbox + Settings
+        follow_container = QWidget()
+        follow_layout = QHBoxLayout(follow_container)
+        follow_layout.setContentsMargins(0, 0, 0, 0)
+        follow_layout.setSpacing(5)
+        
+        self.follow_checkbox = QCheckBox("Подписки (Follow)")
+        self.follow_checkbox.setStyleSheet(CHECKBOX_STYLE)
+        self.follow_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        self.follow_settings_btn = QPushButton("⚙")
+        self.follow_settings_btn.setToolTip("Настройки")
+        self.follow_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.follow_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.follow_settings_btn.clicked.connect(self.open_follow_settings)
+        
+        follow_layout.addWidget(self.follow_checkbox)
+        follow_layout.addWidget(self.follow_settings_btn)
+
         checks_layout.addWidget(feed_container)
         checks_layout.addWidget(reels_container)
+        checks_layout.addWidget(follow_container)
         checks_layout.addStretch()
         
         t_grid.addLayout(checks_layout, 1, 1)
@@ -294,7 +293,21 @@ class InstagramTab(QWidget):
         
         # --- FEED SETTINGS DIALOG ---
         self.feed_settings_dialog = SettingsDialog("Настройки ленты", self)
-        
+
+        # Feed Time Range
+        f_time_layout = QHBoxLayout()
+        f_time_layout.addWidget(QLabel("⏱️ Мин-Макс время (мин):"))
+        self.feed_time_min_input = QLineEdit("1")
+        self.feed_time_min_input.setStyleSheet(INPUT_STYLE)
+        self.feed_time_min_input.setFixedWidth(50)
+        self.feed_time_max_input = QLineEdit("3")
+        self.feed_time_max_input.setStyleSheet(INPUT_STYLE)
+        self.feed_time_max_input.setFixedWidth(50)
+        f_time_layout.addWidget(self.feed_time_min_input)
+        f_time_layout.addWidget(QLabel("-"))
+        f_time_layout.addWidget(self.feed_time_max_input)
+        self.feed_settings_dialog.add_layout(f_time_layout)
+
         # Watch Stories
         self.watch_stories_checkbox = QCheckBox("Смотреть Stories")
         self.watch_stories_checkbox.setStyleSheet(CHECKBOX_STYLE)
@@ -352,6 +365,20 @@ class InstagramTab(QWidget):
         # --- REELS SETTINGS DIALOG ---
         self.reels_settings_dialog = SettingsDialog("Настройки Reels", self)
 
+        # Reels Time Range
+        r_time_layout = QHBoxLayout()
+        r_time_layout.addWidget(QLabel("⏱️ Мин-Макс время (мин):"))
+        self.reels_time_min_input = QLineEdit("1")
+        self.reels_time_min_input.setStyleSheet(INPUT_STYLE)
+        self.reels_time_min_input.setFixedWidth(50)
+        self.reels_time_max_input = QLineEdit("3")
+        self.reels_time_max_input.setStyleSheet(INPUT_STYLE)
+        self.reels_time_max_input.setFixedWidth(50)
+        r_time_layout.addWidget(self.reels_time_min_input)
+        r_time_layout.addWidget(QLabel("-"))
+        r_time_layout.addWidget(self.reels_time_max_input)
+        self.reels_settings_dialog.add_layout(r_time_layout)
+
         # Reels Likes
         r_likes_layout = QHBoxLayout()
         r_likes_layout.addWidget(QLabel("❤️ Лайки (Reels):"))
@@ -372,11 +399,54 @@ class InstagramTab(QWidget):
         r_follows_layout.addWidget(self.reels_follows_chance_slider)
         self.reels_settings_dialog.add_layout(r_follows_layout)
 
+        # --- FOLLOW SETTINGS DIALOG ---
+        self.follow_settings_dialog = SettingsDialog("Настройки подписки", self)
+        
+        # Highlights
+        h_row = QHBoxLayout()
+        h_row.addWidget(QLabel("Хайлайты на аккаунт:"))
+        self.highlights_min_input = QLineEdit("2")
+        self.highlights_min_input.setStyleSheet(INPUT_STYLE)
+        self.highlights_min_input.setFixedWidth(50)
+        self.highlights_max_input = QLineEdit("4")
+        self.highlights_max_input.setStyleSheet(INPUT_STYLE)
+        self.highlights_max_input.setFixedWidth(50)
+        h_row.addWidget(self.highlights_min_input)
+        h_row.addWidget(QLabel("-"))
+        h_row.addWidget(self.highlights_max_input)
+        self.follow_settings_dialog.add_layout(h_row)
+
+        # Likes
+        l_row = QHBoxLayout()
+        l_row.addWidget(QLabel("Лайков на аккаунт:"))
+        self.likes_min_input = QLineEdit("1")
+        self.likes_min_input.setStyleSheet(INPUT_STYLE)
+        self.likes_min_input.setFixedWidth(50)
+        self.likes_max_input = QLineEdit("2")
+        self.likes_max_input.setStyleSheet(INPUT_STYLE)
+        self.likes_max_input.setFixedWidth(50)
+        l_row.addWidget(self.likes_min_input)
+        l_row.addWidget(QLabel("-"))
+        l_row.addWidget(self.likes_max_input)
+        self.follow_settings_dialog.add_layout(l_row)
+
+        # Follow Limit
+        fl_row = QHBoxLayout()
+        fl_row.addWidget(QLabel("Макс. подписок у цели:"))
+        self.following_limit_input = QLineEdit("3000")
+        self.following_limit_input.setStyleSheet(INPUT_STYLE)
+        self.following_limit_input.setFixedWidth(80)
+        fl_row.addWidget(self.following_limit_input)
+        self.follow_settings_dialog.add_layout(fl_row)
+
     def open_feed_settings(self):
         self.feed_settings_dialog.exec()
 
     def open_reels_settings(self):
         self.reels_settings_dialog.exec()
+
+    def open_follow_settings(self):
+        self.follow_settings_dialog.exec()
 
     def log(self, message):
         """Add message to Threads log"""
@@ -414,6 +484,7 @@ class InstagramTab(QWidget):
         else:
             # START Style
             self.action_btn.setText("▶ Запустить")
+            self.action_btn.setEnabled(True)  # Re-enable button when not running
             self.action_btn.setStyleSheet("""
                 QPushButton {
                     background-color: rgba(97, 175, 239, 0.2);
@@ -430,106 +501,171 @@ class InstagramTab(QWidget):
             """)
 
     def start_scrolling(self):
-        # Use private profiles only
-        profiles = self.main_window.profile_manager.profiles.get("private", [])
-        if not profiles:
-             QMessageBox.warning(self, "Ошибка", "Нет созданных приватных профилей!")
-             return
-
-        # Convert private profiles to ThreadsAccount objects
-        target_accounts = []
-        for p in profiles:
-            acc = ThreadsAccount(username=p["name"], password="", proxy=p.get("proxy"))
-            target_accounts.append(acc)
-
-        # Get activity types
+        # 1. Determine what to run
         enable_feed = self.feed_checkbox.isChecked()
         enable_reels = self.reels_checkbox.isChecked()
+        enable_follow = self.follow_checkbox.isChecked()
         
-        if not enable_feed and not enable_reels:
-            QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип активности (Лента или Reels)!")
+        if not enable_feed and not enable_reels and not enable_follow:
+            QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип активности (Лента, Reels или Подписки)!")
             return
 
         self.save_settings()
-
-        # Get action chances
-        feed_like_chance = int(self.feed_likes_chance_slider.currentText().replace('%', ''))
-        feed_carousel_watch_chance = int(self.feed_carousel_chance_slider.currentText().replace('%', ''))
-        feed_follow_chance = int(self.feed_follows_chance_slider.currentText().replace('%', ''))
-        reels_like_chance = int(self.reels_likes_chance_slider.currentText().replace('%', ''))
-        reels_follow_chance = int(self.reels_follows_chance_slider.currentText().replace('%', ''))
-        try:
-            feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
-        except:
-            feed_carousel_max_slides = 3
-        try:
-            feed_stories_max = int(self.feed_stories_max_input.text().split()[0])
-        except:
-            feed_stories_max = 3
-        comment_chance = 0  # Comments disabled/unsupported
-        watch_stories = self.watch_stories_checkbox.isChecked()
-        
-        # Get time range (extract numbers from text like "1 мин")
-        try:
-            min_time = int(self.scroll_time_min_input.text().split()[0])
-        except:
-            min_time = 1
-        
-        try:
-            max_time = int(self.scroll_time_max_input.text().split()[0])
-        except:
-            max_time = 3
-        
-        # Get cycle interval
-        try:
-            cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
-        except:
-            cycle_interval = 11
-        
-        # Build config
-        config = ScrollingConfig(
-            use_private_profiles=True,
-            use_threads_profiles=False,
-            like_chance=feed_like_chance,
-            comment_chance=comment_chance,
-            follow_chance=feed_follow_chance,
-            reels_like_chance=reels_like_chance,
-            reels_follow_chance=reels_follow_chance,
-            min_time_minutes=min_time,
-            max_time_minutes=max_time,
-            cycle_interval_minutes=cycle_interval,
-            enable_feed=enable_feed,
-            enable_reels=enable_reels,
-            carousel_watch_chance=feed_carousel_watch_chance,
-            carousel_max_slides=feed_carousel_max_slides,
-            watch_stories=watch_stories,
-            stories_max=feed_stories_max,
-        )
-        
-        profile_names = [acc.username for acc in target_accounts]
-        
-        self.log(f"🔄 Запуск скроллинга для {len(target_accounts)} профилей...")
-        
-        self.worker = InstagramScrollingWorker(config, target_accounts, profile_names)
-        self.worker.log_signal.connect(self.log)
-        self.worker.finished_signal.connect(self.on_worker_finished)
-        
         self.is_running = True
         self.update_action_button_state(running=True)
-        self.worker.start()
+
+        # 2. Start Follow Worker if enabled
+        if enable_follow:
+            try:
+                highlights_min = int(self.highlights_min_input.text().split()[0])
+            except:
+                highlights_min = 2
+            try:
+                highlights_max = int(self.highlights_max_input.text().split()[0])
+            except:
+                highlights_max = 4
+            
+            try:
+                likes_min = int(self.likes_min_input.text().split()[0])
+            except:
+                likes_min = 1
+            try:
+                likes_max = int(self.likes_max_input.text().split()[0])
+            except:
+                likes_max = 2
+                
+            try:
+                following_limit = int(self.following_limit_input.text().split()[0])
+            except:
+                following_limit = 3000
+
+            highlights_range = (highlights_min, highlights_max)
+            likes_range = (likes_min, likes_max)
+
+            self.follow_worker = AutoFollowWorker(
+                highlights_range=highlights_range,
+                likes_range=likes_range,
+                following_limit=following_limit,
+            )
+            self.follow_worker.log_signal.connect(self.log)
+            self.follow_worker.finished_signal.connect(self.on_follow_finished)
+            self.follow_worker.start()
+            self.log("▶️ Запуск автоподписки...")
+
+        # 3. Start Scrolling Worker if enabled
+        if enable_feed or enable_reels:
+            # Use private profiles only
+            profiles = self.main_window.profile_manager.profiles.get("private", [])
+            if not profiles:
+                 if not enable_follow:
+                    QMessageBox.warning(self, "Ошибка", "Нет созданных приватных профилей для скроллинга!")
+                    self.is_running = False
+                    self.update_action_button_state(running=False)
+                    return
+                 else:
+                    self.log("⚠️ Нет приватных профилей для скроллинга, работает только подписка.")
+            else:
+                # Convert private profiles to ThreadsAccount objects
+                target_accounts = []
+                for p in profiles:
+                    acc = ThreadsAccount(username=p["name"], password="", proxy=p.get("proxy"))
+                    target_accounts.append(acc)
+
+                # Get action chances and config
+                feed_like_chance = int(self.feed_likes_chance_slider.currentText().replace('%', ''))
+                feed_carousel_watch_chance = int(self.feed_carousel_chance_slider.currentText().replace('%', ''))
+                feed_follow_chance = int(self.feed_follows_chance_slider.currentText().replace('%', ''))
+                reels_like_chance = int(self.reels_likes_chance_slider.currentText().replace('%', ''))
+                reels_follow_chance = int(self.reels_follows_chance_slider.currentText().replace('%', ''))
+                
+                try:
+                    feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
+                except:
+                    feed_carousel_max_slides = 3
+                try:
+                    feed_stories_max = int(self.feed_stories_max_input.text().split()[0])
+                except:
+                    feed_stories_max = 3
+                
+                # Get time ranges
+                try:
+                    feed_min_time = int(self.feed_time_min_input.text().split()[0])
+                except:
+                    feed_min_time = 1
+                try:
+                    feed_max_time = int(self.feed_time_max_input.text().split()[0])
+                except:
+                    feed_max_time = 3
+                try:
+                    reels_min_time = int(self.reels_time_min_input.text().split()[0])
+                except:
+                    reels_min_time = 1
+                try:
+                    reels_max_time = int(self.reels_time_max_input.text().split()[0])
+                except:
+                    reels_max_time = 3
+                
+                try:
+                    cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
+                except:
+                    cycle_interval = 11
+                
+                config = ScrollingConfig(
+                    use_private_profiles=True,
+                    use_threads_profiles=False,
+                    like_chance=feed_like_chance,
+                    comment_chance=0,
+                    follow_chance=feed_follow_chance,
+                    reels_like_chance=reels_like_chance,
+                    reels_follow_chance=reels_follow_chance,
+                    min_time_minutes=feed_min_time,
+                    max_time_minutes=feed_max_time,
+                    feed_min_time_minutes=feed_min_time,
+                    feed_max_time_minutes=feed_max_time,
+                    reels_min_time_minutes=reels_min_time,
+                    reels_max_time_minutes=reels_max_time,
+                    cycle_interval_minutes=cycle_interval,
+                    enable_feed=enable_feed,
+                    enable_reels=enable_reels,
+                    carousel_watch_chance=feed_carousel_watch_chance,
+                    carousel_max_slides=feed_carousel_max_slides,
+                    watch_stories=self.watch_stories_checkbox.isChecked(),
+                    stories_max=feed_stories_max,
+                )
+                
+                profile_names = [acc.username for acc in target_accounts]
+                self.log(f"🔄 Запуск скроллинга для {len(target_accounts)} профилей...")
+                
+                self.worker = InstagramScrollingWorker(config, target_accounts, profile_names)
+                self.worker.log_signal.connect(self.log)
+                self.worker.finished_signal.connect(self.on_worker_finished)
+                self.worker.start()
 
     def on_worker_finished(self):
-        self.log("✅ Задача выполнена")
-        self.is_running = False
-        self.update_action_button_state(running=False)
+        self.log("✅ Скроллинг остановлен/завершен")
+        self.check_all_finished()
+
+    def on_follow_finished(self):
+        self.log("✅ Автоподписка завершена")
+        self.check_all_finished()
+
+    def check_all_finished(self):
+        scrolling_active = self.worker and self.worker.isRunning()
+        follow_active = self.follow_worker and self.follow_worker.isRunning()
+        
+        if not scrolling_active and not follow_active:
+            self.is_running = False
+            self.update_action_button_state(running=False)
 
     def stop_scrolling(self):
+        self.log("⏹️ Остановка всех задач...")
         if self.worker:
             self.worker.stop()
-            self.log("⚠️ Остановка...")
-            # Button will clear when worker finishes
-            self.action_btn.setText("Останавливаем...")
-            self.action_btn.setEnabled(False)
+        if self.follow_worker:
+            self.follow_worker.stop()
+            
+        self.action_btn.setText("Останавливаем...")
+        self.action_btn.setEnabled(False)
 
     def connect_settings_signals(self):
         """Persist settings whenever user changes controls."""
@@ -545,17 +681,25 @@ class InstagramTab(QWidget):
         for checkbox in [
             self.feed_checkbox,
             self.reels_checkbox,
+            self.follow_checkbox,
             self.watch_stories_checkbox,
         ]:
             checkbox.toggled.connect(self.save_settings)
 
         for line_edit in [
-            self.scroll_time_min_input,
-            self.scroll_time_max_input,
+            self.feed_time_min_input,
+            self.feed_time_max_input,
+            self.reels_time_min_input,
+            self.reels_time_max_input,
             self.scrolling_cycle_input,
             self.parallel_profiles_input,
             self.feed_carousel_max_input,
             self.feed_stories_max_input,
+            self.highlights_min_input,
+            self.highlights_max_input,
+            self.likes_min_input,
+            self.likes_max_input,
+            self.following_limit_input,
         ]:
             line_edit.editingFinished.connect(self.save_settings)
 
@@ -570,11 +714,16 @@ class InstagramTab(QWidget):
             "reels_follow_chance": 50,
             "carousel_max_slides": 3,
             "stories_max": 3,
-            "min_time_minutes": 1,
-            "max_time_minutes": 3,
+            "min_time_minutes": 1,  # Legacy
+            "max_time_minutes": 3,  # Legacy
+            "feed_min_time_minutes": 1,
+            "feed_max_time_minutes": 3,
+            "reels_min_time_minutes": 1,
+            "reels_max_time_minutes": 3,
             "cycle_interval_minutes": 11,
             "enable_feed": True,
             "enable_reels": False,
+            "enable_follow": False,
             "parallel_profiles": 1,
             "watch_stories": True,
         }
@@ -604,14 +753,40 @@ class InstagramTab(QWidget):
 
         self.feed_checkbox.setChecked(data.get("enable_feed", True))
         self.reels_checkbox.setChecked(data.get("enable_reels", False))
+        self.follow_checkbox.setChecked(data.get("enable_follow", False))
         self.watch_stories_checkbox.setChecked(data.get("watch_stories", True))
 
-        self.scroll_time_min_input.setText(f"{data.get('min_time_minutes', defaults['min_time_minutes'])}")
-        self.scroll_time_max_input.setText(f"{data.get('max_time_minutes', defaults['max_time_minutes'])}")
+        self.feed_time_min_input.setText(str(data.get('feed_min_time_minutes', defaults['feed_min_time_minutes'])))
+        self.feed_time_max_input.setText(str(data.get('feed_max_time_minutes', defaults['feed_max_time_minutes'])))
+        self.reels_time_min_input.setText(str(data.get('reels_min_time_minutes', defaults['reels_min_time_minutes'])))
+        self.reels_time_max_input.setText(str(data.get('reels_max_time_minutes', defaults['reels_max_time_minutes'])))
         self.scrolling_cycle_input.setText(f"{data.get('cycle_interval_minutes', defaults['cycle_interval_minutes'])}")
         self.parallel_profiles_input.setText(str(data.get("parallel_profiles", defaults["parallel_profiles"])))
         self.feed_carousel_max_input.setText(str(data.get("carousel_max_slides", defaults["carousel_max_slides"])))
         self.feed_stories_max_input.setText(str(data.get("stories_max", defaults["stories_max"])))
+
+        # Load Follow Settings
+        follow_defaults = {
+            "highlights_min": 2,
+            "highlights_max": 4,
+            "likes_min": 1,
+            "likes_max": 2,
+            "following_limit": 3000,
+        }
+        follow_data = follow_defaults.copy()
+        if self.follow_settings_path.exists():
+             try:
+                loaded = json.loads(self.follow_settings_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    follow_data.update(loaded)
+             except Exception as e:
+                print(f"Failed to load Follow settings: {e}")
+        
+        self.highlights_min_input.setText(str(follow_data.get("highlights_min", follow_defaults["highlights_min"])))
+        self.highlights_max_input.setText(str(follow_data.get("highlights_max", follow_defaults["highlights_max"])))
+        self.likes_min_input.setText(str(follow_data.get("likes_min", follow_defaults["likes_min"])))
+        self.likes_max_input.setText(str(follow_data.get("likes_max", follow_defaults["likes_max"])))
+        self.following_limit_input.setText(str(follow_data.get("following_limit", follow_defaults["following_limit"])))
 
         self.loading_settings = False
 
@@ -635,11 +810,16 @@ class InstagramTab(QWidget):
             "reels_follow_chance": int(self.reels_follows_chance_slider.currentText().replace('%', '')),
             "carousel_max_slides": parse_int_field(self.feed_carousel_max_input, 3),
             "stories_max": parse_int_field(self.feed_stories_max_input, 3),
-            "min_time_minutes": parse_int_field(self.scroll_time_min_input, 1),
-            "max_time_minutes": parse_int_field(self.scroll_time_max_input, 3),
+            "min_time_minutes": parse_int_field(self.feed_time_min_input, 1),  # Legacy compatibility
+            "max_time_minutes": parse_int_field(self.feed_time_max_input, 3),  # Legacy compatibility
+            "feed_min_time_minutes": parse_int_field(self.feed_time_min_input, 1),
+            "feed_max_time_minutes": parse_int_field(self.feed_time_max_input, 3),
+            "reels_min_time_minutes": parse_int_field(self.reels_time_min_input, 1),
+            "reels_max_time_minutes": parse_int_field(self.reels_time_max_input, 3),
             "cycle_interval_minutes": parse_int_field(self.scrolling_cycle_input, 11),
             "enable_feed": self.feed_checkbox.isChecked(),
             "enable_reels": self.reels_checkbox.isChecked(),
+            "enable_follow": self.follow_checkbox.isChecked(),
             "parallel_profiles": parse_int_field(self.parallel_profiles_input, 1),
             "watch_stories": self.watch_stories_checkbox.isChecked(),
         }
@@ -648,3 +828,17 @@ class InstagramTab(QWidget):
             self.settings_path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
             print(f"Failed to save Instagram settings: {e}")
+
+        # Save Follow Settings
+        follow_payload = {
+            "highlights_min": parse_int_field(self.highlights_min_input, 2),
+            "highlights_max": parse_int_field(self.highlights_max_input, 4),
+            "likes_min": parse_int_field(self.likes_min_input, 1),
+            "likes_max": parse_int_field(self.likes_max_input, 2),
+            "following_limit": parse_int_field(self.following_limit_input, 3000),
+        }
+
+        try:
+            self.follow_settings_path.write_text(json.dumps(follow_payload, indent=4, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            print(f"Failed to save Follow settings: {e}")

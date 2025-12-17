@@ -14,6 +14,7 @@ def scroll_posts(
     like_probability: float = 0.6,
     max_likes: int | None = None,
     liked_posts: Set[str] | None = None,
+    should_stop: Callable[[], bool] | None = None,
 ):
     """Scroll profile posts grid to load more content (optionally liking between scrolls)."""
 
@@ -23,9 +24,19 @@ def scroll_posts(
         likes_used = 0
         seen = liked_posts if liked_posts is not None else set()
         for i in range(planned_scrolls):
+            if should_stop and should_stop():
+                log("⏹️ Остановка по запросу пользователя.")
+                return
+
             # Human-like mouse move before scrolling to simulate attention
             human_mouse_move(page)
-            human_scroll(page)
+            if should_stop and should_stop():
+                log("⏹️ Остановка по запросу пользователя.")
+                return
+            human_scroll(page, should_stop=should_stop)
+            if should_stop and should_stop():
+                log("⏹️ Остановка по запросу пользователя.")
+                return
             log(f"📜 Прокрутка {i + 1}/{planned_scrolls} (human-like)")
             random_delay(1.0, 2.5)  # Similar pacing to feed scrolling
 
@@ -33,7 +44,7 @@ def scroll_posts(
                 if max_likes is None or likes_used < max_likes:
                     if random.random() < like_probability:
                         before = len(seen)
-                        like_some_posts(page, log, max_posts=1, liked_posts=seen)
+                        like_some_posts(page, log, max_posts=1, liked_posts=seen, should_stop=should_stop)
                         likes_used += max(0, len(seen) - before)
 
         # Scroll back up a bit to show some posts
@@ -74,7 +85,13 @@ def scroll_posts(
     _safe(log, "пролистывание постов", _impl)
 
 
-def like_some_posts(page, log: Callable[[str], None], max_posts: int = 1, liked_posts: Set[str] | None = None):
+def like_some_posts(
+    page,
+    log: Callable[[str], None],
+    max_posts: int = 1,
+    liked_posts: Set[str] | None = None,
+    should_stop: Callable[[], bool] | None = None,
+):
     """Open random grid posts (up to max_posts) and like if not yet liked."""
     if max_posts <= 0:
         log("ℹ️ Пропускаю лайки (настроено 0).")
@@ -140,6 +157,10 @@ def like_some_posts(page, log: Callable[[str], None], max_posts: int = 1, liked_
 
         count = 0
         for link in selected_posts:
+            if should_stop and should_stop():
+                log("⏹️ Остановка по запросу пользователя.")
+                return
+
             if count >= max_posts:
                 break
             try:

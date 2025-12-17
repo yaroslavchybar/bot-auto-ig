@@ -1,17 +1,22 @@
 {
     "use_private_profiles": true,
-    "like_chance": 90,
+    "like_chance": 100,
     "carousel_watch_chance": 0,
     "follow_chance": 0,
     "reels_like_chance": 80,
     "reels_follow_chance": 0,
     "carousel_max_slides": 3,
     "stories_max": 3,
-    "min_time_minutes": 1,
-    "max_time_minutes": 3,
+    "min_time_minutes": 2,
+    "max_time_minutes": 2,
+    "feed_min_time_minutes": 2,
+    "feed_max_time_minutes": 2,
+    "reels_min_time_minutes": 3,
+    "reels_max_time_minutes": 3,
     "cycle_interval_minutes": 11,
-    "enable_feed": true,
+    "enable_feed": false,
     "enable_reels": false,
+    "enable_follow": true,
     "parallel_profiles": 1,
-    "watch_stories": true
+    "watch_stories": false
 }
