@@ -40,7 +40,21 @@ class ScrollingConfig:
     cycle_interval_minutes: int
     enable_feed: bool = True
     enable_reels: bool = False
+    enable_follow: bool = False
+    enable_unfollow: bool = False
+    enable_approve: bool = False
+    enable_message: bool = False
     carousel_watch_chance: int = 0  # 0-100%
     carousel_max_slides: int = 3
     watch_stories: bool = True
     stories_max: int = 3
+    
+    # Follow Config
+    highlights_range: Optional[tuple] = None
+    likes_range: Optional[tuple] = None
+    following_limit: Optional[int] = None
+    
+    # Unfollow/Approve/Message Config
+    unfollow_delay_range: Optional[tuple] = None
+    message_texts: Optional[List[str]] = None
+    action_order: Optional[List[str]] = None

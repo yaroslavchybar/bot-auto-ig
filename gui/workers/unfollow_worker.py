@@ -1,6 +1,9 @@
+import os
 from typing import List, Optional, Tuple
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from camoufox import Camoufox
+from automation.browser import parse_proxy_string
 from automation.unfollow.session import unfollow_usernames
 from supabase.instagram_accounts_client import (
     InstagramAccountsClient,
@@ -124,90 +127,128 @@ class UnfollowWorker(QThread):
             profile_id = profile.get("profile_id")
             profile_name = profile.get("name") or "profile"
             proxy = profile.get("proxy") or "None"
-
-            # === TASK A: APPROVE REQUESTS ===
-            if self.do_approve:
-                self.log_signal.emit(f"🚀 [Approve] Начинаю подтверждение заявок для {profile_name}...")
-                try:
-                    # Lazy import to avoid circular dependency issues if any
-                    from automation.approvefollow.session import approve_follow_requests
-                    approve_follow_requests(
-                        profile_name=profile_name,
-                        proxy_string=proxy,
-                        log=self.log_signal.emit,
-                        should_stop=lambda: not self.running
-                    )
-                except Exception as e:
-                    self.log_signal.emit(f"❌ Ошибка подтверждения заявок для {profile_name}: {e}")
-
-            if not self.running:
-                break
-
-            # === TASK B: UNFOLLOW ===
-            if self.do_unfollow:
-                self.log_signal.emit(f"🚀 [Unfollow] Начинаю отписку для {profile_name}...")
-                
-                try:
-                    accounts = self.client.get_accounts_for_profile(profile_id, status="unsubscribed")
-                except InstagramAccountsError as err:
-                    self.log_signal.emit(f"❌ Ошибка получения аккаунтов для {profile_name}: {err}")
-                    accounts = [] # Continue to next task
-
-                if accounts:
-                    usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
-                    account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
-
-                    self.log_signal.emit(f"▶️ Профиль {profile_name}: Найдено {len(usernames)} для отписки.")
-
-                    # Callback to update status to 'done'
-                    def on_unfollow_success(username: str):
-                        account_id = account_map.get(username)
-                        if not account_id:
-                            return
-                        try:
-                            self.client.update_account_status(account_id, status="done", assigned_to=None)
-                            self.log_signal.emit(f"💾 Статус {username} обновлен на 'done'.")
-                        except InstagramAccountsError as db_err:
-                            self.log_signal.emit(f"⚠️ Ошибка обновления БД для {username}: {db_err}")
-
-                    # Execute Unfollow Automation
-                    try:
-                        unfollow_usernames(
-                            profile_name=profile_name,
-                            proxy_string=proxy,
-                            usernames=usernames,
-                            log=self.log_signal.emit,
-                            should_stop=lambda: not self.running,
-                            delay_range=self.delay_range,
-                            on_success=on_unfollow_success
-                        )
-                    except Exception as e:
-                        self.log_signal.emit(f"❌ Ошибка в процессе отписки для {profile_name}: {e}")
             
-            if not self.running:
-                break
-                
-            # === TASK C: MESSAGING ===
-            if self.do_message:
-                self.log_signal.emit(f"🚀 [Messaging] Проверка сообщений для {profile_name}...")
-                try:
-                    targets = self.client.get_accounts_to_message(profile_id)
-                    if targets:
-                        self.log_signal.emit(f"✉️ Найдено {len(targets)} пользователей для рассылки.")
-                        from automation.messaging.session import send_messages
-                        send_messages(
-                            profile_name=profile_name,
-                            proxy_string=proxy,
-                            targets=targets,
-                            message_texts=message_texts,
-                            log=self.log_signal.emit,
-                            should_stop=lambda: not self.running
-                        )
+            self.log_signal.emit(f"👤 Processing profile: {profile_name}")
+            
+            # Prepare profile path
+            base_dir = os.getcwd()
+            profile_path = os.path.join(base_dir, "profiles", profile_name)
+            os.makedirs(profile_path, exist_ok=True)
+            
+            # Parse Proxy
+            proxy_config = None
+            if proxy and proxy.lower() not in ["none", ""]:
+                proxy_config = parse_proxy_string(proxy)
+
+            try:
+                with Camoufox(
+                    headless=False,
+                    user_data_dir=profile_path,
+                    persistent_context=True,
+                    proxy=proxy_config,
+                    geoip=False,
+                    block_images=False,
+                    os="windows",
+                    window=(1280, 800),
+                    humanize=True,
+                ) as context:
+                    if len(context.pages) > 0:
+                        page = context.pages[0]
                     else:
-                        self.log_signal.emit(f"ℹ️ Нет 'message=true' аккаунтов для {profile_name}.")
+                        page = context.new_page()
+
+                    if page.url == "about:blank":
+                        page.goto("https://www.instagram.com", timeout=15000)
+
+                    # === TASK A: APPROVE REQUESTS ===
+                    if self.do_approve:
+                        self.log_signal.emit(f"🚀 [Approve] Начинаю подтверждение заявок для {profile_name}...")
+                        try:
+                            # Lazy import to avoid circular dependency issues if any
+                            from automation.approvefollow.session import approve_follow_requests
+                            approve_follow_requests(
+                                profile_name=profile_name,
+                                proxy_string=proxy,
+                                log=self.log_signal.emit,
+                                should_stop=lambda: not self.running,
+                                page=page
+                            )
+                        except Exception as e:
+                            self.log_signal.emit(f"❌ Ошибка подтверждения заявок для {profile_name}: {e}")
+
+                    if not self.running:
+                        break
+
+                    # === TASK B: UNFOLLOW ===
+                    if self.do_unfollow:
+                        self.log_signal.emit(f"🚀 [Unfollow] Начинаю отписку для {profile_name}...")
                         
-                except Exception as e:
-                    self.log_signal.emit(f"❌ Ошибка рассылки для {profile_name}: {e}")
+                        try:
+                            accounts = self.client.get_accounts_for_profile(profile_id, status="unsubscribed")
+                        except InstagramAccountsError as err:
+                            self.log_signal.emit(f"❌ Ошибка получения аккаунтов для {profile_name}: {err}")
+                            accounts = [] # Continue to next task
+
+                        if accounts:
+                            usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
+                            account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
+
+                            self.log_signal.emit(f"▶️ Профиль {profile_name}: Найдено {len(usernames)} для отписки.")
+
+                            # Callback to update status to 'done'
+                            def on_unfollow_success(username: str):
+                                account_id = account_map.get(username)
+                                if not account_id:
+                                    return
+                                try:
+                                    self.client.update_account_status(account_id, status="done", assigned_to=None)
+                                    self.log_signal.emit(f"💾 Статус {username} обновлен на 'done'.")
+                                except InstagramAccountsError as db_err:
+                                    self.log_signal.emit(f"⚠️ Ошибка обновления БД для {username}: {db_err}")
+
+                            # Execute Unfollow Automation
+                            try:
+                                unfollow_usernames(
+                                    profile_name=profile_name,
+                                    proxy_string=proxy,
+                                    usernames=usernames,
+                                    log=self.log_signal.emit,
+                                    should_stop=lambda: not self.running,
+                                    delay_range=self.delay_range,
+                                    on_success=on_unfollow_success,
+                                    page=page
+                                )
+                            except Exception as e:
+                                self.log_signal.emit(f"❌ Ошибка в процессе отписки для {profile_name}: {e}")
+                    
+                    if not self.running:
+                        break
+                        
+                    # === TASK C: MESSAGING ===
+                    if self.do_message:
+                        self.log_signal.emit(f"🚀 [Messaging] Проверка сообщений для {profile_name}...")
+                        try:
+                            targets = self.client.get_accounts_to_message(profile_id)
+                            if targets:
+                                self.log_signal.emit(f"✉️ Найдено {len(targets)} пользователей для рассылки.")
+                                from automation.messaging.session import send_messages
+                                send_messages(
+                                    profile_name=profile_name,
+                                    proxy_string=proxy,
+                                    targets=targets,
+                                    message_texts=message_texts,
+                                    log=self.log_signal.emit,
+                                    should_stop=lambda: not self.running,
+                                    page=page
+                                )
+                            else:
+                                self.log_signal.emit(f"ℹ️ Нет 'message=true' аккаунтов для {profile_name}.")
+                                
+                        except Exception as e:
+                            self.log_signal.emit(f"❌ Ошибка рассылки для {profile_name}: {e}")
+
+            except Exception as e:
+                self.log_signal.emit(f"❌ Критическая ошибка браузера для {profile_name}: {e}")
 
         self.finished_signal.emit()
 

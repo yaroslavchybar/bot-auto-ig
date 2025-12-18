@@ -18,40 +18,26 @@ def unfollow_usernames(
     should_stop: Optional[Callable[[], bool]] = None,
     delay_range: Tuple[int, int] = (10, 30),
     on_success: Optional[Callable[[str], None]] = None,
+    page: Optional[object] = None,
 ):
     """
     Open Camoufox profile, navigate to own profile -> Following -> Search & Unfollow.
+    
+    If `page` is provided, it uses the existing browser page and does NOT close it.
     """
     should_stop = should_stop or (lambda: False)
     min_delay, max_delay = delay_range
 
-    profile_path = ensure_profile_path(profile_name)
-    proxy_config = build_proxy_config(proxy_string)
-    
     # Filter out empty usernames
     target_usernames = [u.strip() for u in usernames if u.strip()]
     if not target_usernames:
         log("⚠️ Нет юзернеймов для отписки.")
         return
 
-    log(f"🧭 Запуск браузера для профиля: {profile_name}")
-
-    with Camoufox(
-        headless=False,
-        user_data_dir=profile_path,
-        persistent_context=True,
-        proxy=proxy_config,
-        geoip=False,
-        block_images=False,
-        os="windows",
-        window=(1280, 800),
-        humanize=True,
-    ) as context:
-        page = context.pages[0] if context.pages else context.new_page()
-
+    def _run_unfollow_logic(current_page):
         try:
-            if page.url == "about:blank":
-                page.goto("https://www.instagram.com", timeout=15000)
+            if current_page.url == "about:blank":
+                current_page.goto("https://www.instagram.com", timeout=15000)
             
             # 1. Go to own profile
             log("👤 Ищу ссылку на свой профиль...")
@@ -59,7 +45,7 @@ def unfollow_usernames(
                 # Target the image inside the "Profile" link (sidebar).
                 # We filter by text "Profile" to distinguish from Stories avatars.
                 # The text might be hidden, but Playwright's text filter finds it in the DOM.
-                profile_pic = page.locator('a[role="link"]').filter(has_text="Profile").locator('img').first
+                profile_pic = current_page.locator('a[role="link"]').filter(has_text="Profile").locator('img').first
                 
                 # Wait for it to be ready
                 profile_pic.wait_for(state="visible", timeout=10000)
@@ -70,7 +56,7 @@ def unfollow_usernames(
                     log("🖱️ Двигаю курсор к аватару...")
                     x = box["x"] + box["width"] / 2
                     y = box["y"] + box["height"] / 2
-                    page.mouse.move(x, y)
+                    current_page.mouse.move(x, y)
                     random_delay(0.5, 1.5)
                 
                 log(f"🖱️ Кликаю на аватар...")
@@ -78,13 +64,13 @@ def unfollow_usernames(
                 profile_pic.click(force=True)
                 
                 # Wait for navigation
-                page.wait_for_load_state("domcontentloaded")
+                current_page.wait_for_load_state("domcontentloaded")
 
             except Exception as e:
                 log(f"⚠️ Не смог найти ссылку через аватар ({e}). Пробую запасной вариант...")
                 try:
                     # Fallback: Try clicking standard "Profile" text even if hidden (force=True)
-                    page.locator('a[role="link"] >> text=Profile').click(force=True, timeout=5000)
+                    current_page.locator('a[role="link"] >> text=Profile').click(force=True, timeout=5000)
                 except Exception as e2:
                     log(f"❌ Не удалось перейти в профиль: {e2}")
                     return
@@ -95,7 +81,7 @@ def unfollow_usernames(
             log("list Открываю список подписок...")
             # Typically a link with text "following" inside a ul/li
             try:
-                page.click('a[href*="/following/"]', timeout=5000)
+                current_page.click('a[href*="/following/"]', timeout=5000)
             except:
                 log("❌ Не нашел кнопку 'Following'.")
                 return
@@ -105,7 +91,7 @@ def unfollow_usernames(
             # 3. Wait for modal
             # The modal usually has role="dialog" and a title "Following"
             try:
-                modal = page.wait_for_selector('div[role="dialog"]', timeout=5000)
+                modal = current_page.wait_for_selector('div[role="dialog"]', timeout=5000)
                 if not modal:
                     log("❌ Модальное окно не появилось.")
                     return
@@ -125,9 +111,9 @@ def unfollow_usernames(
                 
                 # Clear previous search if any
                 try:
-                    page.fill(search_input_selector, "")
+                    current_page.fill(search_input_selector, "")
                     random_delay(0.5, 1.0)
-                    page.type(search_input_selector, username, delay=100)
+                    current_page.type(search_input_selector, username, delay=100)
                 except:
                     log("❌ Не нашел поле поиска.")
                     break
@@ -143,7 +129,7 @@ def unfollow_usernames(
                     # Strategy: Get the container for the specific user.
                     # We look for a div that contains BOTH the username and the "Following" button text.
                     # .last helps us get the most specific container (the row) rather than the whole dialog.
-                    user_row = page.locator('div[role="dialog"] >> div').filter(has_text=username).filter(has_text="Following").last
+                    user_row = current_page.locator('div[role="dialog"] >> div').filter(has_text=username).filter(has_text="Following").last
                     
                     # Inside this row, find the button that says "Following".
                     unfollow_btn = user_row.locator('button').filter(has_text="Following").first
@@ -159,7 +145,7 @@ def unfollow_usernames(
                             # Wait specifically for the confirmation button to appear.
                             # We use a filter to find the button with exact text "Unfollow"
                             # This avoids the invalid syntax error from before.
-                            confirm_btn = page.locator('button').filter(has_text="Unfollow").last
+                            confirm_btn = current_page.locator('button').filter(has_text="Unfollow").last
                             confirm_btn.wait_for(state="visible", timeout=5000)
                             
                             log(f"🖱️ Подтверждаю отписку...")
@@ -182,7 +168,7 @@ def unfollow_usernames(
 
                 # Clear search
                 try:
-                    page.fill(search_input_selector, "")
+                    current_page.fill(search_input_selector, "")
                 except:
                     pass
 
@@ -196,16 +182,41 @@ def unfollow_usernames(
             try:
                 # Look for button containing the Close SVG
                 # We use the SVG selector as requested by the user
-                close_btn = page.locator('button').filter(has=page.locator('svg[aria-label="Close"]')).last
+                close_btn = current_page.locator('button').filter(has=current_page.locator('svg[aria-label="Close"]')).last
                 if close_btn.count() > 0:
-                     close_btn.click()
-                     log("✅ Closed modal.")
+                        close_btn.click()
+                        log("✅ Closed modal.")
                 else:
-                     log("ℹ️ Close button not visible.")
+                        log("ℹ️ Close button not visible.")
             except Exception as e:
                 log(f"⚠️ Failed to close modal: {e}")
 
         except Exception as e:
             log(f"❌ Критическая ошибка сессии: {e}")
-        finally:
-            log("🏁 Сессия завершена.")
+
+    if page:
+        log(f"🔄 Использую существующую сессию для отписки...")
+        _run_unfollow_logic(page)
+        return
+
+    profile_path = ensure_profile_path(profile_name)
+    proxy_config = build_proxy_config(proxy_string)
+    
+    log(f"🧭 Запуск браузера для профиля: {profile_name}")
+
+    with Camoufox(
+        headless=False,
+        user_data_dir=profile_path,
+        persistent_context=True,
+        proxy=proxy_config,
+        geoip=False,
+        block_images=False,
+        os="windows",
+        window=(1280, 800),
+        humanize=True,
+    ) as context:
+        page = context.pages[0] if context.pages else context.new_page()
+        _run_unfollow_logic(page)
+
+    log("🏁 Сессия завершена.")
+

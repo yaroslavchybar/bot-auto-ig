@@ -1,5 +1,13 @@
 {
     "use_private_profiles": true,
+    "action_order": [
+        "Follow",
+        "Unfollow",
+        "Approve Requests",
+        "Send Messages",
+        "Feed Scroll",
+        "Reels Scroll"
+    ],
     "like_chance": 100,
     "carousel_watch_chance": 0,
     "follow_chance": 0,
@@ -7,16 +15,16 @@
     "reels_follow_chance": 0,
     "carousel_max_slides": 3,
     "stories_max": 3,
-    "min_time_minutes": 2,
-    "max_time_minutes": 2,
-    "feed_min_time_minutes": 2,
-    "feed_max_time_minutes": 2,
-    "reels_min_time_minutes": 3,
-    "reels_max_time_minutes": 3,
+    "min_time_minutes": 1,
+    "max_time_minutes": 1,
+    "feed_min_time_minutes": 1,
+    "feed_max_time_minutes": 1,
+    "reels_min_time_minutes": 1,
+    "reels_max_time_minutes": 1,
     "cycle_interval_minutes": 11,
     "enable_feed": false,
     "enable_reels": false,
     "enable_follow": false,
     "parallel_profiles": 1,
-    "watch_stories": false
+    "watch_stories": true
 }

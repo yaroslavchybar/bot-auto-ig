@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QLabel,
     QGroupBox, QMessageBox, QScrollArea, QFrame, QRadioButton, QButtonGroup,
     QLineEdit, QComboBox, QTextEdit, QCheckBox, QGridLayout, QSizePolicy,
-    QDialog
+    QDialog, QListWidget, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QFont, QColor, QIcon
@@ -313,6 +313,71 @@ class InstagramTab(QWidget):
         target_layout.addLayout(t_grid)
         content_layout.addWidget(target_card)
 
+        # --- SECTION: Execution Order ---
+        order_card = QFrame()
+        order_card.setStyleSheet(CARD_STYLE)
+        order_layout = QVBoxLayout(order_card)
+        order_layout.setContentsMargins(20, 20, 20, 20)
+        order_layout.setSpacing(15)
+
+        o_header = QLabel("📋 Порядок действий")
+        o_header.setStyleSheet("color: #e0e0e0; font-weight: bold; font-size: 16px; border: none;")
+        order_layout.addWidget(o_header)
+
+        # Controls for adding/removing actions
+        order_controls = QHBoxLayout()
+        
+        self.action_combo = QComboBox()
+        self.action_combo.addItems(["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"])
+        self.action_combo.setStyleSheet(INPUT_STYLE + "padding: 5px;")
+        
+        self.add_action_btn = QPushButton("➕ Добавить")
+        self.add_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.add_action_btn.setStyleSheet(BUTTON_STYLE)
+        self.add_action_btn.clicked.connect(self.add_action_to_order)
+        
+        self.remove_action_btn = QPushButton("➖ Удалить")
+        self.remove_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.remove_action_btn.setStyleSheet(BUTTON_STYLE.replace("#61afef", "#e06c75")) # Reddish style
+        self.remove_action_btn.clicked.connect(self.remove_action_from_order)
+        
+        order_controls.addWidget(self.action_combo)
+        order_controls.addWidget(self.add_action_btn)
+        order_controls.addWidget(self.remove_action_btn)
+        order_layout.addLayout(order_controls)
+
+        self.action_order_list = QListWidget()
+        self.action_order_list.setStyleSheet("""
+            QListWidget {
+                background-color: #21252b;
+                border: 1px solid #3e4042;
+                border-radius: 6px;
+                color: #abb2bf;
+                padding: 5px;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #2c313a;
+            }
+            QListWidget::item:selected {
+                background-color: #2c313a;
+            }
+        """)
+        self.action_order_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        self.action_order_list.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.action_order_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.action_order_list.setMinimumHeight(300) # Ensure all items are visible
+        
+        # Initial Items (will be reordered in load_settings)
+        default_actions = ["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
+        self.action_order_list.addItems(default_actions)
+        
+        # Connect signal to save settings on reorder
+        self.action_order_list.model().rowsMoved.connect(self.save_settings)
+
+        order_layout.addWidget(self.action_order_list)
+        content_layout.addWidget(order_card)
+
         # Initialize Settings Widgets (and add to Dialogs internally)
         self.init_settings_widgets()
 
@@ -351,6 +416,56 @@ class InstagramTab(QWidget):
         log_layout.addWidget(self.threads_log_area)
         
         main_layout.addWidget(log_frame)
+
+    def update_order_visibility(self):
+        """Show/hide actions in the order list based on enabled checkboxes."""
+        visibility_map = {
+            "Feed Scroll": self.feed_checkbox.isChecked(),
+            "Reels Scroll": self.reels_checkbox.isChecked(),
+            "Follow": self.follow_checkbox.isChecked(),
+            "Unfollow": self.unfollow_checkbox.isChecked(),
+            "Approve Requests": self.approve_checkbox.isChecked(),
+            "Send Messages": self.message_checkbox.isChecked()
+        }
+        
+        # 1. Update List Items
+        for i in range(self.action_order_list.count()):
+            item = self.action_order_list.item(i)
+            action_name = item.text()
+            if action_name in visibility_map:
+                item.setHidden(not visibility_map[action_name])
+                
+        # 2. Update Add Combo
+        current_text = self.action_combo.currentText()
+        self.action_combo.clear()
+        enabled_actions = [name for name, enabled in visibility_map.items() if enabled]
+        if enabled_actions:
+            self.action_combo.addItems(enabled_actions)
+            # Restore selection if possible, else default to first
+            idx = self.action_combo.findText(current_text)
+            if idx >= 0:
+                self.action_combo.setCurrentIndex(idx)
+            else:
+                self.action_combo.setCurrentIndex(0)
+            self.add_action_btn.setEnabled(True)
+        else:
+            self.action_combo.addItem("Нет активных действий")
+            self.add_action_btn.setEnabled(False)
+
+    def add_action_to_order(self):
+        if not self.add_action_btn.isEnabled():
+            return
+        action = self.action_combo.currentText()
+        self.action_order_list.addItem(action)
+        self.save_settings()
+        # Newly added item is visible by default, but let's be safe
+        self.update_order_visibility()
+
+    def remove_action_from_order(self):
+        current_row = self.action_order_list.currentRow()
+        if current_row >= 0:
+            self.action_order_list.takeItem(current_row)
+            self.save_settings()
 
     def init_settings_widgets(self):
         """Initialize settings widgets and dialogs, keeping them in memory."""
@@ -643,78 +758,71 @@ class InstagramTab(QWidget):
         self.is_running = True
         self.update_action_button_state(running=True)
 
-        # 2. Start Follow Worker if enabled
-        if enable_follow:
-            try:
-                highlights_min = int(self.highlights_min_input.text().split()[0])
-            except:
-                highlights_min = 2
-            try:
-                highlights_max = int(self.highlights_max_input.text().split()[0])
-            except:
-                highlights_max = 4
+        # === PREPARE CONFIGURATION ===
+        
+        # Follow Config
+        try:
+            highlights_min = int(self.highlights_min_input.text().split()[0])
+        except:
+            highlights_min = 2
+        try:
+            highlights_max = int(self.highlights_max_input.text().split()[0])
+        except:
+            highlights_max = 4
+        
+        try:
+            likes_min = int(self.likes_min_input.text().split()[0])
+        except:
+            likes_min = 1
+        try:
+            likes_max = int(self.likes_max_input.text().split()[0])
+        except:
+            likes_max = 2
             
-            try:
-                likes_min = int(self.likes_min_input.text().split()[0])
-            except:
-                likes_min = 1
-            try:
-                likes_max = int(self.likes_max_input.text().split()[0])
-            except:
-                likes_max = 2
-                
-            try:
-                following_limit = int(self.following_limit_input.text().split()[0])
-            except:
-                following_limit = 3000
+        try:
+            following_limit = int(self.following_limit_input.text().split()[0])
+        except:
+            following_limit = 3000
 
-            highlights_range = (highlights_min, highlights_max)
-            likes_range = (likes_min, likes_max)
+        highlights_range = (highlights_min, highlights_max)
+        likes_range = (likes_min, likes_max)
 
-            self.follow_worker = AutoFollowWorker(
-                highlights_range=highlights_range,
-                likes_range=likes_range,
-                following_limit=following_limit,
-            )
-            self.follow_worker.log_signal.connect(self.log)
-            self.follow_worker.finished_signal.connect(self.on_follow_finished)
-            self.follow_worker.start()
-            self.log("▶️ Запуск автоподписки...")
-
-        # 3. Start Unfollow/Approve/Message Worker if enabled
-        if enable_unfollow or enable_approve or enable_message:
-            try:
-                uf_min = int(self.unfollow_min_delay_input.text().split()[0])
-            except:
-                uf_min = 10
-            try:
-                uf_max = int(self.unfollow_max_delay_input.text().split()[0])
-            except:
-                uf_max = 30
+        # Unfollow/Approve/Message Config
+        try:
+            uf_min = int(self.unfollow_min_delay_input.text().split()[0])
+        except:
+            uf_min = 10
+        try:
+            uf_max = int(self.unfollow_max_delay_input.text().split()[0])
+        except:
+            uf_max = 30
+        
+        if uf_min > uf_max:
+            uf_min, uf_max = uf_max, uf_min
+            self.unfollow_min_delay_input.setText(str(uf_min))
+            self.unfollow_max_delay_input.setText(str(uf_max))
             
-            if uf_min > uf_max:
-                uf_min, uf_max = uf_max, uf_min
-                self.unfollow_min_delay_input.setText(str(uf_min))
-                self.unfollow_max_delay_input.setText(str(uf_max))
+        unfollow_delay_range = (uf_min, uf_max)
 
-            self.unfollow_worker = UnfollowWorker(
-                delay_range=(uf_min, uf_max),
-                do_unfollow=enable_unfollow,
-                do_approve=enable_approve,
-                do_message=enable_message
-            )
-            self.unfollow_worker.log_signal.connect(self.log)
-            self.unfollow_worker.finished_signal.connect(self.on_unfollow_finished)
-            self.unfollow_worker.start()
+        # Message Texts
+        message_texts = []
+        if enable_message:
+            try:
+                msg_path = Path("message.txt")
+                if msg_path.exists():
+                    content = msg_path.read_text(encoding="utf-8").strip()
+                    if content:
+                        message_texts = [line.strip() for line in content.split('\n') if line.strip()]
+            except Exception:
+                pass
+
+        # === DECIDE EXECUTION PATH ===
+        
+        is_scrolling_mode = enable_feed or enable_reels
+        
+        if is_scrolling_mode:
+            # --- PATH A: SCROLLING WORKER (Handles everything with Page Reuse) ---
             
-            tasks = []
-            if enable_unfollow: tasks.append("Отписка")
-            if enable_approve: tasks.append("Подтверждение")
-            if enable_message: tasks.append("Рассылка")
-            self.log(f"▶️ Запуск задач: {', '.join(tasks)}...")
-
-        # 4. Start Scrolling Worker if enabled
-        if enable_feed or enable_reels:
             # Use private profiles only
             profiles = self.main_window.profile_manager.profiles.get("private", [])
             if not profiles:
@@ -771,9 +879,13 @@ class InstagramTab(QWidget):
                 except:
                     cycle_interval = 11
                 
+                # Get action order
+                action_order = [self.action_order_list.item(i).text() for i in range(self.action_order_list.count())]
+                
                 config = ScrollingConfig(
                     use_private_profiles=True,
                     use_threads_profiles=False,
+                    action_order=action_order,
                     like_chance=feed_like_chance,
                     comment_chance=0,
                     follow_chance=feed_follow_chance,
@@ -788,19 +900,75 @@ class InstagramTab(QWidget):
                     cycle_interval_minutes=cycle_interval,
                     enable_feed=enable_feed,
                     enable_reels=enable_reels,
+                    
+                    # Passed Flags
+                    enable_follow=enable_follow,
+                    enable_unfollow=enable_unfollow,
+                    enable_approve=enable_approve,
+                    enable_message=enable_message,
+                    
                     carousel_watch_chance=feed_carousel_watch_chance,
                     carousel_max_slides=feed_carousel_max_slides,
                     watch_stories=self.watch_stories_checkbox.isChecked(),
                     stories_max=feed_stories_max,
+                    
+                    # Passed Configs
+                    highlights_range=highlights_range,
+                    likes_range=likes_range,
+                    following_limit=following_limit,
+                    unfollow_delay_range=unfollow_delay_range,
+                    message_texts=message_texts
                 )
                 
                 profile_names = [acc.username for acc in target_accounts]
-                self.log(f"🔄 Запуск скроллинга для {len(target_accounts)} профилей...")
+                
+                tasks = []
+                if enable_feed: tasks.append("Feed")
+                if enable_reels: tasks.append("Reels")
+                if enable_follow: tasks.append("Follow")
+                if enable_unfollow: tasks.append("Unfollow")
+                if enable_approve: tasks.append("Approve")
+                if enable_message: tasks.append("Message")
+                
+                self.log(f"🔄 Запуск полного цикла ({', '.join(tasks)}) для {len(target_accounts)} профилей...")
                 
                 self.worker = InstagramScrollingWorker(config, target_accounts, profile_names)
                 self.worker.log_signal.connect(self.log)
                 self.worker.finished_signal.connect(self.on_worker_finished)
                 self.worker.start()
+
+        else:
+            # --- PATH B: INDIVIDUAL WORKERS (No Feed/Reels) ---
+            
+            # Start Follow Worker
+            if enable_follow:
+                self.follow_worker = AutoFollowWorker(
+                    highlights_range=highlights_range,
+                    likes_range=likes_range,
+                    following_limit=following_limit,
+                )
+                self.follow_worker.log_signal.connect(self.log)
+                self.follow_worker.finished_signal.connect(self.on_follow_finished)
+                self.follow_worker.start()
+                self.log("▶️ Запуск автоподписки...")
+
+            # Start Unfollow/Approve/Message Worker
+            if enable_unfollow or enable_approve or enable_message:
+                self.unfollow_worker = UnfollowWorker(
+                    delay_range=unfollow_delay_range,
+                    do_unfollow=enable_unfollow,
+                    do_approve=enable_approve,
+                    do_message=enable_message
+                )
+                self.unfollow_worker.log_signal.connect(self.log)
+                self.unfollow_worker.finished_signal.connect(self.on_unfollow_finished)
+                self.unfollow_worker.start()
+                
+                tasks = []
+                if enable_unfollow: tasks.append("Отписка")
+                if enable_approve: tasks.append("Подтверждение")
+                if enable_message: tasks.append("Рассылка")
+                self.log(f"▶️ Запуск задач: {', '.join(tasks)}...")
 
     def on_worker_finished(self):
         self.log("✅ Скроллинг остановлен/завершен")
@@ -856,6 +1024,7 @@ class InstagramTab(QWidget):
             self.message_checkbox,
         ]:
             checkbox.toggled.connect(self.save_settings)
+            checkbox.toggled.connect(self.update_order_visibility)
 
         for line_edit in [
             self.feed_time_min_input,
@@ -984,6 +1153,18 @@ class InstagramTab(QWidget):
         self.unfollow_min_delay_input.setText(str(unfollow_data.get("min_delay", 10)))
         self.unfollow_max_delay_input.setText(str(unfollow_data.get("max_delay", 30)))
 
+        # Load Action Order
+        saved_order = data.get("action_order", [])
+        self.action_order_list.clear()
+        
+        if saved_order:
+            self.action_order_list.addItems(saved_order)
+        else:
+            # Default fallback if no saved order
+            default_actions = ["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
+            self.action_order_list.addItems(default_actions)
+
+        self.update_order_visibility()
         self.loading_settings = False
 
     def save_settings(self):
@@ -997,8 +1178,12 @@ class InstagramTab(QWidget):
             except Exception:
                 return default
 
+        # Collect action order
+        action_order = [self.action_order_list.item(i).text() for i in range(self.action_order_list.count())]
+
         payload = {
             "use_private_profiles": True,  # Always use private profiles now
+            "action_order": action_order,
             "like_chance": int(self.feed_likes_chance_slider.currentText().replace('%', '')),
             "carousel_watch_chance": int(self.feed_carousel_chance_slider.currentText().replace('%', '')),
             "follow_chance": int(self.feed_follows_chance_slider.currentText().replace('%', '')),

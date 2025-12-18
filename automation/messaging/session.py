@@ -66,11 +66,14 @@ def send_messages(
     message_texts: List[str],
     log: Callable[[str], None],
     should_stop: Optional[Callable[[], bool]] = None,
+    page: Optional[object] = None,
 ):
     """
     Send messages to a list of target users.
     targets: List of dicts with 'user_name' and 'id'.
     message_texts: List of message variations to randomly select from.
+    
+    If `page` is provided, it uses the existing browser page and does NOT close it.
     """
     should_stop = should_stop or (lambda: False)
     
@@ -82,21 +85,7 @@ def send_messages(
     proxy_config = build_proxy_config(proxy_string)
     client = InstagramAccountsClient()
 
-    log(f"✉️ [Messages] Запуск браузера для профиля: {profile_name}")
-
-    with Camoufox(
-        headless=False,
-        user_data_dir=profile_path,
-        persistent_context=True,
-        proxy=proxy_config,
-        geoip=False,
-        block_images=False,
-        os="windows",
-        window=(1280, 800),
-        humanize=True,
-    ) as context:
-        page = context.pages[0] if context.pages else context.new_page()
-
+    def _run_messaging_logic(page):
         try:
             if page.url == "about:blank":
                 page.goto("https://www.instagram.com", timeout=15000)
@@ -374,3 +363,24 @@ def send_messages(
 
         except Exception as e:
             log(f"❌ Критическая ошибка браузера: {e}")
+
+    if page:
+        log(f"🔄 Использую существующую сессию для рассылки сообщений.")
+        _run_messaging_logic(page)
+        return
+
+    log(f"✉️ [Messages] Запуск браузера для профиля: {profile_name}")
+
+    with Camoufox(
+        headless=False,
+        user_data_dir=profile_path,
+        persistent_context=True,
+        proxy=proxy_config,
+        geoip=False,
+        block_images=False,
+        os="windows",
+        window=(1280, 800),
+        humanize=True,
+    ) as context:
+        page = context.pages[0] if context.pages else context.new_page()
+        _run_messaging_logic(page)
