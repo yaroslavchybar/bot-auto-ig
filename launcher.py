@@ -22,6 +22,7 @@ if __name__ == "__main__":
     parser.add_argument("--watch-stories", type=int, default=1, help="Whether to watch stories at start (1/0)")
     parser.add_argument("--stories-max", type=int, default=3, help="Max number of stories to watch")
     parser.add_argument("--show-cursor", action="store_true", help="Show the human-like cursor for debugging")
+    parser.add_argument("--user-agent", type=str, default=None, help="Custom User Agent string")
     
     args = parser.parse_args()
 
@@ -41,5 +42,6 @@ if __name__ == "__main__":
         reels_duration=args.reels_duration,
         show_cursor=args.show_cursor,
         reels_match_likes=args.reels_match_likes,
-        reels_match_follows=args.reels_match_follows
+        reels_match_follows=args.reels_match_follows,
+        user_agent=args.user_agent
     )

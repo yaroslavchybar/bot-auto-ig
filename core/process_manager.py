@@ -14,6 +14,8 @@ class ProcessManager:
         
         # Add kwargs as arguments
         for key, value in kwargs.items():
+            if value is None:
+                continue
             # Convert key from snake_case to kebab-case (e.g. match_likes -> --match-likes)
             arg_key = key.replace('_', '-')
             cmd.extend([f"--{arg_key}", str(value)])

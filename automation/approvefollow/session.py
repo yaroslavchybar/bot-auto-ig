@@ -15,6 +15,7 @@ def approve_follow_requests(
     log: Callable[[str], None],
     should_stop: Optional[Callable[[], bool]] = None,
     page: Optional[object] = None,
+    user_agent: Optional[str] = None,
 ):
     """
     Open Camoufox, navigate to notifications/activity, and approve follow requests.
@@ -98,6 +99,7 @@ def approve_follow_requests(
         os="windows",
         window=(1280, 800),
         humanize=True,
+        user_agent=user_agent,
     ) as context:
         page = context.pages[0] if context.pages else context.new_page()
         _run_approve_logic(page)

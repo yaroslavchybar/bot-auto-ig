@@ -67,6 +67,7 @@ def send_messages(
     log: Callable[[str], None],
     should_stop: Optional[Callable[[], bool]] = None,
     page: Optional[object] = None,
+    user_agent: Optional[str] = None,
 ):
     """
     Send messages to a list of target users.
@@ -381,6 +382,7 @@ def send_messages(
         os="windows",
         window=(1280, 800),
         humanize=True,
+        user_agent=user_agent,
     ) as context:
         page = context.pages[0] if context.pages else context.new_page()
         _run_messaging_logic(page)

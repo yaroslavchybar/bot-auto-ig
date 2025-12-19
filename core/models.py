@@ -38,6 +38,11 @@ class ScrollingConfig:
     reels_min_time_minutes: int
     reels_max_time_minutes: int
     cycle_interval_minutes: int
+    reels_skip_chance: int = 30  # 0-100%
+    reels_skip_min_time: float = 0.8
+    reels_skip_max_time: float = 2.0
+    reels_normal_min_time: float = 5.0
+    reels_normal_max_time: float = 20.0
     enable_feed: bool = True
     enable_reels: bool = False
     enable_follow: bool = False

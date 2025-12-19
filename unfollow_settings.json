@@ -1,7 +1,0 @@
-{
-    "min_delay": 10,
-    "max_delay": 30,
-    "do_unfollow": false,
-    "do_approve": false,
-    "do_message": false
-}

@@ -127,6 +127,7 @@ class UnfollowWorker(QThread):
             profile_id = profile.get("profile_id")
             profile_name = profile.get("name") or "profile"
             proxy = profile.get("proxy") or "None"
+            user_agent = profile.get("user_agent")
             
             self.log_signal.emit(f"👤 Processing profile: {profile_name}")
             
@@ -151,6 +152,7 @@ class UnfollowWorker(QThread):
                     os="windows",
                     window=(1280, 800),
                     humanize=True,
+                    user_agent=user_agent,
                 ) as context:
                     if len(context.pages) > 0:
                         page = context.pages[0]

@@ -10,8 +10,48 @@ from .stories import watch_stories
 
 def _navigate_home(page):
     """Ensure we are on the Instagram home feed and clear modals."""
-    if "instagram.com" not in page.url:
-        page.goto("https://www.instagram.com/", timeout=30000)
+    try:
+        # Check if we are on the main feed URL
+        if page.url.rstrip("/") == "https://www.instagram.com":
+            return
+
+        print("[*] Navigating to Home feed...")
+        
+        # Try to find and click the Home button in sidebar
+        home_selectors = [
+            'svg[aria-label="Home"]',
+            'a[href="/"] svg[aria-label="Home"]',
+            'a[href="/"]'
+        ]
+        
+        found_home = False
+        for selector in home_selectors:
+            try:
+                element = page.query_selector(selector)
+                if element and element.is_visible():
+                    # If we found the SVG, click its parent link/button if possible
+                    clickable = element
+                    if element.evaluate("el => el.tagName.toLowerCase() === 'svg'"):
+                        parent = element.query_selector("xpath=..") # div
+                        if parent:
+                            grandparent = parent.query_selector("xpath=..") # div
+                            if grandparent:
+                                greatgrandparent = grandparent.query_selector("xpath=..") # div
+                                if greatgrandparent:
+                                    link_parent = greatgrandparent.query_selector("xpath=..") # a
+                                    if link_parent:
+                                        clickable = link_parent
+
+                    clickable.click()
+                    found_home = True
+                    break
+            except Exception:
+                continue
+                
+        if not found_home:
+             # Fallback to direct navigation
+             page.goto("https://www.instagram.com/", timeout=30000)
+
         random_delay(3, 5)
 
         # Handle "Turn on Notifications" or similar modals if they appear
@@ -22,6 +62,10 @@ def _navigate_home(page):
                 random_delay(1, 2)
         except Exception:
             pass
+            
+    except Exception as e:
+        print(f"[!] Navigation error: {e}")
+        page.goto("https://www.instagram.com/", timeout=30000)
 
 
 def _queue_actions(page, post, actions_config):
@@ -95,7 +139,7 @@ def _pick_visible_post(page, posts):
     return candidates[0][2]
 
 
-def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
+def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=None) -> dict:
     """
     Scroll through Instagram feed and perform random actions.
 
@@ -106,6 +150,7 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
             - 'like_chance', 'follow_chance' (0-100)
             - optional 'carousel_watch_chance' (0-100) and 'carousel_max_slides'
             - optional 'watch_stories' (bool, default True) and 'stories_max'
+        should_stop: Optional callable that returns True if execution should stop
 
     Returns:
         Dict with stats: {'likes': N, 'follows': N}
@@ -115,17 +160,39 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
 
     try:
         _navigate_home(page)
+        
+        if should_stop and should_stop():
+            return stats
+            
         if actions_config.get("watch_stories", True):
             try:
-                watch_stories(page, max_stories=actions_config.get("stories_max", 3))
+                # We don't have deep control inside watch_stories easily without modifying it too, 
+                # but let's at least check before starting it.
+                if not (should_stop and should_stop()):
+                    watch_stories(page, max_stories=actions_config.get("stories_max", 3))
             except Exception as e:
                 print(f"[!] Story watch skipped: {e}")
+                
         print(f"[*] Starting {duration_minutes} minute scroll session on Instagram...")
 
         while time.time() < end_time:
+            if should_stop and should_stop():
+                print("[!] Stop signal received. Ending feed session.")
+                break
+
             # Scroll down using human-like mouse actions
             human_scroll(page)
-            random_delay(1.5, 4.0)
+            
+            # Break up the delay to check for stop
+            delay_target = random.uniform(1.5, 4.0)
+            start_delay = time.time()
+            while time.time() - start_delay < delay_target:
+                if should_stop and should_stop():
+                    break
+                time.sleep(0.1)
+                
+            if should_stop and should_stop():
+                break
 
             posts = page.query_selector_all("article")
             if posts:
@@ -137,6 +204,9 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
                     random_delay(0.5, 1.5)
                 except Exception:
                     continue
+                
+                if should_stop and should_stop():
+                    break
 
                 # Optionally step through carousel slides
                 carousel_chance = actions_config.get("carousel_watch_chance", 0)
@@ -154,14 +224,21 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
                     if has_carousel:
                         print("[*] Carousel indicators found on post")
                         if random.randint(0, 100) < carousel_chance:
-                            max_slides = actions_config.get("carousel_max_slides", 3)
-                            watch_carousel(page, post, max_slides=max_slides)
+                            if not (should_stop and should_stop()):
+                                max_slides = actions_config.get("carousel_max_slides", 3)
+                                watch_carousel(page, post, max_slides=max_slides)
                         else:
                             print("[*] Skipping carousel watch due to chance config")
+                
+                if should_stop and should_stop():
+                    break
 
                 actions_to_perform = _queue_actions(page, post, actions_config)
 
                 for action_name, action_func in actions_to_perform:
+                    if should_stop and should_stop():
+                        break
+                        
                     try:
                         if action_func():
                             stats[action_name + "s"] += 1
@@ -171,7 +248,16 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict) -> dict:
 
             # Random longer pause occasionally
             if random.random() < 0.1:
-                random_delay(8, 15)
+                long_pause = random.uniform(8, 15)
+                start_pause = time.time()
+                while time.time() - start_pause < long_pause:
+                    if should_stop and should_stop():
+                        break
+                    time.sleep(0.5)
+                    
+                if should_stop and should_stop():
+                    break
+                    
                 human_mouse_move(page)
 
         print(f"[✓] Scroll session complete: {stats}")

@@ -52,7 +52,8 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
               carousel_watch_chance=0, carousel_max_slides=3,
               watch_stories=True, stories_max=3,
               feed_duration=0, reels_duration=0, show_cursor=False,
-              reels_match_likes=None, reels_match_follows=None):
+              reels_match_likes=None, reels_match_follows=None,
+              user_agent=None):
     base_dir = os.getcwd()
     profile_path = os.path.join(base_dir, "profiles", profile_name)
     os.makedirs(profile_path, exist_ok=True)
@@ -64,6 +65,9 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
     if proxy_string and proxy_string.lower() not in ["none", ""]:
         print(f"[*] Using Proxy: {proxy_string}")
         proxy_config = parse_proxy_string(proxy_string)
+    
+    if user_agent:
+        print(f"[*] Using User Agent: {user_agent}")
 
     try:
         # Configuration for Camoufox browser
@@ -84,6 +88,7 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
             os="windows",
             window=(1280, 800),
             humanize=True,
+            user_agent=user_agent,
             # showcursor=show_cursor,  # Removed to fix TypeError
         ) as context:
             

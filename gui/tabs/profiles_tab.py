@@ -6,6 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QFont, QColor, QCursor
+import random
 from utils.totp import generate_totp_code
 
 from gui.styles import (
@@ -29,9 +30,7 @@ class ProfileCreationDialog(QDialog):
             self.setWindowTitle("Создание нового профиля")
 
         self.setModal(True)
-        self.resize(550, 450)
-        self.setModal(True)
-        self.resize(550, 450)
+        self.resize(550, 550)
         self.setStyleSheet(
             DIALOG_STYLE + 
             CHECKBOX_STYLE +
@@ -43,8 +42,6 @@ class ProfileCreationDialog(QDialog):
         self.profile_name_input = QLineEdit()
         self.profile_name_input.setPlaceholderText("Например: Instagram Main")
 
-        self.profile_type_combo = QComboBox()
-        self.profile_type_combo.addItems(["Camoufox (рекомендуется)", "Standard Firefox"])
         self.profile_type_combo = QComboBox()
         self.profile_type_combo.addItems(["Camoufox (рекомендуется)", "Standard Firefox"])
         # Styles are handled by DIALOG_STYLE now
@@ -61,6 +58,27 @@ class ProfileCreationDialog(QDialog):
         self.proxy_input.setPlaceholderText("ip:port:login:pass")
         self.proxy_input.setEnabled(False)
 
+        self.user_agent_input = QLineEdit()
+        self.user_agent_input.setPlaceholderText("User Agent (оставьте пустым для авто-генерации")
+        
+        self.generate_ua_btn = QPushButton("🎲")
+        self.generate_ua_btn.setToolTip("Сгенерировать случайный User Agent")
+        self.generate_ua_btn.setFixedWidth(40)
+        self.generate_ua_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.generate_ua_btn.clicked.connect(self.generate_user_agent)
+        self.generate_ua_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3e4042;
+                color: white;
+                border: 1px solid #5c6370;
+                border-radius: 4px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #4b5263;
+            }
+        """)
+
         self.test_ip_checkbox = QCheckBox("Проверить IP перед запуском")
 
         # Connect signals
@@ -69,8 +87,27 @@ class ProfileCreationDialog(QDialog):
         # Pre-fill form if editing
         if editing_profile:
             self.load_profile_data(editing_profile)
+        else:
+            # Generate UA for new profile automatically
+            self.generate_user_agent()
 
         self.setup_ui()
+
+    def generate_user_agent(self):
+        """Generate a random modern User Agent"""
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+        ]
+        ua = random.choice(user_agents)
+        self.user_agent_input.setText(ua)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -90,7 +127,7 @@ class ProfileCreationDialog(QDialog):
         layout.addLayout(info_layout)
 
         # Connection Settings Group
-        conn_group = QGroupBox("Настройки сети")
+        conn_group = QGroupBox("Настройки")
         conn_layout = QVBoxLayout(conn_group)
         conn_layout.setContentsMargins(15, 20, 15, 15)
         conn_layout.setSpacing(15)
@@ -105,6 +142,13 @@ class ProfileCreationDialog(QDialog):
         # Proxy String
         conn_layout.addWidget(QLabel("Данные PROXY"))
         conn_layout.addWidget(self.proxy_input)
+
+        # User Agent
+        conn_layout.addWidget(QLabel("User Agent"))
+        ua_layout = QHBoxLayout()
+        ua_layout.addWidget(self.user_agent_input)
+        ua_layout.addWidget(self.generate_ua_btn)
+        conn_layout.addLayout(ua_layout)
 
         # Test IP Checkbox
         conn_layout.addWidget(self.test_ip_checkbox)
@@ -164,6 +208,9 @@ class ProfileCreationDialog(QDialog):
             self.proxy_input.clear()
             self.proxy_input.setEnabled(False)
 
+        # Set User Agent
+        self.user_agent_input.setText(profile.get('user_agent', ''))
+
         # Set test IP checkbox
         self.test_ip_checkbox.setChecked(profile.get('test_ip', False))
 
@@ -174,12 +221,14 @@ class ProfileCreationDialog(QDialog):
             raise ValueError("Введите название профиля!")
 
         proxy = self.proxy_input.text().strip() if self.proxy_radio.isChecked() else None
+        user_agent = self.user_agent_input.text().strip() or None
         test_ip = self.test_ip_checkbox.isChecked()
         profile_type = self.profile_type_combo.currentText()
 
         return {
             "name": name,
             "proxy": proxy,
+            "user_agent": user_agent,
             "test_ip": test_ip,
             "type": profile_type
         }
@@ -499,13 +548,14 @@ class ProfilesTab(QWidget):
             return
 
         proxy = profile.get('proxy') or "None"
+        user_agent = profile.get('user_agent')
 
         if self.main_window.process_manager.is_running(name):
              QMessageBox.information(self, "Инфо", f"Профиль '{name}' уже запущен!")
              self.refresh_lists() # Refresh UI just in case
              return
 
-        success, msg = self.main_window.process_manager.start_profile(name, proxy)
+        success, msg = self.main_window.process_manager.start_profile(name, proxy, user_agent=user_agent)
         if success:
             self.main_window.log(f"🚀 Запущен профиль: {name}")
             # Sync status to database/manager

@@ -17,6 +17,7 @@ from automation.unfollow.session import unfollow_usernames
 from automation.approvefollow.session import approve_follow_requests
 from automation.messaging.session import send_messages
 from supabase.instagram_accounts_client import InstagramAccountsClient, InstagramAccountsError
+from supabase.profiles_client import SupabaseProfilesClient
 
 CTRL_BREAK = getattr(signal, "CTRL_BREAK_EVENT", None)
 IS_WINDOWS = os.name == "nt"
@@ -72,6 +73,7 @@ class InstagramScrollingWorker(QThread):
         self.profile_names = profile_names
         self.running = True
         self.client = InstagramAccountsClient()
+        self.profiles_client = SupabaseProfilesClient()
         self.current_context = None # Keep track of browser context to close it properly
         
     def run(self):
@@ -130,6 +132,15 @@ class InstagramScrollingWorker(QThread):
         if proxy_str and proxy_str.lower() not in ["none", ""]:
             proxy_config = parse_proxy_string(proxy_str)
 
+        # Get User Agent from database
+        user_agent = None
+        try:
+            profile_data = self.profiles_client.get_profile_by_name(profile_name)
+            if profile_data:
+                user_agent = profile_data.get('user_agent')
+        except Exception as e:
+            self.log(f"⚠️ Failed to fetch user agent: {e}")
+
         try:
             self.log(f"🚀 Launching browser for @{profile_name}...")
             
@@ -143,6 +154,7 @@ class InstagramScrollingWorker(QThread):
                 os="windows",
                 window=(1280, 800),
                 humanize=True,
+                user_agent=user_agent,
             ) as context:
                 self.current_context = context
                 if len(context.pages) > 0:
@@ -227,6 +239,11 @@ class InstagramScrollingWorker(QThread):
                 'like_chance': self.config.like_chance if mode == "feed" else self.config.reels_like_chance,
                 'comment_chance': self.config.comment_chance,
                 'follow_chance': self.config.follow_chance if mode == "feed" else self.config.reels_follow_chance,
+                'reels_skip_chance': self.config.reels_skip_chance,
+                'reels_skip_min_time': self.config.reels_skip_min_time,
+                'reels_skip_max_time': self.config.reels_skip_max_time,
+                'reels_normal_min_time': self.config.reels_normal_min_time,
+                'reels_normal_max_time': self.config.reels_normal_max_time,
                 'carousel_watch_chance': self.config.carousel_watch_chance,
                 'carousel_max_slides': self.config.carousel_max_slides,
                 'watch_stories': self.config.watch_stories,
@@ -234,12 +251,40 @@ class InstagramScrollingWorker(QThread):
             }
 
             if mode == 'feed':
-                scroll_feed(page, duration, config)
+                scroll_feed(page, duration, config, should_stop=lambda: not self.running)
             elif mode == 'reels':
-                scroll_reels(page, duration, config)
+                scroll_reels(page, duration, config, should_stop=lambda: not self.running)
                 
         except Exception as e:
             self.log(f"⚠️ Scrolling error: {e}")
+
+    def _run_follow(self, page, account):
+        try:
+            self.log("➕ Running Follow...")
+            all_profiles = self.client.get_profiles_with_assigned_accounts()
+            profile_data = next((p for p in all_profiles if p.get("name") == account.username), None)
+            
+            if not profile_data:
+                self.log("⚠️ Could not find profile data.")
+                return
+
+            profile_id = profile_data.get("profile_id")
+            usernames = self.client.get_accounts_to_follow(profile_id)
+            
+            if not usernames:
+                self.log("ℹ️ No usernames to follow.")
+                return
+
+            follow_usernames(
+                profile_name=account.username,
+                proxy_string=account.proxy or "",
+                usernames=usernames,
+                log=self.log,
+                should_stop=lambda: not self.running,
+                page=page
+            )
+        except Exception as e:
+            self.log(f"⚠️ Follow error: {e}")
 
     def _run_unfollow_only(self, page, account):
         try:
@@ -341,6 +386,9 @@ class OnboardingWorker(QThread):
         """Onboard accounts"""
         self.log(f"🎯 Starting onboarding for {len(self.accounts)} accounts...")
         
+        # Helper client for fetching UA
+        profiles_client = SupabaseProfilesClient()
+
         try:
             for i, account in enumerate(self.accounts, 1):
                 if not self.running:
@@ -352,12 +400,24 @@ class OnboardingWorker(QThread):
                 profile_name = account.username
                 proxy_str = account.proxy or "None"
                 
+                # Fetch UA
+                user_agent = None
+                try:
+                    p_data = profiles_client.get_profile_by_name(profile_name)
+                    if p_data:
+                        user_agent = p_data.get('user_agent')
+                except Exception:
+                    pass
+
                 cmd = [
                     sys.executable, "launcher.py", 
                     "--name", profile_name, 
                     "--proxy", proxy_str,
                     "--action", "onboard"
                 ]
+                
+                if user_agent:
+                    cmd.extend(["--user-agent", user_agent])
                 
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW

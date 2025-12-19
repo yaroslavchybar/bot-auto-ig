@@ -19,6 +19,7 @@ def unfollow_usernames(
     delay_range: Tuple[int, int] = (10, 30),
     on_success: Optional[Callable[[str], None]] = None,
     page: Optional[object] = None,
+    user_agent: Optional[str] = None,
 ):
     """
     Open Camoufox profile, navigate to own profile -> Following -> Search & Unfollow.
@@ -214,6 +215,7 @@ def unfollow_usernames(
         os="windows",
         window=(1280, 800),
         humanize=True,
+        user_agent=user_agent,
     ) as context:
         page = context.pages[0] if context.pages else context.new_page()
         _run_unfollow_logic(page)

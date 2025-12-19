@@ -9,14 +9,14 @@ from PyQt6.QtCore import Qt
 from core.profile_manager import ProfileManager
 from core.process_manager import ProcessManager
 from gui.tabs.profiles_tab import ProfilesTab
-from gui.tabs.instagram_tab import InstagramTab
+from gui.tabs.instagram import InstagramTab
 from gui.styles import DARK_STYLE
 
 class AntidetectApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Antidetect Browser Automation")
-        self.resize(1000, 800)
+        self.resize(1000, 700)
         
         # Managers
         self.profile_manager = ProfileManager()

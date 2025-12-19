@@ -1,50 +1,34 @@
 import json
 from pathlib import Path
-from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QLabel,
-    QGroupBox, QMessageBox, QScrollArea, QFrame, QRadioButton, QButtonGroup,
-    QLineEdit, QComboBox, QTextEdit, QCheckBox, QGridLayout, QSizePolicy,
-    QDialog, QListWidget, QAbstractItemView
-)
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QColor, QIcon
 from datetime import datetime
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QCheckBox, QComboBox, QTextEdit, QGridLayout, QFrame,
+    QScrollArea, QListWidget, QAbstractItemView, QMessageBox
+)
+from PyQt6.QtCore import Qt
 from core.models import ThreadsAccount, ScrollingConfig
 from gui.workers.instagram_worker import InstagramScrollingWorker
 from gui.workers.follow_worker import AutoFollowWorker
 from gui.workers.unfollow_worker import UnfollowWorker
 from gui.styles import (
-    CARD_STYLE, STATUS_RUNNING, STATUS_IDLE, STATUS_STOPPED,
-    BUTTON_STYLE, ACTION_BTN_STYLE, PRIMARY_BTN_STYLE, INPUT_STYLE,
-    CHECKBOX_STYLE, DIALOG_STYLE
+    CARD_STYLE, ACTION_BTN_STYLE, INPUT_STYLE,
+    CHECKBOX_STYLE, BUTTON_STYLE
 )
+from .components import ToggleHeader, create_header_input
+from .settings import SettingsMixin
+from .dialogs import DialogsMixin
 
-class SettingsDialog(QDialog):
-    def __init__(self, title, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setStyleSheet(DIALOG_STYLE)
-        self.setModal(True)
-        self.layout = QVBoxLayout(self)
-        self.layout.setSpacing(15)
-        self.layout.setContentsMargins(20, 20, 20, 20)
-        
-    def add_widget(self, widget):
-        self.layout.addWidget(widget)
-        
-    def add_layout(self, layout):
-        self.layout.addLayout(layout)
-
-class InstagramTab(QWidget):
+class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
         self.worker = None
         self.follow_worker = None
         self.unfollow_worker = None
-        self.settings_path = Path(__file__).resolve().parents[2] / "instagram_settings.json"
-        self.follow_settings_path = Path(__file__).resolve().parents[2] / "follow_settings.json"
-        self.unfollow_settings_path = Path(__file__).resolve().parents[2] / "unfollow_settings.json"
+        # Adjust path to point to parent of gui (anti root)
+        # gui/tabs/instagram/tab.py -> parents[0]=instagram, [1]=tabs, [2]=gui, [3]=anti
+        self.settings_path = Path(__file__).resolve().parents[3] / "instagram_settings.json"
         self.loading_settings = False
         self.is_running = False
         
@@ -93,21 +77,6 @@ class InstagramTab(QWidget):
         settings_layout = QHBoxLayout(settings_container)
         settings_layout.setContentsMargins(0, 0, 0, 0)
         settings_layout.setSpacing(15)
-
-        # Helper to create compact header inputs
-        def create_header_input(label_text, default_val, width=50):
-            container = QWidget()
-            layout = QVBoxLayout(container)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(2)
-            lbl = QLabel(label_text)
-            lbl.setStyleSheet("color: #abb2bf; font-size: 11px; font-weight: bold;")
-            inp = QLineEdit(default_val)
-            inp.setStyleSheet(INPUT_STYLE + "QLineEdit { background: transparent; padding: 4px; font-size: 12px; }")
-            inp.setFixedWidth(width)
-            layout.addWidget(lbl)
-            layout.addWidget(inp)
-            return container, inp
 
         # Cycle Interval
         cycle_widget, self.scrolling_cycle_input = create_header_input("🕓 Цикл (мин)", "11", 60)
@@ -165,13 +134,16 @@ class InstagramTab(QWidget):
         target_layout.setContentsMargins(20, 20, 20, 20)
         target_layout.setSpacing(15)
 
+        # Content Wrapper
+        self.target_content = QWidget()
+        t_grid = QGridLayout(self.target_content)
+        t_grid.setContentsMargins(0, 0, 0, 0)
+
         # Header
-        t_header = QLabel("🎯 Цель и Активность")
-        t_header.setStyleSheet("color: #e0e0e0; font-weight: bold; font-size: 16px; border: none;")
-        target_layout.addWidget(t_header)
+        self.target_toggle = ToggleHeader("🎯 Цель и Активность", self.target_content)
+        target_layout.addWidget(self.target_toggle)
 
         # Content Grid
-        t_grid = QGridLayout()
         t_grid.setHorizontalSpacing(30)
         t_grid.setVerticalSpacing(15)
 
@@ -310,7 +282,7 @@ class InstagramTab(QWidget):
 
         t_grid.addLayout(checks_layout_2, 2, 1)
 
-        target_layout.addLayout(t_grid)
+        target_layout.addWidget(self.target_content)
         content_layout.addWidget(target_card)
 
         # --- SECTION: Execution Order ---
@@ -320,13 +292,17 @@ class InstagramTab(QWidget):
         order_layout.setContentsMargins(20, 20, 20, 20)
         order_layout.setSpacing(15)
 
-        o_header = QLabel("📋 Порядок действий")
-        o_header.setStyleSheet("color: #e0e0e0; font-weight: bold; font-size: 16px; border: none;")
-        order_layout.addWidget(o_header)
+        # Content Wrapper
+        self.order_content = QWidget()
+        order_content_layout = QVBoxLayout(self.order_content)
+        order_content_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Header
+        self.order_toggle = ToggleHeader("📋 Порядок действий", self.order_content)
+        order_layout.addWidget(self.order_toggle)
 
         # Controls for adding/removing actions
         order_controls = QHBoxLayout()
-        
         self.action_combo = QComboBox()
         self.action_combo.addItems(["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"])
         self.action_combo.setStyleSheet(INPUT_STYLE + "padding: 5px;")
@@ -344,7 +320,7 @@ class InstagramTab(QWidget):
         order_controls.addWidget(self.action_combo)
         order_controls.addWidget(self.add_action_btn)
         order_controls.addWidget(self.remove_action_btn)
-        order_layout.addLayout(order_controls)
+        order_content_layout.addLayout(order_controls)
 
         self.action_order_list = QListWidget()
         self.action_order_list.setStyleSheet("""
@@ -375,7 +351,8 @@ class InstagramTab(QWidget):
         # Connect signal to save settings on reorder
         self.action_order_list.model().rowsMoved.connect(self.save_settings)
 
-        order_layout.addWidget(self.action_order_list)
+        order_content_layout.addWidget(self.action_order_list)
+        order_layout.addWidget(self.order_content)
         content_layout.addWidget(order_card)
 
         # Initialize Settings Widgets (and add to Dialogs internally)
@@ -417,41 +394,6 @@ class InstagramTab(QWidget):
         
         main_layout.addWidget(log_frame)
 
-    def update_order_visibility(self):
-        """Show/hide actions in the order list based on enabled checkboxes."""
-        visibility_map = {
-            "Feed Scroll": self.feed_checkbox.isChecked(),
-            "Reels Scroll": self.reels_checkbox.isChecked(),
-            "Follow": self.follow_checkbox.isChecked(),
-            "Unfollow": self.unfollow_checkbox.isChecked(),
-            "Approve Requests": self.approve_checkbox.isChecked(),
-            "Send Messages": self.message_checkbox.isChecked()
-        }
-        
-        # 1. Update List Items
-        for i in range(self.action_order_list.count()):
-            item = self.action_order_list.item(i)
-            action_name = item.text()
-            if action_name in visibility_map:
-                item.setHidden(not visibility_map[action_name])
-                
-        # 2. Update Add Combo
-        current_text = self.action_combo.currentText()
-        self.action_combo.clear()
-        enabled_actions = [name for name, enabled in visibility_map.items() if enabled]
-        if enabled_actions:
-            self.action_combo.addItems(enabled_actions)
-            # Restore selection if possible, else default to first
-            idx = self.action_combo.findText(current_text)
-            if idx >= 0:
-                self.action_combo.setCurrentIndex(idx)
-            else:
-                self.action_combo.setCurrentIndex(0)
-            self.add_action_btn.setEnabled(True)
-        else:
-            self.action_combo.addItem("Нет активных действий")
-            self.add_action_btn.setEnabled(False)
-
     def add_action_to_order(self):
         if not self.add_action_btn.isEnabled():
             return
@@ -466,228 +408,6 @@ class InstagramTab(QWidget):
         if current_row >= 0:
             self.action_order_list.takeItem(current_row)
             self.save_settings()
-
-    def init_settings_widgets(self):
-        """Initialize settings widgets and dialogs, keeping them in memory."""
-        percent_options = [f"{i}%" for i in range(0, 101, 10)]
-        
-        # --- FEED SETTINGS DIALOG ---
-        self.feed_settings_dialog = SettingsDialog("Настройки ленты", self)
-
-        # Feed Time Range
-        f_time_layout = QHBoxLayout()
-        f_time_layout.addWidget(QLabel("⏱️ Мин-Макс время (мин):"))
-        self.feed_time_min_input = QLineEdit("1")
-        self.feed_time_min_input.setStyleSheet(INPUT_STYLE)
-        self.feed_time_min_input.setFixedWidth(50)
-        self.feed_time_max_input = QLineEdit("3")
-        self.feed_time_max_input.setStyleSheet(INPUT_STYLE)
-        self.feed_time_max_input.setFixedWidth(50)
-        f_time_layout.addWidget(self.feed_time_min_input)
-        f_time_layout.addWidget(QLabel("-"))
-        f_time_layout.addWidget(self.feed_time_max_input)
-        self.feed_settings_dialog.add_layout(f_time_layout)
-
-        # Watch Stories
-        self.watch_stories_checkbox = QCheckBox("Смотреть Stories")
-        self.watch_stories_checkbox.setStyleSheet(CHECKBOX_STYLE)
-        self.watch_stories_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.feed_settings_dialog.add_widget(self.watch_stories_checkbox)
-
-        # Feed Likes
-        f_likes_layout = QHBoxLayout()
-        f_likes_layout.addWidget(QLabel("❤️ Лайки:"))
-        self.feed_likes_chance_slider = QComboBox()
-        self.feed_likes_chance_slider.addItems(percent_options)
-        self.feed_likes_chance_slider.setStyleSheet(INPUT_STYLE)
-        self.feed_likes_chance_slider.setFixedWidth(80)
-        f_likes_layout.addWidget(self.feed_likes_chance_slider)
-        self.feed_settings_dialog.add_layout(f_likes_layout)
-
-        # Feed Follows
-        f_follows_layout = QHBoxLayout()
-        f_follows_layout.addWidget(QLabel("➕ Подписки:"))
-        self.feed_follows_chance_slider = QComboBox()
-        self.feed_follows_chance_slider.addItems(percent_options)
-        self.feed_follows_chance_slider.setStyleSheet(INPUT_STYLE)
-        self.feed_follows_chance_slider.setFixedWidth(80)
-        f_follows_layout.addWidget(self.feed_follows_chance_slider)
-        self.feed_settings_dialog.add_layout(f_follows_layout)
-
-        # Carousel Watch
-        f_carousel_layout = QHBoxLayout()
-        f_carousel_layout.addWidget(QLabel("🖼️ Карусели:"))
-        self.feed_carousel_chance_slider = QComboBox()
-        self.feed_carousel_chance_slider.addItems(percent_options)
-        self.feed_carousel_chance_slider.setStyleSheet(INPUT_STYLE)
-        self.feed_carousel_chance_slider.setFixedWidth(80)
-        f_carousel_layout.addWidget(self.feed_carousel_chance_slider)
-        self.feed_settings_dialog.add_layout(f_carousel_layout)
-
-        # Carousel Max
-        f_cmax_layout = QHBoxLayout()
-        f_cmax_layout.addWidget(QLabel("   ↳ Макс слайдов:"))
-        self.feed_carousel_max_input = QLineEdit("3")
-        self.feed_carousel_max_input.setStyleSheet(INPUT_STYLE)
-        self.feed_carousel_max_input.setFixedWidth(60)
-        f_cmax_layout.addWidget(self.feed_carousel_max_input)
-        self.feed_settings_dialog.add_layout(f_cmax_layout)
-
-        # Stories Max
-        f_smax_layout = QHBoxLayout()
-        f_smax_layout.addWidget(QLabel("👀 Макс сторис:"))
-        self.feed_stories_max_input = QLineEdit("3")
-        self.feed_stories_max_input.setStyleSheet(INPUT_STYLE)
-        self.feed_stories_max_input.setFixedWidth(60)
-        f_smax_layout.addWidget(self.feed_stories_max_input)
-        self.feed_settings_dialog.add_layout(f_smax_layout)
-        
-        # --- REELS SETTINGS DIALOG ---
-        self.reels_settings_dialog = SettingsDialog("Настройки Reels", self)
-
-        # Reels Time Range
-        r_time_layout = QHBoxLayout()
-        r_time_layout.addWidget(QLabel("⏱️ Мин-Макс время (мин):"))
-        self.reels_time_min_input = QLineEdit("1")
-        self.reels_time_min_input.setStyleSheet(INPUT_STYLE)
-        self.reels_time_min_input.setFixedWidth(50)
-        self.reels_time_max_input = QLineEdit("3")
-        self.reels_time_max_input.setStyleSheet(INPUT_STYLE)
-        self.reels_time_max_input.setFixedWidth(50)
-        r_time_layout.addWidget(self.reels_time_min_input)
-        r_time_layout.addWidget(QLabel("-"))
-        r_time_layout.addWidget(self.reels_time_max_input)
-        self.reels_settings_dialog.add_layout(r_time_layout)
-
-        # Reels Likes
-        r_likes_layout = QHBoxLayout()
-        r_likes_layout.addWidget(QLabel("❤️ Лайки (Reels):"))
-        self.reels_likes_chance_slider = QComboBox()
-        self.reels_likes_chance_slider.addItems(percent_options)
-        self.reels_likes_chance_slider.setStyleSheet(INPUT_STYLE)
-        self.reels_likes_chance_slider.setFixedWidth(80)
-        r_likes_layout.addWidget(self.reels_likes_chance_slider)
-        self.reels_settings_dialog.add_layout(r_likes_layout)
-
-        # Reels Follows
-        r_follows_layout = QHBoxLayout()
-        r_follows_layout.addWidget(QLabel("➕ Подписки (Reels):"))
-        self.reels_follows_chance_slider = QComboBox()
-        self.reels_follows_chance_slider.addItems(percent_options)
-        self.reels_follows_chance_slider.setStyleSheet(INPUT_STYLE)
-        self.reels_follows_chance_slider.setFixedWidth(80)
-        r_follows_layout.addWidget(self.reels_follows_chance_slider)
-        self.reels_settings_dialog.add_layout(r_follows_layout)
-
-        # --- FOLLOW SETTINGS DIALOG ---
-        self.follow_settings_dialog = SettingsDialog("Настройки подписки", self)
-        
-        # Highlights
-        h_row = QHBoxLayout()
-        h_row.addWidget(QLabel("Хайлайты на аккаунт:"))
-        self.highlights_min_input = QLineEdit("2")
-        self.highlights_min_input.setStyleSheet(INPUT_STYLE)
-        self.highlights_min_input.setFixedWidth(50)
-        self.highlights_max_input = QLineEdit("4")
-        self.highlights_max_input.setStyleSheet(INPUT_STYLE)
-        self.highlights_max_input.setFixedWidth(50)
-        h_row.addWidget(self.highlights_min_input)
-        h_row.addWidget(QLabel("-"))
-        h_row.addWidget(self.highlights_max_input)
-        self.follow_settings_dialog.add_layout(h_row)
-
-        # Likes
-        l_row = QHBoxLayout()
-        l_row.addWidget(QLabel("Лайков на аккаунт:"))
-        self.likes_min_input = QLineEdit("1")
-        self.likes_min_input.setStyleSheet(INPUT_STYLE)
-        self.likes_min_input.setFixedWidth(50)
-        self.likes_max_input = QLineEdit("2")
-        self.likes_max_input.setStyleSheet(INPUT_STYLE)
-        self.likes_max_input.setFixedWidth(50)
-        l_row.addWidget(self.likes_min_input)
-        l_row.addWidget(QLabel("-"))
-        l_row.addWidget(self.likes_max_input)
-        self.follow_settings_dialog.add_layout(l_row)
-
-        # Follow Limit
-        fl_row = QHBoxLayout()
-        fl_row.addWidget(QLabel("Макс. подписок у цели:"))
-        self.following_limit_input = QLineEdit("3000")
-        self.following_limit_input.setStyleSheet(INPUT_STYLE)
-        self.following_limit_input.setFixedWidth(80)
-        fl_row.addWidget(self.following_limit_input)
-        self.follow_settings_dialog.add_layout(fl_row)
-
-        # --- UNFOLLOW SETTINGS DIALOG ---
-        self.unfollow_settings_dialog = SettingsDialog("Настройки отписки", self)
-        
-        uf_delay_layout = QHBoxLayout()
-        uf_delay_layout.addWidget(QLabel("⏱️ Задержка (сек):"))
-        self.unfollow_min_delay_input = QLineEdit("10")
-        self.unfollow_min_delay_input.setStyleSheet(INPUT_STYLE)
-        self.unfollow_min_delay_input.setFixedWidth(50)
-        self.unfollow_max_delay_input = QLineEdit("30")
-        self.unfollow_max_delay_input.setStyleSheet(INPUT_STYLE)
-        self.unfollow_max_delay_input.setFixedWidth(50)
-        uf_delay_layout.addWidget(self.unfollow_min_delay_input)
-        uf_delay_layout.addWidget(QLabel("-"))
-        uf_delay_layout.addWidget(self.unfollow_max_delay_input)
-        self.unfollow_settings_dialog.add_layout(uf_delay_layout)
-
-        # --- APPROVE SETTINGS DIALOG ---
-        self.approve_settings_dialog = SettingsDialog("Настройки подтверждения", self)
-        self.approve_settings_dialog.add_widget(QLabel("Нет доступных настроек для подтверждения заявок.\nПроцесс выполняется автоматически."))
-
-        # --- MESSAGE SETTINGS DIALOG ---
-        self.message_settings_dialog = SettingsDialog("Настройки рассылки", self)
-        
-        self.message_settings_dialog.add_widget(QLabel("Текст сообщения (message.txt):"))
-        self.message_text_edit = QTextEdit()
-        self.message_text_edit.setStyleSheet(INPUT_STYLE)
-        self.message_text_edit.setMinimumHeight(150)
-        self.message_settings_dialog.add_widget(self.message_text_edit)
-        
-        save_msg_btn = QPushButton("💾 Сохранить текст")
-        save_msg_btn.setStyleSheet(PRIMARY_BTN_STYLE)
-        save_msg_btn.clicked.connect(self.save_message_text)
-        self.message_settings_dialog.add_widget(save_msg_btn)
-
-    def open_feed_settings(self):
-        self.feed_settings_dialog.exec()
-
-    def open_reels_settings(self):
-        self.reels_settings_dialog.exec()
-
-    def open_follow_settings(self):
-        self.follow_settings_dialog.exec()
-
-    def open_unfollow_settings(self):
-        self.unfollow_settings_dialog.exec()
-
-    def open_approve_settings(self):
-        self.approve_settings_dialog.exec()
-
-    def open_message_settings(self):
-        # Load message.txt content when opening
-        try:
-            msg_path = Path("message.txt")
-            if msg_path.exists():
-                content = msg_path.read_text(encoding="utf-8")
-                self.message_text_edit.setPlainText(content)
-            else:
-                self.message_text_edit.setPlainText("")
-        except Exception as e:
-            self.log(f"Ошибка чтения message.txt: {e}")
-        self.message_settings_dialog.exec()
-        
-    def save_message_text(self):
-        try:
-            content = self.message_text_edit.toPlainText()
-            Path("message.txt").write_text(content, encoding="utf-8")
-            QMessageBox.information(self, "Успешно", "Текст сообщения сохранен в message.txt")
-        except Exception as e:
-            QMessageBox.critical(self, "Ошибка", f"Не удалось сохранить message.txt: {e}")
 
     def log(self, message):
         """Add message to Threads log"""
@@ -846,42 +566,27 @@ class InstagramTab(QWidget):
                 feed_follow_chance = int(self.feed_follows_chance_slider.currentText().replace('%', ''))
                 reels_like_chance = int(self.reels_likes_chance_slider.currentText().replace('%', ''))
                 reels_follow_chance = int(self.reels_follows_chance_slider.currentText().replace('%', ''))
+                reels_skip_chance = int(self.reels_skip_chance_slider.currentText().replace('%', ''))
                 
-                try:
-                    feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
-                except:
-                    feed_carousel_max_slides = 3
-                try:
-                    feed_stories_max = int(self.feed_stories_max_input.text().split()[0])
-                except:
-                    feed_stories_max = 3
+                reels_skip_min = float(self.reels_skip_min_input.text().split()[0])
+                reels_skip_max = float(self.reels_skip_max_input.text().split()[0])
+                reels_normal_min = float(self.reels_normal_min_input.text().split()[0])
+                reels_normal_max = float(self.reels_normal_max_input.text().split()[0])
+
+                feed_min_time = int(self.feed_time_min_input.text().split()[0])
+                feed_max_time = int(self.feed_time_max_input.text().split()[0])
+                reels_min_time = int(self.reels_time_min_input.text().split()[0])
+                reels_max_time = int(self.reels_time_max_input.text().split()[0])
                 
-                # Get time ranges
-                try:
-                    feed_min_time = int(self.feed_time_min_input.text().split()[0])
-                except:
-                    feed_min_time = 1
-                try:
-                    feed_max_time = int(self.feed_time_max_input.text().split()[0])
-                except:
-                    feed_max_time = 3
-                try:
-                    reels_min_time = int(self.reels_time_min_input.text().split()[0])
-                except:
-                    reels_min_time = 1
-                try:
-                    reels_max_time = int(self.reels_time_max_input.text().split()[0])
-                except:
-                    reels_max_time = 3
+                cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
+                parallel_profiles = int(self.parallel_profiles_input.text().split()[0])
                 
-                try:
-                    cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
-                except:
-                    cycle_interval = 11
-                
-                # Get action order
+                feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
+                feed_stories_max = int(self.feed_stories_max_input.text().split()[0])
+
+                # Collect action order from list
                 action_order = [self.action_order_list.item(i).text() for i in range(self.action_order_list.count())]
-                
+
                 config = ScrollingConfig(
                     use_private_profiles=True,
                     use_threads_profiles=False,
@@ -891,6 +596,11 @@ class InstagramTab(QWidget):
                     follow_chance=feed_follow_chance,
                     reels_like_chance=reels_like_chance,
                     reels_follow_chance=reels_follow_chance,
+                    reels_skip_chance=reels_skip_chance,
+                    reels_skip_min_time=reels_skip_min,
+                    reels_skip_max_time=reels_skip_max,
+                    reels_normal_min_time=reels_normal_min,
+                    reels_normal_max_time=reels_normal_max,
                     min_time_minutes=feed_min_time,
                     max_time_minutes=feed_max_time,
                     feed_min_time_minutes=feed_min_time,
@@ -1002,239 +712,3 @@ class InstagramTab(QWidget):
             
         self.action_btn.setText("Останавливаем...")
         self.action_btn.setEnabled(False)
-
-    def connect_settings_signals(self):
-        """Persist settings whenever user changes controls."""
-        for combo in [
-            self.feed_likes_chance_slider,
-            self.feed_carousel_chance_slider,
-            self.feed_follows_chance_slider,
-            self.reels_likes_chance_slider,
-            self.reels_follows_chance_slider,
-        ]:
-            combo.currentIndexChanged.connect(self.save_settings)
-
-        for checkbox in [
-            self.feed_checkbox,
-            self.reels_checkbox,
-            self.follow_checkbox,
-            self.watch_stories_checkbox,
-            self.unfollow_checkbox,
-            self.approve_checkbox,
-            self.message_checkbox,
-        ]:
-            checkbox.toggled.connect(self.save_settings)
-            checkbox.toggled.connect(self.update_order_visibility)
-
-        for line_edit in [
-            self.feed_time_min_input,
-            self.feed_time_max_input,
-            self.reels_time_min_input,
-            self.reels_time_max_input,
-            self.scrolling_cycle_input,
-            self.parallel_profiles_input,
-            self.feed_carousel_max_input,
-            self.feed_stories_max_input,
-            self.highlights_min_input,
-            self.highlights_max_input,
-            self.likes_min_input,
-            self.likes_max_input,
-            self.following_limit_input,
-            self.unfollow_min_delay_input,
-            self.unfollow_max_delay_input,
-        ]:
-            line_edit.editingFinished.connect(self.save_settings)
-
-    def load_settings(self):
-        """Load saved UI settings from disk."""
-        defaults = {
-            "use_private_profiles": False,
-            "like_chance": 10,
-            "carousel_watch_chance": 0,
-            "follow_chance": 50,
-            "reels_like_chance": 10,
-            "reels_follow_chance": 50,
-            "carousel_max_slides": 3,
-            "stories_max": 3,
-            "min_time_minutes": 1,
-            "max_time_minutes": 3,
-            "feed_min_time_minutes": 1,
-            "feed_max_time_minutes": 3,
-            "reels_min_time_minutes": 1,
-            "reels_max_time_minutes": 3,
-            "cycle_interval_minutes": 11,
-            "enable_feed": True,
-            "enable_reels": False,
-            "enable_follow": False,
-            "parallel_profiles": 1,
-            "watch_stories": True,
-        }
-
-        self.loading_settings = True
-        data = defaults.copy()
-
-        if self.settings_path.exists():
-            try:
-                loaded = json.loads(self.settings_path.read_text(encoding="utf-8"))
-                if isinstance(loaded, dict):
-                    data.update(loaded)
-            except Exception as e:
-                print(f"Failed to load Instagram settings: {e}")
-
-        def set_combo_value(combo: QComboBox, value: int):
-            target = f"{value}%"
-            idx = combo.findText(target)
-            if idx != -1:
-                combo.setCurrentIndex(idx)
-
-        set_combo_value(self.feed_likes_chance_slider, data.get("like_chance", defaults["like_chance"]))
-        set_combo_value(self.feed_carousel_chance_slider, data.get("carousel_watch_chance", defaults["carousel_watch_chance"]))
-        set_combo_value(self.feed_follows_chance_slider, data.get("follow_chance", defaults["follow_chance"]))
-        set_combo_value(self.reels_likes_chance_slider, data.get("reels_like_chance", defaults["reels_like_chance"]))
-        set_combo_value(self.reels_follows_chance_slider, data.get("reels_follow_chance", defaults["reels_follow_chance"]))
-
-        self.feed_checkbox.setChecked(data.get("enable_feed", True))
-        self.reels_checkbox.setChecked(data.get("enable_reels", False))
-        self.follow_checkbox.setChecked(data.get("enable_follow", False))
-        self.watch_stories_checkbox.setChecked(data.get("watch_stories", True))
-
-        self.feed_time_min_input.setText(str(data.get('feed_min_time_minutes', defaults['feed_min_time_minutes'])))
-        self.feed_time_max_input.setText(str(data.get('feed_max_time_minutes', defaults['feed_max_time_minutes'])))
-        self.reels_time_min_input.setText(str(data.get('reels_min_time_minutes', defaults['reels_min_time_minutes'])))
-        self.reels_time_max_input.setText(str(data.get('reels_max_time_minutes', defaults['reels_max_time_minutes'])))
-        self.scrolling_cycle_input.setText(f"{data.get('cycle_interval_minutes', defaults['cycle_interval_minutes'])}")
-        self.parallel_profiles_input.setText(str(data.get("parallel_profiles", defaults["parallel_profiles"])))
-        self.feed_carousel_max_input.setText(str(data.get("carousel_max_slides", defaults["carousel_max_slides"])))
-        self.feed_stories_max_input.setText(str(data.get("stories_max", defaults["stories_max"])))
-
-        # Load Follow Settings
-        follow_defaults = {
-            "highlights_min": 2,
-            "highlights_max": 4,
-            "likes_min": 1,
-            "likes_max": 2,
-            "following_limit": 3000,
-        }
-        follow_data = follow_defaults.copy()
-        if self.follow_settings_path.exists():
-             try:
-                loaded = json.loads(self.follow_settings_path.read_text(encoding="utf-8"))
-                if isinstance(loaded, dict):
-                    follow_data.update(loaded)
-             except Exception as e:
-                print(f"Failed to load Follow settings: {e}")
-        
-        self.highlights_min_input.setText(str(follow_data.get("highlights_min", follow_defaults["highlights_min"])))
-        self.highlights_max_input.setText(str(follow_data.get("highlights_max", follow_defaults["highlights_max"])))
-        self.likes_min_input.setText(str(follow_data.get("likes_min", follow_defaults["likes_min"])))
-        self.likes_max_input.setText(str(follow_data.get("likes_max", follow_defaults["likes_max"])))
-        self.following_limit_input.setText(str(follow_data.get("following_limit", follow_defaults["following_limit"])))
-
-        # Load Unfollow Settings
-        unfollow_defaults = {
-            "min_delay": 10,
-            "max_delay": 30,
-            "do_unfollow": False,
-            "do_approve": False,
-            "do_message": False
-        }
-        unfollow_data = unfollow_defaults.copy()
-        if self.unfollow_settings_path.exists():
-            try:
-                loaded = json.loads(self.unfollow_settings_path.read_text(encoding="utf-8"))
-                if isinstance(loaded, dict):
-                    unfollow_data.update(loaded)
-            except Exception as e:
-                print(f"Failed to load Unfollow settings: {e}")
-
-        self.unfollow_checkbox.setChecked(unfollow_data.get("do_unfollow", False))
-        self.approve_checkbox.setChecked(unfollow_data.get("do_approve", False))
-        self.message_checkbox.setChecked(unfollow_data.get("do_message", False))
-        self.unfollow_min_delay_input.setText(str(unfollow_data.get("min_delay", 10)))
-        self.unfollow_max_delay_input.setText(str(unfollow_data.get("max_delay", 30)))
-
-        # Load Action Order
-        saved_order = data.get("action_order", [])
-        self.action_order_list.clear()
-        
-        if saved_order:
-            self.action_order_list.addItems(saved_order)
-        else:
-            # Default fallback if no saved order
-            default_actions = ["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
-            self.action_order_list.addItems(default_actions)
-
-        self.update_order_visibility()
-        self.loading_settings = False
-
-    def save_settings(self):
-        """Save current UI settings to disk."""
-        if self.loading_settings:
-            return
-
-        def parse_int_field(field: QLineEdit, default: int) -> int:
-            try:
-                return int(field.text().split()[0])
-            except Exception:
-                return default
-
-        # Collect action order
-        action_order = [self.action_order_list.item(i).text() for i in range(self.action_order_list.count())]
-
-        payload = {
-            "use_private_profiles": True,  # Always use private profiles now
-            "action_order": action_order,
-            "like_chance": int(self.feed_likes_chance_slider.currentText().replace('%', '')),
-            "carousel_watch_chance": int(self.feed_carousel_chance_slider.currentText().replace('%', '')),
-            "follow_chance": int(self.feed_follows_chance_slider.currentText().replace('%', '')),
-            "reels_like_chance": int(self.reels_likes_chance_slider.currentText().replace('%', '')),
-            "reels_follow_chance": int(self.reels_follows_chance_slider.currentText().replace('%', '')),
-            "carousel_max_slides": parse_int_field(self.feed_carousel_max_input, 3),
-            "stories_max": parse_int_field(self.feed_stories_max_input, 3),
-            "min_time_minutes": parse_int_field(self.feed_time_min_input, 1),
-            "max_time_minutes": parse_int_field(self.feed_time_max_input, 3),
-            "feed_min_time_minutes": parse_int_field(self.feed_time_min_input, 1),
-            "feed_max_time_minutes": parse_int_field(self.feed_time_max_input, 3),
-            "reels_min_time_minutes": parse_int_field(self.reels_time_min_input, 1),
-            "reels_max_time_minutes": parse_int_field(self.reels_time_max_input, 3),
-            "cycle_interval_minutes": parse_int_field(self.scrolling_cycle_input, 11),
-            "enable_feed": self.feed_checkbox.isChecked(),
-            "enable_reels": self.reels_checkbox.isChecked(),
-            "enable_follow": self.follow_checkbox.isChecked(),
-            "parallel_profiles": parse_int_field(self.parallel_profiles_input, 1),
-            "watch_stories": self.watch_stories_checkbox.isChecked(),
-        }
-
-        try:
-            self.settings_path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            print(f"Failed to save Instagram settings: {e}")
-
-        # Save Follow Settings
-        follow_payload = {
-            "enable_follow": self.follow_checkbox.isChecked(),
-            "highlights_min": parse_int_field(self.highlights_min_input, 2),
-            "highlights_max": parse_int_field(self.highlights_max_input, 4),
-            "likes_min": parse_int_field(self.likes_min_input, 1),
-            "likes_max": parse_int_field(self.likes_max_input, 2),
-            "following_limit": parse_int_field(self.following_limit_input, 3000),
-        }
-
-        try:
-            self.follow_settings_path.write_text(json.dumps(follow_payload, indent=4, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            print(f"Failed to save Follow settings: {e}")
-
-        # Save Unfollow Settings
-        unfollow_payload = {
-            "min_delay": parse_int_field(self.unfollow_min_delay_input, 10),
-            "max_delay": parse_int_field(self.unfollow_max_delay_input, 30),
-            "do_unfollow": self.unfollow_checkbox.isChecked(),
-            "do_approve": self.approve_checkbox.isChecked(),
-            "do_message": self.message_checkbox.isChecked()
-        }
-        
-        try:
-            self.unfollow_settings_path.write_text(json.dumps(unfollow_payload, indent=4, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            print(f"Failed to save Unfollow settings: {e}")

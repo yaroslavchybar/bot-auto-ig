@@ -84,7 +84,8 @@ class AutoFollowWorker(QThread):
             profile_id = profile.get("profile_id")
             profile_name = profile.get("name") or "profile"
             proxy = profile.get("proxy") or "None"
-
+            user_agent = profile.get("user_agent")
+            
             if not profile_id:
                 self.log("⚠️ Пропускаю профиль без profile_id")
                 continue
@@ -145,6 +146,7 @@ class AutoFollowWorker(QThread):
                     },
                     on_success=on_follow_success,
                     on_skip=on_follow_skip,
+                    user_agent=user_agent,
                 )
             except Exception as err:
                 self.log(f"❌ Ошибка сессии для профиля {profile_name}: {err}")
