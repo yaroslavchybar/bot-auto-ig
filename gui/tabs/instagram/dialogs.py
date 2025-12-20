@@ -2,11 +2,11 @@ import json
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QCheckBox, QLineEdit, QComboBox, QTextEdit, QMessageBox, QTabWidget
+    QCheckBox, QLineEdit, QComboBox, QTextEdit, QMessageBox, QTabWidget, QFrame
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from gui.styles import (
-    INPUT_STYLE, CHECKBOX_STYLE, PRIMARY_BTN_STYLE
+    INPUT_STYLE, CHECKBOX_STYLE, PRIMARY_BTN_STYLE, CARD_STYLE
 )
 from .components import SettingsDialog
 
@@ -226,40 +226,61 @@ class DialogsMixin:
 
         # --- MESSAGE SETTINGS DIALOG ---
         self.message_settings_dialog = SettingsDialog("Настройки рассылки", self)
-        
         self.message_tabs = QTabWidget()
-        
-        # Tab 1: message.txt
+
         self.msg_tab1 = QWidget()
         self.msg_tab1_layout = QVBoxLayout(self.msg_tab1)
-        self.msg_tab1_layout.addWidget(QLabel("Текст сообщения (message.txt):"))
+        self.msg_tab1_layout.setContentsMargins(10, 10, 10, 10)
+        msg1_card = QFrame()
+        msg1_card.setStyleSheet("QFrame { background: transparent; border: none; }")
+        msg1_card_layout = QVBoxLayout(msg1_card)
+        msg1_card_layout.setContentsMargins(15, 15, 15, 15)
+        msg1_title = QLabel("Текст сообщения (message.txt)")
         self.message_text_edit = QTextEdit()
-        self.message_text_edit.setStyleSheet(INPUT_STYLE)
-        self.message_text_edit.setMinimumHeight(150)
-        self.msg_tab1_layout.addWidget(self.message_text_edit)
-        
-        save_msg_btn = QPushButton("💾 Сохранить (message.txt)")
-        save_msg_btn.setStyleSheet(PRIMARY_BTN_STYLE)
-        save_msg_btn.clicked.connect(lambda: self.save_message_text("message.txt", self.message_text_edit))
-        self.msg_tab1_layout.addWidget(save_msg_btn)
-        
-        # Tab 2: message_2.txt
+        self.message_text_edit.setMinimumHeight(180)
+        self.message_text_edit.setPlaceholderText("Введите варианты сообщений, одно на строку")
+        msg1_card_layout.addWidget(msg1_title)
+        msg1_card_layout.addWidget(self.message_text_edit)
+        msg1_actions = QHBoxLayout()
+        self.msg1_count_label = QLabel("Строк: 0 · Символов: 0")
+        self.save_msg_btn = QPushButton("Сохранить")
+        self.save_msg_btn.setStyleSheet(PRIMARY_BTN_STYLE)
+        self.save_msg_btn.clicked.connect(lambda: self.save_message_text("message.txt", self.message_text_edit))
+        msg1_actions.addWidget(self.msg1_count_label)
+        msg1_actions.addStretch()
+        msg1_actions.addWidget(self.save_msg_btn)
+        msg1_card_layout.addLayout(msg1_actions)
+        self.msg_tab1_layout.addWidget(msg1_card)
+
         self.msg_tab2 = QWidget()
         self.msg_tab2_layout = QVBoxLayout(self.msg_tab2)
-        self.msg_tab2_layout.addWidget(QLabel("Текст сообщения (message_2.txt):"))
+        self.msg_tab2_layout.setContentsMargins(10, 10, 10, 10)
+        msg2_card = QFrame()
+        msg2_card.setStyleSheet("QFrame { background: transparent; border: none; }")
+        msg2_card_layout = QVBoxLayout(msg2_card)
+        msg2_card_layout.setContentsMargins(15, 15, 15, 15)
+        msg2_title = QLabel("Текст сообщения (message_2.txt)")
         self.message_2_text_edit = QTextEdit()
-        self.message_2_text_edit.setStyleSheet(INPUT_STYLE)
-        self.message_2_text_edit.setMinimumHeight(150)
-        self.msg_tab2_layout.addWidget(self.message_2_text_edit)
-        
-        save_msg_2_btn = QPushButton("💾 Сохранить (message_2.txt)")
-        save_msg_2_btn.setStyleSheet(PRIMARY_BTN_STYLE)
-        save_msg_2_btn.clicked.connect(lambda: self.save_message_text("message_2.txt", self.message_2_text_edit))
-        self.msg_tab2_layout.addWidget(save_msg_2_btn)
-        
+        self.message_2_text_edit.setMinimumHeight(180)
+        self.message_2_text_edit.setPlaceholderText("Введите варианты сообщений, одно на строку")
+        msg2_card_layout.addWidget(msg2_title)
+        msg2_card_layout.addWidget(self.message_2_text_edit)
+        msg2_actions = QHBoxLayout()
+        self.msg2_count_label = QLabel("Строк: 0 · Символов: 0")
+        self.save_msg_2_btn = QPushButton("Сохранить")
+        self.save_msg_2_btn.setStyleSheet(PRIMARY_BTN_STYLE)
+        self.save_msg_2_btn.clicked.connect(lambda: self.save_message_text("message_2.txt", self.message_2_text_edit))
+        msg2_actions.addWidget(self.msg2_count_label)
+        msg2_actions.addStretch()
+        msg2_actions.addWidget(self.save_msg_2_btn)
+        msg2_card_layout.addLayout(msg2_actions)
+        self.msg_tab2_layout.addWidget(msg2_card)
+
+        self.message_text_edit.textChanged.connect(lambda: self._update_msg_counter(1))
+        self.message_2_text_edit.textChanged.connect(lambda: self._update_msg_counter(2))
+
         self.message_tabs.addTab(self.msg_tab1, "Сообщение 1")
         self.message_tabs.addTab(self.msg_tab2, "Сообщение 2")
-        
         self.message_settings_dialog.add_widget(self.message_tabs)
 
     def open_feed_settings(self):
@@ -281,7 +302,6 @@ class DialogsMixin:
         self.approve_settings_dialog.exec()
 
     def open_message_settings(self):
-        # Load message.txt
         try:
             msg_path = Path("message.txt")
             if msg_path.exists():
@@ -290,8 +310,6 @@ class DialogsMixin:
                 self.message_text_edit.clear()
         except Exception as e:
             self.log(f"Ошибка загрузки message.txt: {e}")
-            
-        # Load message_2.txt
         try:
             msg_path_2 = Path("message_2.txt")
             if msg_path_2.exists():
@@ -300,6 +318,8 @@ class DialogsMixin:
                 self.message_2_text_edit.clear()
         except Exception as e:
             self.log(f"Ошибка загрузки message_2.txt: {e}")
+        self._update_msg_counter(1)
+        self._update_msg_counter(2)
 
         self.message_settings_dialog.exec()
 
@@ -307,8 +327,18 @@ class DialogsMixin:
         try:
             content = text_edit.toPlainText()
             Path(filename).write_text(content, encoding="utf-8")
-            QMessageBox.information(self.message_settings_dialog, "Успех", f"Файл {filename} сохранен!")
+            self.message_settings_dialog.accept()
         except Exception as e:
             QMessageBox.warning(self.message_settings_dialog, "Ошибка", f"Не удалось сохранить {filename}: {e}")
+
+    def _update_msg_counter(self, which):
+        if which == 1:
+            text = self.message_text_edit.toPlainText()
+            lines = [l for l in text.splitlines() if l.strip()]
+            self.msg1_count_label.setText(f"Строк: {len(lines)} · Символов: {len(text)}")
+        else:
+            text = self.message_2_text_edit.toPlainText()
+            lines = [l for l in text.splitlines() if l.strip()]
+            self.msg2_count_label.setText(f"Строк: {len(lines)} · Символов: {len(text)}")
 
 

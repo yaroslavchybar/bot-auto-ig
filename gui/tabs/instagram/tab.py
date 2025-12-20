@@ -784,7 +784,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         dlg = SettingsDialog("Выбор списков", self)
         checks = []
         frame = QFrame()
-        frame.setStyleSheet(CARD_STYLE)
+        frame.setStyleSheet("QFrame { background: transparent; border: none; }")
         lay = QVBoxLayout(frame)
         lay.setContentsMargins(0, 0, 0, 0)
         for row in lists:

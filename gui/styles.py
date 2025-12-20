@@ -20,7 +20,7 @@ QTabBar::tab {
     border-top-right-radius: 4px;
 }
 QTabBar::tab:selected {
-    background-color: #ff4444;
+    background-color: #61afef;
     color: white;
 }
 QTabBar::tab:hover:!selected {
@@ -34,7 +34,7 @@ QGroupBox {
     font-weight: bold;
 }
 QGroupBox::title {
-    color: #ff4444;
+    color: #61afef;
     subcontrol-origin: margin;
     left: 10px;
     padding: 0 5px;
@@ -47,7 +47,7 @@ QLineEdit, QComboBox, QTextEdit {
     color: white;
 }
 QLineEdit:focus, QComboBox:focus {
-    border-color: #ff4444;
+    border-color: #61afef;
 }
 QComboBox::drop-down {
     border: none;
@@ -141,7 +141,7 @@ QTextEdit#logArea {
     font-size: 12px;
 }
 QLabel#sectionHeader {
-    color: #ff4444;
+    color: #61afef;
     font-weight: bold;
     font-size: 13px;
 }
@@ -297,6 +297,44 @@ DIALOG_STYLE = """
     QLabel {
         color: #e0e0e0;
         font-size: 14px;
+        background-color: transparent;
+        border: none;
+    }
+    QScrollArea {
+        background: transparent;
+        border: none;
+    }
+    QAbstractScrollArea::viewport {
+        background: transparent;
+    }
+    QTextEdit {
+        background-color: #21252b;
+        border: 1px solid #3e4042;
+        border-radius: 6px;
+        padding: 8px;
+        color: #abb2bf;
+        font-size: 13px;
+    }
+    QTextEdit:focus {
+        border: 1px solid #61afef;
+    }
+    QTabWidget::pane {
+        border: none;
+    }
+    QTabBar::tab {
+        background-color: #2b2d30;
+        color: #abb2bf;
+        padding: 8px 16px;
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+        margin-right: 6px;
+    }
+    QTabBar::tab:selected {
+        background-color: #61afef;
+        color: #ffffff;
+    }
+    QTabBar::tab:!selected:hover {
+        background-color: #323437;
     }
     QGroupBox {
         border: 1px solid #3e4042;
@@ -342,6 +380,7 @@ CHECKBOX_STYLE = """
     QCheckBox {
         color: #e0e0e0;
         spacing: 8px;
+        background-color: transparent;
     }
     QCheckBox::indicator {
         width: 14px;
