@@ -29,18 +29,20 @@ def pre_follow_interactions(
     if likes_percentage > 0 or scroll_percentage > 0:
         total_posts = get_posts_count(page, log)
         if total_posts:
+            effective_posts = min(total_posts, 10)
             log(f"📊 Найдено постов: {total_posts}")
+            if effective_posts < total_posts:
+                log(f"📊 Для расчётов использую максимум: {effective_posts}")
             
             if likes_percentage > 0:
-                likes_to_put = int(round(total_posts * (likes_percentage / 100.0)))
+                likes_to_put = int(round(effective_posts * (likes_percentage / 100.0)))
                 log(f"❤️ Лайки по проценту ({likes_percentage}%): {likes_to_put}")
                 
             if scroll_percentage > 0:
-                posts_to_scroll = int(round(total_posts * (scroll_percentage / 100.0)))
-                # Assume ~5 posts per scroll action
+                posts_to_scroll = int(round(effective_posts * (scroll_percentage / 100.0)))
                 calculated_scrolls = max(1, int(posts_to_scroll / 5))
                 scroll_count = calculated_scrolls
-                log(f"📜 Скролл по проценту ({scroll_percentage}% от {total_posts} постов): {scroll_count} скроллов")
+                log(f"📜 Скролл по проценту ({scroll_percentage}% от {effective_posts} постов): {scroll_count} скроллов")
         else:
             log("⚠️ Не удалось определить число постов для процентного расчета. Использую случайные значения.")
 
@@ -90,4 +92,3 @@ def pre_follow_interactions(
             log("⏹️ Остановка по запросу пользователя.")
             break
         action()
-

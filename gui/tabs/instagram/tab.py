@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QCheckBox, QComboBox, QTextEdit, QGridLayout, QFrame,
+    QCheckBox, QComboBox, QGridLayout, QFrame,
     QScrollArea, QListWidget, QAbstractItemView, QMessageBox
 )
 from PyQt6.QtCore import Qt
@@ -398,35 +398,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         scroll_area.setWidget(content_widget)
         main_layout.addWidget(scroll_area)
 
-        # === 3. LOG SECTION ===
-        log_frame = QFrame()
-        log_frame.setStyleSheet("""
-            QFrame {
-                background-color: #21252b;
-                border: 1px solid #3e4042;
-                border-radius: 8px;
-            }
-        """)
-        log_layout = QVBoxLayout(log_frame)
-        log_layout.setContentsMargins(1, 1, 1, 1)
-        
-        self.threads_log_area = QTextEdit()
-        self.threads_log_area.setReadOnly(True)
-        self.threads_log_area.setPlaceholderText("Лог выполнения появится здесь...")
-        self.threads_log_area.setMaximumHeight(150)
-        self.threads_log_area.setStyleSheet("""
-            QTextEdit {
-                background-color: #21252b;
-                border: none;
-                color: #abb2bf;
-                padding: 10px;
-                font-family: 'Consolas', monospace;
-                font-size: 12px;
-            }
-        """)
-        log_layout.addWidget(self.threads_log_area)
-        
-        main_layout.addWidget(log_frame)
+        # Log area removed; log messages now shown in the global status bar and Logs tab.
 
     def add_action_to_order(self):
         if not self.add_action_btn.isEnabled():
@@ -444,11 +416,11 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             self.save_settings()
 
     def log(self, message):
-        """Add message to Threads log"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.threads_log_area.append(f"[{timestamp}] {message}")
-        scrollbar = self.threads_log_area.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        """Forward log messages to central logger to avoid duplicates"""
+        try:
+            self.main_window.log(message)
+        except Exception:
+            pass
 
     def toggle_scrolling(self):
         """Toggle between start and stop based on state"""

@@ -1,12 +1,13 @@
 {
     "use_private_profiles": true,
     "action_order": [
+        "Reels Scroll",
+        "Approve Requests",
         "Follow",
         "Unfollow",
-        "Approve Requests",
         "Send Messages",
         "Feed Scroll",
-        "Reels Scroll"
+        "Watch Stories"
     ],
     "like_chance": 100,
     "carousel_watch_chance": 0,

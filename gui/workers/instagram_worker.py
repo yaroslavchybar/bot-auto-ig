@@ -269,7 +269,7 @@ class InstagramScrollingWorker(QThread):
         try:
             max_stories = self.config.stories_max if isinstance(self.config.stories_max, int) else 3
             self.log(f"📺 Watching Stories (max {max_stories})...")
-            watch_stories(page, max_stories=max_stories)
+            watch_stories(page, max_stories=max_stories, log=self.log)
         except Exception as e:
             self.log(f"⚠️ Stories error: {e}")
 

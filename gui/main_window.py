@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
 from gui.tabs.lists_tab import ListsTab
+from gui.tabs.logs_tab import LogsTab
+from datetime import datetime
 
 from core.profile_manager import ProfileManager
 from core.process_manager import ProcessManager
@@ -42,10 +44,12 @@ class AntidetectApp(QMainWindow):
         self.profiles_tab = ProfilesTab(self)
         self.instagram_tab = InstagramTab(self)
         self.lists_tab = ListsTab(self)
+        self.logs_tab = LogsTab(self)
         
         self.tabs.addTab(self.profiles_tab, "🔵 Профили")
         self.tabs.addTab(self.instagram_tab, "🟢 Instagram Работа")
         self.tabs.addTab(self.lists_tab, "🗂️ Списки")
+        self.tabs.addTab(self.logs_tab, "📜 Логи")
         
         # Connect tab change signal to refresh data
         self.tabs.currentChanged.connect(self.on_tab_changed)
@@ -70,9 +74,13 @@ class AntidetectApp(QMainWindow):
 
     def log(self, message):
         """Central logging - currently duplicates to tabs or status"""
+        if "Profiles synchronized from database" in message:
+            return
         self.status_label.setText(message)
-        # Also log to specific tabs if needed
-        # self.instagram_tab.log(message) # This might be redundant if worker signals specific tab
+        try:
+            self.logs_tab.add_log(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        except Exception:
+            pass
 
     def closeEvent(self, event):
         # Clean up processes
@@ -96,7 +104,6 @@ class AntidetectApp(QMainWindow):
         """Sync profiles from database to local storage"""
         try:
             self.profile_manager.sync_from_database()
-            self.log("🔄 Profiles synchronized from database")
         except Exception as e:
             self.log(f"⚠️ Failed to sync profiles from database: {e}")
 

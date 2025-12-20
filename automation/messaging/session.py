@@ -364,6 +364,39 @@ def send_messages(
 
         except Exception as e:
             log(f"❌ Критическая ошибка браузера: {e}")
+        
+        try:
+            log("🏠 Messages: возвращаюсь домой")
+            try:
+                svg = page.query_selector('svg[aria-label="Home"]')
+                if svg:
+                    btn = svg.query_selector('xpath=ancestor-or-self::*[@role="link"][1]') or svg.query_selector('xpath=ancestor-or-self::*[@role="button"][1]')
+                    (btn or svg).click()
+                else:
+                    link = page.query_selector('a[role="link"][href="/"]')
+                    if link:
+                        link.click()
+                    else:
+                        page.goto("https://www.instagram.com/", timeout=20000)
+            except Exception:
+                page.goto("https://www.instagram.com/", timeout=20000)
+            random_delay(1.0, 2.0)
+            try:
+                close_svg = page.query_selector('svg[aria-label="Close"]')
+                if close_svg:
+                    close_btn = close_svg.query_selector('xpath=ancestor-or-self::*[self::button or @role="button"][1]') or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
+                    (close_btn or close_svg).click()
+                    log("✅ Messages: закрыл всплывающее окно")
+                else:
+                    page.keyboard.press("Escape")
+            except Exception:
+                try:
+                    page.keyboard.press("Escape")
+                except Exception:
+                    pass
+            random_delay(0.6, 1.2)
+        except Exception as e:
+            log(f"⚠️ Messages: ошибка очистки: {e}")
 
     if page:
         log(f"🔄 Использую существующую сессию для рассылки сообщений.")
