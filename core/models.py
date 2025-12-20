@@ -56,7 +56,8 @@ class ScrollingConfig:
     
     # Follow Config
     highlights_range: Optional[tuple] = None
-    likes_range: Optional[tuple] = None
+    likes_percentage: int = 0
+    scroll_percentage: int = 0
     following_limit: Optional[int] = None
     
     # Unfollow/Approve/Message Config

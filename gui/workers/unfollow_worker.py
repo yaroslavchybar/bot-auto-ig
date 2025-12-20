@@ -21,7 +21,8 @@ class UnfollowWorker(QThread):
                  delay_range: Tuple[int, int] = (10, 30),
                  do_unfollow: bool = True,
                  do_approve: bool = True,
-                 do_message: bool = False):
+                 do_message: bool = False,
+                 filter_list_ids: Optional[List[str]] = None):
         super().__init__()
         self.delay_range = delay_range
         self.do_unfollow = do_unfollow
@@ -29,6 +30,7 @@ class UnfollowWorker(QThread):
         self.do_message = do_message
         self.running = True
         self.client = InstagramAccountsClient()
+        self.filter_list_ids = filter_list_ids
 
     def run(self):
         try:
@@ -98,6 +100,10 @@ class UnfollowWorker(QThread):
             self.log_signal.emit("ℹ️ Нет профилей с назначенными аккаунтами.")
             self.finished_signal.emit()
             return
+        
+        if self.filter_list_ids:
+            ids_set = set(self.filter_list_ids)
+            profiles = [p for p in profiles if p.get("list_id") in ids_set]
 
         # Pre-load message texts if needed
         message_texts = []

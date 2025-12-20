@@ -12,6 +12,7 @@ from camoufox import Camoufox
 from core.models import ScrollingConfig, ThreadsAccount
 from automation.browser import parse_proxy_string
 from automation.scrolling import scroll_feed, scroll_reels
+from automation.stories import watch_stories
 from automation.Follow.session import follow_usernames
 from automation.unfollow.session import unfollow_usernames
 from automation.approvefollow.session import approve_follow_requests
@@ -170,6 +171,7 @@ class InstagramScrollingWorker(QThread):
                 actions_map = {
                     "Feed Scroll": lambda: self._run_scrolling(page, account, mode="feed"),
                     "Reels Scroll": lambda: self._run_scrolling(page, account, mode="reels"),
+                    "Watch Stories": lambda: self._run_stories(page, account),
                     "Follow": lambda: self._run_follow(page, account),
                     "Unfollow": lambda: self._run_unfollow_only(page, account),
                     "Approve Requests": lambda: self._run_approve_only(page, account),
@@ -183,10 +185,14 @@ class InstagramScrollingWorker(QThread):
                     order = []
                     if self.config.enable_feed: order.append("Feed Scroll")
                     if self.config.enable_reels: order.append("Reels Scroll")
+                    if self.config.watch_stories: order.append("Watch Stories")
                     if self.config.enable_follow: order.append("Follow")
                     if self.config.enable_unfollow: order.append("Unfollow")
                     if self.config.enable_approve: order.append("Approve Requests")
                     if self.config.enable_message: order.append("Send Messages")
+                else:
+                    if self.config.watch_stories and "Watch Stories" not in order:
+                        order.append("Watch Stories")
                 
                 self.log(f"📋 Execution Order: {', '.join(order)}")
                 
@@ -201,6 +207,7 @@ class InstagramScrollingWorker(QThread):
                         should_run = False
                         if action_name == "Feed Scroll" and self.config.enable_feed: should_run = True
                         elif action_name == "Reels Scroll" and self.config.enable_reels: should_run = True
+                        elif action_name == "Watch Stories" and self.config.watch_stories: should_run = True
                         elif action_name == "Follow" and self.config.enable_follow: should_run = True
                         elif action_name == "Unfollow" and self.config.enable_unfollow: should_run = True
                         elif action_name == "Approve Requests" and self.config.enable_approve: should_run = True
@@ -258,6 +265,14 @@ class InstagramScrollingWorker(QThread):
         except Exception as e:
             self.log(f"⚠️ Scrolling error: {e}")
 
+    def _run_stories(self, page, account):
+        try:
+            max_stories = self.config.stories_max if isinstance(self.config.stories_max, int) else 3
+            self.log(f"📺 Watching Stories (max {max_stories})...")
+            watch_stories(page, max_stories=max_stories)
+        except Exception as e:
+            self.log(f"⚠️ Stories error: {e}")
+
     def _run_follow(self, page, account):
         try:
             self.log("➕ Running Follow...")
@@ -275,13 +290,20 @@ class InstagramScrollingWorker(QThread):
                 self.log("ℹ️ No usernames to follow.")
                 return
 
+            interactions_config = {
+                "highlights_range": self.config.highlights_range,
+                "likes_percentage": self.config.likes_percentage,
+                "scroll_percentage": self.config.scroll_percentage
+            }
+
             follow_usernames(
                 profile_name=account.username,
                 proxy_string=account.proxy or "",
                 usernames=usernames,
                 log=self.log,
                 should_stop=lambda: not self.running,
-                page=page
+                page=page,
+                interactions_config=interactions_config
             )
         except Exception as e:
             self.log(f"⚠️ Follow error: {e}")

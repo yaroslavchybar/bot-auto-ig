@@ -3,6 +3,7 @@ from typing import Callable, Set
 
 from automation.actions import random_delay
 from automation.Follow.common import _safe, _normalize_range
+from automation.Follow.filter import get_posts_count
 from automation.Follow.highlights import watch_highlights
 from automation.Follow.posts import like_some_posts, scroll_posts
 
@@ -11,15 +12,38 @@ def pre_follow_interactions(
     page,
     log: Callable[[str], None],
     highlights_range=(2, 4),
-    likes_range=(1, 1),
+    likes_percentage: int = 0,
+    scroll_percentage: int = 0,
     should_stop: Callable[[], bool] | None = None,
 ):
     """Run lightweight interactions before follow."""
     highlights_min, highlights_max = _normalize_range(highlights_range, (2, 4))
-    likes_min, likes_max = _normalize_range(likes_range, (1, 1))
 
     highlights_to_watch = random.randint(highlights_min, highlights_max) if highlights_max > 0 else 0
-    likes_to_put = random.randint(likes_min, likes_max) if likes_max > 0 else 0
+    likes_to_put = 0
+    
+    # Calculate scroll count (default random if no percentage)
+    scroll_count = random.randint(2, 5)
+
+    # If percentages are enabled, try to get post count
+    if likes_percentage > 0 or scroll_percentage > 0:
+        total_posts = get_posts_count(page, log)
+        if total_posts:
+            log(f"📊 Найдено постов: {total_posts}")
+            
+            if likes_percentage > 0:
+                likes_to_put = int(round(total_posts * (likes_percentage / 100.0)))
+                log(f"❤️ Лайки по проценту ({likes_percentage}%): {likes_to_put}")
+                
+            if scroll_percentage > 0:
+                posts_to_scroll = int(round(total_posts * (scroll_percentage / 100.0)))
+                # Assume ~5 posts per scroll action
+                calculated_scrolls = max(1, int(posts_to_scroll / 5))
+                scroll_count = calculated_scrolls
+                log(f"📜 Скролл по проценту ({scroll_percentage}% от {total_posts} постов): {scroll_count} скроллов")
+        else:
+            log("⚠️ Не удалось определить число постов для процентного расчета. Использую случайные значения.")
+
     liked_posts: Set[str] = set()
 
     def do_highlights():
@@ -28,7 +52,7 @@ def pre_follow_interactions(
 
     def do_scroll():
         if should_stop and should_stop(): return
-        scroll_posts(page, log, liked_posts=liked_posts, should_stop=should_stop)
+        scroll_posts(page, log, scroll_count=scroll_count, liked_posts=liked_posts, should_stop=should_stop)
         random_delay(1.0, 2.0)  # give posts time to settle
 
     def do_scroll_and_likes():
@@ -37,6 +61,7 @@ def pre_follow_interactions(
         scroll_posts(
             page,
             log,
+            scroll_count=scroll_count,
             like_between=True,
             like_probability=0.65,
             max_likes=likes_to_put,

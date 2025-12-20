@@ -26,16 +26,16 @@
     "feed_max_time_minutes": 1,
     "reels_min_time_minutes": 5,
     "reels_max_time_minutes": 5,
-    "cycle_interval_minutes": 11,
+    "cycle_interval_minutes": 10,
     "enable_feed": false,
-    "enable_reels": true,
-    "enable_follow": false,
+    "enable_reels": false,
+    "enable_follow": true,
     "parallel_profiles": 1,
-    "watch_stories": true,
+    "watch_stories": false,
     "highlights_min": 1,
     "highlights_max": 3,
-    "likes_min": 1,
-    "likes_max": 3,
+    "likes_percentage": 30,
+    "scroll_percentage": 30,
     "following_limit": 900,
     "min_delay": 10,
     "max_delay": 30,
@@ -43,5 +43,8 @@
     "do_approve": false,
     "do_message": false,
     "header_target_expanded": true,
-    "header_order_expanded": false
+    "header_order_expanded": false,
+    "source_list_ids": [
+        "5a92a87d-5ded-4d35-9082-c8b9937307e7"
+    ]
 }

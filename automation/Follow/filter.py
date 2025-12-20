@@ -50,6 +50,79 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
         return None
 
 
+def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
+    """
+    Try to extract the "posts" count from an Instagram profile page.
+    """
+    try:
+        return page.evaluate(
+            """
+            () => {
+                const parseCount = (str) => {
+                    if (!str) return null;
+                    str = str.toLowerCase().replace(/,/g, '').replace(/\\s/g, '');
+                    let multiplier = 1;
+                    if (str.includes('k')) {
+                        multiplier = 1000;
+                        str = str.replace('k', '');
+                    } else if (str.includes('m')) {
+                        multiplier = 1000000;
+                        str = str.replace('m', '');
+                    }
+                    const val = parseFloat(str);
+                    return isNaN(val) ? null : Math.round(val * multiplier);
+                };
+
+                // Strategy 1: Specific structure seen in modern React layout
+                // Look for elements containing "posts" or "публикаций" with a number prefix
+                const keywords = ["posts", "публикаций", "публикации"];
+                const candidates = Array.from(document.querySelectorAll('span, div, li, a'));
+                
+                for (const el of candidates) {
+                    // Get direct text or innerText
+                    const text = (el.innerText || el.textContent || "").toLowerCase().trim();
+                    if (!text) continue;
+                    
+                    // Check if it ends with one of the keywords
+                    const hasKeyword = keywords.some(k => text.includes(k));
+                    if (!hasKeyword) continue;
+
+                    // Strict regex: Number followed by keyword (e.g. "19 posts", "1,234 posts", "10k posts")
+                    // Allow optional newline or space
+                    const match = text.match(/^([\\d.,kmb]+)[\\s\\n]+(posts|публикаций|публикации)$/i);
+                    if (match) {
+                        const num = parseCount(match[1]);
+                        if (num !== null) return num;
+                    }
+                }
+                
+                // Strategy 2: Legacy <ul><li> list (often 3 items: posts, followers, following)
+                const uls = document.querySelectorAll("ul");
+                for (const ul of uls) {
+                    // Instagram stats are often a list of 3 items
+                    if (ul.children.length === 3) {
+                         const firstLi = ul.children[0];
+                         // Sometimes the text is "19 posts" with newline
+                         const text = firstLi.innerText.toLowerCase();
+                         if (text.includes('post') || text.includes('публикац')) {
+                             const match = text.match(/([\\d.,kmb]+)/);
+                             if (match) {
+                                 const num = parseCount(match[1]);
+                                 if (num !== null) return num;
+                             }
+                         }
+                    }
+                }
+
+                return null;
+            }
+            """
+        )
+    except Exception as err:
+        log(f"ℹ️ Не удалось получить число постов: {err}")
+        return None
+
+
 def should_skip_by_following(
     page,
     username: str,

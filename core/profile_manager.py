@@ -145,7 +145,8 @@ class ProfileManager:
                     "name": db_profile["name"],
                     "proxy": db_profile.get("proxy"),
                     "test_ip": db_profile.get("test_ip", False),
-                    "type": db_profile.get("type", "Camoufox (рекомендуется)")
+                    "type": db_profile.get("type", "Camoufox (рекомендуется)"),
+                    "user_agent": db_profile.get("user_agent")
                 }
                 db_local_profiles.append(local_profile)
 

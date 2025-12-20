@@ -34,12 +34,6 @@ class DialogsMixin:
         f_time_layout.addWidget(self.feed_time_max_input)
         self.feed_settings_dialog.add_layout(f_time_layout)
 
-        # Watch Stories
-        self.watch_stories_checkbox = QCheckBox("Смотреть Stories")
-        self.watch_stories_checkbox.setStyleSheet(CHECKBOX_STYLE)
-        self.watch_stories_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.feed_settings_dialog.add_widget(self.watch_stories_checkbox)
-
         # Feed Likes
         f_likes_layout = QHBoxLayout()
         f_likes_layout.addWidget(QLabel("❤️ Лайки:"))
@@ -78,15 +72,16 @@ class DialogsMixin:
         self.feed_carousel_max_input.setFixedWidth(60)
         f_cmax_layout.addWidget(self.feed_carousel_max_input)
         self.feed_settings_dialog.add_layout(f_cmax_layout)
-
-        # Stories Max
-        f_smax_layout = QHBoxLayout()
-        f_smax_layout.addWidget(QLabel("👀 Макс сторис:"))
+        
+        # --- STORIES SETTINGS DIALOG ---
+        self.stories_settings_dialog = SettingsDialog("Настройки Stories", self)
+        smax_layout = QHBoxLayout()
+        smax_layout.addWidget(QLabel("👀 Макс сторис:"))
         self.feed_stories_max_input = QLineEdit("3")
         self.feed_stories_max_input.setStyleSheet(INPUT_STYLE)
         self.feed_stories_max_input.setFixedWidth(60)
-        f_smax_layout.addWidget(self.feed_stories_max_input)
-        self.feed_settings_dialog.add_layout(f_smax_layout)
+        smax_layout.addWidget(self.feed_stories_max_input)
+        self.stories_settings_dialog.add_layout(smax_layout)
         
         # --- REELS SETTINGS DIALOG ---
         self.reels_settings_dialog = SettingsDialog("Настройки Reels", self)
@@ -180,19 +175,25 @@ class DialogsMixin:
         h_row.addWidget(self.highlights_max_input)
         self.follow_settings_dialog.add_layout(h_row)
 
-        # Likes
-        l_row = QHBoxLayout()
-        l_row.addWidget(QLabel("Лайков на аккаунт:"))
-        self.likes_min_input = QLineEdit("1")
-        self.likes_min_input.setStyleSheet(INPUT_STYLE)
-        self.likes_min_input.setFixedWidth(50)
-        self.likes_max_input = QLineEdit("2")
-        self.likes_max_input.setStyleSheet(INPUT_STYLE)
-        self.likes_max_input.setFixedWidth(50)
-        l_row.addWidget(self.likes_min_input)
-        l_row.addWidget(QLabel("-"))
-        l_row.addWidget(self.likes_max_input)
-        self.follow_settings_dialog.add_layout(l_row)
+        # Likes Percentage
+        lp_row = QHBoxLayout()
+        lp_row.addWidget(QLabel("Лайков (% от постов):"))
+        self.likes_percentage_input = QLineEdit("0")
+        self.likes_percentage_input.setStyleSheet(INPUT_STYLE)
+        self.likes_percentage_input.setFixedWidth(50)
+        lp_row.addWidget(self.likes_percentage_input)
+        lp_row.addWidget(QLabel("(0 = выкл)"))
+        self.follow_settings_dialog.add_layout(lp_row)
+
+        # Scroll Percentage
+        sp_row = QHBoxLayout()
+        sp_row.addWidget(QLabel("Скролл (% от постов):"))
+        self.scroll_percentage_input = QLineEdit("0")
+        self.scroll_percentage_input.setStyleSheet(INPUT_STYLE)
+        self.scroll_percentage_input.setFixedWidth(50)
+        sp_row.addWidget(self.scroll_percentage_input)
+        sp_row.addWidget(QLabel("(0 = выкл)"))
+        self.follow_settings_dialog.add_layout(sp_row)
 
         # Follow Limit
         fl_row = QHBoxLayout()
@@ -269,6 +270,9 @@ class DialogsMixin:
 
     def open_follow_settings(self):
         self.follow_settings_dialog.exec()
+    
+    def open_stories_settings(self):
+        self.stories_settings_dialog.exec()
 
     def open_unfollow_settings(self):
         self.unfollow_settings_dialog.exec()

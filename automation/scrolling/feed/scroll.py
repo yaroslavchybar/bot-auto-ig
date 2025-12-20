@@ -5,7 +5,7 @@ from automation.scrolling.utils import human_scroll, human_mouse_move
 from .likes import perform_like
 from .following import perform_follow
 from .carousel import watch_carousel
-from .stories import watch_stories
+from automation.stories import watch_stories
 
 
 def _navigate_home(page):

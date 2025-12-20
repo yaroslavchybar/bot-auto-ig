@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
+from gui.tabs.lists_tab import ListsTab
 
 from core.profile_manager import ProfileManager
 from core.process_manager import ProcessManager
@@ -40,9 +41,11 @@ class AntidetectApp(QMainWindow):
         self.tabs = QTabWidget()
         self.profiles_tab = ProfilesTab(self)
         self.instagram_tab = InstagramTab(self)
+        self.lists_tab = ListsTab(self)
         
         self.tabs.addTab(self.profiles_tab, "🔵 Профили")
         self.tabs.addTab(self.instagram_tab, "🟢 Instagram Работа")
+        self.tabs.addTab(self.lists_tab, "🗂️ Списки")
         
         # Connect tab change signal to refresh data
         self.tabs.currentChanged.connect(self.on_tab_changed)
@@ -105,6 +108,8 @@ class AntidetectApp(QMainWindow):
         elif index == 1:  # Instagram tab
             # Instagram tab uses profiles, so sync them
             self.sync_profiles_from_database()
+        elif index == 2:
+            self.lists_tab.fetch_lists()
 
 def main():
     app = QApplication(sys.argv)

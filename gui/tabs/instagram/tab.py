@@ -11,9 +11,11 @@ from core.models import ThreadsAccount, ScrollingConfig
 from gui.workers.instagram_worker import InstagramScrollingWorker
 from gui.workers.follow_worker import AutoFollowWorker
 from gui.workers.unfollow_worker import UnfollowWorker
+import requests
+from supabase.config import PROJECT_URL, SECRET_KEY
 from gui.styles import (
     CARD_STYLE, ACTION_BTN_STYLE, INPUT_STYLE,
-    CHECKBOX_STYLE, BUTTON_STYLE
+    CHECKBOX_STYLE, BUTTON_STYLE, PRIMARY_BTN_STYLE
 )
 from .components import ToggleHeader, create_header_input
 from .settings import SettingsMixin
@@ -39,6 +41,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.unfollow_settings_dialog = None
         self.approve_settings_dialog = None
         self.message_settings_dialog = None
+        self.selected_list_ids = []
         
         self.setup_ui()
         self.load_settings()
@@ -149,9 +152,20 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
 
         # Row 1: Profile Source
         t_grid.addWidget(QLabel("Источник профилей:"), 0, 0)
-        source_label = QLabel("📂 Приватные профили")
-        source_label.setStyleSheet("color: #61afef; font-weight: bold; font-size: 14px;")
-        t_grid.addWidget(source_label, 0, 1)
+        source_layout = QHBoxLayout()
+        self.source_lists_label = QLabel("Выберите списки")
+        self.source_lists_label.setStyleSheet("color: #61afef; font-weight: bold; font-size: 14px;")
+        self.select_lists_btn = QPushButton("⚙")
+        self.select_lists_btn.setToolTip("Выбор списков")
+        self.select_lists_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.select_lists_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.select_lists_btn.clicked.connect(self._open_select_lists_dialog)
+        source_layout.addWidget(self.source_lists_label)
+        source_layout.addWidget(self.select_lists_btn)
+        source_layout.addStretch()
+        src_widget = QWidget()
+        src_widget.setLayout(source_layout)
+        t_grid.addWidget(src_widget, 0, 1)
 
         # Row 2: Checkboxes with Settings Buttons
         t_grid.addWidget(QLabel("Режим работы:"), 1, 0)
@@ -216,9 +230,29 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         follow_layout.addWidget(self.follow_checkbox)
         follow_layout.addWidget(self.follow_settings_btn)
 
+        # Stories Checkbox + Settings
+        stories_container = QWidget()
+        stories_layout = QHBoxLayout(stories_container)
+        stories_layout.setContentsMargins(0, 0, 0, 0)
+        stories_layout.setSpacing(5)
+        
+        self.watch_stories_checkbox = QCheckBox("Stories")
+        self.watch_stories_checkbox.setStyleSheet(CHECKBOX_STYLE)
+        self.watch_stories_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        self.stories_settings_btn = QPushButton("⚙")
+        self.stories_settings_btn.setToolTip("Настройки Stories")
+        self.stories_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.stories_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.stories_settings_btn.clicked.connect(self.open_stories_settings)
+        
+        stories_layout.addWidget(self.watch_stories_checkbox)
+        stories_layout.addWidget(self.stories_settings_btn)
+
         checks_layout.addWidget(feed_container)
         checks_layout.addWidget(reels_container)
         checks_layout.addWidget(follow_container)
+        checks_layout.addWidget(stories_container)
         checks_layout.addStretch()
         
         t_grid.addLayout(checks_layout, 1, 1)
@@ -304,7 +338,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         # Controls for adding/removing actions
         order_controls = QHBoxLayout()
         self.action_combo = QComboBox()
-        self.action_combo.addItems(["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"])
+        self.action_combo.addItems(["Feed Scroll", "Reels Scroll", "Watch Stories", "Follow", "Unfollow", "Approve Requests", "Send Messages"])
         self.action_combo.setStyleSheet(INPUT_STYLE + "padding: 5px;")
         
         self.add_action_btn = QPushButton("➕ Добавить")
@@ -345,7 +379,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.action_order_list.setMinimumHeight(300) # Ensure all items are visible
         
         # Initial Items (will be reordered in load_settings)
-        default_actions = ["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
+        default_actions = ["Feed Scroll", "Reels Scroll", "Watch Stories", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
         self.action_order_list.addItems(default_actions)
         
         # Connect signal to save settings on reorder
@@ -469,8 +503,9 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         enable_unfollow = self.unfollow_checkbox.isChecked()
         enable_approve = self.approve_checkbox.isChecked()
         enable_message = self.message_checkbox.isChecked()
+        enable_stories = self.watch_stories_checkbox.isChecked()
         
-        if not any([enable_feed, enable_reels, enable_follow, enable_unfollow, enable_approve, enable_message]):
+        if not any([enable_feed, enable_reels, enable_stories, enable_follow, enable_unfollow, enable_approve, enable_message]):
             QMessageBox.warning(self, "Ошибка", "Выберите хотя бы один тип активности!")
             return
 
@@ -491,13 +526,13 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             highlights_max = 4
         
         try:
-            likes_min = int(self.likes_min_input.text().split()[0])
+            likes_percentage = int(self.likes_percentage_input.text().split()[0])
         except:
-            likes_min = 1
+            likes_percentage = 0
         try:
-            likes_max = int(self.likes_max_input.text().split()[0])
+            scroll_percentage = int(self.scroll_percentage_input.text().split()[0])
         except:
-            likes_max = 2
+            scroll_percentage = 0
             
         try:
             following_limit = int(self.following_limit_input.text().split()[0])
@@ -505,7 +540,6 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             following_limit = 3000
 
         highlights_range = (highlights_min, highlights_max)
-        likes_range = (likes_min, likes_max)
 
         # Unfollow/Approve/Message Config
         try:
@@ -538,26 +572,30 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
 
         # === DECIDE EXECUTION PATH ===
         
-        is_scrolling_mode = enable_feed or enable_reels
+        is_scrolling_mode = enable_feed or enable_reels or self.watch_stories_checkbox.isChecked()
         
         if is_scrolling_mode:
             # --- PATH A: SCROLLING WORKER (Handles everything with Page Reuse) ---
             
-            # Use private profiles only
-            profiles = self.main_window.profile_manager.profiles.get("private", [])
+            if not self.selected_list_ids:
+                QMessageBox.warning(self, "Ошибка", "Выберите список профилей!")
+                self.is_running = False
+                self.update_action_button_state(running=False)
+                return
+            profiles = self._fetch_profiles_for_lists(self.selected_list_ids)
             if not profiles:
-                 if not enable_follow and not (enable_unfollow or enable_approve or enable_message):
-                    QMessageBox.warning(self, "Ошибка", "Нет созданных приватных профилей для скроллинга!")
+                if not enable_follow and not (enable_unfollow or enable_approve or enable_message):
+                    QMessageBox.warning(self, "Ошибка", "В выбранном списке нет профилей для скроллинга!")
                     self.is_running = False
                     self.update_action_button_state(running=False)
                     return
-                 elif not (enable_unfollow or enable_approve or enable_message):
-                    self.log("⚠️ Нет приватных профилей для скроллинга, работает только подписка.")
+                elif not (enable_unfollow or enable_approve or enable_message):
+                    self.log("⚠️ В выбранном списке нет профилей для скроллинга, работает только подписка.")
             else:
                 # Convert private profiles to ThreadsAccount objects
                 target_accounts = []
                 for p in profiles:
-                    acc = ThreadsAccount(username=p["name"], password="", proxy=p.get("proxy"))
+                    acc = ThreadsAccount(username=p.get("name"), password="", proxy=p.get("proxy"))
                     target_accounts.append(acc)
 
                 # Get action chances and config
@@ -624,7 +662,8 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
                     
                     # Passed Configs
                     highlights_range=highlights_range,
-                    likes_range=likes_range,
+                    likes_percentage=likes_percentage,
+                    scroll_percentage=scroll_percentage,
                     following_limit=following_limit,
                     unfollow_delay_range=unfollow_delay_range,
                     message_texts=message_texts
@@ -635,6 +674,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
                 tasks = []
                 if enable_feed: tasks.append("Feed")
                 if enable_reels: tasks.append("Reels")
+                if self.watch_stories_checkbox.isChecked(): tasks.append("Stories")
                 if enable_follow: tasks.append("Follow")
                 if enable_unfollow: tasks.append("Unfollow")
                 if enable_approve: tasks.append("Approve")
@@ -649,13 +689,20 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
 
         else:
             # --- PATH B: INDIVIDUAL WORKERS (No Feed/Reels) ---
+            if not self.selected_list_ids:
+                QMessageBox.warning(self, "Ошибка", "Выберите список профилей!")
+                self.is_running = False
+                self.update_action_button_state(running=False)
+                return
             
             # Start Follow Worker
             if enable_follow:
                 self.follow_worker = AutoFollowWorker(
                     highlights_range=highlights_range,
-                    likes_range=likes_range,
+                    likes_percentage=likes_percentage,
+                    scroll_percentage=scroll_percentage,
                     following_limit=following_limit,
+                    filter_list_ids=self.selected_list_ids,
                 )
                 self.follow_worker.log_signal.connect(self.log)
                 self.follow_worker.finished_signal.connect(self.on_follow_finished)
@@ -668,7 +715,8 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
                     delay_range=unfollow_delay_range,
                     do_unfollow=enable_unfollow,
                     do_approve=enable_approve,
-                    do_message=enable_message
+                    do_message=enable_message,
+                    filter_list_ids=self.selected_list_ids
                 )
                 self.unfollow_worker.log_signal.connect(self.log)
                 self.unfollow_worker.finished_signal.connect(self.on_unfollow_finished)
@@ -712,3 +760,85 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             
         self.action_btn.setText("Останавливаем...")
         self.action_btn.setEnabled(False)
+
+    def _refresh_source_label(self):
+        if not self.selected_list_ids:
+            self.source_lists_label.setText("Выберите списки")
+        else:
+            self.source_lists_label.setText(f"Выбрано списков: {len(self.selected_list_ids)}")
+
+    def _open_select_lists_dialog(self):
+        if not PROJECT_URL or not SECRET_KEY:
+            return
+        try:
+            r = requests.get(
+                f"{PROJECT_URL}/rest/v1/lists",
+                params={"select": "id,name", "order": "created_at.asc"},
+                headers={"apikey": SECRET_KEY, "Authorization": f"Bearer {SECRET_KEY}", "Accept": "application/json"},
+                timeout=20,
+            )
+            lists = r.json() if r.status_code < 400 else []
+        except Exception:
+            lists = []
+        from gui.tabs.instagram.components import SettingsDialog
+        dlg = SettingsDialog("Выбор списков", self)
+        checks = []
+        frame = QFrame()
+        frame.setStyleSheet(CARD_STYLE)
+        lay = QVBoxLayout(frame)
+        lay.setContentsMargins(0, 0, 0, 0)
+        for row in lists:
+            name = row.get("name") or ""
+            list_id = row.get("id")
+            cb = QCheckBox(name)
+            cb.setStyleSheet(CHECKBOX_STYLE)
+            cb.setChecked(bool(list_id in self.selected_list_ids))
+            cb.setProperty("list_id", list_id)
+            lay.addWidget(cb)
+            checks.append(cb)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.setWidget(frame)
+        save_btn = QPushButton("Сохранить")
+        save_btn.setStyleSheet(PRIMARY_BTN_STYLE)
+        save_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        def on_save():
+            ids = []
+            for cb in checks:
+                if cb.isChecked() and cb.property("list_id"):
+                    ids.append(cb.property("list_id"))
+            self.selected_list_ids = ids
+            self._refresh_source_label()
+            self.save_settings()
+            dlg.accept()
+        save_btn.clicked.connect(on_save)
+        dlg.add_widget(scroll)
+        dlg.add_widget(save_btn)
+        dlg.exec()
+
+    def _fetch_profiles_for_lists(self, list_ids):
+        if not PROJECT_URL or not SECRET_KEY or not list_ids:
+            return []
+        result = []
+        try:
+            for lid in list_ids:
+                r = requests.get(
+                    f"{PROJECT_URL}/rest/v1/profiles",
+                    params={"select": "profile_id,name,proxy,user_agent,list_id", "list_id": f"eq.{lid}", "order": "created_at.asc"},
+                    headers={"apikey": SECRET_KEY, "Authorization": f"Bearer {SECRET_KEY}", "Accept": "application/json"},
+                    timeout=20,
+                )
+                data = r.json() if r.status_code < 400 else []
+                result.extend(data or [])
+        except Exception:
+            pass
+        seen = set()
+        unique = []
+        for p in result:
+            pid = p.get("profile_id")
+            if pid and pid not in seen:
+                seen.add(pid)
+                unique.append(p)
+        return unique

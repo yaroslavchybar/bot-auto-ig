@@ -35,7 +35,8 @@ def follow_usernames(
     should_stop = should_stop or (lambda: False)
     interactions_config = interactions_config or {}
     highlights_range = interactions_config.get("highlights_range", (2, 4))
-    likes_range = interactions_config.get("likes_range", (1, 1))
+    likes_percentage = interactions_config.get("likes_percentage", 0)
+    scroll_percentage = interactions_config.get("scroll_percentage", 0)
 
     clean_usernames_list: List[str] = clean_usernames(usernames)
 
@@ -73,7 +74,8 @@ def follow_usernames(
                     current_page,
                     log,
                     highlights_range=highlights_range,
-                    likes_range=likes_range,
+                    likes_percentage=likes_percentage,
+                    scroll_percentage=scroll_percentage,
                     should_stop=should_stop,
                 )
 

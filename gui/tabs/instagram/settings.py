@@ -40,8 +40,8 @@ class SettingsMixin:
             self.feed_stories_max_input,
             self.highlights_min_input,
             self.highlights_max_input,
-            self.likes_min_input,
-            self.likes_max_input,
+            self.likes_percentage_input,
+            self.scroll_percentage_input,
             self.following_limit_input,
             self.unfollow_min_delay_input,
             self.unfollow_max_delay_input,
@@ -61,6 +61,7 @@ class SettingsMixin:
         visibility_map = {
             "Feed Scroll": self.feed_checkbox.isChecked(),
             "Reels Scroll": self.reels_checkbox.isChecked(),
+            "Watch Stories": self.watch_stories_checkbox.isChecked(),
             "Follow": self.follow_checkbox.isChecked(),
             "Unfollow": self.unfollow_checkbox.isChecked(),
             "Approve Requests": self.approve_checkbox.isChecked(),
@@ -122,15 +123,16 @@ class SettingsMixin:
             # Follow defaults
             "highlights_min": 2,
             "highlights_max": 4,
-            "likes_min": 1,
-            "likes_max": 2,
+            "likes_percentage": 0,
+            "scroll_percentage": 0,
             "following_limit": 3000,
             # Unfollow defaults
             "min_delay": 10,
             "max_delay": 30,
             "do_unfollow": False,
             "do_approve": False,
-            "do_message": False
+            "do_message": False,
+            "source_list_ids": []
         }
 
         self.loading_settings = True
@@ -178,8 +180,8 @@ class SettingsMixin:
 
         self.highlights_min_input.setText(str(data.get("highlights_min", defaults["highlights_min"])))
         self.highlights_max_input.setText(str(data.get("highlights_max", defaults["highlights_max"])))
-        self.likes_min_input.setText(str(data.get("likes_min", defaults["likes_min"])))
-        self.likes_max_input.setText(str(data.get("likes_max", defaults["likes_max"])))
+        self.likes_percentage_input.setText(str(data.get("likes_percentage", defaults["likes_percentage"])))
+        self.scroll_percentage_input.setText(str(data.get("scroll_percentage", defaults["scroll_percentage"])))
         self.following_limit_input.setText(str(data.get("following_limit", defaults["following_limit"])))
 
         self.unfollow_checkbox.setChecked(data.get("do_unfollow", False))
@@ -196,7 +198,7 @@ class SettingsMixin:
             self.action_order_list.addItems(saved_order)
         else:
             # Default fallback if no saved order
-            default_actions = ["Feed Scroll", "Reels Scroll", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
+            default_actions = ["Feed Scroll", "Reels Scroll", "Watch Stories", "Follow", "Unfollow", "Approve Requests", "Send Messages"]
             self.action_order_list.addItems(default_actions)
 
         # Restore Toggle Headers
@@ -208,6 +210,12 @@ class SettingsMixin:
 
         self.update_order_visibility()
         self.loading_settings = False
+        try:
+            self.selected_list_ids = data.get("source_list_ids", [])
+            if hasattr(self, "_refresh_source_label"):
+                self._refresh_source_label()
+        except Exception:
+            pass
 
     def save_settings(self):
         """Save current UI settings to disk."""
@@ -260,8 +268,8 @@ class SettingsMixin:
             # Follow settings
             "highlights_min": parse_int_field(self.highlights_min_input, 2),
             "highlights_max": parse_int_field(self.highlights_max_input, 4),
-            "likes_min": parse_int_field(self.likes_min_input, 1),
-            "likes_max": parse_int_field(self.likes_max_input, 2),
+            "likes_percentage": parse_int_field(self.likes_percentage_input, 0),
+            "scroll_percentage": parse_int_field(self.scroll_percentage_input, 0),
             "following_limit": parse_int_field(self.following_limit_input, 3000),
             
             # Unfollow settings
@@ -275,6 +283,10 @@ class SettingsMixin:
             "header_target_expanded": self.target_toggle.isChecked(),
             "header_order_expanded": self.order_toggle.isChecked()
         }
+        try:
+            payload["source_list_ids"] = getattr(self, "selected_list_ids", [])
+        except Exception:
+            payload["source_list_ids"] = []
 
         try:
             self.settings_path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")

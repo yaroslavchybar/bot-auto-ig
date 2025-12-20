@@ -51,18 +51,22 @@ class AutoFollowWorker(QThread):
     def __init__(
         self,
         highlights_range: Optional[Tuple[int, int]] = None,
-        likes_range: Optional[Tuple[int, int]] = None,
+        likes_percentage: int = 0,
+        scroll_percentage: int = 0,
         following_limit: Optional[int] = None,
+        filter_list_ids: Optional[List[str]] = None,
     ):
         super().__init__()
         self.running = True
         self.client = InstagramAccountsClient()
         self.highlights_range = self._normalize_range(highlights_range, (2, 4))
-        self.likes_range = self._normalize_range(likes_range, (1, 1))
+        self.likes_percentage = likes_percentage
+        self.scroll_percentage = scroll_percentage
         try:
             self.following_limit = int(following_limit) if following_limit is not None else None
         except Exception:
             self.following_limit = None
+        self.filter_list_ids = filter_list_ids
 
     def run(self):
         try:
@@ -71,6 +75,10 @@ class AutoFollowWorker(QThread):
             self.log(f"❌ Ошибка Supabase (profiles): {err}")
             self.finished_signal.emit()
             return
+
+        if self.filter_list_ids:
+            ids_set = set(self.filter_list_ids)
+            profiles = [p for p in profiles if p.get("list_id") in ids_set]
 
         if not profiles:
             self.log("ℹ️ Нет профилей с назначенными аккаунтами для подписки.")
@@ -142,7 +150,8 @@ class AutoFollowWorker(QThread):
                     following_limit=self.following_limit,
                     interactions_config={
                         "highlights_range": self.highlights_range,
-                        "likes_range": self.likes_range,
+                        "likes_percentage": self.likes_percentage,
+                        "scroll_percentage": self.scroll_percentage,
                     },
                     on_success=on_follow_success,
                     on_skip=on_follow_skip,
@@ -184,4 +193,3 @@ class AutoFollowWorker(QThread):
             return low, high
         except Exception:
             return default
-
