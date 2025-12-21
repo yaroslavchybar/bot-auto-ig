@@ -7,9 +7,28 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
     Uses multiple selectors and aria labels to improve resilience.
     """
     try:
+        try:
+            page.wait_for_selector('a[href*="/following"]', timeout=4000)
+        except Exception:
+            pass
         return page.evaluate(
             """
             () => {
+                const parseCount = (str) => {
+                    if (!str) return null;
+                    str = str.toLowerCase().replace(/,/g, '').replace(/\\s/g, '');
+                    let multiplier = 1;
+                    if (str.includes('k')) {
+                        multiplier = 1000;
+                        str = str.replace('k', '');
+                    } else if (str.includes('m')) {
+                        multiplier = 1000000;
+                        str = str.replace('m', '');
+                    }
+                    const val = parseFloat(str);
+                    return isNaN(val) ? null : Math.round(val * multiplier);
+                };
+
                 const candidates = Array.from(
                     document.querySelectorAll(
                         'a[href$="/following/"], a[href$="/following"], a[href*="/following"]'
@@ -29,17 +48,25 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
                     }
                     const combined = texts.join(" ").trim();
                     if (!combined) return null;
-                    const match = combined.match(/[\\d.,\\s]+/);
+                    const match = combined.match(/([\\d.,]+\\s*[kmb]?)/i);
                     if (!match) return null;
-                    const normalized = match[0].replace(/[^\\d]/g, "");
-                    if (!normalized) return null;
-                    const asInt = parseInt(normalized, 10);
-                    return Number.isNaN(asInt) ? null : asInt;
+                    return parseCount(match[1]);
                 };
 
                 for (const el of candidates) {
                     const num = extractNumber(el);
                     if (num !== null) return num;
+                }
+
+                const all = Array.from(document.querySelectorAll('a, span, div, li'));
+                for (const el of all) {
+                    const t = (el.innerText || el.textContent || '').toLowerCase().trim();
+                    if (!t) continue;
+                    const m = t.match(/([\\d.,kmb]+)[\\s\\n]+(following|подписки|подписок)/i);
+                    if (m) {
+                        const num = parseCount(m[1]);
+                        if (num !== null) return num;
+                    }
                 }
                 return null;
             }
@@ -89,7 +116,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
 
                     // Strict regex: Number followed by keyword (e.g. "19 posts", "1,234 posts", "10k posts")
                     // Allow optional newline or space
-                    const match = text.match(/^([\\d.,kmb]+)[\\s\\n]+(posts|публикаций|публикации)$/i);
+                    const match = text.match(/([\\d.,kmb]+)[\\s\\n]+(posts|публикаций|публикации)/i);
                     if (match) {
                         const num = parseCount(match[1]);
                         if (num !== null) return num;
@@ -141,6 +168,10 @@ def should_skip_by_following(
     if limit_val <= 0:
         return False
 
+    try:
+        page.wait_for_selector('a[href*="/following"]', timeout=4000)
+    except Exception:
+        pass
     count = get_following_count(page, log)
     if count is None:
         log("ℹ️ Не удалось определить число подписок, продолжаю без фильтра.")

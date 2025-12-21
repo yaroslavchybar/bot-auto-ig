@@ -1,4 +1,5 @@
 import random
+import re
 from typing import Callable, Optional
 
 from camoufox import Camoufox
@@ -23,6 +24,7 @@ def approve_follow_requests(
     If `page` is provided, it uses the existing browser page and does NOT close it.
     """
     should_stop = should_stop or (lambda: False)
+    client = InstagramAccountsClient()
 
     def _run_approve_logic(current_page):
         try:
@@ -41,12 +43,33 @@ def approve_follow_requests(
                 random_delay(3, 5)
             except Exception as e:
                 log(f"⚠️ Не нашел кнопку уведомлений: {e}")
-                # Try direct URL fallback?
-                # current_page.goto("https://www.instagram.com/accounts/activity/")
-                return
+                try:
+                    current_page.goto("https://www.instagram.com/accounts/activity/", timeout=15000)
+                    random_delay(2, 4)
+                except Exception:
+                    return
 
-            # 2. Process requests directly in popup
-            log("🔍 Ищу запросы на подписку в уведомлениях...")
+            log("🔍 Ищу 'Follow request' и открываю список заявок...")
+            opened_panel = False
+            try:
+                el = current_page.locator('text=Follow request').first
+                if el and el.is_visible():
+                    el.click()
+                    random_delay(2, 3)
+                    opened_panel = True
+            except Exception:
+                pass
+            if not opened_panel:
+                try:
+                    el2 = current_page.locator('span:has-text("Follow request")').first
+                    if el2 and el2.is_visible():
+                        el2.click()
+                        random_delay(2, 3)
+                        opened_panel = True
+                except Exception:
+                    pass
+            if not opened_panel:
+                log("ℹ️ Не удалось открыть список заявок, продолжаю поиск Confirm.")
             
             confirm_buttons = current_page.locator('div[role="button"]:has-text("Confirm")').all()
 
@@ -57,7 +80,60 @@ def approve_follow_requests(
                         break
                     try:
                         if btn.is_visible():
+                            username = None
+                            try:
+                                # Find the container holding the buttons (Confirm and Delete)
+                                # This ensures we are targeting a request row and allows navigation to the username
+                                # Use * to match div or button or span
+                                buttons_container = btn.locator('xpath=ancestor::div[descendant::*[(@role="button" or local-name()="button") and text()="Delete"]][1]').first
+                                
+                                if buttons_container.is_visible():
+                                    # Look for username link in preceding siblings (User Info)
+                                    # Search for any link with href starting with /
+                                    # Use * to match any sibling container
+                                    link = buttons_container.locator('xpath=preceding-sibling::*//a[@role="link"][starts-with(@href, "/")]').first
+                                    
+                                    href = link.get_attribute('href') if link.is_visible() else None
+                                    if href:
+                                        href = href.strip()
+                                        if href.startswith("/"):
+                                            parts = [p for p in href.split("/") if p]
+                                            if parts:
+                                                username = parts[0]
+                                    
+                                    if not username:
+                                         # Fallback: scan text in preceding siblings
+                                         texts = buttons_container.locator('xpath=preceding-sibling::*').all_text_contents()
+                                         for t in texts:
+                                             # Simple heuristic for username in text
+                                             words = t.split()
+                                             for w in words:
+                                                 w = w.strip()
+                                                 if re.fullmatch(r"[A-Za-z0-9._]{2,30}", w):
+                                                     username = w
+                                                     break
+                                             if username: break
+                                else:
+                                    # No sibling Delete button - skip (likely Suggested for you)
+                                    log("ℹ️ Skipping row without Delete button (Suggested for you?)")
+                                    continue
+                            except Exception as e:
+                                log(f"⚠️ Extraction error: {e}")
+                                username = None
+
+                            if username:
+                                log(f"🔎 Found username: {username}")
+
                             btn.click()
+                            if username:
+                                try:
+                                    res = client.update_account_message(username, True)
+                                    if res:
+                                        log(f"💾 Updated message for @{username}")
+                                    else:
+                                        log(f"⚠️ Database update failed for @{username} (No match in DB?)")
+                                except Exception as e:
+                                    log(f"⚠️ API Error updating message for @{username}: {e}")
                             log("✅ Подтверждена заявка")
                             random_delay(1, 2)
                     except Exception as e:

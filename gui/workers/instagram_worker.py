@@ -284,7 +284,9 @@ class InstagramScrollingWorker(QThread):
                 return
 
             profile_id = profile_data.get("profile_id")
-            usernames = self.client.get_accounts_to_follow(profile_id)
+            accounts = self.client.get_accounts_for_profile(profile_id)
+            usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
+            account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
             
             if not usernames:
                 self.log("ℹ️ No usernames to follow.")
@@ -296,6 +298,26 @@ class InstagramScrollingWorker(QThread):
                 "scroll_percentage": self.config.scroll_percentage
             }
 
+            def on_follow_success(username: str):
+                account_id = account_map.get(username)
+                if not account_id:
+                    return
+                try:
+                    self.client.update_account_status(account_id, status="sunscribed")
+                    self.log(f"💾 Статус @{username} обновлен на 'sunscribed'.")
+                except InstagramAccountsError as err:
+                    self.log(f"⚠️ Не удалось обновить статус для @{username}: {err}")
+
+            def on_follow_skip(username: str):
+                account_id = account_map.get(username)
+                if not account_id:
+                    return
+                try:
+                    self.client.update_account_status(account_id, status="skiped", assigned_to=None)
+                    self.log(f"💾 Пропуск @{username}: статус 'skiped', снято назначение.")
+                except InstagramAccountsError as err:
+                    self.log(f"⚠️ Не удалось обновить статус пропуска @{username}: {err}")
+
             follow_usernames(
                 profile_name=account.username,
                 proxy_string=account.proxy or "",
@@ -303,7 +325,10 @@ class InstagramScrollingWorker(QThread):
                 log=self.log,
                 should_stop=lambda: not self.running,
                 page=page,
-                interactions_config=interactions_config
+                interactions_config=interactions_config,
+                following_limit=self.config.following_limit,
+                on_success=on_follow_success,
+                on_skip=on_follow_skip,
             )
         except Exception as e:
             self.log(f"⚠️ Follow error: {e}")

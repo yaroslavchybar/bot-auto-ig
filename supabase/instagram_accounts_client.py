@@ -1,4 +1,5 @@
 import time
+import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
@@ -61,7 +62,7 @@ class InstagramAccountsClient:
     ) -> List[Dict]:
         """Fetch accounts assigned to a profile with given status."""
         params = {
-            "select": "id,user_name,assigned_to,status,link_sent,message",
+            "select": "id,user_name,assigned_to,status,link_sent,message,subscribed_at",
             "assigned_to": f"eq.{profile_id}",
             "status": f"eq.{status}",
             "order": "created_at.asc",
@@ -93,6 +94,8 @@ class InstagramAccountsClient:
             assigned_to = None
 
         payload = {"status": status}
+        if (status or "").lower() in ("sunscribed", "subscribed"):
+            payload["subscribed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         if assigned_to != "__NOT_SET__":
             payload["assigned_to"] = assigned_to
 
@@ -108,9 +111,10 @@ class InstagramAccountsClient:
         Update the message field for an account by username.
         """
         payload = {"message": message}
+        # Use ilike for case-insensitive match
         result = self._request(
             "PATCH",
-            f"{self.accounts_url}?user_name=eq.{user_name}",
+            f"{self.accounts_url}?user_name=ilike.{user_name}",
             data=payload,
         )
         return result[0] if result else None

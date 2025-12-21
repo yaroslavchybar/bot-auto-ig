@@ -27,6 +27,10 @@ def pre_follow_interactions(
 
     # If percentages are enabled, try to get post count
     if likes_percentage > 0 or scroll_percentage > 0:
+        try:
+            page.wait_for_selector('span:has-text("posts"), div:has-text("posts"), a:has-text("posts"), span:has-text("публикац"), div:has-text("публикац"), a:has-text("публикац")', timeout=4000)
+        except Exception:
+            pass
         total_posts = get_posts_count(page, log)
         if total_posts:
             effective_posts = min(total_posts, 10)

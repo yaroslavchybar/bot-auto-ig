@@ -5,6 +5,17 @@ from automation.actions import random_delay
 from automation.Follow.common import _safe
 
 
+def _find_story_nav(page, label: str):
+    try:
+        for svg in page.query_selector_all(f'svg[aria-label*="{label}" i]'):
+            btn = svg.query_selector('xpath=ancestor-or-self::*[@role="button"][1]')
+            if btn:
+                return btn
+    except Exception:
+        return None
+    return None
+
+
 def watch_highlights(
     page,
     log: Callable[[str], None],
@@ -170,12 +181,7 @@ def watch_highlights(
             highlights_watched += 1
 
             if highlights_watched < max_highlights_to_watch:
-                next_btn = (
-                    page.query_selector('svg[aria-label="Next"]') or
-                    page.query_selector('button[aria-label="Next"]') or
-                    page.query_selector('[role="button"][aria-label*="Next"]')
-                )
-
+                next_btn = _find_story_nav(page, "Next")
                 if next_btn:
                     try:
                         next_btn.click()
