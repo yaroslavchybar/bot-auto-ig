@@ -176,3 +176,19 @@ class ProfileManager:
                 self.db_client.sync_profile_status(name, status, using)
             except SupabaseProfilesError as e:
                 print(f"Warning: Failed to sync profile status - {e}")
+
+    def ensure_db_has_local_profiles(self):
+        if not self.db_client:
+            return
+        try:
+            db_profiles = self.db_client.get_all_profiles()
+            db_names = {p.get("name") for p in db_profiles}
+            for local in self.profiles.get("private", []):
+                name = local.get("name")
+                if name and name not in db_names:
+                    try:
+                        self.db_client.create_profile(local)
+                    except SupabaseProfilesError:
+                        pass
+        except SupabaseProfilesError:
+            pass

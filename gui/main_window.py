@@ -29,7 +29,10 @@ class AntidetectApp(QMainWindow):
         self.setup_ui()
         self.apply_styles()
 
-        # Sync profiles from database on startup (after UI is ready)
+        try:
+            self.profile_manager.ensure_db_has_local_profiles()
+        except Exception:
+            pass
         self.sync_profiles_from_database()
         
     def setup_ui(self):
