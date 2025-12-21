@@ -292,6 +292,29 @@ class InstagramScrollingWorker(QThread):
                 self.log("ℹ️ No usernames to follow.")
                 return
 
+            # Apply per-session follow limit from config
+            try:
+                rng = getattr(self.config, "follow_count_range", None)
+                if rng and isinstance(rng, tuple):
+                    cmin, cmax = rng
+                    try:
+                        cmin = int(cmin); cmax = int(cmax)
+                    except Exception:
+                        cmin, cmax = 0, 0
+                    if cmin > cmax:
+                        cmin, cmax = cmax, cmin
+                    if cmax > 0:
+                        import random
+                        count = random.randint(max(0, cmin), cmax)
+                        if count <= 0:
+                            usernames = []
+                        else:
+                            random.shuffle(usernames)
+                            usernames = usernames[:count]
+                        self.log(f"🔢 Follow session limit: {len(usernames)}")
+            except Exception:
+                pass
+
             interactions_config = {
                 "highlights_range": self.config.highlights_range,
                 "likes_percentage": self.config.likes_percentage,

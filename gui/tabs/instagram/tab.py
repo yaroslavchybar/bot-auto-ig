@@ -512,6 +512,21 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             following_limit = 3000
 
         highlights_range = (highlights_min, highlights_max)
+        
+        # Follow Count Range
+        try:
+            f_count_min = int(self.follow_min_count_input.text().split()[0])
+        except:
+            f_count_min = 5
+        try:
+            f_count_max = int(self.follow_max_count_input.text().split()[0])
+        except:
+            f_count_max = 15
+        if f_count_min > f_count_max:
+            f_count_min, f_count_max = f_count_max, f_count_min
+            self.follow_min_count_input.setText(str(f_count_min))
+            self.follow_max_count_input.setText(str(f_count_max))
+        follow_count_range = (f_count_min, f_count_max)
 
         # Unfollow/Approve/Message Config
         try:
@@ -529,6 +544,21 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             self.unfollow_max_delay_input.setText(str(uf_max))
             
         unfollow_delay_range = (uf_min, uf_max)
+
+        # Unfollow Count Range
+        try:
+            uf_count_min = int(self.unfollow_min_count_input.text().split()[0])
+        except:
+            uf_count_min = 5
+        try:
+            uf_count_max = int(self.unfollow_max_count_input.text().split()[0])
+        except:
+            uf_count_max = 15
+        if uf_count_min > uf_count_max:
+            uf_count_min, uf_count_max = uf_count_max, uf_count_min
+            self.unfollow_min_count_input.setText(str(uf_count_min))
+            self.unfollow_max_count_input.setText(str(uf_count_max))
+        unfollow_count_range = (uf_count_min, uf_count_max)
 
         # Message Texts
         message_texts = []
@@ -637,6 +667,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
                     likes_percentage=likes_percentage,
                     scroll_percentage=scroll_percentage,
                     following_limit=following_limit,
+                    follow_count_range=follow_count_range,
                     unfollow_delay_range=unfollow_delay_range,
                     message_texts=message_texts
                 )
@@ -674,6 +705,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
                     likes_percentage=likes_percentage,
                     scroll_percentage=scroll_percentage,
                     following_limit=following_limit,
+                    count_range=follow_count_range,
                     filter_list_ids=self.selected_list_ids,
                 )
                 self.follow_worker.log_signal.connect(self.log)
@@ -685,6 +717,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             if enable_unfollow or enable_approve or enable_message:
                 self.unfollow_worker = UnfollowWorker(
                     delay_range=unfollow_delay_range,
+                    count_range=unfollow_count_range,
                     do_unfollow=enable_unfollow,
                     do_approve=enable_approve,
                     do_message=enable_message,

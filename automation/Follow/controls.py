@@ -14,6 +14,8 @@ def _is_in_suggested(btn, max_depth: int = 6) -> bool:
     return False
 
 
+import time
+
 def find_follow_control(page):
     """
     Find a follow-related button and classify its state.
@@ -26,6 +28,14 @@ def find_follow_control(page):
             "main header button:has-text(\"Follow\")",
             "header div[role=\"button\"]:has-text(\"Follow\")",
             "main header div[role=\"button\"]:has-text(\"Follow\")",
+            "header button:has-text(\"Follow Back\")",
+            "main header button:has-text(\"Follow Back\")",
+            "header div[role=\"button\"]:has-text(\"Follow Back\")",
+            "main header div[role=\"button\"]:has-text(\"Follow Back\")",
+            "header button:has-text(\"Подписаться\")",
+            "main header button:has-text(\"Подписаться\")",
+            "header div[role=\"button\"]:has-text(\"Подписаться\")",
+            "main header div[role=\"button\"]:has-text(\"Подписаться\")",
         ]),
         ("requested", [
             "header button:has-text(\"Requested\")",
@@ -49,6 +59,14 @@ def find_follow_control(page):
             'div[role="button"]:has-text("Follow")',
             'button[aria-label*="Follow"]',
             'div[aria-label*="Follow"]',
+            'button:has-text("Follow Back")',
+            'div[role="button"]:has-text("Follow Back")',
+            'xpath=//button[normalize-space()="Follow Back"]',
+            'xpath=//div[@role="button" and normalize-space()="Follow Back"]',
+            'button:has-text("Подписаться")',
+            'div[role="button"]:has-text("Подписаться")',
+            'xpath=//button[normalize-space()="Подписаться"]',
+            'xpath=//div[@role="button" and normalize-space()="Подписаться"]',
         ]),
         ("requested", [
             'button:has-text("Requested")',
@@ -92,3 +110,24 @@ def find_follow_control(page):
         return state, btn
     return search(fallback_candidates)
 
+def wait_for_follow_state(page, timeout_ms: int = 8000):
+    deadline = time.time() + (timeout_ms / 1000.0)
+    while time.time() < deadline:
+        try:
+            state, _ = find_follow_control(page)
+            if state in ("requested", "following"):
+                return state
+        except Exception:
+            pass
+        try:
+            page.wait_for_selector('header button:has-text("Following"), main header button:has-text("Following"), header div[role="button"]:has-text("Following"), main header div[role="button"]:has-text("Following")', timeout=250)
+            return "following"
+        except Exception:
+            pass
+        try:
+            page.wait_for_selector('header button:has-text("Requested"), main header button:has-text("Requested"), header div[role="button"]:has-text("Requested"), main header div[role="button"]:has-text("Requested")', timeout=250)
+            return "requested"
+        except Exception:
+            pass
+        time.sleep(0.25)
+    return None

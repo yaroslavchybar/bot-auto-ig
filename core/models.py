@@ -59,6 +59,7 @@ class ScrollingConfig:
     likes_percentage: int = 0
     scroll_percentage: int = 0
     following_limit: Optional[int] = None
+    follow_count_range: Optional[tuple] = None
     
     # Unfollow/Approve/Message Config
     unfollow_delay_range: Optional[tuple] = None

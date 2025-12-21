@@ -320,7 +320,11 @@ def send_messages(
                                     send_btn = page.locator('button:has-text("Send")').first
 
                                 if send_btn.is_visible():
-                                    send_btn.click()
+                                    try:
+                                        send_btn.click(timeout=3000)
+                                    except:
+                                        random_delay(5, 5)
+                                        page.keyboard.press("Enter")
                                     log(f"✅ Отправил сообщение для {username}")
 
                                     # Update DB based on message type

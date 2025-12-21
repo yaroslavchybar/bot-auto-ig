@@ -102,7 +102,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
 
                 // Strategy 1: Specific structure seen in modern React layout
                 // Look for elements containing "posts" or "публикаций" with a number prefix
-                const keywords = ["posts", "публикаций", "публикации"];
+                const keywords = ["posts", "post", "публикаций", "публикации", "публикация"];
                 const candidates = Array.from(document.querySelectorAll('span, div, li, a'));
                 
                 for (const el of candidates) {
@@ -116,7 +116,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
 
                     // Strict regex: Number followed by keyword (e.g. "19 posts", "1,234 posts", "10k posts")
                     // Allow optional newline or space
-                    const match = text.match(/([\\d.,kmb]+)[\\s\\n]+(posts|публикаций|публикации)/i);
+                    const match = text.match(/([\\d.,kmb]+)[\\s\\n]+(posts|post|публикаций|публикации|публикация)/i);
                     if (match) {
                         const num = parseCount(match[1]);
                         if (num !== null) return num;

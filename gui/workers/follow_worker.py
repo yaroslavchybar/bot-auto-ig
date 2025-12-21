@@ -54,6 +54,7 @@ class AutoFollowWorker(QThread):
         likes_percentage: int = 0,
         scroll_percentage: int = 0,
         following_limit: Optional[int] = None,
+        count_range: Optional[Tuple[int, int]] = None,
         filter_list_ids: Optional[List[str]] = None,
     ):
         super().__init__()
@@ -67,6 +68,7 @@ class AutoFollowWorker(QThread):
         except Exception:
             self.following_limit = None
         self.filter_list_ids = filter_list_ids
+        self.count_range = count_range
 
     def run(self):
         try:
@@ -119,6 +121,28 @@ class AutoFollowWorker(QThread):
 
             usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
             account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
+
+            # Apply per-session follow limit
+            try:
+                if self.count_range and isinstance(self.count_range, tuple):
+                    cmin, cmax = self.count_range
+                    try:
+                        cmin = int(cmin)
+                        cmax = int(cmax)
+                    except Exception:
+                        cmin, cmax = 0, 0
+                    if cmin > cmax:
+                        cmin, cmax = cmax, cmin
+                    if cmax > 0:
+                        import random
+                        count = random.randint(max(0, cmin), cmax)
+                        if count <= 0:
+                            usernames = []
+                        else:
+                            random.shuffle(usernames)
+                            usernames = usernames[:count]
+            except Exception:
+                pass
 
             self.log(f"▶️ Профиль {profile_name}: подписка на {len(usernames)} аккаунтов.")
 

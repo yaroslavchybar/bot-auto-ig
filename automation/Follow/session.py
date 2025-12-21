@@ -4,7 +4,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 from camoufox import Camoufox
 
 from automation.actions import random_delay
-from automation.Follow.controls import find_follow_control
+from automation.Follow.controls import find_follow_control, wait_for_follow_state
 from automation.Follow.filter import should_skip_by_following
 from automation.Follow.interactions import pre_follow_interactions
 from automation.Follow.utils import (
@@ -92,10 +92,8 @@ def follow_usernames(
                 if btn:
                     log(f"➕ Нажимаю Follow на @{username}...")
                     btn.click()
-                    random_delay(2, 4)
-                    
-                    # Verify
-                    state_after, _ = find_follow_control(current_page)
+                    random_delay(1, 2)
+                    state_after = wait_for_follow_state(current_page, timeout_ms=8000)
                     if state_after in ("requested", "following"):
                         log(f"✅ Успешная подписка на @{username}")
                         call_on_success(on_success, username, log)

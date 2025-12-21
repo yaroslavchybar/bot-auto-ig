@@ -43,8 +43,12 @@ class SettingsMixin:
             self.likes_percentage_input,
             self.scroll_percentage_input,
             self.following_limit_input,
+            self.follow_min_count_input,
+            self.follow_max_count_input,
             self.unfollow_min_delay_input,
             self.unfollow_max_delay_input,
+            self.unfollow_min_count_input,
+            self.unfollow_max_count_input,
             self.reels_skip_min_input,
             self.reels_skip_max_input,
             self.reels_normal_min_input,
@@ -129,6 +133,11 @@ class SettingsMixin:
             # Unfollow defaults
             "min_delay": 10,
             "max_delay": 30,
+            "unfollow_min_count": 5,
+            "unfollow_max_count": 15,
+            # Follow per-session defaults
+            "follow_min_count": 5,
+            "follow_max_count": 15,
             "do_unfollow": False,
             "do_approve": False,
             "do_message": False,
@@ -183,12 +192,16 @@ class SettingsMixin:
         self.likes_percentage_input.setText(str(data.get("likes_percentage", defaults["likes_percentage"])))
         self.scroll_percentage_input.setText(str(data.get("scroll_percentage", defaults["scroll_percentage"])))
         self.following_limit_input.setText(str(data.get("following_limit", defaults["following_limit"])))
+        self.follow_min_count_input.setText(str(data.get("follow_min_count", defaults["follow_min_count"])))
+        self.follow_max_count_input.setText(str(data.get("follow_max_count", defaults["follow_max_count"])))
 
         self.unfollow_checkbox.setChecked(data.get("do_unfollow", False))
         self.approve_checkbox.setChecked(data.get("do_approve", False))
         self.message_checkbox.setChecked(data.get("do_message", False))
         self.unfollow_min_delay_input.setText(str(data.get("min_delay", 10)))
         self.unfollow_max_delay_input.setText(str(data.get("max_delay", 30)))
+        self.unfollow_min_count_input.setText(str(data.get("unfollow_min_count", defaults["unfollow_min_count"])))
+        self.unfollow_max_count_input.setText(str(data.get("unfollow_max_count", defaults["unfollow_max_count"])))
 
         # Load Action Order
         saved_order = data.get("action_order", [])
@@ -271,10 +284,14 @@ class SettingsMixin:
             "likes_percentage": parse_int_field(self.likes_percentage_input, 0),
             "scroll_percentage": parse_int_field(self.scroll_percentage_input, 0),
             "following_limit": parse_int_field(self.following_limit_input, 3000),
+            "follow_min_count": parse_int_field(self.follow_min_count_input, 5),
+            "follow_max_count": parse_int_field(self.follow_max_count_input, 15),
             
             # Unfollow settings
             "min_delay": parse_int_field(self.unfollow_min_delay_input, 10),
             "max_delay": parse_int_field(self.unfollow_max_delay_input, 30),
+            "unfollow_min_count": parse_int_field(self.unfollow_min_count_input, 5),
+            "unfollow_max_count": parse_int_field(self.unfollow_max_count_input, 15),
             "do_unfollow": self.unfollow_checkbox.isChecked(),
             "do_approve": self.approve_checkbox.isChecked(),
             "do_message": self.message_checkbox.isChecked(),

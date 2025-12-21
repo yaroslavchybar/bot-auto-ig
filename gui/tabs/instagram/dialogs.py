@@ -203,6 +203,20 @@ class DialogsMixin:
         self.following_limit_input.setFixedWidth(80)
         fl_row.addWidget(self.following_limit_input)
         self.follow_settings_dialog.add_layout(fl_row)
+        
+        # Follow Count Range
+        f_count_layout = QHBoxLayout()
+        f_count_layout.addWidget(QLabel("Мин-Макс за сессию:"))
+        self.follow_min_count_input = QLineEdit("5")
+        self.follow_min_count_input.setStyleSheet(INPUT_STYLE)
+        self.follow_min_count_input.setFixedWidth(50)
+        self.follow_max_count_input = QLineEdit("15")
+        self.follow_max_count_input.setStyleSheet(INPUT_STYLE)
+        self.follow_max_count_input.setFixedWidth(50)
+        f_count_layout.addWidget(self.follow_min_count_input)
+        f_count_layout.addWidget(QLabel("-"))
+        f_count_layout.addWidget(self.follow_max_count_input)
+        self.follow_settings_dialog.add_layout(f_count_layout)
 
         # --- UNFOLLOW SETTINGS DIALOG ---
         self.unfollow_settings_dialog = SettingsDialog("Настройки отписки", self)
@@ -219,6 +233,20 @@ class DialogsMixin:
         uf_delay_layout.addWidget(QLabel("-"))
         uf_delay_layout.addWidget(self.unfollow_max_delay_input)
         self.unfollow_settings_dialog.add_layout(uf_delay_layout)
+
+        # Unfollow Count Range
+        uf_count_layout = QHBoxLayout()
+        uf_count_layout.addWidget(QLabel("Мин-Макс за сессию:"))
+        self.unfollow_min_count_input = QLineEdit("5")
+        self.unfollow_min_count_input.setStyleSheet(INPUT_STYLE)
+        self.unfollow_min_count_input.setFixedWidth(50)
+        self.unfollow_max_count_input = QLineEdit("15")
+        self.unfollow_max_count_input.setStyleSheet(INPUT_STYLE)
+        self.unfollow_max_count_input.setFixedWidth(50)
+        uf_count_layout.addWidget(self.unfollow_min_count_input)
+        uf_count_layout.addWidget(QLabel("-"))
+        uf_count_layout.addWidget(self.unfollow_max_count_input)
+        self.unfollow_settings_dialog.add_layout(uf_count_layout)
 
         # --- APPROVE SETTINGS DIALOG ---
         self.approve_settings_dialog = SettingsDialog("Настройки подтверждения", self)

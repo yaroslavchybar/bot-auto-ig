@@ -1,4 +1,5 @@
 import os
+import random
 from typing import List, Optional, Tuple
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -19,12 +20,14 @@ class UnfollowWorker(QThread):
 
     def __init__(self, 
                  delay_range: Tuple[int, int] = (10, 30),
+                 count_range: Optional[Tuple[int, int]] = None,
                  do_unfollow: bool = True,
                  do_approve: bool = True,
                  do_message: bool = False,
                  filter_list_ids: Optional[List[str]] = None):
         super().__init__()
         self.delay_range = delay_range
+        self.count_range = count_range
         self.do_unfollow = do_unfollow
         self.do_approve = do_approve
         self.do_message = do_message
@@ -202,6 +205,28 @@ class UnfollowWorker(QThread):
                             account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
 
                             self.log_signal.emit(f"▶️ Профиль {profile_name}: Найдено {len(usernames)} для отписки.")
+
+                            # Apply per-session limit
+                            try:
+                                if self.count_range and isinstance(self.count_range, tuple):
+                                    cmin, cmax = self.count_range
+                                    try:
+                                        cmin = int(cmin)
+                                        cmax = int(cmax)
+                                    except Exception:
+                                        cmin, cmax = 0, 0
+                                    if cmin > cmax:
+                                        cmin, cmax = cmax, cmin
+                                    if cmax > 0:
+                                        count = random.randint(max(0, cmin), cmax)
+                                        if count <= 0:
+                                            usernames = []
+                                        else:
+                                            random.shuffle(usernames)
+                                            usernames = usernames[:count]
+                                        self.log_signal.emit(f"🔢 Лимит на сессию: {len(usernames)}")
+                            except Exception:
+                                pass
 
                             # Callback to update status to 'done'
                             def on_unfollow_success(username: str):
