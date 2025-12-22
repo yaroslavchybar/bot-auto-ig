@@ -239,12 +239,12 @@ class InstagramScrollingWorker(BaseInstagramWorker):
             }
 
             on_follow_success = create_status_callback(
-                self.client, account_map, self.log, "sunscribed",
-                success_message="💾 Статус @{username} обновлен на 'sunscribed'."
+                self.client, account_map, self.log, "subscribed",
+                success_message="💾 Статус @{username} обновлен на 'subscribed'."
             )
             on_follow_skip = create_status_callback(
-                self.client, account_map, self.log, "skiped", clear_assigned=True,
-                success_message="💾 Пропуск @{username}: статус 'skiped', снято назначение."
+                self.client, account_map, self.log, "skipped", clear_assigned=True,
+                success_message="💾 Пропуск @{username}: статус 'skipped', снято назначение."
             )
 
             follow_usernames(
@@ -422,10 +422,10 @@ class AutoFollowWorker(BaseInstagramWorker):
             self.log(f"▶️ Профиль {profile_name}: подписка на {len(usernames)} аккаунтов.")
 
             on_follow_success = create_status_callback(
-                self.client, account_map, self.log, "sunscribed"
+                self.client, account_map, self.log, "subscribed"
             )
             on_follow_skip = create_status_callback(
-                self.client, account_map, self.log, "skiped", clear_assigned=True
+                self.client, account_map, self.log, "skipped", clear_assigned=True
             )
 
             try:

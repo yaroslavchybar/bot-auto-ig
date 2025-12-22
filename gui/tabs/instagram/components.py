@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QPushButton, QLabel, QDialog, QLineEdit
+    QWidget, QVBoxLayout, QPushButton, QLabel, QDialog, QLineEdit,
+    QApplication, QTextEdit, QPlainTextEdit
 )
 from PyQt6.QtCore import Qt
 from gui.styles import DIALOG_STYLE, INPUT_STYLE, TOGGLE_HEADER_STYLE, HEADER_LABEL_SMALL_STYLE, HEADER_INPUT_STYLE
@@ -19,6 +20,12 @@ class SettingsDialog(QDialog):
         
     def add_layout(self, layout):
         self.layout.addLayout(layout)
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
 
 class ToggleHeader(QPushButton):
     def __init__(self, text, content_widget):

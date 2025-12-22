@@ -563,3 +563,23 @@ BUTTON_DANGER_STYLE = f"""
         background-color: rgba(224, 108, 117, 0.35);
     }}
 """
+
+MESSAGE_EDIT_STYLE = f"""
+    QTextEdit {{
+        background-color: {INPUT_BG};
+        border: 1px solid {BORDER_MEDIUM};
+        border-radius: 8px;
+        color: {TEXT_WHITE};
+        padding: 12px;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 13px;
+    }}
+    QTextEdit:focus {{
+        border: 1px solid {ACCENT_BLUE};
+        background-color: {BG_SOFT};
+    }}
+"""
+
+STATS_LABEL_STYLE = f"color: {MUTED_TEXT}; font-size: 12px; margin-top: 5px;"
+
+SECTION_TITLE_STYLE = f"color: {ACCENT_BLUE}; font-size: 14px; font-weight: bold; margin-bottom: 8px;"

@@ -45,8 +45,8 @@
     "unfollow_min_count": 1,
     "unfollow_max_count": 2,
     "do_unfollow": false,
-    "do_approve": true,
-    "do_message": false,
+    "do_approve": false,
+    "do_message": true,
     "header_target_expanded": true,
     "header_order_expanded": false,
     "source_list_ids": [

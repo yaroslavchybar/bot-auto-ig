@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit, QApplication, QLineEdit, QPlainTextEdit
 from PyQt6.QtCore import Qt
 from gui.styles import LOG_TEXTEDIT_STYLE
 
@@ -14,6 +14,12 @@ class LogsTab(QWidget):
         self.log_area.setReadOnly(True)
         self.log_area.setStyleSheet(LOG_TEXTEDIT_STYLE)
         layout.addWidget(self.log_area)
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
     
     def add_log(self, text: str):
         self.log_area.append(text)

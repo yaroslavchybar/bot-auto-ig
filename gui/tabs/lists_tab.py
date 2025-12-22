@@ -1,4 +1,8 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, QListWidgetItem, QLineEdit, QLabel, QFrame, QCheckBox
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, 
+    QListWidgetItem, QLineEdit, QLabel, QFrame, QCheckBox, 
+    QApplication, QTextEdit, QPlainTextEdit, QMessageBox
+)
 from PyQt6.QtCore import Qt
 import requests
 from supabase.config import PROJECT_URL, SECRET_KEY
@@ -38,6 +42,12 @@ class ListsTab(QWidget):
         card_layout.addWidget(self.list_widget)
         layout.addWidget(card)
         self.fetch_lists()
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
 
     def fetch_lists(self):
         if not PROJECT_URL or not SECRET_KEY:
@@ -100,6 +110,14 @@ class ListsTab(QWidget):
         if not list_id:
             self.fetch_lists()
             return
+
+        confirm = QMessageBox.question(
+            self, "Подтверждение", "Удалить выбранный список?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
         try:
             requests.delete(
                 f"{PROJECT_URL}/rest/v1/lists?id=eq.{list_id}",
@@ -143,6 +161,12 @@ class ListsTab(QWidget):
             self.open_edit_dialog(list_id, name)
 
         def do_delete():
+            confirm = QMessageBox.question(
+                self, "Подтверждение", f"Удалить список '{name}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if confirm != QMessageBox.StandardButton.Yes:
+                return
             try:
                 requests.delete(
                     f"{PROJECT_URL}/rest/v1/lists?id=eq.{list_id}",

@@ -83,18 +83,18 @@ class InstagramAccountsClient:
     def update_account_status(
         self,
         account_id: str,
-        status: str = "sunscribed",
+        status: str = "subscribed",
         assigned_to: Any = "__NOT_SET__",
     ):
         """
-        Update account status (default -> 'sunscribed').
+        Update account status (default -> 'subscribed').
         Optionally update assigned_to (e.g., set to None to unassign).
         """
         if status == "done" and assigned_to == "__NOT_SET__":
             assigned_to = None
 
         payload = {"status": status}
-        if (status or "").lower() in ("sunscribed", "subscribed"):
+        if (status or "").lower() in ("subscribed"):
             payload["subscribed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
         if assigned_to != "__NOT_SET__":
             payload["assigned_to"] = assigned_to

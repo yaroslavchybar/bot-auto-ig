@@ -4,7 +4,8 @@ from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QCheckBox, QComboBox, QGridLayout, QFrame,
-    QScrollArea, QListWidget, QAbstractItemView, QMessageBox
+    QScrollArea, QListWidget, QAbstractItemView, QMessageBox,
+    QLineEdit, QTextEdit, QPlainTextEdit, QApplication
 )
 from PyQt6.QtCore import Qt
 from core.models import ThreadsAccount, ScrollingConfig
@@ -48,6 +49,15 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.setup_ui()
         self.load_settings()
         self.connect_settings_signals()
+
+    def connect_settings_signals(self):
+        super().connect_settings_signals()
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
 
     def setup_ui(self):
         # Apply strict background to match other tabs

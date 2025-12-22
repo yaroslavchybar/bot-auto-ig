@@ -163,7 +163,7 @@ def create_status_callback(
         client: InstagramAccountsClient instance
         account_map: Dict mapping username to account ID
         log: Logging function
-        status: Status to set (e.g., 'sunscribed', 'skiped', 'done')
+        status: Status to set (e.g., 'subscribed', 'skipped', 'done')
         assigned_to: Value to set for assigned_to field
         clear_assigned: If True, set assigned_to to None
         success_message: Message template on success (supports {username}, {status})

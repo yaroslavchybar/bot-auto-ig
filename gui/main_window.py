@@ -1,7 +1,7 @@
 import sys
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QTabWidget, 
-    QLabel, QFrame
+    QLabel, QFrame, QLineEdit, QTextEdit, QPlainTextEdit
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt
@@ -74,6 +74,12 @@ class AntidetectApp(QMainWindow):
 
     def apply_styles(self):
         self.setStyleSheet(DARK_STYLE)
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
 
     def log(self, message):
         """Central logging - currently duplicates to tabs or status"""

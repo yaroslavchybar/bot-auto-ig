@@ -1,5 +1,6 @@
-create extension if not exists pgcrypto;
-create extension if not exists pg_cron with schema extensions;
+create extension if not exists pgcrypto with schema extensions;
+create extension if not exists "uuid-ossp" with schema extensions;
+create extension if not exists pg_cron with schema pg_catalog;
 
 create table public.profiles (
   profile_id uuid primary key default gen_random_uuid(),
@@ -59,7 +60,7 @@ set search_path = public
 as $$
 update public.instagram_accounts
 set status = 'unsubscribed'
-where (status = 'sunscribed' or status = 'subscribed')
+where status = 'subscribed'
   and subscribed_at is not null
   and subscribed_at <= now() - interval '7 days';
 $$;

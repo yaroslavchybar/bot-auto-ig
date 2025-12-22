@@ -2,7 +2,8 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QGroupBox, QMessageBox, QScrollArea, QFrame,
     QRadioButton, QButtonGroup, QCheckBox, QComboBox, QLineEdit,
-    QDialog, QDialogButtonBox, QGridLayout, QSizePolicy, QApplication
+    QDialog, QDialogButtonBox, QGridLayout, QSizePolicy, QApplication,
+    QTextEdit, QPlainTextEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QIcon, QFont, QColor, QCursor
@@ -82,6 +83,12 @@ class ProfileCreationDialog(QDialog):
             self.generate_user_agent()
 
         self.setup_ui()
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
 
     def generate_user_agent(self):
         """Generate a random modern User Agent"""
@@ -321,6 +328,12 @@ class ProfilesTab(QWidget):
         super().__init__()
         self.main_window = main_window # Reference to main window for log/managers
         self.setup_ui()
+
+    def mousePressEvent(self, event):
+        focused_widget = QApplication.focusWidget()
+        if focused_widget and isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit)):
+            focused_widget.clearFocus()
+        super().mousePressEvent(event)
 
     def setup_ui(self):
         # Apply global stylesheet for this tab if needed, but components handle their own
