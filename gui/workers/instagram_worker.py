@@ -1,16 +1,13 @@
 import sys
 import os
 import random
-import signal
 import time
 import subprocess
 from typing import List, Optional, Tuple
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from camoufox import Camoufox
 from core.models import ScrollingConfig, ThreadsAccount
-from automation.browser import parse_proxy_string
 from automation.scrolling import scroll_feed, scroll_reels
 from automation.stories import watch_stories
 from automation.Follow.session import follow_usernames
@@ -20,100 +17,69 @@ from automation.messaging.session import send_messages
 from supabase.instagram_accounts_client import InstagramAccountsClient, InstagramAccountsError
 from supabase.profiles_client import SupabaseProfilesClient
 
-CTRL_BREAK = getattr(signal, "CTRL_BREAK_EVENT", None)
-IS_WINDOWS = os.name == "nt"
+from gui.workers.worker_utils import (
+    kill_process_tree,
+    create_browser_context,
+    normalize_range,
+    apply_count_limit,
+    create_status_callback,
+    get_action_enabled_map,
+    build_action_order,
+)
 
 
-def _kill_process_tree(proc, log):
-    """Best-effort kill for subprocess and its children on Windows."""
-    if proc is None or proc.poll() is not None:
-        return
-
-    if IS_WINDOWS:
-        if CTRL_BREAK is not None:
-            try:
-                proc.send_signal(CTRL_BREAK)
-                proc.wait(timeout=5)
-            except Exception as err:
-                log(f"⚠️ CTRL_BREAK to child failed: {err}")
-
-        if proc.poll() is None:
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-                proc.wait(timeout=3)
-            except Exception as err:
-                log(f"⚠️ taskkill failed: {err}")
-    else:
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except Exception as err:
-            log(f"⚠️ terminate failed: {err}")
-
-    if proc.poll() is None:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-
-class InstagramScrollingWorker(QThread):
-    """Worker thread for automated actions (Scrolling, Follow, Unfollow, etc.)"""
+class BaseInstagramWorker(QThread):
+    """Base class for all Instagram worker threads with common signals and methods."""
     
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
+    
+    def __init__(self):
+        super().__init__()
+        self.running = True
+        self.client = InstagramAccountsClient()
+    
+    def stop(self):
+        """Stop the worker gracefully."""
+        self.running = False
+        self.log("🛑 Stopping automation...")
+    
+    def log(self, message: str):
+        """Send log message to UI."""
+        self.log_signal.emit(message)
+
+
+class InstagramScrollingWorker(BaseInstagramWorker):
+    """Worker thread for automated actions (Scrolling, Follow, Unfollow, etc.)"""
     
     def __init__(self, config: ScrollingConfig, accounts: List[ThreadsAccount], profile_names: List[str]):
         super().__init__()
         self.config = config
         self.accounts = accounts
         self.profile_names = profile_names
-        self.running = True
-        self.client = InstagramAccountsClient()
         self.profiles_client = SupabaseProfilesClient()
-        self.current_context = None # Keep track of browser context to close it properly
+        self.current_context = None
         
     def run(self):
         """Main worker loop"""
-        self.log("🚀 Starting automation worker...")
-        
         while self.running:
             try:
-                # Process each account
                 for account in self.accounts:
                     if not self.running:
                         break
-                        
                     self.process_account(account)
-                    
-                    # Random delay between accounts
                     if self.running:
-                        delay = random.randint(10, 30)
-                        self.log(f"⏳ Waiting {delay}s before next account...")
-                        time.sleep(delay)
+                        time.sleep(random.randint(10, 30))
                 
-                # Wait for cycle interval if scrolling is enabled or we want to loop
-                # Only loop if we have scrolling enabled OR if the user expects continuous operation
-                # For now, we respect the cycle interval.
                 if self.running:
-                    minutes = self.config.cycle_interval_minutes
-                    self.log(f"⌛ Cycle complete. Waiting {minutes} minutes...")
-                    
-                    # Sleep in small increments
-                    for _ in range(minutes * 60):
+                    for _ in range(self.config.cycle_interval_minutes * 60):
                         if not self.running:
                             break
                         time.sleep(1)
-                        
             except Exception as e:
                 self.log(f"❌ Error in automation worker: {e}")
                 time.sleep(30)
         
-        self.log("⏹️ Automation stopped")
         self.finished_signal.emit()
 
     def process_account(self, account: ThreadsAccount):
@@ -121,18 +87,6 @@ class InstagramScrollingWorker(QThread):
         profile_name = account.username
         proxy_str = account.proxy or "None"
         
-        self.log(f"👤 Processing account: @{profile_name}")
-        
-        # Prepare profile path
-        base_dir = os.getcwd()
-        profile_path = os.path.join(base_dir, "profiles", profile_name)
-        os.makedirs(profile_path, exist_ok=True)
-        
-        # Parse Proxy
-        proxy_config = None
-        if proxy_str and proxy_str.lower() not in ["none", ""]:
-            proxy_config = parse_proxy_string(proxy_str)
-
         # Get User Agent from database
         user_agent = None
         try:
@@ -145,29 +99,10 @@ class InstagramScrollingWorker(QThread):
         try:
             self.log(f"🚀 Launching browser for @{profile_name}...")
             
-            with Camoufox(
-                headless=False,
-                user_data_dir=profile_path,
-                persistent_context=True,
-                proxy=proxy_config,
-                geoip=False,
-                block_images=False,
-                os="windows",
-                window=(1280, 800),
-                humanize=True,
-                user_agent=user_agent,
-            ) as context:
+            with create_browser_context(profile_name, proxy_str, user_agent) as (context, page):
                 self.current_context = context
-                if len(context.pages) > 0:
-                    page = context.pages[0]
-                else:
-                    page = context.new_page()
-
-                # Navigate to Instagram
-                if page.url == "about:blank":
-                    page.goto("https://www.instagram.com", timeout=15000)
                 
-                # Define Actions Map
+                # Build action execution map
                 actions_map = {
                     "Feed Scroll": lambda: self._run_scrolling(page, account, mode="feed"),
                     "Reels Scroll": lambda: self._run_scrolling(page, account, mode="reels"),
@@ -178,56 +113,25 @@ class InstagramScrollingWorker(QThread):
                     "Send Messages": lambda: self._run_message_only(page, account)
                 }
                 
-                # Use provided order or default fallback
-                # Default order: Feed, Follow, Unfollow, Approve, Message
-                order = self.config.action_order
-                if not order:
-                    order = []
-                    if self.config.enable_feed: order.append("Feed Scroll")
-                    if self.config.enable_reels: order.append("Reels Scroll")
-                    if self.config.watch_stories: order.append("Watch Stories")
-                    if self.config.enable_follow: order.append("Follow")
-                    if self.config.enable_unfollow: order.append("Unfollow")
-                    if self.config.enable_approve: order.append("Approve Requests")
-                    if self.config.enable_message: order.append("Send Messages")
-                else:
-                    if self.config.watch_stories and "Watch Stories" not in order:
-                        order.append("Watch Stories")
-                
-                self.log(f"📋 Execution Order: {', '.join(order)}")
+                # Get action order and enabled map
+                order = build_action_order(self.config)
+                enabled_map = get_action_enabled_map(self.config)
                 
                 for action_name in order:
-                    if not self.running: break
+                    if not self.running:
+                        break
                     
-                    if action_name in actions_map:
-                        # Check enablement again just in case, though order usually comes from enabled items
-                        # But user might have dragged disabled items in UI? 
-                        # We'll assume the list passed in `config.action_order` ONLY contains enabled items.
-                        # But let's double check config flags for safety.
-                        should_run = False
-                        if action_name == "Feed Scroll" and self.config.enable_feed: should_run = True
-                        elif action_name == "Reels Scroll" and self.config.enable_reels: should_run = True
-                        elif action_name == "Watch Stories" and self.config.watch_stories: should_run = True
-                        elif action_name == "Follow" and self.config.enable_follow: should_run = True
-                        elif action_name == "Unfollow" and self.config.enable_unfollow: should_run = True
-                        elif action_name == "Approve Requests" and self.config.enable_approve: should_run = True
-                        elif action_name == "Send Messages" and self.config.enable_message: should_run = True
-                        
-                        if should_run:
-                            # self.log(f"▶️ Starting task: {action_name}")
-                            actions_map[action_name]()
-                            
-                            if self.running:
-                                delay = random.randint(3, 7)
-                                # self.log(f"⏳ Short pause {delay}s...")
-                                time.sleep(delay)
+                    if action_name in actions_map and enabled_map.get(action_name, False):
+                        actions_map[action_name]()
+                        if self.running:
+                            time.sleep(random.randint(3, 7))
 
-                self.log(f"✅ All tasks finished for @{profile_name}")
+                if self.running:
+                    self.log(f"✅ All tasks finished for @{profile_name}")
                 self.current_context = None
 
         except Exception as e:
             self.log(f"❌ Error processing @{profile_name}: {e}")
-            # traceback.print_exc() 
 
     def _run_scrolling(self, page, account, mode="feed"):
         """Execute scrolling logic reusing the page"""
@@ -238,9 +142,8 @@ class InstagramScrollingWorker(QThread):
             elif mode == "reels" and self.config.enable_reels:
                 duration = random.randint(self.config.reels_min_time_minutes, self.config.reels_max_time_minutes)
             
-            if duration <= 0: return
-
-            self.log(f"📜 Starting {mode.capitalize()} Scroll ({duration}m)...")
+            if duration <= 0:
+                return
 
             config = {
                 'like_chance': self.config.like_chance if mode == "feed" else self.config.reels_like_chance,
@@ -292,28 +195,10 @@ class InstagramScrollingWorker(QThread):
                 self.log("ℹ️ No usernames to follow.")
                 return
 
-            # Apply per-session follow limit from config
-            try:
-                rng = getattr(self.config, "follow_count_range", None)
-                if rng and isinstance(rng, tuple):
-                    cmin, cmax = rng
-                    try:
-                        cmin = int(cmin); cmax = int(cmax)
-                    except Exception:
-                        cmin, cmax = 0, 0
-                    if cmin > cmax:
-                        cmin, cmax = cmax, cmin
-                    if cmax > 0:
-                        import random
-                        count = random.randint(max(0, cmin), cmax)
-                        if count <= 0:
-                            usernames = []
-                        else:
-                            random.shuffle(usernames)
-                            usernames = usernames[:count]
-                        self.log(f"🔢 Follow session limit: {len(usernames)}")
-            except Exception:
-                pass
+            # Apply per-session follow limit
+            usernames = apply_count_limit(usernames, self.config.follow_count_range)
+            if self.config.follow_count_range:
+                self.log(f"🔢 Follow session limit: {len(usernames)}")
 
             interactions_config = {
                 "highlights_range": self.config.highlights_range,
@@ -321,25 +206,14 @@ class InstagramScrollingWorker(QThread):
                 "scroll_percentage": self.config.scroll_percentage
             }
 
-            def on_follow_success(username: str):
-                account_id = account_map.get(username)
-                if not account_id:
-                    return
-                try:
-                    self.client.update_account_status(account_id, status="sunscribed")
-                    self.log(f"💾 Статус @{username} обновлен на 'sunscribed'.")
-                except InstagramAccountsError as err:
-                    self.log(f"⚠️ Не удалось обновить статус для @{username}: {err}")
-
-            def on_follow_skip(username: str):
-                account_id = account_map.get(username)
-                if not account_id:
-                    return
-                try:
-                    self.client.update_account_status(account_id, status="skiped", assigned_to=None)
-                    self.log(f"💾 Пропуск @{username}: статус 'skiped', снято назначение.")
-                except InstagramAccountsError as err:
-                    self.log(f"⚠️ Не удалось обновить статус пропуска @{username}: {err}")
+            on_follow_success = create_status_callback(
+                self.client, account_map, self.log, "sunscribed",
+                success_message="💾 Статус @{username} обновлен на 'sunscribed'."
+            )
+            on_follow_skip = create_status_callback(
+                self.client, account_map, self.log, "skiped", clear_assigned=True,
+                success_message="💾 Пропуск @{username}: статус 'skiped', снято назначение."
+            )
 
             follow_usernames(
                 profile_name=account.username,
@@ -413,51 +287,26 @@ class InstagramScrollingWorker(QThread):
         except Exception as e:
             self.log(f"⚠️ Messaging error: {e}")
 
-    # Legacy method kept for safety if needed, but refactored logic is above
-    def _run_unfollow_group(self, page, account):
-        pass
-    
-    def stop(self):
-        """Stop the worker"""
-        self.running = False
-        self.log("🛑 Stopping automation...")
-        # Since we run in-process, we can't easily 'kill' the thread safely if it's blocked in a C extension or sleep.
-        # But we check `self.running` frequently.
-        # We can also close the context if it exists.
-        # But closing context from another thread might be unsafe if not thread-safe.
-        # Camoufox/Playwright context.close() might be callable.
-        # But usually we wait for the loop to exit.
-    
-    def log(self, message: str):
-        """Send log message to UI"""
-        self.log_signal.emit(message)
 
-
-class OnboardingWorker(QThread):
+class OnboardingWorker(BaseInstagramWorker):
     """Worker thread for account onboarding"""
-    
-    log_signal = pyqtSignal(str)
-    finished_signal = pyqtSignal()
     
     def __init__(self, accounts: List[ThreadsAccount], parallel_count: int = 1):
         super().__init__()
         self.accounts = accounts
         self.parallel_count = parallel_count
         self.current_process = None
-        self.running = True
+        self.profiles_client = SupabaseProfilesClient()
         
     def stop(self):
         self.running = False
         if self.current_process and self.current_process.poll() is None:
-            _kill_process_tree(self.current_process, self.log)
+            kill_process_tree(self.current_process, self.log)
             self.current_process = None
         
     def run(self):
         """Onboard accounts"""
         self.log(f"🎯 Starting onboarding for {len(self.accounts)} accounts...")
-        
-        # Helper client for fetching UA
-        profiles_client = SupabaseProfilesClient()
 
         try:
             for i, account in enumerate(self.accounts, 1):
@@ -466,14 +315,13 @@ class OnboardingWorker(QThread):
                     
                 self.log(f"[{i}/{len(self.accounts)}] Onboarding @{account.username}...")
                 
-                # Launch browser for onboarding
                 profile_name = account.username
                 proxy_str = account.proxy or "None"
                 
                 # Fetch UA
                 user_agent = None
                 try:
-                    p_data = profiles_client.get_profile_by_name(profile_name)
+                    p_data = self.profiles_client.get_profile_by_name(profile_name)
                     if p_data:
                         user_agent = p_data.get('user_agent')
                 except Exception:
@@ -511,6 +359,314 @@ class OnboardingWorker(QThread):
             self.log(f"❌ Onboarding error: {e}")
             
         self.finished_signal.emit()
-    
-    def log(self, message: str):
-        self.log_signal.emit(message)
+
+
+class FollowWorker(BaseInstagramWorker):
+    """Worker that follows a list of usernames using a specific profile."""
+
+    def __init__(self, profile_name: str, proxy: str, usernames: List[str]):
+        super().__init__()
+        self.profile_name = profile_name
+        self.proxy = proxy
+        self.usernames = usernames
+
+    def run(self):
+        try:
+            follow_usernames(
+                profile_name=self.profile_name,
+                proxy_string=self.proxy,
+                usernames=self.usernames,
+                log=self.log,
+                should_stop=lambda: not self.running,
+            )
+        except Exception as err:
+            self.log(f"❌ Ошибка: {err}")
+        finally:
+            self.finished_signal.emit()
+
+
+class AutoFollowWorker(BaseInstagramWorker):
+    """Worker that loops through all profiles with assigned accounts."""
+
+    def __init__(
+        self,
+        highlights_range: Optional[Tuple[int, int]] = None,
+        likes_percentage: int = 0,
+        scroll_percentage: int = 0,
+        following_limit: Optional[int] = None,
+        count_range: Optional[Tuple[int, int]] = None,
+        filter_list_ids: Optional[List[str]] = None,
+    ):
+        super().__init__()
+        self.highlights_range = normalize_range(highlights_range, (2, 4))
+        self.likes_percentage = likes_percentage
+        self.scroll_percentage = scroll_percentage
+        try:
+            self.following_limit = int(following_limit) if following_limit is not None else None
+        except Exception:
+            self.following_limit = None
+        self.filter_list_ids = filter_list_ids
+        self.count_range = count_range
+
+    def run(self):
+        try:
+            profiles = self.client.get_profiles_with_assigned_accounts()
+        except InstagramAccountsError as err:
+            self.log(f"❌ Ошибка Supabase (profiles): {err}")
+            self.finished_signal.emit()
+            return
+
+        if self.filter_list_ids:
+            profiles = [p for p in profiles if p.get("list_id") in set(self.filter_list_ids)]
+
+        if not profiles:
+            self.log("ℹ️ Нет профилей с назначенными аккаунтами для подписки.")
+            self.finished_signal.emit()
+            return
+
+        for profile in profiles:
+            if not self.running:
+                break
+
+            profile_id = profile.get("profile_id")
+            profile_name = profile.get("name") or "profile"
+            proxy = profile.get("proxy") or "None"
+            user_agent = profile.get("user_agent")
+            
+            if not profile_id:
+                self.log("⚠️ Пропускаю профиль без profile_id")
+                continue
+
+            try:
+                if self.client.is_profile_busy(profile_id):
+                    self.log(f"⏭️ Профиль {profile_name} занят (scrolling), пропускаю.")
+                    continue
+            except InstagramAccountsError as err:
+                self.log(f"❌ Ошибка проверки статуса профиля {profile_name}: {err}")
+                continue
+
+            try:
+                accounts = self.client.get_accounts_for_profile(profile_id)
+            except InstagramAccountsError as err:
+                self.log(f"❌ Ошибка загрузки аккаунтов для {profile_name}: {err}")
+                continue
+
+            if not accounts:
+                self.log(f"ℹ️ Нет назначенных аккаунтов для профиля {profile_name}.")
+                continue
+
+            usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
+            account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
+
+            usernames = apply_count_limit(usernames, self.count_range)
+
+            self.log(f"▶️ Профиль {profile_name}: подписка на {len(usernames)} аккаунтов.")
+
+            on_follow_success = create_status_callback(
+                self.client, account_map, self.log, "sunscribed"
+            )
+            on_follow_skip = create_status_callback(
+                self.client, account_map, self.log, "skiped", clear_assigned=True
+            )
+
+            try:
+                follow_usernames(
+                    profile_name=profile_name,
+                    proxy_string=proxy,
+                    usernames=usernames,
+                    log=self.log,
+                    should_stop=lambda: not self.running,
+                    following_limit=self.following_limit,
+                    interactions_config={
+                        "highlights_range": self.highlights_range,
+                        "likes_percentage": self.likes_percentage,
+                        "scroll_percentage": self.scroll_percentage,
+                    },
+                    on_success=on_follow_success,
+                    on_skip=on_follow_skip,
+                    user_agent=user_agent,
+                )
+            except Exception as err:
+                self.log(f"❌ Ошибка сессии для профиля {profile_name}: {err}")
+
+            if not self.running:
+                break
+
+            try:
+                self.client.wait_for_profile_idle(
+                    profile_id,
+                    log=self.log,
+                    should_stop=lambda: not self.running,
+                )
+            except InstagramAccountsError as err:
+                self.log(f"⚠️ Не удалось дождаться idle для профиля {profile_name}: {err}")
+
+        self.finished_signal.emit()
+
+
+class UnfollowWorker(BaseInstagramWorker):
+    """Worker that handles the unfollow process and follow requests approval."""
+
+    def __init__(self, 
+                 delay_range: Tuple[int, int] = (10, 30),
+                 count_range: Optional[Tuple[int, int]] = None,
+                 do_unfollow: bool = True,
+                 do_approve: bool = True,
+                 do_message: bool = False,
+                 filter_list_ids: Optional[List[str]] = None):
+        super().__init__()
+        self.delay_range = delay_range
+        self.count_range = count_range
+        self.do_unfollow = do_unfollow
+        self.do_approve = do_approve
+        self.do_message = do_message
+        self.filter_list_ids = filter_list_ids
+
+    def run(self):
+        try:
+            profiles = []
+            if self.do_unfollow:
+                profiles.extend(self.client.get_profiles_with_assigned_accounts(status="unsubscribed"))
+            if self.do_approve:
+                for profile in self.client.get_profiles_with_assigned_accounts(status=None):
+                    if profile not in profiles:
+                        profiles.append(profile)
+            if self.do_message:
+                for profile in self.client.get_profiles_with_assigned_accounts(status=None):
+                    if profile not in profiles:
+                        profiles.append(profile)
+        except InstagramAccountsError as err:
+            self.log(f"❌ Ошибка Supabase: {err}")
+            self.finished_signal.emit()
+            return
+
+        if not profiles:
+            self.log("ℹ️ Нет профилей с назначенными аккаунтами.")
+            self.finished_signal.emit()
+            return
+        
+        if self.filter_list_ids:
+            profiles = [p for p in profiles if p.get("list_id") in set(self.filter_list_ids)]
+
+        # Load message texts if messaging is enabled
+        message_texts = []
+        if self.do_message:
+            try:
+                msg_path = Path("message.txt")
+                if msg_path.exists():
+                    content = msg_path.read_text(encoding="utf-8").strip()
+                    if content:
+                        message_texts = [line.strip() for line in content.split('\n') if line.strip()]
+                    else:
+                        self.log("⚠️ Файл message.txt пуст! Рассылка пропущена.")
+                        self.do_message = False
+                if not message_texts:
+                    self.log("⚠️ В файле message.txt нет валидных сообщений! Рассылка пропущена.")
+                    self.do_message = False
+            except Exception as e:
+                self.log(f"⚠️ Ошибка чтения message.txt: {e}")
+                self.do_message = False
+
+        for profile in profiles:
+            if not self.running:
+                break
+
+            profile_id = profile.get("profile_id")
+            profile_name = profile.get("name") or "profile"
+            proxy = profile.get("proxy") or "None"
+            user_agent = profile.get("user_agent")
+
+            # Check database for unfollow accounts
+            unfollow_accounts = []
+            if self.do_unfollow:
+                try:
+                    unfollow_accounts = self.client.get_accounts_for_profile(profile_id, status="unsubscribed")
+                except InstagramAccountsError as err:
+                    self.log(f"❌ Ошибка получения аккаунтов для {profile_name}: {err}")
+
+            # Check database for messaging targets
+            message_targets = []
+            if self.do_message:
+                try:
+                    message_targets = self.client.get_accounts_to_message(profile_id)
+                except Exception as e:
+                    self.log(f"❌ Ошибка получения целей для рассылки {profile_name}: {e}")
+
+            # Skip browser launch if nothing to do
+            if not self.do_approve and not unfollow_accounts and not message_targets:
+                self.log(f"ℹ️ Нет задач для {profile_name}, пропускаю.")
+                continue
+
+            try:
+                with create_browser_context(profile_name, proxy, user_agent) as (context, page):
+                    # Approve requests
+                    if self.do_approve:
+                        self.log(f"🚀 [Approve] Начинаю подтверждение заявок для {profile_name}...")
+                        try:
+                            approve_follow_requests(
+                                profile_name=profile_name,
+                                proxy_string=proxy,
+                                log=self.log,
+                                should_stop=lambda: not self.running,
+                                page=page
+                            )
+                        except Exception as e:
+                            self.log(f"❌ Ошибка подтверждения заявок для {profile_name}: {e}")
+
+                    if not self.running:
+                        break
+
+                    # Unfollow
+                    if self.do_unfollow and unfollow_accounts:
+                        self.log(f"🚀 [Unfollow] Начинаю отписку для {profile_name}...")
+                        usernames = [acc.get("user_name") for acc in unfollow_accounts if acc.get("user_name")]
+                        account_map = {acc["user_name"]: acc["id"] for acc in unfollow_accounts if acc.get("id") and acc.get("user_name")}
+
+                        self.log(f"▶️ Профиль {profile_name}: Найдено {len(usernames)} для отписки.")
+
+                        usernames = apply_count_limit(usernames, self.count_range)
+                        if self.count_range:
+                            self.log(f"🔢 Лимит на сессию: {len(usernames)}")
+
+                        on_unfollow_success = create_status_callback(
+                            self.client, account_map, self.log, "done", clear_assigned=True,
+                            success_message="💾 Статус {username} обновлен на 'done'."
+                        )
+
+                        try:
+                            unfollow_usernames(
+                                profile_name=profile_name,
+                                proxy_string=proxy,
+                                usernames=usernames,
+                                log=self.log,
+                                should_stop=lambda: not self.running,
+                                delay_range=self.delay_range,
+                                on_success=on_unfollow_success,
+                                page=page
+                            )
+                        except Exception as e:
+                            self.log(f"❌ Ошибка в процессе отписки для {profile_name}: {e}")
+                    
+                    if not self.running:
+                        break
+                        
+                    # Messaging
+                    if self.do_message and message_targets:
+                        self.log(f"🚀 [Messaging] Найдено {len(message_targets)} пользователей для рассылки.")
+                        try:
+                            send_messages(
+                                profile_name=profile_name,
+                                proxy_string=proxy,
+                                targets=message_targets,
+                                message_texts=message_texts,
+                                log=self.log,
+                                should_stop=lambda: not self.running,
+                                page=page
+                            )
+                        except Exception as e:
+                            self.log(f"❌ Ошибка рассылки для {profile_name}: {e}")
+
+            except Exception as e:
+                self.log(f"❌ Критическая ошибка браузера для {profile_name}: {e}")
+
+        self.finished_signal.emit()

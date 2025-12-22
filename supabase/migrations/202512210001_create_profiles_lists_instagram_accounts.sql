@@ -12,7 +12,8 @@ create table public.profiles (
   type text,
   test_ip boolean not null default false,
   user_agent text,
-  list_id uuid
+  list_id uuid,
+  sessions_today integer not null default 0
 );
 
 create table public.lists (

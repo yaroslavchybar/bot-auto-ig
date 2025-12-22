@@ -90,16 +90,10 @@ class AntidetectApp(QMainWindow):
         for name in list(self.process_manager.running_processes.keys()):
             self.process_manager.stop_profile(name)
         
-        # Stop workers
+        # Stop unified worker
         if self.instagram_tab.worker:
             self.instagram_tab.worker.stop()
             self.instagram_tab.worker.wait()
-        if self.instagram_tab.follow_worker:
-            self.instagram_tab.follow_worker.stop()
-            self.instagram_tab.follow_worker.wait()
-        if self.instagram_tab.unfollow_worker:
-            self.instagram_tab.unfollow_worker.stop()
-            self.instagram_tab.unfollow_worker.wait()
 
         event.accept()
 

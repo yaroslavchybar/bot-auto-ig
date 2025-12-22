@@ -9,8 +9,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from core.models import ThreadsAccount, ScrollingConfig
 from gui.workers.instagram_worker import InstagramScrollingWorker
-from gui.workers.follow_worker import AutoFollowWorker
-from gui.workers.unfollow_worker import UnfollowWorker
 import requests
 from supabase.config import PROJECT_URL, SECRET_KEY
 from gui.styles import (
@@ -26,8 +24,6 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         super().__init__()
         self.main_window = main_window
         self.worker = None
-        self.follow_worker = None
-        self.unfollow_worker = None
         # Adjust path to point to parent of gui (anti root)
         # gui/tabs/instagram/tab.py -> parents[0]=instagram, [1]=tabs, [2]=gui, [3]=anti
         self.settings_path = Path(__file__).resolve().parents[3] / "instagram_settings.json"
@@ -572,197 +568,152 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             except Exception:
                 pass
 
-        # === DECIDE EXECUTION PATH ===
-        
-        is_scrolling_mode = enable_feed or enable_reels or self.watch_stories_checkbox.isChecked()
-        
-        if is_scrolling_mode:
-            # --- PATH A: SCROLLING WORKER (Handles everything with Page Reuse) ---
-            
-            if not self.selected_list_ids:
-                QMessageBox.warning(self, "Ошибка", "Выберите список профилей!")
-                self.is_running = False
-                self.update_action_button_state(running=False)
-                return
-            profiles = self._fetch_profiles_for_lists(self.selected_list_ids)
-            if not profiles:
-                if not enable_follow and not (enable_unfollow or enable_approve or enable_message):
-                    QMessageBox.warning(self, "Ошибка", "В выбранном списке нет профилей для скроллинга!")
-                    self.is_running = False
-                    self.update_action_button_state(running=False)
-                    return
-                elif not (enable_unfollow or enable_approve or enable_message):
-                    self.log("⚠️ В выбранном списке нет профилей для скроллинга, работает только подписка.")
-            else:
-                # Convert private profiles to ThreadsAccount objects
-                target_accounts = []
-                for p in profiles:
-                    acc = ThreadsAccount(username=p.get("name"), password="", proxy=p.get("proxy"))
-                    target_accounts.append(acc)
+        # === UNIFIED WORKER FOR ALL ACTIONS ===
 
-                # Get action chances and config
-                feed_like_chance = int(self.feed_likes_chance_slider.currentText().replace('%', ''))
-                feed_carousel_watch_chance = int(self.feed_carousel_chance_slider.currentText().replace('%', ''))
-                feed_follow_chance = int(self.feed_follows_chance_slider.currentText().replace('%', ''))
-                reels_like_chance = int(self.reels_likes_chance_slider.currentText().replace('%', ''))
-                reels_follow_chance = int(self.reels_follows_chance_slider.currentText().replace('%', ''))
-                reels_skip_chance = int(self.reels_skip_chance_slider.currentText().replace('%', ''))
-                
-                reels_skip_min = float(self.reels_skip_min_input.text().split()[0])
-                reels_skip_max = float(self.reels_skip_max_input.text().split()[0])
-                reels_normal_min = float(self.reels_normal_min_input.text().split()[0])
-                reels_normal_max = float(self.reels_normal_max_input.text().split()[0])
+        if not self.selected_list_ids:
+            QMessageBox.warning(self, "Ошибка", "Выберите список профилей!")
+            self.is_running = False
+            self.update_action_button_state(running=False)
+            return
 
-                feed_min_time = int(self.feed_time_min_input.text().split()[0])
-                feed_max_time = int(self.feed_time_max_input.text().split()[0])
-                reels_min_time = int(self.reels_time_min_input.text().split()[0])
-                reels_max_time = int(self.reels_time_max_input.text().split()[0])
-                
-                cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
-                parallel_profiles = int(self.parallel_profiles_input.text().split()[0])
-                
-                feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
-                feed_stories_max = int(self.feed_stories_max_input.text().split()[0])
+        profiles = self._fetch_profiles_for_lists(self.selected_list_ids)
+        if not profiles:
+            QMessageBox.warning(self, "Ошибка", "В выбранном списке нет профилей!")
+            self.is_running = False
+            self.update_action_button_state(running=False)
+            return
 
-                # Collect action order from list
-                action_order = [self.action_order_list.item(i).text() for i in range(self.action_order_list.count())]
+        # Convert private profiles to ThreadsAccount objects
+        target_accounts = []
+        for p in profiles:
+            acc = ThreadsAccount(username=p.get("name"), password="", proxy=p.get("proxy"))
+            target_accounts.append(acc)
 
-                config = ScrollingConfig(
-                    use_private_profiles=True,
-                    use_threads_profiles=False,
-                    action_order=action_order,
-                    like_chance=feed_like_chance,
-                    comment_chance=0,
-                    follow_chance=feed_follow_chance,
-                    reels_like_chance=reels_like_chance,
-                    reels_follow_chance=reels_follow_chance,
-                    reels_skip_chance=reels_skip_chance,
-                    reels_skip_min_time=reels_skip_min,
-                    reels_skip_max_time=reels_skip_max,
-                    reels_normal_min_time=reels_normal_min,
-                    reels_normal_max_time=reels_normal_max,
-                    min_time_minutes=feed_min_time,
-                    max_time_minutes=feed_max_time,
-                    feed_min_time_minutes=feed_min_time,
-                    feed_max_time_minutes=feed_max_time,
-                    reels_min_time_minutes=reels_min_time,
-                    reels_max_time_minutes=reels_max_time,
-                    cycle_interval_minutes=cycle_interval,
-                    enable_feed=enable_feed,
-                    enable_reels=enable_reels,
-                    
-                    # Passed Flags
-                    enable_follow=enable_follow,
-                    enable_unfollow=enable_unfollow,
-                    enable_approve=enable_approve,
-                    enable_message=enable_message,
-                    
-                    carousel_watch_chance=feed_carousel_watch_chance,
-                    carousel_max_slides=feed_carousel_max_slides,
-                    watch_stories=self.watch_stories_checkbox.isChecked(),
-                    stories_max=feed_stories_max,
-                    
-                    # Passed Configs
-                    highlights_range=highlights_range,
-                    likes_percentage=likes_percentage,
-                    scroll_percentage=scroll_percentage,
-                    following_limit=following_limit,
-                    follow_count_range=follow_count_range,
-                    unfollow_delay_range=unfollow_delay_range,
-                    message_texts=message_texts
-                )
-                
-                profile_names = [acc.username for acc in target_accounts]
-                
-                tasks = []
-                if enable_feed: tasks.append("Feed")
-                if enable_reels: tasks.append("Reels")
-                if self.watch_stories_checkbox.isChecked(): tasks.append("Stories")
-                if enable_follow: tasks.append("Follow")
-                if enable_unfollow: tasks.append("Unfollow")
-                if enable_approve: tasks.append("Approve")
-                if enable_message: tasks.append("Message")
-                
-                self.log(f"🔄 Запуск полного цикла ({', '.join(tasks)}) для {len(target_accounts)} профилей...")
-                
-                self.worker = InstagramScrollingWorker(config, target_accounts, profile_names)
-                self.worker.log_signal.connect(self.log)
-                self.worker.finished_signal.connect(self.on_worker_finished)
-                self.worker.start()
+        # Get action chances and config
+        feed_like_chance = int(self.feed_likes_chance_slider.currentText().replace('%', ''))
+        feed_carousel_watch_chance = int(self.feed_carousel_chance_slider.currentText().replace('%', ''))
+        feed_follow_chance = int(self.feed_follows_chance_slider.currentText().replace('%', ''))
+        reels_like_chance = int(self.reels_likes_chance_slider.currentText().replace('%', ''))
+        reels_follow_chance = int(self.reels_follows_chance_slider.currentText().replace('%', ''))
+        reels_skip_chance = int(self.reels_skip_chance_slider.currentText().replace('%', ''))
 
-        else:
-            # --- PATH B: INDIVIDUAL WORKERS (No Feed/Reels) ---
-            if not self.selected_list_ids:
-                QMessageBox.warning(self, "Ошибка", "Выберите список профилей!")
-                self.is_running = False
-                self.update_action_button_state(running=False)
-                return
-            
-            # Start Follow Worker
-            if enable_follow:
-                self.follow_worker = AutoFollowWorker(
-                    highlights_range=highlights_range,
-                    likes_percentage=likes_percentage,
-                    scroll_percentage=scroll_percentage,
-                    following_limit=following_limit,
-                    count_range=follow_count_range,
-                    filter_list_ids=self.selected_list_ids,
-                )
-                self.follow_worker.log_signal.connect(self.log)
-                self.follow_worker.finished_signal.connect(self.on_follow_finished)
-                self.follow_worker.start()
-                self.log("▶️ Запуск автоподписки...")
+        reels_skip_min = float(self.reels_skip_min_input.text().split()[0])
+        reels_skip_max = float(self.reels_skip_max_input.text().split()[0])
+        reels_normal_min = float(self.reels_normal_min_input.text().split()[0])
+        reels_normal_max = float(self.reels_normal_max_input.text().split()[0])
 
-            # Start Unfollow/Approve/Message Worker
-            if enable_unfollow or enable_approve or enable_message:
-                self.unfollow_worker = UnfollowWorker(
-                    delay_range=unfollow_delay_range,
-                    count_range=unfollow_count_range,
-                    do_unfollow=enable_unfollow,
-                    do_approve=enable_approve,
-                    do_message=enable_message,
-                    filter_list_ids=self.selected_list_ids
-                )
-                self.unfollow_worker.log_signal.connect(self.log)
-                self.unfollow_worker.finished_signal.connect(self.on_unfollow_finished)
-                self.unfollow_worker.start()
-                
-                tasks = []
-                if enable_unfollow: tasks.append("Отписка")
-                if enable_approve: tasks.append("Подтверждение")
-                if enable_message: tasks.append("Рассылка")
-                self.log(f"▶️ Запуск задач: {', '.join(tasks)}...")
+        feed_min_time = int(self.feed_time_min_input.text().split()[0])
+        feed_max_time = int(self.feed_time_max_input.text().split()[0])
+        reels_min_time = int(self.reels_time_min_input.text().split()[0])
+        reels_max_time = int(self.reels_time_max_input.text().split()[0])
+
+        cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
+        parallel_profiles = int(self.parallel_profiles_input.text().split()[0])
+
+        feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
+        feed_stories_max = int(self.feed_stories_max_input.text().split()[0])
+
+        # Collect action order from list
+        action_order = [self.action_order_list.item(i).text() for i in range(self.action_order_list.count())]
+
+        config = ScrollingConfig(
+            use_private_profiles=True,
+            use_threads_profiles=False,
+            action_order=action_order,
+            like_chance=feed_like_chance,
+            comment_chance=0,
+            follow_chance=feed_follow_chance,
+            reels_like_chance=reels_like_chance,
+            reels_follow_chance=reels_follow_chance,
+            reels_skip_chance=reels_skip_chance,
+            reels_skip_min_time=reels_skip_min,
+            reels_skip_max_time=reels_skip_max,
+            reels_normal_min_time=reels_normal_min,
+            reels_normal_max_time=reels_normal_max,
+            min_time_minutes=feed_min_time,
+            max_time_minutes=feed_max_time,
+            feed_min_time_minutes=feed_min_time,
+            feed_max_time_minutes=feed_max_time,
+            reels_min_time_minutes=reels_min_time,
+            reels_max_time_minutes=reels_max_time,
+            cycle_interval_minutes=cycle_interval,
+            enable_feed=enable_feed,
+            enable_reels=enable_reels,
+
+            # Passed Flags
+            enable_follow=enable_follow,
+            enable_unfollow=enable_unfollow,
+            enable_approve=enable_approve,
+            enable_message=enable_message,
+
+            carousel_watch_chance=feed_carousel_watch_chance,
+            carousel_max_slides=feed_carousel_max_slides,
+            watch_stories=enable_stories,
+            stories_max=feed_stories_max,
+
+            # Passed Configs
+            highlights_range=highlights_range,
+            likes_percentage=likes_percentage,
+            scroll_percentage=scroll_percentage,
+            following_limit=following_limit,
+            follow_count_range=follow_count_range,
+            unfollow_delay_range=unfollow_delay_range,
+            message_texts=message_texts
+        )
+
+        profile_names = [acc.username for acc in target_accounts]
+
+        tasks = []
+        if enable_feed: tasks.append("Feed")
+        if enable_reels: tasks.append("Reels")
+        if enable_stories: tasks.append("Stories")
+        if enable_follow: tasks.append("Follow")
+        if enable_unfollow: tasks.append("Unfollow")
+        if enable_approve: tasks.append("Approve")
+        if enable_message: tasks.append("Message")
+
+        self.log(f"🔄 Запуск полного цикла ({', '.join(tasks)}) для {len(target_accounts)} профилей...")
+
+        self.worker = InstagramScrollingWorker(config, target_accounts, profile_names)
+        self.worker.log_signal.connect(self.log)
+        self.worker.finished_signal.connect(self.on_worker_finished)
+        self.worker.start()
 
     def on_worker_finished(self):
-        self.log("✅ Скроллинг остановлен/завершен")
-        self.check_all_finished()
-
-    def on_follow_finished(self):
-        self.log("✅ Автоподписка завершена")
-        self.check_all_finished()
-        
-    def on_unfollow_finished(self):
-        self.log("✅ Задачи (Unfollow/Approve/Message) завершены")
+        self.log("✅ Все задачи завершены")
         self.check_all_finished()
 
     def check_all_finished(self):
-        scrolling_active = self.worker and self.worker.isRunning()
-        follow_active = self.follow_worker and self.follow_worker.isRunning()
-        unfollow_active = self.unfollow_worker and self.unfollow_worker.isRunning()
-        
-        if not scrolling_active and not follow_active and not unfollow_active:
+        if not (self.worker and self.worker.isRunning()):
             self.is_running = False
+            try:
+                if PROJECT_URL and SECRET_KEY:
+                    r = requests.get(
+                        f"{PROJECT_URL}/rest/v1/profiles",
+                        params={"select": "profile_id,sessions_today", "name": "eq.main"},
+                        headers={"apikey": SECRET_KEY, "Authorization": f"Bearer {SECRET_KEY}", "Accept": "application/json"},
+                        timeout=20,
+                    )
+                    data = r.json() if r.status_code < 400 else []
+                    if data:
+                        pid = data[0].get("profile_id")
+                        st = int(data[0].get("sessions_today") or 0) + 1
+                        requests.patch(
+                            f"{PROJECT_URL}/rest/v1/profiles",
+                            params={"profile_id": f"eq.{pid}"},
+                            json={"sessions_today": st},
+                            headers={"apikey": SECRET_KEY, "Authorization": f"Bearer {SECRET_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"},
+                            timeout=20,
+                        )
+            except Exception:
+                pass
             self.update_action_button_state(running=False)
 
     def stop_scrolling(self):
         self.log("⏹️ Остановка всех задач...")
         if self.worker:
             self.worker.stop()
-        if self.follow_worker:
-            self.follow_worker.stop()
-        if self.unfollow_worker:
-            self.unfollow_worker.stop()
-            
+
         self.action_btn.setText("Останавливаем...")
         self.action_btn.setEnabled(False)
 
