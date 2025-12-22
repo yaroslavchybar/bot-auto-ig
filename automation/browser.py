@@ -2,6 +2,8 @@ import os
 import traceback
 import time
 import random
+from contextlib import contextmanager
+from typing import Optional
 from camoufox import Camoufox
 from automation import actions
 from automation.scrolling import scroll_feed, scroll_reels
@@ -47,6 +49,50 @@ def parse_proxy_string(proxy_string):
         print(f"[!] Error parsing proxy '{proxy_string}': {e}")
         return None
 
+def ensure_profile_path(profile_name: str, base_dir: Optional[str] = None) -> str:
+    if base_dir is None:
+        base_dir = os.getcwd()
+    profile_path = os.path.join(base_dir, "profiles", profile_name)
+    os.makedirs(profile_path, exist_ok=True)
+    return profile_path
+
+def build_proxy_config(proxy_string: Optional[str]):
+    if proxy_string and proxy_string.lower() not in ("none", ""):
+        return parse_proxy_string(proxy_string)
+    return None
+
+@contextmanager
+def create_browser_context(
+    profile_name: str,
+    proxy_string: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    base_dir: Optional[str] = None,
+    headless: bool = False,
+    block_images: bool = False,
+):
+    profile_path = ensure_profile_path(profile_name, base_dir=base_dir)
+    proxy_config = build_proxy_config(proxy_string)
+
+    with Camoufox(
+        headless=headless,
+        user_data_dir=profile_path,
+        persistent_context=True,
+        proxy=proxy_config,
+        geoip=False,
+        block_images=block_images,
+        os="windows",
+        window=(1280, 800),
+        humanize=True,
+        user_agent=user_agent,
+    ) as context:
+        page = context.pages[0] if context.pages else context.new_page()
+        try:
+            if page.url == "about:blank":
+                page.goto("https://www.instagram.com", timeout=15000)
+        except Exception:
+            pass
+        yield context, page
+
 def run_browser(profile_name, proxy_string, action="manual", duration=5, 
               match_likes=0, match_comments=0, match_follows=0, 
               carousel_watch_chance=0, carousel_max_slides=3,
@@ -54,59 +100,28 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
               feed_duration=0, reels_duration=0, show_cursor=False,
               reels_match_likes=None, reels_match_follows=None,
               user_agent=None):
-    base_dir = os.getcwd()
-    profile_path = os.path.join(base_dir, "profiles", profile_name)
-    os.makedirs(profile_path, exist_ok=True)
-
     print(f"[*] Starting Profile: {profile_name}")
     print(f"[*] Action: {action}")
     
-    proxy_config = None
     if proxy_string and proxy_string.lower() not in ["none", ""]:
         print(f"[*] Using Proxy: {proxy_string}")
-        proxy_config = parse_proxy_string(proxy_string)
     
     if user_agent:
         print(f"[*] Using User Agent: {user_agent}")
 
     try:
-        # Configuration for Camoufox browser
-        use_geoip = False
-        
         print("[*] Initializing Camoufox browser...")
-        
-        # Humanize config could be more detailed if needed, but passing showcursor separately if supported
-        # NOTE: showcursor argument is not supported in this version of Camoufox constructor
-        
-        with Camoufox(
-            headless=False,
-            user_data_dir=profile_path,
-            persistent_context=True,
-            proxy=proxy_config,
-            geoip=use_geoip,
-            block_images=False,
-            os="windows",
-            window=(1280, 800),
-            humanize=True,
+
+        with create_browser_context(
+            profile_name=profile_name,
+            proxy_string=proxy_string,
             user_agent=user_agent,
-            # showcursor=show_cursor,  # Removed to fix TypeError
-        ) as context:
-            
+            headless=False,
+            block_images=False,
+        ) as (context, page):
             print("[*] Camoufox initialized successfully")
-            
-            if len(context.pages) > 0:
-                page = context.pages[0]
-            else:
-                page = context.new_page()
 
             print(f"[*] Browser is running...")
-
-            try:
-                # Safe navigation
-                if page.url == "about:blank":
-                    page.goto("https://www.instagram.com", timeout=10000)
-            except Exception as nav_error:
-                print(f"[!] Navigation warning: {nav_error}")
 
             # Execute requested action
             try:
@@ -176,11 +191,6 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
                         
                     print("[*] Mixed session finished.")
 
-                elif action == "onboard":
-                    print("[*] Starting onboarding task...")
-                    actions.onboard_account(page)
-                    print("[*] Onboarding task finished.")
-                    
                 else: # Manual mode
                     print("[*] Manual mode active. Keep window open.")
                     # Keep Alive Loop

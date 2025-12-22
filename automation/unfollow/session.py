@@ -2,13 +2,8 @@ import random
 import time
 from typing import Callable, Iterable, List, Optional, Tuple
 
-from camoufox import Camoufox
-
 from automation.actions import random_delay
-from automation.Follow.utils import (
-    build_proxy_config,
-    ensure_profile_path,
-)
+from automation.browser import create_browser_context
 
 def unfollow_usernames(
     profile_name: str,
@@ -199,26 +194,14 @@ def unfollow_usernames(
         log(f"🔄 Использую существующую сессию для отписки...")
         _run_unfollow_logic(page)
         return
-
-    profile_path = ensure_profile_path(profile_name)
-    proxy_config = build_proxy_config(proxy_string)
     
     log(f"🧭 Запуск браузера для профиля: {profile_name}")
 
-    with Camoufox(
-        headless=False,
-        user_data_dir=profile_path,
-        persistent_context=True,
-        proxy=proxy_config,
-        geoip=False,
-        block_images=False,
-        os="windows",
-        window=(1280, 800),
-        humanize=True,
+    with create_browser_context(
+        profile_name=profile_name,
+        proxy_string=proxy_string,
         user_agent=user_agent,
-    ) as context:
-        page = context.pages[0] if context.pages else context.new_page()
+    ) as (_context, page):
         _run_unfollow_logic(page)
 
     log("🏁 Сессия завершена.")
-

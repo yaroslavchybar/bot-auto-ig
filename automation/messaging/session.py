@@ -2,12 +2,8 @@ import os
 import random
 from typing import Callable, List, Dict, Optional
 
-from camoufox import Camoufox
 from automation.actions import random_delay
-from automation.Follow.utils import (
-    build_proxy_config,
-    ensure_profile_path,
-)
+from automation.browser import create_browser_context
 from supabase.instagram_accounts_client import InstagramAccountsClient
 
 
@@ -81,9 +77,6 @@ def send_messages(
     if not targets:
         log("ℹ️ Нет пользователей для рассылки сообщений.")
         return
-
-    profile_path = ensure_profile_path(profile_name)
-    proxy_config = build_proxy_config(proxy_string)
     client = InstagramAccountsClient()
 
     def _run_messaging_logic(page):
@@ -409,17 +402,9 @@ def send_messages(
 
     log(f"✉️ [Messages] Запуск браузера для профиля: {profile_name}")
 
-    with Camoufox(
-        headless=False,
-        user_data_dir=profile_path,
-        persistent_context=True,
-        proxy=proxy_config,
-        geoip=False,
-        block_images=False,
-        os="windows",
-        window=(1280, 800),
-        humanize=True,
+    with create_browser_context(
+        profile_name=profile_name,
+        proxy_string=proxy_string,
         user_agent=user_agent,
-    ) as context:
-        page = context.pages[0] if context.pages else context.new_page()
+    ) as (_context, page):
         _run_messaging_logic(page)

@@ -64,37 +64,63 @@ class InstagramScrollingWorker(BaseInstagramWorker):
         """Main worker loop"""
         while self.running:
             try:
+                work_done_in_cycle = False
+                
                 for account in self.accounts:
                     if not self.running:
                         break
-                    self.process_account(account)
-                    if self.running:
-                        time.sleep(random.randint(10, 30))
+                    
+                    # Process account (returns True if browser was launched)
+                    if self.process_account(account):
+                        work_done_in_cycle = True
+                        
+                    # No delay between profiles as requested
                 
                 if self.running:
-                    for _ in range(self.config.cycle_interval_minutes * 60):
-                        if not self.running:
-                            break
-                        time.sleep(1)
+                    if work_done_in_cycle:
+                        # Safety delay to prevent instant restart if list is short but did work
+                        time.sleep(5)
+                    else:
+                        # If no work was done (all limits reached), sleep longer to avoid cpu spin
+                        self.log("💤 Все профили достигли лимита или пропущены. Жду 60 сек...")
+                        for _ in range(60):
+                            if not self.running: break
+                            time.sleep(1)
+                            
             except Exception as e:
                 self.log(f"❌ Error in automation worker: {e}")
                 time.sleep(30)
         
         self.finished_signal.emit()
 
-    def process_account(self, account: ThreadsAccount):
-        """Execute all enabled actions for a specific account using a single browser session"""
+    def process_account(self, account: ThreadsAccount) -> bool:
+        """Execute all enabled actions for a specific account. Returns True if browser was launched."""
         profile_name = account.username
         proxy_str = account.proxy or "None"
         
-        # Get User Agent from database
-        user_agent = None
+        # 1. Check session limit
         try:
             profile_data = self.profiles_client.get_profile_by_name(profile_name)
             if profile_data:
-                user_agent = profile_data.get('user_agent')
+                sessions = int(profile_data.get("sessions_today") or 0)
+                if sessions >= self.config.max_sessions_per_day:
+                    self.log(f"⏭️ Пропуск @{profile_name}: достигнут лимит сессий ({sessions}/{self.config.max_sessions_per_day})")
+                    return False
         except Exception as e:
-            self.log(f"⚠️ Failed to fetch user agent: {e}")
+            self.log(f"⚠️ Ошибка проверки сессий для @{profile_name}: {e}")
+            # Continue on error? Or skip? Let's skip to be safe against spamming if DB is down
+            return False
+
+        # 2. Get User Agent
+        user_agent = None
+        try:
+            # We already fetched profile_data above, reuse if possible? 
+            # But profile_data variable scope is inside try... 
+            # Let's just fetch from profile_data if it exists or refetch
+            if 'profile_data' in locals() and profile_data:
+                user_agent = profile_data.get('user_agent')
+        except Exception:
+            pass
 
         try:
             self.log(f"🚀 Launching browser for @{profile_name}...")
@@ -128,10 +154,16 @@ class InstagramScrollingWorker(BaseInstagramWorker):
 
                 if self.running:
                     self.log(f"✅ All tasks finished for @{profile_name}")
+                    try:
+                        self.profiles_client.increment_sessions_today(profile_name)
+                    except Exception as e:
+                        self.log(f"⚠️ Не удалось обновить счетчик сессий: {e}")
                 self.current_context = None
+                return True
 
         except Exception as e:
             self.log(f"❌ Error processing @{profile_name}: {e}")
+            return False
 
     def _run_scrolling(self, page, account, mode="feed"):
         """Execute scrolling logic reusing the page"""
@@ -286,79 +318,6 @@ class InstagramScrollingWorker(BaseInstagramWorker):
                 self.log("⚠️ Could not find profile for messaging.")
         except Exception as e:
             self.log(f"⚠️ Messaging error: {e}")
-
-
-class OnboardingWorker(BaseInstagramWorker):
-    """Worker thread for account onboarding"""
-    
-    def __init__(self, accounts: List[ThreadsAccount], parallel_count: int = 1):
-        super().__init__()
-        self.accounts = accounts
-        self.parallel_count = parallel_count
-        self.current_process = None
-        self.profiles_client = SupabaseProfilesClient()
-        
-    def stop(self):
-        self.running = False
-        if self.current_process and self.current_process.poll() is None:
-            kill_process_tree(self.current_process, self.log)
-            self.current_process = None
-        
-    def run(self):
-        """Onboard accounts"""
-        self.log(f"🎯 Starting onboarding for {len(self.accounts)} accounts...")
-
-        try:
-            for i, account in enumerate(self.accounts, 1):
-                if not self.running:
-                    break
-                    
-                self.log(f"[{i}/{len(self.accounts)}] Onboarding @{account.username}...")
-                
-                profile_name = account.username
-                proxy_str = account.proxy or "None"
-                
-                # Fetch UA
-                user_agent = None
-                try:
-                    p_data = self.profiles_client.get_profile_by_name(profile_name)
-                    if p_data:
-                        user_agent = p_data.get('user_agent')
-                except Exception:
-                    pass
-
-                cmd = [
-                    sys.executable, "launcher.py", 
-                    "--name", profile_name, 
-                    "--proxy", proxy_str,
-                    "--action", "onboard"
-                ]
-                
-                if user_agent:
-                    cmd.extend(["--user-agent", user_agent])
-                
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-                startupinfo.wShowWindow = 5
-
-                self.current_process = subprocess.Popen(
-                    cmd,
-                    startupinfo=startupinfo,
-                    creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-                )
-                self.log(f"🚀 Browser launched for onboarding @{account.username}")
-                
-                self.current_process.wait()
-                self.current_process = None
-                
-                self.log(f"✅ @{account.username} onboarded successfully")
-                
-            self.log("🎉 All accounts onboarded!")
-            
-        except Exception as e:
-            self.log(f"❌ Onboarding error: {e}")
-            
-        self.finished_signal.emit()
 
 
 class FollowWorker(BaseInstagramWorker):

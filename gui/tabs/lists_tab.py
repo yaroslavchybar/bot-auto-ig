@@ -2,21 +2,25 @@ from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLis
 from PyQt6.QtCore import Qt
 import requests
 from supabase.config import PROJECT_URL, SECRET_KEY
-from gui.styles import INPUT_STYLE, PRIMARY_BTN_STYLE, BUTTON_STYLE, CARD_STYLE, ACTION_BTN_STYLE, CHECKBOX_STYLE
+from gui.styles import (
+    INPUT_STYLE, PRIMARY_BTN_STYLE, BUTTON_STYLE, CARD_STYLE,
+    ACTION_BTN_STYLE, CHECKBOX_STYLE, TAB_BACKGROUND_STYLE,
+    TITLE_LABEL_STYLE, ACTION_BTN_SECONDARY_STYLE, ACTION_BTN_DANGER_STYLE
+)
 from gui.tabs.instagram.components import SettingsDialog
 
 class ListsTab(QWidget):
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
-        self.setStyleSheet("background-color: #1e2125;")
+        self.setStyleSheet(TAB_BACKGROUND_STYLE)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 30, 30, 30)
         layout.setSpacing(20)
 
         header = QHBoxLayout()
         title = QLabel("Списки")
-        title.setStyleSheet("color: white; font-size: 28px; font-weight: bold;")
+        title.setStyleSheet(TITLE_LABEL_STYLE)
         header.addWidget(title)
         header.addStretch()
         create_btn = QPushButton("+ Новый список")
@@ -130,10 +134,10 @@ class ListsTab(QWidget):
         h.addStretch()
         edit_btn = QPushButton("⚙")
         edit_btn.setToolTip("Редактировать")
-        edit_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        edit_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         delete_btn = QPushButton("🗑")
         delete_btn.setToolTip("Удалить")
-        delete_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #e06c75;")
+        delete_btn.setStyleSheet(ACTION_BTN_DANGER_STYLE)
 
         def open_edit():
             self.open_edit_dialog(list_id, name)

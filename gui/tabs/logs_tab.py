@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QTextEdit
 from PyQt6.QtCore import Qt
+from gui.styles import LOG_TEXTEDIT_STYLE
 
 class LogsTab(QWidget):
     def __init__(self, main_window):
@@ -11,17 +12,7 @@ class LogsTab(QWidget):
         
         self.log_area = QTextEdit()
         self.log_area.setReadOnly(True)
-        self.log_area.setStyleSheet("""
-            QTextEdit {
-                background-color: #21252b;
-                border: 1px solid #3e4042;
-                border-radius: 8px;
-                color: #abb2bf;
-                padding: 10px;
-                font-family: 'Consolas', monospace;
-                font-size: 12px;
-            }
-        """)
+        self.log_area.setStyleSheet(LOG_TEXTEDIT_STYLE)
         layout.addWidget(self.log_area)
     
     def add_log(self, text: str):

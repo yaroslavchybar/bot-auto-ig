@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from gui.styles import (
-    INPUT_STYLE, CHECKBOX_STYLE, PRIMARY_BTN_STYLE, CARD_STYLE
+    INPUT_STYLE, CHECKBOX_STYLE, PRIMARY_BTN_STYLE, CARD_STYLE, FRAME_TRANSPARENT_STYLE
 )
 from .components import SettingsDialog
 
@@ -260,7 +260,7 @@ class DialogsMixin:
         self.msg_tab1_layout = QVBoxLayout(self.msg_tab1)
         self.msg_tab1_layout.setContentsMargins(10, 10, 10, 10)
         msg1_card = QFrame()
-        msg1_card.setStyleSheet("QFrame { background: transparent; border: none; }")
+        msg1_card.setStyleSheet(FRAME_TRANSPARENT_STYLE)
         msg1_card_layout = QVBoxLayout(msg1_card)
         msg1_card_layout.setContentsMargins(15, 15, 15, 15)
         msg1_title = QLabel("Текст сообщения (message.txt)")
@@ -284,7 +284,7 @@ class DialogsMixin:
         self.msg_tab2_layout = QVBoxLayout(self.msg_tab2)
         self.msg_tab2_layout.setContentsMargins(10, 10, 10, 10)
         msg2_card = QFrame()
-        msg2_card.setStyleSheet("QFrame { background: transparent; border: none; }")
+        msg2_card.setStyleSheet(FRAME_TRANSPARENT_STYLE)
         msg2_card_layout = QVBoxLayout(msg2_card)
         msg2_card_layout.setContentsMargins(15, 15, 15, 15)
         msg2_title = QLabel("Текст сообщения (message_2.txt)")
@@ -368,5 +368,4 @@ class DialogsMixin:
             text = self.message_2_text_edit.toPlainText()
             lines = [l for l in text.splitlines() if l.strip()]
             self.msg2_count_label.setText(f"Строк: {len(lines)} · Символов: {len(text)}")
-
 

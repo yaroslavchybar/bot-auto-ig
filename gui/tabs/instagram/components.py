@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QPushButton, QLabel, QDialog, QLineEdit
 )
 from PyQt6.QtCore import Qt
-from gui.styles import DIALOG_STYLE, INPUT_STYLE
+from gui.styles import DIALOG_STYLE, INPUT_STYLE, TOGGLE_HEADER_STYLE, HEADER_LABEL_SMALL_STYLE, HEADER_INPUT_STYLE
 
 class SettingsDialog(QDialog):
     def __init__(self, title, parent=None):
@@ -28,20 +28,7 @@ class ToggleHeader(QPushButton):
         self.setCheckable(True)
         self.setChecked(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet("""
-            QPushButton {
-                text-align: left;
-                border: none;
-                background: transparent;
-                color: #e0e0e0;
-                font-weight: bold;
-                font-size: 16px;
-                padding: 5px 0;
-            }
-            QPushButton:hover {
-                color: #ffffff;
-            }
-        """)
+        self.setStyleSheet(TOGGLE_HEADER_STYLE)
         self.clicked.connect(self.toggle_view)
         self.update_text()
 
@@ -59,9 +46,9 @@ def create_header_input(label_text, default_val, width=50):
     layout.setContentsMargins(0, 0, 0, 0)
     layout.setSpacing(2)
     lbl = QLabel(label_text)
-    lbl.setStyleSheet("color: #abb2bf; font-size: 11px; font-weight: bold;")
+    lbl.setStyleSheet(HEADER_LABEL_SMALL_STYLE)
     inp = QLineEdit(default_val)
-    inp.setStyleSheet(INPUT_STYLE + "QLineEdit { background: transparent; padding: 4px; font-size: 12px; }")
+    inp.setStyleSheet(HEADER_INPUT_STYLE)
     inp.setFixedWidth(width)
     layout.addWidget(lbl)
     layout.addWidget(inp)

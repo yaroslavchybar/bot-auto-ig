@@ -1,21 +1,6 @@
-import os
 from typing import Callable, Iterable, List, Optional
 
-from automation.browser import parse_proxy_string
-
-
-def ensure_profile_path(profile_name: str) -> str:
-    """Create and return profile directory path."""
-    profile_path = os.path.join(os.getcwd(), "profiles", profile_name)
-    os.makedirs(profile_path, exist_ok=True)
-    return profile_path
-
-
-def build_proxy_config(proxy_string: str):
-    """Parse proxy string or return None."""
-    if proxy_string and proxy_string.lower() not in ("none", ""):
-        return parse_proxy_string(proxy_string)
-    return None
+from automation.browser import build_proxy_config, ensure_profile_path
 
 
 def clean_usernames(usernames: Iterable[str]) -> List[str]:
@@ -42,4 +27,3 @@ def call_on_success(
         on_success(username)
     except Exception as callback_err:
         log(f"⚠️ Не удалось обновить статус @{username}: {callback_err}")
-

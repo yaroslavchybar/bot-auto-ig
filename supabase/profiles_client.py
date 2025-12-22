@@ -51,9 +51,30 @@ class SupabaseProfilesClient:
         return self._make_request("GET") or []
 
     def get_profile_by_name(self, name: str) -> Optional[Dict]:
-        """Get profile by name"""
-        profiles = self._make_request("GET", params={"name": f"eq.{name}"})
-        return profiles[0] if profiles else None
+        """Fetch a single profile by name."""
+        try:
+            # Using existing _make_request method
+            profiles = self._make_request("GET", params={"name": f"eq.{name}"})
+            if profiles:
+                return profiles[0]
+            return None
+        except Exception:
+            return None
+
+    def increment_sessions_today(self, profile_name: str):
+        """Increment sessions_today count for a profile."""
+        try:
+            profile = self.get_profile_by_name(profile_name)
+            if profile:
+                profile_id = profile.get("profile_id")
+                new_count = int(profile.get("sessions_today") or 0) + 1
+                self._make_request(
+                    "PATCH", 
+                    f"?profile_id=eq.{profile_id}", 
+                    data={"sessions_today": new_count}
+                )
+        except Exception as e:
+            print(f"Error incrementing sessions for {profile_name}: {e}")
 
     def create_profile(self, profile_data: Dict) -> Dict:
         """Create new profile in database"""

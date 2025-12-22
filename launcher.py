@@ -5,7 +5,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, required=True)
     parser.add_argument("--proxy", type=str, default="None")
-    parser.add_argument("--action", type=str, default="manual", help="manual, scroll, reels, mixed, onboard")
+    parser.add_argument("--action", type=str, default="manual", help="manual, scroll, reels, mixed")
     parser.add_argument("--duration", type=int, default=5, help="Duration in minutes for single action")
     parser.add_argument("--feed-duration", type=int, default=0, help="Duration for feed in mixed mode")
     parser.add_argument("--reels-duration", type=int, default=0, help="Duration for reels in mixed mode")

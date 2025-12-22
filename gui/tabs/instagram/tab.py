@@ -13,7 +13,13 @@ import requests
 from supabase.config import PROJECT_URL, SECRET_KEY
 from gui.styles import (
     CARD_STYLE, ACTION_BTN_STYLE, INPUT_STYLE,
-    CHECKBOX_STYLE, BUTTON_STYLE, PRIMARY_BTN_STYLE
+    CHECKBOX_STYLE, BUTTON_STYLE, PRIMARY_BTN_STYLE,
+    TITLE_LABEL_STYLE, SUBTITLE_LABEL_STYLE, SCROLL_AREA_STYLE,
+    CONTENT_TRANSPARENT_STYLE, SOURCE_LISTS_LABEL_STYLE,
+    ACTION_BTN_SECONDARY_STYLE, INPUT_COMBO_PADDING_STYLE,
+    ACTION_ORDER_LIST_STYLE, ACTION_BUTTON_START_STYLE,
+    ACTION_BUTTON_STOP_STYLE, FRAME_TRANSPARENT_STYLE,
+    SCROLL_AREA_BASIC_STYLE, BUTTON_DANGER_STYLE
 )
 from .components import ToggleHeader, create_header_input
 from .settings import SettingsMixin
@@ -61,9 +67,9 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         title_layout.setSpacing(5)
         
         title_label = QLabel("Instagram Автоматизация")
-        title_label.setStyleSheet("color: white; font-size: 28px; font-weight: bold;")
+        title_label.setStyleSheet(TITLE_LABEL_STYLE)
         subtitle_label = QLabel("Управление активностью и скроллинг ленты")
-        subtitle_label.setStyleSheet("color: #abb2bf; font-size: 14px;")
+        subtitle_label.setStyleSheet(SUBTITLE_LABEL_STYLE)
         
         title_layout.addWidget(title_label)
         title_layout.addWidget(subtitle_label)
@@ -77,9 +83,9 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         settings_layout.setContentsMargins(0, 0, 0, 0)
         settings_layout.setSpacing(15)
 
-        # Cycle Interval
-        cycle_widget, self.scrolling_cycle_input = create_header_input("🕓 Цикл (мин)", "11", 60)
-        settings_layout.addWidget(cycle_widget)
+        # Max Sessions
+        sessions_widget, self.max_sessions_input = create_header_input("🔢 Макс. сессий", "5", 60)
+        settings_layout.addWidget(sessions_widget)
 
         # Threads
         threads_widget, self.parallel_profiles_input = create_header_input("⚡ Потоки", "1", 40)
@@ -103,25 +109,10 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setStyleSheet("""
-            QScrollArea { background: transparent; border: none; }
-            QScrollBar:vertical {
-                border: none;
-                background: #2b2d30;
-                width: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: #4b4d50;
-                border-radius: 4px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
+        scroll_area.setStyleSheet(SCROLL_AREA_STYLE)
 
         content_widget = QWidget()
-        content_widget.setStyleSheet("background: transparent;")
+        content_widget.setStyleSheet(CONTENT_TRANSPARENT_STYLE)
         content_layout = QVBoxLayout(content_widget)
         content_layout.setSpacing(20)
         content_layout.setContentsMargins(0, 0, 10, 0) # Right margin for scrollbar
@@ -150,11 +141,11 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         t_grid.addWidget(QLabel("Источник профилей:"), 0, 0)
         source_layout = QHBoxLayout()
         self.source_lists_label = QLabel("Выберите списки")
-        self.source_lists_label.setStyleSheet("color: #61afef; font-weight: bold; font-size: 14px;")
+        self.source_lists_label.setStyleSheet(SOURCE_LISTS_LABEL_STYLE)
         self.select_lists_btn = QPushButton("⚙")
         self.select_lists_btn.setToolTip("Выбор списков")
         self.select_lists_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.select_lists_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.select_lists_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.select_lists_btn.clicked.connect(self._open_select_lists_dialog)
         source_layout.addWidget(self.source_lists_label)
         source_layout.addWidget(self.select_lists_btn)
@@ -182,7 +173,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.feed_settings_btn = QPushButton("⚙")
         self.feed_settings_btn.setToolTip("Настройки")
         self.feed_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.feed_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.feed_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.feed_settings_btn.clicked.connect(self.open_feed_settings)
         
         feed_layout.addWidget(self.feed_checkbox)
@@ -201,7 +192,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.reels_settings_btn = QPushButton("⚙")
         self.reels_settings_btn.setToolTip("Настройки")
         self.reels_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.reels_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.reels_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.reels_settings_btn.clicked.connect(self.open_reels_settings)
         
         reels_layout.addWidget(self.reels_checkbox)
@@ -220,7 +211,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.follow_settings_btn = QPushButton("⚙")
         self.follow_settings_btn.setToolTip("Настройки")
         self.follow_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.follow_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.follow_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.follow_settings_btn.clicked.connect(self.open_follow_settings)
         
         follow_layout.addWidget(self.follow_checkbox)
@@ -239,7 +230,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.stories_settings_btn = QPushButton("⚙")
         self.stories_settings_btn.setToolTip("Настройки Stories")
         self.stories_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.stories_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.stories_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.stories_settings_btn.clicked.connect(self.open_stories_settings)
         
         stories_layout.addWidget(self.watch_stories_checkbox)
@@ -268,7 +259,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.unfollow_settings_btn = QPushButton("⚙")
         self.unfollow_settings_btn.setToolTip("Настройки")
         self.unfollow_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.unfollow_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.unfollow_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.unfollow_settings_btn.clicked.connect(self.open_unfollow_settings)
         unfollow_layout.addWidget(self.unfollow_checkbox)
         unfollow_layout.addWidget(self.unfollow_settings_btn)
@@ -284,7 +275,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.approve_settings_btn = QPushButton("⚙")
         self.approve_settings_btn.setToolTip("Настройки")
         self.approve_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.approve_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.approve_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.approve_settings_btn.clicked.connect(self.open_approve_settings)
         approve_layout.addWidget(self.approve_checkbox)
         approve_layout.addWidget(self.approve_settings_btn)
@@ -300,7 +291,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         self.message_settings_btn = QPushButton("⚙")
         self.message_settings_btn.setToolTip("Настройки")
         self.message_settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.message_settings_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.message_settings_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.message_settings_btn.clicked.connect(self.open_message_settings)
         message_layout.addWidget(self.message_checkbox)
         message_layout.addWidget(self.message_settings_btn)
@@ -335,7 +326,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         order_controls = QHBoxLayout()
         self.action_combo = QComboBox()
         self.action_combo.addItems(["Feed Scroll", "Reels Scroll", "Watch Stories", "Follow", "Unfollow", "Approve Requests", "Send Messages"])
-        self.action_combo.setStyleSheet(INPUT_STYLE + "padding: 5px;")
+        self.action_combo.setStyleSheet(INPUT_COMBO_PADDING_STYLE)
         
         self.add_action_btn = QPushButton("➕ Добавить")
         self.add_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -344,7 +335,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         
         self.remove_action_btn = QPushButton("➖ Удалить")
         self.remove_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.remove_action_btn.setStyleSheet(BUTTON_STYLE.replace("#61afef", "#e06c75")) # Reddish style
+        self.remove_action_btn.setStyleSheet(BUTTON_DANGER_STYLE)
         self.remove_action_btn.clicked.connect(self.remove_action_from_order)
         
         order_controls.addWidget(self.action_combo)
@@ -353,22 +344,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         order_content_layout.addLayout(order_controls)
 
         self.action_order_list = QListWidget()
-        self.action_order_list.setStyleSheet("""
-            QListWidget {
-                background-color: #21252b;
-                border: 1px solid #3e4042;
-                border-radius: 6px;
-                color: #abb2bf;
-                padding: 5px;
-            }
-            QListWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #2c313a;
-            }
-            QListWidget::item:selected {
-                background-color: #2c313a;
-            }
-        """)
+        self.action_order_list.setStyleSheet(ACTION_ORDER_LIST_STYLE)
         self.action_order_list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.action_order_list.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.action_order_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -430,38 +406,12 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         if running:
             # STOP Style
             self.action_btn.setText("⏹ Остановить")
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(224, 108, 117, 0.2);
-                    color: #e06c75;
-                    border: 1px solid #e06c75;
-                    border-radius: 8px;
-                    padding: 10px 20px;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(224, 108, 117, 0.3);
-                }
-            """)
+            self.action_btn.setStyleSheet(ACTION_BUTTON_STOP_STYLE)
         else:
             # START Style
             self.action_btn.setText("▶ Запустить")
             self.action_btn.setEnabled(True)  # Re-enable button when not running
-            self.action_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(97, 175, 239, 0.2);
-                    color: #61afef;
-                    border: 1px solid #61afef;
-                    border-radius: 8px;
-                    padding: 10px 20px;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(97, 175, 239, 0.3);
-                }
-            """)
+            self.action_btn.setStyleSheet(ACTION_BUTTON_START_STYLE)
 
     def start_scrolling(self):
         # 1. Determine what to run
@@ -607,7 +557,10 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         reels_min_time = int(self.reels_time_min_input.text().split()[0])
         reels_max_time = int(self.reels_time_max_input.text().split()[0])
 
-        cycle_interval = int(self.scrolling_cycle_input.text().split()[0])
+        try:
+            max_sessions = int(self.max_sessions_input.text().split()[0])
+        except:
+            max_sessions = 5
         parallel_profiles = int(self.parallel_profiles_input.text().split()[0])
 
         feed_carousel_max_slides = int(self.feed_carousel_max_input.text().split()[0])
@@ -636,7 +589,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             feed_max_time_minutes=feed_max_time,
             reels_min_time_minutes=reels_min_time,
             reels_max_time_minutes=reels_max_time,
-            cycle_interval_minutes=cycle_interval,
+            max_sessions_per_day=max_sessions,
             enable_feed=enable_feed,
             enable_reels=enable_reels,
 
@@ -676,7 +629,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
 
         self.worker = InstagramScrollingWorker(config, target_accounts, profile_names)
         self.worker.log_signal.connect(self.log)
-        self.worker.finished_signal.connect(self.on_worker_finished)
+        self.worker.finished.connect(self.on_worker_finished)
         self.worker.start()
 
     def on_worker_finished(self):
@@ -686,27 +639,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
     def check_all_finished(self):
         if not (self.worker and self.worker.isRunning()):
             self.is_running = False
-            try:
-                if PROJECT_URL and SECRET_KEY:
-                    r = requests.get(
-                        f"{PROJECT_URL}/rest/v1/profiles",
-                        params={"select": "profile_id,sessions_today", "name": "eq.main"},
-                        headers={"apikey": SECRET_KEY, "Authorization": f"Bearer {SECRET_KEY}", "Accept": "application/json"},
-                        timeout=20,
-                    )
-                    data = r.json() if r.status_code < 400 else []
-                    if data:
-                        pid = data[0].get("profile_id")
-                        st = int(data[0].get("sessions_today") or 0) + 1
-                        requests.patch(
-                            f"{PROJECT_URL}/rest/v1/profiles",
-                            params={"profile_id": f"eq.{pid}"},
-                            json={"sessions_today": st},
-                            headers={"apikey": SECRET_KEY, "Authorization": f"Bearer {SECRET_KEY}", "Content-Type": "application/json", "Prefer": "return=minimal"},
-                            timeout=20,
-                        )
-            except Exception:
-                pass
+            # Removed logic for incrementing main profile sessions - now handled per profile in worker
             self.update_action_button_state(running=False)
 
     def stop_scrolling(self):
@@ -740,7 +673,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         dlg = SettingsDialog("Выбор списков", self)
         checks = []
         frame = QFrame()
-        frame.setStyleSheet("QFrame { background: transparent; border: none; }")
+        frame.setStyleSheet(FRAME_TRANSPARENT_STYLE)
         lay = QVBoxLayout(frame)
         lay.setContentsMargins(0, 0, 0, 0)
         for row in lists:
@@ -755,7 +688,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.setStyleSheet(SCROLL_AREA_BASIC_STYLE)
         scroll.setWidget(frame)
         save_btn = QPushButton("Сохранить")
         save_btn.setStyleSheet(PRIMARY_BTN_STYLE)

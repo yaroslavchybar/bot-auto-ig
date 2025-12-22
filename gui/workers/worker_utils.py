@@ -9,8 +9,7 @@ import subprocess
 from typing import Tuple, Optional, List, Callable, Any
 from contextlib import contextmanager
 
-from camoufox import Camoufox
-from automation.browser import parse_proxy_string
+from automation.browser import create_browser_context as _create_browser_context
 
 # Windows process handling constants
 CTRL_BREAK = getattr(signal, "CTRL_BREAK_EVENT", None)
@@ -74,36 +73,12 @@ def create_browser_context(
     Yields:
         Tuple of (context, page)
     """
-    if base_dir is None:
-        base_dir = os.getcwd()
-    
-    profile_path = os.path.join(base_dir, "profiles", profile_name)
-    os.makedirs(profile_path, exist_ok=True)
-    
-    proxy_config = None
-    if proxy_string and proxy_string.lower() not in ["none", ""]:
-        proxy_config = parse_proxy_string(proxy_string)
-
-    with Camoufox(
-        headless=False,
-        user_data_dir=profile_path,
-        persistent_context=True,
-        proxy=proxy_config,
-        geoip=False,
-        block_images=False,
-        os="windows",
-        window=(1280, 800),
-        humanize=True,
+    with _create_browser_context(
+        profile_name=profile_name,
+        proxy_string=proxy_string,
         user_agent=user_agent,
-    ) as context:
-        if len(context.pages) > 0:
-            page = context.pages[0]
-        else:
-            page = context.new_page()
-        
-        if page.url == "about:blank":
-            page.goto("https://www.instagram.com", timeout=15000)
-        
+        base_dir=base_dir,
+    ) as (context, page):
         yield context, page
 
 

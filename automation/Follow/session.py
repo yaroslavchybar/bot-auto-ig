@@ -1,17 +1,14 @@
 import random
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-from camoufox import Camoufox
-
 from automation.actions import random_delay
+from automation.browser import create_browser_context
 from automation.Follow.controls import find_follow_control, wait_for_follow_state
 from automation.Follow.filter import should_skip_by_following
 from automation.Follow.interactions import pre_follow_interactions
 from automation.Follow.utils import (
-    build_proxy_config,
     call_on_success,
     clean_usernames,
-    ensure_profile_path,
 )
 
 
@@ -114,24 +111,13 @@ def follow_usernames(
         _run_follow_logic(page)
         return
 
-    profile_path = ensure_profile_path(profile_name)
-    proxy_config = build_proxy_config(proxy_string)
-    
     log(f"🧭 Стартую Camoufox для профиля {profile_name}")
 
-    with Camoufox(
-        headless=False,
-        user_data_dir=profile_path,
-        persistent_context=True,
-        proxy=proxy_config,
-        geoip=False,
-        block_images=False,
-        os="windows",
-        window=(1280, 800),
-        humanize=True,
+    with create_browser_context(
+        profile_name=profile_name,
+        proxy_string=proxy_string,
         user_agent=user_agent,
-    ) as context:
-        page = context.pages[0] if context.pages else context.new_page()
+    ) as (_context, page):
         _run_follow_logic(page)
     
     log("🏁 Сессия завершена.")

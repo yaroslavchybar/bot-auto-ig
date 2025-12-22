@@ -32,9 +32,8 @@ class SettingsMixin:
         for line_edit in [
             self.feed_time_min_input,
             self.feed_time_max_input,
-            self.reels_time_min_input,
             self.reels_time_max_input,
-            self.scrolling_cycle_input,
+            self.max_sessions_input,
             self.parallel_profiles_input,
             self.feed_carousel_max_input,
             self.feed_stories_max_input,
@@ -118,7 +117,7 @@ class SettingsMixin:
             "feed_max_time_minutes": 3,
             "reels_min_time_minutes": 1,
             "reels_max_time_minutes": 3,
-            "cycle_interval_minutes": 11,
+            "max_sessions": 5,
             "enable_feed": True,
             "enable_reels": False,
             "enable_follow": False,
@@ -182,7 +181,7 @@ class SettingsMixin:
         self.feed_time_max_input.setText(str(data.get('feed_max_time_minutes', defaults['feed_max_time_minutes'])))
         self.reels_time_min_input.setText(str(data.get('reels_min_time_minutes', defaults['reels_min_time_minutes'])))
         self.reels_time_max_input.setText(str(data.get('reels_max_time_minutes', defaults['reels_max_time_minutes'])))
-        self.scrolling_cycle_input.setText(f"{data.get('cycle_interval_minutes', defaults['cycle_interval_minutes'])}")
+        self.max_sessions_input.setText(f"{data.get('max_sessions', defaults['max_sessions'])}")
         self.parallel_profiles_input.setText(str(data.get("parallel_profiles", defaults["parallel_profiles"])))
         self.feed_carousel_max_input.setText(str(data.get("carousel_max_slides", defaults["carousel_max_slides"])))
         self.feed_stories_max_input.setText(str(data.get("stories_max", defaults["stories_max"])))
@@ -271,7 +270,7 @@ class SettingsMixin:
             "feed_max_time_minutes": parse_int_field(self.feed_time_max_input, 3),
             "reels_min_time_minutes": parse_int_field(self.reels_time_min_input, 1),
             "reels_max_time_minutes": parse_int_field(self.reels_time_max_input, 3),
-            "cycle_interval_minutes": parse_int_field(self.scrolling_cycle_input, 11),
+            "max_sessions": parse_int_field(self.max_sessions_input, 5),
             "enable_feed": self.feed_checkbox.isChecked(),
             "enable_reels": self.reels_checkbox.isChecked(),
             "enable_follow": self.follow_checkbox.isChecked(),

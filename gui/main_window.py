@@ -13,7 +13,7 @@ from core.profile_manager import ProfileManager
 from core.process_manager import ProcessManager
 from gui.tabs.profiles_tab import ProfilesTab
 from gui.tabs.instagram import InstagramTab
-from gui.styles import DARK_STYLE
+from gui.styles import DARK_STYLE, STATUS_BAR_STYLE, STATUS_LABEL_STYLE
 
 class AntidetectApp(QMainWindow):
     def __init__(self):
@@ -62,12 +62,12 @@ class AntidetectApp(QMainWindow):
         # Status Bar
         self.status_bar = QFrame()
         self.status_bar.setFixedHeight(30)
-        self.status_bar.setStyleSheet("background-color: #2d2d2d; border-top: 1px solid #444;")
+        self.status_bar.setStyleSheet(STATUS_BAR_STYLE)
         status_layout = QVBoxLayout(self.status_bar)
         status_layout.setContentsMargins(10, 0, 10, 0)
         
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.status_label.setStyleSheet(STATUS_LABEL_STYLE)
         status_layout.addWidget(self.status_label)
         
         main_layout.addWidget(self.status_bar)

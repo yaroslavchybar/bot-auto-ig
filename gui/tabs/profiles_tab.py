@@ -12,7 +12,13 @@ from utils.totp import generate_totp_code
 from gui.styles import (
     CARD_STYLE, STATUS_RUNNING, STATUS_IDLE, STATUS_STOPPED,
     BUTTON_STYLE, ACTION_BTN_STYLE, PRIMARY_BTN_STYLE, INPUT_STYLE,
-    DIALOG_STYLE, CHECKBOX_STYLE
+    DIALOG_STYLE, CHECKBOX_STYLE, TAB_BACKGROUND_STYLE, TITLE_LABEL_STYLE,
+    SCROLL_AREA_STYLE, CONTENT_TRANSPARENT_STYLE, TOTP_FRAME_STYLE,
+    TOTP_LABEL_STYLE, START_BUTTON_SMALL_STYLE, STOP_BUTTON_SMALL_STYLE,
+    GEN_UA_BTN_STYLE, CANCEL_BTN_STYLE, EMPTY_LABEL_STYLE,
+    STATUS_INDICATOR_STYLE_TEMPLATE, TOTP_SECRET_INPUT_STYLE,
+    TOTP_CODE_DISPLAY_STYLE, ACTION_BTN_SECONDARY_STYLE,
+    ACTION_BTN_DANGER_STYLE, PRIMARY_SAVE_BTN_STYLE
 )
 
 
@@ -31,12 +37,7 @@ class ProfileCreationDialog(QDialog):
 
         self.setModal(True)
         self.resize(550, 550)
-        self.setStyleSheet(
-            DIALOG_STYLE + 
-            CHECKBOX_STYLE +
-            INPUT_STYLE + 
-            PRIMARY_BTN_STYLE.replace("QPushButton", "QPushButton#saveBtn")
-        )
+        self.setStyleSheet(DIALOG_STYLE + CHECKBOX_STYLE + INPUT_STYLE + PRIMARY_SAVE_BTN_STYLE)
 
         # Form elements
         self.profile_name_input = QLineEdit()
@@ -66,18 +67,7 @@ class ProfileCreationDialog(QDialog):
         self.generate_ua_btn.setFixedWidth(40)
         self.generate_ua_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.generate_ua_btn.clicked.connect(self.generate_user_agent)
-        self.generate_ua_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #3e4042;
-                color: white;
-                border: 1px solid #5c6370;
-                border-radius: 4px;
-                font-size: 16px;
-            }
-            QPushButton:hover {
-                background-color: #4b5263;
-            }
-        """)
+        self.generate_ua_btn.setStyleSheet(GEN_UA_BTN_STYLE)
 
         self.test_ip_checkbox = QCheckBox("Проверить IP перед запуском")
 
@@ -161,7 +151,7 @@ class ProfileCreationDialog(QDialog):
 
         cancel_btn = QPushButton("Отмена")
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cancel_btn.setStyleSheet("background: transparent; color: #abb2bf; border: none; font-weight: bold;")
+        cancel_btn.setStyleSheet(CANCEL_BTN_STYLE)
         cancel_btn.clicked.connect(self.reject)
 
         save_btn = QPushButton("Сохранить")
@@ -263,7 +253,7 @@ class ProfileCard(QFrame):
         # Icon / Status Indicator
         status_color = "#98c379" if self.is_running else "#61afef"
         self.status_indicator = QLabel("●")
-        self.status_indicator.setStyleSheet(f"color: {status_color}; font-size: 14px;") # Smaller indicator
+        self.status_indicator.setStyleSheet(STATUS_INDICATOR_STYLE_TEMPLATE.format(color=status_color))
         layout.addWidget(self.status_indicator)
 
         # Info Layout (Name + Proxy)
@@ -297,39 +287,13 @@ class ProfileCard(QFrame):
         if self.is_running:
             self.stop_btn = QPushButton("⏹ STOP")
             self.stop_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.stop_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(224, 108, 117, 0.2);
-                    color: #e06c75;
-                    border: 1px solid #e06c75;
-                    border-radius: 4px;
-                    padding: 4px 10px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(224, 108, 117, 0.3);
-                }
-            """)
+            self.stop_btn.setStyleSheet(STOP_BUTTON_SMALL_STYLE)
             self.stop_btn.clicked.connect(lambda: self.stop_signal.emit(self.name))
             actions_layout.addWidget(self.stop_btn)
         else:
             self.start_btn = QPushButton("▶ START")
             self.start_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.start_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(97, 175, 239, 0.2);
-                    color: #61afef;
-                    border: 1px solid #61afef;
-                    border-radius: 4px;
-                    padding: 4px 10px;
-                    font-size: 11px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: rgba(97, 175, 239, 0.3);
-                }
-            """)
+            self.start_btn.setStyleSheet(START_BUTTON_SMALL_STYLE)
             self.start_btn.clicked.connect(lambda: self.start_signal.emit(self.name))
             actions_layout.addWidget(self.start_btn)
 
@@ -337,7 +301,7 @@ class ProfileCard(QFrame):
         self.edit_btn = QPushButton("⚙")
         self.edit_btn.setToolTip("Настройки")
         self.edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.edit_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #abb2bf;")
+        self.edit_btn.setStyleSheet(ACTION_BTN_SECONDARY_STYLE)
         self.edit_btn.clicked.connect(lambda: self.edit_signal.emit(self.name))
         actions_layout.addWidget(self.edit_btn)
 
@@ -345,7 +309,7 @@ class ProfileCard(QFrame):
         self.delete_btn = QPushButton("🗑")
         self.delete_btn.setToolTip("Удалить")
         self.delete_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.delete_btn.setStyleSheet(ACTION_BTN_STYLE + "font-size: 14px; color: #e06c75;")
+        self.delete_btn.setStyleSheet(ACTION_BTN_DANGER_STYLE)
         self.delete_btn.clicked.connect(lambda: self.delete_signal.emit(self.name))
         actions_layout.addWidget(self.delete_btn)
 
@@ -360,7 +324,7 @@ class ProfilesTab(QWidget):
 
     def setup_ui(self):
         # Apply global stylesheet for this tab if needed, but components handle their own
-        self.setStyleSheet("background-color: #1e2125;") 
+        self.setStyleSheet(TAB_BACKGROUND_STYLE)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(30, 30, 30, 30)
@@ -370,7 +334,7 @@ class ProfilesTab(QWidget):
         header_layout = QHBoxLayout()
         
         title_label = QLabel("Профили")
-        title_label.setStyleSheet("color: white; font-size: 28px; font-weight: bold;")
+        title_label.setStyleSheet(TITLE_LABEL_STYLE)
         
         header_layout.addWidget(title_label)
         header_layout.addStretch()
@@ -387,25 +351,10 @@ class ProfilesTab(QWidget):
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll_area.setStyleSheet("""
-            QScrollArea { background: transparent; border: none; }
-            QScrollBar:vertical {
-                border: none;
-                background: #2b2d30;
-                width: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: #4b4d50;
-                border-radius: 4px;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
+        self.scroll_area.setStyleSheet(SCROLL_AREA_STYLE)
 
         self.profiles_container = QWidget()
-        self.profiles_container.setStyleSheet("background: transparent;")
+        self.profiles_container.setStyleSheet(CONTENT_TRANSPARENT_STYLE)
         
         # We use a vertical layout for the container of cards
         self.profiles_layout = QVBoxLayout(self.profiles_container)
@@ -419,30 +368,23 @@ class ProfilesTab(QWidget):
         # === 3. BOTTOM SECTION (TOTP) ===
         # We can make this look like a card effectively
         totp_frame = QFrame()
-        totp_frame.setStyleSheet("""
-            QFrame {
-                background-color: #262a30;
-                border-radius: 12px;
-                border: 1px solid #3e4042;
-                padding: 10px;
-            }
-        """)
+        totp_frame.setStyleSheet(TOTP_FRAME_STYLE)
         totp_layout = QHBoxLayout(totp_frame)
         totp_layout.setContentsMargins(20, 15, 20, 15)
         
         totp_label = QLabel("🔐 2FA Генератор")
-        totp_label.setStyleSheet("color: #e0e0e0; font-weight: bold; font-size: 14px; border: none;")
+        totp_label.setStyleSheet(TOTP_LABEL_STYLE)
         
         self.totp_secret = QLineEdit()
         self.totp_secret.setPlaceholderText("Вставьте секретный ключ (Base32)...")
-        self.totp_secret.setStyleSheet(INPUT_STYLE + "border: none; background: #1e2125;")
+        self.totp_secret.setStyleSheet(TOTP_SECRET_INPUT_STYLE)
         
         self.totp_code_display = QLineEdit()
         self.totp_code_display.setPlaceholderText("------")
         self.totp_code_display.setReadOnly(True)
         self.totp_code_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.totp_code_display.setFixedWidth(100)
-        self.totp_code_display.setStyleSheet(INPUT_STYLE + "color: #61afef; font-weight: bold; background: #1e2125; border: none;")
+        self.totp_code_display.setStyleSheet(TOTP_CODE_DISPLAY_STYLE)
 
         generate_btn = QPushButton("Создать")
         generate_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -479,7 +421,7 @@ class ProfilesTab(QWidget):
 
         if not profiles:
             empty_label = QLabel("Нет профилей. Создайте первый!")
-            empty_label.setStyleSheet("color: #abb2bf; font-style: italic; margin-top: 20px;")
+            empty_label.setStyleSheet(EMPTY_LABEL_STYLE)
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.profiles_layout.addWidget(empty_label)
             return

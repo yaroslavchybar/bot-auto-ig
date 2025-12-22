@@ -37,7 +37,7 @@ class ScrollingConfig:
     feed_max_time_minutes: int
     reels_min_time_minutes: int
     reels_max_time_minutes: int
-    cycle_interval_minutes: int
+    max_sessions_per_day: int = 5
     reels_skip_chance: int = 30  # 0-100%
     reels_skip_min_time: float = 0.8
     reels_skip_max_time: float = 2.0
