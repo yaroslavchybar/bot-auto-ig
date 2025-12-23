@@ -34,6 +34,7 @@ class AntidetectApp(QMainWindow):
         except Exception:
             pass
         self.sync_profiles_from_database()
+        self.profiles_tab.refresh_lists()
         
     def setup_ui(self):
         central_widget = QWidget()
@@ -111,15 +112,8 @@ class AntidetectApp(QMainWindow):
             self.log(f"⚠️ Failed to sync profiles from database: {e}")
 
     def on_tab_changed(self, index):
-        """Called when user switches tabs - refresh data from database"""
-        if index == 0:  # Profiles tab
-            self.sync_profiles_from_database()
-            self.profiles_tab.refresh_lists()
-        elif index == 1:  # Instagram tab
-            # Instagram tab uses profiles, so sync them
-            self.sync_profiles_from_database()
-        elif index == 2:
-            self.lists_tab.fetch_lists()
+        """Called when user switches tabs - no automatic refetch"""
+        pass
 
 def main():
     app = QApplication(sys.argv)

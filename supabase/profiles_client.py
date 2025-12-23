@@ -1,4 +1,7 @@
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from .config import PROJECT_URL, SECRET_KEY
 
@@ -21,6 +24,17 @@ class SupabaseProfilesClient:
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
+        self.session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=1.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST", "PATCH", "DELETE"],
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
+        self.timeout = (10, 60)
 
     def _make_request(self, method: str, endpoint: str = "", data: Optional[Dict] = None, params: Optional[Dict] = None):
         """Make HTTP request to Supabase"""
@@ -28,13 +42,13 @@ class SupabaseProfilesClient:
 
         try:
             if method.upper() == "GET":
-                resp = requests.get(url, headers=self.headers, params=params, timeout=20)
+                resp = self.session.get(url, headers=self.headers, params=params, timeout=self.timeout)
             elif method.upper() == "POST":
-                resp = requests.post(url, headers=self.headers, json=data, timeout=20)
+                resp = self.session.post(url, headers=self.headers, json=data, timeout=self.timeout)
             elif method.upper() == "PATCH":
-                resp = requests.patch(url, headers=self.headers, json=data, timeout=20)
+                resp = self.session.patch(url, headers=self.headers, json=data, timeout=self.timeout)
             elif method.upper() == "DELETE":
-                resp = requests.delete(url, headers=self.headers, timeout=20)
+                resp = self.session.delete(url, headers=self.headers, timeout=self.timeout)
             else:
                 raise SupabaseProfilesError(f"Unsupported HTTP method: {method}")
 
@@ -120,6 +134,12 @@ class SupabaseProfilesClient:
         """Update profile status and using flag"""
         profile = self.get_profile_by_name(name)
         if profile:
+            data = {"status": status, "Using": using}
+            try:
+                if str(status).lower() == "running":
+                    data["last_opened_at"] = datetime.now(timezone.utc).isoformat()
+            except Exception:
+                pass
             self._make_request("PATCH",
-                             f"?profile_id=eq.{profile['profile_id']}",
-                             data={"status": status, "Using": using})
+                               f"?profile_id=eq.{profile['profile_id']}",
+                               data=data)

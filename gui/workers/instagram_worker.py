@@ -3,6 +3,8 @@ import os
 import random
 import time
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Tuple
 from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -65,16 +67,25 @@ class InstagramScrollingWorker(BaseInstagramWorker):
         while self.running:
             try:
                 work_done_in_cycle = False
-                
-                for account in self.accounts:
-                    if not self.running:
-                        break
-                    
-                    # Process account (returns True if browser was launched)
-                    if self.process_account(account):
-                        work_done_in_cycle = True
-                        
-                    # No delay between profiles as requested
+                configured = int(getattr(self.config, "parallel_profiles", 1) or 1)
+                max_workers = max(1, min(len(self.accounts), configured))
+                if not self.accounts:
+                    time.sleep(5)
+                else:
+                    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                        futures = []
+                        for account in self.accounts:
+                            if not self.running:
+                                break
+                            futures.append(executor.submit(self.process_account, account))
+                        for fut in as_completed(futures):
+                            if not self.running:
+                                break
+                            try:
+                                if fut.result():
+                                    work_done_in_cycle = True
+                            except Exception as e:
+                                self.log(f"⚠️ Ошибка профиля: {e}")
                 
                 if self.running:
                     if work_done_in_cycle:
@@ -106,6 +117,28 @@ class InstagramScrollingWorker(BaseInstagramWorker):
                 if sessions >= self.config.max_sessions_per_day:
                     self.log(f"⏭️ Пропуск @{profile_name}: достигнут лимит сессий ({sessions}/{self.config.max_sessions_per_day})")
                     return False
+                # Skip if busy (status=running or Using flag)
+                try:
+                    profile_id = profile_data.get("profile_id")
+                    if profile_id and self.client.is_profile_busy(profile_id):
+                        self.log(f"⏭️ Пропуск @{profile_name}: профиль занят.")
+                        return False
+                except Exception:
+                    pass
+                # Cooldown 30 minutes based on last_opened_at
+                try:
+                    last_opened_str = profile_data.get("last_opened_at")
+                    if last_opened_str:
+                        s = last_opened_str.replace("Z", "+00:00")
+                        last_dt = datetime.fromisoformat(s)
+                        if not last_dt.tzinfo:
+                            last_dt = last_dt.replace(tzinfo=timezone.utc)
+                        now = datetime.now(timezone.utc)
+                        if now - last_dt < timedelta(minutes=30):
+                            self.log(f"⏭️ Пропуск @{profile_name}: недавно открыт (<30 мин).")
+                            return False
+                except Exception:
+                    pass
         except Exception as e:
             self.log(f"⚠️ Ошибка проверки сессий для @{profile_name}: {e}")
             # Continue on error? Or skip? Let's skip to be safe against spamming if DB is down
@@ -124,8 +157,12 @@ class InstagramScrollingWorker(BaseInstagramWorker):
 
         try:
             self.log(f"🚀 Launching browser for @{profile_name}...")
+            try:
+                self.profiles_client.sync_profile_status(profile_name, "running", True)
+            except Exception:
+                pass
             
-            with create_browser_context(profile_name, proxy_str, user_agent) as (context, page):
+            with create_browser_context(profile_name, proxy_str, user_agent, headless=self.config.headless) as (context, page):
                 self.current_context = context
                 
                 # Build action execution map
@@ -158,11 +195,19 @@ class InstagramScrollingWorker(BaseInstagramWorker):
                         self.profiles_client.increment_sessions_today(profile_name)
                     except Exception as e:
                         self.log(f"⚠️ Не удалось обновить счетчик сессий: {e}")
+                try:
+                    self.profiles_client.sync_profile_status(profile_name, "idle", False)
+                except Exception:
+                    pass
                 self.current_context = None
                 return True
 
         except Exception as e:
             self.log(f"❌ Error processing @{profile_name}: {e}")
+            try:
+                self.profiles_client.sync_profile_status(profile_name, "idle", False)
+            except Exception:
+                pass
             return False
 
     def _run_scrolling(self, page, account, mode="feed"):
@@ -266,13 +311,29 @@ class InstagramScrollingWorker(BaseInstagramWorker):
         try:
             self.log("🔪 Running Unfollow...")
             delay_range = self.config.unfollow_delay_range or (10, 30)
+            all_profiles = self.client.get_profiles_with_assigned_accounts(status="unsubscribed")
+            profile_data = next((p for p in all_profiles if p.get("name") == account.username), None)
+            if not profile_data:
+                self.log("ℹ️ Нет данных профиля для отписки.")
+                return
+            profile_id = profile_data.get("profile_id")
+            accounts = self.client.get_accounts_for_profile(profile_id, status="unsubscribed")
+            if not accounts:
+                self.log("ℹ️ Нет назначенных аккаунтов для отписки.")
+                return
+            usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
+            account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
+            on_unfollow_success = create_status_callback(
+                self.client, account_map, self.log, "done", clear_assigned=True
+            )
             unfollow_usernames(
                 profile_name=account.username,
                 proxy_string=account.proxy or "",
-                usernames=[],
+                usernames=usernames,
                 log=self.log,
                 should_stop=lambda: not self.running,
                 delay_range=delay_range,
+                on_success=on_unfollow_success,
                 page=page
             )
         except Exception as e:
@@ -391,6 +452,18 @@ class AutoFollowWorker(BaseInstagramWorker):
             profile_name = profile.get("name") or "profile"
             proxy = profile.get("proxy") or "None"
             user_agent = profile.get("user_agent")
+            try:
+                last_opened = profile.get("last_opened_at")
+                if last_opened:
+                    s = last_opened.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(s)
+                    if not dt.tzinfo:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) - dt < timedelta(minutes=30):
+                        self.log(f"⏭️ Профиль {profile_name} недавно открыт (<30 мин), пропускаю.")
+                        continue
+            except Exception:
+                pass
             
             if not profile_id:
                 self.log("⚠️ Пропускаю профиль без profile_id")
@@ -534,6 +607,18 @@ class UnfollowWorker(BaseInstagramWorker):
             profile_name = profile.get("name") or "profile"
             proxy = profile.get("proxy") or "None"
             user_agent = profile.get("user_agent")
+            try:
+                last_opened = profile.get("last_opened_at")
+                if last_opened:
+                    s = last_opened.replace("Z", "+00:00")
+                    dt = datetime.fromisoformat(s)
+                    if not dt.tzinfo:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) - dt < timedelta(minutes=30):
+                        self.log(f"⏭️ Профиль {profile_name} недавно открыт (<30 мин), пропускаю.")
+                        continue
+            except Exception:
+                pass
 
             # Check database for unfollow accounts
             unfollow_accounts = []
@@ -557,7 +642,7 @@ class UnfollowWorker(BaseInstagramWorker):
                 continue
 
             try:
-                with create_browser_context(profile_name, proxy, user_agent) as (context, page):
+                with create_browser_context(profile_name, proxy, user_agent, headless=False) as (context, page):
                     # Approve requests
                     if self.do_approve:
                         self.log(f"🚀 [Approve] Начинаю подтверждение заявок для {profile_name}...")

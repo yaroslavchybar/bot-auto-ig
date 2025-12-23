@@ -69,6 +69,7 @@ def create_browser_context(
     base_dir: Optional[str] = None,
     headless: bool = False,
     block_images: bool = False,
+    os: Optional[str] = None,
 ):
     profile_path = ensure_profile_path(profile_name, base_dir=base_dir)
     proxy_config = build_proxy_config(proxy_string)
@@ -78,9 +79,9 @@ def create_browser_context(
         user_data_dir=profile_path,
         persistent_context=True,
         proxy=proxy_config,
-        geoip=False,
+        geoip=bool(proxy_config),
         block_images=block_images,
-        os="windows",
+        os=os or "windows",
         window=(1280, 800),
         humanize=True,
         user_agent=user_agent,
@@ -99,7 +100,7 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
               watch_stories=True, stories_max=3,
               feed_duration=0, reels_duration=0, show_cursor=False,
               reels_match_likes=None, reels_match_follows=None,
-              user_agent=None):
+              user_agent=None, headless=False, os=None):
     print(f"[*] Starting Profile: {profile_name}")
     print(f"[*] Action: {action}")
     
@@ -108,6 +109,7 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
     
     if user_agent:
         print(f"[*] Using User Agent: {user_agent}")
+    print(f"[*] Headless mode: {'ON' if headless else 'OFF'}")
 
     try:
         print("[*] Initializing Camoufox browser...")
@@ -116,8 +118,9 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
             profile_name=profile_name,
             proxy_string=proxy_string,
             user_agent=user_agent,
-            headless=False,
+            headless=headless,
             block_images=False,
+            os=os,
         ) as (context, page):
             print("[*] Camoufox initialized successfully")
 

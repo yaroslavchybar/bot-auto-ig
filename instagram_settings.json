@@ -31,8 +31,9 @@
     "enable_feed": false,
     "enable_reels": false,
     "enable_follow": false,
-    "parallel_profiles": 1,
-    "watch_stories": false,
+    "parallel_profiles": 2,
+    "watch_stories": true,
+    "headless": false,
     "highlights_min": 1,
     "highlights_max": 3,
     "likes_percentage": 30,
@@ -45,11 +46,11 @@
     "unfollow_min_count": 1,
     "unfollow_max_count": 2,
     "do_unfollow": false,
-    "do_approve": false,
-    "do_message": true,
+    "do_approve": true,
+    "do_message": false,
     "header_target_expanded": true,
     "header_order_expanded": false,
     "source_list_ids": [
-        "4ba93d04-e230-4290-83cb-3cef6c603c2d"
+        "58c8d761-5076-4c05-8404-4c504f37de11"
     ]
 }

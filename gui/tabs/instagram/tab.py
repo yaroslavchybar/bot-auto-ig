@@ -100,6 +100,10 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         # Threads
         threads_widget, self.parallel_profiles_input = create_header_input("⚡ Потоки", "1", 40)
         settings_layout.addWidget(threads_widget)
+        self.headless_checkbox = QCheckBox("Headless")
+        self.headless_checkbox.setStyleSheet(CHECKBOX_STYLE)
+        self.headless_checkbox.setCursor(Qt.CursorShape.PointingHandCursor)
+        settings_layout.addWidget(self.headless_checkbox)
 
         header_layout.addWidget(settings_container)
 
@@ -600,6 +604,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             reels_min_time_minutes=reels_min_time,
             reels_max_time_minutes=reels_max_time,
             max_sessions_per_day=max_sessions,
+            parallel_profiles=parallel_profiles,
             enable_feed=enable_feed,
             enable_reels=enable_reels,
 
@@ -621,7 +626,8 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
             following_limit=following_limit,
             follow_count_range=follow_count_range,
             unfollow_delay_range=unfollow_delay_range,
-            message_texts=message_texts
+            message_texts=message_texts,
+            headless=self.headless_checkbox.isChecked()
         )
 
         profile_names = [acc.username for acc in target_accounts]

@@ -1,11 +1,20 @@
 {
     "private": [
         {
-            "name": "main",
-            "proxy": null,
-            "test_ip": false,
+            "name": "nastyarainy",
+            "proxy": "gate.nodemaven.com:8080:yaroslavchybar_gmail_com-country-us-region-california-sid-562bd0714a264-filter-medium:q8f1xfvc9r",
+            "test_ip": true,
             "type": "Camoufox (рекомендуется)",
             "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        },
+        {
+            "name": "nastya__rainy",
+            "proxy": "gate.nodemaven.com:8080:yaroslavchybar_gmail_com-country-us-region-california-sid-c7e171c1763a4-filter-medium:q8f1xfvc9r",
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+            "test_ip": true,
+            "type": "Camoufox (рекомендуется)",
+            "ua_os": "Windows",
+            "ua_browser": "Firefox (рекомендуется)"
         }
     ],
     "threads": []

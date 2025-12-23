@@ -38,6 +38,7 @@ class ScrollingConfig:
     reels_min_time_minutes: int
     reels_max_time_minutes: int
     max_sessions_per_day: int = 5
+    parallel_profiles: int = 1
     reels_skip_chance: int = 30  # 0-100%
     reels_skip_min_time: float = 0.8
     reels_skip_max_time: float = 2.0
@@ -65,3 +66,4 @@ class ScrollingConfig:
     unfollow_delay_range: Optional[tuple] = None
     message_texts: Optional[List[str]] = None
     action_order: Optional[List[str]] = None
+    headless: bool = False

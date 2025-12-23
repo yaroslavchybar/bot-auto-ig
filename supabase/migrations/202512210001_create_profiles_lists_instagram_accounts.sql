@@ -14,7 +14,8 @@ create table public.profiles (
   test_ip boolean not null default false,
   user_agent text,
   list_id uuid,
-  sessions_today integer not null default 0
+  sessions_today integer not null default 0,
+  last_opened_at timestamptz
 );
 
 create table public.lists (
@@ -119,3 +120,27 @@ end
 $$;
 
 select cron.schedule('auto_assign_available_accounts_job', '15 3 * * *', $$select public.assign_available_accounts_daily();$$);
+create or replace function public.reset_sessions_today()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.profiles
+  set sessions_today = 0
+  where sessions_today <> 0;
+end;
+$$;
+
+do $$
+declare jid int;
+begin
+  select jobid into jid from cron.job where jobname = 'daily_reset_sessions_today' limit 1;
+  if jid is not null then
+    perform cron.unschedule(jid);
+  end if;
+end
+$$;
+
+select cron.schedule('daily_reset_sessions_today', '0 0 * * *', $$select public.reset_sessions_today();$$);

@@ -141,14 +141,20 @@ class ProfileManager:
             # Convert DB profiles to local format
             db_local_profiles = []
             for db_profile in db_profiles:
-                local_profile = {
+                db_mapped = {
                     "name": db_profile["name"],
                     "proxy": db_profile.get("proxy"),
                     "test_ip": db_profile.get("test_ip", False),
                     "type": db_profile.get("type", "Camoufox (рекомендуется)"),
                     "user_agent": db_profile.get("user_agent")
                 }
-                db_local_profiles.append(local_profile)
+                # Preserve extra local-only fields (e.g., ua_os, ua_browser)
+                existing_local = next((lp for lp in self.profiles.get("private", []) if lp.get("name") == db_profile["name"]), None)
+                if existing_local:
+                    merged = {**existing_local, **db_mapped}
+                    db_local_profiles.append(merged)
+                else:
+                    db_local_profiles.append(db_mapped)
 
             # Merge with existing local profiles (keep local ones that aren't in DB)
             existing_local = self.profiles.get("private", [])

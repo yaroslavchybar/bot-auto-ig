@@ -158,14 +158,14 @@ class InstagramAccountsClient:
         # Supabase expects quoted values inside the IN filter
         quoted = ",".join([f'"{pid}"' for pid in profile_ids])
         params = {
-            "select": "profile_id,name,status,mode,proxy,Using,user_agent,list_id",
+            "select": "profile_id,name,status,mode,proxy,Using,user_agent,list_id,last_opened_at",
             "profile_id": f"in.({quoted})",
         }
         return self._request("GET", self.profiles_url, params=params) or []
 
     def get_profile(self, profile_id: str) -> Optional[Dict]:
         params = {
-            "select": "profile_id,name,status,mode,proxy,Using,user_agent",
+            "select": "profile_id,name,status,mode,proxy,Using,user_agent,last_opened_at",
             "profile_id": f"eq.{profile_id}",
         }
         profiles = self._request("GET", self.profiles_url, params=params) or []

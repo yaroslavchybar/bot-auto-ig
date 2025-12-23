@@ -63,6 +63,14 @@ class ProfileCreationDialog(QDialog):
         self.user_agent_input = QLineEdit()
         self.user_agent_input.setPlaceholderText("User Agent (оставьте пустым для авто-генерации")
         
+        self.ua_os_combo = QComboBox()
+        self.ua_os_combo.addItems(["Любая", "Windows", "macOS", "Linux"])
+        self.ua_os_combo.setToolTip("Выберите ОС для генерации User Agent")
+        
+        self.ua_browser_combo = QComboBox()
+        self.ua_browser_combo.addItems(["Firefox (рекомендуется)", "Chrome", "Safari"])
+        self.ua_browser_combo.setToolTip("Выберите браузер для генерации User Agent")
+        
         self.generate_ua_btn = QPushButton("🎲")
         self.generate_ua_btn.setToolTip("Сгенерировать случайный User Agent")
         self.generate_ua_btn.setFixedWidth(40)
@@ -91,19 +99,41 @@ class ProfileCreationDialog(QDialog):
         super().mousePressEvent(event)
 
     def generate_user_agent(self):
-        """Generate a random modern User Agent"""
-        user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+        """Generate a modern User Agent aligned to selected OS and browser"""
+        selected_os = self.ua_os_combo.currentText()
+        selected_browser = self.ua_browser_combo.currentText()
+        
+        firefox_uas = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
+            "Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0",
         ]
-        ua = random.choice(user_agents)
+        chrome_uas = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        ]
+        safari_uas = [
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+        ]
+        
+        if selected_browser.startswith("Firefox"):
+            candidates = firefox_uas
+        elif selected_browser == "Chrome":
+            candidates = chrome_uas
+        else:
+            candidates = safari_uas
+        
+        if selected_os == "Windows":
+            filtered = [ua for ua in candidates if "Windows" in ua]
+        elif selected_os == "macOS":
+            filtered = [ua for ua in candidates if "Macintosh" in ua]
+        elif selected_os == "Linux":
+            filtered = [ua for ua in candidates if "Linux" in ua or "X11" in ua]
+        else:
+            filtered = candidates
+        
+        ua = random.choice(filtered) if filtered else random.choice(candidates)
         self.user_agent_input.setText(ua)
 
     def setup_ui(self):
@@ -141,6 +171,10 @@ class ProfileCreationDialog(QDialog):
         conn_layout.addWidget(self.proxy_input)
 
         # User Agent
+        conn_layout.addWidget(QLabel("ОС для User Agent"))
+        conn_layout.addWidget(self.ua_os_combo)
+        conn_layout.addWidget(QLabel("Браузер для User Agent"))
+        conn_layout.addWidget(self.ua_browser_combo)
         conn_layout.addWidget(QLabel("User Agent"))
         ua_layout = QHBoxLayout()
         ua_layout.addWidget(self.user_agent_input)
@@ -207,6 +241,17 @@ class ProfileCreationDialog(QDialog):
 
         # Set User Agent
         self.user_agent_input.setText(profile.get('user_agent', ''))
+        
+        os_val = profile.get('ua_os')
+        if os_val:
+            idx = self.ua_os_combo.findText(os_val)
+            if idx >= 0:
+                self.ua_os_combo.setCurrentIndex(idx)
+        browser_val = profile.get('ua_browser')
+        if browser_val:
+            idx = self.ua_browser_combo.findText(browser_val)
+            if idx >= 0:
+                self.ua_browser_combo.setCurrentIndex(idx)
 
         # Set test IP checkbox
         self.test_ip_checkbox.setChecked(profile.get('test_ip', False))
@@ -221,13 +266,17 @@ class ProfileCreationDialog(QDialog):
         user_agent = self.user_agent_input.text().strip() or None
         test_ip = self.test_ip_checkbox.isChecked()
         profile_type = self.profile_type_combo.currentText()
+        ua_os = self.ua_os_combo.currentText()
+        ua_browser = self.ua_browser_combo.currentText()
 
         return {
             "name": name,
             "proxy": proxy,
             "user_agent": user_agent,
             "test_ip": test_ip,
-            "type": profile_type
+            "type": profile_type,
+            "ua_os": ua_os,
+            "ua_browser": ua_browser
         }
 
     def set_editing_index(self, category, index):
@@ -491,6 +540,7 @@ class ProfilesTab(QWidget):
             self.main_window.profile_manager.add_profile(category, profile_data)
             self.main_window.log(f"✅ Создан профиль: {name}")
 
+        self.main_window.sync_profiles_from_database()
         self.refresh_lists()
 
     def handle_start_profile(self, name):
@@ -504,13 +554,16 @@ class ProfilesTab(QWidget):
 
         proxy = profile.get('proxy') or "None"
         user_agent = profile.get('user_agent')
+        ua_os = profile.get('ua_os')
+        os_map = {"Windows": "windows", "macOS": "macos", "Linux": "linux"}
+        os_arg = os_map.get(ua_os or "", None)
 
         if self.main_window.process_manager.is_running(name):
              QMessageBox.information(self, "Инфо", f"Профиль '{name}' уже запущен!")
              self.refresh_lists() # Refresh UI just in case
              return
 
-        success, msg = self.main_window.process_manager.start_profile(name, proxy, user_agent=user_agent)
+        success, msg = self.main_window.process_manager.start_profile(name, proxy, user_agent=user_agent, os=os_arg)
         if success:
             self.main_window.log(f"🚀 Запущен профиль: {name}")
             # Sync status to database/manager
@@ -558,6 +611,7 @@ class ProfilesTab(QWidget):
                     self.main_window.profile_manager.delete_profile("private", i)
                     break
             
+            self.main_window.sync_profiles_from_database()
             self.refresh_lists()
             self.main_window.log(f"🗑️ Удален профиль: {name}")
 

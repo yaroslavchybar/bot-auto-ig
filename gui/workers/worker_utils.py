@@ -60,6 +60,7 @@ def create_browser_context(
     proxy_string: Optional[str] = None,
     user_agent: Optional[str] = None,
     base_dir: Optional[str] = None,
+    headless: bool = False,
 ):
     """
     Create a Camoufox browser context with standard configuration.
@@ -78,6 +79,7 @@ def create_browser_context(
         proxy_string=proxy_string,
         user_agent=user_agent,
         base_dir=base_dir,
+        headless=headless,
     ) as (context, page):
         yield context, page
 

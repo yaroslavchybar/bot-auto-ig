@@ -25,6 +25,7 @@ class SettingsMixin:
             self.unfollow_checkbox,
             self.approve_checkbox,
             self.message_checkbox,
+            self.headless_checkbox,
         ]:
             checkbox.toggled.connect(self.save_settings)
             checkbox.toggled.connect(self.update_order_visibility)
@@ -123,6 +124,7 @@ class SettingsMixin:
             "enable_follow": False,
             "parallel_profiles": 1,
             "watch_stories": True,
+            "headless": False,
             # Follow defaults
             "highlights_min": 2,
             "highlights_max": 4,
@@ -176,6 +178,7 @@ class SettingsMixin:
         self.reels_checkbox.setChecked(data.get("enable_reels", False))
         self.follow_checkbox.setChecked(data.get("enable_follow", False))
         self.watch_stories_checkbox.setChecked(data.get("watch_stories", True))
+        self.headless_checkbox.setChecked(data.get("headless", False))
 
         self.feed_time_min_input.setText(str(data.get('feed_min_time_minutes', defaults['feed_min_time_minutes'])))
         self.feed_time_max_input.setText(str(data.get('feed_max_time_minutes', defaults['feed_max_time_minutes'])))
@@ -276,6 +279,7 @@ class SettingsMixin:
             "enable_follow": self.follow_checkbox.isChecked(),
             "parallel_profiles": parse_int_field(self.parallel_profiles_input, 1),
             "watch_stories": self.watch_stories_checkbox.isChecked(),
+            "headless": self.headless_checkbox.isChecked(),
             
             # Follow settings
             "highlights_min": parse_int_field(self.highlights_min_input, 2),
