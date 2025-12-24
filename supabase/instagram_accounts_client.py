@@ -62,7 +62,7 @@ class InstagramAccountsClient:
     ) -> List[Dict]:
         """Fetch accounts assigned to a profile with given status."""
         params = {
-            "select": "id,user_name,assigned_to,status,link_sent,message,subscribed_at",
+            "select": "id,user_name,assigned_to,status,link_sent,message,subscribed_at,last_message_sent_at",
             "assigned_to": f"eq.{profile_id}",
             "status": f"eq.{status}",
             "order": "created_at.asc",
@@ -72,7 +72,7 @@ class InstagramAccountsClient:
     def get_accounts_to_message(self, profile_id: str) -> List[Dict]:
         """Fetch accounts assigned to profile that need a message (message=true) and link_sent='not send' or 'needed to send'."""
         params = {
-            "select": "id,user_name,assigned_to,status,message,link_sent",
+            "select": "id,user_name,assigned_to,status,message,link_sent,last_message_sent_at",
             "assigned_to": f"eq.{profile_id}",
             "message": "is.true",
             "link_sent": "in.(not send,needed to send)",
@@ -99,6 +99,34 @@ class InstagramAccountsClient:
         if assigned_to != "__NOT_SET__":
             payload["assigned_to"] = assigned_to
 
+        result = self._request(
+            "PATCH",
+            f"{self.accounts_url}?id=eq.{account_id}",
+            data=payload,
+        )
+        return result[0] if result else None
+
+    def get_last_message_sent_at(self, account_id: str) -> Optional[str]:
+        """
+        Return ISO string of last_message_sent_at for given account id, or None.
+        """
+        params = {
+            "select": "last_message_sent_at",
+            "id": f"eq.{account_id}",
+            "limit": 1,
+        }
+        rows = self._request("GET", self.accounts_url, params=params) or []
+        if not rows:
+            return None
+        return rows[0].get("last_message_sent_at")
+
+    def set_last_message_sent_now(self, account_id: str) -> Optional[Dict]:
+        """
+        Update last_message_sent_at to now() for the given account id.
+        """
+        payload = {
+            "last_message_sent_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        }
         result = self._request(
             "PATCH",
             f"{self.accounts_url}?id=eq.{account_id}",

@@ -142,6 +142,13 @@ def approve_follow_requests(
             close_btn = current_page.locator('div[aria-label="Close"][role="button"]').first
             if close_btn.is_visible():
                 close_btn.click()
+            else:
+                log("🔄 Кнопка закрытия не найдена, кликаю уведомления для закрытия...")
+                try:
+                    current_page.locator('svg[aria-label="Notifications"]').click()
+                    random_delay(1, 2)
+                except Exception as e:
+                    log(f"⚠️ Не удалось закрыть уведомления кликом: {e}")
             
             log("⏳ Ожидание 3 секунды перед закрытием сессии...")
             random_delay(3, 3)

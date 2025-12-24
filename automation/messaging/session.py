@@ -1,5 +1,6 @@
 import os
 import random
+import datetime
 from typing import Callable, List, Dict, Optional
 
 from automation.actions import random_delay
@@ -11,13 +12,15 @@ def load_message_2_texts() -> List[str]:
     """Load message texts from message_2.txt file."""
     try:
         with open("message_2.txt", "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            if content:
-                # Split by double newlines to separate different message variations
-                messages = [msg.strip() for msg in content.split("\n\n") if msg.strip()]
-                return messages if messages else ["Hi there! Thanks for reaching out!"]
-            else:
+            content = f.read()
+            content = content.replace("\r\n", "\n").strip()
+            if not content:
                 return ["Hi there! Thanks for reaching out!"]
+            if "\n\n" in content:
+                messages = [msg.strip() for msg in content.split("\n\n") if msg.strip()]
+            else:
+                messages = [msg.strip() for msg in content.split("\n") if msg.strip()]
+            return messages if messages else ["Hi there! Thanks for reaching out!"]
     except FileNotFoundError:
         return ["Hi there! Thanks for reaching out!"]
 
@@ -73,6 +76,7 @@ def send_messages(
     If `page` is provided, it uses the existing browser page and does NOT close it.
     """
     should_stop = should_stop or (lambda: False)
+    MESSAGE_COOLDOWN_HOURS = 2
     
     if not targets:
         log("ℹ️ Нет пользователей для рассылки сообщений.")
@@ -178,6 +182,22 @@ def send_messages(
 
                 log(f"👤 Обработка сообщения для: {username}")
                 
+                try:
+                    last_sent_str = client.get_last_message_sent_at(account_id)
+                    if last_sent_str:
+                        try:
+                            last_sent_dt = datetime.datetime.fromisoformat(str(last_sent_str).replace("Z", "+00:00"))
+                        except Exception:
+                            last_sent_dt = None
+                        if last_sent_dt:
+                            now = datetime.datetime.now(datetime.timezone.utc)
+                            delta = now - last_sent_dt
+                            if delta.total_seconds() < MESSAGE_COOLDOWN_HOURS * 3600:
+                                log(f"⏳ Пропускаю {username}: последнее сообщение {int(delta.total_seconds()//60)} мин назад")
+                                continue
+                except Exception as e:
+                    log(f"⚠️ Не удалось проверить время последней отправки для {username}: {e}")
+
                 try:
                     # 1. Click on the search input field to start a new conversation
                     # The search field opens the user selection modal
@@ -328,6 +348,8 @@ def send_messages(
                                         else:
                                             client.update_account_link_sent(username, "needed to send")
                                             log(f"💾 {username}: link_sent -> needed to send")
+                                        client.set_last_message_sent_now(account_id)
+                                        log(f"💾 {username}: обновлено время последней отправки")
                                     except Exception as db_e:
                                         log(f"⚠️ Ошибка БД для {username}: {db_e}")
 

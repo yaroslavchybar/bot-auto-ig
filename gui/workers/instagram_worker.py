@@ -144,6 +144,50 @@ class InstagramScrollingWorker(BaseInstagramWorker):
             # Continue on error? Or skip? Let's skip to be safe against spamming if DB is down
             return False
 
+        # 1.5 If only one action selected and it's messaging, check DB before opening browser
+        try:
+            enabled_map = get_action_enabled_map(self.config)
+            only_messages = enabled_map.get("Send Messages", False) and sum(1 for v in enabled_map.values() if v) == 1
+            if only_messages:
+                pid = None
+                try:
+                    pid = profile_data.get("profile_id") if profile_data else None
+                except Exception:
+                    pid = None
+                if not pid:
+                    self.log(f"⚠️ @{profile_name}: профиль не найден в БД, пропуск запуска браузера.")
+                    return False
+                try:
+                    targets = self.client.get_accounts_to_message(pid)
+                    if not targets:
+                        self.log(f"ℹ️ @{profile_name}: нет целей для сообщений (message=true), не открываю браузер.")
+                        return False
+                    now = datetime.now(timezone.utc)
+                    eligible = []
+                    for t in targets:
+                        ts = t.get("last_message_sent_at")
+                        if not ts:
+                            eligible.append(t)
+                            continue
+                        try:
+                            s = str(ts).replace("Z", "+00:00")
+                            dt = datetime.fromisoformat(s)
+                            if not dt.tzinfo:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            if now - dt >= timedelta(hours=2):
+                                eligible.append(t)
+                        except Exception:
+                            eligible.append(t)
+                    if not eligible:
+                        self.log(f"ℹ️ @{profile_name}: все цели недавно получили сообщение, не открываю браузер.")
+                        return False
+                except Exception as e:
+                    self.log(f"⚠️ Ошибка проверки целей сообщений для @{profile_name}: {e}")
+                    return False
+        except Exception:
+            # If enabled map fails, proceed with normal behavior
+            pass
+
         # 2. Get User Agent
         user_agent = None
         try:
@@ -363,11 +407,30 @@ class InstagramScrollingWorker(BaseInstagramWorker):
                 targets = self.client.get_accounts_to_message(profile_id)
                 
                 if targets:
+                    now = datetime.now(timezone.utc)
+                    eligible = []
+                    for t in targets:
+                        ts = t.get("last_message_sent_at")
+                        if not ts:
+                            eligible.append(t)
+                            continue
+                        try:
+                            s = str(ts).replace("Z", "+00:00")
+                            dt = datetime.fromisoformat(s)
+                            if not dt.tzinfo:
+                                dt = dt.replace(tzinfo=timezone.utc)
+                            if now - dt >= timedelta(hours=2):
+                                eligible.append(t)
+                        except Exception:
+                            eligible.append(t)
+                    if not eligible:
+                        self.log("ℹ️ Нет целей для сообщений из-за кулдауна.")
+                        return
                     message_texts = self.config.message_texts or ["Hi!"]
                     send_messages(
                         profile_name=account.username,
                         proxy_string=account.proxy or "",
-                        targets=targets,
+                        targets=eligible,
                         message_texts=message_texts,
                         log=self.log,
                         should_stop=lambda: not self.running,
