@@ -16,19 +16,7 @@ def load_message_2_texts() -> List[str]:
             return cloud
     except Exception:
         pass
-    try:
-        with open("message_2.txt", "r", encoding="utf-8") as f:
-            content = f.read()
-            content = content.replace("\r\n", "\n").strip()
-            if not content:
-                return ["Hi there! Thanks for reaching out!"]
-            if "\n\n" in content:
-                messages = [msg.strip() for msg in content.split("\n\n") if msg.strip()]
-            else:
-                messages = [msg.strip() for msg in content.split("\n") if msg.strip()]
-            return messages if messages else ["Hi there! Thanks for reaching out!"]
-    except FileNotFoundError:
-        return ["Hi there! Thanks for reaching out!"]
+    return ["Hi there! Thanks for reaching out!"]
 
 
 def detect_incoming_messages(page) -> bool:
@@ -172,7 +160,7 @@ def send_messages(
 
             # Load alternative messages for when users message first
             message_2_texts = load_message_2_texts()
-            log(f"📄 Загружено {len(message_2_texts)} альтернативных сообщений из message_2.txt")
+            log(f"📄 Загружено {len(message_2_texts)} альтернативных сообщений из базы")
 
             processed_count = 0
 

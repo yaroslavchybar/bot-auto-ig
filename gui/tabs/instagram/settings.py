@@ -1,5 +1,3 @@
-import json
-from pathlib import Path
 from PyQt6.QtWidgets import QComboBox, QLineEdit
 from supabase.instagram_settings_client import InstagramSettingsClient
 
@@ -156,18 +154,6 @@ class SettingsMixin:
             cloud_loaded = None
         if isinstance(cloud_loaded, dict):
             data.update(cloud_loaded)
-        else:
-            if self.settings_path.exists():
-                try:
-                    loaded = json.loads(self.settings_path.read_text(encoding="utf-8"))
-                    if isinstance(loaded, dict):
-                        data.update(loaded)
-                        try:
-                            InstagramSettingsClient().upsert_settings(loaded)
-                        except Exception:
-                            pass
-                except Exception as e:
-                    print(f"Failed to load Instagram settings: {e}")
 
         def set_combo_value(combo: QComboBox, value: int):
             target = f"{value}%"
@@ -238,6 +224,10 @@ class SettingsMixin:
 
         self.update_order_visibility()
         self.loading_settings = False
+        try:
+            self.current_settings = data
+        except Exception:
+            pass
         try:
             self.selected_list_ids = data.get("source_list_ids", [])
             if hasattr(self, "_refresh_source_label"):
@@ -326,6 +316,6 @@ class SettingsMixin:
         except Exception:
             pass
         try:
-            self.settings_path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            print(f"Failed to save Instagram settings: {e}")
+            self.current_settings = payload
+        except Exception:
+            pass

@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
@@ -31,9 +30,6 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         super().__init__()
         self.main_window = main_window
         self.worker = None
-        # Adjust path to point to parent of gui (anti root)
-        # gui/tabs/instagram/tab.py -> parents[0]=instagram, [1]=tabs, [2]=gui, [3]=anti
-        self.settings_path = Path(__file__).resolve().parents[3] / "instagram_settings.json"
         self.loading_settings = False
         self.is_running = False
         
@@ -529,16 +525,7 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
                 if cloud_texts:
                     message_texts = cloud_texts
             except Exception:
-                pass
-            if not message_texts:
-                try:
-                    msg_path = Path("message.txt")
-                    if msg_path.exists():
-                        content = msg_path.read_text(encoding="utf-8").strip()
-                        if content:
-                            message_texts = [line.strip() for line in content.split('\n') if line.strip()]
-                except Exception:
-                    pass
+                message_texts = []
 
         # === UNIFIED WORKER FOR ALL ACTIONS ===
 

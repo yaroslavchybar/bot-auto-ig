@@ -6,7 +6,6 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Tuple
-from pathlib import Path
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from core.models import ScrollingConfig, ThreadsAccount
@@ -647,19 +646,12 @@ class UnfollowWorker(BaseInstagramWorker):
         message_texts = []
         if self.do_message:
             try:
-                msg_path = Path("message.txt")
-                if msg_path.exists():
-                    content = msg_path.read_text(encoding="utf-8").strip()
-                    if content:
-                        message_texts = [line.strip() for line in content.split('\n') if line.strip()]
-                    else:
-                        self.log("⚠️ Файл message.txt пуст! Рассылка пропущена.")
-                        self.do_message = False
-                if not message_texts:
-                    self.log("⚠️ В файле message.txt нет валидных сообщений! Рассылка пропущена.")
-                    self.do_message = False
-            except Exception as e:
-                self.log(f"⚠️ Ошибка чтения message.txt: {e}")
+                from supabase.message_templates_client import MessageTemplatesClient
+                message_texts = MessageTemplatesClient().get_texts("message")
+            except Exception:
+                message_texts = []
+            if not message_texts:
+                self.log("⚠️ В базе нет валидных сообщений! Рассылка пропущена.")
                 self.do_message = False
 
         for profile in profiles:

@@ -15,24 +15,19 @@ class ProfileManager:
             print(f"Warning: Database sync disabled - {e}")
 
         self.profiles = self.load_profiles()
+        # Fetch from database on startup to populate in-memory cache
+        try:
+            self.sync_from_database()
+        except Exception:
+            pass
 
     def load_profiles(self):
-        """Load profiles from JSON file"""
-        if os.path.exists(self.db_path):
-            try:
-                with open(self.db_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if isinstance(data, list):
-                        return {"private": data, "threads": []}
-                    return data
-            except:
-                return {"private": [], "threads": []}
+        """Initialize in-memory profiles cache (cloud-first; no local file)."""
         return {"private": [], "threads": []}
 
     def save_profiles(self):
-        """Save profiles to JSON file"""
-        with open(self.db_path, "w", encoding="utf-8") as f:
-            json.dump(self.profiles, f, indent=4, ensure_ascii=False)
+        """No-op: profiles are stored in-memory and persisted to database."""
+        return
 
     def add_profile(self, category, profile_data):
         if category not in self.profiles:

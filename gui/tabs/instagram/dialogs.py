@@ -1,5 +1,4 @@
-import json
-from pathlib import Path
+ 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QCheckBox, QLineEdit, QComboBox, QTextEdit, QMessageBox, QTabWidget, QFrame
@@ -262,7 +261,7 @@ class DialogsMixin:
         self.msg_tab1_layout.setContentsMargins(15, 20, 15, 15)
         self.msg_tab1_layout.setSpacing(10)
         
-        msg1_title = QLabel("Текст сообщения (message.txt)")
+        msg1_title = QLabel("Текст сообщения")
         msg1_title.setStyleSheet(SECTION_TITLE_STYLE)
         
         self.message_text_edit = QTextEdit()
@@ -280,7 +279,7 @@ class DialogsMixin:
         self.save_msg_btn = QPushButton("Сохранить")
         self.save_msg_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.save_msg_btn.setStyleSheet(PRIMARY_BTN_STYLE)
-        self.save_msg_btn.clicked.connect(lambda: self.save_message_text("message.txt", self.message_text_edit))
+        self.save_msg_btn.clicked.connect(lambda: self.save_message_text("message", self.message_text_edit))
         
         msg1_actions.addWidget(self.msg1_count_label)
         msg1_actions.addStretch()
@@ -292,7 +291,7 @@ class DialogsMixin:
         self.msg_tab2_layout.setContentsMargins(15, 20, 15, 15)
         self.msg_tab2_layout.setSpacing(10)
         
-        msg2_title = QLabel("Текст сообщения (message_2.txt)")
+        msg2_title = QLabel("Альтернативный текст сообщения")
         msg2_title.setStyleSheet(SECTION_TITLE_STYLE)
         
         self.message_2_text_edit = QTextEdit()
@@ -310,7 +309,7 @@ class DialogsMixin:
         self.save_msg_2_btn = QPushButton("Сохранить")
         self.save_msg_2_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.save_msg_2_btn.setStyleSheet(PRIMARY_BTN_STYLE)
-        self.save_msg_2_btn.clicked.connect(lambda: self.save_message_text("message_2.txt", self.message_2_text_edit))
+        self.save_msg_2_btn.clicked.connect(lambda: self.save_message_text("message_2", self.message_2_text_edit))
         
         msg2_actions.addWidget(self.msg2_count_label)
         msg2_actions.addStretch()
@@ -349,58 +348,25 @@ class DialogsMixin:
             texts1 = client.get_texts("message")
             self.message_text_edit.setText("\n".join(texts1) if texts1 else "")
         except Exception:
-            try:
-                msg_path = Path("message.txt")
-                if msg_path.exists():
-                    text = msg_path.read_text(encoding="utf-8")
-                    self.message_text_edit.setText(text)
-                    try:
-                        from supabase.message_templates_client import MessageTemplatesClient
-                        lines = [l.strip() for l in text.splitlines() if l.strip()]
-                        MessageTemplatesClient().upsert_texts("message", lines)
-                    except Exception:
-                        pass
-                else:
-                    self.message_text_edit.clear()
-            except Exception as e:
-                self.log(f"Ошибка загрузки message.txt: {e}")
+            self.message_text_edit.clear()
         try:
             from supabase.message_templates_client import MessageTemplatesClient
             client = MessageTemplatesClient()
             texts2 = client.get_texts("message_2")
             self.message_2_text_edit.setText("\n".join(texts2) if texts2 else "")
         except Exception:
-            try:
-                msg_path_2 = Path("message_2.txt")
-                if msg_path_2.exists():
-                    text2 = msg_path_2.read_text(encoding="utf-8")
-                    self.message_2_text_edit.setText(text2)
-                    try:
-                        from supabase.message_templates_client import MessageTemplatesClient
-                        lines2 = [l.strip() for l in text2.splitlines() if l.strip()]
-                        MessageTemplatesClient().upsert_texts("message_2", lines2)
-                    except Exception:
-                        pass
-                else:
-                    self.message_2_text_edit.clear()
-            except Exception as e:
-                self.log(f"Ошибка загрузки message_2.txt: {e}")
+            self.message_2_text_edit.clear()
         self._update_msg_counter(1)
         self._update_msg_counter(2)
 
         self.message_settings_dialog.exec()
 
-    def save_message_text(self, filename, text_edit):
+    def save_message_text(self, kind, text_edit):
         content = text_edit.toPlainText()
         lines = [l.strip() for l in content.splitlines() if l.strip()]
-        kind = "message" if "message_2" not in filename else "message_2"
         try:
             from supabase.message_templates_client import MessageTemplatesClient
             MessageTemplatesClient().upsert_texts(kind, lines)
-        except Exception:
-            pass
-        try:
-            Path(filename).write_text(content, encoding="utf-8")
         except Exception:
             pass
         self.message_settings_dialog.accept()
