@@ -6,10 +6,16 @@ from typing import Callable, List, Dict, Optional
 from automation.actions import random_delay
 from automation.browser import create_browser_context
 from supabase.instagram_accounts_client import InstagramAccountsClient
+from supabase.message_templates_client import MessageTemplatesClient
 
 
 def load_message_2_texts() -> List[str]:
-    """Load message texts from message_2.txt file."""
+    try:
+        cloud = MessageTemplatesClient().get_texts("message_2")
+        if cloud:
+            return cloud
+    except Exception:
+        pass
     try:
         with open("message_2.txt", "r", encoding="utf-8") as f:
             content = f.read()

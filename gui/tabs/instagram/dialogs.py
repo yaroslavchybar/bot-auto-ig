@@ -344,33 +344,66 @@ class DialogsMixin:
 
     def open_message_settings(self):
         try:
-            msg_path = Path("message.txt")
-            if msg_path.exists():
-                self.message_text_edit.setText(msg_path.read_text(encoding="utf-8"))
-            else:
-                self.message_text_edit.clear()
-        except Exception as e:
-            self.log(f"Ошибка загрузки message.txt: {e}")
+            from supabase.message_templates_client import MessageTemplatesClient
+            client = MessageTemplatesClient()
+            texts1 = client.get_texts("message")
+            self.message_text_edit.setText("\n".join(texts1) if texts1 else "")
+        except Exception:
+            try:
+                msg_path = Path("message.txt")
+                if msg_path.exists():
+                    text = msg_path.read_text(encoding="utf-8")
+                    self.message_text_edit.setText(text)
+                    try:
+                        from supabase.message_templates_client import MessageTemplatesClient
+                        lines = [l.strip() for l in text.splitlines() if l.strip()]
+                        MessageTemplatesClient().upsert_texts("message", lines)
+                    except Exception:
+                        pass
+                else:
+                    self.message_text_edit.clear()
+            except Exception as e:
+                self.log(f"Ошибка загрузки message.txt: {e}")
         try:
-            msg_path_2 = Path("message_2.txt")
-            if msg_path_2.exists():
-                self.message_2_text_edit.setText(msg_path_2.read_text(encoding="utf-8"))
-            else:
-                self.message_2_text_edit.clear()
-        except Exception as e:
-            self.log(f"Ошибка загрузки message_2.txt: {e}")
+            from supabase.message_templates_client import MessageTemplatesClient
+            client = MessageTemplatesClient()
+            texts2 = client.get_texts("message_2")
+            self.message_2_text_edit.setText("\n".join(texts2) if texts2 else "")
+        except Exception:
+            try:
+                msg_path_2 = Path("message_2.txt")
+                if msg_path_2.exists():
+                    text2 = msg_path_2.read_text(encoding="utf-8")
+                    self.message_2_text_edit.setText(text2)
+                    try:
+                        from supabase.message_templates_client import MessageTemplatesClient
+                        lines2 = [l.strip() for l in text2.splitlines() if l.strip()]
+                        MessageTemplatesClient().upsert_texts("message_2", lines2)
+                    except Exception:
+                        pass
+                else:
+                    self.message_2_text_edit.clear()
+            except Exception as e:
+                self.log(f"Ошибка загрузки message_2.txt: {e}")
         self._update_msg_counter(1)
         self._update_msg_counter(2)
 
         self.message_settings_dialog.exec()
 
     def save_message_text(self, filename, text_edit):
+        content = text_edit.toPlainText()
+        lines = [l.strip() for l in content.splitlines() if l.strip()]
+        kind = "message" if "message_2" not in filename else "message_2"
         try:
-            content = text_edit.toPlainText()
+            from supabase.message_templates_client import MessageTemplatesClient
+            MessageTemplatesClient().upsert_texts(kind, lines)
+        except Exception:
+            pass
+        try:
             Path(filename).write_text(content, encoding="utf-8")
-            self.message_settings_dialog.accept()
-        except Exception as e:
-            QMessageBox.warning(self.message_settings_dialog, "Ошибка", f"Не удалось сохранить {filename}: {e}")
+        except Exception:
+            pass
+        self.message_settings_dialog.accept()
 
     def _update_msg_counter(self, which):
         if which == 1:
@@ -381,4 +414,3 @@ class DialogsMixin:
             text = self.message_2_text_edit.toPlainText()
             lines = [l for l in text.splitlines() if l.strip()]
             self.msg2_count_label.setText(f"Строк: {len(lines)} · Символов: {len(text)}")
-

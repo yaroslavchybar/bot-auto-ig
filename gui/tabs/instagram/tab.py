@@ -524,13 +524,21 @@ class InstagramTab(QWidget, SettingsMixin, DialogsMixin):
         message_texts = []
         if enable_message:
             try:
-                msg_path = Path("message.txt")
-                if msg_path.exists():
-                    content = msg_path.read_text(encoding="utf-8").strip()
-                    if content:
-                        message_texts = [line.strip() for line in content.split('\n') if line.strip()]
+                from supabase.message_templates_client import MessageTemplatesClient
+                cloud_texts = MessageTemplatesClient().get_texts("message")
+                if cloud_texts:
+                    message_texts = cloud_texts
             except Exception:
                 pass
+            if not message_texts:
+                try:
+                    msg_path = Path("message.txt")
+                    if msg_path.exists():
+                        content = msg_path.read_text(encoding="utf-8").strip()
+                        if content:
+                            message_texts = [line.strip() for line in content.split('\n') if line.strip()]
+                except Exception:
+                    pass
 
         # === UNIFIED WORKER FOR ALL ACTIONS ===
 

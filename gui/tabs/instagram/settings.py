@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from PyQt6.QtWidgets import QComboBox, QLineEdit
+from supabase.instagram_settings_client import InstagramSettingsClient
 
 class SettingsMixin:
     """Mixin for handling loading and saving of InstagramTab settings."""
@@ -97,7 +98,7 @@ class SettingsMixin:
             self.add_action_btn.setEnabled(False)
 
     def load_settings(self):
-        """Load saved UI settings from disk."""
+        """Load saved UI settings from disk or cloud."""
         defaults = {
             "use_private_profiles": False,
             "like_chance": 10,
@@ -148,13 +149,25 @@ class SettingsMixin:
         self.loading_settings = True
         data = defaults.copy()
 
-        if self.settings_path.exists():
-            try:
-                loaded = json.loads(self.settings_path.read_text(encoding="utf-8"))
-                if isinstance(loaded, dict):
-                    data.update(loaded)
-            except Exception as e:
-                print(f"Failed to load Instagram settings: {e}")
+        cloud_loaded = None
+        try:
+            cloud_loaded = InstagramSettingsClient().get_settings()
+        except Exception:
+            cloud_loaded = None
+        if isinstance(cloud_loaded, dict):
+            data.update(cloud_loaded)
+        else:
+            if self.settings_path.exists():
+                try:
+                    loaded = json.loads(self.settings_path.read_text(encoding="utf-8"))
+                    if isinstance(loaded, dict):
+                        data.update(loaded)
+                        try:
+                            InstagramSettingsClient().upsert_settings(loaded)
+                        except Exception:
+                            pass
+                except Exception as e:
+                    print(f"Failed to load Instagram settings: {e}")
 
         def set_combo_value(combo: QComboBox, value: int):
             target = f"{value}%"
@@ -233,7 +246,7 @@ class SettingsMixin:
             pass
 
     def save_settings(self):
-        """Save current UI settings to disk."""
+        """Save current UI settings to cloud and disk."""
         if self.loading_settings:
             return
 
@@ -308,6 +321,10 @@ class SettingsMixin:
         except Exception:
             payload["source_list_ids"] = []
 
+        try:
+            InstagramSettingsClient().upsert_settings(payload)
+        except Exception:
+            pass
         try:
             self.settings_path.write_text(json.dumps(payload, indent=4, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
