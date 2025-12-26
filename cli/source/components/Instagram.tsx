@@ -41,6 +41,7 @@ type ListRow = {id: string; name: string};
 type LogEntry = {ts: number; message: string; source?: string};
 
 type InstagramSettings = {
+	automation_enabled: boolean;
 	use_private_profiles: boolean;
 	action_order: ActionName[];
 	like_chance: number;
@@ -98,6 +99,7 @@ const ACTIONS: ActionName[] = [
 ];
 
 const DEFAULT_SETTINGS: InstagramSettings = {
+	automation_enabled: false,
 	use_private_profiles: true,
 	action_order: [...ACTIONS],
 	like_chance: 10,
@@ -243,6 +245,7 @@ export default function Instagram({onBack}: Props) {
 			merged.action_order = Array.isArray(merged.action_order) && merged.action_order.length > 0 ? merged.action_order : [...ACTIONS];
 			merged.source_list_ids = Array.isArray(merged.source_list_ids) ? merged.source_list_ids : [];
 			setSettings(merged);
+			if (merged.automation_enabled && !currentProc) startAutomation(merged);
 		} catch (e: any) {
 			setSettings(DEFAULT_SETTINGS);
 			setError(e?.message || String(e));
@@ -298,6 +301,13 @@ export default function Instagram({onBack}: Props) {
 	};
 
 	const stopAutomation = () => {
+		setSettings(prev => {
+			if (!prev.automation_enabled) return prev;
+			const next = {...prev, automation_enabled: false};
+			void persist(next);
+			return next;
+		});
+
 		const proc = currentProc || procRef.current;
 		if (!proc) return;
 		appendLog('Stopping automation...', 'instagram');
@@ -312,21 +322,22 @@ export default function Instagram({onBack}: Props) {
 		setRunning(false);
 	};
 
-	const startAutomation = () => {
+	const startAutomation = (override?: InstagramSettings) => {
 		if (currentProc) return;
+		const runSettings = override || settings;
 		const hasAny =
-			settings.enable_feed ||
-			settings.enable_reels ||
-			settings.watch_stories ||
-			settings.enable_follow ||
-			settings.do_unfollow ||
-			settings.do_approve ||
-			settings.do_message;
+			runSettings.enable_feed ||
+			runSettings.enable_reels ||
+			runSettings.watch_stories ||
+			runSettings.enable_follow ||
+			runSettings.do_unfollow ||
+			runSettings.do_approve ||
+			runSettings.do_message;
 		if (!hasAny) {
 			setError('Select at least one activity');
 			return;
 		}
-		if (settings.source_list_ids.length === 0) {
+		if (runSettings.source_list_ids.length === 0) {
 			setError('Select at least one list');
 			return;
 		}
@@ -334,8 +345,23 @@ export default function Instagram({onBack}: Props) {
 		setError(null);
 		appendLog('Starting Instagram automation...', 'instagram');
 
+		const nextSettings = runSettings.automation_enabled ? runSettings : {...runSettings, automation_enabled: true};
+		if (!runSettings.automation_enabled) {
+			setSettings(nextSettings);
+			void persist(nextSettings);
+		}
+
 		const python = process.env.PYTHON || 'python';
-		const child = spawn(python, [PYTHON_RUNNER], {cwd: PROJECT_ROOT, stdio: 'pipe'});
+		let child: ChildProcessWithoutNullStreams;
+		try {
+			child = spawn(python, [PYTHON_RUNNER], {cwd: PROJECT_ROOT, stdio: 'pipe'});
+		} catch (e: any) {
+			const msg = e?.message || String(e);
+			setError(msg);
+			appendLog(`Automation failed: ${msg}`, 'instagram');
+			setRunning(false);
+			return;
+		}
 		currentProc = child;
 		procRef.current = child;
 		setRunning(true);
@@ -369,7 +395,7 @@ export default function Instagram({onBack}: Props) {
 			listenersAttached = true;
 		}
 
-		const payload = JSON.stringify({settings});
+		const payload = JSON.stringify({settings: nextSettings});
 		child.stdin.write(payload);
 		child.stdin.end();
 	};
