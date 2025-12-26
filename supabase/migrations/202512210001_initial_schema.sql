@@ -32,7 +32,8 @@ create table public.instagram_accounts (
   status text,
   link_sent text,
   message boolean not null default false,
-  subscribed_at timestamptz
+  subscribed_at timestamptz,
+  last_message_sent_at timestamptz
 );
 
 alter table public.profiles
@@ -120,6 +121,7 @@ end
 $$;
 
 select cron.schedule('auto_assign_available_accounts_job', '15 3 * * *', $$select public.assign_available_accounts_daily();$$);
+
 create or replace function public.reset_sessions_today()
 returns void
 language plpgsql
@@ -144,3 +146,27 @@ end
 $$;
 
 select cron.schedule('daily_reset_sessions_today', '0 0 * * *', $$select public.reset_sessions_today();$$);
+
+create table if not exists public.instagram_settings (
+  id uuid primary key default gen_random_uuid(),
+  scope text not null default 'global',
+  data jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists instagram_settings_scope_unique on public.instagram_settings(scope);
+
+alter table public.instagram_settings disable row level security;
+
+create table if not exists public.message_templates (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,
+  texts jsonb not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists message_templates_kind_unique on public.message_templates(kind);
+
+alter table public.message_templates disable row level security;

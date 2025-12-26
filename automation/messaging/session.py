@@ -61,6 +61,8 @@ def send_messages(
     should_stop: Optional[Callable[[], bool]] = None,
     page: Optional[object] = None,
     user_agent: Optional[str] = None,
+    cooldown_enabled: bool = True,
+    cooldown_hours: int = 2,
 ):
     """
     Send messages to a list of target users.
@@ -70,7 +72,6 @@ def send_messages(
     If `page` is provided, it uses the existing browser page and does NOT close it.
     """
     should_stop = should_stop or (lambda: False)
-    MESSAGE_COOLDOWN_HOURS = 2
     
     if not targets:
         log("ℹ️ Нет пользователей для рассылки сообщений.")
@@ -186,7 +187,7 @@ def send_messages(
                         if last_sent_dt:
                             now = datetime.datetime.now(datetime.timezone.utc)
                             delta = now - last_sent_dt
-                            if delta.total_seconds() < MESSAGE_COOLDOWN_HOURS * 3600:
+                            if cooldown_enabled and cooldown_hours > 0 and delta.total_seconds() < cooldown_hours * 3600:
                                 log(f"⏳ Пропускаю {username}: последнее сообщение {int(delta.total_seconds()//60)} мин назад")
                                 continue
                 except Exception as e:

@@ -2,57 +2,11 @@
 Shared utilities for Instagram worker classes.
 Reduces code duplication across worker implementations.
 """
-import os
 import random
-import signal
-import subprocess
 from typing import Tuple, Optional, List, Callable, Any
 from contextlib import contextmanager
 
 from automation.browser import create_browser_context as _create_browser_context
-
-# Windows process handling constants
-CTRL_BREAK = getattr(signal, "CTRL_BREAK_EVENT", None)
-IS_WINDOWS = os.name == "nt"
-
-
-def kill_process_tree(proc, log: Callable[[str], None]) -> None:
-    """Best-effort kill for subprocess and its children on Windows."""
-    if proc is None or proc.poll() is not None:
-        return
-
-    if IS_WINDOWS:
-        if CTRL_BREAK is not None:
-            try:
-                proc.send_signal(CTRL_BREAK)
-                proc.wait(timeout=5)
-            except Exception as err:
-                log(f"⚠️ CTRL_BREAK to child failed: {err}")
-
-        if proc.poll() is None:
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-                proc.wait(timeout=3)
-            except Exception as err:
-                log(f"⚠️ taskkill failed: {err}")
-    else:
-        try:
-            proc.terminate()
-            proc.wait(timeout=5)
-        except Exception as err:
-            log(f"⚠️ terminate failed: {err}")
-
-    if proc.poll() is None:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-
 
 @contextmanager
 def create_browser_context(
@@ -82,28 +36,6 @@ def create_browser_context(
         headless=headless,
     ) as (context, page):
         yield context, page
-
-
-def normalize_range(range_values: Optional[Tuple], default: Tuple[int, int]) -> Tuple[int, int]:
-    """
-    Normalize a range tuple, ensuring low <= high and non-negative values.
-    
-    Args:
-        range_values: Tuple of (min, max) or None
-        default: Default tuple if range_values is invalid
-    
-    Returns:
-        Normalized (min, max) tuple
-    """
-    try:
-        low, high = range_values
-        low = max(0, int(low))
-        high = max(0, int(high))
-        if low > high:
-            low, high = high, low
-        return low, high
-    except Exception:
-        return default
 
 
 def apply_count_limit(
@@ -249,3 +181,4 @@ def build_action_order(config) -> List[str]:
         order.append("Send Messages")
     
     return order
+

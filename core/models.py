@@ -67,3 +67,7 @@ class ScrollingConfig:
     message_texts: Optional[List[str]] = None
     action_order: Optional[List[str]] = None
     headless: bool = False
+    profile_reopen_cooldown_enabled: bool = True
+    profile_reopen_cooldown_minutes: int = 30
+    messaging_cooldown_enabled: bool = True
+    messaging_cooldown_hours: int = 2

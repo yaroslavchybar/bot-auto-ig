@@ -11,6 +11,11 @@ def _safe(log: Callable[[str], None], action: str, func):
 
 def _normalize_range(range_values, default: Tuple[int, int]) -> Tuple[int, int]:
     """Ensure we always have an ordered, non-negative (min, max) tuple."""
+    return normalize_range(range_values, default)
+
+
+def normalize_range(range_values, default: Tuple[int, int]) -> Tuple[int, int]:
+    """Ensure we always have an ordered, non-negative (min, max) tuple."""
     try:
         low, high = range_values
         low = max(0, int(low))

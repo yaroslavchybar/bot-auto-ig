@@ -26,7 +26,7 @@ A sophisticated Instagram automation tool with antidetect capabilities, built wi
 - `core/`: Managers for profiles and background processes.
 - `gui/`: PyQt6 implementation for the desktop application.
 - `supabase/`: Database client and migrations for cloud synchronization.
-- `utils/`: Common utilities (file handling, TOTP, etc.).
+- `utils/`: Common utilities (TOTP, etc.).
 
 ## Setup
 
