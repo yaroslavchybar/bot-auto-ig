@@ -224,6 +224,7 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 			if (proc) {
 				proc.kill();
 			}
+			void profileManager.syncProfileStatus(name, 'idle', false);
 		} else {
 			// Start
 			const scriptPath = path.join(PROJECT_ROOT, 'launcher.py');
@@ -241,16 +242,19 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 
 				processesRef.current.set(name, child);
 				toggleProfileState(name, true);
+				void profileManager.syncProfileStatus(name, 'running', true);
 
 				child.on('exit', () => {
 					processesRef.current.delete(name);
 					toggleProfileState(name, false);
+					void profileManager.syncProfileStatus(name, 'idle', false);
 				});
 				
 				child.on('error', (err) => {
 					setError(`Failed to start ${name}: ${err.message}`);
 					processesRef.current.delete(name);
 					toggleProfileState(name, false);
+					void profileManager.syncProfileStatus(name, 'idle', false);
 				});
 			} catch (e: any) {
 				setError(`Failed to spawn: ${e.message}`);

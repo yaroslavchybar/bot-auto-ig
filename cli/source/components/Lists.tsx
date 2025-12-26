@@ -1,7 +1,7 @@
 import React, {useState, useEffect, useMemo} from 'react';
 import {Text, Box, useInput} from 'ink';
 import TextInput from 'ink-text-input';
-import {supabase} from '../lib/supabase.js';
+import {callBridge} from '../lib/supabase.js';
 
 type List = {
 	id: string;
@@ -32,16 +32,14 @@ export default function Lists({onBack}: {onBack: () => void}) {
 
 	const fetchLists = async () => {
 		setLoading(true);
-		const {data, error} = await supabase
-			.from('lists')
-			.select('id, name')
-			.order('created_at', {ascending: true});
-		
-		if (error) {
-			setError(error.message);
-		} else {
+		setError(null);
+		try {
+			const data = await callBridge<List[]>('lists.list');
 			setLists(data || []);
-            setSelectedIndex(0);
+			setSelectedIndex(0);
+		} catch (e: any) {
+			setError(e?.message || String(e));
+			setLists([]);
 		}
 		setLoading(false);
 	};
@@ -49,38 +47,44 @@ export default function Lists({onBack}: {onBack: () => void}) {
     const handleCreate = async () => {
         if (!inputName.trim()) return;
         setLoading(true);
-        const { error } = await supabase.from('lists').insert([{ name: inputName }]);
-        if (error) setError(error.message);
-        else {
+		setError(null);
+		try {
+			await callBridge('lists.create', {name: inputName});
             setInputName('');
             setMode('list');
             fetchLists();
-        }
+		} catch (e: any) {
+			setError(e?.message || String(e));
+		}
         setLoading(false);
     };
 
     const handleUpdate = async () => {
         if (!selectedList || !inputName.trim()) return;
         setLoading(true);
-        const { error } = await supabase.from('lists').update({ name: inputName }).eq('id', selectedList.id);
-        if (error) setError(error.message);
-        else {
+		setError(null);
+		try {
+			await callBridge('lists.update', {id: selectedList.id, name: inputName});
             setInputName('');
             setMode('list');
             fetchLists();
-        }
+		} catch (e: any) {
+			setError(e?.message || String(e));
+		}
         setLoading(false);
     };
 
     const handleDelete = async () => {
         if (!selectedList) return;
         setLoading(true);
-        const { error } = await supabase.from('lists').delete().eq('id', selectedList.id);
-        if (error) setError(error.message);
-        else {
+		setError(null);
+		try {
+			await callBridge('lists.delete', {id: selectedList.id});
             setMode('list');
             fetchLists();
-        }
+		} catch (e: any) {
+			setError(e?.message || String(e));
+		}
         setLoading(false);
     };
     
@@ -89,10 +93,16 @@ export default function Lists({onBack}: {onBack: () => void}) {
         setError(null);
         let assigned: any[] = [];
         let unassigned: any[] = [];
-        const a = await supabase.from('profiles').select('profile_id,name').eq('list_id', listId).order('created_at', {ascending: true});
-        if (!a.error) assigned = a.data || [];
-        const u = await supabase.from('profiles').select('profile_id,name').is('list_id', null).order('created_at', {ascending: true});
-        if (!u.error) unassigned = u.data || [];
+		try {
+			assigned = (await callBridge<any[]>('profiles.list_assigned', {list_id: listId})) || [];
+		} catch {
+			assigned = [];
+		}
+		try {
+			unassigned = (await callBridge<any[]>('profiles.list_unassigned')) || [];
+		} catch {
+			unassigned = [];
+		}
         const rows: ProfileRow[] = [];
         for (const r of assigned) {
             rows.push({profile_id: String(r.profile_id), name: String(r.name || ''), selected: true, initialSelected: true});
@@ -127,18 +137,19 @@ export default function Lists({onBack}: {onBack: () => void}) {
         setError(null);
         const toAdd = profiles.filter(p => p.selected && !p.initialSelected).map(p => p.profile_id);
         const toRemove = profiles.filter(p => !p.selected && p.initialSelected).map(p => p.profile_id);
-        if (inputName.trim() && inputName.trim() !== selectedList.name) {
-            const {error} = await supabase.from('lists').update({name: inputName.trim()}).eq('id', selectedList.id);
-            if (error) setError(error.message);
-        }
-        if (toAdd.length > 0) {
-            const {error} = await supabase.from('profiles').update({list_id: selectedList.id}).in('profile_id', toAdd);
-            if (error) setError(error.message);
-        }
-        if (toRemove.length > 0) {
-            const {error} = await supabase.from('profiles').update({list_id: null}).in('profile_id', toRemove);
-            if (error) setError(error.message);
-        }
+		try {
+			if (inputName.trim() && inputName.trim() !== selectedList.name) {
+				await callBridge('lists.update', {id: selectedList.id, name: inputName.trim()});
+			}
+			if (toAdd.length > 0) {
+				await callBridge('profiles.bulk_set_list_id', {profile_ids: toAdd, list_id: selectedList.id});
+			}
+			if (toRemove.length > 0) {
+				await callBridge('profiles.bulk_set_list_id', {profile_ids: toRemove, list_id: null});
+			}
+		} catch (e: any) {
+			setError(e?.message || String(e));
+		}
         setMode('list');
         await fetchLists();
         setLoading(false);

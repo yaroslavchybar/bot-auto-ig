@@ -4,7 +4,7 @@ import TextInput from 'ink-text-input';
 import {spawn, type ChildProcessWithoutNullStreams} from 'child_process';
 import path from 'path';
 import {fileURLToPath} from 'url';
-import {supabase} from '../lib/supabase.js';
+import {callBridge} from '../lib/supabase.js';
 import {appendLog, getLogs, subscribeLogs} from '../lib/logStore.js';
 
 let currentProc: ChildProcessWithoutNullStreams | null = null;
@@ -36,6 +36,8 @@ type ActionName =
 	| 'Send Messages';
 
 type ListRow = {id: string; name: string};
+
+type LogEntry = {ts: number; message: string; source?: string};
 
 type InstagramSettings = {
 	use_private_profiles: boolean;
@@ -198,8 +200,8 @@ export default function Instagram({onBack}: Props) {
 	}, [settings.action_order, enabledMap]);
 
 	const lastLogs = useMemo(() => {
-		const all = getLogs();
-		const lines = all.slice(-1).map(l => l.message);
+		const all = getLogs() as unknown as LogEntry[];
+		const lines = all.slice(-1).map((l: LogEntry) => l.message);
 		return lines;
 	}, [logTick]);
 
@@ -207,13 +209,7 @@ export default function Instagram({onBack}: Props) {
 		setSaving(true);
 		setError(null);
 		try {
-			const payload = {
-				scope: 'global',
-				data: next,
-				updated_at: new Date().toISOString(),
-			};
-			const {error} = await supabase.from('instagram_settings').upsert(payload, {onConflict: 'scope'});
-			if (error) throw error;
+			await callBridge('instagram_settings.upsert', {scope: 'global', data: next});
 		} catch (e: any) {
 			setError(e?.message || String(e));
 		} finally {
@@ -225,13 +221,7 @@ export default function Instagram({onBack}: Props) {
 		setLoading(true);
 		setError(null);
 		try {
-			const {data, error} = await supabase
-				.from('instagram_settings')
-				.select('data')
-				.eq('scope', 'global')
-				.maybeSingle();
-			if (error) throw error;
-			const cloud = (data as any)?.data;
+			const cloud = await callBridge<any | null>('instagram_settings.get', {scope: 'global'});
 			const merged: InstagramSettings = {
 				...DEFAULT_SETTINGS,
 				...(typeof cloud === 'object' && cloud ? cloud : {}),
@@ -249,36 +239,33 @@ export default function Instagram({onBack}: Props) {
 
 	const fetchLists = async () => {
 		setError(null);
-		const {data, error} = await supabase.from('lists').select('id, name').order('created_at', {ascending: true});
-		if (error) {
-			setError(error.message);
+		try {
+			const data = await callBridge<any[]>('lists.list');
+			setLists((data as any) || []);
+			setListsIndex(0);
+		} catch (e: any) {
+			setError(e?.message || String(e));
 			setLists([]);
-			return;
 		}
-		setLists((data as any) || []);
-		setListsIndex(0);
 	};
 
 	const fetchMessageTemplates = async (kind: 'message' | 'message_2') => {
 		setError(null);
-		const {data, error} = await supabase.from('message_templates').select('texts').eq('kind', kind).maybeSingle();
-		if (error) {
-			setError(error.message);
+		try {
+			const texts = await callBridge<string[]>('message_templates.get', {kind});
+			setMessageLines(Array.isArray(texts) ? texts.filter((t: any) => String(t).trim()).map((t: any) => String(t)) : []);
+			setMessageIndex(0);
+		} catch (e: any) {
+			setError(e?.message || String(e));
 			setMessageLines([]);
-			return;
 		}
-		const texts = (data as any)?.texts;
-		setMessageLines(Array.isArray(texts) ? texts.filter((t: any) => String(t).trim()).map((t: any) => String(t)) : []);
-		setMessageIndex(0);
 	};
 
 	const saveMessageTemplates = async (kind: 'message' | 'message_2', lines: string[]) => {
 		setSaving(true);
 		setError(null);
 		try {
-			const payload = {kind, texts: lines};
-			const {error} = await supabase.from('message_templates').upsert(payload, {onConflict: 'kind'});
-			if (error) throw error;
+			await callBridge('message_templates.upsert', {kind, texts: lines});
 			appendLog(`Saved ${lines.length} message templates (${kind})`, 'instagram');
 		} catch (e: any) {
 			setError(e?.message || String(e));
