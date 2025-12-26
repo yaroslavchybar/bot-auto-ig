@@ -5,6 +5,10 @@ from supabase.profiles_client import SupabaseProfilesClient, SupabaseProfilesErr
 
 PROFILE_DB = "db.json"
 
+def _profiles_dir() -> str:
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    return os.path.join(repo_root, "profiles")
+
 class ProfileManager:
     def __init__(self, db_path=PROFILE_DB):
         self.db_path = db_path
@@ -58,7 +62,7 @@ class ProfileManager:
 
             # Delete the browser profile directory
             profile_name = profile_to_delete["name"]
-            profiles_dir = "profiles"
+            profiles_dir = _profiles_dir()
             profile_path = os.path.join(profiles_dir, profile_name)
 
             if os.path.exists(profile_path):
@@ -87,7 +91,7 @@ class ProfileManager:
 
             # Check if profile name changed and handle directory rename
             if old_name != new_name:
-                profiles_dir = "profiles"
+                profiles_dir = _profiles_dir()
                 old_path = os.path.join(profiles_dir, old_name)
                 new_path = os.path.join(profiles_dir, new_name)
 

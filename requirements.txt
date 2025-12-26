@@ -1,0 +1,5 @@
+camoufox
+playwright
+pyotp
+python-dotenv
+requests

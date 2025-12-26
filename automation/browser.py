@@ -1,7 +1,9 @@
 import os
+import shutil
 import traceback
 import time
 import random
+import datetime
 from contextlib import contextmanager
 from typing import Optional
 from camoufox import Camoufox
@@ -51,8 +53,19 @@ def parse_proxy_string(proxy_string):
 
 def ensure_profile_path(profile_name: str, base_dir: Optional[str] = None) -> str:
     if base_dir is None:
-        base_dir = os.getcwd()
-    profile_path = os.path.join(base_dir, "profiles", profile_name)
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    profiles_dir = os.path.join(base_dir, "profiles")
+    profile_path = os.path.join(profiles_dir, profile_name)
+
+    if not os.path.exists(profile_path):
+        legacy_path = os.path.join(base_dir, "cli", "profiles", profile_name)
+        if os.path.exists(legacy_path):
+            os.makedirs(profiles_dir, exist_ok=True)
+            try:
+                shutil.move(legacy_path, profile_path)
+            except Exception as e:
+                print(f"[!] Failed to migrate profile '{profile_name}': {e}")
+                profile_path = legacy_path
     os.makedirs(profile_path, exist_ok=True)
     return profile_path
 
@@ -60,6 +73,47 @@ def build_proxy_config(proxy_string: Optional[str]):
     if proxy_string and proxy_string.lower() not in ("none", ""):
         return parse_proxy_string(proxy_string)
     return None
+
+def _read_text(path: str) -> Optional[str]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return None
+
+def _write_text(path: str, value: str) -> None:
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(value)
+    except Exception:
+        return
+
+def _should_clean_today(profile_path: str) -> bool:
+    marker = os.path.join(profile_path, ".cache2_last_cleaned")
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    last = (_read_text(marker) or "").strip()
+    return last != today
+
+def _mark_cleaned_today(profile_path: str) -> None:
+    marker = os.path.join(profile_path, ".cache2_last_cleaned")
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    _write_text(marker, today)
+
+def _clean_cache2(profile_path: str) -> None:
+    cache2 = os.path.join(profile_path, "cache2")
+    if not os.path.exists(cache2):
+        _mark_cleaned_today(profile_path)
+        return
+    try:
+        shutil.rmtree(cache2)
+    except Exception:
+        try:
+            entries = os.path.join(cache2, "entries")
+            if os.path.exists(entries):
+                shutil.rmtree(entries)
+        except Exception:
+            return
+    _mark_cleaned_today(profile_path)
 
 @contextmanager
 def create_browser_context(
@@ -72,6 +126,8 @@ def create_browser_context(
     os: Optional[str] = None,
 ):
     profile_path = ensure_profile_path(profile_name, base_dir=base_dir)
+    if _should_clean_today(profile_path):
+        _clean_cache2(profile_path)
     proxy_config = build_proxy_config(proxy_string)
 
     with Camoufox(
