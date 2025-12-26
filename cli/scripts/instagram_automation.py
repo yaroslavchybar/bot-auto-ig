@@ -22,6 +22,7 @@ from core.models import ScrollingConfig, ThreadsAccount
 from automation.scrolling import scroll_feed, scroll_reels
 from automation.stories import watch_stories
 from automation.Follow.session import follow_usernames
+from automation.Follow.common import normalize_range
 from automation.unfollow.session import unfollow_usernames
 from automation.approvefollow.session import approve_follow_requests
 from automation.messaging.session import send_messages
@@ -29,7 +30,7 @@ from supabase.config import PROJECT_URL, SECRET_KEY
 from supabase.instagram_accounts_client import InstagramAccountsClient
 from supabase.profiles_client import SupabaseProfilesClient
 from supabase.message_templates_client import MessageTemplatesClient
-from gui.workers.worker_utils import (
+from core.worker_utils import (
     apply_count_limit,
     build_action_order,
     create_browser_context,
@@ -84,17 +85,6 @@ def _parse_int(value: Any, default: int) -> int:
 def _parse_float(value: Any, default: float) -> float:
     try:
         return float(str(value).strip().split()[0])
-    except Exception:
-        return default
-
-
-def _normalize_range_int(a: Any, b: Any, default: Tuple[int, int]) -> Tuple[int, int]:
-    try:
-        x = _parse_int(a, default[0])
-        y = _parse_int(b, default[1])
-        if x > y:
-            x, y = y, x
-        return x, y
     except Exception:
         return default
 
@@ -215,14 +205,19 @@ class InstagramAutomationRunner:
                     return False
 
                 last_opened_str = profile_data.get("last_opened_at")
-                if last_opened_str:
+                if (
+                    last_opened_str
+                    and getattr(self.config, "profile_reopen_cooldown_enabled", True)
+                    and int(getattr(self.config, "profile_reopen_cooldown_minutes", 30) or 0) > 0
+                ):
                     s = str(last_opened_str).replace("Z", "+00:00")
                     last_dt = datetime.fromisoformat(s)
                     if not last_dt.tzinfo:
                         last_dt = last_dt.replace(tzinfo=timezone.utc)
                     now = datetime.now(timezone.utc)
-                    if now - last_dt < timedelta(minutes=30):
-                        log(f"⏭️ Пропуск @{profile_name}: недавно открыт (<30 мин).")
+                    cooldown_min = int(getattr(self.config, "profile_reopen_cooldown_minutes", 30) or 0)
+                    if now - last_dt < timedelta(minutes=cooldown_min):
+                        log(f"⏭️ Пропуск @{profile_name}: недавно открыт (<{cooldown_min} мин).")
                         return False
         except Exception as e:
             log(f"⚠️ Ошибка проверки сессий для @{profile_name}: {e}")
@@ -252,7 +247,11 @@ class InstagramAutomationRunner:
                         dt = datetime.fromisoformat(s)
                         if not dt.tzinfo:
                             dt = dt.replace(tzinfo=timezone.utc)
-                        if now - dt >= timedelta(hours=2):
+                        cooldown_enabled = bool(getattr(self.config, "messaging_cooldown_enabled", True))
+                        cooldown_hours = int(getattr(self.config, "messaging_cooldown_hours", 2) or 0)
+                        if not cooldown_enabled or cooldown_hours <= 0:
+                            eligible.append(t)
+                        elif now - dt >= timedelta(hours=cooldown_hours):
                             eligible.append(t)
                     except Exception:
                         eligible.append(t)
@@ -492,7 +491,11 @@ class InstagramAutomationRunner:
                     dt = datetime.fromisoformat(s)
                     if not dt.tzinfo:
                         dt = dt.replace(tzinfo=timezone.utc)
-                    if now - dt >= timedelta(hours=2):
+                    cooldown_enabled = bool(getattr(self.config, "messaging_cooldown_enabled", True))
+                    cooldown_hours = int(getattr(self.config, "messaging_cooldown_hours", 2) or 0)
+                    if not cooldown_enabled or cooldown_hours <= 0:
+                        eligible.append(t)
+                    elif now - dt >= timedelta(hours=cooldown_hours):
                         eligible.append(t)
                 except Exception:
                     eligible.append(t)
@@ -505,6 +508,8 @@ class InstagramAutomationRunner:
                 proxy_string=account.proxy or "",
                 targets=eligible,
                 message_texts=message_texts,
+                cooldown_enabled=bool(getattr(self.config, "messaging_cooldown_enabled", True)),
+                cooldown_hours=int(getattr(self.config, "messaging_cooldown_hours", 2) or 0),
                 log=log,
                 should_stop=lambda: not self.running,
                 page=page,
@@ -550,22 +555,21 @@ def _build_config(settings: Dict[str, Any], message_texts: List[str]) -> Scrolli
     unfollow_min_count = _parse_int(settings.get("unfollow_min_count"), 5)
     unfollow_max_count = _parse_int(settings.get("unfollow_max_count"), 15)
 
-    if feed_min_time > feed_max_time:
-        feed_min_time, feed_max_time = feed_max_time, feed_min_time
-    if reels_min_time > reels_max_time:
-        reels_min_time, reels_max_time = reels_max_time, reels_min_time
-    if highlights_min > highlights_max:
-        highlights_min, highlights_max = highlights_max, highlights_min
-    if follow_min_count > follow_max_count:
-        follow_min_count, follow_max_count = follow_max_count, follow_min_count
-    if unfollow_min_delay > unfollow_max_delay:
-        unfollow_min_delay, unfollow_max_delay = unfollow_max_delay, unfollow_min_delay
-    if unfollow_min_count > unfollow_max_count:
-        unfollow_min_count, unfollow_max_count = unfollow_max_count, unfollow_min_count
+    feed_min_time, feed_max_time = normalize_range((feed_min_time, feed_max_time), (1, 3))
+    reels_min_time, reels_max_time = normalize_range((reels_min_time, reels_max_time), (1, 3))
+    highlights_min, highlights_max = normalize_range((highlights_min, highlights_max), (2, 4))
+    follow_min_count, follow_max_count = normalize_range((follow_min_count, follow_max_count), (5, 15))
+    unfollow_min_delay, unfollow_max_delay = normalize_range((unfollow_min_delay, unfollow_max_delay), (10, 30))
+    unfollow_min_count, unfollow_max_count = normalize_range((unfollow_min_count, unfollow_max_count), (5, 15))
 
     action_order = settings.get("action_order")
     if not isinstance(action_order, list):
         action_order = []
+
+    profile_reopen_cooldown_enabled = bool(settings.get("profile_reopen_cooldown_enabled", True))
+    profile_reopen_cooldown_minutes = _parse_int(settings.get("profile_reopen_cooldown_minutes"), 30)
+    messaging_cooldown_enabled = bool(settings.get("messaging_cooldown_enabled", True))
+    messaging_cooldown_hours = _parse_int(settings.get("messaging_cooldown_hours"), 2)
 
     return ScrollingConfig(
         use_private_profiles=True,
@@ -607,6 +611,10 @@ def _build_config(settings: Dict[str, Any], message_texts: List[str]) -> Scrolli
         unfollow_delay_range=(unfollow_min_delay, unfollow_max_delay),
         message_texts=message_texts,
         headless=bool(settings.get("headless")),
+        profile_reopen_cooldown_enabled=profile_reopen_cooldown_enabled,
+        profile_reopen_cooldown_minutes=profile_reopen_cooldown_minutes,
+        messaging_cooldown_enabled=messaging_cooldown_enabled,
+        messaging_cooldown_hours=messaging_cooldown_hours,
     )
 
 
@@ -675,9 +683,11 @@ def main() -> int:
 
     config = _build_config(settings, message_texts)
     if bool(settings.get("do_unfollow")):
-        config.unfollow_count_range = _normalize_range_int(
-            settings.get("unfollow_min_count"),
-            settings.get("unfollow_max_count"),
+        config.unfollow_count_range = normalize_range(
+            (
+                _parse_int(settings.get("unfollow_min_count"), 5),
+                _parse_int(settings.get("unfollow_max_count"), 15),
+            ),
             (5, 15),
         )
 

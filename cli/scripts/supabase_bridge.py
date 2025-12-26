@@ -160,6 +160,40 @@ def handle(op: str, args: Dict[str, Any]) -> Any:
         _request("PATCH", endpoint, data={"list_id": list_id})
         return True
 
+    if op == "profiles.clear_busy_for_lists":
+        list_ids = args.get("list_ids") or []
+        if not isinstance(list_ids, list) or len(list_ids) == 0:
+            return True
+        list_ids = [str(x).strip() for x in list_ids if str(x).strip()]
+        if not list_ids:
+            return True
+
+        rows = _request(
+            "GET",
+            _profiles_url(),
+            params={
+                "select": "profile_id,name,status,Using",
+                "list_id": _quoted_in(list_ids),
+                "order": "created_at.asc",
+            },
+        ) or []
+        if not isinstance(rows, list) or not rows:
+            return True
+
+        for r in rows:
+            try:
+                pid = str(r.get("profile_id") or "").strip()
+                if not pid:
+                    continue
+                status = str(r.get("status") or "").lower()
+                using = bool(r.get("Using"))
+                if status == "running" or using:
+                    _request("PATCH", f"{_profiles_url()}?profile_id=eq.{pid}", data={"status": "idle", "Using": False})
+            except Exception:
+                continue
+
+        return True
+
     if op == "lists.list":
         return _request(
             "GET",

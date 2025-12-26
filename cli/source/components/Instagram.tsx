@@ -19,6 +19,7 @@ type View =
 	| 'lists'
 	| 'order'
 	| 'orderAdd'
+	| 'cooldown'
 	| 'feed'
 	| 'reels'
 	| 'stories'
@@ -65,6 +66,10 @@ type InstagramSettings = {
 	enable_follow: boolean;
 	watch_stories: boolean;
 	headless: boolean;
+	profile_reopen_cooldown_enabled: boolean;
+	profile_reopen_cooldown_minutes: number;
+	messaging_cooldown_enabled: boolean;
+	messaging_cooldown_hours: number;
 	highlights_min: number;
 	highlights_max: number;
 	likes_percentage: number;
@@ -118,6 +123,10 @@ const DEFAULT_SETTINGS: InstagramSettings = {
 	enable_follow: false,
 	watch_stories: true,
 	headless: false,
+	profile_reopen_cooldown_enabled: true,
+	profile_reopen_cooldown_minutes: 30,
+	messaging_cooldown_enabled: true,
+	messaging_cooldown_hours: 2,
 	highlights_min: 2,
 	highlights_max: 4,
 	likes_percentage: 0,
@@ -134,6 +143,9 @@ const DEFAULT_SETTINGS: InstagramSettings = {
 	do_message: false,
 	source_list_ids: [],
 };
+
+const PROFILE_REOPEN_COOLDOWN_OPTIONS_MIN = [5, 10, 15, 30, 45, 60, 90, 120];
+const MESSAGING_COOLDOWN_OPTIONS_HOURS = [1, 2, 3, 4, 6, 8, 12, 24];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -172,6 +184,8 @@ export default function Instagram({onBack}: Props) {
 	const [listsIndex, setListsIndex] = useState(0);
 	const [orderIndex, setOrderIndex] = useState(0);
 	const [orderAddIndex, setOrderAddIndex] = useState(0);
+	const [cooldownKind, setCooldownKind] = useState<'profile_reopen' | 'messaging'>('profile_reopen');
+	const [cooldownIndex, setCooldownIndex] = useState(0);
 
 	const [messageKind, setMessageKind] = useState<'message' | 'message_2'>('message');
 	const [messageLines, setMessageLines] = useState<string[]>([]);
@@ -274,6 +288,15 @@ export default function Instagram({onBack}: Props) {
 		}
 	};
 
+	const clearBusyProfiles = async () => {
+		const listIds = Array.isArray(settings.source_list_ids) ? settings.source_list_ids : [];
+		if (listIds.length === 0) return;
+		try {
+			await callBridge('profiles.clear_busy_for_lists', {list_ids: listIds});
+		} catch {
+		}
+	};
+
 	const stopAutomation = () => {
 		const proc = currentProc || procRef.current;
 		if (!proc) return;
@@ -282,6 +305,7 @@ export default function Instagram({onBack}: Props) {
 			proc.kill();
 		} catch {
 		}
+		void clearBusyProfiles();
 		currentProc = null;
 		procRef.current = null;
 		listenersAttached = false;
@@ -330,6 +354,7 @@ export default function Instagram({onBack}: Props) {
 				procRef.current = null;
 				setRunning(false);
 				appendLog(`Automation exited (code ${code ?? 'null'})`, 'instagram');
+				void clearBusyProfiles();
 				listenersAttached = false;
 			});
 			child.on('error', err => {
@@ -338,6 +363,7 @@ export default function Instagram({onBack}: Props) {
 				setRunning(false);
 				setError(err.message);
 				appendLog(`Automation failed: ${err.message}`, 'instagram');
+				void clearBusyProfiles();
 				listenersAttached = false;
 			});
 			listenersAttached = true;
@@ -372,6 +398,8 @@ export default function Instagram({onBack}: Props) {
 			'max_sessions',
 			'parallel_profiles',
 			'headless',
+			'profile_reopen_cooldown_enabled',
+			'messaging_cooldown_enabled',
 			'source_lists',
 			'enable_feed',
 			'enable_reels',
@@ -391,6 +419,15 @@ export default function Instagram({onBack}: Props) {
 
 	useInput((input, key) => {
 		if (loading) return;
+
+		const openCooldownMenu = (kind: 'profile_reopen' | 'messaging') => {
+			setCooldownKind(kind);
+			const opts = kind === 'profile_reopen' ? PROFILE_REOPEN_COOLDOWN_OPTIONS_MIN : MESSAGING_COOLDOWN_OPTIONS_HOURS;
+			const current = kind === 'profile_reopen' ? settings.profile_reopen_cooldown_minutes : settings.messaging_cooldown_hours;
+			const idx = opts.findIndex(v => v === current);
+			setCooldownIndex(idx >= 0 ? idx : 0);
+			setView('cooldown');
+		};
 
 		if (view === 'lists') {
 			if (key.escape) {
@@ -417,6 +454,32 @@ export default function Instagram({onBack}: Props) {
 					void persist(next);
 					return next;
 				});
+			}
+			return;
+		}
+
+		if (view === 'cooldown') {
+			const opts = cooldownKind === 'profile_reopen' ? PROFILE_REOPEN_COOLDOWN_OPTIONS_MIN : MESSAGING_COOLDOWN_OPTIONS_HOURS;
+			if (key.escape) {
+				setView('main');
+				return;
+			}
+			if (key.upArrow) setCooldownIndex(i => clamp(i - 1, 0, Math.max(0, opts.length - 1)));
+			if (key.downArrow) setCooldownIndex(i => clamp(i + 1, 0, Math.max(0, opts.length - 1)));
+			if (key.return || input === ' ') {
+				const selected = opts[cooldownIndex];
+				if (selected !== undefined) {
+					setSettings(prev => {
+						const next =
+							cooldownKind === 'profile_reopen'
+								? ({...prev, profile_reopen_cooldown_minutes: selected} as InstagramSettings)
+								: ({...prev, messaging_cooldown_hours: selected} as InstagramSettings);
+						void persist(next);
+						return next;
+					});
+				}
+				setView('main');
+				return;
 			}
 			return;
 		}
@@ -636,18 +699,48 @@ export default function Instagram({onBack}: Props) {
 		}
 
 		if (input === 's' || input === 'S') {
-			if (currentField === 'enable_feed') setView('feed');
-			if (currentField === 'enable_reels') setView('reels');
-			if (currentField === 'watch_stories') setView('stories');
-			if (currentField === 'enable_follow') setView('follow');
-			if (currentField === 'do_unfollow') setView('unfollow');
+			let opened = false;
+			if (currentField === 'enable_feed') {
+				setView('feed');
+				setFocusIndex(0);
+				opened = true;
+			}
+			if (currentField === 'enable_reels') {
+				setView('reels');
+				setFocusIndex(0);
+				opened = true;
+			}
+			if (currentField === 'watch_stories') {
+				setView('stories');
+				setFocusIndex(0);
+				opened = true;
+			}
+			if (currentField === 'enable_follow') {
+				setView('follow');
+				setFocusIndex(0);
+				opened = true;
+			}
+			if (currentField === 'do_unfollow') {
+				setView('unfollow');
+				setFocusIndex(0);
+				opened = true;
+			}
 			if (currentField === 'do_message') {
 				setView('message');
 				setMessageMode('list');
 				void fetchMessageTemplates(messageKind);
+				setFocusIndex(0);
+				opened = true;
 			}
-			setFocusIndex(0);
-			return;
+			if (currentField === 'profile_reopen_cooldown_enabled') {
+				openCooldownMenu('profile_reopen');
+				opened = true;
+			}
+			if (currentField === 'messaging_cooldown_enabled') {
+				openCooldownMenu('messaging');
+				opened = true;
+			}
+			if (opened) return;
 		}
 
 		const toggleField = (field: keyof InstagramSettings) => {
@@ -659,6 +752,8 @@ export default function Instagram({onBack}: Props) {
 		};
 
 		if (currentField === 'headless' && (input === ' ' || key.return)) toggleField('headless');
+		if (currentField === 'profile_reopen_cooldown_enabled' && (input === ' ' || key.return)) toggleField('profile_reopen_cooldown_enabled');
+		if (currentField === 'messaging_cooldown_enabled' && (input === ' ' || key.return)) toggleField('messaging_cooldown_enabled');
 		if (currentField === 'enable_feed' && (input === ' ' || key.return)) toggleField('enable_feed');
 		if (currentField === 'enable_reels' && (input === ' ' || key.return)) toggleField('enable_reels');
 		if (currentField === 'watch_stories' && (input === ' ' || key.return)) toggleField('watch_stories');
@@ -722,7 +817,7 @@ export default function Instagram({onBack}: Props) {
 		);
 	};
 
-	const renderNumberInput = (label: string, field: string, value: number, onSubmit: (v: number) => void) => {
+	const renderNumberInput = (label: string, field: string, value: number) => {
 		const focused = view === 'main' && currentField === field;
 		return renderRow(
 			label,
@@ -826,6 +921,26 @@ export default function Instagram({onBack}: Props) {
 							</Text>
 						))
 					)}
+				</Box>
+			</Box>
+		);
+	}
+
+	if (view === 'cooldown') {
+		const opts = cooldownKind === 'profile_reopen' ? PROFILE_REOPEN_COOLDOWN_OPTIONS_MIN : MESSAGING_COOLDOWN_OPTIONS_HOURS;
+		const title = cooldownKind === 'profile_reopen' ? 'Reopen cooldown' : 'Messaging cooldown';
+		const unit = cooldownKind === 'profile_reopen' ? 'min' : 'h';
+		return (
+			<Box flexDirection="column" padding={1}>
+				<Text bold>{title}</Text>
+				<Text color="gray">[Up/Down] Select  [Enter] Set  [Esc] Back</Text>
+				<Box marginTop={1} flexDirection="column" borderStyle="single" borderColor="gray" padding={1}>
+					{opts.map((v, i) => (
+						<Text key={`${cooldownKind}-${v}`} color={i === cooldownIndex ? 'cyan' : 'white'}>
+							{i === cooldownIndex ? '> ' : '  '}
+							{v} {unit}
+						</Text>
+					))}
 				</Box>
 			</Box>
 		);
@@ -1037,9 +1152,11 @@ export default function Instagram({onBack}: Props) {
 
 			<Box marginTop={1} flexDirection="column">
 				<Text underline>Runtime</Text>
-				{renderNumberInput('Max sessions', 'max_sessions', settings.max_sessions, v => v)}
-				{renderNumberInput('Parallel profiles', 'parallel_profiles', settings.parallel_profiles, v => v)}
+				{renderNumberInput('Max sessions', 'max_sessions', settings.max_sessions)}
+				{renderNumberInput('Parallel profiles', 'parallel_profiles', settings.parallel_profiles)}
 				{renderCheckbox('Headless', 'headless', settings.headless)}
+				{renderCheckbox('Reopen cooldown', 'profile_reopen_cooldown_enabled', settings.profile_reopen_cooldown_enabled, '[S]')}
+				{renderCheckbox('Messaging cooldown', 'messaging_cooldown_enabled', settings.messaging_cooldown_enabled, '[S]')}
 				{renderRow(
 					'Source lists',
 					'source_lists',
