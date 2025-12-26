@@ -1,0 +1,12 @@
+services:
+  anti:
+    build: .
+    image: anti-instagram
+    container_name: anti-instagram
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    volumes:
+      - ./.env:/app/.env
+      - ./profiles:/app/profiles
+      - ./logs:/app/logs
