@@ -145,14 +145,14 @@ def handle(op: str, args: Dict[str, Any]) -> Any:
         return _request(
             "GET",
             _profiles_url(),
-            params={"select": "profile_id,name", "list_id": f"eq.{list_id}", "order": "created_at.asc"},
+            params={"select": "profile_id,name", "list_id": f"eq.{list_id}", "login": "is.true", "order": "created_at.asc"},
         ) or []
 
     if op == "profiles.list_unassigned":
         return _request(
             "GET",
             _profiles_url(),
-            params={"select": "profile_id,name", "list_id": "is.null", "order": "created_at.asc"},
+            params={"select": "profile_id,name", "list_id": "is.null", "login": "is.true", "order": "created_at.asc"},
         ) or []
 
     if op == "profiles.bulk_set_list_id":

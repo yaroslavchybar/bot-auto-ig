@@ -17,7 +17,8 @@ create table public.profiles (
   sessions_today integer not null default 0,
   last_opened_at timestamptz,
   ua_os text,
-  ua_browser text
+  ua_browser text,
+  login boolean not null default false
 );
 
 create table public.lists (

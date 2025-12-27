@@ -18,7 +18,8 @@ export default function Login({onBack}: {onBack: () => void}) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [twoFactorSecret, setTwoFactorSecret] = useState('');
-    const [activeField, setActiveField] = useState<'username' | 'password' | '2fa' | 'button'>('username');
+    const [headless, setHeadless] = useState(false);
+    const [activeField, setActiveField] = useState<'username' | 'password' | '2fa' | 'headless' | 'button'>('username');
     const [logs, setLogs] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const processRef = useRef<ChildProcess | null>(null);
@@ -66,6 +67,10 @@ export default function Login({onBack}: {onBack: () => void}) {
 
         if (twoFactorSecret) {
             args.push('--2fa-secret', twoFactorSecret);
+        }
+
+        if (headless) {
+            args.push('--headless');
         }
 
         // Check for proxy in profile
@@ -117,14 +122,19 @@ export default function Login({onBack}: {onBack: () => void}) {
             if (key.return && activeField === 'button') {
                 startLogin();
             }
+            if ((key.return || input === ' ') && activeField === 'headless') {
+                setHeadless(!headless);
+            }
             if (key.tab || key.downArrow) {
                 if (activeField === 'username') setActiveField('password');
                 else if (activeField === 'password') setActiveField('2fa');
-                else if (activeField === '2fa') setActiveField('button');
+                else if (activeField === '2fa') setActiveField('headless');
+                else if (activeField === 'headless') setActiveField('button');
                 else setActiveField('username');
             }
             if (key.upArrow) {
-                if (activeField === 'button') setActiveField('2fa');
+                if (activeField === 'button') setActiveField('headless');
+                else if (activeField === 'headless') setActiveField('2fa');
                 else if (activeField === '2fa') setActiveField('password');
                 else if (activeField === 'password') setActiveField('username');
                 else setActiveField('button');
@@ -179,6 +189,11 @@ export default function Login({onBack}: {onBack: () => void}) {
                             onChange={setTwoFactorSecret}
                             focus={activeField === '2fa'}
                         />
+                    </Box>
+                    <Box marginTop={1}>
+                        <Text color={activeField === 'headless' ? 'blue' : 'white'}>
+                            [ {headless ? 'X' : ' '} ] Headless Mode
+                        </Text>
                     </Box>
                     <Box marginTop={1}>
                         <Text color={activeField === 'button' ? 'blue' : 'gray'}>

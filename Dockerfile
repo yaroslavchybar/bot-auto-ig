@@ -1,7 +1,7 @@
 FROM python:3.10-bookworm
 
 # Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
     apt-get install -y nodejs
 
 # Install system dependencies for Playwright/Camoufox
@@ -15,13 +15,17 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 RUN playwright install firefox
 
+# Copy CLI dependencies first for caching
+WORKDIR /app/cli
+COPY cli/package.json cli/package-lock.json* ./
+RUN npm ci
+
 # Copy the rest of the app
 WORKDIR /app
 COPY . .
 
-# Install and Build CLI
+# Build CLI
 WORKDIR /app/cli
-RUN npm install
 RUN npm run build
 
 # Go back to root
