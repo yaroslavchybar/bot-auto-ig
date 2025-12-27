@@ -13,6 +13,7 @@ export type Profile = {
 	id?: string; // Supabase ID
 	name: string;
 	proxy?: string;
+	proxy_type?: string;
 	type?: string;
 	user_agent?: string;
 	test_ip?: boolean;
@@ -31,6 +32,7 @@ export class ProfileManager {
 				id: p.profile_id,
 				name: p.name,
 				proxy: p.proxy,
+				proxy_type: p.proxy_type,
 				type: p.type,
 				user_agent: p.user_agent,
 				test_ip: p.test_ip,

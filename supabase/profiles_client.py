@@ -96,6 +96,7 @@ class SupabaseProfilesClient:
         db_data = {
             "name": profile_data["name"],
             "proxy": profile_data.get("proxy"),
+            "proxy_type": profile_data.get("proxy_type"),
             "type": profile_data.get("type", "Camoufox (рекомендуется)"),
             "test_ip": profile_data.get("test_ip", False),
             "user_agent": profile_data.get("user_agent"),
@@ -115,6 +116,7 @@ class SupabaseProfilesClient:
         db_data = {
             "name": profile_data["name"],
             "proxy": profile_data.get("proxy"),
+            "proxy_type": profile_data.get("proxy_type"),
             "type": profile_data.get("type", "Camoufox (рекомендуется)"),
             "test_ip": profile_data.get("test_ip", False),
             "user_agent": profile_data.get("user_agent"),

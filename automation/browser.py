@@ -7,45 +7,62 @@ import datetime
 from contextlib import contextmanager
 from typing import Optional
 from camoufox import Camoufox
+from camoufox.exceptions import InvalidProxy
 from automation import actions
 from automation.scrolling import scroll_feed, scroll_reels
 
 def parse_proxy_string(proxy_string):
     """
     Parse proxy string into Playwright proxy format.
-    String formats:
-    - ip:port:user:pass
-    - user:pass@ip:port
-    - http://user:pass@ip:port
-    - socks5://user:pass@ip:port
+    Supports:
+    - scheme://user:pass@host:port
+    - scheme://host:port:user:pass (Non-standard but common)
+    - host:port:user:pass (Assumes HTTP if no scheme)
+    - host:port (No auth)
     
     Returns:
         dict: Playwright proxy config or None
     """
     try:
-        config = {}
+        if not proxy_string:
+            return None
+            
+        proxy_string = proxy_string.strip()
+        scheme = "http"
         
-        # Helper to check if string contains protocol
-        if "://" not in proxy_string:
-            # Assume http if no protocol but try to detect format
-            # Format: ip:port:user:pass
-            parts = proxy_string.split(':')
-            if len(parts) == 4:
-                config = {
-                    "server": f"http://{parts[0]}:{parts[1]}",
-                    "username": parts[2],
-                    "password": parts[3]
-                }
-                return config
-            elif len(parts) == 2:
-                config = {
-                    "server": f"http://{parts[0]}:{parts[1]}"
-                }
-                return config
+        # Extract scheme if present
+        if "://" in proxy_string:
+            scheme, remainder = proxy_string.split("://", 1)
+            proxy_string = remainder
         
-        # Standard URL format
-        config = {"server": proxy_string}
-        return config
+        # Check for user:pass@host:port format (Standard)
+        if "@" in proxy_string:
+            # Reconstruct full URL for standard parsing
+            return {"server": f"{scheme}://{proxy_string}"}
+            
+        # Split by colon
+        parts = proxy_string.split(':')
+        
+        # Format: host:port:user:pass
+        if len(parts) == 4:
+            host = parts[0]
+            port = parts[1]
+            user = parts[2]
+            password = parts[3]
+            return {
+                "server": f"{scheme}://{host}:{port}",
+                "username": user,
+                "password": password
+            }
+            
+        # Format: host:port
+        elif len(parts) == 2:
+            return {
+                "server": f"{scheme}://{parts[0]}:{parts[1]}"
+            }
+            
+        # Fallback for other formats, assume standard URL if just passed
+        return {"server": f"{scheme}://{proxy_string}"}
         
     except Exception as e:
         print(f"[!] Error parsing proxy '{proxy_string}': {e}")
@@ -130,25 +147,65 @@ def create_browser_context(
         _clean_cache2(profile_path)
     proxy_config = build_proxy_config(proxy_string)
 
-    with Camoufox(
+    # Prepare common launch arguments
+    launch_kwargs = dict(
         headless=headless,
         user_data_dir=profile_path,
         persistent_context=True,
         proxy=proxy_config,
-        geoip=bool(proxy_config),
         block_images=block_images,
         os=os or "windows",
         window=(1280, 800),
         humanize=True,
         user_agent=user_agent,
-    ) as context:
+    )
+
+    cm = None
+    context = None
+    
+    try:
+        # Attempt 1: Try with geoip=True if proxy is configured
+        try:
+            cm = Camoufox(geoip=bool(proxy_config), **launch_kwargs)
+            context = cm.__enter__()
+        except InvalidProxy:
+            if proxy_config:
+                print("[!] Proxy GeoIP check failed. Retrying with geoip=False...")
+                # Attempt 2: Retry with geoip=False
+                cm = Camoufox(geoip=False, **launch_kwargs)
+                context = cm.__enter__()
+            else:
+                raise
+
+        # Browser initialized successfully
         page = context.pages[0] if context.pages else context.new_page()
         try:
             if page.url == "about:blank":
                 page.goto("https://www.instagram.com", timeout=15000)
         except Exception:
             pass
+            
         yield context, page
+
+    finally:
+        # Ensure context is closed properly
+        if cm:
+            # We need to handle potential errors during __exit__
+            try:
+                # We pass None, None, None because we are not propagating an exception from here
+                # unless one happened inside the yield block, which contextlib handles?
+                # Actually, standard manual __exit__ usage:
+                # If an exception occurred in the with block (yield), it should be passed here.
+                # But since we use @contextmanager, the generator handles the exception propagation.
+                # We just need to close the context.
+                if context:
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                cm.__exit__(None, None, None)
+            except Exception:
+                pass
 
 def run_browser(profile_name, proxy_string, action="manual", duration=5, 
               match_likes=0, match_comments=0, match_follows=0, 

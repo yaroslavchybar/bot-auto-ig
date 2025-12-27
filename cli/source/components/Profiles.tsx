@@ -15,14 +15,12 @@ const PROJECT_ROOT = path.resolve(__dirname, '../../../');
 export default function Profiles({onBack}: {onBack: () => void}) {
 	const [profiles, setProfiles] = useState<Profile[]>([]);
 	const [selectedIndex, setSelectedIndex] = useState(0);
-	const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'delete'>('list');
+	const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'delete' | 'logs'>('list');
 	const [deleteConfirmation, setDeleteConfirmation] = useState<Profile | null>(null);
 	const [formData, setFormData] = useState<Partial<Profile>>({});
 	const [activeField, setActiveField] = useState(0);
 	const [isEditingSelect, setIsEditingSelect] = useState(false);
-	const [totpSecret, setTotpSecret] = useState('');
-	const [totpCode, setTotpCode] = useState('');
-	const [totpFocused, setTotpFocused] = useState(false);
+	const [profileLogs, setProfileLogs] = useState<Map<string, string[]>>(new Map());
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +64,16 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 				{label: 'Direct Connection', value: 'direct'},
 				{label: 'Use Proxy', value: 'proxy'}
 			]},
-			...(isProxy ? [{ key: 'proxy', label: 'Proxy (ip:port:user:pass)', type: 'text' }] : []),
+			...(isProxy ? [
+				{ key: 'proxy_type', label: 'Proxy Type', type: 'select', options: [
+					{label: 'HTTP', value: 'http'},
+					{label: 'HTTPS', value: 'https'},
+					{label: 'SOCKS4', value: 'socks4'},
+					{label: 'SOCKS5', value: 'socks5'},
+					{label: 'SSH', value: 'ssh'}
+				]},
+				{ key: 'proxy', label: 'Proxy (ip:port:user:pass)', type: 'text' }
+			] : []),
 			{ key: 'ua_os', label: 'UA OS', type: 'select', options: [
 				{label: 'Any', value: 'Любая'},
 				{label: 'Windows', value: 'Windows'},
@@ -90,13 +97,6 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 		if (loading) return;
 
 		if (mode === 'list') {
-			if (totpFocused) {
-				if (key.escape) {
-					setTotpFocused(false);
-				}
-				return;
-			}
-
 			if (key.escape) {
 				onBack();
 				return;
@@ -116,6 +116,8 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 					proxy: '',
 					// @ts-ignore
 					connection: 'direct',
+					// @ts-ignore
+					proxy_type: 'http',
 					ua_os: 'Windows',
 					ua_browser: 'Firefox',
 					user_agent: getRandomUserAgent('Windows', 'Firefox'),
@@ -127,19 +129,28 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 			if (input === 'r') {
 				loadProfiles();
 			}
-			if (input === 't') {
-				setTotpFocused(true);
-			}
 			if (profiles.length > 0) {
 				const currentProfile = profiles[selectedIndex];
 				if (input === 'e') {
 					setMode('edit');
+					
+					let pType = 'http';
+					let pVal = currentProfile.proxy || '';
+					if (pVal.includes('://')) {
+						const parts = pVal.split('://');
+						pType = parts[0];
+						pVal = parts[1];
+					}
+
 					setFormData({
 						...currentProfile,
+						proxy: pVal,
 						ua_os: currentProfile.ua_os || 'Windows',
 						ua_browser: currentProfile.ua_browser || 'Firefox',
 						// @ts-ignore
-						connection: currentProfile.proxy ? 'proxy' : 'direct'
+						connection: currentProfile.proxy ? 'proxy' : 'direct',
+						// @ts-ignore
+						proxy_type: (currentProfile as any).proxy_type || pType
 					});
 					setActiveField(0);
 					setIsEditingSelect(false);
@@ -154,6 +165,9 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 				if (input === 's') {
 					// Toggle Start/Stop
 					toggleProfile(currentProfile);
+				}
+				if (input === 'l') {
+					setMode('logs');
 				}
 			}
 		} else if (mode === 'create' || mode === 'edit') {
@@ -217,8 +231,25 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 					});
 				}
 			}
+		} else if (mode === 'logs') {
+			if (key.escape) {
+				setMode('list');
+			}
 		}
 	});
+
+	const addLog = (name: string, message: string) => {
+		setProfileLogs(prev => {
+			const next = new Map(prev);
+			const currentLogs = next.get(name) || [];
+			// Clean up message
+			const lines = message.split('\n').filter(l => l.trim().length > 0);
+			// Keep up to 1000 lines for detailed view
+			const newLogs = [...currentLogs, ...lines].slice(-1000); 
+			next.set(name, newLogs);
+			return next;
+		});
+	};
 
 	const toggleProfile = (profile: Profile) => {
 		const name = profile.name;
@@ -240,9 +271,16 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 			try {
 				const child = spawn('python', [scriptPath, ...args], {
 					cwd: PROJECT_ROOT, // Fix: Run from root so it finds profiles/
-					stdio: 'ignore', // Ignore output to not break TUI
+					stdio: ['ignore', 'pipe', 'pipe'],
 					detached: false
 				});
+
+				if (child.stdout) {
+					child.stdout.on('data', (data) => addLog(name, data.toString()));
+				}
+				if (child.stderr) {
+					child.stderr.on('data', (data) => addLog(name, data.toString()));
+				}
 
 				processesRef.current.set(name, child);
 				toggleProfileState(name, true);
@@ -273,8 +311,27 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 		try {
 			if (!formData.name) throw new Error("Name is required");
 
+			const finalData = { ...formData };
+			if ((finalData as any).connection === 'proxy' && finalData.proxy) {
+				const pType = (finalData as any).proxy_type || 'http';
+				let pVal = finalData.proxy;
+				// If user pasted a full URL, strip the scheme first
+				if (pVal.includes('://')) {
+					pVal = pVal.split('://')[1];
+				}
+				finalData.proxy = `${pType}://${pVal}`;
+			} else if ((finalData as any).connection === 'direct') {
+				finalData.proxy = '';
+				(finalData as any).proxy_type = null;
+			}
+			
+			// Cleanup temp fields if necessary, though Profile type ignores extra fields mostly
+			// But let's be clean
+			delete (finalData as any).proxy_type;
+			delete (finalData as any).connection;
+
 			if (mode === 'create') {
-				await profileManager.createProfile(formData as Profile);
+				await profileManager.createProfile(finalData as Profile);
 			} else {
 				// We need original name for update if name changed.
 				// But we didn't store original name separately.
@@ -283,7 +340,7 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 				// Let's just pass formData.name and hope we didn't change it, 
 				// OR we need to know the ID.
 				// If we are in edit mode, profiles[selectedIndex] is the old profile.
-				await profileManager.updateProfile(profiles[selectedIndex].name, formData as Profile);
+				await profileManager.updateProfile(profiles[selectedIndex].name, finalData as Profile);
 			}
 			await loadProfiles();
 			setMode('list');
@@ -291,12 +348,6 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 			setError(e.message);
 		} finally {
 			setLoading(false);
-		}
-	};
-
-	const generateTotp = () => {
-		if (totpSecret) {
-			setTotpCode(profileManager.generateTotp(totpSecret));
 		}
 	};
 
@@ -348,24 +399,16 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 					)}
 				</Box>
 
-				<Box marginTop={1} borderStyle="round" borderColor={totpFocused ? 'green' : 'gray'} flexDirection="column" paddingX={1}>
-					<Text bold>🔐 2FA Generator</Text>
-					<Box>
-						<Text>Secret: </Text>
-						{totpFocused ? (
-							<TextInput 
-								value={totpSecret} 
-								onChange={setTotpSecret} 
-								onSubmit={generateTotp}
-								placeholder="Paste key..."
-							/>
+				<Box marginTop={1} borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1} minHeight={6}>
+					<Text bold>� Logs: {profiles[selectedIndex]?.name || 'N/A'}</Text>
+					<Box flexDirection="column">
+						{(profileLogs.get(profiles[selectedIndex]?.name) || []).length === 0 ? (
+							<Text color="gray">No logs available...</Text>
 						) : (
-							<Text color="gray">{totpSecret || "Press 't' to enter secret"}</Text>
+							(profileLogs.get(profiles[selectedIndex]?.name) || []).slice(-15).map((log, i) => (
+								<Text key={i} color="gray">{log}</Text>
+							))
 						)}
-					</Box>
-					<Box marginTop={0}>
-						<Text>Code:   </Text>
-						<Text color="green" bold>{totpCode || '------'}</Text>
 					</Box>
 				</Box>
 			</Box>
@@ -477,6 +520,28 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 				</Box>
 				<Box marginTop={1}>
 					<Text color="gray">[Y]es / [N]o / [Esc] Cancel</Text>
+				</Box>
+			</Box>
+		);
+	}
+
+	if (mode === 'logs') {
+		const currentLogs = profileLogs.get(profiles[selectedIndex]?.name) || [];
+		return (
+			<Box flexDirection="column" padding={1}>
+				<Box marginBottom={1}>
+					<Text bold>📝 Full Logs: {profiles[selectedIndex]?.name}</Text>
+					<Text color="gray"> | </Text>
+					<Text>[Esc] Back</Text>
+				</Box>
+				<Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1} minHeight={20}>
+					{currentLogs.length === 0 ? (
+						<Text color="gray">No logs available.</Text>
+					) : (
+						currentLogs.map((log, i) => (
+							<Text key={i}>{log}</Text>
+						))
+					)}
 				</Box>
 			</Box>
 		);
