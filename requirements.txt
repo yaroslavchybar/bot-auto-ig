@@ -1,4 +1,4 @@
-camoufox
+camoufox[geoip]
 playwright
 pyotp
 python-dotenv
