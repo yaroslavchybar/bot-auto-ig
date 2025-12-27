@@ -1,0 +1,205 @@
+import React, {useState, useEffect, useRef} from 'react';
+import {Text, Box, useInput, useApp} from 'ink';
+import TextInput from 'ink-text-input';
+import SelectInput from 'ink-select-input';
+import {profileManager, Profile} from '../lib/profiles.js';
+import {spawn, ChildProcess} from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, '../../../');
+
+export default function Login({onBack}: {onBack: () => void}) {
+    const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [step, setStep] = useState<'select_profile' | 'enter_creds' | 'running'>('select_profile');
+    const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [twoFactorSecret, setTwoFactorSecret] = useState('');
+    const [activeField, setActiveField] = useState<'username' | 'password' | '2fa' | 'button'>('username');
+    const [logs, setLogs] = useState<string[]>([]);
+    const [loading, setLoading] = useState(false);
+    const processRef = useRef<ChildProcess | null>(null);
+    
+    useEffect(() => {
+        loadProfiles();
+        return () => {
+            if (processRef.current) {
+                processRef.current.kill();
+            }
+        };
+    }, []);
+
+    const loadProfiles = async () => {
+        setLoading(true);
+        const data = await profileManager.getProfiles();
+        // Filter profiles where login is not true (false or undefined)
+        const filtered = data.filter(p => p.login !== true);
+        setProfiles(filtered);
+        setLoading(false);
+    };
+
+    const handleProfileSelect = (item: any) => {
+        const profile = profiles.find(p => p.name === item.value);
+        if (profile) {
+            setSelectedProfile(profile);
+            setStep('enter_creds');
+        }
+    };
+
+    const startLogin = () => {
+        if (!selectedProfile || !username || !password) return;
+        setStep('running');
+        setLogs(prev => [...prev, `Starting login for ${username} on profile ${selectedProfile.name}...`]);
+
+        const scriptPath = path.join(PROJECT_ROOT, 'cli', 'scripts', 'login_automation.py');
+        const python = 'python'; // Assume python is in PATH
+
+        const args = [
+            scriptPath,
+            '--profile', selectedProfile.name,
+            '--username', username,
+            '--password', password
+        ];
+
+        if (twoFactorSecret) {
+            args.push('--2fa-secret', twoFactorSecret);
+        }
+
+        // Check for proxy in profile
+        // The Profile type might have different structure, checking what Profiles.tsx uses
+        const proxy = (selectedProfile as any).proxy || (selectedProfile as any).proxy_string;
+        if (proxy) {
+            args.push('--proxy', proxy);
+        }
+
+        const proc = spawn(python, args);
+        processRef.current = proc;
+
+        proc.stdout?.on('data', (data) => {
+            const lines = data.toString().split('\n');
+            lines.forEach((line: string) => {
+                if (line.trim()) setLogs(prev => [...prev, line.trim()]);
+            });
+        });
+
+        proc.stderr?.on('data', (data) => {
+            const lines = data.toString().split('\n');
+            lines.forEach((line: string) => {
+                if (line.trim()) setLogs(prev => [...prev, `ERR: ${line.trim()}`]);
+            });
+        });
+
+        proc.on('close', (code) => {
+            setLogs(prev => [...prev, `Process exited with code ${code}`]);
+            processRef.current = null;
+        });
+    };
+
+    useInput((input, key) => {
+        if (key.escape) {
+            if (step === 'running') {
+                if (processRef.current) {
+                    processRef.current.kill();
+                    setLogs(prev => [...prev, 'Process killed by user.']);
+                }
+                onBack();
+            } else if (step === 'enter_creds') {
+                setStep('select_profile');
+            } else {
+                onBack();
+            }
+        }
+
+        if (step === 'enter_creds') {
+            if (key.return && activeField === 'button') {
+                startLogin();
+            }
+            if (key.tab || key.downArrow) {
+                if (activeField === 'username') setActiveField('password');
+                else if (activeField === 'password') setActiveField('2fa');
+                else if (activeField === '2fa') setActiveField('button');
+                else setActiveField('username');
+            }
+            if (key.upArrow) {
+                if (activeField === 'button') setActiveField('2fa');
+                else if (activeField === '2fa') setActiveField('password');
+                else if (activeField === 'password') setActiveField('username');
+                else setActiveField('button');
+            }
+        }
+    });
+
+    if (step === 'select_profile') {
+        return (
+            <Box flexDirection="column">
+                <Text color="green" bold>Select Profile to Login</Text>
+                <Box borderStyle="single" borderColor="gray" padding={1}>
+                    {loading ? <Text>Loading profiles...</Text> : (
+                        <SelectInput
+                            items={profiles.map(p => ({label: p.name, value: p.name}))}
+                            onSelect={handleProfileSelect}
+                        />
+                    )}
+                </Box>
+                <Text color="gray">Press Esc to go back</Text>
+            </Box>
+        );
+    }
+
+    if (step === 'enter_creds') {
+        return (
+            <Box flexDirection="column">
+                <Text color="green" bold>Enter Instagram Credentials for {selectedProfile?.name}</Text>
+                
+                <Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1}>
+                    <Box>
+                        <Text color={activeField === 'username' ? 'blue' : 'white'}>Username: </Text>
+                        <TextInput
+                            value={username}
+                            onChange={setUsername}
+                            focus={activeField === 'username'}
+                        />
+                    </Box>
+                    <Box>
+                        <Text color={activeField === 'password' ? 'blue' : 'white'}>Password: </Text>
+                        <TextInput
+                            value={password}
+                            onChange={setPassword}
+                            focus={activeField === 'password'}
+                            mask="*"
+                        />
+                    </Box>
+                    <Box>
+                        <Text color={activeField === '2fa' ? 'blue' : 'white'}>2FA Secret (Optional): </Text>
+                        <TextInput
+                            value={twoFactorSecret}
+                            onChange={setTwoFactorSecret}
+                            focus={activeField === '2fa'}
+                        />
+                    </Box>
+                    <Box marginTop={1}>
+                        <Text color={activeField === 'button' ? 'blue' : 'gray'}>
+                            {activeField === 'button' ? '> [ Start Login ] <' : '[ Start Login ]'}
+                        </Text>
+                    </Box>
+                </Box>
+                <Text color="gray">Tab/Arrows to navigate, Enter to submit, Esc to back</Text>
+            </Box>
+        );
+    }
+
+    return (
+        <Box flexDirection="column">
+            <Text color="green" bold>Login Automation Running...</Text>
+            <Box borderStyle="single" borderColor="gray" padding={1} height={15} flexDirection="column">
+                {logs.slice(-13).map((log, i) => (
+                    <Text key={i}>{log}</Text>
+                ))}
+            </Box>
+            <Text color="gray">Press Esc to stop/back</Text>
+        </Box>
+    );
+}

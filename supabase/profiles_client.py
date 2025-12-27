@@ -147,3 +147,11 @@ class SupabaseProfilesClient:
             self._make_request("PATCH",
                                f"?profile_id=eq.{profile['profile_id']}",
                                data=data)
+
+    def set_profile_login_true(self, name: str):
+        """Set login field to True for a profile."""
+        profile = self.get_profile_by_name(name)
+        if profile:
+            self._make_request("PATCH",
+                               f"?profile_id=eq.{profile['profile_id']}",
+                               data={"login": True})

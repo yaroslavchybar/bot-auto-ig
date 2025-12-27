@@ -5,6 +5,7 @@ import Profiles from './components/Profiles.js';
 import Instagram from './components/Instagram.js';
 import Lists from './components/Lists.js';
 import Logs from './components/Logs.js';
+import Login from './components/Login.js';
 
 type Props = {
 	name?: string;
@@ -22,6 +23,10 @@ const items = [
 	{
 		label: 'Lists Manager',
 		value: 'lists',
+	},
+	{
+		label: 'Login Automation',
+		value: 'login',
 	},
 	{
 		label: 'Logs',
@@ -65,6 +70,10 @@ export default function App({name = 'User'}: Props) {
 
 	if (activeTab === 'lists') {
 		return <Lists onBack={() => { clearScreen(); setActiveTab(null); }} />;
+	}
+
+	if (activeTab === 'login') {
+		return <Login onBack={() => { clearScreen(); setActiveTab(null); }} />;
 	}
 
 	if (activeTab === 'logs') {
