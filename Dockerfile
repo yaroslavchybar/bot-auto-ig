@@ -15,17 +15,13 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 RUN playwright install firefox
 
-# Copy CLI dependencies first for caching
-WORKDIR /app/cli
-COPY cli/package.json cli/package-lock.json* ./
-RUN npm install
-
 # Copy the rest of the app
 WORKDIR /app
 COPY . .
 
-# Build CLI
+# Install and Build CLI
 WORKDIR /app/cli
+RUN npm install
 RUN npm run build
 
 # Go back to root
