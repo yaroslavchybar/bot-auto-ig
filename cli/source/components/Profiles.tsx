@@ -79,6 +79,7 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 				{label: 'Safari', value: 'Safari'}
 			]},
 			{ key: 'user_agent', label: 'User Agent', type: 'text' },
+			{ key: 'regen_ua', label: 'Regenerate User Agent', type: 'button' },
 			{ key: 'test_ip', label: 'Test IP', type: 'toggle' },
 			{ key: 'save', label: 'Save Profile', type: 'button' },
 			{ key: 'cancel', label: 'Cancel', type: 'button' }
@@ -182,6 +183,9 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 					setIsEditingSelect(true);
 				} else if (field.type === 'toggle') {
 					setFormData(prev => ({...prev, test_ip: !prev.test_ip}));
+				} else if (field.key === 'regen_ua') {
+					const ua = getRandomUserAgent(formData.ua_os, formData.ua_browser);
+					setFormData(prev => ({...prev, user_agent: ua}));
 				} else if (field.key === 'save') {
 					saveProfile();
 				} else if (field.key === 'cancel') {

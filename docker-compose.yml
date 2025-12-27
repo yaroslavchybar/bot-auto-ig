@@ -1,7 +1,7 @@
 services:
   anti:
     build: .
-    image: anti-instagram
+    image: yaroslavchybar/anti-instagram:latest
     container_name: anti-instagram
     stdin_open: true
     tty: true

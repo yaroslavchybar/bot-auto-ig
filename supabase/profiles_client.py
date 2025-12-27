@@ -99,6 +99,8 @@ class SupabaseProfilesClient:
             "type": profile_data.get("type", "Camoufox (рекомендуется)"),
             "test_ip": profile_data.get("test_ip", False),
             "user_agent": profile_data.get("user_agent"),
+            "ua_os": profile_data.get("ua_os"),
+            "ua_browser": profile_data.get("ua_browser"),
             "mode": "proxy" if profile_data.get("proxy") else "direct",
             "status": "idle",  # Default status
             "Using": False    # Default not using
@@ -116,6 +118,8 @@ class SupabaseProfilesClient:
             "type": profile_data.get("type", "Camoufox (рекомендуется)"),
             "test_ip": profile_data.get("test_ip", False),
             "user_agent": profile_data.get("user_agent"),
+            "ua_os": profile_data.get("ua_os"),
+            "ua_browser": profile_data.get("ua_browser"),
             "mode": "proxy" if profile_data.get("proxy") else "direct"
         }
 

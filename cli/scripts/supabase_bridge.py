@@ -1,8 +1,14 @@
 import json
 import os
 import sys
+import io
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Force UTF-8 encoding for stdin/stdout on Windows to avoid issues with non-ASCII characters
+if sys.platform == "win32":
+    sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 
 def _project_root() -> str:

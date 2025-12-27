@@ -15,7 +15,9 @@ create table public.profiles (
   user_agent text,
   list_id uuid,
   sessions_today integer not null default 0,
-  last_opened_at timestamptz
+  last_opened_at timestamptz,
+  ua_os text,
+  ua_browser text
 );
 
 create table public.lists (
