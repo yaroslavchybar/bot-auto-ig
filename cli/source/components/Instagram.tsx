@@ -12,6 +12,8 @@ let listenersAttached = false;
 
 type Props = {
 	onBack: () => void;
+	initialMainFocusIndex: number;
+	onMainFocusIndexChange: (index: number) => void;
 };
 
 type View =
@@ -174,14 +176,16 @@ function nextPercent(value: number, delta: number) {
 	return v;
 }
 
-export default function Instagram({onBack}: Props) {
+export default function Instagram({onBack, initialMainFocusIndex, onMainFocusIndexChange}: Props) {
 	const [view, setView] = useState<View>('main');
 	const [settings, setSettings] = useState<InstagramSettings>(DEFAULT_SETTINGS);
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const [focusIndex, setFocusIndex] = useState(0);
+	const [focusIndex, setFocusIndex] = useState(initialMainFocusIndex);
+	const [mainFocusIndex, setMainFocusIndex] = useState(initialMainFocusIndex);
+	const onMainFocusIndexChangeRef = useRef(onMainFocusIndexChange);
 	const [lists, setLists] = useState<ListRow[]>([]);
 	const [listsIndex, setListsIndex] = useState(0);
 	const [orderIndex, setOrderIndex] = useState(0);
@@ -443,10 +447,25 @@ export default function Instagram({onBack}: Props) {
 
 	const currentField = mainFocusables[focusIndex] || 'max_sessions';
 
+	useEffect(() => {
+		const max = Math.max(0, mainFocusables.length - 1);
+		setFocusIndex(i => clamp(i, 0, max));
+		setMainFocusIndex(i => clamp(i, 0, max));
+	}, [mainFocusables.length]);
+
+	useEffect(() => {
+		onMainFocusIndexChangeRef.current = onMainFocusIndexChange;
+	}, [onMainFocusIndexChange]);
+
+	useEffect(() => {
+		onMainFocusIndexChangeRef.current(mainFocusIndex);
+	}, [mainFocusIndex]);
+
 	useInput((input, key) => {
 		if (loading) return;
 
 		const openCooldownMenu = (kind: 'profile_reopen' | 'messaging') => {
+			setMainFocusIndex(focusIndex);
 			setCooldownKind(kind);
 			const opts = kind === 'profile_reopen' ? PROFILE_REOPEN_COOLDOWN_OPTIONS_MIN : MESSAGING_COOLDOWN_OPTIONS_HOURS;
 			const current = kind === 'profile_reopen' ? settings.profile_reopen_cooldown_minutes : settings.messaging_cooldown_hours;
@@ -458,6 +477,7 @@ export default function Instagram({onBack}: Props) {
 		if (view === 'lists') {
 			if (key.escape) {
 				setView('main');
+				setFocusIndex(mainFocusIndex);
 				return;
 			}
 			if (key.upArrow) {
@@ -488,6 +508,7 @@ export default function Instagram({onBack}: Props) {
 			const opts = cooldownKind === 'profile_reopen' ? PROFILE_REOPEN_COOLDOWN_OPTIONS_MIN : MESSAGING_COOLDOWN_OPTIONS_HOURS;
 			if (key.escape) {
 				setView('main');
+				setFocusIndex(mainFocusIndex);
 				return;
 			}
 			if (key.upArrow) setCooldownIndex(i => clamp(i - 1, 0, Math.max(0, opts.length - 1)));
@@ -505,6 +526,7 @@ export default function Instagram({onBack}: Props) {
 					});
 				}
 				setView('main');
+				setFocusIndex(mainFocusIndex);
 				return;
 			}
 			return;
@@ -513,6 +535,7 @@ export default function Instagram({onBack}: Props) {
 		if (view === 'order') {
 			if (key.escape) {
 				setView('main');
+				setFocusIndex(mainFocusIndex);
 				return;
 			}
 			if (key.upArrow) setOrderIndex(i => clamp(i - 1, 0, Math.max(0, visibleOrder.length - 1)));
@@ -594,6 +617,7 @@ export default function Instagram({onBack}: Props) {
 		if (view === 'feed' || view === 'reels' || view === 'stories' || view === 'follow' || view === 'unfollow') {
 			if (key.escape) {
 				setView('main');
+				setFocusIndex(mainFocusIndex);
 				return;
 			}
 			const fieldsByView: Record<string, string[]> = {
@@ -652,6 +676,7 @@ export default function Instagram({onBack}: Props) {
 			if (messageMode === 'list') {
 				if (key.escape) {
 					setView('main');
+					setFocusIndex(mainFocusIndex);
 					return;
 				}
 				if (key.upArrow) setMessageIndex(i => clamp(i - 1, 0, Math.max(0, messageLines.length - 1)));
@@ -711,8 +736,20 @@ export default function Instagram({onBack}: Props) {
 
 		if (view !== 'main') return;
 
-		if (key.upArrow) setFocusIndex(i => clamp(i - 1, 0, mainFocusables.length - 1));
-		if (key.downArrow) setFocusIndex(i => clamp(i + 1, 0, mainFocusables.length - 1));
+		if (key.upArrow) {
+			setFocusIndex(i => {
+				const next = clamp(i - 1, 0, mainFocusables.length - 1);
+				setMainFocusIndex(next);
+				return next;
+			});
+		}
+		if (key.downArrow) {
+			setFocusIndex(i => {
+				const next = clamp(i + 1, 0, mainFocusables.length - 1);
+				setMainFocusIndex(next);
+				return next;
+			});
+		}
 
 		if (key.escape) {
 			onBack();
@@ -727,35 +764,35 @@ export default function Instagram({onBack}: Props) {
 		if (input === 's' || input === 'S') {
 			let opened = false;
 			if (currentField === 'enable_feed') {
+				setMainFocusIndex(focusIndex);
 				setView('feed');
-				setFocusIndex(0);
 				opened = true;
 			}
 			if (currentField === 'enable_reels') {
+				setMainFocusIndex(focusIndex);
 				setView('reels');
-				setFocusIndex(0);
 				opened = true;
 			}
 			if (currentField === 'watch_stories') {
+				setMainFocusIndex(focusIndex);
 				setView('stories');
-				setFocusIndex(0);
 				opened = true;
 			}
 			if (currentField === 'enable_follow') {
+				setMainFocusIndex(focusIndex);
 				setView('follow');
-				setFocusIndex(0);
 				opened = true;
 			}
 			if (currentField === 'do_unfollow') {
+				setMainFocusIndex(focusIndex);
 				setView('unfollow');
-				setFocusIndex(0);
 				opened = true;
 			}
 			if (currentField === 'do_message') {
+				setMainFocusIndex(focusIndex);
 				setView('message');
 				setMessageMode('list');
 				void fetchMessageTemplates(messageKind);
-				setFocusIndex(0);
 				opened = true;
 			}
 			if (currentField === 'profile_reopen_cooldown_enabled') {
@@ -789,12 +826,14 @@ export default function Instagram({onBack}: Props) {
 		if (currentField === 'do_message' && (input === ' ' || key.return)) toggleField('do_message');
 
 		if (currentField === 'source_lists' && key.return) {
+			setMainFocusIndex(focusIndex);
 			setView('lists');
 			void fetchLists();
 			return;
 		}
 
 		if (currentField === 'action_order' && key.return) {
+			setMainFocusIndex(focusIndex);
 			setView('order');
 			setOrderIndex(0);
 			return;
@@ -862,7 +901,11 @@ export default function Instagram({onBack}: Props) {
 							void persist(next);
 							return next;
 						});
-						setFocusIndex(i => clamp(i + 1, 0, mainFocusables.length - 1));
+						setFocusIndex(i => {
+							const next = clamp(i + 1, 0, mainFocusables.length - 1);
+							setMainFocusIndex(next);
+							return next;
+						});
 					}}
 				/>
 			) : (

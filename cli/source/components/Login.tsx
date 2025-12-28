@@ -11,9 +11,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../../../');
 
-export default function Login({onBack}: {onBack: () => void}) {
+type Props = {
+	onBack: () => void;
+	initialProfilePickerIndex: number;
+	onProfilePickerIndexChange: (index: number) => void;
+};
+
+export default function Login({onBack, initialProfilePickerIndex, onProfilePickerIndexChange}: Props) {
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [step, setStep] = useState<'select_profile' | 'enter_creds' | 'running'>('select_profile');
+    const [profilePickerIndex, setProfilePickerIndex] = useState(initialProfilePickerIndex);
+	const onProfilePickerIndexChangeRef = useRef(onProfilePickerIndexChange);
     const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -33,16 +41,33 @@ export default function Login({onBack}: {onBack: () => void}) {
         };
     }, []);
 
+	useEffect(() => {
+		onProfilePickerIndexChangeRef.current = onProfilePickerIndexChange;
+	}, [onProfilePickerIndexChange]);
+
+	useEffect(() => {
+		onProfilePickerIndexChangeRef.current(profilePickerIndex);
+	}, [profilePickerIndex]);
+
     const loadProfiles = async () => {
         setLoading(true);
         const data = await profileManager.getProfiles();
         // Filter profiles where login is not true (false or undefined)
         const filtered = data.filter(p => p.login !== true);
         setProfiles(filtered);
+        setProfilePickerIndex(prev => {
+            const max = Math.max(0, filtered.length - 1);
+            const next = Math.max(0, Math.min(prev, max));
+            return next;
+        });
         setLoading(false);
     };
 
     const handleProfileSelect = (item: any) => {
+        const idx = profiles.findIndex(p => p.name === item.value);
+        if (idx >= 0) {
+            setProfilePickerIndex(idx);
+        }
         const profile = profiles.find(p => p.name === item.value);
         if (profile) {
             setSelectedProfile(profile);
@@ -150,6 +175,13 @@ export default function Login({onBack}: {onBack: () => void}) {
                     {loading ? <Text>Loading profiles...</Text> : (
                         <SelectInput
                             items={profiles.map(p => ({label: p.name, value: p.name}))}
+                            initialIndex={profilePickerIndex}
+                            onHighlight={item => {
+                                const idx = profiles.findIndex(p => p.name === item.value);
+                                if (idx >= 0) {
+                                    setProfilePickerIndex(idx);
+                                }
+                            }}
                             onSelect={handleProfileSelect}
                         />
                     )}

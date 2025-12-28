@@ -42,6 +42,13 @@ export default function App({name = 'User'}: Props) {
 	const {exit} = useApp();
 	const {write} = useStdout();
 	const [activeTab, setActiveTab] = useState<string | null>(null);
+	const [menuIndex, setMenuIndex] = useState(0);
+	const [tabCursors, setTabCursors] = useState(() => ({
+		profiles: 0,
+		instagram: 0,
+		lists: 0,
+		login: 0,
+	}));
 
 	const clearScreen = () => {
 		try {
@@ -52,6 +59,8 @@ export default function App({name = 'User'}: Props) {
 	};
 
 	const handleSelect = (item: {value: string}) => {
+		const idx = items.findIndex(i => i.value === item.value);
+		if (idx >= 0) setMenuIndex(idx);
 		if (item.value === 'exit') {
 			exit();
 			return;
@@ -61,19 +70,55 @@ export default function App({name = 'User'}: Props) {
 	};
 
 	if (activeTab === 'profiles') {
-		return <Profiles onBack={() => { clearScreen(); setActiveTab(null); }} />;
+		return (
+			<Profiles
+				initialSelectedIndex={tabCursors.profiles}
+				onSelectedIndexChange={i => setTabCursors(prev => ({...prev, profiles: i}))}
+				onBack={() => {
+					clearScreen();
+					setActiveTab(null);
+				}}
+			/>
+		);
 	}
 
 	if (activeTab === 'instagram') {
-		return <Instagram onBack={() => { clearScreen(); setActiveTab(null); }} />;
+		return (
+			<Instagram
+				initialMainFocusIndex={tabCursors.instagram}
+				onMainFocusIndexChange={i => setTabCursors(prev => ({...prev, instagram: i}))}
+				onBack={() => {
+					clearScreen();
+					setActiveTab(null);
+				}}
+			/>
+		);
 	}
 
 	if (activeTab === 'lists') {
-		return <Lists onBack={() => { clearScreen(); setActiveTab(null); }} />;
+		return (
+			<Lists
+				initialSelectedIndex={tabCursors.lists}
+				onSelectedIndexChange={i => setTabCursors(prev => ({...prev, lists: i}))}
+				onBack={() => {
+					clearScreen();
+					setActiveTab(null);
+				}}
+			/>
+		);
 	}
 
 	if (activeTab === 'login') {
-		return <Login onBack={() => { clearScreen(); setActiveTab(null); }} />;
+		return (
+			<Login
+				initialProfilePickerIndex={tabCursors.login}
+				onProfilePickerIndexChange={i => setTabCursors(prev => ({...prev, login: i}))}
+				onBack={() => {
+					clearScreen();
+					setActiveTab(null);
+				}}
+			/>
+		);
 	}
 
 	if (activeTab === 'logs') {
@@ -88,7 +133,15 @@ export default function App({name = 'User'}: Props) {
 			<Box>
 				<Text>Select an action:</Text>
 			</Box>
-			<SelectInput items={items} onSelect={handleSelect} />
+			<SelectInput
+				items={items}
+				initialIndex={menuIndex}
+				onHighlight={item => {
+					const idx = items.findIndex(i => i.value === item.value);
+					if (idx >= 0) setMenuIndex(idx);
+				}}
+				onSelect={handleSelect}
+			/>
 		</Box>
 	);
 }

@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo} from 'react';
+import React, {useState, useEffect, useMemo, useRef} from 'react';
 import {Text, Box, useInput} from 'ink';
 import TextInput from 'ink-text-input';
 import {callBridge} from '../lib/supabase.js';
@@ -12,12 +12,23 @@ type Mode = 'list' | 'create' | 'edit' | 'delete';
 type EditFocus = 'profiles' | 'name';
 type ProfileRow = {profile_id: string; name: string; selected: boolean; initialSelected: boolean};
 
-export default function Lists({onBack}: {onBack: () => void}) {
+type Props = {
+	onBack: () => void;
+	initialSelectedIndex: number;
+	onSelectedIndexChange: (index: number) => void;
+};
+
+function clamp(n: number, min: number, max: number) {
+	return Math.max(min, Math.min(max, n));
+}
+
+export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChange}: Props) {
 	const [lists, setLists] = useState<List[]>([]);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
     const [mode, setMode] = useState<Mode>('list');
-    const [selectedIndex, setSelectedIndex] = useState(0);
+    const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
+	const onSelectedIndexChangeRef = useRef(onSelectedIndexChange);
     
     // For Create/Edit
     const [inputName, setInputName] = useState('');
@@ -30,16 +41,29 @@ export default function Lists({onBack}: {onBack: () => void}) {
 		fetchLists();
 	}, []);
 
+	useEffect(() => {
+		onSelectedIndexChangeRef.current = onSelectedIndexChange;
+	}, [onSelectedIndexChange]);
+
+	useEffect(() => {
+		onSelectedIndexChangeRef.current(selectedIndex);
+	}, [selectedIndex]);
+
 	const fetchLists = async () => {
 		setLoading(true);
 		setError(null);
 		try {
 			const data = await callBridge<List[]>('lists.list');
-			setLists(data || []);
-			setSelectedIndex(0);
+			const nextLists = data || [];
+			setLists(nextLists);
+			setSelectedIndex(prev => {
+				const next = clamp(prev, 0, Math.max(0, nextLists.length - 1));
+				return next;
+			});
 		} catch (e: any) {
 			setError(e?.message || String(e));
 			setLists([]);
+			setSelectedIndex(0);
 		}
 		setLoading(false);
 	};
@@ -162,9 +186,15 @@ export default function Lists({onBack}: {onBack: () => void}) {
             if (key.escape) {
                 onBack();
             } else if (key.upArrow) {
-                setSelectedIndex(prev => Math.max(0, prev - 1));
+                setSelectedIndex(prev => {
+					const next = Math.max(0, prev - 1);
+					return next;
+				});
             } else if (key.downArrow) {
-                setSelectedIndex(prev => Math.min(lists.length - 1, prev + 1));
+                setSelectedIndex(prev => {
+					const next = Math.min(lists.length - 1, prev + 1);
+					return next;
+				});
             } else if (input === 'n' || input === 'N') { // New
                 setMode('create');
                 setInputName('');

@@ -7,25 +7,39 @@ import {getRandomUserAgent} from '../lib/user_agents.js';
 import {spawn, ChildProcess} from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import clipboardy from 'clipboardy';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../../../');
 
-export default function Profiles({onBack}: {onBack: () => void}) {
+function clamp(n: number, min: number, max: number) {
+	return Math.max(min, Math.min(max, n));
+}
+
+type Props = {
+	onBack: () => void;
+	initialSelectedIndex: number;
+	onSelectedIndexChange: (index: number) => void;
+};
+
+export default function Profiles({onBack, initialSelectedIndex, onSelectedIndexChange}: Props) {
 	const [profiles, setProfiles] = useState<Profile[]>([]);
-	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
 	const [mode, setMode] = useState<'list' | 'create' | 'edit' | 'delete' | 'logs'>('list');
 	const [deleteConfirmation, setDeleteConfirmation] = useState<Profile | null>(null);
 	const [formData, setFormData] = useState<Partial<Profile>>({});
 	const [activeField, setActiveField] = useState(0);
 	const [isEditingSelect, setIsEditingSelect] = useState(false);
+	const [selectIndexByKey, setSelectIndexByKey] = useState<Record<string, number>>({});
 	const [profileLogs, setProfileLogs] = useState<Map<string, string[]>>(new Map());
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
 	const [runningProfiles, setRunningProfiles] = useState<Set<string>>(new Set());
 	const processesRef = useRef<Map<string, ChildProcess>>(new Map());
+	const onSelectedIndexChangeRef = useRef(onSelectedIndexChange);
 
 	const {exit} = useApp();
 
@@ -33,10 +47,22 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 		loadProfiles();
 	}, []);
 
+	useEffect(() => {
+		onSelectedIndexChangeRef.current = onSelectedIndexChange;
+	}, [onSelectedIndexChange]);
+
+	useEffect(() => {
+		onSelectedIndexChangeRef.current(selectedIndex);
+	}, [selectedIndex]);
+
 	const loadProfiles = async () => {
 		setLoading(true);
 		const data = await profileManager.getProfiles();
 		setProfiles(data);
+		setSelectedIndex(prev => {
+			const next = clamp(prev, 0, Math.max(0, data.length - 1));
+			return next;
+		});
 		setLoading(false);
 	};
 
@@ -103,10 +129,16 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 			}
 
 			if (key.upArrow) {
-				setSelectedIndex(Math.max(0, selectedIndex - 1));
+				setSelectedIndex(prev => {
+					const next = Math.max(0, prev - 1);
+					return next;
+				});
 			}
 			if (key.downArrow) {
-				setSelectedIndex(Math.min(profiles.length - 1, selectedIndex + 1));
+				setSelectedIndex(prev => {
+					const next = Math.min(profiles.length - 1, prev + 1);
+					return next;
+				});
 			}
 			if (input === 'c') {
 				setMode('create');
@@ -234,6 +266,15 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 		} else if (mode === 'logs') {
 			if (key.escape) {
 				setMode('list');
+				setCopyFeedback(null);
+			}
+			if (input === 'c') {
+				const currentLogs = profileLogs.get(profiles[selectedIndex]?.name) || [];
+				if (currentLogs.length > 0) {
+					clipboardy.writeSync(currentLogs.join('\n'));
+					setCopyFeedback('Copied to clipboard!');
+					setTimeout(() => setCopyFeedback(null), 2000);
+				}
 			}
 		}
 	});
@@ -327,7 +368,6 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 			
 			// Cleanup temp fields if necessary, though Profile type ignores extra fields mostly
 			// But let's be clean
-			delete (finalData as any).proxy_type;
 			delete (finalData as any).connection;
 
 			if (mode === 'create') {
@@ -371,7 +411,7 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 							const isSelected = index === selectedIndex;
 							return (
 								<Box key={profile.name || index}>
-									<Text color={isSelected ? 'green' : 'white'}>
+									<Text color={isSelected ? 'green' : 'white'} wrap="truncate-end">
 										{isSelected ? '> ' : '  '}
 										{profile.name} 
 									</Text>
@@ -399,14 +439,14 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 					)}
 				</Box>
 
-				<Box marginTop={1} borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1} minHeight={6}>
+				<Box marginTop={1} borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1} height={15}>
 					<Text bold>� Logs: {profiles[selectedIndex]?.name || 'N/A'}</Text>
 					<Box flexDirection="column">
 						{(profileLogs.get(profiles[selectedIndex]?.name) || []).length === 0 ? (
 							<Text color="gray">No logs available...</Text>
 						) : (
-							(profileLogs.get(profiles[selectedIndex]?.name) || []).slice(-15).map((log, i) => (
-								<Text key={i} color="gray">{log}</Text>
+							(profileLogs.get(profiles[selectedIndex]?.name) || []).slice(-10).map((log, i) => (
+								<Text key={i} color="gray" wrap="truncate-end">{log}</Text>
 							))
 						)}
 					</Box>
@@ -429,12 +469,22 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 						const labelColor = isActive ? 'green' : 'white';
 						const prefix = isActive ? '> ' : '  ';
 
+						// Section Headers
+						let sectionHeader = null;
+						if (field.key === 'name') sectionHeader = <Text color="blue" bold underline>Basic Info</Text>;
+						if (field.key === 'connection') sectionHeader = <Box marginTop={1}><Text color="blue" bold underline>Network Settings</Text></Box>;
+						if (field.key === 'ua_os') sectionHeader = <Box marginTop={1}><Text color="blue" bold underline>Fingerprint</Text></Box>;
+						if (field.key === 'save') sectionHeader = <Box marginTop={1} borderStyle="single" borderLeft={false} borderRight={false} borderTop={false} borderColor="gray" marginBottom={1}></Box>;
+
 						if (field.type === 'button') {
 							return (
-								<Box key={field.key} marginTop={1}>
-									<Text color={isActive ? 'black' : 'white'} backgroundColor={isActive ? 'green' : undefined}>
-										{' ' + field.label + ' '}
-									</Text>
+								<Box key={field.key} flexDirection="column">
+									{sectionHeader}
+									<Box marginTop={field.key === 'save' || field.key === 'cancel' ? 0 : 1}>
+										<Text color={isActive ? 'black' : 'white'} backgroundColor={isActive ? 'green' : undefined}>
+											{' ' + field.label + ' '}
+										</Text>
+									</Box>
 								</Box>
 							);
 						}
@@ -449,20 +499,32 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 									/>
 								);
 							} else {
-								content = <Text color="gray">{(formData as any)[field.key] || ''}</Text>;
+								content = <Text color="gray" wrap="truncate-end">{(formData as any)[field.key] || ''}</Text>;
 							}
 						} else if (field.type === 'select') {
 							const currentValue = (formData as any)[field.key];
-							const currentOption = (field.options as any[]).find(o => o.value === currentValue);
+							const options = field.options as any[];
+							const currentOption = options.find(o => o.value === currentValue);
 							const displayValue = currentOption ? currentOption.label : currentValue;
 
 							if (isActive && isEditingSelect) {
+								const selectedIdx = options.findIndex(o => o.value === currentValue);
+								const lastIdx = selectIndexByKey[field.key] ?? (selectedIdx >= 0 ? selectedIdx : 0);
+								const initialIndex = clamp(lastIdx, 0, Math.max(0, options.length - 1));
+
 								content = (
 									<Box borderStyle="round" borderColor="blue">
 										<SelectInput
-											items={field.options as any}
+											items={options as any}
+											initialIndex={initialIndex}
+											onHighlight={item => {
+												const idx = options.findIndex(o => o.value === item.value);
+												if (idx >= 0) setSelectIndexByKey(prev => ({...prev, [field.key]: idx}));
+											}}
 											onSelect={(item) => {
 												const updates: any = { [field.key]: item.value };
+												const idx = options.findIndex(o => o.value === item.value);
+												if (idx >= 0) setSelectIndexByKey(prev => ({...prev, [field.key]: idx}));
 												
 												if (field.key === 'connection') {
 													if (item.value === 'direct') {
@@ -489,13 +551,20 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 						}
 
 						return (
-							<Box key={field.key} flexDirection="column" marginBottom={1}>
-								<Box>
-									<Text color={labelColor}>{prefix}{field.label}: </Text>
-									{content}
+							<Box key={field.key} flexDirection="column" marginBottom={0}>
+								{sectionHeader}
+								<Box flexDirection="row">
+									<Box width={30}>
+										<Text color={labelColor}>{prefix}{field.label}: </Text>
+									</Box>
+									<Box flexGrow={1}>
+										{content}
+									</Box>
 								</Box>
 								{isActive && (field as any).help && (
-									<Text color="gray" dimColor>  {(field as any).help}</Text>
+									<Box marginLeft={30}>
+										<Text color="gray" dimColor>{(field as any).help}</Text>
+									</Box>
 								)}
 							</Box>
 						);
@@ -532,7 +601,8 @@ export default function Profiles({onBack}: {onBack: () => void}) {
 				<Box marginBottom={1}>
 					<Text bold>📝 Full Logs: {profiles[selectedIndex]?.name}</Text>
 					<Text color="gray"> | </Text>
-					<Text>[Esc] Back</Text>
+					<Text>[Esc] Back | [C]opy Logs</Text>
+					{copyFeedback && <Text color="green"> {copyFeedback}</Text>}
 				</Box>
 				<Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1} minHeight={20}>
 					{currentLogs.length === 0 ? (

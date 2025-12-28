@@ -7,6 +7,7 @@ create table public.profiles (
   created_at timestamptz not null default now(),
   name text not null,
   proxy text,
+  proxy_type text,
   status text,
   mode text,
   "Using" boolean not null default false,
