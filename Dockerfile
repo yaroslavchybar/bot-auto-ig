@@ -11,13 +11,13 @@ RUN pip install playwright && \
 WORKDIR /app
 
 # Copy python requirements and install
-COPY requirements.txt .
+COPY python/requirements.txt .
 RUN pip install -r requirements.txt
 RUN playwright install firefox
 
 # Copy CLI dependencies first for caching
-WORKDIR /app/cli
-COPY cli/package.json cli/package-lock.json* ./
+WORKDIR /app
+COPY package.json package-lock.json* ./
 RUN npm ci
 
 # Copy the rest of the app
@@ -25,7 +25,6 @@ WORKDIR /app
 COPY . .
 
 # Build CLI
-WORKDIR /app/cli
 RUN npm run build
 
 # Go back to root
@@ -36,4 +35,4 @@ ENV PYTHONUNBUFFERED=1
 ENV TERM=xterm-256color
 
 # Entrypoint: Start the TUI
-CMD ["npm", "start", "--prefix", "cli"]
+CMD ["npm", "start"]

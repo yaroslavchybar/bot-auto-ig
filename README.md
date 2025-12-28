@@ -21,33 +21,27 @@ The Antidetect Instagram Automation tool is designed for users who need to manag
 ### System Architecture
 ```mermaid
 graph TD
-    TUI[TUI - React/Ink] --> |Spawns Process| PM[Python Runner - cli/scripts/instagram_automation.py]
+    TUI[TUI - React/Ink] --> |Spawns Process| PM[Python Runner - scripts/instagram_automation.py]
     PM --> |Loads Config| Supabase[(Supabase Cloud DB)]
-    PM --> |Manages Profiles| ProfMgr[core/profile_manager.py]
-    PM --> |Executes Actions| Actions[automation/actions.py]
-    Actions --> |Controls Browser| Browser[automation/browser.py]
+    PM --> |Manages Profiles| ProfMgr[python/core/profile_manager.py]
+    PM --> |Executes Actions| Actions[python/automation/actions.py]
+    Actions --> |Controls Browser| Browser[python/automation/browser.py]
     Browser --> |Camoufox/Playwright| Instagram[Instagram Web]
-    Launcher[launcher.py] --> |Direct CLI Control| Browser
+    Launcher[python/launcher.py] --> |Direct CLI Control| Browser
 ```
 
 ## 2. Technical Specifications
 
 ### File Structure
-- `automation/`: Core logic for browser control and Instagram interactions.
-    - `Follow/`: Advanced follow logic with pre-follow interactions.
-    - `scrolling/`: Feed and Reels scrolling implementations.
-    - `messaging/`: DM automation and template handling.
-    - `stories/`: Story watching logic.
-    - `browser.py`: Camoufox initialization and context management.
-- `core/`: Application state and business logic.
-    - `models.py`: Configuration and account data structures.
-    - `profile_manager.py`: Local and cloud profile synchronization.
-    - `process_manager.py`: Background process handling.
-- `cli/`: Node.js-based Terminal User Interface.
-    - `source/`: React components (Ink) for the TUI dashboard.
-    - `scripts/`: Python bridge scripts for automation tasks.
-- `supabase/`: Database clients and migrations.
-- `utils/`: Security and utility functions (e.g., TOTP).
+- `python/`: Core logic for browser control and Instagram interactions.
+    - `automation/`: Action implementations (Follow, Scrolling, Messaging, etc.).
+    - `core/`: Application state, TOTP, and Profile Management.
+    - `supabase/`: Database clients.
+    - `launcher.py`: Direct CLI entry point for single tasks.
+- `source/`: Node.js-based Terminal User Interface (React/Ink).
+- `scripts/`: Entry point scripts for automation tasks.
+- `data/`: Local storage for browser profiles and execution logs (gitignored).
+- `dist/`: Compiled TUI code.
 
 ### Technology Stack
 - **Languages**: Python 3.10+, TypeScript
@@ -84,10 +78,8 @@ graph TD
 
 3. **Install TUI Dependencies**:
    ```bash
-   cd cli
    npm install
    npm run build
-   cd ..
    ```
 
 4. **Environment Configuration**:
@@ -103,7 +95,6 @@ graph TD
 ### Running the TUI Dashboard
 The primary way to manage profiles and start automation is through the TUI:
 ```bash
-cd cli
 npm start
 ```
 From here, you can:
@@ -113,9 +104,9 @@ From here, you can:
 - Launch multi-profile automation cycles.
 
 ### Direct CLI Execution
-For specific tasks, use `launcher.py`:
+For specific tasks, use `launcher.py` via the python module:
 ```bash
-python launcher.py --name "ProfileName" --action "scroll" --duration 15 --match-likes 20
+python -m python.launcher --name "ProfileName" --action "scroll" --duration 15 --match-likes 20
 ```
 
 **Common Commands**:

@@ -8,5 +8,5 @@ services:
     restart: unless-stopped
     volumes:
       - ./.env:/app/.env
-      - ./profiles:/app/profiles
-      - ./logs:/app/logs
+      - ./data/profiles:/app/data/profiles
+      - ./data/logs:/app/data/logs

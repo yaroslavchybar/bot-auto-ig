@@ -15,8 +15,11 @@ downloads/
 eggs/
 .eggs/
 lib/
-!cli/source/lib/
-!cli/source/lib/**
+!source/lib/
+!source/lib/**
+/data/
+/data/*
+!/data/.gitkeep
 lib64/
 parts/
 sdist/
