@@ -1,0 +1,277 @@
+# Project Restructure: `anti` Directory
+
+Reorganize the project to clearly separate the **Python automation backend** from the **TypeScript Terminal UI**, improve maintainability, and clean up root-level clutter.
+
+---
+
+## Current vs Proposed Structure
+
+````carousel
+### Current Structure (Issues Highlighted)
+
+```
+anti/
+├── __pycache__/          ❌ Should be ignored
+├── automation/           # Python
+├── cli/                  # TypeScript/React (Ink TUI)
+│   ├── source/
+│   ├── dist/
+│   ├── node_modules/
+│   └── package.json
+├── core/                 # Python
+├── logs/                 ❌ Runtime data in source
+├── profiles/             ❌ Runtime data in source
+├── supabase/             # Python
+├── utils/                # Python (single file)
+├── launcher.py           # Python entry
+├── requirements.txt
+├── Dockerfile
+└── .env, README, etc.
+```
+
+**Problems:**
+- Mixed Python/Node at root level
+- `cli/` nested but is the main app
+- Runtime dirs (`logs/`, `profiles/`) in source
+- `utils/` has only 1 file
+<!-- slide -->
+### Proposed Structure
+
+```
+anti/
+├── python/                    # All Python code
+│   ├── automation/
+│   │   ├── browser.py
+│   │   ├── scrolling/
+│   │   ├── Follow/
+│   │   ├── unfollow/
+│   │   ├── messaging/
+│   │   └── ...
+│   ├── core/
+│   │   ├── models.py
+│   │   ├── process_manager.py
+│   │   ├── profile_manager.py
+│   │   └── worker_utils.py
+│   ├── supabase/
+│   │   ├── client.py
+│   │   ├── profiles_client.py
+│   │   └── ...
+│   ├── launcher.py
+│   └── requirements.txt
+│
+├── source/                    # TypeScript TUI (moved from cli/)
+│   ├── app.tsx
+│   ├── cli.tsx
+│   ├── components/
+│   ├── lib/
+│   ├── tests/
+│   └── types/
+│
+├── data/                      # Runtime data (gitignored)
+│   ├── logs/
+│   └── profiles/
+│
+├── package.json               # Promoted to root
+├── tsconfig.json
+├── Dockerfile
+├── docker-compose.yml
+├── README.md
+└── .env
+```
+````
+
+---
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Decision Point: TUI at root vs in subfolder**
+> 
+> This plan promotes the TypeScript TUI to be the "main" application at root level, with Python as a sub-package. This is because:
+> 1. The TUI is what users interact with (`npm start`)
+> 2. Python is launched as a subprocess by the TUI
+> 
+> If you prefer Python to be the main application, let me know and I'll adjust.
+
+> [!WARNING]
+> **Breaking Change: All Python imports must be updated**
+> 
+> Moving Python to `python/` subfolder requires updating:
+> - All `from automation.xxx` → `from python.automation.xxx`
+> - Or using `PYTHONPATH` environment variable
+> - Dockerfile will need updates
+
+---
+
+## Proposed Changes
+
+### Phase 1: Create New Directory Structure
+
+Create the new folders that will hold reorganized code.
+
+#### [NEW] `python/` directory
+- New parent directory for all Python modules
+
+#### [NEW] `data/` directory  
+- For runtime artifacts (`logs/`, `profiles/`)
+- Will be gitignored
+
+---
+
+### Phase 2: Move Python Backend
+
+#### [MOVE] [automation/](file:///c:/Users/yaros/Downloads/anti/automation) → `python/automation/`
+All browser automation code moves under the Python package.
+
+#### [MOVE] [core/](file:///c:/Users/yaros/Downloads/anti/core) → `python/core/`
+Models and managers move to Python package.
+
+#### [MOVE] [supabase/](file:///c:/Users/yaros/Downloads/anti/supabase) → `python/supabase/`
+Database clients move to Python package.
+
+#### [MOVE] [utils/totp.py](file:///c:/Users/yaros/Downloads/anti/utils/totp.py) → `python/core/totp.py`
+Single utility file merged into core package.
+
+#### [MOVE] [launcher.py](file:///c:/Users/yaros/Downloads/anti/launcher.py) → `python/launcher.py`
+Entry point moves to Python package.
+
+#### [MOVE] [requirements.txt](file:///c:/Users/yaros/Downloads/anti/requirements.txt) → `python/requirements.txt`
+
+#### [NEW] `python/__init__.py`
+New package init file.
+
+---
+
+### Phase 3: Promote TypeScript TUI to Root
+
+#### [MOVE] [cli/source/](file:///c:/Users/yaros/Downloads/anti/cli/source) → `source/`
+TypeScript source code promoted to root.
+
+#### [MOVE] [cli/package.json](file:///c:/Users/yaros/Downloads/anti/cli/package.json) → [package.json](file:///c:/Users/yaros/Downloads/anti/cli/package.json)
+Package config promoted to root.
+
+#### [MOVE] [cli/tsconfig.json](file:///c:/Users/yaros/Downloads/anti/cli/tsconfig.json) → [tsconfig.json](file:///c:/Users/yaros/Downloads/anti/cli/tsconfig.json)
+
+#### [DELETE] `cli/` folder
+After contents moved, delete the empty folder.
+
+---
+
+### Phase 4: Move Runtime Data
+
+#### [MOVE] `logs/` → `data/logs/`
+#### [MOVE] `profiles/` → `data/profiles/`
+
+---
+
+### Phase 5: Update Imports & Paths
+
+#### [MODIFY] [browser.py](file:///c:/Users/yaros/Downloads/anti/automation/browser.py)
+
+Update import paths:
+```diff
+-from automation import actions
+-from automation.scrolling import scroll_feed, scroll_reels
++from python.automation import actions
++from python.automation.scrolling import scroll_feed, scroll_reels
+```
+
+Update profile path logic:
+```diff
+-base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
++base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+-profiles_dir = os.path.join(base_dir, "profiles")
++profiles_dir = os.path.join(base_dir, "data", "profiles")
+```
+
+#### [MODIFY] All Python files with imports
+Update all cross-module imports to use new paths.
+
+#### [MODIFY] [automationService.ts](file:///c:/Users/yaros/Downloads/anti/cli/source/lib/automationService.ts)
+Update Python launcher path:
+```diff
+-python launcher.py
++python python/launcher.py
+```
+
+---
+
+### Phase 6: Update Docker & Config
+
+#### [MODIFY] [Dockerfile](file:///c:/Users/yaros/Downloads/anti/Dockerfile)
+
+```diff
+-COPY requirements.txt .
++COPY python/requirements.txt .
+ RUN pip install -r requirements.txt
+ 
+-WORKDIR /app/cli
+-COPY cli/package.json cli/package-lock.json* ./
++WORKDIR /app
++COPY package.json package-lock.json* ./
+ RUN npm ci
+ 
+ WORKDIR /app
+ COPY . .
+ 
+-WORKDIR /app/cli
++# Build TUI
+ RUN npm run build
+ 
+-WORKDIR /app
+-
+-CMD ["npm", "start", "--prefix", "cli"]
++CMD ["npm", "start"]
+```
+
+#### [MODIFY] [.gitignore](file:///c:/Users/yaros/Downloads/anti/.gitignore)
+
+Add:
+```
+data/
+```
+
+---
+
+### Phase 7: Cleanup
+
+#### [DELETE] `__pycache__/` at root
+#### [DELETE] Empty `utils/` folder
+#### [DELETE] Old `logs/` and `profiles/` at root (after moving)
+
+---
+
+## Verification Plan
+
+### Automated Tests
+
+**TypeScript Tests:**
+```bash
+cd c:\Users\yaros\Downloads\anti
+npm run build
+npm test
+```
+
+**Python Import Check:**
+```bash
+cd c:\Users\yaros\Downloads\anti
+python -c "from python.automation.browser import run_browser; print('OK')"
+```
+
+### Manual Verification
+
+1. **TUI Starts:** Run `npm start` and verify the terminal UI loads
+2. **Profile Launch:** Create/select a profile and start a manual session - verify browser opens
+3. **Docker Build:** Run `docker build .` and verify it completes successfully
+
+---
+
+## Summary
+
+| Change | Benefit |
+|--------|---------|
+| Create `python/` package | Clear separation of Python codebase |
+| Promote TUI to root | `npm start` works directly from root |
+| Add `data/` folder | Runtime data separated from source |
+| Merge `utils/` into `core/` | Eliminate single-file folder |
+| Update Dockerfile | Simpler build with root-level package.json |

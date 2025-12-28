@@ -1,7 +1,15 @@
 import React, {useState, useEffect, useMemo, useRef} from 'react';
 import {Text, Box, useInput} from 'ink';
 import TextInput from 'ink-text-input';
-import {callBridge} from '../lib/supabase.js';
+import {
+	listsCreate,
+	listsDelete,
+	listsList,
+	listsUpdate,
+	profilesBulkSetListId,
+	profilesListAssigned,
+	profilesListUnassigned,
+} from '../lib/supabase.js';
 
 type List = {
 	id: string;
@@ -53,7 +61,7 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
 		setLoading(true);
 		setError(null);
 		try {
-			const data = await callBridge<List[]>('lists.list');
+			const data = await listsList();
 			const nextLists = data || [];
 			setLists(nextLists);
 			setSelectedIndex(prev => {
@@ -73,7 +81,7 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
         setLoading(true);
 		setError(null);
 		try {
-			await callBridge('lists.create', {name: inputName});
+			await listsCreate(inputName);
             setInputName('');
             setMode('list');
             fetchLists();
@@ -88,7 +96,7 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
         setLoading(true);
 		setError(null);
 		try {
-			await callBridge('lists.update', {id: selectedList.id, name: inputName});
+			await listsUpdate(selectedList.id, inputName);
             setInputName('');
             setMode('list');
             fetchLists();
@@ -103,7 +111,7 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
         setLoading(true);
 		setError(null);
 		try {
-			await callBridge('lists.delete', {id: selectedList.id});
+			await listsDelete(selectedList.id);
             setMode('list');
             fetchLists();
 		} catch (e: any) {
@@ -118,12 +126,12 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
         let assigned: any[] = [];
         let unassigned: any[] = [];
 		try {
-			assigned = (await callBridge<any[]>('profiles.list_assigned', {list_id: listId})) || [];
+			assigned = (await profilesListAssigned(listId)) || [];
 		} catch {
 			assigned = [];
 		}
 		try {
-			unassigned = (await callBridge<any[]>('profiles.list_unassigned')) || [];
+			unassigned = (await profilesListUnassigned()) || [];
 		} catch {
 			unassigned = [];
 		}
@@ -163,13 +171,13 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
         const toRemove = profiles.filter(p => !p.selected && p.initialSelected).map(p => p.profile_id);
 		try {
 			if (inputName.trim() && inputName.trim() !== selectedList.name) {
-				await callBridge('lists.update', {id: selectedList.id, name: inputName.trim()});
+				await listsUpdate(selectedList.id, inputName.trim());
 			}
 			if (toAdd.length > 0) {
-				await callBridge('profiles.bulk_set_list_id', {profile_ids: toAdd, list_id: selectedList.id});
+				await profilesBulkSetListId(toAdd, selectedList.id);
 			}
 			if (toRemove.length > 0) {
-				await callBridge('profiles.bulk_set_list_id', {profile_ids: toRemove, list_id: null});
+				await profilesBulkSetListId(toRemove, null);
 			}
 		} catch (e: any) {
 			setError(e?.message || String(e));
@@ -192,8 +200,7 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
 				});
             } else if (key.downArrow) {
                 setSelectedIndex(prev => {
-					const next = Math.min(lists.length - 1, prev + 1);
-					return next;
+					return clamp(prev + 1, 0, Math.max(0, lists.length - 1));
 				});
             } else if (input === 'n' || input === 'N') { // New
                 setMode('create');

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticator } from 'otplib';
-import {callBridge} from './supabase.js';
+import {profilesCreate, profilesDeleteByName, profilesList, profilesSyncStatus, profilesUpdateByName} from './supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +27,7 @@ export type Profile = {
 export class ProfileManager {
 	async getProfiles(): Promise<Profile[]> {
 		try {
-			const data = await callBridge<any[]>('profiles.list');
+			const data = await profilesList();
 			return (data || []).map((p: any) => ({
 				id: p.profile_id,
 				name: p.name,
@@ -50,7 +50,16 @@ export class ProfileManager {
 
 	async createProfile(profile: Profile): Promise<boolean> {
 		try {
-			await callBridge('profiles.create', {profile});
+			await profilesCreate({
+				name: profile.name,
+				proxy: profile.proxy,
+				proxy_type: profile.proxy_type,
+				type: profile.type,
+				user_agent: profile.user_agent,
+				test_ip: profile.test_ip,
+				ua_os: profile.ua_os,
+				ua_browser: profile.ua_browser,
+			});
 		} catch (e) {
 			console.error('Error creating profile in DB:', e);
 			return false;
@@ -65,7 +74,16 @@ export class ProfileManager {
 
 	async updateProfile(oldName: string, profile: Profile): Promise<boolean> {
 		try {
-			await callBridge('profiles.update_by_name', {old_name: oldName, profile});
+			await profilesUpdateByName(oldName, {
+				name: profile.name,
+				proxy: profile.proxy,
+				proxy_type: profile.proxy_type,
+				type: profile.type,
+				user_agent: profile.user_agent,
+				test_ip: profile.test_ip,
+				ua_os: profile.ua_os,
+				ua_browser: profile.ua_browser,
+			});
 		} catch (e) {
 			console.error('Error updating profile in DB:', e);
 			return false;
@@ -90,7 +108,7 @@ export class ProfileManager {
 
 	async deleteProfile(name: string): Promise<boolean> {
 		try {
-			await callBridge('profiles.delete_by_name', {name});
+			await profilesDeleteByName(name);
 		} catch (e) {
 			console.error('Error deleting profile from DB:', e);
 			return false;
@@ -111,7 +129,7 @@ export class ProfileManager {
 
 	async syncProfileStatus(name: string, status: string, using: boolean): Promise<boolean> {
 		try {
-			await callBridge('profiles.sync_status', {name, status, using});
+			await profilesSyncStatus(name, status, using);
 			return true;
 		} catch (e) {
 			console.error('Error syncing profile status:', e);

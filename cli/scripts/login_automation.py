@@ -2,6 +2,7 @@ import argparse
 import sys
 import os
 import io
+import json
 
 # Force UTF-8 encoding for stdin/stdout on Windows to avoid issues with non-ASCII characters
 if sys.platform == "win32":
@@ -21,23 +22,36 @@ def log(msg):
 def main():
     parser = argparse.ArgumentParser(description="Instagram Login Automation")
     parser.add_argument("--profile", required=True, help="Profile name")
-    parser.add_argument("--username", required=True, help="Instagram username")
-    parser.add_argument("--password", required=True, help="Instagram password")
     parser.add_argument("--proxy", default=None, help="Proxy string")
-    parser.add_argument("--2fa-secret", dest="two_factor_secret", default=None, help="2FA Secret Key")
     parser.add_argument("--headless", action="store_true", help="Headless mode")
     
     args = parser.parse_args()
     
+    # Read credentials from stdin (security: not visible in process list)
+    try:
+        stdin_data = sys.stdin.read()
+        creds = json.loads(stdin_data)
+        username = creds.get('username')
+        password = creds.get('password')
+        two_factor_secret = creds.get('two_factor_secret')
+        
+        if not username or not password:
+            log("ERROR: username and password are required in stdin JSON")
+            return 1
+    except json.JSONDecodeError as e:
+        log(f"ERROR: Failed to parse credentials from stdin: {e}")
+        return 1
+    
     login_session(
         profile_name=args.profile,
         proxy_string=args.proxy,
-        username=args.username,
-        password=args.password,
-        two_factor_secret=args.two_factor_secret,
+        username=username,
+        password=password,
+        two_factor_secret=two_factor_secret,
         log=log,
         headless=args.headless
     )
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)
+

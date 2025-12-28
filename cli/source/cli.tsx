@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import React from 'react';
-import {render} from 'ink';
+import { render } from 'ink';
 import meow from 'meow';
 import App from './app.js';
+import { initShutdownHandler } from './lib/shutdown.js';
+
 
 const cli = meow(
 	`
@@ -26,4 +28,7 @@ const cli = meow(
 	},
 );
 
+initShutdownHandler();
+
 render(<App name={cli.flags.name} />);
+

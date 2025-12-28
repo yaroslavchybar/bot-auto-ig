@@ -1,9 +1,10 @@
-import React, {useState, useEffect, useRef} from 'react';
-import {Text, Box, useInput, useApp} from 'ink';
+import React, { useState, useEffect, useRef } from 'react';
+import { Text, Box, useInput, useApp } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
-import {profileManager, Profile} from '../lib/profiles.js';
-import {spawn, ChildProcess} from 'child_process';
+import { profileManager, Profile } from '../lib/profiles.js';
+import { profilesSetLoginTrue } from '../lib/supabase.js';
+import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -12,16 +13,16 @@ const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../../../');
 
 type Props = {
-	onBack: () => void;
-	initialProfilePickerIndex: number;
-	onProfilePickerIndexChange: (index: number) => void;
+    onBack: () => void;
+    initialProfilePickerIndex: number;
+    onProfilePickerIndexChange: (index: number) => void;
 };
 
-export default function Login({onBack, initialProfilePickerIndex, onProfilePickerIndexChange}: Props) {
+export default function Login({ onBack, initialProfilePickerIndex, onProfilePickerIndexChange }: Props) {
     const [profiles, setProfiles] = useState<Profile[]>([]);
     const [step, setStep] = useState<'select_profile' | 'enter_creds' | 'running'>('select_profile');
     const [profilePickerIndex, setProfilePickerIndex] = useState(initialProfilePickerIndex);
-	const onProfilePickerIndexChangeRef = useRef(onProfilePickerIndexChange);
+    const onProfilePickerIndexChangeRef = useRef(onProfilePickerIndexChange);
     const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -31,7 +32,8 @@ export default function Login({onBack, initialProfilePickerIndex, onProfilePicke
     const [logs, setLogs] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const processRef = useRef<ChildProcess | null>(null);
-    
+    const loginUpdatedRef = useRef(false);
+
     useEffect(() => {
         loadProfiles();
         return () => {
@@ -41,13 +43,13 @@ export default function Login({onBack, initialProfilePickerIndex, onProfilePicke
         };
     }, []);
 
-	useEffect(() => {
-		onProfilePickerIndexChangeRef.current = onProfilePickerIndexChange;
-	}, [onProfilePickerIndexChange]);
+    useEffect(() => {
+        onProfilePickerIndexChangeRef.current = onProfilePickerIndexChange;
+    }, [onProfilePickerIndexChange]);
 
-	useEffect(() => {
-		onProfilePickerIndexChangeRef.current(profilePickerIndex);
-	}, [profilePickerIndex]);
+    useEffect(() => {
+        onProfilePickerIndexChangeRef.current(profilePickerIndex);
+    }, [profilePickerIndex]);
 
     const loadProfiles = async () => {
         setLoading(true);
@@ -77,41 +79,60 @@ export default function Login({onBack, initialProfilePickerIndex, onProfilePicke
 
     const startLogin = () => {
         if (!selectedProfile || !username || !password) return;
+        loginUpdatedRef.current = false;
         setStep('running');
         setLogs(prev => [...prev, `Starting login for ${username} on profile ${selectedProfile.name}...`]);
+        const profileName = selectedProfile.name;
 
         const scriptPath = path.join(PROJECT_ROOT, 'cli', 'scripts', 'login_automation.py');
-        const python = 'python'; // Assume python is in PATH
+        const python = process.env.PYTHON || 'python';
 
         const args = [
             scriptPath,
             '--profile', selectedProfile.name,
-            '--username', username,
-            '--password', password
         ];
-
-        if (twoFactorSecret) {
-            args.push('--2fa-secret', twoFactorSecret);
-        }
 
         if (headless) {
             args.push('--headless');
         }
 
         // Check for proxy in profile
-        // The Profile type might have different structure, checking what Profiles.tsx uses
         const proxy = (selectedProfile as any).proxy || (selectedProfile as any).proxy_string;
         if (proxy) {
             args.push('--proxy', proxy);
         }
 
-        const proc = spawn(python, args);
+        const proc = spawn(python, args, { stdio: 'pipe' });
+
+        // Send credentials via stdin (not visible in process list)
+        const credentials = JSON.stringify({
+            username,
+            password,
+            two_factor_secret: twoFactorSecret || null
+        });
+        proc.stdin?.write(credentials);
+        proc.stdin?.end();
         processRef.current = proc;
 
         proc.stdout?.on('data', (data) => {
             const lines = data.toString().split('\n');
             lines.forEach((line: string) => {
-                if (line.trim()) setLogs(prev => [...prev, line.trim()]);
+                const trimmed = line.trim();
+                if (!trimmed) return;
+                if (trimmed === '__LOGIN_SUCCESS__') {
+                    if (loginUpdatedRef.current) return;
+                    loginUpdatedRef.current = true;
+                    void profilesSetLoginTrue(profileName)
+                        .then(() => {
+                            setLogs(prev => [...prev, '✅ Updated profile login status to True in DB.']);
+                            setProfiles(prev => prev.filter(p => p.name !== profileName));
+                        })
+                        .catch((e: any) => {
+                            setLogs(prev => [...prev, `⚠️ Failed to update profile login status: ${e?.message || String(e)}`]);
+                        });
+                    return;
+                }
+                setLogs(prev => [...prev, trimmed]);
             });
         });
 
@@ -174,7 +195,7 @@ export default function Login({onBack, initialProfilePickerIndex, onProfilePicke
                 <Box borderStyle="single" borderColor="gray" padding={1}>
                     {loading ? <Text>Loading profiles...</Text> : (
                         <SelectInput
-                            items={profiles.map(p => ({label: p.name, value: p.name}))}
+                            items={profiles.map(p => ({ label: p.name, value: p.name }))}
                             initialIndex={profilePickerIndex}
                             onHighlight={item => {
                                 const idx = profiles.findIndex(p => p.name === item.value);
@@ -195,7 +216,7 @@ export default function Login({onBack, initialProfilePickerIndex, onProfilePicke
         return (
             <Box flexDirection="column">
                 <Text color="green" bold>Enter Instagram Credentials for {selectedProfile?.name}</Text>
-                
+
                 <Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1}>
                     <Box>
                         <Text color={activeField === 'username' ? 'blue' : 'white'}>Username: </Text>

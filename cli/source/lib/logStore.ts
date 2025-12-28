@@ -1,10 +1,14 @@
-export type LogEntry = {
-	ts: number;
-	message: string;
-	source?: string;
-};
+import { LogEntry } from '../types/index.js';
 
+const MAX_LOG_ENTRIES = 1000;
 let logs: LogEntry[] = [];
+
+function trimLogs() {
+	if (logs.length > MAX_LOG_ENTRIES) {
+		logs = logs.slice(-MAX_LOG_ENTRIES);
+	}
+}
+
 
 type Subscriber = {
 	onAppend?: () => void;
@@ -20,6 +24,7 @@ export function getLogs(): LogEntry[] {
 export function appendLog(message: string, source?: string): void {
 	const entry: LogEntry = { ts: Date.now(), message, source };
 	logs.push(entry);
+	trimLogs();
 	for (const s of subscribers) s.onAppend?.();
 }
 

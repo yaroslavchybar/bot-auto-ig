@@ -2,7 +2,6 @@ import time
 import traceback
 from automation.browser import create_browser_context
 from automation.actions import random_delay
-from supabase.profiles_client import SupabaseProfilesClient
 from utils.totp import generate_totp_code
 
 def login_session(
@@ -16,6 +15,7 @@ def login_session(
     headless: bool = False
 ):
     log(f"Starting login session for {username} (Profile: {profile_name})")
+    login_succeeded = False
     
     try:
         with create_browser_context(
@@ -26,14 +26,10 @@ def login_session(
             block_images=False
         ) as (context, page):
             
-            # Helper to update login status
             def mark_login_success():
-                try:
-                    client = SupabaseProfilesClient()
-                    client.set_profile_login_true(profile_name)
-                    log("✅ Updated profile login status to True in DB.")
-                except Exception as e:
-                    log(f"⚠️ Failed to update profile login status: {e}")
+                nonlocal login_succeeded
+                login_succeeded = True
+                log("__LOGIN_SUCCESS__")
 
             log("Navigating to Instagram...")
             try:
@@ -57,7 +53,7 @@ def login_session(
                         page.locator("svg[aria-label='Search']").count() > 0:
                          log("✅ Already logged in!")
                          mark_login_success()
-                         return
+                         return login_succeeded
             except:
                 pass
 
@@ -163,6 +159,8 @@ def login_session(
             log("Keeping session open for 10s to ensure persistence...")
             time.sleep(10)
             
+            return login_succeeded
     except Exception as e:
         log(f"❌ Critical error: {e}")
         traceback.print_exc()
+        return False

@@ -75,6 +75,13 @@ def log(message: str) -> None:
         pass
 
 
+def emit_event(event_type: str, **data: Any) -> None:
+    """Emit structured JSON event for CLI consumption."""
+    event = {"type": event_type, "ts": _now_iso(), **data}
+    sys.stdout.write(f"__EVENT__{json.dumps(event)}__EVENT__\n")
+    sys.stdout.flush()
+
+
 def _parse_int(value: Any, default: int) -> int:
     try:
         return int(str(value).strip().split()[0])
@@ -140,6 +147,7 @@ class InstagramAutomationRunner:
         log("🛑 Остановка автоматизации...")
 
     def run(self) -> int:
+        emit_event("session_started", total_accounts=len(self.accounts))
         if not self.accounts:
             log("⚠️ Нет профилей для запуска.")
             return 2
@@ -181,6 +189,7 @@ class InstagramAutomationRunner:
                     time.sleep(1)
 
         log("✅ Автоматизация остановлена.")
+        emit_event("session_ended", status="completed")
         return 0
 
     def process_account(self, account: ThreadsAccount) -> bool:
@@ -269,6 +278,7 @@ class InstagramAutomationRunner:
             user_agent = None
 
         log(f"🚀 Запуск браузера для @{profile_name}...")
+        emit_event("profile_started", profile=profile_name)
         try:
             try:
                 self.profiles_client.sync_profile_status(profile_name, "running", True)
@@ -293,12 +303,14 @@ class InstagramAutomationRunner:
                     if not self.running:
                         break
                     if action_name in actions_map and enabled_map.get(action_name, False):
+                        emit_event("task_started", profile=profile_name, task=action_name)
                         actions_map[action_name]()
                         if self.running:
                             time.sleep(random.randint(3, 7))
 
                 if self.running:
                     log(f"✅ Все задачи завершены для @{profile_name}")
+                    emit_event("profile_completed", profile=profile_name, status="success")
                     try:
                         self.profiles_client.increment_sessions_today(profile_name)
                     except Exception as e:

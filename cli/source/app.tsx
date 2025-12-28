@@ -1,9 +1,9 @@
-import React, {useState} from 'react';
-import {Text, Box, useApp, useStdout} from 'ink';
+import React, { useState } from 'react';
+import { Text, Box, useApp, useStdout } from 'ink';
 import SelectInput from 'ink-select-input';
-import Profiles from './components/Profiles.js';
-import Instagram from './components/Instagram.js';
-import Lists from './components/Lists.js';
+import Profiles from './components/profiles/index.js';
+import Instagram from './components/instagram/index.js';
+import Lists from './components/lists/index.js';
 import Logs from './components/Logs.js';
 import Login from './components/Login.js';
 
@@ -38,9 +38,9 @@ const items = [
 	},
 ];
 
-export default function App({name = 'User'}: Props) {
-	const {exit} = useApp();
-	const {write} = useStdout();
+export default function App({ name = 'User' }: Props) {
+	const { exit } = useApp();
+	const { write } = useStdout();
 	const [activeTab, setActiveTab] = useState<string | null>(null);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const [tabCursors, setTabCursors] = useState(() => ({
@@ -58,7 +58,7 @@ export default function App({name = 'User'}: Props) {
 		}
 	};
 
-	const handleSelect = (item: {value: string}) => {
+	const handleSelect = (item: { value: string }) => {
 		const idx = items.findIndex(i => i.value === item.value);
 		if (idx >= 0) setMenuIndex(idx);
 		if (item.value === 'exit') {
@@ -73,7 +73,7 @@ export default function App({name = 'User'}: Props) {
 		return (
 			<Profiles
 				initialSelectedIndex={tabCursors.profiles}
-				onSelectedIndexChange={i => setTabCursors(prev => ({...prev, profiles: i}))}
+				onSelectedIndexChange={i => setTabCursors(prev => ({ ...prev, profiles: i }))}
 				onBack={() => {
 					clearScreen();
 					setActiveTab(null);
@@ -86,7 +86,7 @@ export default function App({name = 'User'}: Props) {
 		return (
 			<Instagram
 				initialMainFocusIndex={tabCursors.instagram}
-				onMainFocusIndexChange={i => setTabCursors(prev => ({...prev, instagram: i}))}
+				onMainFocusIndexChange={i => setTabCursors(prev => ({ ...prev, instagram: i }))}
 				onBack={() => {
 					clearScreen();
 					setActiveTab(null);
@@ -99,7 +99,7 @@ export default function App({name = 'User'}: Props) {
 		return (
 			<Lists
 				initialSelectedIndex={tabCursors.lists}
-				onSelectedIndexChange={i => setTabCursors(prev => ({...prev, lists: i}))}
+				onSelectedIndexChange={i => setTabCursors(prev => ({ ...prev, lists: i }))}
 				onBack={() => {
 					clearScreen();
 					setActiveTab(null);
@@ -112,7 +112,7 @@ export default function App({name = 'User'}: Props) {
 		return (
 			<Login
 				initialProfilePickerIndex={tabCursors.login}
-				onProfilePickerIndexChange={i => setTabCursors(prev => ({...prev, login: i}))}
+				onProfilePickerIndexChange={i => setTabCursors(prev => ({ ...prev, login: i }))}
 				onBack={() => {
 					clearScreen();
 					setActiveTab(null);
