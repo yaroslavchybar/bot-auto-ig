@@ -1,136 +1,203 @@
-# Antidetect Instagram Automation
+# Anti-CLI: Advanced Instagram Automation & Antidetect
 
-A sophisticated Instagram automation tool with antidetect capabilities, built with Python, Camoufox, and React (Ink). This application enables secure management of multiple browser profiles and performs human-like actions on Instagram to minimize detection.
+**Anti-CLI** is a sophisticated, privacy-focused Instagram automation tool designed to manage multiple accounts with high-level antidetect capabilities. Built with a hybrid architecture using **Python (Camoufox/Playwright)** for the automation engine and **React (Ink)** for a powerful Terminal User Interface (TUI).
 
-## 1. Project Overview
+It leverages **Supabase** for centralized state management, allowing synchronized control over hundreds of profiles with intelligent scheduling, human-like behavior simulation, and fingerprint spoofing.
 
-### Purpose
-The Antidetect Instagram Automation tool is designed for users who need to manage multiple Instagram accounts with high levels of anonymity. It leverages advanced fingerprint spoofing and human-like interaction patterns to bypass automated detection systems.
+---
 
-### Key Features
-- **Multi-Profile Management**: Create and synchronize browser profiles across local storage and Supabase cloud.
-- **Antidetect Capabilities**: Powered by [Camoufox](https://camoufox.com/), featuring hardware fingerprint spoofing, WebGL/Canvas protection, and humanized cursor movements.
-- **Human-Like Interactions**: 
-    - **Smart Scrolling**: Intelligent feed and reels consumption with configurable interaction chances (likes, follows).
-    - **Targeted Following**: "Pre-follow" interactions including watching highlights and liking posts before following.
-    - **Story Engagement**: Automatic story watching to simulate real user behavior.
-    - **Direct Messaging**: Automated messaging with template support and cooldowns.
-    - **Account Maintenance**: Unfollowing and follow request approval logic.
-- **Hybrid Interface**: Interactive Terminal User Interface (TUI) for management and a robust CLI for direct task execution.
+## 🚀 Key Features
 
-### System Architecture
+### 🛡️ Antidetect & Security
+*   **Camoufox Engine**: Built on top of `camoufox`, a specialized Firefox build that defeats bot detection (fingerprint spoofing for Canvas, WebGL, Fonts, Audio).
+*   **Smart Proxy Support**: Native support for HTTP/SOCKS5 proxies with authentication.
+*   **Fingerprint Randomization**: Automatically generates consistent unique fingerprints (OS, Screen Resolution, User Agent) per profile.
+*   **GeoIP Validation**: Automatically checks proxy location to ensure consistency.
+
+### 🤖 Human-Like Automation
+*   **Natural Interactions**: Random delays, non-linear mouse movements (`humanize=True`), and variable scrolling speeds.
+*   **Smart Feed/Reels Browsing**:
+    *   Scrolls feed and reels with configurable probabilities for Likes, Comments, and Follows.
+    *   Watches Stories and Carousels (with slide limits).
+    *   Skips content based on logic (e.g., skips boring reels quickly, watches interesting ones longer).
+*   **"Warm-up" Following**:
+    *   Does not just click "Follow".
+    *   Visits target profile -> Watches Highlights -> Scrolls Posts -> Likes random posts -> *Then* Follows.
+*   **Direct Messaging**:
+    *   Sends DMs using customizable templates.
+    *   Respects strict cooldowns (e.g., "don't message same user for 2 hours").
+
+### ⚡ Power Management
+*   **Multi-Threading**: Run multiple browser profiles in parallel (configurable concurrency).
+*   **Scheduler**:
+    *   Daily session limits (e.g., "max 5 sessions per day").
+    *   Cool-down timers (e.g., "wait 30 mins before reopening profile").
+    *   Global daily resets via Database Cron jobs.
+*   **Centralized Database**: All state (profiles, target accounts, settings, logs) is stored in Supabase.
+
+---
+
+## 🏗️ Architecture
+
+The system consists of three main components:
+
+1.  **The Database (Supabase)**: Acts as the "Brain". It stores:
+    *   `profiles`: Browser profiles (proxy, user agent, cookies path).
+    *   `instagram_accounts`: Target users to follow/message.
+    *   `instagram_settings`: Global configuration (limits, probabilities).
+    *   `logs`: Execution logs.
+2.  **The TUI (Node.js/React)**: The "Control Center".
+    *   Visual interface to manage profiles, lists, and settings.
+    *   Spawns Python processes for automation.
+    *   Displays real-time logs and status.
+3.  **The Engine (Python)**: The "Worker".
+    *   Headless (or visible) browser automation.
+    *   Executes complex logic defined in `python/automation/`.
+
 ```mermaid
 graph TD
-    TUI[TUI - React/Ink] --> |Spawns Process| PM[Python Runner - scripts/instagram_automation.py]
-    PM --> |Loads Config| Supabase[(Supabase Cloud DB)]
-    PM --> |Manages Profiles| ProfMgr[python/core/profile_manager.py]
-    PM --> |Executes Actions| Actions[python/automation/actions.py]
-    Actions --> |Controls Browser| Browser[python/automation/browser.py]
-    Browser --> |Camoufox/Playwright| Instagram[Instagram Web]
-    Launcher[python/launcher.py] --> |Direct CLI Control| Browser
+    User[User] --> TUI[React TUI (npm start)]
+    TUI --> |Spawns| Py[Python Runner]
+    Py --> |Reads/Writes| DB[(Supabase PostgreSQL)]
+    Py --> |Controls| Browser[Camoufox / Firefox]
+    Browser --> |Interacts| IG[Instagram.com]
+    DB --> |Cron Jobs| DB
 ```
 
-## 2. Technical Specifications
+---
 
-### File Structure
-- `python/`: Core logic for browser control and Instagram interactions.
-    - `automation/`: Action implementations (Follow, Scrolling, Messaging, etc.).
-    - `core/`: Application state, TOTP, and Profile Management.
-    - `supabase/`: Database clients.
-    - `launcher.py`: Direct CLI entry point for single tasks.
-- `source/`: Node.js-based Terminal User Interface (React/Ink).
-- `scripts/`: Entry point scripts for automation tasks.
-- `data/`: Local storage for browser profiles and execution logs (gitignored).
-- `dist/`: Compiled TUI code.
-
-### Technology Stack
-- **Languages**: Python 3.10+, TypeScript
-- **Browser Engine**: Camoufox (based on Playwright/Firefox)
-- **Backend/DB**: Supabase (PostgreSQL)
-- **UI Framework**: React with [Ink](https://github.com/vadimdemedes/ink) (for TUI)
-- **Authentication**: TOTP (Two-Factor Authentication) support
-
-### Environment Requirements
-- Python 3.10 or higher
-- Node.js 16 or higher (for TUI)
-- Active Supabase project
-- Proxy support (HTTP/SOCKS5)
-
-## 3. Setup Instructions
+## 🛠️ Installation
 
 ### Prerequisites
-1. Install [Python](https://www.python.org/).
-2. Install [Node.js](https://nodejs.org/).
-3. Create a [Supabase](https://supabase.com/) project.
+*   **Python 3.10+**
+*   **Node.js 16+**
+*   **Supabase Account** (Free tier works)
 
-### Installation
-1. **Clone the Repository**:
-   ```bash
-   git clone <repository-url>
-   cd anti
-   ```
+### 1. Clone & Setup
+```bash
+git clone <repository-url>
+cd anti
+```
 
-2. **Install Python Dependencies**:
-   ```bash
-   pip install camoufox supabase python-dotenv requests playwright
-   playwright install firefox
-   ```
+### 2. Python Setup
+Create a virtual environment and install dependencies:
+```bash
+# Windows
+python -m venv venv
+.\venv\Scripts\activate
 
-3. **Install TUI Dependencies**:
-   ```bash
-   npm install
-   npm run build
-   ```
+# Linux/Mac
+python3 -m venv venv
+source venv/bin/activate
 
-4. **Environment Configuration**:
-   Create a `.env` file in the root directory:
-   ```env
-   SUPABASE_URL=your_project_url
-   SUPABASE_PUBLISHABLE_KEY=your_key
-   SUPABASE_SECRET_KEY=your_secret_key
-   ```
+# Install requirements
+pip install camoufox supabase python-dotenv requests playwright
+playwright install firefox
+```
 
-## 4. Usage Documentation
+### 3. Node.js TUI Setup
+Install the TUI dependencies and build the project:
+```bash
+npm install
+npm run build
+```
 
-### Running the TUI Dashboard
-The primary way to manage profiles and start automation is through the TUI:
+### 4. Supabase Setup
+1.  Create a new project at [supabase.com](https://supabase.com).
+2.  Go to the **SQL Editor** in Supabase.
+3.  Copy the content of `supabase/migrations/202512210001_initial_schema.sql` and run it.
+    *   *Note: This creates all necessary tables (`profiles`, `instagram_accounts`, etc.) and sets up Cron jobs.*
+
+### 5. Environment Variables
+Create a `.env` file in the root directory:
+```env
+# Supabase Configuration
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your-anon-key
+SUPABASE_SECRET_KEY=your-service-role-key
+
+# Optional: Proxy Defaults
+DEFAULT_PROXY=http://user:pass@host:port
+```
+*Tip: You need the `SERVICE_ROLE` key (not just Anon) for backend operations.*
+
+---
+
+## 🎮 Usage
+
+### Option A: The TUI Dashboard (Recommended)
+This is the primary way to use the tool.
 ```bash
 npm start
 ```
-From here, you can:
-- Manage browser profiles.
-- Configure automation settings.
-- View live logs.
-- Launch multi-profile automation cycles.
+*   **Navigation**: Use Arrow keys and Enter.
+*   **Profiles**: Create, Edit, or Delete browser profiles.
+*   **Automation**: Select profiles and run "Start Automation".
+*   **Settings**: Tweak global probabilities (Like chance, Scroll time, etc.).
 
-### Direct CLI Execution
-For specific tasks, use `launcher.py` via the python module:
+### Option B: CLI Direct Launch
+Useful for debugging or single-task execution.
+
+**1. Simple Launcher (`launcher.py`)**
+Runs a single action for a specific profile immediately.
 ```bash
-python -m python.launcher --name "ProfileName" --action "scroll" --duration 15 --match-likes 20
+# Scroll feed for 10 minutes with 20% like chance
+python python/launcher.py --name "MyProfile" --action scroll --duration 10 --match-likes 20
+
+# Debug mode (Show cursor)
+python python/launcher.py --name "MyProfile" --action manual --show-cursor
 ```
 
-**Common Commands**:
-- `--name`: Profile name (required).
-- `--action`: `scroll`, `reels`, `mixed`, or `manual`.
-- `--duration`: Time in minutes.
-- `--match-likes`: Chance (0-100) to like posts.
-- `--show-cursor`: Debug mode to visualize human-like movements.
-
-## 5. Development Guidelines
-
-### Contribution Process
-1. **Feature Branching**: Always create a new branch for features or bugfixes.
-2. **Modular Actions**: Add new Instagram interactions within the `automation/` directory.
-3. **Model Consistency**: Ensure any new settings are reflected in `core/models.py`.
-
-### Testing Methodology
-- **Humanization Verification**: Use the `--show-cursor` flag in `launcher.py` to verify that mouse movements appear natural.
-- **Profile Integrity**: Test profile persistence by launching a profile, logging in, and re-opening to ensure sessions are maintained.
-- **Supabase Sync**: Verify that changes in the TUI are correctly reflected in the Supabase dashboard.
-
-### Deployment
-1. **Database**: Apply migrations found in `supabase/migrations/` to your Supabase instance.
-2. **Environment**: Ensure all production environment variables are set in your deployment environment.
+**2. Production Runner (`scripts/instagram_automation.py`)**
+This is the script used by the TUI. It pulls tasks from Supabase and handles multi-threading.
+```bash
+python scripts/instagram_automation.py
+# (Usually requires arguments passed by the TUI logic)
+```
 
 ---
-*Note: This tool is for educational purposes. Use responsibly and in accordance with Instagram's Terms of Service.*
+
+## ⚙️ Configuration Details
+
+### Global Settings (in TUI/Database)
+You can tweak these values in the `instagram_settings` table (or via TUI):
+*   `feed_min_time` / `feed_max_time`: How long to scroll feed.
+*   `reels_skip_chance`: % chance to skip a reel immediately (simulating disinterest).
+*   `messaging_cooldown_hours`: Minimum time between DMs to the same user.
+*   `profile_reopen_cooldown_minutes`: Security lockout after a session ends.
+
+### Profile Structure
+Each profile in `data/profiles/` contains:
+*   **Cookies/Storage**: Persistent session data (no need to login every time).
+*   **Cache**: Browser cache (cleared intelligently).
+*   **Fingerprint**: Unique hardware/software characteristics.
+
+---
+
+## 📂 Project Structure
+
+```text
+anti/
+├── python/                 # Python Backend
+│   ├── automation/         # Core Automation Logic
+│   │   ├── Follow/         # Smart Follow Logic (Pre-interactions)
+│   │   ├── scrolling/      # Feed/Reels Scrolling behavior
+│   │   ├── actions.py      # Action orchestrator
+│   │   └── browser.py      # Camoufox/Playwright wrapper
+│   ├── core/               # Models & Managers
+│   ├── supabase/           # DB Client wrappers
+│   └── launcher.py         # CLI Entry point
+├── scripts/                # Execution Scripts
+│   └── instagram_automation.py # Main Multi-thread Runner
+├── source/                 # TUI Frontend (React + Ink)
+│   ├── components/         # UI Components (Views, Lists)
+│   ├── lib/                # TUI Logic (Supabase, Service calls)
+│   └── app.tsx             # TUI Entry point
+├── supabase/               # Database
+│   └── migrations/         # SQL Schemas
+└── data/                   # Local Data (Gitignored)
+    └── profiles/           # Browser Profiles Storage
+```
+
+## ⚠️ Disclaimer
+This tool is for **educational and research purposes only**. Automating Instagram accounts may violate their Terms of Service. Use responsibly and at your own risk. The authors are not responsible for any account bans or restrictions.

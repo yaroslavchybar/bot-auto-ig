@@ -73,7 +73,7 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
             """
         )
     except Exception as err:
-        log(f"ℹ️ Не удалось получить число подписок: {err}")
+        log(f"Не удалось получить число подписок: {err}")
         return None
 
 
@@ -146,7 +146,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
             """
         )
     except Exception as err:
-        log(f"ℹ️ Не удалось получить число постов: {err}")
+        log(f"Не удалось получить число постов: {err}")
         return None
 
 
@@ -162,7 +162,7 @@ def should_skip_by_following(
     try:
         limit_val = int(limit)
     except Exception:
-        log(f"ℹ️ Некорректный лимит подписок: {limit}, пропускаю фильтр.")
+        log(f"Некорректный лимит подписок: {limit}, пропускаю фильтр.")
         return False
 
     if limit_val <= 0:
@@ -174,12 +174,12 @@ def should_skip_by_following(
         pass
     count = get_following_count(page, log)
     if count is None:
-        log("ℹ️ Не удалось определить число подписок, продолжаю без фильтра.")
+        log("Не удалось определить число подписок, продолжаю без фильтра.")
         return False
 
-    log(f"ℹ️ @{username}: подписок {count}, лимит {limit_val}.")
+    log(f"@{username}: подписок {count}, лимит {limit_val}.")
     if count > limit_val:
-        log(f"⏭️ Пропускаю @{username}: слишком много подписок ({count} > {limit_val}).")
+        log(f"Пропускаю @{username}: слишком много подписок ({count} > {limit_val}).")
         return True
     return False
 

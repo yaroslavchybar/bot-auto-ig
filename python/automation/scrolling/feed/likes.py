@@ -10,7 +10,7 @@ def perform_like(page, post_element) -> bool:
             clickable = like_button.query_selector('xpath=..')
             if clickable:
                 clickable.click()
-                print("[♥] Liked post")
+                print("Liked post")
                 return True
     except Exception as e:
         print(f"[!] Error liking post: {e}")

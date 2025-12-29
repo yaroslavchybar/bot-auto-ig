@@ -125,16 +125,12 @@ export default function Lists({onBack, initialSelectedIndex, onSelectedIndexChan
         setError(null);
         let assigned: any[] = [];
         let unassigned: any[] = [];
-		try {
-			assigned = (await profilesListAssigned(listId)) || [];
-		} catch {
-			assigned = [];
-		}
-		try {
-			unassigned = (await profilesListUnassigned()) || [];
-		} catch {
-			unassigned = [];
-		}
+		const [assignedRes, unassignedRes] = await Promise.allSettled([
+			profilesListAssigned(listId),
+			profilesListUnassigned(),
+		]);
+		assigned = assignedRes.status === 'fulfilled' ? (assignedRes.value || []) : [];
+		unassigned = unassignedRes.status === 'fulfilled' ? (unassignedRes.value || []) : [];
         const rows: ProfileRow[] = [];
         for (const r of assigned) {
             rows.push({profile_id: String(r.profile_id), name: String(r.name || ''), selected: true, initialSelected: true});

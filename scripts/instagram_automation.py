@@ -6,7 +6,10 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
+import logging
+from logging.handlers import MemoryHandler
 from typing import Any, Dict, List, Optional, Tuple
+from threading import Lock
 
 import requests
 
@@ -58,21 +61,29 @@ def _configure_stdio() -> None:
 
 _configure_stdio()
 
+_log_stream_handler = logging.StreamHandler(sys.stdout)
+_log_stream_handler.setFormatter(logging.Formatter("%(message)s"))
+_log_memory_handler = MemoryHandler(
+    capacity=10, flushLevel=logging.ERROR, target=_log_stream_handler
+)
+
+_logger = logging.getLogger("instagram_automation")
+_logger.handlers.clear()
+_logger.addHandler(_log_memory_handler)
+_logger.setLevel(logging.INFO)
+_logger.propagate = False
+
 
 def log(message: str) -> None:
-    s = f"[{_now_iso()}] {message}\n"
+    msg = f"[{_now_iso()}] {message}"
+    level = logging.INFO
     try:
-        sys.stdout.write(s)
+        normalized = str(message).lstrip().lower()
+        if normalized.startswith(("ошибка", "error", "exception")):
+            level = logging.ERROR
     except Exception:
-        try:
-            enc = getattr(sys.stdout, "encoding", None) or "utf-8"
-            sys.stdout.buffer.write(s.encode(enc, errors="replace"))
-        except Exception:
-            pass
-    try:
-        sys.stdout.flush()
-    except Exception:
-        pass
+        level = logging.INFO
+    _logger.log(level, msg)
 
 
 def emit_event(event_type: str, **data: Any) -> None:
@@ -103,24 +114,27 @@ def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
         return []
     result: List[Dict[str, Any]] = []
     try:
-        for lid in list_ids:
-            r = requests.get(
-                f"{PROJECT_URL}/rest/v1/profiles",
-                params={
-                    "select": "profile_id,name,proxy,user_agent,list_id,created_at",
-                    "list_id": f"eq.{lid}",
-                    "order": "created_at.asc",
-                },
-                headers={
-                    "apikey": SECRET_KEY,
-                    "Authorization": f"Bearer {SECRET_KEY}",
-                    "Accept": "application/json",
-                },
-                timeout=30,
-            )
-            data = r.json() if r.status_code < 400 else []
-            if isinstance(data, list):
-                result.extend(data)
+        clean_ids = [str(lid).strip().replace('"', "") for lid in list_ids if str(lid).strip()]
+        if not clean_ids:
+            return []
+        quoted = ",".join([f'"{lid}"' for lid in clean_ids])
+        r = requests.get(
+            f"{PROJECT_URL}/rest/v1/profiles",
+            params={
+                "select": "profile_id,name,proxy,user_agent,list_id,created_at",
+                "list_id": f"in.({quoted})",
+                "order": "created_at.asc",
+            },
+            headers={
+                "apikey": SECRET_KEY,
+                "Authorization": f"Bearer {SECRET_KEY}",
+                "Accept": "application/json",
+            },
+            timeout=30,
+        )
+        data = r.json() if r.status_code < 400 else []
+        if isinstance(data, list):
+            result.extend(data)
     except Exception:
         return []
 
@@ -141,28 +155,48 @@ class InstagramAutomationRunner:
         self.running = True
         self.accounts_client = InstagramAccountsClient()
         self.profiles_client = SupabaseProfilesClient()
+        self._profile_cache: Dict[str, Dict[str, Any]] = {}
+        self._profile_cache_lock = Lock()
+        configured = int(getattr(self.config, "parallel_profiles", 1) or 1)
+        account_count = len(accounts) if accounts else 1
+        self._max_workers = max(1, min(account_count, configured))
+        self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+
+    def _get_cached_profile(self, profile_name: str) -> Optional[Dict[str, Any]]:
+        with self._profile_cache_lock:
+            return self._profile_cache.get(profile_name)
+
+    def _set_cached_profile(self, profile_name: str, profile_data: Dict[str, Any]) -> None:
+        with self._profile_cache_lock:
+            self._profile_cache[profile_name] = profile_data
 
     def stop(self) -> None:
         self.running = False
-        log("🛑 Остановка автоматизации...")
+        log("Остановка автоматизации...")
+        try:
+            self._executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            try:
+                self._executor.shutdown(wait=False)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def run(self) -> int:
         emit_event("session_started", total_accounts=len(self.accounts))
         if not self.accounts:
-            log("⚠️ Нет профилей для запуска.")
+            log("Нет профилей для запуска.")
             return 2
+        try:
+            while self.running:
+                work_done_in_cycle = False
 
-        while self.running:
-            work_done_in_cycle = False
-            configured = int(getattr(self.config, "parallel_profiles", 1) or 1)
-            max_workers = max(1, min(len(self.accounts), configured))
-
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
                 for account in self.accounts:
                     if not self.running:
                         break
-                    futures.append(executor.submit(self.process_account, account))
+                    futures.append(self._executor.submit(self.process_account, account))
 
                 for fut in as_completed(futures):
                     if not self.running:
@@ -171,24 +205,29 @@ class InstagramAutomationRunner:
                         if fut.result():
                             work_done_in_cycle = True
                     except Exception as e:
-                        log(f"⚠️ Ошибка профиля: {e}")
+                        log(f"Ошибка профиля: {e}")
 
-            if not self.running:
-                break
+                if not self.running:
+                    break
 
-            if work_done_in_cycle:
-                for _ in range(5):
-                    if not self.running:
-                        break
-                    time.sleep(1)
-            else:
-                log("💤 Все профили достигли лимита или пропущены. Жду 60 сек...")
-                for _ in range(60):
-                    if not self.running:
-                        break
-                    time.sleep(1)
+                if work_done_in_cycle:
+                    for _ in range(5):
+                        if not self.running:
+                            break
+                        time.sleep(1)
+                else:
+                    log("Все профили достигли лимита или пропущены. Жду 60 сек...")
+                    for _ in range(60):
+                        if not self.running:
+                            break
+                        time.sleep(1)
+        finally:
+            try:
+                self._executor.shutdown(wait=True)
+            except Exception:
+                pass
 
-        log("✅ Автоматизация остановлена.")
+        log("Автоматизация остановлена.")
         emit_event("session_ended", status="completed")
         return 0
 
@@ -196,21 +235,25 @@ class InstagramAutomationRunner:
         profile_name = account.username
         proxy_str = account.proxy or "None"
 
-        profile_data = None
+        profile_data: Optional[Dict[str, Any]] = self._get_cached_profile(profile_name)
+        eligible_message_targets: Optional[List[Dict[str, Any]]] = None
         try:
-            profile_data = self.profiles_client.get_profile_by_name(profile_name)
+            if not profile_data:
+                profile_data = self.profiles_client.get_profile_by_name(profile_name)
+                if profile_data:
+                    self._set_cached_profile(profile_name, profile_data)
             if profile_data:
                 sessions = int(profile_data.get("sessions_today") or 0)
                 if sessions >= self.config.max_sessions_per_day:
                     log(
-                        f"⏭️ Пропуск @{profile_name}: достигнут лимит сессий "
+                        f"Пропуск @{profile_name}: достигнут лимит сессий "
                         f"({sessions}/{self.config.max_sessions_per_day})"
                     )
                     return False
 
                 profile_id = profile_data.get("profile_id")
                 if profile_id and self.accounts_client.is_profile_busy(profile_id):
-                    log(f"⏭️ Пропуск @{profile_name}: профиль занят.")
+                    log(f"Пропуск @{profile_name}: профиль занят.")
                     return False
 
                 last_opened_str = profile_data.get("last_opened_at")
@@ -226,10 +269,10 @@ class InstagramAutomationRunner:
                     now = datetime.now(timezone.utc)
                     cooldown_min = int(getattr(self.config, "profile_reopen_cooldown_minutes", 30) or 0)
                     if now - last_dt < timedelta(minutes=cooldown_min):
-                        log(f"⏭️ Пропуск @{profile_name}: недавно открыт (<{cooldown_min} мин).")
+                        log(f"Пропуск @{profile_name}: недавно открыт (<{cooldown_min} мин).")
                         return False
         except Exception as e:
-            log(f"⚠️ Ошибка проверки сессий для @{profile_name}: {e}")
+            log(f"Ошибка проверки сессий для @{profile_name}: {e}")
             return False
 
         try:
@@ -238,11 +281,11 @@ class InstagramAutomationRunner:
             if only_messages:
                 pid = profile_data.get("profile_id") if profile_data else None
                 if not pid:
-                    log(f"⚠️ @{profile_name}: профиль не найден в БД, пропуск запуска браузера.")
+                    log(f"@{profile_name}: профиль не найден в БД, пропуск запуска браузера.")
                     return False
                 targets = self.accounts_client.get_accounts_to_message(pid)
                 if not targets:
-                    log(f"ℹ️ @{profile_name}: нет целей для сообщений (message=true), не открываю браузер.")
+                    log(f"@{profile_name}: нет целей для сообщений (message=true), не открываю браузер.")
                     return False
                 now = datetime.now(timezone.utc)
                 eligible = []
@@ -265,8 +308,9 @@ class InstagramAutomationRunner:
                     except Exception:
                         eligible.append(t)
                 if not eligible:
-                    log(f"ℹ️ @{profile_name}: все цели недавно получили сообщение, не открываю браузер.")
+                    log(f"@{profile_name}: все цели недавно получили сообщение, не открываю браузер.")
                     return False
+                eligible_message_targets = eligible
         except Exception:
             pass
 
@@ -277,11 +321,16 @@ class InstagramAutomationRunner:
         except Exception:
             user_agent = None
 
-        log(f"🚀 Запуск браузера для @{profile_name}...")
+        log(f"Запуск браузера для @{profile_name}...")
         emit_event("profile_started", profile=profile_name)
         try:
             try:
                 self.profiles_client.sync_profile_status(profile_name, "running", True)
+            except Exception:
+                pass
+            try:
+                if profile_data is not None:
+                    profile_data["last_opened_at"] = datetime.now(timezone.utc).isoformat()
             except Exception:
                 pass
 
@@ -290,10 +339,10 @@ class InstagramAutomationRunner:
                     "Feed Scroll": lambda: self._run_scrolling(page, mode="feed"),
                     "Reels Scroll": lambda: self._run_scrolling(page, mode="reels"),
                     "Watch Stories": lambda: self._run_stories(page),
-                    "Follow": lambda: self._run_follow(page, account),
-                    "Unfollow": lambda: self._run_unfollow_only(page, account),
+                    "Follow": lambda: self._run_follow(page, account, profile_data),
+                    "Unfollow": lambda: self._run_unfollow_only(page, account, profile_data),
                     "Approve Requests": lambda: self._run_approve_only(page, account),
-                    "Send Messages": lambda: self._run_message_only(page, account),
+                    "Send Messages": lambda: self._run_message_only(page, account, profile_data, eligible_message_targets),
                 }
 
                 order = build_action_order(self.config)
@@ -309,12 +358,17 @@ class InstagramAutomationRunner:
                             time.sleep(random.randint(3, 7))
 
                 if self.running:
-                    log(f"✅ Все задачи завершены для @{profile_name}")
+                    log(f"Все задачи завершены для @{profile_name}")
                     emit_event("profile_completed", profile=profile_name, status="success")
                     try:
                         self.profiles_client.increment_sessions_today(profile_name)
                     except Exception as e:
-                        log(f"⚠️ Не удалось обновить счетчик сессий: {e}")
+                        log(f"Не удалось обновить счетчик сессий: {e}")
+                    try:
+                        if profile_data is not None:
+                            profile_data["sessions_today"] = int(profile_data.get("sessions_today") or 0) + 1
+                    except Exception:
+                        pass
 
                 try:
                     self.profiles_client.sync_profile_status(profile_name, "idle", False)
@@ -323,7 +377,7 @@ class InstagramAutomationRunner:
 
                 return True
         except Exception as e:
-            log(f"❌ Ошибка @{profile_name}: {e}")
+            log(f"Ошибка @{profile_name}: {e}")
             try:
                 self.profiles_client.sync_profile_status(profile_name, "idle", False)
             except Exception:
@@ -356,42 +410,43 @@ class InstagramAutomationRunner:
             }
 
             if mode == "feed":
-                log(f"📰 Feed: {duration} мин")
+                log(f"Feed: {duration} мин")
                 scroll_feed(page, duration, config, should_stop=lambda: not self.running)
             else:
-                log(f"🎞️ Reels: {duration} мин")
+                log(f"Reels: {duration} мин")
                 scroll_reels(page, duration, config, should_stop=lambda: not self.running)
         except Exception as e:
-            log(f"⚠️ Ошибка скроллинга: {e}")
+            log(f"Ошибка скроллинга: {e}")
 
     def _run_stories(self, page) -> None:
         try:
             max_stories = self.config.stories_max if isinstance(self.config.stories_max, int) else 3
-            log(f"📺 Stories (max {max_stories})")
+            log(f"Stories (max {max_stories})")
             watch_stories(page, max_stories=max_stories, log=log)
         except Exception as e:
-            log(f"⚠️ Ошибка Stories: {e}")
+            log(f"Ошибка Stories: {e}")
 
-    def _run_follow(self, page, account: ThreadsAccount) -> None:
+    def _run_follow(self, page, account: ThreadsAccount, profile_data: Optional[Dict[str, Any]] = None) -> None:
         try:
-            log("➕ Follow...")
-            profiles = self.accounts_client.get_profiles_with_assigned_accounts()
-            profile_data = next((p for p in profiles if p.get("name") == account.username), None)
-            if not profile_data:
-                log("⚠️ Не найден профиль в БД.")
+            log("Follow...")
+            profile_id = profile_data.get("profile_id") if profile_data else None
+            if not profile_id:
+                profiles = self.accounts_client.get_profiles_with_assigned_accounts()
+                fallback = next((p for p in profiles if p.get("name") == account.username), None)
+                profile_id = fallback.get("profile_id") if fallback else None
+            if not profile_id:
+                log("Не найден профиль в БД.")
                 return
-
-            profile_id = profile_data.get("profile_id")
             accounts = self.accounts_client.get_accounts_for_profile(profile_id)
             usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
             account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
             if not usernames:
-                log("ℹ️ Нет целей для подписки.")
+                log("Нет целей для подписки.")
                 return
 
             usernames = apply_count_limit(usernames, self.config.follow_count_range)
             if self.config.follow_count_range:
-                log(f"🔢 Лимит Follow за сессию: {len(usernames)}")
+                log(f"Лимит Follow за сессию: {len(usernames)}")
 
             interactions_config = {
                 "highlights_range": self.config.highlights_range,
@@ -404,7 +459,7 @@ class InstagramAutomationRunner:
                 account_map,
                 log,
                 "subscribed",
-                success_message="💾 Статус @{username} -> 'subscribed'.",
+                success_message="Статус @{username} -> 'subscribed'.",
             )
             on_follow_skip = create_status_callback(
                 self.accounts_client,
@@ -412,7 +467,7 @@ class InstagramAutomationRunner:
                 log,
                 "skipped",
                 clear_assigned=True,
-                success_message="💾 Пропуск @{username}: 'skipped', снято назначение.",
+                success_message="Пропуск @{username}: 'skipped', снято назначение.",
             )
 
             follow_usernames(
@@ -428,28 +483,30 @@ class InstagramAutomationRunner:
                 on_skip=on_follow_skip,
             )
         except Exception as e:
-            log(f"⚠️ Ошибка Follow: {e}")
+            log(f"Ошибка Follow: {e}")
 
-    def _run_unfollow_only(self, page, account: ThreadsAccount) -> None:
+    def _run_unfollow_only(self, page, account: ThreadsAccount, profile_data: Optional[Dict[str, Any]] = None) -> None:
         try:
-            log("🔪 Unfollow...")
+            log("Unfollow...")
             delay_range = self.config.unfollow_delay_range or (10, 30)
-            profiles = self.accounts_client.get_profiles_with_assigned_accounts(status="unsubscribed")
-            profile_data = next((p for p in profiles if p.get("name") == account.username), None)
-            if not profile_data:
-                log("ℹ️ Нет данных профиля для отписки.")
+            profile_id = profile_data.get("profile_id") if profile_data else None
+            if not profile_id:
+                profiles = self.accounts_client.get_profiles_with_assigned_accounts(status="unsubscribed")
+                fallback = next((p for p in profiles if p.get("name") == account.username), None)
+                profile_id = fallback.get("profile_id") if fallback else None
+            if not profile_id:
+                log("Нет данных профиля для отписки.")
                 return
-            profile_id = profile_data.get("profile_id")
             accounts = self.accounts_client.get_accounts_for_profile(profile_id, status="unsubscribed")
             if not accounts:
-                log("ℹ️ Нет назначенных аккаунтов для отписки.")
+                log("Нет назначенных аккаунтов для отписки.")
                 return
             usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
             account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
 
             usernames = apply_count_limit(usernames, self.config.unfollow_count_range)
             if self.config.unfollow_count_range:
-                log(f"🔢 Лимит Unfollow за сессию: {len(usernames)}")
+                log(f"Лимит Unfollow за сессию: {len(usernames)}")
 
             on_unfollow_success = create_status_callback(self.accounts_client, account_map, log, "done", clear_assigned=True)
             unfollow_usernames(
@@ -463,11 +520,11 @@ class InstagramAutomationRunner:
                 page=page,
             )
         except Exception as e:
-            log(f"⚠️ Ошибка Unfollow: {e}")
+            log(f"Ошибка Unfollow: {e}")
 
     def _run_approve_only(self, page, account: ThreadsAccount) -> None:
         try:
-            log("✅ Approve Requests...")
+            log("Approve Requests...")
             approve_follow_requests(
                 profile_name=account.username,
                 proxy_string=account.proxy or "",
@@ -476,43 +533,56 @@ class InstagramAutomationRunner:
                 page=page,
             )
         except Exception as e:
-            log(f"⚠️ Ошибка Approve: {e}")
+            log(f"Ошибка Approve: {e}")
 
-    def _run_message_only(self, page, account: ThreadsAccount) -> None:
+    def _run_message_only(
+        self,
+        page,
+        account: ThreadsAccount,
+        profile_data: Optional[Dict[str, Any]] = None,
+        cached_targets: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         try:
-            log("✉️ Messaging...")
-            profiles = self.accounts_client.get_profiles_with_assigned_accounts()
-            profile_data = next((p for p in profiles if p.get("name") == account.username), None)
-            if not profile_data:
-                log("⚠️ Не найден профиль для сообщений.")
+            log("Messaging...")
+            profile_id = profile_data.get("profile_id") if profile_data else None
+            if not profile_id:
+                profiles = self.accounts_client.get_profiles_with_assigned_accounts()
+                fallback = next((p for p in profiles if p.get("name") == account.username), None)
+                profile_id = fallback.get("profile_id") if fallback else None
+            if not profile_id:
+                log("Не найден профиль для сообщений.")
                 return
-            profile_id = profile_data.get("profile_id")
-            targets = self.accounts_client.get_accounts_to_message(profile_id)
-            if not targets:
-                log("ℹ️ Нет целей для сообщений.")
-                return
+
+            if cached_targets is not None:
+                eligible = cached_targets
+            else:
+                targets = self.accounts_client.get_accounts_to_message(profile_id)
+                if not targets:
+                    log("Нет целей для сообщений.")
+                    return
             now = datetime.now(timezone.utc)
-            eligible = []
-            for t in targets:
-                ts = t.get("last_message_sent_at")
-                if not ts:
-                    eligible.append(t)
-                    continue
-                try:
-                    s = str(ts).replace("Z", "+00:00")
-                    dt = datetime.fromisoformat(s)
-                    if not dt.tzinfo:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    cooldown_enabled = bool(getattr(self.config, "messaging_cooldown_enabled", True))
-                    cooldown_hours = int(getattr(self.config, "messaging_cooldown_hours", 2) or 0)
-                    if not cooldown_enabled or cooldown_hours <= 0:
+            if cached_targets is None:
+                eligible = []
+                for t in targets:
+                    ts = t.get("last_message_sent_at")
+                    if not ts:
                         eligible.append(t)
-                    elif now - dt >= timedelta(hours=cooldown_hours):
+                        continue
+                    try:
+                        s = str(ts).replace("Z", "+00:00")
+                        dt = datetime.fromisoformat(s)
+                        if not dt.tzinfo:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                        cooldown_enabled = bool(getattr(self.config, "messaging_cooldown_enabled", True))
+                        cooldown_hours = int(getattr(self.config, "messaging_cooldown_hours", 2) or 0)
+                        if not cooldown_enabled or cooldown_hours <= 0:
+                            eligible.append(t)
+                        elif now - dt >= timedelta(hours=cooldown_hours):
+                            eligible.append(t)
+                    except Exception:
                         eligible.append(t)
-                except Exception:
-                    eligible.append(t)
             if not eligible:
-                log("ℹ️ Нет целей для сообщений из-за кулдауна.")
+                log("Нет целей для сообщений из-за кулдауна.")
                 return
             message_texts = self.config.message_texts or ["Hi!"]
             send_messages(
@@ -527,7 +597,7 @@ class InstagramAutomationRunner:
                 page=page,
             )
         except Exception as e:
-            log(f"⚠️ Ошибка Messaging: {e}")
+            log(f"Ошибка Messaging: {e}")
 
 
 def _build_config(settings: Dict[str, Any], message_texts: List[str]) -> ScrollingConfig:
@@ -633,17 +703,17 @@ def _build_config(settings: Dict[str, Any], message_texts: List[str]) -> Scrolli
 def main() -> int:
     raw = sys.stdin.read()
     if not raw.strip():
-        log("❌ Не получены входные данные.")
+        log("Не получены входные данные.")
         return 2
     try:
         payload = json.loads(raw)
     except Exception as e:
-        log(f"❌ Некорректный JSON: {e}")
+        log(f"Некорректный JSON: {e}")
         return 2
 
     settings = payload.get("settings") if isinstance(payload, dict) else None
     if not isinstance(settings, dict):
-        log("❌ settings должен быть объектом.")
+        log("settings должен быть объектом.")
         return 2
 
     selected_list_ids = settings.get("source_list_ids") or payload.get("source_list_ids") or []
@@ -663,16 +733,16 @@ def main() -> int:
         ]
     )
     if not enable_any:
-        log("❌ Выберите хотя бы один тип активности!")
+        log("Выберите хотя бы один тип активности!")
         return 2
 
     if not selected_list_ids:
-        log("❌ Выберите список профилей!")
+        log("Выберите список профилей!")
         return 2
 
     profiles = _fetch_profiles_for_lists(selected_list_ids)
     if not profiles:
-        log("❌ В выбранном списке нет профилей!")
+        log("В выбранном списке нет профилей!")
         return 2
 
     target_accounts: List[ThreadsAccount] = []
@@ -683,7 +753,7 @@ def main() -> int:
         target_accounts.append(ThreadsAccount(username=name, password="", proxy=p.get("proxy")))
 
     if not target_accounts:
-        log("❌ В выбранном списке нет валидных профилей!")
+        log("В выбранном списке нет валидных профилей!")
         return 2
 
     message_texts: List[str] = []
@@ -719,7 +789,7 @@ def main() -> int:
     if config.enable_message:
         tasks.append("Message")
 
-    log(f"🔄 Запуск полного цикла ({', '.join(tasks)}) для {len(target_accounts)} профилей...")
+    log(f"Запуск полного цикла ({', '.join(tasks)}) для {len(target_accounts)} профилей...")
 
     runner = InstagramAutomationRunner(config, target_accounts)
 

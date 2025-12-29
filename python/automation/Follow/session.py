@@ -38,7 +38,7 @@ def follow_usernames(
     clean_usernames_list: List[str] = clean_usernames(usernames)
 
     if not clean_usernames_list:
-        log("⚠️ Нет валидных юзернеймов для подписки.")
+        log("Нет валидных юзернеймов для подписки.")
         return
 
     def _run_follow_logic(current_page):
@@ -50,11 +50,11 @@ def follow_usernames(
 
         for username in clean_usernames_list:
             if should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 break
 
             try:
-                log(f"➡️ Открываю @{username}")
+                log(f"Открываю @{username}")
                 current_page.goto(f"https://www.instagram.com/{username}/", timeout=20000, wait_until="domcontentloaded")
                 random_delay(1, 2)
 
@@ -63,7 +63,7 @@ def follow_usernames(
                         try:
                             on_skip(username)
                         except Exception as callback_err:
-                            log(f"⚠️ Не удалось обновить статус пропуска @{username}: {callback_err}")
+                            log(f"Не удалось обновить статус пропуска @{username}: {callback_err}")
                     continue
 
                 # Light interactions before follow
@@ -77,41 +77,41 @@ def follow_usernames(
                 )
 
                 if should_stop():
-                    log("⏹️ Остановка по запросу пользователя.")
+                    log("Остановка по запросу пользователя.")
                     break
 
                 state, btn = find_follow_control(current_page)
                 if state in ("requested", "following"):
-                    log(f"ℹ️ Уже подписаны/запрошено для @{username} ({state}).")
+                    log(f"Уже подписаны/запрошено для @{username} ({state}).")
                     call_on_success(on_success, username, log)
                     continue
 
                 if btn:
-                    log(f"➕ Нажимаю Follow на @{username}...")
+                    log(f"Нажимаю Follow на @{username}...")
                     btn.click()
                     random_delay(1, 2)
                     state_after = wait_for_follow_state(current_page, timeout_ms=8000)
                     if state_after in ("requested", "following"):
-                        log(f"✅ Успешная подписка на @{username}")
+                        log(f"Успешная подписка на @{username}")
                         call_on_success(on_success, username, log)
                     else:
-                        log(f"⚠️ Статус не изменился после клика для @{username} ({state_after})")
+                        log(f"Статус не изменился после клика для @{username} ({state_after})")
                 else:
-                    log(f"⚠️ Не нашел кнопку Follow для @{username}")
+                    log(f"Не нашел кнопку Follow для @{username}")
 
             except Exception as e:
-                log(f"❌ Ошибка при обработке @{username}: {e}")
+                log(f"Ошибка при обработке @{username}: {e}")
                 random_delay(2, 5)
 
             # Random delay between users
             random_delay(10, 20)
 
     if page:
-        log(f"🔄 Использую существующую сессию для подписки ({len(clean_usernames_list)} чел.)")
+        log(f"Использую существующую сессию для подписки ({len(clean_usernames_list)} чел.)")
         _run_follow_logic(page)
         return
 
-    log(f"🧭 Стартую Camoufox для профиля {profile_name}")
+    log(f"Стартую Camoufox для профиля {profile_name}")
 
     with create_browser_context(
         profile_name=profile_name,
@@ -120,4 +120,4 @@ def follow_usernames(
     ) as (_context, page):
         _run_follow_logic(page)
     
-    log("🏁 Сессия завершена.")
+    log("Сессия завершена.")

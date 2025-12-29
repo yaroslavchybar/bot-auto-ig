@@ -6,7 +6,7 @@ def perform_follow(page, post_element) -> bool:
         )
         if btn:
             btn.click()
-            print("[➕] Followed user")
+            print("Followed user")
             return True
     except Exception as e:
         print(f"[!] Error following: {e}")

@@ -6,7 +6,7 @@ def _safe(log: Callable[[str], None], action: str, func):
     try:
         func()
     except Exception as err:
-        log(f"ℹ️ Пропускаю {action}: {err}")
+        log(f"Пропускаю {action}: {err}")
 
 
 def _normalize_range(range_values, default: Tuple[int, int]) -> Tuple[int, int]:

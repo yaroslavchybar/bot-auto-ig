@@ -1,9 +1,9 @@
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from datetime import datetime, timezone
+from datetime import timedelta
 from typing import List, Dict, Optional
 from .config import PROJECT_URL, SECRET_KEY
+from .shared_session import get_shared_session
 
 class SupabaseProfilesError(Exception):
     """Raised when Supabase profiles API call fails."""
@@ -24,16 +24,7 @@ class SupabaseProfilesClient:
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
-        self.session = requests.Session()
-        retries = Retry(
-            total=3,
-            backoff_factor=1.5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["GET", "POST", "PATCH", "DELETE"],
-        )
-        adapter = HTTPAdapter(max_retries=retries)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
+        self.session = get_shared_session()
         self.timeout = (10, 60)
 
     def _make_request(self, method: str, endpoint: str = "", data: Optional[Dict] = None, params: Optional[Dict] = None):
@@ -63,6 +54,27 @@ class SupabaseProfilesClient:
     def get_all_profiles(self) -> List[Dict]:
         """Fetch all profiles from database"""
         return self._make_request("GET") or []
+
+    def get_available_profiles(
+        self, list_ids: List[str], max_sessions: int, cooldown_minutes: int
+    ) -> List[Dict]:
+        if not list_ids:
+            return []
+        clean_ids = [str(lid).strip().replace('"', "") for lid in list_ids if str(lid).strip()]
+        if not clean_ids:
+            return []
+        quoted = ",".join([f'"{lid}"' for lid in clean_ids])
+        cutoff_iso = (
+            datetime.now(timezone.utc) - timedelta(minutes=int(cooldown_minutes or 0))
+        ).isoformat(timespec="seconds")
+        params = {
+            "select": "profile_id,name,proxy,user_agent,list_id,sessions_today,last_opened_at",
+            "list_id": f"in.({quoted})",
+            "sessions_today": f"lt.{int(max_sessions)}",
+            "or": f"(last_opened_at.is.null,last_opened_at.lt.{cutoff_iso})",
+            "order": "created_at.asc",
+        }
+        return self._make_request("GET", params=params) or []
 
     def get_profile_by_name(self, name: str) -> Optional[Dict]:
         """Fetch a single profile by name."""

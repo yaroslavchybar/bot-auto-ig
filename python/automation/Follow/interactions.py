@@ -34,21 +34,21 @@ def pre_follow_interactions(
         total_posts = get_posts_count(page, log)
         if total_posts:
             effective_posts = min(total_posts, 10)
-            log(f"📊 Найдено постов: {total_posts}")
+            log(f"Найдено постов: {total_posts}")
             if effective_posts < total_posts:
-                log(f"📊 Для расчётов использую максимум: {effective_posts}")
+                log(f"Для расчётов использую максимум: {effective_posts}")
             
             if likes_percentage > 0:
                 likes_to_put = int(round(effective_posts * (likes_percentage / 100.0)))
-                log(f"❤️ Лайки по проценту ({likes_percentage}%): {likes_to_put}")
+                log(f"Лайки по проценту ({likes_percentage}%): {likes_to_put}")
                 
             if scroll_percentage > 0:
                 posts_to_scroll = int(round(effective_posts * (scroll_percentage / 100.0)))
                 calculated_scrolls = max(1, int(posts_to_scroll / 5))
                 scroll_count = calculated_scrolls
-                log(f"📜 Скролл по проценту ({scroll_percentage}% от {effective_posts} постов): {scroll_count} скроллов")
+                log(f"Скролл по проценту ({scroll_percentage}% от {effective_posts} постов): {scroll_count} скроллов")
         else:
-            log("⚠️ Не удалось определить число постов для процентного расчета. Использую случайные значения.")
+            log("Не удалось определить число постов для процентного расчета. Использую случайные значения.")
 
     liked_posts: Set[str] = set()
 
@@ -81,18 +81,18 @@ def pre_follow_interactions(
     if highlights_to_watch > 0:
         actions.append(do_highlights)
     else:
-        log("ℹ️ Пропускаю хайлайты (настроено 0).")
+        log("Пропускаю хайлайты (настроено 0).")
 
     # Scroll action is always available to randomize with likes/highlights.
     if likes_to_put > 0:
         actions.append(do_scroll_and_likes)
     else:
         actions.append(do_scroll)
-        log("ℹ️ Пропускаю лайки (настроено 0).")
+        log("Пропускаю лайки (настроено 0).")
 
     random.shuffle(actions)
     for action in actions:
         if should_stop and should_stop():
-            log("⏹️ Остановка по запросу пользователя.")
+            log("Остановка по запросу пользователя.")
             break
         action()

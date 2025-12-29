@@ -79,7 +79,7 @@ def perform_like(page) -> bool:
                     return False
 
                 page.mouse.click(x, y)
-                print("[♥] Liked reel")
+                print("Liked reel")
                 return True
     except Exception as e:
         print(f"[!] Error liking reel: {e}")

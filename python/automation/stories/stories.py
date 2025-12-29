@@ -93,7 +93,7 @@ def _find_story_bubble(page, log=None):
 
     unseen = [c for c in candidates if c[2]]
     if not unseen:
-        log("ℹ️ Stories: no unseen bubbles found, skipping")
+        log("Stories: no unseen bubbles found, skipping")
         return None
 
     unseen.sort(key=lambda t: (t[0], t[1]))
@@ -133,7 +133,7 @@ def _go_home(page, log=None) -> bool:
         pass
 
     try:
-        log("🏠 Stories: opening Home")
+        log("Stories: opening Home")
         svg = page.query_selector('svg[aria-label="Home"]')
         if svg:
             btn = svg.query_selector('xpath=ancestor-or-self::*[@role="link"][1]') or svg.query_selector('xpath=ancestor-or-self::*[@role="button"][1]')
@@ -157,7 +157,7 @@ def _go_home(page, log=None) -> bool:
         random_delay(2.0, 4.0)
         return True
     except Exception:
-        log("⚠️ Stories: failed to open Home")
+        log("Stories: failed to open Home")
         return False
 
 
@@ -197,11 +197,11 @@ def watch_stories(page, max_stories: int = 3, min_view_s: float = 2.0, max_view_
         _go_home(page, log=log)
         bubble = _find_story_bubble(page, log=log)
         if not bubble:
-            log("ℹ️ Stories: no bubbles detected in tray")
+            log("Stories: no bubbles detected in tray")
             return False
 
         if not _click_center(page, bubble):
-            log("⚠️ Stories: bubble click failed")
+            log("Stories: bubble click failed")
             return False
 
         opened = True
@@ -228,9 +228,9 @@ def watch_stories(page, max_stories: int = 3, min_view_s: float = 2.0, max_view_
         except Exception:
             pass
 
-        log(f"✅ Stories: watched {stories_watched}")
+        log(f"Stories: watched {stories_watched}")
         return opened
 
     except Exception as e:
-        log(f"❌ Stories: error {e}")
+        log(f"Stories: error {e}")
         return False

@@ -260,7 +260,7 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                     
                 human_mouse_move(page)
 
-        print(f"[✓] Scroll session complete: {stats}")
+        print(f"Scroll session complete: {stats}")
         return stats
 
     except Exception as e:

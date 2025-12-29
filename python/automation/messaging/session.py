@@ -74,7 +74,7 @@ def send_messages(
     should_stop = should_stop or (lambda: False)
     
     if not targets:
-        log("ℹ️ Нет пользователей для рассылки сообщений.")
+        log("Нет пользователей для рассылки сообщений.")
         return
     client = InstagramAccountsClient()
 
@@ -86,7 +86,7 @@ def send_messages(
             random_delay(2, 4)
 
             # Navigate to Direct Inbox using sidebar Messages button
-            log("📨 Перехожу в Direct Inbox через кнопку Messages...")
+            log("Перехожу в Direct Inbox через кнопку Messages...")
 
             # Wait for page to fully load
             page.wait_for_load_state('networkidle', timeout=15000)
@@ -98,7 +98,7 @@ def send_messages(
             try:
                 messages_button = page.locator('a[href="/direct/inbox/"]').first
                 if messages_button.is_visible(timeout=3000):
-                    log("✅ Найдена кнопка Messages по href")
+                    log("Найдена кнопка Messages по href")
                 else:
                     messages_button = None
             except:
@@ -109,7 +109,7 @@ def send_messages(
                 try:
                     messages_button = page.locator('a[aria-label*="Direct messaging"]').first
                     if messages_button.is_visible(timeout=3000):
-                        log("✅ Найдена кнопка Messages по aria-label")
+                        log("Найдена кнопка Messages по aria-label")
                     else:
                         messages_button = None
                 except:
@@ -120,7 +120,7 @@ def send_messages(
                 try:
                     messages_button = page.locator('svg[aria-label="Messages"]').locator('xpath=ancestor::a').first
                     if messages_button.is_visible(timeout=3000):
-                        log("✅ Найдена кнопка Messages по SVG")
+                        log("Найдена кнопка Messages по SVG")
                     else:
                         messages_button = None
                 except:
@@ -131,7 +131,7 @@ def send_messages(
                 try:
                     messages_button = page.locator('a[href*="direct"]').first
                     if messages_button.is_visible(timeout=3000):
-                        log("✅ Найдена кнопка Messages по href содержащему 'direct'")
+                        log("Найдена кнопка Messages по href содержащему 'direct'")
                     else:
                         messages_button = None
                 except:
@@ -140,11 +140,11 @@ def send_messages(
             if messages_button:
                 # Use cursor to click on the Messages button
                 messages_button.click()
-                log("✅ Кликнул на кнопку Messages в сайдбаре")
+                log("Кликнул на кнопку Messages в сайдбаре")
 
                 # Wait for navigation to complete
                 page.wait_for_load_state('networkidle', timeout=10000)
-                log("✅ Переход в Direct Inbox завершен")
+                log("Переход в Direct Inbox завершен")
             else:
                 raise Exception("Не удалось найти кнопку Messages в сайдбаре")
 
@@ -161,7 +161,7 @@ def send_messages(
 
             # Load alternative messages for when users message first
             message_2_texts = load_message_2_texts()
-            log(f"📄 Загружено {len(message_2_texts)} альтернативных сообщений из базы")
+            log(f"Загружено {len(message_2_texts)} альтернативных сообщений из базы")
 
             processed_count = 0
 
@@ -175,7 +175,7 @@ def send_messages(
                 if not username:
                     continue
 
-                log(f"👤 Обработка сообщения для: {username}")
+                log(f"Обработка сообщения для: {username}")
                 
                 try:
                     last_sent_str = client.get_last_message_sent_at(account_id)
@@ -188,10 +188,10 @@ def send_messages(
                             now = datetime.datetime.now(datetime.timezone.utc)
                             delta = now - last_sent_dt
                             if cooldown_enabled and cooldown_hours > 0 and delta.total_seconds() < cooldown_hours * 3600:
-                                log(f"⏳ Пропускаю {username}: последнее сообщение {int(delta.total_seconds()//60)} мин назад")
+                                log(f"Пропускаю {username}: последнее сообщение {int(delta.total_seconds()//60)} мин назад")
                                 continue
                 except Exception as e:
-                    log(f"⚠️ Не удалось проверить время последней отправки для {username}: {e}")
+                    log(f"Не удалось проверить время последней отправки для {username}: {e}")
 
                 try:
                     # 1. Click on the search input field to start a new conversation
@@ -209,9 +209,9 @@ def send_messages(
 
                     if search_input.is_visible():
                         search_input.click()
-                        log("✅ Кликнул на поле поиска для начала нового сообщения")
+                        log("Кликнул на поле поиска для начала нового сообщения")
                     else:
-                        log(f"⚠️ Поле поиска не найдено, пропускаю {username}...")
+                        log(f"Поле поиска не найдено, пропускаю {username}...")
                         continue
 
                     # Wait for modal to open
@@ -235,13 +235,13 @@ def send_messages(
                         try:
                             modal_search = page.locator(selector).first
                             if modal_search.is_visible(timeout=2000):
-                                log(f"✅ Найдено поле поиска в модале: {selector}")
+                                log(f"Найдено поле поиска в модале: {selector}")
                                 break
                         except:
                             continue
 
                     if not modal_search or not modal_search.is_visible():
-                        log(f"⚠️ Поле поиска в модальном окне не найдено, пропускаю {username}...")
+                        log(f"Поле поиска в модальном окне не найдено, пропускаю {username}...")
                         # Try to close modal by pressing Escape
                         page.keyboard.press("Escape")
                         random_delay(1, 2)
@@ -251,7 +251,7 @@ def send_messages(
                     modal_search.clear()
                     random_delay(0.5, 1)
                     modal_search.type(username, delay=random.randint(100, 200))
-                    log(f"✅ Набрал имя пользователя: {username}")
+                    log(f"Набрал имя пользователя: {username}")
 
                     random_delay(2, 3)
                         
@@ -270,15 +270,15 @@ def send_messages(
                         # Sometimes it's a checkbox (circle)
                         if user_row.is_visible(timeout=5000):
                             user_row.click()
-                            log(f"✅ Выбрал пользователя: {username}")
+                            log(f"Выбрал пользователя: {username}")
                             random_delay(2, 4) # Wait for chat to open
 
                             # Check for incoming messages before sending
                             has_incoming = detect_incoming_messages(page)
                             if has_incoming:
-                                log(f"📨 Обнаружены входящие сообщения от {username}, отправляю альтернативное сообщение")
+                                log(f"Обнаружены входящие сообщения от {username}, отправляю альтернативное сообщение")
                             else:
-                                log(f"📨 Входящих сообщений от {username} не обнаружено, отправляю обычное сообщение")
+                                log(f"Входящих сообщений от {username} не обнаружено, отправляю обычное сообщение")
 
                             # 4. Type and Send Message
                             # In Instagram Direct, after selecting user, chat opens immediately
@@ -297,7 +297,7 @@ def send_messages(
                                 try:
                                     msg_box = page.locator(selector).first
                                     if msg_box.is_visible(timeout=3000):
-                                        log(f"✅ Найдено поле ввода сообщения: {selector}")
+                                        log(f"Найдено поле ввода сообщения: {selector}")
                                         break
                                 except:
                                     continue
@@ -310,14 +310,14 @@ def send_messages(
                                 # Select message based on whether incoming messages were detected
                                 if has_incoming:
                                     selected_message = random.choice(message_2_texts)
-                                    log(f"📝 Использую альтернативное сообщение: {selected_message[:50]}...")
+                                    log(f"Использую альтернативное сообщение: {selected_message[:50]}...")
                                 else:
                                     selected_message = random.choice(message_texts)
-                                    log(f"📝 Использую обычное сообщение: {selected_message[:50]}...")
+                                    log(f"Использую обычное сообщение: {selected_message[:50]}...")
 
                                 # Type the message with human-like delays
                                 msg_box.type(selected_message, delay=random.randint(100, 200))
-                                log(f"✅ Набрал сообщение: {selected_message}")
+                                log(f"Набрал сообщение: {selected_message}")
 
                                 random_delay(1, 2)
 
@@ -333,54 +333,54 @@ def send_messages(
                                     except:
                                         random_delay(5, 5)
                                         page.keyboard.press("Enter")
-                                    log(f"✅ Отправил сообщение для {username}")
+                                    log(f"Отправил сообщение для {username}")
 
                                     # Update DB based on message type
                                     try:
                                         if has_incoming:
                                             client.update_account_link_sent(username, "done")
-                                            log(f"💾 {username}: link_sent -> done (альтернативное сообщение отправлено)")
+                                            log(f"{username}: link_sent -> done (альтернативное сообщение отправлено)")
                                         else:
                                             client.update_account_link_sent(username, "needed to send")
-                                            log(f"💾 {username}: link_sent -> needed to send")
+                                            log(f"{username}: link_sent -> needed to send")
                                         client.set_last_message_sent_now(account_id)
-                                        log(f"💾 {username}: обновлено время последней отправки")
+                                        log(f"{username}: обновлено время последней отправки")
                                     except Exception as db_e:
-                                        log(f"⚠️ Ошибка БД для {username}: {db_e}")
+                                        log(f"Ошибка БД для {username}: {db_e}")
 
                                     processed_count += 1
                                 else:
-                                    log(f"⚠️ Кнопка Send не найдена для {username}")
+                                    log(f"Кнопка Send не найдена для {username}")
                             else:
-                                log(f"⚠️ Не удалось найти поле ввода сообщения для {username}")
+                                log(f"Не удалось найти поле ввода сообщения для {username}")
 
                         else:
-                            log(f"⚠️ Пользователь {username} не найден в поиске.")
+                            log(f"Пользователь {username} не найден в поиске.")
                             # Close modal by pressing Escape
                             page.keyboard.press("Escape")
 
                     except Exception as e:
-                         log(f"⚠️ Ошибка при выборе пользователя {username}: {e}")
+                         log(f"Ошибка при выборе пользователя {username}: {e}")
                          # Close modal by pressing Escape
                          page.keyboard.press("Escape")
 
                     random_delay(3, 5) # Delay between messages
 
                 except Exception as e:
-                    log(f"❌ Ошибка в процессе отправки для {username}: {e}")
+                    log(f"Ошибка в процессе отправки для {username}: {e}")
                     # Try to recover navigation
                     try:
                         page.goto("https://www.instagram.com/direct/inbox/", timeout=10000)
                     except:
                         pass
             
-            log(f"✅ Рассылка завершена. Отправлено: {processed_count}")
+            log(f"Рассылка завершена. Отправлено: {processed_count}")
 
         except Exception as e:
-            log(f"❌ Критическая ошибка браузера: {e}")
+            log(f"Критическая ошибка браузера: {e}")
         
         try:
-            log("🏠 Messages: возвращаюсь домой")
+            log("Messages: возвращаюсь домой")
             try:
                 svg = page.query_selector('svg[aria-label="Home"]')
                 if svg:
@@ -400,7 +400,7 @@ def send_messages(
                 if close_svg:
                     close_btn = close_svg.query_selector('xpath=ancestor-or-self::*[self::button or @role="button"][1]') or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
                     (close_btn or close_svg).click()
-                    log("✅ Messages: закрыл всплывающее окно")
+                    log("Messages: закрыл всплывающее окно")
                 else:
                     page.keyboard.press("Escape")
             except Exception:
@@ -410,14 +410,14 @@ def send_messages(
                     pass
             random_delay(0.6, 1.2)
         except Exception as e:
-            log(f"⚠️ Messages: ошибка очистки: {e}")
+            log(f"Messages: ошибка очистки: {e}")
 
     if page:
-        log(f"🔄 Использую существующую сессию для рассылки сообщений.")
+        log(f"Использую существующую сессию для рассылки сообщений.")
         _run_messaging_logic(page)
         return
 
-    log(f"✉️ [Messages] Запуск браузера для профиля: {profile_name}")
+    log(f"[Messages] Запуск браузера для профиля: {profile_name}")
 
     with create_browser_context(
         profile_name=profile_name,

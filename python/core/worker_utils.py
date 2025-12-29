@@ -87,8 +87,8 @@ def create_status_callback(
     status: str,
     assigned_to: Optional[str] = None,
     clear_assigned: bool = False,
-    success_message: str = "💾 Status @{username} updated to '{status}'.",
-    error_message: str = "⚠️ Failed to update status for @{username}: {error}"
+    success_message: str = "Status @{username} updated to '{status}'.",
+    error_message: str = "Failed to update status for @{username}: {error}"
 ) -> Callable[[str], None]:
     """
     Create a callback function for updating account status on success/skip.

@@ -9,10 +9,13 @@ export type ActionName =
 
 export type ListRow = { id: string; name: string };
 
+export type LogLevel = 'info' | 'warn' | 'error' | 'success';
+
 export type LogEntry = {
     ts: number;
     message: string;
     source?: string;
+    level?: LogLevel;
 };
 
 export type InstagramSettings = {

@@ -162,6 +162,6 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
     except Exception as e:
         print(f"[!] Error during reels scrolling: {e}")
 
-    print(f"[✓] Reels session complete: {stats}")
+    print(f"Reels session complete: {stats}")
     return stats
 

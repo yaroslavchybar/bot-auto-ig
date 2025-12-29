@@ -26,4 +26,4 @@ def call_on_success(
     try:
         on_success(username)
     except Exception as callback_err:
-        log(f"⚠️ Не удалось обновить статус @{username}: {callback_err}")
+        log(f"Не удалось обновить статус @{username}: {callback_err}")

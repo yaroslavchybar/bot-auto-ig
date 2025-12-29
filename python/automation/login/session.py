@@ -120,7 +120,7 @@ def login_session(
                 if not username_exists:
                     if page.locator("svg[aria-label='Home']").count() > 0 or \
                        page.locator("svg[aria-label='Search']").count() > 0:
-                        log("✅ Already logged in!")
+                        log("Already logged in!")
                         mark_login_success()
                         return login_succeeded
             except:
@@ -138,7 +138,7 @@ def login_session(
                     selectors = _find_login_inputs(page, log)
                     
                 if selectors is None:
-                    log("❌ Could not find login form inputs!")
+                    log("Could not find login form inputs!")
                     return False
                 
                 # Wait for username input
@@ -167,18 +167,18 @@ def login_session(
                 # Check for errors
                 if page.locator("p[id='slfErrorAlert']").count() > 0:
                     error_text = page.locator("p[id='slfErrorAlert']").text_content()
-                    log(f"❌ Login failed: {error_text}")
+                    log(f"Login failed: {error_text}")
                     return False
                 
                 # Check for success or 2FA
                 try:
                     page.wait_for_selector("svg[aria-label='Home']", timeout=20000)
-                    log("✅ Login successful! (Home icon found)")
+                    log("Login successful! (Home icon found)")
                     mark_login_success()
                 except:
                     # Maybe stuck on "Save Info" or 2FA
                     if "two_factor" in page.url or page.locator("input[name='verificationCode']").count() > 0:
-                        log("⚠️ 2FA required!")
+                        log("2FA required!")
                         
                         if two_factor_secret:
                             try:
@@ -208,7 +208,7 @@ def login_session(
                                 time.sleep(5)
                                 
                                 if "two_factor" not in page.url:
-                                    log("✅ 2FA passed!")
+                                    log("2FA passed!")
                                 else:
                                     # Retry confirm click
                                     if page.locator("button:has-text('Confirm')").count() > 0:
@@ -216,24 +216,24 @@ def login_session(
                                         time.sleep(5)
                                         
                             except Exception as e:
-                                log(f"❌ Error entering 2FA: {e}")
+                                log(f"Error entering 2FA: {e}")
                         else:
-                            log("⚠️ No 2FA secret provided. Please enter code manually if browser is open.")
+                            log("No 2FA secret provided. Please enter code manually if browser is open.")
                             time.sleep(30) 
                         
                         # Check success after 2FA
                         try:
                             page.wait_for_selector("svg[aria-label='Home']", timeout=20000)
-                            log("✅ Login successful! (Home icon found)")
+                            log("Login successful! (Home icon found)")
                             mark_login_success()
                         except:
-                            log("⚠️ Login verification timed out after 2FA.")
+                            log("Login verification timed out after 2FA.")
                             
                     else:
-                        log("⚠️ Login verification timed out. Please check screenshot or manual intervention.")
+                        log("Login verification timed out. Please check screenshot or manual intervention.")
                     
             except Exception as e:
-                log(f"❌ Error interacting with login form: {e}")
+                log(f"Error interacting with login form: {e}")
                 traceback.print_exc()
                 
             # Keep open for a bit to ensure cookies are saved
@@ -242,7 +242,7 @@ def login_session(
             
             return login_succeeded
     except Exception as e:
-        log(f"❌ Critical error: {e}")
+        log(f"Critical error: {e}")
         traceback.print_exc()
         return False
 

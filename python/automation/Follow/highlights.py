@@ -28,7 +28,7 @@ def watch_highlights(
     def _impl():
         target_highlights = highlights_to_watch if highlights_to_watch is not None else random.randint(2, 4)
         if target_highlights <= 0:
-            log("ℹ️ Пропускаю хайлайты (настроено 0).")
+            log("Пропускаю хайлайты (настроено 0).")
             return
 
         # Try multiple selectors for highlight buttons (more inclusive)
@@ -41,7 +41,7 @@ def watch_highlights(
         )
 
         if not highlight_buttons:
-            log("ℹ️ Хайлайты не найдены")
+            log("Хайлайты не найдены")
             return
 
         # Prefer only visible highlights to avoid clicking hidden/covered elements.
@@ -67,7 +67,7 @@ def watch_highlights(
 
         highlight_buttons = [btn for btn in highlight_buttons if _is_visible(btn)]
         if not highlight_buttons:
-            log("ℹ️ Видимых хайлайтов не найдено")
+            log("Видимых хайлайтов не найдено")
             return
 
         # Shuffle and try each highlight until one opens
@@ -97,16 +97,16 @@ def watch_highlights(
                         page.evaluate("(element) => element.click()", btn)
                         return True
                     except Exception as js_err:
-                        log(f"ℹ️ Не удалось кликнуть по хайлайту JS: {js_err}")
+                        log(f"Не удалось кликнуть по хайлайту JS: {js_err}")
                         return False
 
-        log("👀 Смотрю хайлайт...")
+        log("Смотрю хайлайт...")
 
         max_attempts = 8
         opened = False
         for btn in highlight_buttons:
             if should_stop and should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 return
 
             for attempt in range(max_attempts):
@@ -148,32 +148,32 @@ def watch_highlights(
                         opened = True
                         break
                     else:
-                        log("ℹ️ Хайлайт не открылся, пробую ещё...")
+                        log("Хайлайт не открылся, пробую ещё...")
                         random_delay(0.6, 1.2)
 
                 except Exception as wait_err:
                     if attempt == max_attempts - 1:
-                        log(f"ℹ️ Пропускаю кнопку хайлайта: {wait_err}")
+                        log(f"Пропускаю кнопку хайлайта: {wait_err}")
                     random_delay(0.5, 1.0)
 
             if opened:
                 break
 
         if not opened:
-            log("ℹ️ Не удалось открыть ни один хайлайт")
+            log("Не удалось открыть ни один хайлайт")
             return
 
-        log("✅ Хайлайт успешно открыт")
+        log("Хайлайт успешно открыт")
         random_delay(2.0, 4.0)
 
         # Actually watch the highlight and navigate through multiple highlights
-        log("📺 Смотрю хайлайты...")
+        log("Смотрю хайлайты...")
         highlights_watched = 0
         max_highlights_to_watch = target_highlights  # Configurable count
 
         while highlights_watched < max_highlights_to_watch:
             if should_stop and should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 break
 
             watch_time = random.uniform(3.0, 8.0)
@@ -185,27 +185,27 @@ def watch_highlights(
                 if next_btn:
                     try:
                         next_btn.click()
-                        log(f"➡️ Переход к следующему хайлайту ({highlights_watched + 1}/{max_highlights_to_watch})")
+                        log(f"Переход к следующему хайлайту ({highlights_watched + 1}/{max_highlights_to_watch})")
                         random_delay(1.0, 2.0)
                     except Exception as nav_err:
-                        log(f"ℹ️ Не удалось перейти к следующему хайлайту: {nav_err}")
+                        log(f"Не удалось перейти к следующему хайлайту: {nav_err}")
                         try:
                             page.keyboard.press("ArrowRight")
-                            log("➡️ Переход стрелкой вправо")
+                            log("Переход стрелкой вправо")
                             random_delay(1.0, 2.0)
                         except Exception as key_err:
-                            log(f"ℹ️ Не удалось перейти стрелкой: {key_err}")
+                            log(f"Не удалось перейти стрелкой: {key_err}")
                             break
                 else:
                     try:
                         page.keyboard.press("ArrowRight")
-                        log(f"➡️ Переход стрелкой вправо ({highlights_watched + 1}/{max_highlights_to_watch})")
+                        log(f"Переход стрелкой вправо ({highlights_watched + 1}/{max_highlights_to_watch})")
                         random_delay(1.0, 2.0)
                     except Exception as key_err:
-                        log(f"ℹ️ Кнопка 'Далее' не найдена и клавиша не сработала: {key_err}")
+                        log(f"Кнопка 'Далее' не найдена и клавиша не сработала: {key_err}")
                         break
 
-        log(f"✅ Просмотрено {highlights_watched} хайлайтов")
+        log(f"Просмотрено {highlights_watched} хайлайтов")
 
         # Close the highlight story - try close button first, then Escape as fallback
         close_btn = (page.query_selector('button[aria-label="Close"]') or
@@ -217,24 +217,24 @@ def watch_highlights(
         if close_btn:
             try:
                 close_btn.click()
-                log("❌ Хайлайт закрыт кнопкой")
+                log("Хайлайт закрыт кнопкой")
             except Exception as close_err:
-                log(f"ℹ️ Не удалось закрыть хайлайт кнопкой: {close_err}")
+                log(f"Не удалось закрыть хайлайт кнопкой: {close_err}")
                 try:
                     page.keyboard.press("Escape")
-                    log("❌ Хайлайт закрыт клавишей Escape")
+                    log("Хайлайт закрыт клавишей Escape")
                 except:
-                    log("ℹ️ Не удалось закрыть хайлайт")
+                    log("Не удалось закрыть хайлайт")
         else:
             # Fallback: try Escape key
             try:
                 page.keyboard.press("Escape")
-                log("❌ Хайлайт закрыт клавишей Escape")
+                log("Хайлайт закрыт клавишей Escape")
             except:
-                log("ℹ️ Не удалось закрыть хайлайт")
+                log("Не удалось закрыть хайлайт")
 
         # Extra delay after closing highlight to ensure page fully returns to normal state
-        log("ℹ️ Жду восстановления страницы после хайлайта...")
+        log("Жду восстановления страницы после хайлайта...")
         random_delay(3.0, 5.0)
 
     _safe(log, "хайлайты", _impl)

@@ -6,6 +6,7 @@ import random
 import datetime
 from contextlib import contextmanager
 from typing import Optional
+from threading import Thread
 from camoufox import Camoufox
 from camoufox.exceptions import InvalidProxy
 from python.automation import actions
@@ -144,7 +145,7 @@ def create_browser_context(
 ):
     profile_path = ensure_profile_path(profile_name, base_dir=base_dir)
     if _should_clean_today(profile_path):
-        _clean_cache2(profile_path)
+        Thread(target=_clean_cache2, args=(profile_path,), daemon=True).start()
     proxy_config = build_proxy_config(proxy_string)
 
     # Prepare common launch arguments
@@ -295,11 +296,11 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
                         if task_type == 'feed':
                             print(f"[*] [{idx}/{len(tasks)}] Running Feed scroll for {task_duration} mins...")
                             scroll_feed(page, task_duration, feed_config)
-                            print("[✓] Feed part complete.")
+                            print("Feed part complete.")
                         elif task_type == 'reels':
                             print(f"[*] [{idx}/{len(tasks)}] Running Reels scroll for {task_duration} mins...")
                             scroll_reels(page, task_duration, reels_config)
-                            print("[✓] Reels part complete.")
+                            print("Reels part complete.")
                         
                         # Small pause between tasks (except after the last one)
                         if idx < len(tasks):
@@ -319,7 +320,7 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
                     context.close()
                 except:
                     pass
-                print("[✓] Browser closed.")
+                print("Browser closed.")
                 return
 
     except KeyboardInterrupt:

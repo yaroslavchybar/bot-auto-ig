@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional
 import requests
 
 from python.supabase.config import PROJECT_URL, SECRET_KEY
+from python.supabase.shared_session import get_shared_session
 
 
 class InstagramAccountsError(Exception):
@@ -28,6 +29,8 @@ class InstagramAccountsClient:
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
+        self.session = get_shared_session()
+        self.timeout = 20
 
     def _request(
         self,
@@ -39,13 +42,19 @@ class InstagramAccountsClient:
     ):
         try:
             if method.upper() == "GET":
-                resp = requests.get(url, headers=self.headers, params=params, timeout=20)
+                resp = self.session.get(
+                    url, headers=self.headers, params=params, timeout=self.timeout
+                )
             elif method.upper() == "POST":
-                resp = requests.post(url, headers=self.headers, json=data, timeout=20)
+                resp = self.session.post(
+                    url, headers=self.headers, json=data, timeout=self.timeout
+                )
             elif method.upper() == "PATCH":
-                resp = requests.patch(url, headers=self.headers, json=data, timeout=20)
+                resp = self.session.patch(
+                    url, headers=self.headers, json=data, timeout=self.timeout
+                )
             elif method.upper() == "DELETE":
-                resp = requests.delete(url, headers=self.headers, timeout=20)
+                resp = self.session.delete(url, headers=self.headers, timeout=self.timeout)
             else:
                 raise InstagramAccountsError(f"Unsupported HTTP method: {method}")
 
@@ -229,8 +238,8 @@ class InstagramAccountsClient:
                 return False
             if not self.is_profile_busy(profile_id):
                 return True
-            log(f"⏳ Профиль занят, жду освобождения... ({int(time.monotonic() - start)}s)")
+            log(f"Профиль занят, жду освобождения... ({int(time.monotonic() - start)}s)")
             time.sleep(poll_interval)
 
-        log("⚠️ Ожидание профиля истекло, продолжаю.")
+        log("Ожидание профиля истекло, продолжаю.")
         return False

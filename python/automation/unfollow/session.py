@@ -27,7 +27,7 @@ def unfollow_usernames(
     # Filter out empty usernames
     target_usernames = [u.strip() for u in usernames if u.strip()]
     if not target_usernames:
-        log("⚠️ Нет юзернеймов для отписки.")
+        log("Нет юзернеймов для отписки.")
         return
 
     def _run_unfollow_logic(current_page):
@@ -36,7 +36,7 @@ def unfollow_usernames(
                 current_page.goto("https://www.instagram.com", timeout=15000)
             
             # 1. Go to own profile
-            log("👤 Ищу ссылку на свой профиль...")
+            log("Ищу ссылку на свой профиль...")
             try:
                 # Target the image inside the "Profile" link (sidebar).
                 # We filter by text "Profile" to distinguish from Stories avatars.
@@ -49,13 +49,13 @@ def unfollow_usernames(
                 # Manual mouse movement to the element
                 box = profile_pic.bounding_box()
                 if box:
-                    log("🖱️ Двигаю курсор к аватару...")
+                    log("Двигаю курсор к аватару...")
                     x = box["x"] + box["width"] / 2
                     y = box["y"] + box["height"] / 2
                     current_page.mouse.move(x, y)
                     random_delay(0.5, 1.5)
                 
-                log(f"🖱️ Кликаю на аватар...")
+                log(f"Кликаю на аватар...")
                 # Force click to bypass 'not enabled' checks if it's acting up
                 profile_pic.click(force=True)
                 
@@ -63,12 +63,12 @@ def unfollow_usernames(
                 current_page.wait_for_load_state("domcontentloaded")
 
             except Exception as e:
-                log(f"⚠️ Не смог найти ссылку через аватар ({e}). Пробую запасной вариант...")
+                log(f"Не смог найти ссылку через аватар ({e}). Пробую запасной вариант...")
                 try:
                     # Fallback: Try clicking standard "Profile" text even if hidden (force=True)
                     current_page.locator('a[role="link"] >> text=Profile').click(force=True, timeout=5000)
                 except Exception as e2:
-                    log(f"❌ Не удалось перейти в профиль: {e2}")
+                    log(f"Не удалось перейти в профиль: {e2}")
                     return
 
             random_delay(3, 5)
@@ -79,7 +79,7 @@ def unfollow_usernames(
             try:
                 current_page.click('a[href*="/following/"]', timeout=5000)
             except:
-                log("❌ Не нашел кнопку 'Following'.")
+                log("Не нашел кнопку 'Following'.")
                 return
             
             random_delay(2, 4)
@@ -89,10 +89,10 @@ def unfollow_usernames(
             try:
                 modal = current_page.wait_for_selector('div[role="dialog"]', timeout=5000)
                 if not modal:
-                    log("❌ Модальное окно не появилось.")
+                    log("Модальное окно не появилось.")
                     return
             except:
-                log("❌ Ошибка ожидания модального окна.")
+                log("Ошибка ожидания модального окна.")
                 return
 
             # 4. Search and Unfollow Loop
@@ -100,10 +100,10 @@ def unfollow_usernames(
             
             for username in target_usernames:
                 if should_stop():
-                    log("⏹️ Остановка...")
+                    log("Остановка...")
                     break
                 
-                log(f"🔍 Ищу {username}...")
+                log(f"Ищу {username}...")
                 
                 # Clear previous search if any
                 try:
@@ -111,7 +111,7 @@ def unfollow_usernames(
                     random_delay(0.5, 1.0)
                     current_page.type(search_input_selector, username, delay=100)
                 except:
-                    log("❌ Не нашел поле поиска.")
+                    log("Не нашел поле поиска.")
                     break
 
                 random_delay(2, 4) # wait for results
@@ -144,23 +144,23 @@ def unfollow_usernames(
                             confirm_btn = current_page.locator('button').filter(has_text="Unfollow").last
                             confirm_btn.wait_for(state="visible", timeout=5000)
                             
-                            log(f"🖱️ Подтверждаю отписку...")
+                            log(f"Подтверждаю отписку...")
                             confirm_btn.click()
                             
-                            log(f"✅ Отписался от {username}")
+                            log(f"Отписался от {username}")
                             if on_success:
                                 on_success(username)
                         except Exception:
                             # Maybe no confirmation needed, or we missed it.
                             # Check if we are still following?
                             # For now, just log warning.
-                            log(f"⚠️ Подтверждение не появилось или ошибка клика для {username}")
+                            log(f"Подтверждение не появилось или ошибка клика для {username}")
                     
                     else:
-                        log(f"ℹ️ Не нашел кнопку 'Following' для {username}. Возможно уже отписан.")
+                        log(f"Не нашел кнопку 'Following' для {username}. Возможно уже отписан.")
 
                 except Exception as e:
-                    log(f"❌ Ошибка при обработке {username}: {e}")
+                    log(f"Ошибка при обработке {username}: {e}")
 
                 # Clear search
                 try:
@@ -170,7 +170,7 @@ def unfollow_usernames(
 
                 # Delay before next
                 wait_time = random.randint(min_delay, max_delay)
-                log(f"⏳ Жду {wait_time}сек...")
+                log(f"Жду {wait_time}сек...")
                 random_delay(wait_time, wait_time)
 
             # 5. Close the "Following" modal
@@ -181,21 +181,21 @@ def unfollow_usernames(
                 close_btn = current_page.locator('button').filter(has=current_page.locator('svg[aria-label="Close"]')).last
                 if close_btn.count() > 0:
                         close_btn.click()
-                        log("✅ Closed modal.")
+                        log("Closed modal.")
                 else:
-                        log("ℹ️ Close button not visible.")
+                        log("Close button not visible.")
             except Exception as e:
-                log(f"⚠️ Failed to close modal: {e}")
+                log(f"Failed to close modal: {e}")
 
         except Exception as e:
-            log(f"❌ Критическая ошибка сессии: {e}")
+            log(f"Критическая ошибка сессии: {e}")
 
     if page:
-        log(f"🔄 Использую существующую сессию для отписки...")
+        log(f"Использую существующую сессию для отписки...")
         _run_unfollow_logic(page)
         return
     
-    log(f"🧭 Запуск браузера для профиля: {profile_name}")
+    log(f"Запуск браузера для профиля: {profile_name}")
 
     with create_browser_context(
         profile_name=profile_name,
@@ -204,4 +204,4 @@ def unfollow_usernames(
     ) as (_context, page):
         _run_unfollow_logic(page)
 
-    log("🏁 Сессия завершена.")
+    log("Сессия завершена.")

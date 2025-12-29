@@ -5,7 +5,22 @@ import { Checkbox } from '../../ui/Checkbox.js';
 import { NumberInput } from '../../ui/NumberInput.js';
 import { Row } from '../../ui/Row.js';
 import { toInt } from '../../../lib/utils.js';
-import { ProgressBar } from '../../ui/ProgressBar.js';
+
+function formatLastLog(message: string): { time: string | null; text: string } {
+    const iso = message.match(
+        /^\[(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})\]\s*(.*)$/
+    );
+    if (iso) {
+        return { time: `${iso[2]}:${iso[3]}`, text: iso[4] ?? '' };
+    }
+
+    const timeOnly = message.match(/^\[(\d{2}):(\d{2})(?::\d{2})?\]\s*(.*)$/);
+    if (timeOnly) {
+        return { time: `${timeOnly[1]}:${timeOnly[2]}`, text: timeOnly[3] ?? '' };
+    }
+
+    return { time: null, text: message };
+}
 
 interface Props {
     settings: InstagramSettings;
@@ -27,6 +42,7 @@ interface Props {
 export function MainView({ settings, focusIndex, mainFocusFocusables, running, progress, saving, error, lastLog, onUpdate }: Props) {
     const currentField = mainFocusFocusables[focusIndex];
     const listCount = settings.source_list_ids.length;
+    const lastLogDisplay = lastLog ? formatLastLog(lastLog) : null;
 
     const renderCheckbox = (label: string, field: keyof InstagramSettings, hint?: string) => (
         <Checkbox
@@ -123,11 +139,6 @@ export function MainView({ settings, focusIndex, mainFocusFocusables, running, p
 
                 {running && progress.totalAccounts > 0 && (
                     <Box marginTop={1} flexDirection="column">
-                        <ProgressBar
-                            label="Overall Progress"
-                            current={progress.completedAccounts}
-                            total={progress.totalAccounts}
-                        />
                         {progress.currentProfile && (
                             <Text color="cyan">
                                 Current Profile: @{progress.currentProfile}
@@ -146,7 +157,14 @@ export function MainView({ settings, focusIndex, mainFocusFocusables, running, p
 
             <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
                 <Text bold>Last log</Text>
-                {!lastLog ? <Text color="gray">No logs yet.</Text> : <Text>{lastLog}</Text>}
+                {!lastLogDisplay ? (
+                    <Text color="gray">No logs yet.</Text>
+                ) : (
+                    <Text>
+                        {lastLogDisplay.time ? <Text color="gray">{lastLogDisplay.time} </Text> : null}
+                        {lastLogDisplay.text}
+                    </Text>
+                )}
             </Box>
         </Box>
     );

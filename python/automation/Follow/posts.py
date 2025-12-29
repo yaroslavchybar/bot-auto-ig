@@ -19,25 +19,25 @@ def scroll_posts(
     """Scroll profile posts grid to load more content (optionally liking between scrolls)."""
 
     def _impl():
-        log("📜 Просматриваю посты профиля...")
+        log("Просматриваю посты профиля...")
         planned_scrolls = scroll_count if scroll_count is not None else random.randint(2, 5)
         likes_used = 0
         seen = liked_posts if liked_posts is not None else set()
         for i in range(planned_scrolls):
             if should_stop and should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 return
 
             # Human-like mouse move before scrolling to simulate attention
             human_mouse_move(page)
             if should_stop and should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 return
             human_scroll(page, should_stop=should_stop)
             if should_stop and should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 return
-            log(f"📜 Прокрутка {i + 1}/{planned_scrolls} (human-like)")
+            log(f"Прокрутка {i + 1}/{planned_scrolls} (human-like)")
             random_delay(1.0, 2.5)  # Similar pacing to feed scrolling
 
             if like_between:
@@ -49,7 +49,7 @@ def scroll_posts(
 
         # Scroll back up a bit to show some posts
         page.mouse.wheel(0, -800)
-        log("📜 Возвращаюсь немного вверх")
+        log("Возвращаюсь немного вверх")
         random_delay(0.5, 1.0)
 
         # Return to the top with human-like upward scrolling to avoid abrupt jumps.
@@ -79,7 +79,7 @@ def scroll_posts(
             except Exception:
                 pass
 
-        log("⤴️ Вернулся в начало страницы")
+        log("Вернулся в начало страницы")
         random_delay(0.5, 1.0)
 
     _safe(log, "пролистывание постов", _impl)
@@ -94,7 +94,7 @@ def like_some_posts(
 ):
     """Open random grid posts (up to max_posts) and like if not yet liked."""
     if max_posts <= 0:
-        log("ℹ️ Пропускаю лайки (настроено 0).")
+        log("Пропускаю лайки (настроено 0).")
         return
 
     liked = liked_posts if liked_posts is not None else set()
@@ -126,13 +126,13 @@ def like_some_posts(
                 post_links.append(link)
                 added += 1
             if added:
-                log(f"📸 Найдено {added} постов с селектором: {selector}")
+                log(f"Найдено {added} постов с селектором: {selector}")
 
         if max_posts:
             post_links = post_links[: max_posts * 4]  # keep a small buffer, but include reels
 
         if not post_links:
-            log("ℹ️ Посты не найдены для лайка")
+            log("Посты не найдены для лайка")
             return
 
         # Shuffle posts to select random ones instead of sequential
@@ -148,17 +148,17 @@ def like_some_posts(
         """, link)]
 
         if not available_posts:
-            log("ℹ️ Нет видимых постов для лайка")
+            log("Нет видимых постов для лайка")
             return
 
         # Select random posts instead of sequential
         selected_posts = random.sample(available_posts, min(max_posts, len(available_posts)))
-        log(f"🎲 Выбрано {len(selected_posts)} случайных постов из {len(available_posts)} видимых")
+        log(f"Выбрано {len(selected_posts)} случайных постов из {len(available_posts)} видимых")
 
         count = 0
         for link in selected_posts:
             if should_stop and should_stop():
-                log("⏹️ Остановка по запросу пользователя.")
+                log("Остановка по запросу пользователя.")
                 return
 
             if count >= max_posts:
@@ -166,7 +166,7 @@ def like_some_posts(
             try:
                 href = link.get_attribute("href") or ""
                 if href and href in liked:
-                    log("ℹ️ Пропускаю уже лайкнутый пост")
+                    log("Пропускаю уже лайкнутый пост")
                     continue
 
                 # Check if link is visible and clickable
@@ -184,7 +184,7 @@ def like_some_posts(
                 if not is_visible:
                     continue
 
-                log(f"❤️ Открываю пост {count + 1} для лайка...")
+                log(f"Открываю пост {count + 1} для лайка...")
                 link.click()
                 random_delay(1.5, 2.5)
 
@@ -210,14 +210,14 @@ def like_some_posts(
 
                     if like_visible:
                         like_btn.click()
-                        log("👍 Лайк поставлен")
+                        log("Лайк поставлен")
                         random_delay(0.5, 1.0)
                         if href:
                             liked.add(href)
                     else:
-                        log("ℹ️ Кнопка лайка не видна")
+                        log("Кнопка лайка не видна")
                 else:
-                    log("ℹ️ Кнопка лайка не найдена")
+                    log("Кнопка лайка не найдена")
 
                 # Close modal - try close button first, then Escape as fallback
                 close_btn = (page.query_selector('button[aria-label="Close"]') or
@@ -229,33 +229,33 @@ def like_some_posts(
                 if close_btn:
                     try:
                         close_btn.click()
-                        log("❌ Пост закрыт кнопкой")
+                        log("Пост закрыт кнопкой")
                     except Exception as close_err:
-                        log(f"ℹ️ Не удалось закрыть кнопкой: {close_err}")
+                        log(f"Не удалось закрыть кнопкой: {close_err}")
                         try:
                             page.keyboard.press("Escape")
-                            log("❌ Пост закрыт клавишей Escape")
+                            log("Пост закрыт клавишей Escape")
                         except:
-                            log("ℹ️ Не удалось закрыть пост")
+                            log("Не удалось закрыть пост")
                 else:
                     # Fallback: try Escape key
                     try:
                         page.keyboard.press("Escape")
-                        log("❌ Пост закрыт клавишей Escape")
+                        log("Пост закрыт клавишей Escape")
                     except:
-                        log("ℹ️ Не удалось закрыть пост")
+                        log("Не удалось закрыть пост")
 
                 random_delay(1.0, 2.0)
                 count += 1
             except Exception as err:
-                log(f"ℹ️ Пропускаю пост: {err}")
+                log(f"Пропускаю пост: {err}")
                 try:
                     page.keyboard.press("Escape")
                 except:
                     pass
                 random_delay(0.5, 1.0)
 
-        log(f"✅ Обработано {count} постов")
+        log(f"Обработано {count} постов")
 
     _safe(log, "лайки постов", _impl)
 
