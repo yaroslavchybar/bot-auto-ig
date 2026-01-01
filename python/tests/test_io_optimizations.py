@@ -53,20 +53,53 @@ class TestBackgroundCacheCleanup(unittest.TestCase):
 
     def test_cache_cleanup_runs_in_thread(self):
         """_clean_cache2 should be called in a background thread."""
-        from python.automation.browser import _should_clean_today, _clean_cache2
-        
-        with patch("python.automation.browser._should_clean_today", return_value=True):
-            with patch("python.automation.browser.Thread") as MockThread:
-                mock_thread_instance = MagicMock()
-                MockThread.return_value = mock_thread_instance
-                
-                # Simulate the context manager entry point logic
-                from python.automation.browser import ensure_profile_path
-                from threading import Thread
-                
-                # Test the actual implementation imports Thread
-                import python.automation.browser as browser_mod
-                self.assertTrue(hasattr(browser_mod, "Thread"))
+        events = []
+
+        class FakePage:
+            def __init__(self):
+                self.url = "about:blank"
+
+            def goto(self, *_args, **_kwargs):
+                return None
+
+            def on(self, *_args, **_kwargs):
+                pass
+
+        class FakeContext:
+            def __init__(self):
+                self.pages = [FakePage()]
+
+            def close(self):
+                events.append("close")
+
+        class FakeCamoufox:
+            def __init__(self, *_args, **_kwargs):
+                self._context = FakeContext()
+
+            def __enter__(self):
+                return self._context
+
+            def __exit__(self, *_args, **_kwargs):
+                return None
+
+        def thread_ctor(*_args, **_kwargs):
+            self.assertIn("close", events)
+            events.append("thread")
+            thread_obj = MagicMock()
+            thread_obj.start = MagicMock()
+            return thread_obj
+
+        with patch("python.automation.browser.ensure_profile_path", return_value="/fake/profile"):
+            with patch("python.automation.browser._should_clean_today", return_value=True):
+                with patch("python.automation.browser.Camoufox", FakeCamoufox):
+                    with patch("python.automation.browser.Thread", side_effect=thread_ctor) as MockThread:
+                        from python.automation.browser import create_browser_context
+
+                        with create_browser_context(profile_name="p") as (_context, _page):
+                            pass
+
+                        self.assertGreaterEqual(MockThread.call_count, 1)
+                        self.assertEqual(events[0], "close")
 
     def test_should_clean_today_logic(self):
         """_should_clean_today should return True if not cleaned today."""
@@ -87,6 +120,17 @@ class TestBackgroundCacheCleanup(unittest.TestCase):
             
             result = _should_clean_today("/fake/path")
             self.assertFalse(result)
+
+
+class TestProxyParsing(unittest.TestCase):
+    def test_user_pass_at_host_port_emits_credentials_fields(self):
+        from python.automation.browser import parse_proxy_string
+
+        cfg = parse_proxy_string("http://user:pass@host:8080")
+        self.assertIsInstance(cfg, dict)
+        self.assertEqual(cfg.get("server"), "http://host:8080")
+        self.assertEqual(cfg.get("username"), "user")
+        self.assertEqual(cfg.get("password"), "pass")
 
 
 if __name__ == "__main__":

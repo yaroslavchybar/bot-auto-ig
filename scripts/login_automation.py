@@ -3,6 +3,7 @@ import sys
 import os
 import io
 import json
+import signal
 
 # Force UTF-8 encoding for stdin/stdout on Windows to avoid issues with non-ASCII characters
 if sys.platform == "win32":
@@ -26,6 +27,16 @@ def main():
     parser.add_argument("--headless", action="store_true", help="Headless mode")
     
     args = parser.parse_args()
+
+    def _handle_signal(_sig, _frame):
+        raise SystemExit(0)
+
+    if hasattr(signal, "SIGINT"):
+        signal.signal(signal.SIGINT, _handle_signal)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _handle_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _handle_signal)
     
     # Read credentials from stdin (security: not visible in process list)
     try:
@@ -54,4 +65,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main() or 0)
-

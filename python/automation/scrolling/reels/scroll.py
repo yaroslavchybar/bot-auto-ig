@@ -2,6 +2,10 @@ import random
 import time
 from python.automation.actions import random_delay
 from .likes import perform_like
+from python.core.persistence.state_persistence import save_state
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _go_to_next_reel(page) -> bool:
@@ -15,7 +19,7 @@ def _go_to_next_reel(page) -> bool:
         
         toolbar = page.query_selector('[aria-label="Reels navigation controls"][role="toolbar"]')
         if not toolbar:
-            print("[!] Navigation toolbar not found.")
+            logger.warning("Navigation toolbar not found.")
             return False
 
         next_btn = toolbar.query_selector('[aria-label="Navigate to next Reel"]')
@@ -24,7 +28,7 @@ def _go_to_next_reel(page) -> bool:
             if next_btn.is_visible():
                 box = next_btn.bounding_box()
                 if box:
-                    print(f"[*] Found 'Next Reel' arrow at ({box['x']}, {box['y']})")
+                    logger.debug(f"Found 'Next Reel' arrow at ({box['x']}, {box['y']})")
                     
                     # Human-like interaction: Hover first -> Wait -> Click
                     # This helps trigger any 'onHover' pre-fetching logic Instagram might have
@@ -34,13 +38,13 @@ def _go_to_next_reel(page) -> bool:
                     page.mouse.move(center_x, center_y, steps=5)
                     random_delay(0.2, 0.5)
                     page.mouse.click(center_x, center_y)
-                    print("[*] Clicked 'Next Reel' arrow")
+                    logger.info("Clicked 'Next Reel' arrow")
                     return True
         
-        print("[!] 'Navigate to next Reel' button not found in toolbar.")
+        logger.warning("'Navigate to next Reel' button not found in toolbar.")
         return False
     except Exception as e:
-        print(f"[!] Error navigating to next reel: {e}")
+        logger.error(f"Error navigating to next reel: {e}")
         return False
 
 
@@ -49,7 +53,7 @@ def _navigate_reels(page):
     if "instagram.com/reels" in page.url:
         return
 
-    print("[*] Navigating to Reels tab via UI...")
+    logger.info("Navigating to Reels tab via UI...")
     try:
         reels_link = page.query_selector('a[href="/reels/"]')
         if reels_link:
@@ -64,13 +68,13 @@ def _navigate_reels(page):
                 page.wait_for_url("**/reels/**", timeout=15000)
                 random_delay(1, 2)
             else:
-                print("[!] Reels link visible but no bounding box")
+                logger.warning("Reels link visible but no bounding box")
                 page.goto("https://www.instagram.com/reels/", timeout=30000)
         else:
-            print("[!] Reels link not found in sidebar")
+            logger.warning("Reels link not found in sidebar")
             page.goto("https://www.instagram.com/reels/", timeout=30000)
     except Exception as nav_e:
-        print(f"[!] Navigation error, fallback to URL: {nav_e}")
+        logger.error(f"Navigation error, fallback to URL: {nav_e}")
         page.goto("https://www.instagram.com/reels/", timeout=30000)
         random_delay(3, 5)
 
@@ -86,7 +90,7 @@ def _queue_actions(page, actions_config):
     return actions_to_perform
 
 
-def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=None) -> dict:
+def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=None, profile_name: str = "unknown") -> dict:
     """
     Scroll through Instagram Reels and perform random actions.
 
@@ -95,20 +99,29 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
         duration_minutes: How long to scroll
         actions_config: Dict with 'like_chance', 'follow_chance' (0-100)
         should_stop: Optional callable that returns True if execution should stop
+        profile_name: Name of the profile being automated (for state persistence)
 
     Returns:
         Dict with stats: {'likes': N, 'follows': N}
     """
     stats = {"likes": 0, "follows": 0}
-    end_time = time.time() + (duration_minutes * 60)
+    start_time = time.time()
+    end_time = start_time + (duration_minutes * 60)
 
     try:
         _navigate_reels(page)
-        print(f"[*] Starting {duration_minutes} minute REELS session...")
+        logger.info(f"Starting {duration_minutes} minute REELS session...")
 
         while time.time() < end_time:
+            # Save state
+            elapsed = time.time() - start_time
+            total_duration = duration_minutes * 60
+            progress = int((elapsed / total_duration) * 100) if total_duration > 0 else 0
+            progress = min(progress, 99)
+            save_state(profile_name, "scroll_reels", progress)
+
             if should_stop and should_stop():
-                print("[!] Stop signal received. Ending reels session.")
+                logger.info("Stop signal received. Ending reels session.")
                 break
 
             # Simulate human behavior:
@@ -122,10 +135,10 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
 
             if random.randint(0, 100) < skip_chance:
                 watch_time = random.uniform(skip_min, skip_max)
-                print(f"[*] Short watch (skip): {watch_time:.2f}s")
+                logger.info(f"Short watch (skip): {watch_time:.2f}s")
             else:
                 watch_time = random.uniform(normal_min, normal_max)
-                print(f"[*] Normal watch: {watch_time:.2f}s")
+                logger.info(f"Normal watch: {watch_time:.2f}s")
             
             # Check for stop signal during watch time (sleep in chunks)
             start_sleep = time.time()
@@ -135,7 +148,7 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
                 time.sleep(0.5)
                 
             if should_stop and should_stop():
-                print("[!] Stop signal received. Ending reels session.")
+                logger.info("Stop signal received. Ending reels session.")
                 break
 
             actions_to_perform = _queue_actions(page, actions_config)
@@ -149,10 +162,10 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
                         stats[action_name + "s"] += 1
                         random_delay(1, 2)
                 except Exception as e:
-                    print(f"[!] Error executing {action_name} action on reel: {e}")
+                    logger.error(f"Error executing {action_name} action on reel: {e}")
 
             if should_stop and should_stop():
-                print("[!] Stop signal received. Ending reels session.")
+                logger.info("Stop signal received. Ending reels session.")
                 break
 
             if not _go_to_next_reel(page):
@@ -160,8 +173,8 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
             random_delay(1.5, 3.0)
 
     except Exception as e:
-        print(f"[!] Error during reels scrolling: {e}")
+        logger.error(f"Error during reels scrolling: {e}")
 
-    print(f"Reels session complete: {stats}")
+    logger.info(f"Reels session complete: {stats}")
     return stats
 

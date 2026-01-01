@@ -2,7 +2,8 @@ import time
 import traceback
 from python.automation.browser import create_browser_context
 from python.automation.actions import random_delay
-from python.core.totp import generate_totp_code
+from python.core.domain.totp import generate_totp_code
+from python.core.automation.selectors import LOGIN_BUTTON, HOME_BUTTON, SEARCH_BUTTON
 
 
 # Primary selectors (classic Instagram form)
@@ -39,8 +40,20 @@ def _find_login_inputs(page, log):
 
 def _click_login_button(page, selectors, log):
     """Click the appropriate login button."""
+    # Try Semantic Selector first
+    try:
+        login_btn = LOGIN_BUTTON.find(page)
+        if login_btn:
+             login_btn.click()
+             return
+    except Exception as e:
+        log(f"Semantic login button failed: {e}")
+
     if selectors == PRIMARY_SELECTORS:
-        page.click(selectors['submit'])
+        try:
+            page.click(selectors['submit'])
+        except:
+             page.keyboard.press("Enter")
     else:
         # For Meta-style form, the button might be a div with role="button"
         try:
@@ -118,8 +131,7 @@ def login_session(
                     page.locator(ALT_SELECTORS['username']).count() > 0
                 )
                 if not username_exists:
-                    if page.locator("svg[aria-label='Home']").count() > 0 or \
-                       page.locator("svg[aria-label='Search']").count() > 0:
+                    if HOME_BUTTON.find(page) or SEARCH_BUTTON.find(page):
                         log("Already logged in!")
                         mark_login_success()
                         return login_succeeded
@@ -172,9 +184,14 @@ def login_session(
                 
                 # Check for success or 2FA
                 try:
-                    page.wait_for_selector("svg[aria-label='Home']", timeout=20000)
-                    log("Login successful! (Home icon found)")
-                    mark_login_success()
+                    # Try finding home button
+                    if HOME_BUTTON.find(page):
+                         log("Login successful! (Home icon found)")
+                         mark_login_success()
+                    else:
+                        page.wait_for_selector("svg[aria-label='Home']", timeout=20000)
+                        log("Login successful! (Home icon found)")
+                        mark_login_success()
                 except:
                     # Maybe stuck on "Save Info" or 2FA
                     if "two_factor" in page.url or page.locator("input[name='verificationCode']").count() > 0:

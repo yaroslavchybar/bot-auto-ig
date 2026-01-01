@@ -67,11 +67,15 @@ export function useLists(onSelectedIndexChange?: (index: number) => void, initia
     }, []);
 
     const handleCreate = useCallback(async () => {
-        if (!inputName.trim()) return;
+        const trimmed = inputName.trim();
+        if (!trimmed) {
+            setError('Name is required');
+            return;
+        }
         setLoading(true);
         setError(null);
         try {
-            await listsCreate(inputName);
+            await listsCreate(trimmed);
             setInputName('');
             setMode('list');
             await fetchLists();
@@ -157,6 +161,7 @@ export function useLists(onSelectedIndexChange?: (index: number) => void, initia
         setError(null);
         const toAdd = profiles.filter(p => p.selected && !p.initialSelected).map(p => p.profile_id);
         const toRemove = profiles.filter(p => !p.selected && p.initialSelected).map(p => p.profile_id);
+        let ok = true;
         try {
             if (inputName.trim() && inputName.trim() !== selectedList.name) {
                 await listsUpdate(selectedList.id, inputName.trim());
@@ -168,10 +173,13 @@ export function useLists(onSelectedIndexChange?: (index: number) => void, initia
                 await profilesBulkSetListId(toRemove, null);
             }
         } catch (e: any) {
+            ok = false;
             setError(e?.message || String(e));
         }
-        setMode('list');
-        await fetchLists();
+        if (ok) {
+            setMode('list');
+            await fetchLists();
+        }
         setLoading(false);
     }, [selectedList, inputName, profiles, fetchLists]);
 

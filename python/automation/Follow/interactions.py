@@ -2,7 +2,7 @@ import random
 from typing import Callable, Set
 
 from python.automation.actions import random_delay
-from python.automation.Follow.common import _safe, _normalize_range
+from python.automation.Follow.common import _normalize_range
 from python.automation.Follow.filter import get_posts_count
 from python.automation.Follow.highlights import watch_highlights
 from python.automation.Follow.posts import like_some_posts, scroll_posts

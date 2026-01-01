@@ -3,3 +3,4 @@ playwright
 pyotp
 python-dotenv
 requests
+psutil

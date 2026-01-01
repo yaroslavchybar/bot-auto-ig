@@ -1,4 +1,5 @@
 import requests
+from python.core.resilience.http_client import ResilientHttpClient
 
 from python.supabase.config import (
     PROJECT_URL,
@@ -7,6 +8,8 @@ from python.supabase.config import (
     DEFAULT_USERNAME_COLUMN,
 )
 
+# Shared client instance for circuit breaker persistence
+_http_client = ResilientHttpClient()
 
 class SupabaseError(Exception):
     """Raised when Supabase API call fails."""
@@ -42,15 +45,18 @@ def fetch_usernames(
         "Accept": "application/json",
     }
 
-    resp = requests.get(url, params=params, headers=headers, timeout=20)
-    if resp.status_code >= 400:
-        raise SupabaseError(f"HTTP {resp.status_code}: {resp.text}")
+    try:
+        resp = _http_client.get(url, params=params, headers=headers, timeout=20)
+        if resp.status_code >= 400:
+            raise SupabaseError(f"HTTP {resp.status_code}: {resp.text}")
 
-    data = resp.json()
-    usernames = []
-    for row in data:
-        value = row.get(username_column)
-        if value:
-            usernames.append(str(value).strip().lstrip("@"))
-    return usernames
+        data = resp.json()
+        usernames = []
+        for row in data:
+            value = row.get(username_column)
+            if value:
+                usernames.append(str(value).strip().lstrip("@"))
+        return usernames
+    except Exception as e:
+        raise SupabaseError(f"Failed to fetch usernames: {e}")
 

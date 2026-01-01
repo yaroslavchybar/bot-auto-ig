@@ -1,7 +1,5 @@
 from typing import Callable, Iterable, List, Optional
 
-from python.automation.browser import build_proxy_config, ensure_profile_path
-
 
 def clean_usernames(usernames: Iterable[str]) -> List[str]:
     """Normalize username list (strip, remove @, drop empties)."""

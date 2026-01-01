@@ -8,6 +8,15 @@ function createMockProcess() {
     const mockProcess = new EventEmitter() as any;
     mockProcess.stdout = new EventEmitter();
     mockProcess.stderr = new EventEmitter();
+    mockProcess.exitCode = null;
+    mockProcess.pid = 12345;
+    const originalEmit = mockProcess.emit.bind(mockProcess);
+    mockProcess.emit = (event: string, ...args: any[]) => {
+        if (event === 'exit') {
+            mockProcess.exitCode = args[0] ?? 0;
+        }
+        return originalEmit(event, ...args);
+    };
     const stdinWrites: string[] = [];
     mockProcess.stdin = {
         write: (payload: any) => { stdinWrites.push(String(payload)); },
@@ -37,6 +46,27 @@ describe('AutomationService (Expanded)', () => {
 
         assert.deepStrictEqual(receivedEvent, eventData);
 
+        await service.stop();
+    });
+
+    it('should parse events split across stdout chunks', async () => {
+        clearLogs();
+        const { mockProcess } = createMockProcess();
+
+        const service = new AutomationService((() => mockProcess) as any);
+
+        let receivedEvent: any = null;
+        service.on('event', (e) => { receivedEvent = e; });
+
+        await service.start({ source_list_ids: [] });
+
+        const eventData = { type: 'profile_started', profile: 'test_user' };
+        const line = `__EVENT__${JSON.stringify(eventData)}__EVENT__\n`;
+
+        mockProcess.stdout.emit('data', Buffer.from(line.slice(0, 12)));
+        mockProcess.stdout.emit('data', Buffer.from(line.slice(12)));
+
+        assert.deepStrictEqual(receivedEvent, eventData);
         await service.stop();
     });
 
@@ -96,7 +126,7 @@ describe('AutomationService (Expanded)', () => {
         assert.ok(getLogs().some(l => l.source === 'automation' && l.message.includes('Automation failed to spawn: spawn failed')));
     });
 
-    it('should emit exit and return to idle after unexpected exit', async () => {
+    it('should emit exit and enter error after unexpected exit', async () => {
         clearLogs();
         const { mockProcess } = createMockProcess();
         const service = new AutomationService((() => mockProcess) as any);
@@ -108,7 +138,8 @@ describe('AutomationService (Expanded)', () => {
         mockProcess.emit('exit', 2);
 
         assert.strictEqual(exitCode, 2);
-        assert.strictEqual(service.status, 'idle');
+        assert.strictEqual(service.status, 'error');
+        assert.ok((service.error || '').includes('code 2'));
         assert.ok(getLogs().some(l => l.source === 'automation' && l.message.includes('exited unexpectedly with code 2')));
     });
 

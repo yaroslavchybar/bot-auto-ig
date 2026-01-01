@@ -13,16 +13,21 @@ It leverages **Supabase** for centralized state management, allowing synchronize
 *   **Smart Proxy Support**: Native support for HTTP/SOCKS5 proxies with authentication.
 *   **Fingerprint Randomization**: Automatically generates consistent unique fingerprints (OS, Screen Resolution, User Agent) per profile.
 *   **GeoIP Validation**: Automatically checks proxy location to ensure consistency.
+*   **2FA/TOTP Support**: Built-in handling for Two-Factor Authentication using TOTP.
 
 ### 🤖 Human-Like Automation
 *   **Natural Interactions**: Random delays, non-linear mouse movements (`humanize=True`), and variable scrolling speeds.
-*   **Smart Feed/Reels Browsing**:
-    *   Scrolls feed and reels with configurable probabilities for Likes, Comments, and Follows.
-    *   Watches Stories and Carousels (with slide limits).
+*   **Smart Browsing (Feed & Reels)**:
+    *   **Mixed Mode**: Simulates real usage by switching between Feed and Reels.
+    *   Scrolls with configurable probabilities for Likes, Comments, and Follows.
     *   Skips content based on logic (e.g., skips boring reels quickly, watches interesting ones longer).
-*   **"Warm-up" Following**:
-    *   Does not just click "Follow".
-    *   Visits target profile -> Watches Highlights -> Scrolls Posts -> Likes random posts -> *Then* Follows.
+*   **Story & Carousel Interaction**:
+    *   Watches Stories with configurable limits.
+    *   Browses Carousels (with slide limits).
+*   **Advanced Account Management**:
+    *   **"Warm-up" Following**: Visits profile -> Watches Highlights -> Scrolls -> Likes -> *Then* Follows.
+    *   **Unfollow Logic**: smart unfollowing strategies.
+    *   **Approve Follow Requests**: Automates accepting pending follow requests.
 *   **Direct Messaging**:
     *   Sends DMs using customizable templates.
     *   Respects strict cooldowns (e.g., "don't message same user for 2 hours").
@@ -72,6 +77,7 @@ graph TD
 *   **Python 3.10+**
 *   **Node.js 16+**
 *   **Supabase Account** (Free tier works)
+*   **Docker** (Optional, for containerized deployment)
 
 ### 1. Clone & Setup
 ```bash
@@ -91,7 +97,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install requirements
-pip install camoufox supabase python-dotenv requests playwright
+pip install -r python/requirements.txt
 playwright install firefox
 ```
 
@@ -123,6 +129,25 @@ DEFAULT_PROXY=http://user:pass@host:port
 
 ---
 
+## 🐳 Docker Deployment
+
+For VPS or containerized environments, you can use Docker.
+
+1.  **Configure `.env`** as shown above.
+2.  **Run with Docker Compose**:
+    ```bash
+    docker-compose up -d
+    ```
+3.  **Access the TUI**:
+    ```bash
+    docker attach anti-instagram
+    ```
+    *(Detach with `Ctrl+P` then `Ctrl+Q`)*
+
+See [DEPLOY.md](DEPLOY.md) for full deployment details.
+
+---
+
 ## 🎮 Usage
 
 ### Option A: The TUI Dashboard (Recommended)
@@ -141,10 +166,13 @@ Useful for debugging or single-task execution.
 **1. Simple Launcher (`launcher.py`)**
 Runs a single action for a specific profile immediately.
 ```bash
-# Scroll feed for 10 minutes with 20% like chance
-python python/launcher.py --name "MyProfile" --action scroll --duration 10 --match-likes 20
+# Mixed mode (Feed + Reels) for 15 mins with interaction chances
+python python/launcher.py --name "MyProfile" --action mixed --duration 15 --match-likes 20 --match-follows 5
 
-# Debug mode (Show cursor)
+# Watch stories and then scroll feed
+python python/launcher.py --name "MyProfile" --action scroll --watch-stories 1 --stories-max 5
+
+# Debug mode (Show cursor/browser)
 python python/launcher.py --name "MyProfile" --action manual --show-cursor
 ```
 
@@ -162,14 +190,14 @@ python scripts/instagram_automation.py
 ### Global Settings (in TUI/Database)
 You can tweak these values in the `instagram_settings` table (or via TUI):
 *   `feed_min_time` / `feed_max_time`: How long to scroll feed.
-*   `reels_skip_chance`: % chance to skip a reel immediately (simulating disinterest).
+*   `reels_skip_chance`: % chance to skip a reel immediately.
 *   `messaging_cooldown_hours`: Minimum time between DMs to the same user.
 *   `profile_reopen_cooldown_minutes`: Security lockout after a session ends.
 
 ### Profile Structure
 Each profile in `data/profiles/` contains:
-*   **Cookies/Storage**: Persistent session data (no need to login every time).
-*   **Cache**: Browser cache (cleared intelligently).
+*   **Cookies/Storage**: Persistent session data.
+*   **Cache**: Browser cache.
 *   **Fingerprint**: Unique hardware/software characteristics.
 
 ---
@@ -180,24 +208,73 @@ Each profile in `data/profiles/` contains:
 anti/
 ├── python/                 # Python Backend
 │   ├── automation/         # Core Automation Logic
-│   │   ├── Follow/         # Smart Follow Logic (Pre-interactions)
-│   │   ├── scrolling/      # Feed/Reels Scrolling behavior
+│   │   ├── Follow/         # Smart Follow Logic
+│   │   ├── approvefollow/  # Approve Follow Requests
+│   │   ├── login/          # Login Automation
+│   │   ├── messaging/      # DM Logic
+│   │   ├── scrolling/      # Feed & Reels Scrolling
+│   │   ├── stories/        # Story Viewing
+│   │   ├── unfollow/       # Unfollow Logic
 │   │   ├── actions.py      # Action orchestrator
 │   │   └── browser.py      # Camoufox/Playwright wrapper
-│   ├── core/               # Models & Managers
+│   ├── core/               # Resilience, Models, Persistence
 │   ├── supabase/           # DB Client wrappers
-│   └── launcher.py         # CLI Entry point
+│   ├── tests/              # Python Unit Tests
+│   ├── launcher.py         # CLI Entry point
+│   └── supervisor.py       # Process Supervisor
 ├── scripts/                # Execution Scripts
-│   └── instagram_automation.py # Main Multi-thread Runner
+│   ├── instagram_automation.py # Main Multi-thread Runner
+│   └── login_automation.py     # Login Automation Script
 ├── source/                 # TUI Frontend (React + Ink)
 │   ├── components/         # UI Components (Views, Lists)
-│   ├── lib/                # TUI Logic (Supabase, Service calls)
-│   └── app.tsx             # TUI Entry point
+│   ├── lib/                # TUI Logic (Supabase, Services)
+│   ├── tests/              # Frontend Tests
+│   ├── types/              # TypeScript Definitions
+│   ├── app.tsx             # TUI Entry point
+│   └── cli.tsx             # CLI Entry point
 ├── supabase/               # Database
 │   └── migrations/         # SQL Schemas
+├── Dockerfile              # Docker build file
+├── docker-compose.yml      # Docker Compose config
 └── data/                   # Local Data (Gitignored)
     └── profiles/           # Browser Profiles Storage
 ```
+
+## 🐍 Core Module Internals (`python/core`)
+
+The `python/core` directory contains the foundational building blocks of the automation engine, designed for resilience, observability, and state management.
+
+### 1. Domain Models (`core/domain`)
+Defines the strong types and configuration schemas used throughout the application.
+- **`ScrollingConfig`**: A comprehensive configuration object controlling all automation aspects (probabilities for likes/follows, time limits, feature flags).
+- **`ThreadsAccount`**: Credentials management for authenticating sessions.
+
+### 2. Automation Primitives (`core/automation`)
+Provides robust tools for browser interaction.
+- **`SemanticSelector`**: A multi-strategy element locator that prioritizes accessibility attributes (Role, Label) over brittle CSS selectors. It automatically falls back to text or CSS if semantic locators fail, ensuring scripts survive UI updates.
+
+### 3. Persistence Layer (`core/persistence`)
+Manages state synchronization between the local filesystem and the Supabase cloud database.
+- **`ProfileManager`**: Handles the lifecycle of browser profiles.
+    - **Dual Sync**: Keeps local `data/profiles` directories in sync with Supabase records.
+    - **Atomic Operations**: Ensures profile creations/deletions are transactionally safe across local disk and DB.
+    - **Cloud-First**: Prioritizes database state as the source of truth.
+
+### 4. Resilience & Reliability (`core/resilience`)
+Ensures the bot continues to operate smoothly despite network hiccups or temporary failures.
+- **`ResilientHttpClient`**: A custom HTTP client implementing the **Circuit Breaker** pattern to prevent cascading failures when external services are down.
+- **`retry_with_backoff`**: A decorator implementing exponential backoff with jitter to handle transient errors gracefully.
+
+### 5. Runtime Management (`core/runtime`)
+Controls the execution environment and resource usage.
+- **`ProcessManager`**: Spawns and monitors `camoufox` browser processes.
+    - **Memory Watchdog**: Automatically restarts profiles that exceed memory limits (default 2GB).
+    - **Orphan Cleanup**: Detects and kills zombie browser processes to free up system resources.
+
+### 6. Observability (`core/observability`)
+Provides deep insights into the bot's behavior.
+- **Structured Logging**: Uses `JsonFormatter` to produce machine-readable logs (JSON) for easy parsing and analysis.
+- **Snapshot Debugging**: Automatically captures page state (DOM snapshots) when selectors fail, aiding in rapid debugging.
 
 ## ⚠️ Disclaimer
 This tool is for **educational and research purposes only**. Automating Instagram accounts may violate their Terms of Service. Use responsibly and at your own risk. The authors are not responsible for any account bans or restrictions.

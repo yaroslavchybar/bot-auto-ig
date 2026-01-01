@@ -1,11 +1,16 @@
 import random
 import time
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
+from python.core.resilience.exceptions import BotException, ElementNotFoundError, SelectorTimeoutError
+from python.core.automation.selectors import HOME_BUTTON, NEXT_CAROUSEL
+from python.core.resilience.retry import jitter
 from python.automation.actions import random_delay
 from python.automation.scrolling.utils import human_scroll, human_mouse_move
 from .likes import perform_like
 from .following import perform_follow
 from .carousel import watch_carousel
 from python.automation.stories import watch_stories
+from python.core.persistence.state_persistence import save_state
 
 
 def _navigate_home(page):
@@ -18,41 +23,34 @@ def _navigate_home(page):
         print("[*] Navigating to Home feed...")
         
         # Try to find and click the Home button in sidebar
-        home_selectors = [
-            'svg[aria-label="Home"]',
-            'a[href="/"] svg[aria-label="Home"]',
-            'a[href="/"]'
-        ]
+        element = HOME_BUTTON.find(page)
         
         found_home = False
-        for selector in home_selectors:
+        if element:
             try:
-                element = page.query_selector(selector)
-                if element and element.is_visible():
-                    # If we found the SVG, click its parent link/button if possible
-                    clickable = element
-                    if element.evaluate("el => el.tagName.toLowerCase() === 'svg'"):
-                        parent = element.query_selector("xpath=..") # div
-                        if parent:
-                            grandparent = parent.query_selector("xpath=..") # div
-                            if grandparent:
-                                greatgrandparent = grandparent.query_selector("xpath=..") # div
-                                if greatgrandparent:
-                                    link_parent = greatgrandparent.query_selector("xpath=..") # a
-                                    if link_parent:
-                                        clickable = link_parent
+                # If we found the SVG, click its parent link/button if possible
+                clickable = element
+                if element.evaluate("el => el.tagName.toLowerCase() === 'svg'"):
+                    parent = element.query_selector("xpath=..") # div
+                    if parent:
+                        grandparent = parent.query_selector("xpath=..") # div
+                        if grandparent:
+                            greatgrandparent = grandparent.query_selector("xpath=..") # div
+                            if greatgrandparent:
+                                link_parent = greatgrandparent.query_selector("xpath=..") # a
+                                if link_parent:
+                                    clickable = link_parent
 
-                    clickable.click()
-                    found_home = True
-                    break
-            except Exception:
-                continue
-                
+                clickable.click()
+                found_home = True
+            except (PlaywrightError, BotException) as e:
+                print(f"[!] Home selector click failed: {type(e).__name__}")
+        
         if not found_home:
              # Fallback to direct navigation
-             page.goto("https://www.instagram.com/", timeout=30000)
+             page.goto("https://www.instagram.com/", timeout=jitter(30000))
 
-        random_delay(3, 5)
+        random_delay(jitter(3000)/1000, jitter(5000)/1000)
 
         # Handle "Turn on Notifications" or similar modals if they appear
         try:
@@ -60,12 +58,23 @@ def _navigate_home(page):
             if not_now:
                 not_now.click()
                 random_delay(1, 2)
+        except (PlaywrightError, BotException) as e:
+            pass
         except Exception:
             pass
             
+    except (PlaywrightError, BotException) as e:
+        print(f"[!] Navigation error: {type(e).__name__} - {e}")
+        try:
+            page.goto("https://www.instagram.com/", timeout=jitter(30000))
+        except Exception:
+            pass
     except Exception as e:
-        print(f"[!] Navigation error: {e}")
-        page.goto("https://www.instagram.com/", timeout=30000)
+        print(f"[!] Unexpected navigation error: {type(e).__name__} - {e}")
+        try:
+            page.goto("https://www.instagram.com/", timeout=jitter(30000))
+        except Exception:
+            pass
 
 
 def _queue_actions(page, post, actions_config):
@@ -90,7 +99,8 @@ def _pick_visible_post(page, posts):
     try:
         viewport_h = page.evaluate("() => window.innerHeight") or 0
         viewport_w = page.evaluate("() => window.innerWidth") or 0
-    except Exception:
+    except Exception as e:
+        print(f"[!] Viewport check failed: {type(e).__name__}")
         viewport_h = 0
         viewport_w = 0
 
@@ -128,6 +138,8 @@ def _pick_visible_post(page, posts):
                 if visibility_percentage > 20:
                     candidates.append((visibility_percentage, post_bottom, p))
 
+        except (PlaywrightError, BotException) as e:
+            continue
         except Exception:
             continue
 
@@ -139,7 +151,7 @@ def _pick_visible_post(page, posts):
     return candidates[0][2]
 
 
-def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=None) -> dict:
+def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=None, profile_name: str = "unknown") -> dict:
     """
     Scroll through Instagram feed and perform random actions.
 
@@ -151,12 +163,14 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
             - optional 'carousel_watch_chance' (0-100) and 'carousel_max_slides'
             - optional 'watch_stories' (bool, default True) and 'stories_max'
         should_stop: Optional callable that returns True if execution should stop
+        profile_name: Name of the profile being automated (for state persistence)
 
     Returns:
         Dict with stats: {'likes': N, 'follows': N}
     """
     stats = {"likes": 0, "follows": 0}
-    end_time = time.time() + (duration_minutes * 60)
+    start_time = time.time()
+    end_time = start_time + (duration_minutes * 60)
 
     try:
         _navigate_home(page)
@@ -170,12 +184,22 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 # but let's at least check before starting it.
                 if not (should_stop and should_stop()):
                     watch_stories(page, max_stories=actions_config.get("stories_max", 3))
+            except (PlaywrightError, BotException) as e:
+                print(f"[!] Story watch skipped: {type(e).__name__} - {e}")
             except Exception as e:
-                print(f"[!] Story watch skipped: {e}")
+                print(f"[!] Story watch skipped (unexpected): {type(e).__name__} - {e}")
                 
         print(f"[*] Starting {duration_minutes} minute scroll session on Instagram...")
 
         while time.time() < end_time:
+            # Save state
+            elapsed = time.time() - start_time
+            total_duration = duration_minutes * 60
+            progress = int((elapsed / total_duration) * 100) if total_duration > 0 else 0
+            # Cap progress at 99 until finished
+            progress = min(progress, 99)
+            save_state(profile_name, "scroll_feed", progress)
+
             if should_stop and should_stop():
                 print("[!] Stop signal received. Ending feed session.")
                 break
@@ -212,11 +236,7 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 carousel_chance = actions_config.get("carousel_watch_chance", 0)
                 if carousel_chance > 0:
                     has_carousel = bool(
-                        post.query_selector('button[aria-label*="Next"]')
-                        or post.query_selector('div[role="button"][aria-label*="Next"]')
-                        or post.query_selector('button._afxw._al46._al47')
-                        or post.query_selector('svg[aria-label="Next"]')
-                        or post.query_selector('li[aria-label^="Go to slide"]')
+                        NEXT_CAROUSEL.find(post)
                         or post.query_selector("div._acnb")
                         or post.query_selector("ul._acay li")
                     )
@@ -263,8 +283,11 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
         print(f"Scroll session complete: {stats}")
         return stats
 
+    except (PlaywrightError, BotException) as e:
+        print(f"[!] Error during scrolling: {type(e).__name__} - {e}")
+        return stats
     except Exception as e:
-        print(f"[!] Error during scrolling: {e}")
+        print(f"[!] Unexpected error during scrolling: {type(e).__name__} - {e}")
         return stats
 
 

@@ -1,9 +1,11 @@
 import time
 import random
 import math
-
+import logging
 
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 def human_scroll(page, total_delta: int | None = None, should_stop: Callable[[], bool] | None = None):
     """
@@ -42,7 +44,7 @@ def human_scroll(page, total_delta: int | None = None, should_stop: Callable[[],
                 time.sleep(random.uniform(0.05, 0.12))
 
     except Exception as e:
-        print(f"[!] Error in human_scroll: {e}")
+        logger.error(f"Error in human_scroll: {e}")
         # Fallback to a simple smooth scroll via JS
         try:
             page.evaluate(

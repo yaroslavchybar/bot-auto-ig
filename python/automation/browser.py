@@ -4,13 +4,64 @@ import traceback
 import time
 import random
 import datetime
+import signal
 from contextlib import contextmanager
 from typing import Optional
 from threading import Thread
 from camoufox import Camoufox
 from camoufox.exceptions import InvalidProxy
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+from python.core.resilience.exceptions import AccountBannedException, ProxyError
+from python.core.resilience.retry import jitter, retry_with_backoff
 from python.automation import actions
 from python.automation.scrolling import scroll_feed, scroll_reels
+from python.core.resilience.config import config
+from python.core.resilience.traffic_monitor import TrafficMonitor
+import logging
+
+logger = logging.getLogger(__name__)
+
+# --- Proxy Health & Circuit Breaker ---
+
+_proxy_health = {}  # proxy_string -> {"failures": int, "tainted_until": float}
+
+def mark_proxy_failure(proxy_string: str):
+    if not proxy_string:
+        return
+    if proxy_string not in _proxy_health:
+        _proxy_health[proxy_string] = {"failures": 0, "tainted_until": 0}
+    _proxy_health[proxy_string]["failures"] += 1
+    if _proxy_health[proxy_string]["failures"] >= config.PROXY_FAILURE_THRESHOLD:
+        _proxy_health[proxy_string]["tainted_until"] = time.time() + config.PROXY_TAINT_DURATION
+        logger.warning(f"Proxy {proxy_string} tainted for {config.PROXY_TAINT_DURATION}s due to failures")
+
+def is_proxy_healthy(proxy_string: str) -> bool:
+    if not proxy_string or proxy_string not in _proxy_health:
+        return True
+    return time.time() > _proxy_health[proxy_string]["tainted_until"]
+
+class ProxyCircuitBreaker:
+    def __init__(self):
+        self.consecutive_failures = 0
+        self.global_pause_until = 0
+    
+    def record_failure(self):
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= config.CIRCUIT_THRESHOLD:
+            self.global_pause_until = time.time() + config.CIRCUIT_RECOVERY_TIMEOUT
+            logger.error(f"Circuit Breaker Triggered! Pausing all operations for {config.CIRCUIT_RECOVERY_TIMEOUT}s.")
+    
+    def record_success(self):
+        self.consecutive_failures = 0
+    
+    def is_open(self) -> bool:
+        return time.time() < self.global_pause_until
+
+proxy_circuit = ProxyCircuitBreaker()
+
+@retry_with_backoff(exceptions=(PlaywrightTimeoutError,))
+def safe_goto(page, url, timeout=None):
+    return page.goto(url, timeout=timeout)
 
 def parse_proxy_string(proxy_string):
     """
@@ -36,9 +87,24 @@ def parse_proxy_string(proxy_string):
             scheme, remainder = proxy_string.split("://", 1)
             proxy_string = remainder
         
-        # Check for user:pass@host:port format (Standard)
         if "@" in proxy_string:
-            # Reconstruct full URL for standard parsing
+            try:
+                from urllib.parse import urlsplit
+
+                parsed = urlsplit(f"{scheme}://{proxy_string}")
+                if parsed.hostname:
+                    server = f"{scheme}://{parsed.hostname}"
+                    if parsed.port is not None:
+                        server = f"{server}:{parsed.port}"
+                    cfg = {"server": server}
+                    if parsed.username is not None:
+                        cfg["username"] = parsed.username
+                    if parsed.password is not None:
+                        cfg["password"] = parsed.password
+                    return cfg
+            except Exception:
+                pass
+
             return {"server": f"{scheme}://{proxy_string}"}
             
         # Split by colon
@@ -65,7 +131,7 @@ def parse_proxy_string(proxy_string):
         # Fallback for other formats, assume standard URL if just passed
         return {"server": f"{scheme}://{proxy_string}"}
         
-    except Exception as e:
+    except (ValueError, AttributeError) as e:
         print(f"[!] Error parsing proxy '{proxy_string}': {e}")
         return None
 
@@ -143,9 +209,19 @@ def create_browser_context(
     block_images: bool = False,
     os: Optional[str] = None,
 ):
+    if proxy_circuit.is_open():
+        wait_time = proxy_circuit.global_pause_until - time.time()
+        print(f"[!] Circuit breaker open. Waiting {wait_time:.1f}s...")
+        time.sleep(wait_time)
+
     profile_path = ensure_profile_path(profile_name, base_dir=base_dir)
-    if _should_clean_today(profile_path):
-        Thread(target=_clean_cache2, args=(profile_path,), daemon=True).start()
+    should_clean = _should_clean_today(profile_path)
+    
+    # Check proxy health
+    if proxy_string and not is_proxy_healthy(proxy_string):
+        print(f"[!] Proxy {proxy_string} is tainted. Skipping...")
+        raise ProxyError(f"Proxy {proxy_string} is currently tainted due to previous failures.")
+        
     proxy_config = build_proxy_config(proxy_string)
 
     # Prepare common launch arguments
@@ -180,11 +256,41 @@ def create_browser_context(
 
         # Browser initialized successfully
         page = context.pages[0] if context.pages else context.new_page()
+        
+        # Attach Traffic Monitor
+        monitor = TrafficMonitor()
+        page.on("response", monitor.on_response)
+        
         try:
             if page.url == "about:blank":
-                page.goto("https://www.instagram.com", timeout=15000)
-        except Exception:
-            pass
+                safe_goto(page, "https://www.instagram.com", timeout=jitter(15000))
+                
+                # Check monitor cooldown
+                if monitor.should_pause():
+                    wait_time = monitor.cooldown_until - time.time()
+                    print(f"[!] Traffic monitor triggered cooldown. Waiting {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                
+                # Basic ban detection
+                try:
+                    content = page.content().lower()
+                    if "account has been disabled" in content or "account suspended" in content:
+                        raise AccountBannedException("Account appears to be banned/suspended")
+                except Exception:
+                    pass
+                    
+            proxy_circuit.record_success()
+                    
+        except PlaywrightTimeoutError:
+            print("[!] Timeout navigating to Instagram")
+            mark_proxy_failure(proxy_string)
+            proxy_circuit.record_failure()
+        except AccountBannedException:
+            raise
+        except Exception as e:
+            print(f"[!] Error navigating to Instagram: {e}")
+            mark_proxy_failure(proxy_string)
+            proxy_circuit.record_failure()
             
         yield context, page
 
@@ -208,11 +314,17 @@ def create_browser_context(
             except Exception:
                 pass
 
+        if should_clean:
+            try:
+                Thread(target=_clean_cache2, args=(profile_path,), daemon=True).start()
+            except Exception:
+                pass
+
 def run_browser(profile_name, proxy_string, action="manual", duration=5, 
               match_likes=0, match_comments=0, match_follows=0, 
               carousel_watch_chance=0, carousel_max_slides=3,
               watch_stories=True, stories_max=3,
-              feed_duration=0, reels_duration=0, show_cursor=False,
+              feed_duration=0, reels_duration=0,
               reels_match_likes=None, reels_match_follows=None,
               user_agent=None, headless=False, os=None):
     print(f"[*] Starting Profile: {profile_name}")
@@ -224,6 +336,16 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
     if user_agent:
         print(f"[*] Using User Agent: {user_agent}")
     print(f"[*] Headless mode: {'ON' if headless else 'OFF'}")
+
+    def _handle_signal(_sig, _frame):
+        raise SystemExit(0)
+
+    if hasattr(signal, "SIGINT"):
+        signal.signal(signal.SIGINT, _handle_signal)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _handle_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _handle_signal)
 
     try:
         print("[*] Initializing Camoufox browser...")
@@ -268,12 +390,12 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
                 if action == "scroll":
                     print(f"[*] Starting scrolling session for {duration} minutes...")
                     print(f"[*] Config: {feed_config}")
-                    scroll_feed(page, duration, feed_config)
+                    scroll_feed(page, duration, feed_config, profile_name=profile_name)
                     print("[*] Scrolling session finished.")
                     
                 elif action == "reels":
                     print(f"[*] Starting REELS session for {duration} minutes...")
-                    scroll_reels(page, duration, reels_config)
+                    scroll_reels(page, duration, reels_config, profile_name=profile_name)
                     print("[*] Reels session finished.")
 
                 elif action == "mixed":
@@ -295,11 +417,11 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
                     for idx, (task_type, task_duration) in enumerate(tasks, 1):
                         if task_type == 'feed':
                             print(f"[*] [{idx}/{len(tasks)}] Running Feed scroll for {task_duration} mins...")
-                            scroll_feed(page, task_duration, feed_config)
+                            scroll_feed(page, task_duration, feed_config, profile_name=profile_name)
                             print("Feed part complete.")
                         elif task_type == 'reels':
                             print(f"[*] [{idx}/{len(tasks)}] Running Reels scroll for {task_duration} mins...")
-                            scroll_reels(page, task_duration, reels_config)
+                            scroll_reels(page, task_duration, reels_config, profile_name=profile_name)
                             print("Reels part complete.")
                         
                         # Small pause between tasks (except after the last one)

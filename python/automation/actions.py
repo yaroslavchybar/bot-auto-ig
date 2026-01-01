@@ -3,8 +3,6 @@ Instagram automation functions using Playwright/Camoufox
 """
 import time
 import random
-import os
-from typing import Optional, List
 
 
 def random_delay(min_seconds: float = 1.0, max_seconds: float = 3.0):

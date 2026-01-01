@@ -22,10 +22,10 @@ class TestExecutorLifecycle(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 2
@@ -46,10 +46,10 @@ class TestExecutorLifecycle(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 5
@@ -71,10 +71,10 @@ class TestExecutorLifecycle(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 10
@@ -96,10 +96,10 @@ class TestExecutorLifecycle(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 1
@@ -114,6 +114,26 @@ class TestExecutorLifecycle(unittest.TestCase):
                     
                     self.assertFalse(runner.running)
                     mock_shutdown.assert_called()
+
+
+class TestProcessManager(unittest.TestCase):
+    def test_start_profile_uses_absolute_launcher_path_and_project_cwd(self):
+        from python.core.runtime.process_manager import ProcessManager
+
+        with patch("python.core.runtime.process_manager.subprocess.Popen") as MockPopen:
+            MockPopen.return_value = MagicMock()
+            pm = ProcessManager()
+            ok, _msg = pm.start_profile("p1", "None", action="manual")
+            self.assertTrue(ok)
+
+            args, kwargs = MockPopen.call_args
+            cmd = args[0]
+            self.assertGreaterEqual(len(cmd), 2)
+            self.assertTrue(os.path.isabs(cmd[1]))
+            self.assertTrue(cmd[1].endswith(os.path.join("python", "launcher.py")))
+
+            expected_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            self.assertEqual(kwargs.get("cwd"), expected_root)
 
 
 if __name__ == "__main__":

@@ -77,11 +77,11 @@ class TestSharedSession(unittest.TestCase):
         self.assertTrue(all(s is sessions[0] for s in sessions))
 
 
-class TestProfilesClientSharedSession(unittest.TestCase):
-    """Test that profiles_client.py uses shared session."""
+class TestProfilesClientResilientHttpClient(unittest.TestCase):
+    """Test that profiles_client.py uses ResilientHttpClient."""
 
-    def test_profiles_client_uses_shared_session(self):
-        """SupabaseProfilesClient should use get_shared_session()."""
+    def test_profiles_client_uses_resilient_http_client(self):
+        """SupabaseProfilesClient should use ResilientHttpClient."""
         with patch.dict(os.environ, {
             "SUPABASE_URL": "https://test.supabase.co",
             "SUPABASE_SECRET_KEY": "test-key"
@@ -91,22 +91,22 @@ class TestProfilesClientSharedSession(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session") as mock_get:
-                mock_session = MagicMock()
-                mock_get.return_value = mock_session
+            with patch("python.supabase.profiles_client.ResilientHttpClient") as MockClient:
+                mock_http_client = MagicMock()
+                MockClient.return_value = mock_http_client
                 
                 from python.supabase.profiles_client import SupabaseProfilesClient
                 client = SupabaseProfilesClient()
                 
-                mock_get.assert_called_once()
-                self.assertEqual(client.session, mock_session)
+                MockClient.assert_called_once()
+                self.assertEqual(client.http_client, mock_http_client)
 
 
-class TestInstagramAccountsClientSharedSession(unittest.TestCase):
-    """Test that instagram_accounts_client.py uses shared session."""
+class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
+    """Test that instagram_accounts_client.py uses ResilientHttpClient."""
 
-    def test_instagram_accounts_client_uses_shared_session(self):
-        """InstagramAccountsClient should use get_shared_session()."""
+    def test_instagram_accounts_client_uses_resilient_http_client(self):
+        """InstagramAccountsClient should use ResilientHttpClient."""
         with patch.dict(os.environ, {
             "SUPABASE_URL": "https://test.supabase.co",
             "SUPABASE_SECRET_KEY": "test-key"
@@ -115,16 +115,17 @@ class TestInstagramAccountsClientSharedSession(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.instagram_accounts_client.get_shared_session") as mock_get:
-                mock_session = MagicMock()
-                mock_get.return_value = mock_session
+            with patch("python.supabase.instagram_accounts_client.ResilientHttpClient") as MockClient:
+                mock_http_client = MagicMock()
+                MockClient.return_value = mock_http_client
                 
                 from python.supabase.instagram_accounts_client import InstagramAccountsClient
                 client = InstagramAccountsClient()
                 
-                mock_get.assert_called_once()
-                self.assertEqual(client.session, mock_session)
+                MockClient.assert_called_once()
+                self.assertEqual(client.http_client, mock_http_client)
 
 
 if __name__ == "__main__":
     unittest.main()
+

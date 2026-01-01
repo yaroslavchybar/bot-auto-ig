@@ -65,12 +65,10 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
 
     const [progress, setProgress] = useState<{
         totalAccounts: number;
-        completedAccounts: number;
         currentProfile: string | null;
         currentTask: string | null;
     }>({
         totalAccounts: 0,
-        completedAccounts: 0,
         currentProfile: null,
         currentTask: null,
     });
@@ -205,7 +203,6 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
             if (event.type === 'session_started') {
                 setProgress({
                     totalAccounts: event.total_accounts,
-                    completedAccounts: 0,
                     currentProfile: null,
                     currentTask: null,
                 });
@@ -214,12 +211,7 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
             } else if (event.type === 'task_started') {
                 setProgress(prev => ({ ...prev, currentTask: event.task }));
             } else if (event.type === 'profile_completed') {
-                setProgress(prev => ({
-                    ...prev,
-                    completedAccounts: prev.completedAccounts + 1,
-                    currentProfile: null,
-                    currentTask: null,
-                }));
+                setProgress(prev => ({ ...prev, currentProfile: null, currentTask: null }));
             } else if (event.type === 'session_ended') {
                 // Keep progress for a bit? Or reset?
             }
@@ -351,7 +343,9 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
                 if (currentField === 'do_unfollow') { setMainFocusIndex(focusIndex); setFocusIndex(0); setView('unfollow'); }
                 if (currentField === 'do_message') {
                     setMainFocusIndex(focusIndex);
-                    void fetchMessageTemplates('message');
+                    setMessageMode('list');
+                    setMessageDraft('');
+                    void fetchMessageTemplates(messageKind);
                     setView('message');
                 }
             }
@@ -396,9 +390,9 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
                 const action = visibleOrder[orderIndex];
                 if (!action) return;
                 const visible = settings.action_order.filter(a => (enabledMap as any)[a]);
-                const idx = visible.indexOf(action);
-                const newIdx = clamp(idx + dir, 0, Math.max(0, visible.length - 1));
-                if (idx === -1 || newIdx === idx) return;
+                const idx = orderIndex;
+                const newIdx = clamp(orderIndex + dir, 0, Math.max(0, visible.length - 1));
+                if (newIdx === idx) return;
                 const swapped = [...visible];
                 const tmp = swapped[idx];
                 swapped[idx] = swapped[newIdx];
@@ -419,14 +413,21 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
 
             if (key.ctrl && key.upArrow) move(-1);
             if (key.ctrl && key.downArrow) move(1);
+            if (key.ctrl && key.pageUp) move(-1);
+            if (key.ctrl && key.pageDown) move(1);
             if (key.leftArrow) move(-1);
             if (key.rightArrow) move(1);
 
             if (input === 'd' || input === 'D' || key.delete || key.backspace) {
                 const action = visibleOrder[orderIndex];
                 if (!action) return;
-                const idx = settings.action_order.indexOf(action);
-                if (idx < 0) return;
+                const visibleIndices: number[] = [];
+                for (let i = 0; i < settings.action_order.length; i += 1) {
+                    const a = settings.action_order[i];
+                    if ((enabledMap as any)[a]) visibleIndices.push(i);
+                }
+                const idx = visibleIndices[orderIndex];
+                if (idx === undefined) return;
                 const nextOrder = [...settings.action_order];
                 nextOrder.splice(idx, 1);
                 updateSettings(prev => ({ ...prev, action_order: nextOrder }));
@@ -444,7 +445,10 @@ export default function Instagram({ onBack, initialMainFocusIndex, onMainFocusIn
             if (key.return) {
                 const action = candidates[orderAddIndex];
                 if (!action) return;
-                updateSettings(prev => ({ ...prev, action_order: [...prev.action_order, action] }));
+                updateSettings(prev => {
+                    if (prev.action_order.includes(action)) return prev;
+                    return { ...prev, action_order: [...prev.action_order, action] };
+                });
                 setView('order');
             }
         } else if (['feed', 'reels', 'stories', 'follow', 'unfollow'].includes(view)) {

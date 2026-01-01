@@ -22,10 +22,10 @@ class TestProfileCaching(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 1
@@ -46,10 +46,10 @@ class TestProfileCaching(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 1
@@ -68,10 +68,10 @@ class TestProfileCaching(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 1
@@ -91,10 +91,10 @@ class TestProfileCaching(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
-                with patch("python.supabase.instagram_accounts_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
+                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
-                    from python.core.models import ScrollingConfig
+                    from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
                     mock_config.parallel_profiles = 1
@@ -121,7 +121,7 @@ class TestGetAvailableProfiles(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
                 from python.supabase.profiles_client import SupabaseProfilesClient
                 client = SupabaseProfilesClient()
                 
@@ -138,7 +138,7 @@ class TestGetAvailableProfiles(unittest.TestCase):
             import python.supabase.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.get_shared_session"):
+            with patch("python.supabase.profiles_client.ResilientHttpClient"):
                 from python.supabase.profiles_client import SupabaseProfilesClient
                 client = SupabaseProfilesClient()
                 

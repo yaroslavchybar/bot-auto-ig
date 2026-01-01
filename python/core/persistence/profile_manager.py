@@ -3,7 +3,11 @@ import os
 import shutil
 from python.supabase.profiles_client import SupabaseProfilesClient, SupabaseProfilesError
 
+import logging
+
 PROFILE_DB = "db.json"
+
+logger = logging.getLogger(__name__)
 
 def _profiles_dir() -> str:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -16,7 +20,7 @@ class ProfileManager:
         try:
             self.db_client = SupabaseProfilesClient()
         except SupabaseProfilesError as e:
-            print(f"Warning: Database sync disabled - {e}")
+            logger.warning(f"Database sync disabled - {e}")
 
         self.profiles = self.load_profiles()
         # Fetch from database on startup to populate in-memory cache
@@ -44,7 +48,7 @@ class ProfileManager:
             try:
                 self.db_client.create_profile(profile_data)
             except SupabaseProfilesError as e:
-                print(f"Warning: Failed to sync new profile to database - {e}")
+                logger.warning(f"Failed to sync new profile to database - {e}")
 
     def delete_profile(self, category, index):
         if category in self.profiles and 0 <= index < len(self.profiles[category]):
@@ -57,7 +61,7 @@ class ProfileManager:
                     if db_profile:
                         self.db_client.delete_profile(db_profile["profile_id"])
                 except SupabaseProfilesError as e:
-                    print(f"Warning: Failed to sync profile deletion to database - {e}")
+                    logger.warning(f"Failed to sync profile deletion to database - {e}")
                     return False  # Don't delete locally if DB sync fails
 
             # Delete the browser profile directory
@@ -68,9 +72,9 @@ class ProfileManager:
             if os.path.exists(profile_path):
                 try:
                     shutil.rmtree(profile_path)
-                    print(f"Deleted browser profile directory: '{profile_name}'")
+                    logger.info(f"Deleted browser profile directory: '{profile_name}'")
                 except Exception as e:
-                    print(f"Warning: Failed to delete browser profile directory '{profile_path}': {e}")
+                    logger.warning(f"Failed to delete browser profile directory '{profile_path}': {e}")
                     # Continue with the deletion anyway, as the JSON data removal is more important
 
             del self.profiles[category][index]
@@ -99,15 +103,15 @@ class ProfileManager:
                 if os.path.exists(old_path):
                     # Check if new directory already exists (shouldn't happen due to duplicate name validation)
                     if os.path.exists(new_path):
-                        print(f"Warning: Cannot rename profile directory - '{new_path}' already exists")
+                        logger.warning(f"Cannot rename profile directory - '{new_path}' already exists")
                         return False
 
                     try:
                         # Rename the browser profile directory
                         shutil.move(old_path, new_path)
-                        print(f"Renamed browser profile directory: '{old_name}' -> '{new_name}'")
+                        logger.info(f"Renamed browser profile directory: '{old_name}' -> '{new_name}'")
                     except Exception as e:
-                        print(f"Warning: Failed to rename browser profile directory: {e}")
+                        logger.warning(f"Failed to rename browser profile directory: {e}")
                         # Continue with the update anyway, as the JSON data is more important
 
             self.profiles[category][index] = profile_data
@@ -123,7 +127,7 @@ class ProfileManager:
                         # Profile doesn't exist in DB, create it
                         self.db_client.create_profile(profile_data)
                 except SupabaseProfilesError as e:
-                    print(f"Warning: Failed to sync profile update to database - {e}")
+                    logger.warning(f"Failed to sync profile update to database - {e}")
 
             return True
         return False
@@ -173,7 +177,7 @@ class ProfileManager:
             self.save_profiles()
 
         except SupabaseProfilesError as e:
-            print(f"Warning: Failed to sync from database - {e}")
+            logger.warning(f"Failed to sync from database - {e}")
 
     def update_profile_status(self, name: str, status: str, using: bool = False):
         """Update profile status in database"""
@@ -181,7 +185,7 @@ class ProfileManager:
             try:
                 self.db_client.sync_profile_status(name, status, using)
             except SupabaseProfilesError as e:
-                print(f"Warning: Failed to sync profile status - {e}")
+                logger.warning(f"Failed to sync profile status - {e}")
 
     def ensure_db_has_local_profiles(self):
         if not self.db_client:

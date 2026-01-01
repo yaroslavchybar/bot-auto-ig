@@ -78,41 +78,21 @@ def approve_follow_requests(
                         if btn.is_visible():
                             username = None
                             try:
-                                # Find the container holding the buttons (Confirm and Delete)
-                                # This ensures we are targeting a request row and allows navigation to the username
-                                # Use * to match div or button or span
-                                buttons_container = btn.locator('xpath=ancestor::div[descendant::*[(@role="button" or local-name()="button") and text()="Delete"]][1]').first
-                                
-                                if buttons_container.is_visible():
-                                    # Look for username link in preceding siblings (User Info)
-                                    # Search for any link with href starting with /
-                                    # Use * to match any sibling container
-                                    link = buttons_container.locator('xpath=preceding-sibling::*//a[@role="link"][starts-with(@href, "/")]').first
-                                    
-                                    href = link.get_attribute('href') if link.is_visible() else None
-                                    if href:
-                                        href = href.strip()
-                                        if href.startswith("/"):
-                                            parts = [p for p in href.split("/") if p]
-                                            if parts:
-                                                username = parts[0]
-                                    
-                                    if not username:
-                                         # Fallback: scan text in preceding siblings
-                                         texts = buttons_container.locator('xpath=preceding-sibling::*').all_text_contents()
-                                         for t in texts:
-                                             # Simple heuristic for username in text
-                                             words = t.split()
-                                             for w in words:
-                                                 w = w.strip()
-                                                 if re.fullmatch(r"[A-Za-z0-9._]{2,30}", w):
-                                                     username = w
-                                                     break
-                                             if username: break
-                                else:
-                                    # No sibling Delete button - skip (likely Suggested for you)
+                                row = btn.locator(
+                                    'xpath=ancestor::*[.//div[@role="button" and normalize-space()="Delete"] and .//a[@role="link" and starts-with(@href, "/")]][1]'
+                                ).first
+
+                                if not row.is_visible():
                                     log("Skipping row without Delete button (Suggested for you?)")
                                     continue
+
+                                link = row.locator('xpath=.//a[@role="link" and starts-with(@href, "/")][1]').first
+                                href = link.get_attribute('href') if link.is_visible() else None
+                                if href:
+                                    href = href.strip()
+                                    parts = [p for p in href.split("/") if p]
+                                    if parts:
+                                        username = parts[0]
                             except Exception as e:
                                 log(f"Extraction error: {e}")
                                 username = None

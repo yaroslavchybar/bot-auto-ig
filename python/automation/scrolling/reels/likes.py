@@ -1,4 +1,9 @@
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def perform_like(page) -> bool:
     """Like the current active reel."""
     try:
@@ -75,13 +80,13 @@ def perform_like(page) -> bool:
                 y = box['y'] + box['height'] / 2
                 
                 if y < safe_y_min or y > safe_y_max:
-                    print(f"[!] Skipped liking: Button y={y} is outside viewport")
+                    logger.debug(f"Skipped liking: Button y={y} is outside viewport")
                     return False
 
                 page.mouse.click(x, y)
-                print("Liked reel")
+                logger.info("Liked reel")
                 return True
     except Exception as e:
-        print(f"[!] Error liking reel: {e}")
+        logger.error(f"Error liking reel: {e}")
     
     return False

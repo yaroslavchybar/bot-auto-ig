@@ -29,17 +29,6 @@ const LogRow = ({ entry, showTime, showSource, maxWidth }: { entry: LogEntry, sh
 	
 	// Ensure single line by replacing newlines
 	cleanMessage = cleanMessage.replace(/[\r\n]+/g, ' ');
-
-	// Calculate available width for message
-	// maxWidth is the total width of the Box.
-	// We need to account for time and src lengths.
-	const prefixLength = time.length + src.length;
-	const availableWidth = Math.max(0, maxWidth - prefixLength);
-
-	// Truncate message if too long
-	if (cleanMessage.length > availableWidth) {
-		cleanMessage = cleanMessage.slice(0, Math.max(0, availableWidth - 3)) + '...';
-	}
 	
 	return (
 		<Text wrap="truncate-end">

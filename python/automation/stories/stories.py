@@ -1,5 +1,8 @@
 import random
 from python.automation.actions import random_delay
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _click_center(page, element) -> bool:
@@ -64,7 +67,7 @@ def _find_story_bubble(page, log=None):
     Returns:
         element handle or None
     """
-    log = log or (lambda s: print(s))
+    log = log or logger.info
     selectors = [
         'li._acaz [aria-label*="story" i]',
         '[aria-label*="story" i]',
@@ -193,7 +196,7 @@ def watch_stories(page, max_stories: int = 3, min_view_s: float = 2.0, max_view_
         bool: True if at least one story was opened.
     """
     try:
-        log = log or (lambda s: print(s))
+        log = log or logger.info
         _go_home(page, log=log)
         bubble = _find_story_bubble(page, log=log)
         if not bubble:

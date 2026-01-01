@@ -2,7 +2,7 @@ import React from 'react';
 import { Text } from 'ink';
 import { Row } from './Row.js';
 
-export interface CheckboxProps {
+interface CheckboxProps {
     label: string;
     checked: boolean;
     focused: boolean;

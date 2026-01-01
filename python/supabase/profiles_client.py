@@ -2,8 +2,11 @@ import requests
 from datetime import datetime, timezone
 from datetime import timedelta
 from typing import List, Dict, Optional
+import logging
 from .config import PROJECT_URL, SECRET_KEY
-from .shared_session import get_shared_session
+from python.core.resilience.http_client import ResilientHttpClient
+
+logger = logging.getLogger(__name__)
 
 class SupabaseProfilesError(Exception):
     """Raised when Supabase profiles API call fails."""
@@ -24,7 +27,7 @@ class SupabaseProfilesClient:
             "Content-Type": "application/json",
             "Prefer": "return=representation"
         }
-        self.session = get_shared_session()
+        self.http_client = ResilientHttpClient()
         self.timeout = (10, 60)
 
     def _make_request(self, method: str, endpoint: str = "", data: Optional[Dict] = None, params: Optional[Dict] = None):
@@ -33,13 +36,13 @@ class SupabaseProfilesClient:
 
         try:
             if method.upper() == "GET":
-                resp = self.session.get(url, headers=self.headers, params=params, timeout=self.timeout)
+                resp = self.http_client.get(url, headers=self.headers, params=params, timeout=self.timeout)
             elif method.upper() == "POST":
-                resp = self.session.post(url, headers=self.headers, json=data, timeout=self.timeout)
+                resp = self.http_client.post(url, headers=self.headers, json=data, timeout=self.timeout)
             elif method.upper() == "PATCH":
-                resp = self.session.patch(url, headers=self.headers, json=data, timeout=self.timeout)
+                resp = self.http_client.patch(url, headers=self.headers, json=data, timeout=self.timeout)
             elif method.upper() == "DELETE":
-                resp = self.session.delete(url, headers=self.headers, timeout=self.timeout)
+                resp = self.http_client.delete(url, headers=self.headers, timeout=self.timeout)
             else:
                 raise SupabaseProfilesError(f"Unsupported HTTP method: {method}")
 
@@ -48,7 +51,7 @@ class SupabaseProfilesClient:
 
             return resp.json() if resp.content else None
 
-        except requests.RequestException as e:
+        except Exception as e:
             raise SupabaseProfilesError(f"Request failed: {e}")
 
     def get_all_profiles(self) -> List[Dict]:
@@ -100,7 +103,7 @@ class SupabaseProfilesClient:
                     data={"sessions_today": new_count}
                 )
         except Exception as e:
-            print(f"Error incrementing sessions for {profile_name}: {e}")
+            logger.error(f"Error incrementing sessions for {profile_name}: {e}")
 
     def create_profile(self, profile_data: Dict) -> Dict:
         """Create new profile in database"""

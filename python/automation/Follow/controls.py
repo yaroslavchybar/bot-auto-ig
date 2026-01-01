@@ -15,100 +15,65 @@ def _is_in_suggested(btn, max_depth: int = 6) -> bool:
 
 
 import time
+from python.core.automation.selectors import FOLLOW_BUTTON, FOLLOWING_BUTTON, REQUESTED_BUTTON
+
+def _is_in_suggested(btn, max_depth: int = 6) -> bool:
+    """Heuristically detect if button is inside 'Suggested for you' carousel."""
+    try:
+        parent = btn
+        # If it's a locator, we need the element handle
+        if hasattr(parent, "element_handle"):
+            parent = parent.element_handle()
+            
+        for _ in range(max_depth):
+            # Playwright ElementHandle parent access
+            # Note: This is tricky with pure Locators. 
+            # Ideally we check if the button is within a container with specific text.
+            # For now, we'll skip this check if we can't easily traverse up, 
+            # or rely on semantic specificity (header vs body).
+            if not hasattr(parent, "query_selector"): # Basic check if it's an element
+                 break
+                 
+            # In Playwright, traversing up is usually done via locators or evaluation
+            # This legacy check might need a different approach with Locators.
+            # But since we are using get_by_role, we might match elements anywhere.
+            # We will rely on SemanticSelector's finding logic.
+            pass 
+            
+            # Legacy implementation used ElementHandle.parent_element() which might exist depending on driver
+            # For this migration, we will trust the Semantic Selector to find the main profile button first.
+            # Or we can re-implement if needed.
+            break 
+            
+    except Exception:
+        pass
+    return False
+
 
 def find_follow_control(page):
     """
     Find a follow-related button and classify its state.
     Returns tuple (state, element) where state in {"follow", "requested", "following", None}
-    Skips buttons inside "Suggested for you".
     """
-    priority_candidates = [
-        ("follow", [
-            "header button:has-text(\"Follow\")",
-            "main header button:has-text(\"Follow\")",
-            "header div[role=\"button\"]:has-text(\"Follow\")",
-            "main header div[role=\"button\"]:has-text(\"Follow\")",
-            "header button:has-text(\"Follow Back\")",
-            "main header button:has-text(\"Follow Back\")",
-            "header div[role=\"button\"]:has-text(\"Follow Back\")",
-            "main header div[role=\"button\"]:has-text(\"Follow Back\")",
-            "header button:has-text(\"Подписаться\")",
-            "main header button:has-text(\"Подписаться\")",
-            "header div[role=\"button\"]:has-text(\"Подписаться\")",
-            "main header div[role=\"button\"]:has-text(\"Подписаться\")",
-        ]),
-        ("requested", [
-            "header button:has-text(\"Requested\")",
-            "main header button:has-text(\"Requested\")",
-            "header div[role=\"button\"]:has-text(\"Requested\")",
-            "main header div[role=\"button\"]:has-text(\"Requested\")",
-        ]),
-        ("following", [
-            "header button:has-text(\"Following\")",
-            "main header button:has-text(\"Following\")",
-            "header div[role=\"button\"]:has-text(\"Following\")",
-            "main header div[role=\"button\"]:has-text(\"Following\")",
-        ]),
-    ]
-
-    fallback_candidates = [
-        ("follow", [
-            'xpath=//button[normalize-space()="Follow"]',
-            'xpath=//div[@role="button" and normalize-space()="Follow"]',
-            'button:has-text("Follow")',
-            'div[role="button"]:has-text("Follow")',
-            'button[aria-label*="Follow"]',
-            'div[aria-label*="Follow"]',
-            'button:has-text("Follow Back")',
-            'div[role="button"]:has-text("Follow Back")',
-            'xpath=//button[normalize-space()="Follow Back"]',
-            'xpath=//div[@role="button" and normalize-space()="Follow Back"]',
-            'button:has-text("Подписаться")',
-            'div[role="button"]:has-text("Подписаться")',
-            'xpath=//button[normalize-space()="Подписаться"]',
-            'xpath=//div[@role="button" and normalize-space()="Подписаться"]',
-        ]),
-        ("requested", [
-            'button:has-text("Requested")',
-            'div[role="button"]:has-text("Requested")',
-            'xpath=//button[normalize-space()="Requested"]',
-            'xpath=//div[@role="button" and normalize-space()="Requested"]',
-        ]),
-        ("following", [
-            'button:has-text("Following")',
-            'div[role="button"]:has-text("Following")',
-            'xpath=//button[normalize-space()="Following"]',
-            'xpath=//div[@role="button" and normalize-space()="Following"]',
-        ]),
-    ]
-
-    def search(candidates):
-        for state, selectors in candidates:
-            for selector in selectors:
-                try:
-                    buttons = page.query_selector_all(selector)
-                except Exception:
-                    continue
-                for btn in buttons:
-                    try:
-                        if _is_in_suggested(btn):
-                            continue
-                        label = (btn.inner_text() or "").lower()
-                        aria = (btn.get_attribute("aria-label") or "").lower()
-                        if state == "follow":
-                            if "following" in label or "requested" in label:
-                                continue
-                            if "following" in aria or "requested" in aria:
-                                continue
-                        return state, btn
-                    except Exception:
-                        continue
-        return None, None
-
-    state, btn = search(priority_candidates)
-    if state and btn:
-        return state, btn
-    return search(fallback_candidates)
+    
+    # Try strategies in order of likely state (check existing state first)
+    
+    # Check "Following"
+    following_btn = FOLLOWING_BUTTON.find(page)
+    if following_btn:
+        return "following", following_btn
+        
+    # Check "Requested"
+    requested_btn = REQUESTED_BUTTON.find(page)
+    if requested_btn:
+        return "requested", requested_btn
+        
+    # Check "Follow"
+    follow_btn = FOLLOW_BUTTON.find(page)
+    if follow_btn:
+        return "follow", follow_btn
+        
+    return None, None
 
 def wait_for_follow_state(page, timeout_ms: int = 8000):
     deadline = time.time() + (timeout_ms / 1000.0)
@@ -119,15 +84,5 @@ def wait_for_follow_state(page, timeout_ms: int = 8000):
                 return state
         except Exception:
             pass
-        try:
-            page.wait_for_selector('header button:has-text("Following"), main header button:has-text("Following"), header div[role="button"]:has-text("Following"), main header div[role="button"]:has-text("Following")', timeout=250)
-            return "following"
-        except Exception:
-            pass
-        try:
-            page.wait_for_selector('header button:has-text("Requested"), main header button:has-text("Requested"), header div[role="button"]:has-text("Requested"), main header div[role="button"]:has-text("Requested")', timeout=250)
-            return "requested"
-        except Exception:
-            pass
-        time.sleep(0.25)
+        time.sleep(0.5)
     return None

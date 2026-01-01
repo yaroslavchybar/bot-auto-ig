@@ -1,8 +1,9 @@
 import { EventEmitter } from 'events';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { Profile, profileManager } from './profiles.js';
+import { registerCleanup } from './shutdown.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +13,11 @@ class ManualAutomationService extends EventEmitter {
     private _processes = new Map<string, ChildProcess>();
     private _runningNames = new Set<string>();
     private _stopping = new Set<string>(); // Track profiles being stopped to suppress errors
+
+    constructor() {
+        super();
+        registerCleanup(() => this.stopAll());
+    }
 
     get runningNames() { return this._runningNames; }
 
@@ -30,7 +36,8 @@ class ManualAutomationService extends EventEmitter {
             const child = spawn(python, [scriptPath, ...args], {
                 cwd: PROJECT_ROOT,
                 stdio: ['ignore', 'pipe', 'pipe'],
-                detached: false
+                detached: process.platform === 'win32',
+                env: { ...process.env, PYTHONUNBUFFERED: '1' },
             });
 
             if (child.stdout) {
@@ -81,19 +88,7 @@ class ManualAutomationService extends EventEmitter {
                 proc.stdout?.removeAllListeners('data');
                 proc.stderr?.removeAllListeners('data');
 
-                // Try graceful termination first
-                proc.kill('SIGTERM');
-
-                // Force kill after timeout if still running
-                setTimeout(() => {
-                    try {
-                        if (!proc.killed) {
-                            proc.kill('SIGKILL');
-                        }
-                    } catch {
-                        // Ignore - process may already be dead
-                    }
-                }, 2000);
+                void this.stopAsync(name, proc);
             } catch {
                 // Process may already be dead, clean up anyway
                 this._processes.delete(name);
@@ -101,6 +96,62 @@ class ManualAutomationService extends EventEmitter {
                 this.emit('change', this._runningNames);
             }
         }
+    }
+
+    private async stopAsync(name: string, proc: ChildProcess): Promise<void> {
+        try {
+            if (process.platform === 'win32') {
+                try { proc.kill('SIGBREAK'); } catch { }
+                const exited = await this.waitForExit(proc, 1500);
+                if (!exited) {
+                    try { proc.kill(); } catch { }
+                }
+                const exited2 = await this.waitForExit(proc, 1500);
+                if (!exited2 && typeof proc.pid === 'number') {
+                    await this.taskkillTree(proc.pid);
+                }
+            } else {
+                try { proc.kill('SIGTERM'); } catch { }
+                const exited = await this.waitForExit(proc, 2000);
+                if (!exited) {
+                    try { proc.kill('SIGKILL'); } catch { }
+                }
+            }
+        } finally {
+            await this.waitForExit(proc, 5000);
+            this._stopping.delete(name);
+        }
+    }
+
+    async stopAll(): Promise<void> {
+        const entries = Array.from(this._processes.entries());
+        await Promise.all(entries.map(([name, proc]) => this.stopAsync(name, proc)));
+    }
+
+    private waitForExit(proc: ChildProcess, ms: number): Promise<boolean> {
+        if (proc.exitCode !== null) return Promise.resolve(true);
+        return new Promise<boolean>((resolve) => {
+            let done = false;
+            const timer = setTimeout(() => {
+                if (done) return;
+                done = true;
+                proc.off('exit', onExit);
+                resolve(proc.exitCode !== null);
+            }, ms);
+            const onExit = () => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                resolve(true);
+            };
+            proc.once('exit', onExit);
+        });
+    }
+
+    private taskkillTree(pid: number): Promise<void> {
+        return new Promise<void>((resolve) => {
+            execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => resolve());
+        });
     }
 
     isRunning(name: string) {

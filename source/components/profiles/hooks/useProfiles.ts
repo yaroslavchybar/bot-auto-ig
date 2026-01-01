@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { profileManager, Profile } from '../../../lib/profiles.js';
 import { manualAutomationService } from '../../../lib/manualAutomationService.js';
 
@@ -9,20 +9,54 @@ export function useProfiles() {
     const [runningProfiles, setRunningProfiles] = useState<Set<string>>(manualAutomationService.runningNames);
     const [profileLogs, setProfileLogs] = useState<Map<string, string[]>>(new Map());
 
-    const addLog = useCallback((name: string, message: string) => {
+    const logBuffersRef = useRef<Map<string, string>>(new Map());
+    const pendingLinesRef = useRef<Map<string, string[]>>(new Map());
+
+    const flushPending = useCallback(() => {
+        const pending = pendingLinesRef.current;
+        if (pending.size === 0) return;
+
+        const entries = Array.from(pending.entries());
+        pending.clear();
+
         setProfileLogs(prev => {
             const next = new Map(prev);
-            const currentLogs = next.get(name) || [];
-            const lines = message.split('\n').filter(l => l.trim().length > 0);
-            const newLogs = [...currentLogs, ...lines].slice(-1000);
-            next.set(name, newLogs);
+            for (const [name, lines] of entries) {
+                const currentLogs = next.get(name) || [];
+                const newLogs = [...currentLogs, ...lines].slice(-1000);
+                next.set(name, newLogs);
+            }
             return next;
         });
     }, []);
 
+    const addLogChunk = useCallback((name: string, message: string) => {
+        const normalized = String(message).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const buffers = logBuffersRef.current;
+        const pending = pendingLinesRef.current;
+
+        const existing = buffers.get(name) || '';
+        const combined = existing + normalized;
+        const parts = combined.split('\n');
+        const remainder = parts.pop() || '';
+        buffers.set(name, remainder.length > 10000 ? remainder.slice(-10000) : remainder);
+
+        const lines = parts.filter(l => l.trim().length > 0);
+        if (lines.length === 0) return;
+
+        const currentPending = pending.get(name) || [];
+        const merged = [...currentPending, ...lines];
+        pending.set(name, merged.length > 2000 ? merged.slice(-2000) : merged);
+    }, []);
+
+    useEffect(() => {
+        const id = setInterval(flushPending, 75);
+        return () => clearInterval(id);
+    }, [flushPending]);
+
     useEffect(() => {
         const onChange = (names: Set<string>) => setRunningProfiles(new Set(names));
-        const onLog = ({ name, message }: any) => addLog(name, message);
+        const onLog = ({ name, message }: any) => addLogChunk(name, message);
         const onError = ({ name, message }: any) => setError(`${name}: ${message}`);
 
         manualAutomationService.on('change', onChange);
@@ -34,7 +68,7 @@ export function useProfiles() {
             manualAutomationService.off('log', onLog);
             manualAutomationService.off('error', onError);
         };
-    }, [addLog]);
+    }, [addLogChunk]);
 
     const loadProfiles = useCallback(async () => {
         setLoading(true);

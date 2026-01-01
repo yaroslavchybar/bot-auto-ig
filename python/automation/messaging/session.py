@@ -7,7 +7,11 @@ from python.automation.actions import random_delay
 from python.automation.browser import create_browser_context
 from python.supabase.instagram_accounts_client import InstagramAccountsClient
 from python.supabase.message_templates_client import MessageTemplatesClient
-
+from python.core.automation.selectors import (
+    MESSAGE_BUTTON, 
+    NOT_NOW_BUTTON, 
+    SEND_MESSAGE_BUTTON
+)
 
 def load_message_2_texts() -> List[str]:
     try:
@@ -91,48 +95,42 @@ def send_messages(
             # Wait for page to fully load
             page.wait_for_load_state('networkidle', timeout=15000)
 
-            # Try multiple selectors to find the Messages button
-            messages_button = None
-
-            # Selector 1: Direct href link
-            try:
-                messages_button = page.locator('a[href="/direct/inbox/"]').first
-                if messages_button.is_visible(timeout=3000):
-                    log("Найдена кнопка Messages по href")
-                else:
-                    messages_button = None
-            except:
-                messages_button = None
-
-            # Selector 2: Aria label containing "Direct messaging"
+            # Try to find Messages button using semantic selector
+            messages_button = MESSAGE_BUTTON.find(page)
+            
+            # Fallback legacy strategies if SemanticSelector fails or needs augmentation
             if not messages_button:
+                 # Selector 1: Direct href link
+                try:
+                    messages_button = page.locator('a[href="/direct/inbox/"]').first
+                    if not messages_button.is_visible(timeout=3000):
+                        messages_button = None
+                except:
+                    messages_button = None
+
+            if not messages_button:
+                 # Selector 2: Aria label containing "Direct messaging"
                 try:
                     messages_button = page.locator('a[aria-label*="Direct messaging"]').first
-                    if messages_button.is_visible(timeout=3000):
-                        log("Найдена кнопка Messages по aria-label")
-                    else:
+                    if not messages_button.is_visible(timeout=3000):
                         messages_button = None
                 except:
                     messages_button = None
 
-            # Selector 3: SVG with Messages aria-label
             if not messages_button:
+                 # Selector 3: SVG with Messages aria-label
                 try:
                     messages_button = page.locator('svg[aria-label="Messages"]').locator('xpath=ancestor::a').first
-                    if messages_button.is_visible(timeout=3000):
-                        log("Найдена кнопка Messages по SVG")
-                    else:
+                    if not messages_button.is_visible(timeout=3000):
                         messages_button = None
                 except:
                     messages_button = None
-
-            # Selector 4: Look for any link containing "direct" in href
+            
             if not messages_button:
+                 # Selector 4: Look for any link containing "direct" in href
                 try:
                     messages_button = page.locator('a[href*="direct"]').first
-                    if messages_button.is_visible(timeout=3000):
-                        log("Найдена кнопка Messages по href содержащему 'direct'")
-                    else:
+                    if not messages_button.is_visible(timeout=3000):
                         messages_button = None
                 except:
                     messages_button = None
@@ -152,8 +150,8 @@ def send_messages(
 
             # Handle "Turn on Notifications" popup if it appears
             try:
-                not_now_btn = page.locator('button:has-text("Not Now")').first
-                if not_now_btn.is_visible(timeout=3000):
+                not_now_btn = NOT_NOW_BUTTON.find(page)
+                if not_now_btn:
                     not_now_btn.click()
                     random_delay(1, 2)
             except:

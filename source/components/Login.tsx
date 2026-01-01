@@ -4,7 +4,7 @@ import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
 import { profileManager, Profile } from '../lib/profiles.js';
 import { profilesSetLoginTrue } from '../lib/supabase.js';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -34,11 +34,36 @@ export default function Login({ onBack, initialProfilePickerIndex, onProfilePick
     const processRef = useRef<ChildProcess | null>(null);
     const loginUpdatedRef = useRef(false);
 
+    const killProcess = (proc: ChildProcess) => {
+        try {
+            if (process.platform === 'win32') {
+                try { proc.kill('SIGBREAK'); } catch { }
+                setTimeout(() => {
+                    if (proc.exitCode !== null) return;
+                    try { proc.kill(); } catch { }
+                    setTimeout(() => {
+                        if (proc.exitCode !== null) return;
+                        if (typeof proc.pid === 'number') {
+                            execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { windowsHide: true }, () => { });
+                        }
+                    }, 1500);
+                }, 500);
+            } else {
+                try { proc.kill('SIGTERM'); } catch { }
+                setTimeout(() => {
+                    if (proc.exitCode !== null) return;
+                    try { proc.kill('SIGKILL'); } catch { }
+                }, 1500);
+            }
+        } catch {
+        }
+    };
+
     useEffect(() => {
         loadProfiles();
         return () => {
             if (processRef.current) {
-                processRef.current.kill();
+                killProcess(processRef.current);
             }
         };
     }, []);
@@ -102,7 +127,7 @@ export default function Login({ onBack, initialProfilePickerIndex, onProfilePick
             args.push('--proxy', proxy);
         }
 
-        const proc = spawn(python, args, { stdio: 'pipe' });
+        const proc = spawn(python, args, { stdio: 'pipe', env: { ...process.env, PYTHONUNBUFFERED: '1' }, detached: process.platform === 'win32' });
 
         // Send credentials via stdin (not visible in process list)
         const credentials = JSON.stringify({
@@ -114,13 +139,16 @@ export default function Login({ onBack, initialProfilePickerIndex, onProfilePick
         proc.stdin?.end();
         processRef.current = proc;
 
+        let stdoutBuf = '';
         proc.stdout?.on('data', (data) => {
-            const lines = data.toString().split('\n');
-            lines.forEach((line: string) => {
+            stdoutBuf += data.toString();
+            const parts = stdoutBuf.split(/\r?\n/);
+            stdoutBuf = parts.pop() ?? '';
+            for (const line of parts) {
                 const trimmed = line.trim();
-                if (!trimmed) return;
+                if (!trimmed) continue;
                 if (trimmed === '__LOGIN_SUCCESS__') {
-                    if (loginUpdatedRef.current) return;
+                    if (loginUpdatedRef.current) continue;
                     loginUpdatedRef.current = true;
                     void profilesSetLoginTrue(profileName)
                         .then(() => {
@@ -130,17 +158,20 @@ export default function Login({ onBack, initialProfilePickerIndex, onProfilePick
                         .catch((e: any) => {
                             setLogs(prev => [...prev, `⚠️ Failed to update profile login status: ${e?.message || String(e)}`]);
                         });
-                    return;
+                    continue;
                 }
                 setLogs(prev => [...prev, trimmed]);
-            });
+            }
         });
 
+        let stderrBuf = '';
         proc.stderr?.on('data', (data) => {
-            const lines = data.toString().split('\n');
-            lines.forEach((line: string) => {
+            stderrBuf += data.toString();
+            const parts = stderrBuf.split(/\r?\n/);
+            stderrBuf = parts.pop() ?? '';
+            for (const line of parts) {
                 if (line.trim()) setLogs(prev => [...prev, `ERR: ${line.trim()}`]);
-            });
+            }
         });
 
         proc.on('close', (code) => {
@@ -153,7 +184,7 @@ export default function Login({ onBack, initialProfilePickerIndex, onProfilePick
         if (key.escape) {
             if (step === 'running') {
                 if (processRef.current) {
-                    processRef.current.kill();
+                    killProcess(processRef.current);
                     setLogs(prev => [...prev, 'Process killed by user.']);
                 }
                 onBack();

@@ -1,11 +1,12 @@
 import time
 import datetime
 from typing import Any, Callable, Dict, List, Optional
+from urllib.parse import quote
 
 import requests
 
 from python.supabase.config import PROJECT_URL, SECRET_KEY
-from python.supabase.shared_session import get_shared_session
+from python.core.resilience.http_client import ResilientHttpClient
 
 
 class InstagramAccountsError(Exception):
@@ -29,7 +30,7 @@ class InstagramAccountsClient:
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         }
-        self.session = get_shared_session()
+        self.http_client = ResilientHttpClient()
         self.timeout = 20
 
     def _request(
@@ -42,19 +43,19 @@ class InstagramAccountsClient:
     ):
         try:
             if method.upper() == "GET":
-                resp = self.session.get(
+                resp = self.http_client.get(
                     url, headers=self.headers, params=params, timeout=self.timeout
                 )
             elif method.upper() == "POST":
-                resp = self.session.post(
+                resp = self.http_client.post(
                     url, headers=self.headers, json=data, timeout=self.timeout
                 )
             elif method.upper() == "PATCH":
-                resp = self.session.patch(
+                resp = self.http_client.patch(
                     url, headers=self.headers, json=data, timeout=self.timeout
                 )
             elif method.upper() == "DELETE":
-                resp = self.session.delete(url, headers=self.headers, timeout=self.timeout)
+                resp = self.http_client.delete(url, headers=self.headers, timeout=self.timeout)
             else:
                 raise InstagramAccountsError(f"Unsupported HTTP method: {method}")
 
@@ -62,7 +63,7 @@ class InstagramAccountsClient:
                 raise InstagramAccountsError(f"HTTP {resp.status_code}: {resp.text}")
 
             return resp.json() if resp.content else None
-        except requests.RequestException as exc:
+        except Exception as exc:
             raise InstagramAccountsError(f"Request failed: {exc}")
 
     # ----- Accounts helpers -------------------------------------------------
@@ -147,11 +148,31 @@ class InstagramAccountsClient:
         """
         Update the message field for an account by username.
         """
+        normalized = (user_name or "").strip()
+        if normalized.startswith("@"):
+            normalized = normalized[1:]
+        normalized = normalized.strip("/")
+        if not normalized:
+            return None
+
         payload = {"message": message}
-        # Use ilike for case-insensitive match
+
         result = self._request(
             "PATCH",
-            f"{self.accounts_url}?user_name=ilike.{user_name}",
+            f"{self.accounts_url}?user_name=eq.{quote(normalized, safe='')}",
+            data=payload,
+        )
+        if result:
+            return result[0]
+
+        escaped = (
+            normalized.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        result = self._request(
+            "PATCH",
+            f"{self.accounts_url}?user_name=ilike.{quote(escaped, safe='')}",
             data=payload,
         )
         return result[0] if result else None

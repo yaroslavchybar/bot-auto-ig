@@ -32,7 +32,6 @@ interface Props {
     lastLog: string | null;
     progress: {
         totalAccounts: number;
-        completedAccounts: number;
         currentProfile: string | null;
         currentTask: string | null;
     };

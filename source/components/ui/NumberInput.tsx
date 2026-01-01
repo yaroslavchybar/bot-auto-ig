@@ -3,7 +3,7 @@ import { Text } from 'ink';
 import TextInput from 'ink-text-input';
 import { Row } from './Row.js';
 
-export interface NumberInputProps {
+interface NumberInputProps {
     label: string;
     value: number | string;
     focused: boolean;

@@ -7,7 +7,12 @@ export function registerCleanup(fn: CleanupFn): () => void {
 }
 
 export function initShutdownHandler(): void {
+    let cleaning = false;
     const cleanup = async () => {
+        if (cleaning) return;
+        cleaning = true;
+        process.off('SIGINT', cleanup);
+        process.off('SIGTERM', cleanup);
         for (const fn of cleanupFns) {
             try {
                 await fn();

@@ -35,6 +35,7 @@ export default function Profiles({ onBack, initialSelectedIndex, onSelectedIndex
     const [isEditingSelect, setIsEditingSelect] = useState(false);
     const [selectIndexByKey, setSelectIndexByKey] = useState<Record<string, number>>({});
     const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+    const copyFeedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const onSelectedIndexChangeRef = useRef(onSelectedIndexChange);
 
@@ -45,6 +46,15 @@ export default function Profiles({ onBack, initialSelectedIndex, onSelectedIndex
     useEffect(() => {
         onSelectedIndexChangeRef.current(selectedIndex);
     }, [selectedIndex]);
+
+    useEffect(() => {
+        return () => {
+            if (copyFeedbackTimeoutRef.current) {
+                clearTimeout(copyFeedbackTimeoutRef.current);
+                copyFeedbackTimeoutRef.current = null;
+            }
+        };
+    }, []);
 
     const getFields = () => {
         const isProxy = (formData as any).connection === 'proxy';
@@ -215,13 +225,26 @@ export default function Profiles({ onBack, initialSelectedIndex, onSelectedIndex
                 }
             }
         } else if (mode === 'logs') {
-            if (key.escape) { setMode('list'); setCopyFeedback(null); }
+            if (key.escape) {
+                setMode('list');
+                setCopyFeedback(null);
+                if (copyFeedbackTimeoutRef.current) {
+                    clearTimeout(copyFeedbackTimeoutRef.current);
+                    copyFeedbackTimeoutRef.current = null;
+                }
+            }
             if (input === 'c') {
                 const currentLogs = profileLogs.get(profiles[selectedIndex]?.name!) || [];
                 if (currentLogs.length > 0) {
                     clipboardy.writeSync(currentLogs.join('\n'));
                     setCopyFeedback('Copied to clipboard!');
-                    setTimeout(() => setCopyFeedback(null), 2000);
+                    if (copyFeedbackTimeoutRef.current) {
+                        clearTimeout(copyFeedbackTimeoutRef.current);
+                    }
+                    copyFeedbackTimeoutRef.current = setTimeout(() => {
+                        copyFeedbackTimeoutRef.current = null;
+                        setCopyFeedback(null);
+                    }, 2000);
                 }
             }
         }

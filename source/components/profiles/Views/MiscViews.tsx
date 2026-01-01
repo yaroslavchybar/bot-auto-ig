@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text, useStdout } from 'ink';
 
 interface LogsProps {
     name: string;
@@ -8,6 +8,24 @@ interface LogsProps {
 }
 
 export function LogsView({ name, logs, copyFeedback }: LogsProps) {
+    const { stdout } = useStdout();
+    const [logsBoxHeight, setLogsBoxHeight] = React.useState(20);
+
+    React.useEffect(() => {
+        const onResize = () => {
+            if (!stdout) return;
+            setLogsBoxHeight(Math.max(12, stdout.rows - 5));
+        };
+        onResize();
+        stdout?.on('resize', onResize);
+        return () => {
+            stdout?.off('resize', onResize);
+        };
+    }, [stdout]);
+
+    const maxLines = Math.max(1, logsBoxHeight - 4);
+    const visibleLogs = logs.slice(-maxLines);
+
     return (
         <Box flexDirection="column" padding={1}>
             <Box marginBottom={1}>
@@ -16,12 +34,12 @@ export function LogsView({ name, logs, copyFeedback }: LogsProps) {
                 <Text>[Esc] Back | [C]opy Logs</Text>
                 {copyFeedback && <Text color="green"> {copyFeedback}</Text>}
             </Box>
-            <Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1} minHeight={20}>
-                {logs.length === 0 ? (
+            <Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1} height={logsBoxHeight}>
+                {visibleLogs.length === 0 ? (
                     <Text color="gray">No logs available.</Text>
                 ) : (
-                    logs.map((log, i) => (
-                        <Text key={i}>{log}</Text>
+                    visibleLogs.map((log, i) => (
+                        <Text key={i} wrap="truncate-end">{log}</Text>
                     ))
                 )}
             </Box>

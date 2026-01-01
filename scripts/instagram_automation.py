@@ -21,7 +21,7 @@ def _project_root() -> str:
 
 sys.path.insert(0, _project_root())
 
-from python.core.models import ScrollingConfig, ThreadsAccount
+from python.core.domain.models import ScrollingConfig, ThreadsAccount
 from python.automation.scrolling import scroll_feed, scroll_reels
 from python.automation.stories import watch_stories
 from python.automation.Follow.session import follow_usernames
@@ -33,7 +33,7 @@ from python.supabase.config import PROJECT_URL, SECRET_KEY
 from python.supabase.instagram_accounts_client import InstagramAccountsClient
 from python.supabase.profiles_client import SupabaseProfilesClient
 from python.supabase.message_templates_client import MessageTemplatesClient
-from python.core.worker_utils import (
+from python.core.automation.worker_utils import (
     apply_count_limit,
     build_action_order,
     create_browser_context,
@@ -800,6 +800,8 @@ def main() -> int:
         signal.signal(signal.SIGINT, _handle_signal)
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, _handle_signal)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, _handle_signal)
 
     return runner.run()
 
