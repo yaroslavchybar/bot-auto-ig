@@ -3,7 +3,8 @@ import { Box, Text } from 'ink';
 import { Profile } from '../../../lib/profiles.js';
 
 interface Props {
-    profiles: Profile[];
+    loggedInProfiles: Profile[];
+    notLoggedInProfiles: Profile[];
     selectedIndex: number;
     runningProfiles: Set<string>;
     loading: boolean;
@@ -12,11 +13,12 @@ interface Props {
     activeProfileName: string | null;
 }
 
-export function ListView({ profiles, selectedIndex, runningProfiles, loading, error, lastLogs, activeProfileName }: Props) {
+export function ListView({ loggedInProfiles, notLoggedInProfiles, selectedIndex, runningProfiles, loading, error, lastLogs, activeProfileName }: Props) {
+    const total = loggedInProfiles.length + notLoggedInProfiles.length;
     return (
         <Box flexDirection="column" padding={1}>
             <Box marginBottom={1}>
-                <Text bold>Profiles ({profiles.length})</Text>
+                <Text bold>Profiles ({total})</Text>
                 <Text color="gray"> | </Text>
                 <Text>[C]reate | [R]efresh | [Esc] Back</Text>
             </Box>
@@ -25,38 +27,71 @@ export function ListView({ profiles, selectedIndex, runningProfiles, loading, er
             {error && <Text color="red">{error}</Text>}
 
             <Box flexDirection="column" borderStyle="single" borderColor="gray" padding={1} minHeight={10}>
-                {profiles.length === 0 && !loading ? (
+                {total === 0 && !loading ? (
                     <Text>No profiles found.</Text>
                 ) : (
-                    profiles.map((profile, index) => {
-                        const isSelected = index === selectedIndex;
-                        return (
-                            <Box key={profile.name || index}>
-                                <Text color={isSelected ? 'green' : 'white'} wrap="truncate-end">
-                                    {isSelected ? '> ' : '  '}
-                                    {profile.name}
-                                </Text>
-                                <Box marginLeft={2}>
-                                    <Text color="gray">
-                                        {profile.proxy ? '🌐 Proxy' : '🏠 Direct'}
+                    <>
+                        <Text color="blue" bold>Logged in ({loggedInProfiles.length})</Text>
+                        {loggedInProfiles.map((profile, index) => {
+                            const isSelected = index === selectedIndex;
+                            return (
+                                <Box key={profile.name || index}>
+                                    <Text color={isSelected ? 'green' : 'white'} wrap="truncate-end">
+                                        {isSelected ? '> ' : '  '}
+                                        {profile.name}
                                     </Text>
-                                </Box>
-                                {runningProfiles.has(profile.name) && (
                                     <Box marginLeft={2}>
-                                        <Text color="yellow">⚡ Running</Text>
-                                    </Box>
-                                )}
-                                {isSelected && (
-                                    <Box marginLeft={2}>
-                                        <Text color="cyan">
-                                            {runningProfiles.has(profile.name) ? '[S]top ' : '[S]tart '}
-                                            [E]dit [D]elete [L]ogs
+                                        <Text color="gray">
+                                            {profile.proxy ? '🌐 Proxy' : '🏠 Direct'}
                                         </Text>
                                     </Box>
-                                )}
-                            </Box>
-                        );
-                    })
+                                    {runningProfiles.has(profile.name) && (
+                                        <Box marginLeft={2}>
+                                            <Text color="yellow">⚡ Running</Text>
+                                        </Box>
+                                    )}
+                                    {isSelected && (
+                                        <Box marginLeft={2}>
+                                            <Text color="cyan">
+                                                {runningProfiles.has(profile.name)
+                                                    ? '[S]top [E]dit [D]elete [L]ogs'
+                                                    : '[S]tart [E]dit [D]elete [L]ogs'}
+                                            </Text>
+                                        </Box>
+                                    )}
+                                </Box>
+                            );
+                        })}
+
+                        <Text color="blue" bold>Not logged in ({notLoggedInProfiles.length})</Text>
+                        {notLoggedInProfiles.map((profile, index) => {
+                            const combinedIndex = loggedInProfiles.length + index;
+                            const isSelected = combinedIndex === selectedIndex;
+                            return (
+                                <Box key={profile.name || combinedIndex}>
+                                    <Text color={isSelected ? 'green' : 'white'} wrap="truncate-end">
+                                        {isSelected ? '> ' : '  '}
+                                        {profile.name}
+                                    </Text>
+                                    <Box marginLeft={2}>
+                                        <Text color="gray">
+                                            {profile.proxy ? '🌐 Proxy' : '🏠 Direct'}
+                                        </Text>
+                                    </Box>
+                                    {runningProfiles.has(profile.name) && (
+                                        <Box marginLeft={2}>
+                                            <Text color="yellow">⚡ Running</Text>
+                                        </Box>
+                                    )}
+                                    {isSelected && (
+                                        <Box marginLeft={2}>
+                                            <Text color="cyan">[L]ogin [E]dit [D]elete</Text>
+                                        </Box>
+                                    )}
+                                </Box>
+                            );
+                        })}
+                    </>
                 )}
             </Box>
 

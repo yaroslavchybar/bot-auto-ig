@@ -2,13 +2,11 @@ import random
 import time
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
 from python.core.resilience.exceptions import BotException, ElementNotFoundError, SelectorTimeoutError
-from python.core.automation.selectors import HOME_BUTTON, NEXT_CAROUSEL
+from python.core.automation.selectors import HOME_BUTTON
 from python.core.resilience.retry import jitter
-from python.automation.actions import random_delay
-from python.automation.scrolling.utils import human_scroll, human_mouse_move
+from python.automation.scrolling.utils import human_scroll, scroll_to_element
 from .likes import perform_like
 from .following import perform_follow
-from .carousel import watch_carousel
 from python.automation.stories import watch_stories
 from python.core.persistence.state_persistence import save_state
 
@@ -151,6 +149,37 @@ def _pick_visible_post(page, posts):
     return candidates[0][2]
 
 
+def _get_next_post(page, posts, skip_count: int = 0):
+    try:
+        viewport_h = page.evaluate("() => window.innerHeight") or 0
+    except Exception:
+        viewport_h = 0
+
+    if viewport_h <= 0:
+        viewport_h = 900
+
+    threshold_y = viewport_h * 0.52
+
+    candidates = []
+    for p in posts:
+        try:
+            box = p.bounding_box()
+            if not box:
+                continue
+            center_y = box["y"] + (box["height"] / 2)
+            if center_y > threshold_y:
+                candidates.append((box["y"], p))
+        except Exception:
+            continue
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0])
+    idx = min(max(0, int(skip_count)), len(candidates) - 1)
+    return candidates[idx][1]
+
+
 def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=None, profile_name: str = "unknown") -> dict:
     """
     Scroll through Instagram feed and perform random actions.
@@ -196,7 +225,6 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
             elapsed = time.time() - start_time
             total_duration = duration_minutes * 60
             progress = int((elapsed / total_duration) * 100) if total_duration > 0 else 0
-            # Cap progress at 99 until finished
             progress = min(progress, 99)
             save_state(profile_name, "scroll_feed", progress)
 
@@ -204,81 +232,53 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 print("[!] Stop signal received. Ending feed session.")
                 break
 
-            # Scroll down using human-like mouse actions
-            human_scroll(page)
+            posts = page.query_selector_all("article")
+            if not posts:
+                human_scroll(page, should_stop=should_stop)
+                continue
+
+            # Sometimes skip posts (scroll past 1-2)
+            skip_count = 0
+            skip_chance = actions_config.get("skip_post_chance", 30)
+            if random.randint(0, 100) < skip_chance:
+                skip_count = random.randint(1, actions_config.get("skip_post_max", 2))
+
+            target_post = _get_next_post(page, posts, skip_count=skip_count)
+            if not target_post:
+                human_scroll(page, should_stop=should_stop)
+                continue
+
+            target_y_ratio = random.uniform(0.45, 0.55)
+            if not scroll_to_element(
+                page,
+                target_post,
+                target_y_ratio=target_y_ratio,
+                ensure_full_visible=False,
+                should_stop=should_stop,
+            ):
+                human_scroll(page, should_stop=should_stop)
+                continue
             
-            # Break up the delay to check for stop
-            delay_target = random.uniform(1.5, 4.0)
-            start_delay = time.time()
-            while time.time() - start_delay < delay_target:
-                if should_stop and should_stop():
-                    break
-                time.sleep(0.1)
-                
+            # View post for random time (like a real person looking at it)
+            view_time = random.uniform(2.0, 5.0)
+            time.sleep(view_time)
+            
             if should_stop and should_stop():
                 break
 
-            posts = page.query_selector_all("article")
-            if posts:
-                post = _pick_visible_post(page, posts)
-                if not post:
-                    continue
-                try:
-                    human_mouse_move(page)  # simulate looking at the post
-                    random_delay(0.5, 1.5)
-                except Exception:
-                    continue
-                
-                if should_stop and should_stop():
-                    break
-
-                # Optionally step through carousel slides
-                carousel_chance = actions_config.get("carousel_watch_chance", 0)
-                if carousel_chance > 0:
-                    has_carousel = bool(
-                        NEXT_CAROUSEL.find(post)
-                        or post.query_selector("div._acnb")
-                        or post.query_selector("ul._acay li")
-                    )
-
-                    if has_carousel:
-                        print("[*] Carousel indicators found on post")
-                        if random.randint(0, 100) < carousel_chance:
-                            if not (should_stop and should_stop()):
-                                max_slides = actions_config.get("carousel_max_slides", 3)
-                                watch_carousel(page, post, max_slides=max_slides)
-                        else:
-                            print("[*] Skipping carousel watch due to chance config")
-                
-                if should_stop and should_stop():
-                    break
-
-                actions_to_perform = _queue_actions(page, post, actions_config)
-
-                for action_name, action_func in actions_to_perform:
-                    if should_stop and should_stop():
-                        break
-                        
-                    try:
-                        if action_func():
-                            stats[action_name + "s"] += 1
-                            random_delay(1, 3)
-                    except Exception as e:
-                        print(f"[!] Error executing {action_name} action: {e}")
-
-            # Random longer pause occasionally
-            if random.random() < 0.1:
-                long_pause = random.uniform(8, 15)
-                start_pause = time.time()
-                while time.time() - start_pause < long_pause:
-                    if should_stop and should_stop():
-                        break
-                    time.sleep(0.5)
-                    
-                if should_stop and should_stop():
-                    break
-                    
-                human_mouse_move(page)
+            # Decide to like based on chance
+            like_chance = actions_config.get("like_chance", 0)
+            if random.randint(0, 100) < like_chance:
+                if perform_like(page, target_post):
+                    stats["likes"] += 1
+            
+            # Decide to follow based on chance (less common)
+            follow_chance = actions_config.get("follow_chance", 0)
+            if random.randint(0, 100) < follow_chance:
+                if perform_follow(page, target_post):
+                    stats["follows"] += 1
+            
+            # Continue to next post (no extra delay)
 
         print(f"Scroll session complete: {stats}")
         return stats
@@ -289,5 +289,3 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
     except Exception as e:
         print(f"[!] Unexpected error during scrolling: {type(e).__name__} - {e}")
         return stats
-
-

@@ -5,7 +5,6 @@ import Profiles from './components/profiles/index.js';
 import Instagram from './components/instagram/index.js';
 import Lists from './components/lists/index.js';
 import Logs from './components/Logs.js';
-import Login from './components/Login.js';
 
 type Props = {
 	name?: string;
@@ -25,10 +24,6 @@ const items = [
 		value: 'lists',
 	},
 	{
-		label: 'Login Automation',
-		value: 'login',
-	},
-	{
 		label: 'Logs',
 		value: 'logs',
 	},
@@ -44,10 +39,9 @@ export default function App({ name = 'User' }: Props) {
 	const [activeTab, setActiveTab] = useState<string | null>(null);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const [tabCursors, setTabCursors] = useState(() => ({
-		profiles: 0,
+		profilesName: null as string | null,
 		instagram: 0,
 		lists: 0,
-		login: 0,
 	}));
 
 	const clearScreen = () => {
@@ -72,8 +66,8 @@ export default function App({ name = 'User' }: Props) {
 	if (activeTab === 'profiles') {
 		return (
 			<Profiles
-				initialSelectedIndex={tabCursors.profiles}
-				onSelectedIndexChange={i => setTabCursors(prev => ({ ...prev, profiles: i }))}
+				initialSelectedProfileName={tabCursors.profilesName}
+				onSelectedProfileNameChange={name => setTabCursors(prev => ({ ...prev, profilesName: name }))}
 				onBack={() => {
 					clearScreen();
 					setActiveTab(null);
@@ -100,19 +94,6 @@ export default function App({ name = 'User' }: Props) {
 			<Lists
 				initialSelectedIndex={tabCursors.lists}
 				onSelectedIndexChange={i => setTabCursors(prev => ({ ...prev, lists: i }))}
-				onBack={() => {
-					clearScreen();
-					setActiveTab(null);
-				}}
-			/>
-		);
-	}
-
-	if (activeTab === 'login') {
-		return (
-			<Login
-				initialProfilePickerIndex={tabCursors.login}
-				onProfilePickerIndexChange={i => setTabCursors(prev => ({ ...prev, login: i }))}
 				onBack={() => {
 					clearScreen();
 					setActiveTab(null);

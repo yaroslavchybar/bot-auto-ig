@@ -17,6 +17,7 @@ from python.automation import actions
 from python.automation.scrolling import scroll_feed, scroll_reels
 from python.core.resilience.config import config
 from python.core.resilience.traffic_monitor import TrafficMonitor
+from python.core.observability.snapshot_debugger import save_debug_snapshot
 import logging
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,100 @@ proxy_circuit = ProxyCircuitBreaker()
 @retry_with_backoff(exceptions=(PlaywrightTimeoutError,))
 def safe_goto(page, url, timeout=None):
     return page.goto(url, timeout=timeout)
+
+def _safe_get(value, default=None):
+    try:
+        if callable(value):
+            return value()
+        return value
+    except Exception:
+        return default
+
+def _attach_error_snapshots(page, base_dir: str = "data/debug"):
+    state = {"window_start": time.time(), "count": 0, "last_by_key": {}}
+
+    ignored_console_substrings = [
+        "content-security-policy",
+        "blocked an inline script",
+        "cookie",
+        "rejected for invalid domain",
+        "cross-origin request blocked",
+        "same origin policy",
+        "access-control-allow-origin",
+    ]
+
+    important_console_substrings = [
+        "referenceerror",
+        "typeerror",
+        "syntaxerror",
+        "rangeerror",
+        "ebdeps is not initialized",
+        "uncaught",
+    ]
+
+    def should_capture(key: str) -> bool:
+        now = time.time()
+        if now - state["window_start"] >= 60:
+            state["window_start"] = now
+            state["count"] = 0
+            state["last_by_key"].clear()
+
+        last = state["last_by_key"].get(key)
+        if last is not None and now - last < 5:
+            return False
+
+        if state["count"] >= 10:
+            return False
+
+        state["count"] += 1
+        state["last_by_key"][key] = now
+        return True
+
+    def capture(event_type: str, detail: str | None = None) -> None:
+        detail = (detail or "").strip()
+        name = f"browser_{event_type}" if not detail else f"browser_{event_type}_{detail}"
+        if not should_capture(event_type):
+            return
+        try:
+            save_debug_snapshot(page, name, base_dir=base_dir)
+        except Exception:
+            return
+
+    def on_pageerror(exc):
+        capture("pageerror", str(exc)[:120])
+
+    def on_crash(_):
+        capture("crash")
+
+    def on_requestfailed(request):
+        try:
+            resource_type = _safe_get(getattr(request, "resource_type", None), "") or ""
+            if resource_type.lower() in {"image", "media", "font", "stylesheet"}:
+                return
+        except Exception:
+            pass
+        url = _safe_get(getattr(request, "url", None), "") or ""
+        capture("requestfailed", url.split("?", 1)[0][-120:])
+
+    def on_console(msg):
+        msg_type = (_safe_get(getattr(msg, "type", None), "") or "").lower()
+        if msg_type != "error":
+            return
+        text = _safe_get(getattr(msg, "text", None), "") or ""
+        lowered = text.lower()
+        if any(s in lowered for s in ignored_console_substrings):
+            return
+        if not any(s in lowered for s in important_console_substrings):
+            return
+        capture("console", text[:120])
+
+    try:
+        page.on("pageerror", on_pageerror)
+        page.on("crash", on_crash)
+        page.on("requestfailed", on_requestfailed)
+        page.on("console", on_console)
+    except Exception:
+        return
 
 def parse_proxy_string(proxy_string):
     """
@@ -260,6 +355,7 @@ def create_browser_context(
         # Attach Traffic Monitor
         monitor = TrafficMonitor()
         page.on("response", monitor.on_response)
+        _attach_error_snapshots(page)
         
         try:
             if page.url == "about:blank":

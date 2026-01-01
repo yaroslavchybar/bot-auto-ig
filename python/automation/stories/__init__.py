@@ -1,1 +1,1 @@
-from .stories import watch_stories
+from .session import watch_stories

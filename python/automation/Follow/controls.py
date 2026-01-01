@@ -1,21 +1,5 @@
-def _is_in_suggested(btn, max_depth: int = 6) -> bool:
-    """Heuristically detect if button is inside 'Suggested for you' carousel."""
-    try:
-        parent = btn
-        for _ in range(max_depth):
-            parent = parent.parent_element()
-            if not parent:
-                break
-            text = (parent.inner_text() or "").lower()
-            if "suggested for you" in text:
-                return True
-    except Exception:
-        pass
-    return False
-
-
 import time
-from python.core.automation.selectors import FOLLOW_BUTTON, FOLLOWING_BUTTON, REQUESTED_BUTTON
+from python.core.automation.selectors import FOLLOW_BUTTON, FOLLOW_BACK_BUTTON, FOLLOWING_BUTTON, REQUESTED_BUTTON
 
 def _is_in_suggested(btn, max_depth: int = 6) -> bool:
     """Heuristically detect if button is inside 'Suggested for you' carousel."""
@@ -67,6 +51,11 @@ def find_follow_control(page):
     requested_btn = REQUESTED_BUTTON.find(page)
     if requested_btn:
         return "requested", requested_btn
+    
+    # Check "Follow Back" first (more specific than just "Follow")
+    follow_back_btn = FOLLOW_BACK_BUTTON.find(page)
+    if follow_back_btn:
+        return "follow", follow_back_btn
         
     # Check "Follow"
     follow_btn = FOLLOW_BUTTON.find(page)

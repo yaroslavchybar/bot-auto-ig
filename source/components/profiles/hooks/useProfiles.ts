@@ -49,6 +49,10 @@ export function useProfiles() {
         pending.set(name, merged.length > 2000 ? merged.slice(-2000) : merged);
     }, []);
 
+    const appendProfileLog = useCallback((name: string, line: string) => {
+        addLogChunk(name, `${line}\n`);
+    }, [addLogChunk]);
+
     useEffect(() => {
         const id = setInterval(flushPending, 75);
         return () => clearInterval(id);
@@ -99,5 +103,5 @@ export function useProfiles() {
         loadProfiles();
     }, [loadProfiles]);
 
-    return { profiles, loading, error, runningProfiles, profileLogs, loadProfiles, toggleProfile, setError };
+    return { profiles, loading, error, runningProfiles, profileLogs, appendProfileLog, loadProfiles, toggleProfile, setError };
 }

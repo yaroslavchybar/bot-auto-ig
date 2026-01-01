@@ -44,7 +44,11 @@ def mock_page():
 def mock_locator():
     locator = MagicMock()
     locator.count.return_value = 1
+    locator.locator.return_value = locator
     locator.first = MagicMock()
+    locator.first.is_visible.return_value = True
+    locator.first.is_enabled.return_value = True
+    locator.nth.return_value = locator.first
     return locator
 
 def test_find_uses_preferred_strategy(mock_cache_file, mock_page, mock_locator):
@@ -101,8 +105,10 @@ def test_find_text_fallback(mock_cache_file, mock_page, mock_locator):
     
     # Text fallback succeeds
     fallback_locator = MagicMock()
+    fallback_locator.count.return_value = 1
     fallback_locator.is_visible.return_value = True
     fallback_locator.is_enabled.return_value = True
+    fallback_locator.nth.return_value = fallback_locator
     
     mock_page.locator.return_value.all.return_value = [fallback_locator]
     
@@ -110,3 +116,36 @@ def test_find_text_fallback(mock_cache_file, mock_page, mock_locator):
     
     assert result == fallback_locator
     mock_page.locator.assert_called_with("*:has-text('Click Me')")
+
+
+def test_text_preferred_does_not_misclassify_role_elements(mock_cache_file, mock_page, mock_locator):
+    record_success("Following Button", "text")
+
+    selector = SemanticSelector(
+        element_name="Following Button",
+        role="button",
+        text="Following",
+        css_fallback='button:has-text("Following")',
+    )
+
+    text_locator = MagicMock()
+    text_locator.count.return_value = 1
+
+    constrained_empty = MagicMock()
+    constrained_empty.count.return_value = 0
+    text_locator.locator.return_value = constrained_empty
+
+    role_locator = MagicMock()
+    role_locator.count.return_value = 1
+    role_locator.first = MagicMock()
+    role_locator.first.is_visible.return_value = True
+    role_locator.first.is_enabled.return_value = True
+    role_locator.nth.return_value = role_locator.first
+
+    mock_page.get_by_text.return_value = text_locator
+    mock_page.get_by_role.return_value = role_locator
+
+    result = selector.find(mock_page)
+
+    assert result == role_locator.first
+    text_locator.locator.assert_called_with('xpath=ancestor-or-self::*[self::button or @role="button"][1]')

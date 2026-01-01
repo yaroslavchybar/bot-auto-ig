@@ -9,6 +9,7 @@ from python.automation.Follow.interactions import pre_follow_interactions
 from python.automation.Follow.utils import (
     call_on_success,
     clean_usernames,
+    open_profile_via_search_first,
 )
 
 
@@ -55,7 +56,13 @@ def follow_usernames(
 
             try:
                 log(f"Открываю @{username}")
-                current_page.goto(f"https://www.instagram.com/{username}/", timeout=20000, wait_until="domcontentloaded")
+                opened = open_profile_via_search_first(current_page, username, log)
+                if not opened:
+                    current_page.goto(
+                        f"https://www.instagram.com/{username}/",
+                        timeout=20000,
+                        wait_until="domcontentloaded",
+                    )
                 random_delay(1, 2)
 
                 if should_skip_by_following(current_page, username, following_limit, log):

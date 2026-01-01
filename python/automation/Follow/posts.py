@@ -28,11 +28,6 @@ def scroll_posts(
                 log("Остановка по запросу пользователя.")
                 return
 
-            # Human-like mouse move before scrolling to simulate attention
-            human_mouse_move(page)
-            if should_stop and should_stop():
-                log("Остановка по запросу пользователя.")
-                return
             human_scroll(page, should_stop=should_stop)
             if should_stop and should_stop():
                 log("Остановка по запросу пользователя.")

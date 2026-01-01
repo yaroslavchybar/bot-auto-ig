@@ -4,6 +4,9 @@ from datetime import datetime
 import os
 from logging.handlers import RotatingFileHandler
 
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+DEFAULT_LOG_FILE = os.path.join(_PROJECT_ROOT, "data", "logs", "bot.log")
+
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log_obj = {
@@ -28,7 +31,7 @@ class JsonFormatter(logging.Formatter):
         
         return json.dumps(log_obj)
 
-def setup_logging(log_file: str = "logs/bot.log"):
+def setup_logging(log_file: str = DEFAULT_LOG_FILE):
     # Ensure logs directory exists
     log_dir = os.path.dirname(log_file)
     if log_dir and not os.path.exists(log_dir):

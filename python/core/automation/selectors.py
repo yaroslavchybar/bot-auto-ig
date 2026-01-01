@@ -19,6 +19,37 @@ class SemanticSelector:
     def find(self, page) -> Optional[Locator]:
         """Try semantic locators first, fall back to CSS."""
         preferred = get_preferred_strategy(self.element_name)
+
+        def first_actionable(locator: Optional[Locator]) -> Optional[Locator]:
+            if not locator:
+                return None
+            try:
+                count = locator.count()
+            except Exception:
+                return None
+
+            limit = min(count, 8)
+            for i in range(limit):
+                candidate = locator.nth(i)
+                try:
+                    if candidate.is_visible() and candidate.is_enabled():
+                        return candidate
+                except Exception:
+                    continue
+            return None
+
+        def apply_role_constraint(locator: Optional[Locator]) -> Optional[Locator]:
+            if not locator or not self.role:
+                return locator
+
+            if self.role == "button":
+                xpath = 'xpath=ancestor-or-self::*[self::button or @role="button"][1]'
+            elif self.role == "link":
+                xpath = 'xpath=ancestor-or-self::*[self::a or @role="link"][1]'
+            else:
+                xpath = f'xpath=ancestor-or-self::*[@role="{self.role}"][1]'
+
+            return locator.locator(xpath)
         
         # Helper to execute a strategy
         def try_strategy(strategy: str) -> Optional[Locator]:
@@ -36,10 +67,11 @@ class SemanticSelector:
                 locator = page.get_by_label(self.label)
             elif strategy == "css" and self.css_fallback:
                 locator = page.locator(self.css_fallback)
+
+            if strategy != "role":
+                locator = apply_role_constraint(locator)
             
-            if locator and locator.count() > 0:
-                return locator.first
-            return None
+            return first_actionable(locator)
 
         # Order of execution
         strategies = ["role", "text", "label", "css"]
@@ -59,10 +91,11 @@ class SemanticSelector:
             if self.text:
                  # Try partial text match for resilience to markup changes
                  for candidate in page.locator(f"*:has-text('{self.text}')").all():
-                     if candidate.is_visible() and candidate.is_enabled():
+                     constrained = apply_role_constraint(candidate)
+                     result = first_actionable(constrained)
+                     if result:
                          logger.info(f"Discovered {self.element_name} via text fallback")
-                         # We don't cache this as it's a dynamic fallback
-                         return candidate
+                         return result
 
         except Exception as e:
             logger.warning(f"Selector search failed for {self.element_name}: {e}")
@@ -113,11 +146,18 @@ UNLIKE_BUTTON = SemanticSelector(
 )
 
 # Follow / Unfollow
+FOLLOW_BACK_BUTTON = SemanticSelector(
+    element_name="Follow Back Button",
+    role="button",
+    text="Follow Back",
+    css_fallback='button:has-text("Follow Back")'
+)
+
 FOLLOW_BUTTON = SemanticSelector(
     element_name="Follow Button",
     role="button",
     text="Follow",
-    css_fallback='button:has-text("Follow")'
+    css_fallback='button:has-text("Follow"):not(:has-text("Following"))'
 )
 
 FOLLOWING_BUTTON = SemanticSelector(
