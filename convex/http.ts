@@ -159,6 +159,23 @@ http.route({
 });
 
 http.route({
+	path: "/api/profiles/by-list-ids",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const listIds = (body?.listIds ?? body?.list_ids ?? []) as any[];
+			const profiles = await ctx.runQuery(api.profiles.getByListIds, { listIds });
+			return jsonResponse(profiles.map(mapProfileToPython));
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
 	path: "/api/profiles",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {

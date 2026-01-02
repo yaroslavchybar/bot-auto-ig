@@ -16,7 +16,7 @@ class TestSharedSession(unittest.TestCase):
     def setUp(self):
         """Reset the global session before each test."""
         # Import here to avoid module-level import issues
-        import python.supabase.shared_session as ss
+        import python.convex.shared_session as ss
         self.ss = ss
         # Reset global state
         ss._session = None
@@ -81,22 +81,22 @@ class TestProfilesClientResilientHttpClient(unittest.TestCase):
     """Test that profiles_client.py uses ResilientHttpClient."""
 
     def test_profiles_client_uses_resilient_http_client(self):
-        """SupabaseProfilesClient should use ResilientHttpClient."""
+        """ProfilesClient should use ResilientHttpClient."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             # Reset config cache
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient") as MockClient:
+            with patch("python.convex.profiles_client.ResilientHttpClient") as MockClient:
                 mock_http_client = MagicMock()
                 MockClient.return_value = mock_http_client
                 
-                from python.supabase.profiles_client import SupabaseProfilesClient
-                client = SupabaseProfilesClient()
+                from python.convex.profiles_client import ProfilesClient
+                client = ProfilesClient()
                 
                 MockClient.assert_called_once()
                 self.assertEqual(client.http_client, mock_http_client)
@@ -108,18 +108,18 @@ class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
     def test_instagram_accounts_client_uses_resilient_http_client(self):
         """InstagramAccountsClient should use ResilientHttpClient."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.instagram_accounts_client.ResilientHttpClient") as MockClient:
+            with patch("python.convex.instagram_accounts_client.ResilientHttpClient") as MockClient:
                 mock_http_client = MagicMock()
                 MockClient.return_value = mock_http_client
                 
-                from python.supabase.instagram_accounts_client import InstagramAccountsClient
+                from python.convex.instagram_accounts_client import InstagramAccountsClient
                 client = InstagramAccountsClient()
                 
                 MockClient.assert_called_once()
@@ -128,4 +128,3 @@ class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

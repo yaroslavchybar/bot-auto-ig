@@ -7,24 +7,25 @@ from python.convex.config import PROJECT_URL, SECRET_KEY
 
 
 class InstagramSettingsError(Exception):
-    """Raised when Supabase instagram_settings API call fails."""
+    """Raised when instagram_settings API call fails."""
 
 
 class InstagramSettingsClient:
     """Client for managing instagram_settings table storing settings as JSONB."""
 
     def __init__(self):
-        if not PROJECT_URL or not SECRET_KEY:
+        if not PROJECT_URL:
             raise InstagramSettingsError(
-                "Convex config missing. Set CONVEX_URL and CONVEX_API_KEY in environment."
+                "Convex config missing. Set CONVEX_URL in environment."
             )
 
         self.base_url = f"{PROJECT_URL}/api/instagram-settings"
         self.headers = {
-            "Authorization": f"Bearer {SECRET_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        if SECRET_KEY:
+            self.headers["Authorization"] = f"Bearer {SECRET_KEY}"
         self.timeout = 20
 
     def _request(

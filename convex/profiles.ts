@@ -61,6 +61,24 @@ export const getAvailableForLists = query({
 	},
 });
 
+export const getByListIds = query({
+	args: {
+		listIds: v.array(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const cleanIds = (args.listIds || []).map((v) => String(v || "").trim()).filter(Boolean);
+		if (cleanIds.length === 0) return [];
+		const allowed = new Set(cleanIds);
+		const rows = await ctx.db.query("profiles").collect();
+		const filtered = rows.filter((p) => {
+			if (!p.listId) return false;
+			return allowed.has(String(p.listId));
+		});
+		filtered.sort((a, b) => a.createdAt - b.createdAt);
+		return filtered;
+	},
+});
+
 export const create = mutation({
 	args: {
 		name: v.string(),

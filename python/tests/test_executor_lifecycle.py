@@ -15,15 +15,15 @@ class TestExecutorLifecycle(unittest.TestCase):
     def test_executor_created_in_init(self):
         """Executor should be created once during __init__, not per-cycle."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -39,15 +39,15 @@ class TestExecutorLifecycle(unittest.TestCase):
     def test_max_workers_respects_parallel_profiles(self):
         """Max workers should respect parallel_profiles config."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -64,15 +64,15 @@ class TestExecutorLifecycle(unittest.TestCase):
     def test_max_workers_capped_by_account_count(self):
         """Max workers should not exceed account count."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -89,15 +89,15 @@ class TestExecutorLifecycle(unittest.TestCase):
     def test_stop_shuts_down_executor(self):
         """stop() should shutdown the executor."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     

@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, mock } from 'node:test';
 import assert from 'node:assert';
 
-// Mock the supabase module before importing useLists
+// Mock the convex module before importing useLists
 const mockListsList = mock.fn(() => Promise.resolve([]));
 const mockListsCreate = mock.fn(() => Promise.resolve({}));
 const mockListsUpdate = mock.fn(() => Promise.resolve({}));

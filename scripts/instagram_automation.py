@@ -29,10 +29,10 @@ from python.automation.Follow.common import normalize_range
 from python.automation.unfollow.session import unfollow_usernames
 from python.automation.approvefollow.session import approve_follow_requests
 from python.automation.messaging.session import send_messages
-from python.supabase.config import PROJECT_URL, SECRET_KEY
-from python.supabase.instagram_accounts_client import InstagramAccountsClient
-from python.supabase.profiles_client import SupabaseProfilesClient
-from python.supabase.message_templates_client import MessageTemplatesClient
+from python.convex.config import PROJECT_URL, SECRET_KEY
+from python.convex.instagram_accounts_client import InstagramAccountsClient
+from python.convex.profiles_client import ProfilesClient
+from python.convex.message_templates_client import MessageTemplatesClient
 from python.core.automation.worker_utils import (
     apply_count_limit,
     build_action_order,
@@ -108,7 +108,7 @@ def _parse_float(value: Any, default: float) -> float:
 
 
 def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
-    if not PROJECT_URL or not SECRET_KEY:
+    if not PROJECT_URL:
         return []
     if not list_ids:
         return []
@@ -117,19 +117,17 @@ def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
         clean_ids = [str(lid).strip().replace('"', "") for lid in list_ids if str(lid).strip()]
         if not clean_ids:
             return []
-        quoted = ",".join([f'"{lid}"' for lid in clean_ids])
-        r = requests.get(
-            f"{PROJECT_URL}/rest/v1/profiles",
-            params={
-                "select": "profile_id,name,proxy,user_agent,list_id,created_at",
-                "list_id": f"in.({quoted})",
-                "order": "created_at.asc",
-            },
-            headers={
-                "apikey": SECRET_KEY,
-                "Authorization": f"Bearer {SECRET_KEY}",
-                "Accept": "application/json",
-            },
+        # Use Convex HTTP API endpoint
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if SECRET_KEY:
+            headers["Authorization"] = f"Bearer {SECRET_KEY}"
+        r = requests.post(
+            f"{PROJECT_URL}/api/profiles/by-list-ids",
+            json={"listIds": clean_ids},
+            headers=headers,
             timeout=30,
         )
         data = r.json() if r.status_code < 400 else []
@@ -154,7 +152,7 @@ class InstagramAutomationRunner:
         self.accounts = accounts
         self.running = True
         self.accounts_client = InstagramAccountsClient()
-        self.profiles_client = SupabaseProfilesClient()
+        self.profiles_client = ProfilesClient()
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
         self._profile_cache_lock = Lock()
         configured = int(getattr(self.config, "parallel_profiles", 1) or 1)
@@ -721,6 +719,9 @@ def main() -> int:
         selected_list_ids = []
     selected_list_ids = [str(x) for x in selected_list_ids if str(x).strip()]
 
+    log(f"DEBUG: PROJECT_URL={PROJECT_URL}")
+    log(f"DEBUG: selected_list_ids={selected_list_ids}")
+
     enable_any = any(
         [
             bool(settings.get("enable_feed")),
@@ -741,6 +742,7 @@ def main() -> int:
         return 2
 
     profiles = _fetch_profiles_for_lists(selected_list_ids)
+    log(f"DEBUG: fetched profiles count={len(profiles)}")
     if not profiles:
         log("В выбранном списке нет профилей!")
         return 2

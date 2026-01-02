@@ -15,15 +15,15 @@ class TestProfileCaching(unittest.TestCase):
     def test_profile_cache_initialized(self):
         """Runner should initialize empty profile cache."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -39,15 +39,15 @@ class TestProfileCaching(unittest.TestCase):
     def test_profile_cache_lock_exists(self):
         """Runner should have a lock for thread-safe cache access."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -61,15 +61,15 @@ class TestProfileCaching(unittest.TestCase):
     def test_get_cached_profile_returns_none_for_missing(self):
         """_get_cached_profile should return None for non-existent profiles."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -84,15 +84,15 @@ class TestProfileCaching(unittest.TestCase):
     def test_set_and_get_cached_profile(self):
         """_set_cached_profile and _get_cached_profile should work together."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                with patch("python.supabase.instagram_accounts_client.ResilientHttpClient"):
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
                     from scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
@@ -114,16 +114,16 @@ class TestGetAvailableProfiles(unittest.TestCase):
     def test_get_available_profiles_empty_list_ids(self):
         """Should return empty list for empty list_ids."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                from python.supabase.profiles_client import SupabaseProfilesClient
-                client = SupabaseProfilesClient()
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                from python.convex.profiles_client import ProfilesClient
+                client = ProfilesClient()
                 
                 result = client.get_available_profiles([], 5, 30)
                 self.assertEqual(result, [])
@@ -131,16 +131,16 @@ class TestGetAvailableProfiles(unittest.TestCase):
     def test_get_available_profiles_builds_correct_params(self):
         """Should build payload for Convex available profiles endpoint."""
         with patch.dict(os.environ, {
-            "SUPABASE_URL": "https://test.supabase.co",
-            "SUPABASE_SECRET_KEY": "test-key"
+            "CONVEX_URL": "https://test.convex.site",
+            "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.supabase.config as config_mod
+            import python.convex.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.supabase.profiles_client.ResilientHttpClient"):
-                from python.supabase.profiles_client import SupabaseProfilesClient
-                client = SupabaseProfilesClient()
+            with patch("python.convex.profiles_client.ResilientHttpClient"):
+                from python.convex.profiles_client import ProfilesClient
+                client = ProfilesClient()
                 
                 with patch.object(client, "_make_request") as mock_req:
                     mock_req.return_value = []

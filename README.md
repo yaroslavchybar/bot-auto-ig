@@ -2,7 +2,7 @@
 
 **Anti-CLI** is a sophisticated, privacy-focused Instagram automation tool designed to manage multiple accounts with high-level antidetect capabilities. Built with a hybrid architecture using **Python (Camoufox/Playwright)** for the automation engine and **React (Ink)** for a powerful Terminal User Interface (TUI).
 
-It leverages **Supabase** for centralized state management, allowing synchronized control over hundreds of profiles with intelligent scheduling, human-like behavior simulation, and fingerprint spoofing.
+It leverages **Convex** for centralized state management, allowing synchronized control over hundreds of profiles with intelligent scheduling, human-like behavior simulation, and fingerprint spoofing.
 
 ---
 
@@ -38,7 +38,7 @@ It leverages **Supabase** for centralized state management, allowing synchronize
     *   Daily session limits (e.g., "max 5 sessions per day").
     *   Cool-down timers (e.g., "wait 30 mins before reopening profile").
     *   Global daily resets via Database Cron jobs.
-*   **Centralized Database**: All state (profiles, target accounts, settings, logs) is stored in Supabase.
+*   **Centralized Database**: All state (profiles, target accounts, settings, logs) is stored in Convex.
 
 ---
 
@@ -46,7 +46,7 @@ It leverages **Supabase** for centralized state management, allowing synchronize
 
 The system consists of three main components:
 
-1.  **The Database (Supabase)**: Acts as the "Brain". It stores:
+1.  **The Database (Convex)**: Acts as the "Brain". It stores:
     *   `profiles`: Browser profiles (proxy, user agent, cookies path).
     *   `instagram_accounts`: Target users to follow/message.
     *   `instagram_settings`: Global configuration (limits, probabilities).
@@ -63,7 +63,7 @@ The system consists of three main components:
 graph TD
     User[User] --> TUI[React TUI (npm start)]
     TUI --> |Spawns| Py[Python Runner]
-    Py --> |Reads/Writes| DB[(Supabase PostgreSQL)]
+    Py --> |Reads/Writes| DB[(Convex Database)]
     Py --> |Controls| Browser[Camoufox / Firefox]
     Browser --> |Interacts| IG[Instagram.com]
     DB --> |Cron Jobs| DB
@@ -76,7 +76,7 @@ graph TD
 ### Prerequisites
 *   **Python 3.10+**
 *   **Node.js 16+**
-*   **Supabase Account** (Free tier works)
+*   **Convex Account** (Free tier works)
 *   **Docker** (Optional, for containerized deployment)
 
 ### 1. Clone & Setup
@@ -108,24 +108,22 @@ npm install
 npm run build
 ```
 
-### 4. Supabase Setup
-1.  Create a new project at [supabase.com](https://supabase.com).
-2.  Go to the **SQL Editor** in Supabase.
-3.  Copy the content of `supabase/migrations/202512210001_initial_schema.sql` and run it.
-    *   *Note: This creates all necessary tables (`profiles`, `instagram_accounts`, etc.) and sets up Cron jobs.*
+### 4. Convex Setup
+1.  Create a new project at [convex.dev](https://convex.dev).
+2.  Run `npx convex dev` to initialize and deploy your Convex functions.
+3.  The schema and functions are defined in the `convex/` directory.
 
 ### 5. Environment Variables
 Create a `.env` file in the root directory:
 ```env
-# Supabase Configuration
-SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_PUBLISHABLE_KEY=your-anon-key
-SUPABASE_SECRET_KEY=your-service-role-key
+# Convex Configuration
+CONVEX_DEPLOYMENT=dev:your-project-name
+CONVEX_URL=https://your-project.convex.cloud
+CONVEX_API_KEY=your-api-key
 
 # Optional: Proxy Defaults
 DEFAULT_PROXY=http://user:pass@host:port
 ```
-*Tip: You need the `SERVICE_ROLE` key (not just Anon) for backend operations.*
 
 ---
 
@@ -177,7 +175,7 @@ python python/launcher.py --name "MyProfile" --action manual --show-cursor
 ```
 
 **2. Production Runner (`scripts/instagram_automation.py`)**
-This is the script used by the TUI. It pulls tasks from Supabase and handles multi-threading.
+This is the script used by the TUI. It pulls tasks from Convex and handles multi-threading.
 ```bash
 python scripts/instagram_automation.py
 # (Usually requires arguments passed by the TUI logic)
@@ -218,7 +216,7 @@ anti/
 │   │   ├── actions.py      # Action orchestrator
 │   │   └── browser.py      # Camoufox/Playwright wrapper
 │   ├── core/               # Resilience, Models, Persistence
-│   ├── supabase/           # DB Client wrappers
+│   ├── convex/              # DB Client wrappers
 │   ├── tests/              # Python Unit Tests
 │   ├── launcher.py         # CLI Entry point
 │   └── supervisor.py       # Process Supervisor
@@ -227,12 +225,12 @@ anti/
 │   └── login_automation.py     # Login Automation Script
 ├── source/                 # TUI Frontend (React + Ink)
 │   ├── components/         # UI Components (Views, Lists)
-│   ├── lib/                # TUI Logic (Supabase, Services)
+│   ├── lib/                # TUI Logic (Convex, Services)
 │   ├── tests/              # Frontend Tests
 │   ├── types/              # TypeScript Definitions
 │   ├── app.tsx             # TUI Entry point
 │   └── cli.tsx             # CLI Entry point
-├── supabase/               # Database
+├── convex/                 # Database Functions
 │   └── migrations/         # SQL Schemas
 ├── Dockerfile              # Docker build file
 ├── docker-compose.yml      # Docker Compose config
@@ -254,9 +252,9 @@ Provides robust tools for browser interaction.
 - **`SemanticSelector`**: A multi-strategy element locator that prioritizes accessibility attributes (Role, Label) over brittle CSS selectors. It automatically falls back to text or CSS if semantic locators fail, ensuring scripts survive UI updates.
 
 ### 3. Persistence Layer (`core/persistence`)
-Manages state synchronization between the local filesystem and the Supabase cloud database.
+Manages state synchronization between the local filesystem and the Convex cloud database.
 - **`ProfileManager`**: Handles the lifecycle of browser profiles.
-    - **Dual Sync**: Keeps local `data/profiles` directories in sync with Supabase records.
+    - **Dual Sync**: Keeps local `data/profiles` directories in sync with Convex records.
     - **Atomic Operations**: Ensures profile creations/deletions are transactionally safe across local disk and DB.
     - **Cloud-First**: Prioritizes database state as the source of truth.
 

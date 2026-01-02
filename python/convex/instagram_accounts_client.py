@@ -10,25 +10,26 @@ from python.core.resilience.http_client import ResilientHttpClient
 
 
 class InstagramAccountsError(Exception):
-    """Raised when Supabase instagram_accounts API call fails."""
+    """Raised when instagram_accounts API call fails."""
 
 
 class InstagramAccountsClient:
     """Client for managing instagram_accounts and related profile checks."""
 
     def __init__(self):
-        if not PROJECT_URL or not SECRET_KEY:
+        if not PROJECT_URL:
             raise InstagramAccountsError(
-                "Convex config missing. Set CONVEX_URL and CONVEX_API_KEY in environment."
+                "Convex config missing. Set CONVEX_URL in environment."
             )
 
         self.accounts_url = f"{PROJECT_URL}/api/instagram-accounts"
         self.profiles_url = f"{PROJECT_URL}/api/profiles"
         self.headers = {
-            "Authorization": f"Bearer {SECRET_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        if SECRET_KEY:
+            self.headers["Authorization"] = f"Bearer {SECRET_KEY}"
         self.http_client = ResilientHttpClient()
         self.timeout = 20
 

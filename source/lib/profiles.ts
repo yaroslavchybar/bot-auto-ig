@@ -10,7 +10,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '../../');
 const PROFILES_DIR = path.join(PROJECT_ROOT, 'data', 'profiles');
 
 export type Profile = {
-	id?: string; // Supabase ID
+	id?: string; // Database ID
 	name: string;
 	proxy?: string;
 	proxy_type?: string;

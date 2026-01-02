@@ -8,29 +8,30 @@ from python.core.resilience.http_client import ResilientHttpClient
 
 logger = logging.getLogger(__name__)
 
-class SupabaseProfilesError(Exception):
-    """Raised when Supabase profiles API call fails."""
+class ProfilesError(Exception):
+    """Raised when profiles API call fails."""
 
-class SupabaseProfilesClient:
-    """Client for managing profiles in Supabase"""
+class ProfilesClient:
+    """Client for managing profiles via Convex API"""
 
     def __init__(self):
-        if not PROJECT_URL or not SECRET_KEY:
-            raise SupabaseProfilesError(
-                "Convex config missing. Set CONVEX_URL and CONVEX_API_KEY in environment."
+        if not PROJECT_URL:
+            raise ProfilesError(
+                "Convex config missing. Set CONVEX_URL in environment."
             )
 
         self.base_url = f"{PROJECT_URL}/api/profiles"
         self.headers = {
-            "Authorization": f"Bearer {SECRET_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        if SECRET_KEY:
+            self.headers["Authorization"] = f"Bearer {SECRET_KEY}"
         self.http_client = ResilientHttpClient()
         self.timeout = (10, 60)
 
     def _make_request(self, method: str, endpoint: str = "", data: Optional[Dict] = None, params: Optional[Dict] = None):
-        """Make HTTP request to Supabase"""
+        """Make HTTP request to Convex API"""
         url = f"{self.base_url}{endpoint}"
 
         try:
@@ -43,15 +44,15 @@ class SupabaseProfilesClient:
             elif method.upper() == "DELETE":
                 resp = self.http_client.delete(url, headers=self.headers, timeout=self.timeout)
             else:
-                raise SupabaseProfilesError(f"Unsupported HTTP method: {method}")
+                raise ProfilesError(f"Unsupported HTTP method: {method}")
 
             if resp.status_code >= 400:
-                raise SupabaseProfilesError(f"HTTP {resp.status_code}: {resp.text}")
+                raise ProfilesError(f"HTTP {resp.status_code}: {resp.text}")
 
             return resp.json() if resp.content else None
 
         except Exception as e:
-            raise SupabaseProfilesError(f"Request failed: {e}")
+            raise ProfilesError(f"Request failed: {e}")
 
     def get_all_profiles(self) -> List[Dict]:
         """Fetch all profiles from database"""
@@ -105,7 +106,7 @@ class SupabaseProfilesClient:
         try:
             self._make_request("POST", "/delete-by-id", data={"profile_id": profile_id})
             return True
-        except SupabaseProfilesError:
+        except ProfilesError:
             return False
 
     def sync_profile_status(self, name: str, status: str, using: bool = False):
@@ -115,3 +116,8 @@ class SupabaseProfilesClient:
     def set_profile_login_true(self, name: str):
         """Set login field to True for a profile."""
         self._make_request("POST", "/set-login-true", data={"name": name})
+
+
+# Backwards compatibility aliases
+SupabaseProfilesClient = ProfilesClient
+SupabaseProfilesError = ProfilesError

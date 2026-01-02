@@ -11,16 +11,17 @@ class MessageTemplatesError(Exception):
 
 class MessageTemplatesClient:
     def __init__(self):
-        if not PROJECT_URL or not SECRET_KEY:
+        if not PROJECT_URL:
             raise MessageTemplatesError(
-                "Convex config missing. Set CONVEX_URL and CONVEX_API_KEY in environment."
+                "Convex config missing. Set CONVEX_URL in environment."
             )
         self.base_url = f"{PROJECT_URL}/api/message-templates"
         self.headers = {
-            "Authorization": f"Bearer {SECRET_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
+        if SECRET_KEY:
+            self.headers["Authorization"] = f"Bearer {SECRET_KEY}"
         self.http_client = ResilientHttpClient()
         self.timeout = 20
 

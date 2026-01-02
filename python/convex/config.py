@@ -1,8 +1,8 @@
 """
-Convex/Supabase configuration.
+Convex configuration.
 
-Uses publishable/secret keys from environment only.
-Keep the secret key strictly server-side.
+Uses Convex keys from environment only.
+Keep the API key strictly server-side.
 """
 import os
 from pathlib import Path
@@ -16,10 +16,6 @@ try:
 except ImportError:
     pass
 
-PROJECT_URL = os.environ.get("SUPABASE_URL")
-PUBLISHABLE_KEY = os.environ.get("SUPABASE_PUBLISHABLE_KEY")
-SECRET_KEY = os.environ.get("SUPABASE_SECRET_KEY")
-
 CONVEX_URL = os.environ.get("CONVEX_URL")
 CONVEX_API_KEY = os.environ.get("CONVEX_API_KEY")
 
@@ -28,12 +24,10 @@ CONVEX_API_KEY = os.environ.get("CONVEX_API_KEY")
 if CONVEX_URL:
     CONVEX_URL = CONVEX_URL.replace(".convex.cloud", ".convex.site")
 
-PROJECT_URL = CONVEX_URL or PROJECT_URL
-SECRET_KEY = CONVEX_API_KEY or SECRET_KEY
-
-API_KEY = CONVEX_API_KEY or PUBLISHABLE_KEY
+PROJECT_URL = CONVEX_URL
+SECRET_KEY = CONVEX_API_KEY
+API_KEY = CONVEX_API_KEY
 
 # Default table/column names
 DEFAULT_TABLE = "instagram_accounts"
 DEFAULT_USERNAME_COLUMN = "user_name"
-

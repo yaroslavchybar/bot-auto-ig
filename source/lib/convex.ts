@@ -1,6 +1,5 @@
 /**
  * Convex client for TypeScript using HTTP API.
- * This file provides the same interface as the old supabase.ts but uses Convex.
  */
 import dotenv from 'dotenv';
 import path from 'path';
@@ -24,7 +23,7 @@ if (!convexCloudUrl) {
 // Convert the URL if needed
 const convexUrl = convexCloudUrl.replace('.convex.cloud', '.convex.site');
 
-// Types matching the old Supabase schema for backward compatibility
+// Database types
 export type DbListRow = { id: string; name: string };
 
 export type DbProfileRow = {
