@@ -39,6 +39,7 @@ export default defineSchema({
 		subscribedAt: v.optional(v.number()),
 		lastMessageSentAt: v.optional(v.number()),
 	})
+		.index("by_userName", ["userName"])
 		.index("by_assignedTo", ["assignedTo"])
 		.index("by_status", ["status"])
 		.index("by_assignedTo_status", ["assignedTo", "status"]),

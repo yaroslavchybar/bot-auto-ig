@@ -6,8 +6,86 @@ function normalizeUserName(userName: string): string {
 	let normalized = String(userName || "").trim();
 	if (normalized.startsWith("@")) normalized = normalized.slice(1);
 	normalized = normalized.replace(/\/+$/, "");
-	return normalized.trim();
+	return normalized.trim().toLowerCase();
 }
+
+export const insert = mutation({
+	args: {
+		userName: v.string(),
+		status: v.string(),
+		message: v.boolean(),
+		createdAt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const userName = normalizeUserName(args.userName);
+		if (!userName) throw new Error("userName is required");
+		const existing = await ctx.db
+			.query("instagramAccounts")
+			.withIndex("by_userName", (q) => q.eq("userName", userName))
+			.first();
+		if (existing) {
+			if (!existing.linkSent) {
+				await ctx.db.patch(existing._id, { linkSent: "not send" });
+			}
+			return { id: existing._id, alreadyExisted: true };
+		}
+		const id = await ctx.db.insert("instagramAccounts", {
+			userName,
+			status: args.status,
+			linkSent: "not send",
+			message: args.message,
+			createdAt: args.createdAt,
+		});
+		return { id, alreadyExisted: false };
+	},
+});
+
+export const insertBatch = mutation({
+	args: {
+		accounts: v.array(
+			v.object({
+				userName: v.string(),
+				status: v.string(),
+				message: v.boolean(),
+				createdAt: v.number(),
+			}),
+		),
+	},
+	handler: async (ctx, { accounts }) => {
+		const insertedIds = [];
+		const seen = new Set<string>();
+		let skipped = 0;
+		for (const account of accounts) {
+			const userName = normalizeUserName(account.userName);
+			if (!userName) throw new Error("userName is required");
+			if (seen.has(userName)) {
+				skipped++;
+				continue;
+			}
+			seen.add(userName);
+			const existing = await ctx.db
+				.query("instagramAccounts")
+				.withIndex("by_userName", (q) => q.eq("userName", userName))
+				.first();
+			if (existing) {
+				if (!existing.linkSent) {
+					await ctx.db.patch(existing._id, { linkSent: "not send" });
+				}
+				skipped++;
+				continue;
+			}
+			const id = await ctx.db.insert("instagramAccounts", {
+				userName,
+				status: account.status,
+				linkSent: "not send",
+				message: account.message,
+				createdAt: account.createdAt,
+			});
+			insertedIds.push(id);
+		}
+		return { inserted: insertedIds.length, skipped, ids: insertedIds };
+	},
+});
 
 export const getForProfile = query({
 	args: { profileId: v.id("profiles"), status: v.optional(v.string()) },
@@ -164,7 +242,18 @@ export const _listProfileIds = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const profiles = await ctx.db.query("profiles").collect();
-		return profiles.map((p) => p._id);
+		return profiles.filter((p) => Boolean(p.listId)).map((p) => p._id);
+	},
+});
+
+export const _countAssignedAccountsForProfile = internalQuery({
+	args: { profileId: v.id("profiles") },
+	handler: async (ctx, args) => {
+		const rows = await ctx.db
+			.query("instagramAccounts")
+			.withIndex("by_assignedTo_status", (q) => q.eq("assignedTo", args.profileId).eq("status", "assigned"))
+			.collect();
+		return rows.length;
 	},
 });
 
@@ -191,14 +280,17 @@ export const assignAvailableAccountsDaily = internalAction({
 	handler: async (ctx) => {
 		const profileIds = await ctx.runQuery(internal.instagramAccounts._listProfileIds, {});
 		for (const profileId of profileIds) {
-			const assignCount = 30 + Math.floor(Math.random() * 11);
-			const available = await ctx.runQuery(internal.instagramAccounts._listAvailableAccountIds, { max: Math.max(assignCount * 10, 200) });
+			const targetAssigned = 30 + Math.floor(Math.random() * 11);
+			const existingAssigned = await ctx.runQuery(internal.instagramAccounts._countAssignedAccountsForProfile, { profileId });
+			const toAssign = Math.max(0, targetAssigned - existingAssigned);
+			if (toAssign <= 0) continue;
+			const available = await ctx.runQuery(internal.instagramAccounts._listAvailableAccountIds, { max: Math.max(toAssign * 10, 200) });
 			if (available.length === 0) continue;
 			for (let i = available.length - 1; i > 0; i--) {
 				const j = Math.floor(Math.random() * (i + 1));
 				[available[i], available[j]] = [available[j], available[i]];
 			}
-			const selected = available.slice(0, assignCount);
+			const selected = available.slice(0, toAssign);
 			if (selected.length === 0) continue;
 			await ctx.runMutation(internal.instagramAccounts._bulkAssignAccounts, { profileId, accountIds: selected });
 		}
