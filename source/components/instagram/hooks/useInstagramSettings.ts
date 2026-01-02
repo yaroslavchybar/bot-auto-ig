@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { InstagramSettings, DEFAULT_SETTINGS, ACTIONS } from '../../../types/index.js';
-import { instagramSettingsGet, instagramSettingsUpsert } from '../../../lib/supabase.js';
+import { instagramSettingsGet, instagramSettingsUpsert } from '../../../lib/convex.js';
 import { appendLog } from '../../../lib/logStore.js';
 import { validateSettings } from '../../../lib/validation/settingsSchema.js';
 

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useInput } from 'ink';
 import {
     profilesClearBusyForLists,
-} from '../../lib/supabase.js';
+} from '../../lib/convex.js';
 import { listsService } from '../../lib/listsService.js';
 import { messagesService } from '../../lib/messagesService.js';
 import { getLogs, subscribeLogs, appendLog } from '../../lib/logStore.js';

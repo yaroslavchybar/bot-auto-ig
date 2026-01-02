@@ -4,6 +4,7 @@ import { render } from 'ink';
 import meow from 'meow';
 import App from './app.js';
 import { initShutdownHandler } from './lib/shutdown.js';
+import { profileManager } from './lib/profiles.js';
 
 
 const cli = meow(
@@ -30,5 +31,17 @@ const cli = meow(
 
 initShutdownHandler();
 
-render(<App name={cli.flags.name} />);
+// Sync local profiles to database on app launch
+(async () => {
+	try {
+		const result = await profileManager.syncLocalProfilesToDb();
+		if (result.created > 0) {
+			console.log(`Synced ${result.created} local profile(s) to database.`);
+		}
+	} catch (e) {
+		// Silently ignore sync errors - DB may not be available
+	}
+	render(<App name={cli.flags.name} />);
+})();
+
 

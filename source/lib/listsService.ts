@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { listsList } from './supabase.js';
+import { listsList } from './convex.js';
 import { ListRow } from '../types/index.js';
 
 export class ListsService extends EventEmitter {

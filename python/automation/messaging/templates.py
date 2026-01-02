@@ -1,6 +1,6 @@
 from typing import List
 
-from python.supabase.message_templates_client import MessageTemplatesClient
+from python.convex.message_templates_client import MessageTemplatesClient
 
 
 def load_message_2_texts() -> List[str]:

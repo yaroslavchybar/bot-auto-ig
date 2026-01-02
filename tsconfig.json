@@ -11,5 +11,11 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true
 	},
-	"include": ["source/**/*"]
+	"include": [
+		"source/**/*"
+	],
+	"exclude": [
+		"convex/**/*",
+		"node_modules"
+	]
 }

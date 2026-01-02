@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
 from python.automation.browser import create_browser_context
-from python.supabase.instagram_accounts_client import InstagramAccountsClient
+from python.convex.instagram_accounts_client import InstagramAccountsClient
 
 from python.automation.messaging.flow import run_messaging_flow
 

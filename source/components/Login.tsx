@@ -3,7 +3,7 @@ import { Text, Box, useInput, useApp } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
 import { profileManager, Profile } from '../lib/profiles.js';
-import { profilesSetLoginTrue } from '../lib/supabase.js';
+import { profilesSetLoginTrue } from '../lib/convex.js';
 import { spawn, ChildProcess, execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';

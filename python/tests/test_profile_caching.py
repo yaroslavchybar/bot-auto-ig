@@ -129,7 +129,7 @@ class TestGetAvailableProfiles(unittest.TestCase):
                 self.assertEqual(result, [])
 
     def test_get_available_profiles_builds_correct_params(self):
-        """Should build query params with session limit and cooldown filter."""
+        """Should build payload for Convex available profiles endpoint."""
         with patch.dict(os.environ, {
             "SUPABASE_URL": "https://test.supabase.co",
             "SUPABASE_SECRET_KEY": "test-key"
@@ -148,13 +148,14 @@ class TestGetAvailableProfiles(unittest.TestCase):
                     
                     mock_req.assert_called_once()
                     call_args = mock_req.call_args
-                    # _make_request is called with positional: method, params=dict
-                    # Check kwargs first, then positional
-                    params = call_args.kwargs.get("params", {})
-                    
-                    # Verify session limit filter
-                    self.assertIn("sessions_today", params)
-                    self.assertEqual(params["sessions_today"], "lt.5")
+                    self.assertGreaterEqual(len(call_args.args), 2)
+                    self.assertEqual(call_args.args[0], "POST")
+                    self.assertEqual(call_args.args[1], "/available")
+
+                    data = call_args.kwargs.get("data", {})
+                    self.assertEqual(data.get("list_ids"), ["list1", "list2"])
+                    self.assertEqual(data.get("max_sessions"), 5)
+                    self.assertEqual(data.get("cooldown_minutes"), 30)
 
 
 if __name__ == "__main__":

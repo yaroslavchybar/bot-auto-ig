@@ -7,7 +7,7 @@ import {
     profilesListAssigned,
     profilesListUnassigned,
     profilesBulkSetListId,
-} from '../../../lib/supabase.js';
+} from '../../../lib/convex.js';
 
 export type List = {
     id: string;

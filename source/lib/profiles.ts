@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { authenticator } from 'otplib';
-import { profilesCreate, profilesDeleteByName, profilesList, profilesSyncStatus, profilesUpdateByName } from './supabase.js';
+import { profilesCreate, profilesDeleteByName, profilesList, profilesSyncStatus, profilesUpdateByName } from './convex.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +46,62 @@ export class ProfileManager {
 			console.error('Error fetching profiles:', e);
 			return [];
 		}
+	}
+
+	/**
+	 * Get profile folder names from local data/profiles directory
+	 */
+	getLocalProfileNames(): string[] {
+		try {
+			if (!fs.existsSync(PROFILES_DIR)) return [];
+			return fs.readdirSync(PROFILES_DIR, { withFileTypes: true })
+				.filter(d => d.isDirectory())
+				.map(d => d.name);
+		} catch (e) {
+			console.error('Error reading local profiles:', e);
+			return [];
+		}
+	}
+
+	/**
+	 * Sync local profiles to database - creates DB entries for local profiles that don't exist in DB
+	 * Returns the number of profiles created
+	 */
+	async syncLocalProfilesToDb(): Promise<{ created: number; errors: string[] }> {
+		const localNames = this.getLocalProfileNames();
+		if (localNames.length === 0) return { created: 0, errors: [] };
+
+		let dbProfiles: Profile[] = [];
+		try {
+			dbProfiles = await this.getProfiles();
+		} catch (e) {
+			// If DB is empty or unreachable, try to create all local profiles
+			dbProfiles = [];
+		}
+
+		const dbNames = new Set(dbProfiles.map(p => p.name));
+		const toCreate = localNames.filter(name => !dbNames.has(name));
+
+		let created = 0;
+		const errors: string[] = [];
+
+		for (const name of toCreate) {
+			try {
+				await profilesCreate({
+					name,
+					type: 'Camoufox (рекомендуется)',
+					test_ip: false,
+				});
+				created++;
+				console.log(`Auto-created profile in DB: ${name}`);
+			} catch (e: any) {
+				const msg = `Failed to create profile "${name}": ${e?.message || e}`;
+				console.error(msg);
+				errors.push(msg);
+			}
+		}
+
+		return { created, errors };
 	}
 
 	async createProfile(profile: Profile): Promise<boolean> {

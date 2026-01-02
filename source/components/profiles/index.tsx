@@ -5,7 +5,7 @@ import { spawn, ChildProcess, execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { profileManager, Profile } from '../../lib/profiles.js';
-import { profilesSetLoginTrue } from '../../lib/supabase.js';
+import { profilesSetLoginTrue } from '../../lib/convex.js';
 import { getRandomUserAgent } from '../../lib/user_agents.js';
 import { clamp } from '../../lib/utils.js';
 

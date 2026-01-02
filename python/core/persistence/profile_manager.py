@@ -1,7 +1,7 @@
 import json
 import os
 import shutil
-from python.supabase.profiles_client import SupabaseProfilesClient, SupabaseProfilesError
+from python.convex.profiles_client import SupabaseProfilesClient, SupabaseProfilesError
 
 import logging
 

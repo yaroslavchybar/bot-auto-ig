@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { messageTemplatesGet, messageTemplatesUpsert } from './supabase.js';
+import { messageTemplatesGet, messageTemplatesUpsert } from './convex.js';
 import { appendLog } from './logStore.js';
 
 export class MessagesService extends EventEmitter {

@@ -70,9 +70,8 @@ export default function Lists({ onBack, initialSelectedIndex, onSelectedIndexCha
         } else if (mode === 'create') {
             if (key.escape) {
                 cancelMode();
-            } else if (key.return) {
-                handleCreate();
             }
+            // Note: Enter key is handled by TextInput's onSubmit prop
         } else if (mode === 'edit') {
             if (key.escape) {
                 cancelMode();

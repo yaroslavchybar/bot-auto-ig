@@ -57,7 +57,7 @@ export function MainView({ settings, focusIndex, mainFocusFocusables, running, p
             label={label}
             value={settings[field] as number}
             focused={currentField === field}
-            onChange={v => onUpdate(prev => ({ ...prev, [field]: toInt(v, settings[field] as number) }), false)}
+            onChange={v => onUpdate(prev => ({ ...prev, [field]: toInt(v, settings[field] as number) }), true)}
             onSubmit={v => onUpdate(prev => ({ ...prev, [field]: toInt(v, settings[field] as number) }), true)}
         />
     );
