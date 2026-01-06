@@ -12,10 +12,11 @@
 		"forceConsistentCasingInFileNames": true
 	},
 	"include": [
-		"source/**/*"
+		"server/**/*"
 	],
 	"exclude": [
 		"convex/**/*",
+		"frontend/**/*",
 		"node_modules"
 	]
 }

@@ -2,10 +2,16 @@ import { httpRouter } from "convex/server";
 import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
+const corsHeaders = {
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+	"Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
 function jsonResponse(body: unknown, status: number = 200): Response {
 	return new Response(JSON.stringify(body), {
 		status,
-		headers: { "Content-Type": "application/json" },
+		headers: { "Content-Type": "application/json", ...corsHeaders },
 	});
 }
 
@@ -85,6 +91,54 @@ async function parseBody(request: Request): Promise<Record<string, any>> {
 }
 
 const http = httpRouter();
+
+// CORS preflight handler for all /api/* routes
+const corsPreflightHandler = httpAction(async () => {
+	return new Response(null, {
+		status: 204,
+		headers: corsHeaders,
+	});
+});
+
+// Add OPTIONS handlers for all main API paths
+const apiPaths = [
+	"/api/profiles",
+	"/api/profiles/by-name",
+	"/api/profiles/by-id",
+	"/api/profiles/available",
+	"/api/profiles/by-list-ids",
+	"/api/profiles/update-by-name",
+	"/api/profiles/update-by-id",
+	"/api/profiles/delete-by-id",
+	"/api/profiles/remove-by-name",
+	"/api/profiles/delete-by-name",
+	"/api/profiles/clear-busy-for-lists",
+	"/api/profiles/sync-status",
+	"/api/profiles/set-login-true",
+	"/api/profiles/increment-sessions-today",
+	"/api/profiles/assigned",
+	"/api/profiles/unassigned",
+	"/api/profiles/bulk-set-list-id",
+	"/api/lists",
+	"/api/lists/update",
+	"/api/lists/remove",
+	"/api/lists/delete",
+	"/api/instagram-settings",
+	"/api/message-templates",
+	"/api/instagram-accounts/for-profile",
+	"/api/instagram-accounts/to-message",
+	"/api/instagram-accounts/update-status",
+	"/api/instagram-accounts/update-message",
+	"/api/instagram-accounts/update-link-sent",
+	"/api/instagram-accounts/set-last-message-sent-now",
+	"/api/instagram-accounts/last-message-sent-at",
+	"/api/instagram-accounts/usernames",
+	"/api/instagram-accounts/profiles-with-assigned",
+];
+
+for (const path of apiPaths) {
+	http.route({ path, method: "OPTIONS", handler: corsPreflightHandler });
+}
 
 http.route({
 	path: "/api/profiles",

@@ -9,6 +9,7 @@
  */
 
 import type * as crons from "../crons.js";
+import type * as dashboard from "../dashboard.js";
 import type * as http from "../http.js";
 import type * as instagramAccounts from "../instagramAccounts.js";
 import type * as instagramSettings from "../instagramSettings.js";
@@ -24,6 +25,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
+  dashboard: typeof dashboard;
   http: typeof http;
   instagramAccounts: typeof instagramAccounts;
   instagramSettings: typeof instagramSettings;
