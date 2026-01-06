@@ -58,11 +58,9 @@ export function useInstagramSettings() {
     const normalizeActionOrder = (val: unknown): ActionName[] => {
         const list = Array.isArray(val) ? val : [];
         const out: ActionName[] = [];
-        const seen = new Set<ActionName>();
+        // Allow duplicate actions - don't filter them out
         for (const item of list) {
             if (!ACTIONS.includes(item as ActionName)) continue;
-            if (seen.has(item as ActionName)) continue;
-            seen.add(item as ActionName);
             out.push(item as ActionName);
         }
         return out.length > 0 ? out : [...ACTIONS];
