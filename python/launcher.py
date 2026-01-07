@@ -67,6 +67,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--user-agent", type=str, default=None, help="Custom User Agent string")
     parser.add_argument("--os", type=str, default=None, help="Emulated OS: windows, macos, linux")
+    parser.add_argument("--fingerprint", type=str, default=None, help="JSON fingerprint string for Camoufox")
     
     args = parser.parse_args()
 
@@ -148,7 +149,8 @@ if __name__ == "__main__":
                 reels_match_likes=args.reels_match_likes,
                 reels_match_follows=args.reels_match_follows,
                 user_agent=args.user_agent,
-                os=args.os
+                os=args.os,
+                fingerprint=args.fingerprint
             )
             logger.info("Session completed successfully.")
             break

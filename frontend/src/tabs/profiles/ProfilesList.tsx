@@ -59,7 +59,7 @@ export function ProfilesList({
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Status</TableHead>
-            <TableHead>Type</TableHead>
+            <TableHead>Fingerprint</TableHead>
             <TableHead>Proxy</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
@@ -85,7 +85,7 @@ export function ProfilesList({
                   {profile.login && <Badge variant="outline">Login</Badge>}
                 </div>
               </TableCell>
-              <TableCell>{profile.type}</TableCell>
+              <TableCell>{profile.fingerprint ? '✓' : '-'}</TableCell>
               <TableCell>
                 {profile.proxy ? (
                   <span className="max-w-[150px] truncate block" title={profile.proxy}>

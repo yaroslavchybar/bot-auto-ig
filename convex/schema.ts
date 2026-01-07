@@ -15,14 +15,11 @@ export default defineSchema({
 		status: v.optional(v.string()),
 		mode: v.optional(v.string()),
 		using: v.boolean(),
-		type: v.optional(v.string()),
 		testIp: v.boolean(),
-		userAgent: v.optional(v.string()),
+		fingerprint: v.optional(v.string()),
 		listId: v.optional(v.id("lists")),
 		sessionsToday: v.number(),
 		lastOpenedAt: v.optional(v.number()),
-		uaOs: v.optional(v.string()),
-		uaBrowser: v.optional(v.string()),
 		login: v.boolean(),
 	})
 		.index("by_listId", ["listId"])

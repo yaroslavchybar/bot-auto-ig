@@ -136,11 +136,8 @@ export function ProfilesPage() {
             name,
             proxy: String(data.proxy ?? '').trim() || undefined,
             proxy_type: String(data.proxy_type ?? '').trim() || undefined,
-            type: String(data.type ?? '').trim() || undefined,
-            user_agent: String(data.user_agent ?? '').trim() || undefined,
+            fingerprint: data.fingerprint || undefined,
             test_ip: Boolean(data.test_ip),
-            ua_os: String(data.ua_os ?? '').trim() || undefined,
-            ua_browser: String(data.ua_browser ?? '').trim() || undefined,
           },
         })
         await refreshProfiles()
@@ -152,11 +149,8 @@ export function ProfilesPage() {
             name,
             proxy: String(data.proxy ?? '').trim() || undefined,
             proxy_type: String(data.proxy_type ?? '').trim() || undefined,
-            type: String(data.type ?? '').trim() || undefined,
-            user_agent: String(data.user_agent ?? '').trim() || undefined,
+            fingerprint: data.fingerprint || undefined,
             test_ip: Boolean(data.test_ip),
-            ua_os: String(data.ua_os ?? '').trim() || undefined,
-            ua_browser: String(data.ua_browser ?? '').trim() || undefined,
           },
         })
         await refreshProfiles()

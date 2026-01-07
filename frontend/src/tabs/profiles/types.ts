@@ -3,11 +3,8 @@ export type Profile = {
   name: string
   proxy?: string
   proxy_type?: string
-  type?: string
-  user_agent?: string
+  fingerprint?: string
   test_ip?: boolean
-  ua_os?: string
-  ua_browser?: string
   status?: string
   using?: boolean
   login?: boolean

@@ -13,11 +13,8 @@ export type Profile = {
 	name: string;
 	proxy?: string;
 	proxy_type?: string;
-	type?: string;
-	user_agent?: string;
+	fingerprint?: string;
 	test_ip?: boolean;
-	ua_os?: string; // Local only usually
-	ua_browser?: string; // Local only usually
 	status?: string;
 	using?: boolean;
 	login?: boolean;
@@ -32,11 +29,8 @@ export class ProfileManager {
 				name: p.name,
 				proxy: p.proxy,
 				proxy_type: p.proxy_type,
-				type: p.type,
-				user_agent: p.user_agent,
+				fingerprint: p.fingerprint,
 				test_ip: p.test_ip,
-				ua_os: p.ua_os,
-				ua_browser: p.ua_browser,
 				status: p.status,
 				using: p.Using,
 				login: p.login
@@ -88,7 +82,6 @@ export class ProfileManager {
 			try {
 				await profilesCreate({
 					name,
-					type: 'Camoufox (рекомендуется)',
 					test_ip: false,
 				});
 				created++;
@@ -109,11 +102,8 @@ export class ProfileManager {
 				name: profile.name,
 				proxy: profile.proxy,
 				proxy_type: profile.proxy_type,
-				type: profile.type,
-				user_agent: profile.user_agent,
+				fingerprint: profile.fingerprint,
 				test_ip: profile.test_ip,
-				ua_os: profile.ua_os,
-				ua_browser: profile.ua_browser,
 			});
 		} catch (e) {
 			console.error('Error creating profile in DB:', e);
@@ -133,11 +123,8 @@ export class ProfileManager {
 				name: profile.name,
 				proxy: profile.proxy,
 				proxy_type: profile.proxy_type,
-				type: profile.type,
-				user_agent: profile.user_agent,
+				fingerprint: profile.fingerprint,
 				test_ip: profile.test_ip,
-				ua_os: profile.ua_os,
-				ua_browser: profile.ua_browser,
 			});
 		} catch (e) {
 			console.error('Error updating profile in DB:', e);

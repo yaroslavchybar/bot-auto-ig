@@ -84,11 +84,8 @@ export const create = mutation({
 		name: v.string(),
 		proxy: v.optional(v.string()),
 		proxyType: v.optional(v.string()),
-		type: v.optional(v.string()),
 		testIp: v.optional(v.boolean()),
-		userAgent: v.optional(v.string()),
-		uaOs: v.optional(v.string()),
-		uaBrowser: v.optional(v.string()),
+		fingerprint: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
@@ -102,14 +99,11 @@ export const create = mutation({
 			status: "idle",
 			mode: computeProfileMode(proxy),
 			using: false,
-			type: args.type ?? "Camoufox (рекомендуется)",
 			testIp: args.testIp ?? false,
-			userAgent: args.userAgent,
+			fingerprint: args.fingerprint,
 			listId: undefined,
 			sessionsToday: 0,
 			lastOpenedAt: undefined,
-			uaOs: args.uaOs,
-			uaBrowser: args.uaBrowser,
 			login: false,
 		});
 		return await ctx.db.get(id);
@@ -122,11 +116,8 @@ export const updateByName = mutation({
 		name: v.string(),
 		proxy: v.optional(v.string()),
 		proxyType: v.optional(v.string()),
-		type: v.optional(v.string()),
 		testIp: v.optional(v.boolean()),
-		userAgent: v.optional(v.string()),
-		uaOs: v.optional(v.string()),
-		uaBrowser: v.optional(v.string()),
+		fingerprint: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const oldClean = String(args.oldName || "").trim();
@@ -144,11 +135,8 @@ export const updateByName = mutation({
 			name,
 			proxy,
 			proxyType: args.proxyType,
-			type: args.type ?? "Camoufox (рекомендуется)",
 			testIp: args.testIp ?? false,
-			userAgent: args.userAgent,
-			uaOs: args.uaOs,
-			uaBrowser: args.uaBrowser,
+			fingerprint: args.fingerprint,
 			mode: computeProfileMode(proxy),
 		});
 		return await ctx.db.get(existing._id);
@@ -161,11 +149,8 @@ export const updateById = mutation({
 		name: v.string(),
 		proxy: v.optional(v.string()),
 		proxyType: v.optional(v.string()),
-		type: v.optional(v.string()),
 		testIp: v.optional(v.boolean()),
-		userAgent: v.optional(v.string()),
-		uaOs: v.optional(v.string()),
-		uaBrowser: v.optional(v.string()),
+		fingerprint: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
@@ -177,11 +162,8 @@ export const updateById = mutation({
 			name,
 			proxy,
 			proxyType: args.proxyType,
-			type: args.type ?? "Camoufox (рекомендуется)",
 			testIp: args.testIp ?? false,
-			userAgent: args.userAgent,
-			uaOs: args.uaOs,
-			uaBrowser: args.uaBrowser,
+			fingerprint: args.fingerprint,
 			mode: computeProfileMode(proxy),
 		});
 		return await ctx.db.get(args.profileId);

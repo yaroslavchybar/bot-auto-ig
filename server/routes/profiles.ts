@@ -19,8 +19,53 @@ const __dirname = path.dirname(__filename)
 // From dist/routes/ we need to go up to server/, then up to project root
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
 const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'launcher.py')
+const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'fingerprint_generator.py')
 
 const router = Router()
+
+// Generate a new fingerprint using BrowserForge
+router.post('/generate-fingerprint', async (req, res) => {
+    const { os = 'windows' } = req.body || {}
+    const python = process.env.PYTHON || 'python'
+
+    try {
+        const result = await new Promise<string>((resolve, reject) => {
+            const args = [FINGERPRINT_GENERATOR_SCRIPT, '--os', os]
+            const child = spawn(python, args, {
+                cwd: PROJECT_ROOT,
+                stdio: ['ignore', 'pipe', 'pipe'],
+            })
+
+            let stdout = ''
+            let stderr = ''
+
+            child.stdout?.on('data', (data) => {
+                stdout += data.toString()
+            })
+
+            child.stderr?.on('data', (data) => {
+                stderr += data.toString()
+            })
+
+            child.on('close', (code) => {
+                if (code === 0) {
+                    resolve(stdout.trim())
+                } else {
+                    reject(new Error(stderr || `Process exited with code ${code}`))
+                }
+            })
+
+            child.on('error', reject)
+        })
+
+        // Parse and validate JSON
+        const fingerprint = JSON.parse(result)
+        res.json({ success: true, fingerprint })
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message })
+    }
+})
 
 // Get all profiles
 router.get('/', async (req, res) => {
@@ -111,8 +156,8 @@ router.post('/:name/start', async (req, res) => {
         if (profile.proxy) {
             args.push('--proxy', profile.proxy)
         }
-        if (profile.user_agent) {
-            args.push('--user-agent', profile.user_agent)
+        if (profile.fingerprint) {
+            args.push('--fingerprint', profile.fingerprint)
         }
 
         broadcast({

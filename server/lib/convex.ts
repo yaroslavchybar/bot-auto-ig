@@ -35,14 +35,11 @@ export type DbProfileRow = {
     status?: string | null;
     mode?: string | null;
     Using: boolean;
-    type?: string | null;
     test_ip: boolean;
-    user_agent?: string | null;
+    fingerprint?: string | null;
     list_id?: string | null;
     sessions_today?: number | null;
     last_opened_at?: string | null;
-    ua_os?: string | null;
-    ua_browser?: string | null;
     login: boolean;
 };
 
@@ -50,11 +47,8 @@ export type ProfileInput = {
     name: string;
     proxy?: string;
     proxy_type?: string;
-    type?: string;
+    fingerprint?: string;
     test_ip?: boolean;
-    user_agent?: string;
-    ua_os?: string;
-    ua_browser?: string;
 };
 
 // HTTP client for Convex
@@ -120,11 +114,8 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             name,
             proxy: profile.proxy,
             proxyType: profile.proxy_type,
-            type: profile.type,
+            fingerprint: profile.fingerprint,
             testIp: profile.test_ip,
-            userAgent: profile.user_agent,
-            uaOs: profile.ua_os,
-            uaBrowser: profile.ua_browser,
         },
     });
 }
@@ -141,11 +132,8 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             name,
             proxy: profile.proxy,
             proxyType: profile.proxy_type,
-            type: profile.type,
+            fingerprint: profile.fingerprint,
             testIp: profile.test_ip,
-            userAgent: profile.user_agent,
-            uaOs: profile.ua_os,
-            uaBrowser: profile.ua_browser,
         },
     });
 }

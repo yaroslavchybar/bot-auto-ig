@@ -303,6 +303,7 @@ def create_browser_context(
     headless: bool = False,
     block_images: bool = False,
     os: Optional[str] = None,
+    fingerprint: Optional[str] = None,
 ):
     if proxy_circuit.is_open():
         wait_time = proxy_circuit.global_pause_until - time.time()
@@ -318,6 +319,16 @@ def create_browser_context(
         raise ProxyError(f"Proxy {proxy_string} is currently tainted due to previous failures.")
         
     proxy_config = build_proxy_config(proxy_string)
+    
+    # Parse fingerprint if provided
+    fingerprint_obj = None
+    if fingerprint:
+        try:
+            import json
+            fingerprint_obj = json.loads(fingerprint)
+            print(f"[*] Using stored fingerprint for profile")
+        except Exception as e:
+            print(f"[!] Failed to parse fingerprint JSON: {e}")
 
     # Prepare common launch arguments
     launch_kwargs = dict(
@@ -329,8 +340,20 @@ def create_browser_context(
         os=os or "windows",
         window=(1920, 1080),
         humanize=True,
-        user_agent=user_agent,
     )
+    
+    # If fingerprint is provided, use screen dimensions from it
+    if fingerprint_obj:
+        screen = fingerprint_obj.get('screen', {})
+        if screen.get('width') and screen.get('height'):
+            launch_kwargs['window'] = (screen['width'], screen['height'])
+        
+        # Use user agent from fingerprint if available
+        nav = fingerprint_obj.get('navigator', {})
+        if nav.get('userAgent'):
+            launch_kwargs['user_agent'] = nav['userAgent']
+    elif user_agent:
+        launch_kwargs['user_agent'] = user_agent
 
     cm = None
     context = None
@@ -422,14 +445,16 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
               watch_stories=True, stories_max=3,
               feed_duration=0, reels_duration=0,
               reels_match_likes=None, reels_match_follows=None,
-              user_agent=None, headless=False, os=None):
+              user_agent=None, headless=False, os=None, fingerprint=None):
     print(f"[*] Starting Profile: {profile_name}")
     print(f"[*] Action: {action}")
     
     if proxy_string and proxy_string.lower() not in ["none", ""]:
         print(f"[*] Using Proxy: {proxy_string}")
     
-    if user_agent:
+    if fingerprint:
+        print(f"[*] Using stored fingerprint")
+    elif user_agent:
         print(f"[*] Using User Agent: {user_agent}")
     print(f"[*] Headless mode: {'ON' if headless else 'OFF'}")
 
@@ -453,6 +478,7 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
             headless=headless,
             block_images=False,
             os=os,
+            fingerprint=fingerprint,
         ) as (context, page):
             print("[*] Camoufox initialized successfully")
 

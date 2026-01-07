@@ -39,14 +39,11 @@ function mapProfileToPython(profile: any): any {
 		status: profile.status ?? null,
 		mode: profile.mode ?? null,
 		Using: Boolean(profile.using),
-		type: profile.type ?? null,
 		test_ip: Boolean(profile.testIp),
-		user_agent: profile.userAgent ?? null,
+		fingerprint: profile.fingerprint ?? null,
 		list_id: profile.listId ?? null,
 		sessions_today: typeof profile.sessionsToday === "number" ? profile.sessionsToday : 0,
 		last_opened_at: toIso(profile.lastOpenedAt),
-		ua_os: profile.uaOs ?? null,
-		ua_browser: profile.uaBrowser ?? null,
 		login: Boolean(profile.login),
 	};
 }
@@ -234,11 +231,8 @@ http.route({
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
-				type: body?.type ?? undefined,
+				fingerprint: body?.fingerprint ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
-				userAgent: body?.userAgent ?? body?.user_agent ?? undefined,
-				uaOs: body?.uaOs ?? body?.ua_os ?? undefined,
-				uaBrowser: body?.uaBrowser ?? body?.ua_browser ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(created));
 		} catch (err: any) {
@@ -276,11 +270,8 @@ http.route({
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
-				type: body?.type ?? undefined,
+				fingerprint: body?.fingerprint ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
-				userAgent: body?.userAgent ?? body?.user_agent ?? undefined,
-				uaOs: body?.uaOs ?? body?.ua_os ?? undefined,
-				uaBrowser: body?.uaBrowser ?? body?.ua_browser ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(updated));
 		} catch (err: any) {
