@@ -40,7 +40,8 @@ function mapProfileToPython(profile: any): any {
 		mode: profile.mode ?? null,
 		Using: Boolean(profile.using),
 		test_ip: Boolean(profile.testIp),
-		fingerprint: profile.fingerprint ?? null,
+		fingerprint_seed: profile.fingerprintSeed ?? null,
+		fingerprint_os: profile.fingerprintOs ?? null,
 		list_id: profile.listId ?? null,
 		sessions_today: typeof profile.sessionsToday === "number" ? profile.sessionsToday : 0,
 		last_opened_at: toIso(profile.lastOpenedAt),
@@ -231,7 +232,8 @@ http.route({
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
-				fingerprint: body?.fingerprint ?? undefined,
+				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
+				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(created));
@@ -270,7 +272,8 @@ http.route({
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
-				fingerprint: body?.fingerprint ?? undefined,
+				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
+				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(updated));

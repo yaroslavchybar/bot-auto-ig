@@ -303,7 +303,8 @@ def create_browser_context(
     headless: bool = False,
     block_images: bool = False,
     os: Optional[str] = None,
-    fingerprint: Optional[str] = None,
+    fingerprint_seed: Optional[str] = None,
+    fingerprint_os: Optional[str] = None,
 ):
     if proxy_circuit.is_open():
         wait_time = proxy_circuit.global_pause_until - time.time()
@@ -320,15 +321,28 @@ def create_browser_context(
         
     proxy_config = build_proxy_config(proxy_string)
     
-    # Parse fingerprint if provided
+    # Generate fingerprint from seed using BrowserForge
     fingerprint_obj = None
-    if fingerprint:
+    target_os = fingerprint_os or os or "windows"
+    
+    if fingerprint_seed:
         try:
-            import json
-            fingerprint_obj = json.loads(fingerprint)
-            print(f"[*] Using stored fingerprint for profile")
+            from browserforge.fingerprints import FingerprintGenerator, Screen
+            
+            # Set random seed for consistent fingerprint generation
+            random.seed(fingerprint_seed)
+            
+            screen = Screen(min_width=1280, max_width=1920, min_height=720, max_height=1080)
+            fg = FingerprintGenerator(browser='firefox', screen=screen)
+            fingerprint_obj = fg.generate(os=target_os)
+            
+            print(f"[*] Generated fingerprint from seed for {target_os}")
+            
+            # Reset random seed to not affect other randomness
+            random.seed()
         except Exception as e:
-            print(f"[!] Failed to parse fingerprint JSON: {e}")
+            print(f"[!] Failed to generate fingerprint: {e}")
+            fingerprint_obj = None
 
     # Prepare common launch arguments
     launch_kwargs = dict(
@@ -337,21 +351,13 @@ def create_browser_context(
         persistent_context=True,
         proxy=proxy_config,
         block_images=block_images,
-        os=os or "windows",
-        window=(1920, 1080),
+        os=target_os,
         humanize=True,
     )
     
-    # If fingerprint is provided, use screen dimensions from it
+    # If fingerprint object is generated, pass it directly to Camoufox
     if fingerprint_obj:
-        screen = fingerprint_obj.get('screen', {})
-        if screen.get('width') and screen.get('height'):
-            launch_kwargs['window'] = (screen['width'], screen['height'])
-        
-        # Use user agent from fingerprint if available
-        nav = fingerprint_obj.get('navigator', {})
-        if nav.get('userAgent'):
-            launch_kwargs['user_agent'] = nav['userAgent']
+        launch_kwargs['fingerprint'] = fingerprint_obj
     elif user_agent:
         launch_kwargs['user_agent'] = user_agent
 
@@ -361,7 +367,7 @@ def create_browser_context(
     try:
         # Attempt 1: Try with geoip=True if proxy is configured
         try:
-            cm = Camoufox(geoip=bool(proxy_config), **launch_kwargs)
+            cm = Camoufox(geoip=True, **launch_kwargs)
             context = cm.__enter__()
         except InvalidProxy:
             if proxy_config:
@@ -445,15 +451,16 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
               watch_stories=True, stories_max=3,
               feed_duration=0, reels_duration=0,
               reels_match_likes=None, reels_match_follows=None,
-              user_agent=None, headless=False, os=None, fingerprint=None):
+              user_agent=None, headless=False, os=None, 
+              fingerprint_seed=None, fingerprint_os=None):
     print(f"[*] Starting Profile: {profile_name}")
     print(f"[*] Action: {action}")
     
     if proxy_string and proxy_string.lower() not in ["none", ""]:
         print(f"[*] Using Proxy: {proxy_string}")
     
-    if fingerprint:
-        print(f"[*] Using stored fingerprint")
+    if fingerprint_seed:
+        print(f"[*] Using fingerprint seed: {fingerprint_seed[:8]}... (OS: {fingerprint_os or os or 'windows'})")
     elif user_agent:
         print(f"[*] Using User Agent: {user_agent}")
     print(f"[*] Headless mode: {'ON' if headless else 'OFF'}")
@@ -478,7 +485,8 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
             headless=headless,
             block_images=False,
             os=os,
-            fingerprint=fingerprint,
+            fingerprint_seed=fingerprint_seed,
+            fingerprint_os=fingerprint_os,
         ) as (context, page):
             print("[*] Camoufox initialized successfully")
 

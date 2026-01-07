@@ -29,7 +29,8 @@ class ManualAutomationService extends EventEmitter {
         const args = ['--name', name];
         if (profile.proxy) args.push('--proxy', profile.proxy);
         args.push('--action', 'manual');
-        if (profile.fingerprint) args.push('--fingerprint', profile.fingerprint);
+        if (profile.fingerprint_seed) args.push('--fingerprint-seed', profile.fingerprint_seed);
+        if (profile.fingerprint_os) args.push('--fingerprint-os', profile.fingerprint_os);
 
         try {
             const python = process.env.PYTHON || 'python';

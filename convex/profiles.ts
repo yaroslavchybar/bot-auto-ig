@@ -85,7 +85,8 @@ export const create = mutation({
 		proxy: v.optional(v.string()),
 		proxyType: v.optional(v.string()),
 		testIp: v.optional(v.boolean()),
-		fingerprint: v.optional(v.string()),
+		fingerprintSeed: v.optional(v.string()),
+		fingerprintOs: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
@@ -100,7 +101,8 @@ export const create = mutation({
 			mode: computeProfileMode(proxy),
 			using: false,
 			testIp: args.testIp ?? false,
-			fingerprint: args.fingerprint,
+			fingerprintSeed: args.fingerprintSeed,
+			fingerprintOs: args.fingerprintOs,
 			listId: undefined,
 			sessionsToday: 0,
 			lastOpenedAt: undefined,
@@ -117,7 +119,8 @@ export const updateByName = mutation({
 		proxy: v.optional(v.string()),
 		proxyType: v.optional(v.string()),
 		testIp: v.optional(v.boolean()),
-		fingerprint: v.optional(v.string()),
+		fingerprintSeed: v.optional(v.string()),
+		fingerprintOs: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const oldClean = String(args.oldName || "").trim();
@@ -136,7 +139,8 @@ export const updateByName = mutation({
 			proxy,
 			proxyType: args.proxyType,
 			testIp: args.testIp ?? false,
-			fingerprint: args.fingerprint,
+			fingerprintSeed: args.fingerprintSeed,
+			fingerprintOs: args.fingerprintOs,
 			mode: computeProfileMode(proxy),
 		});
 		return await ctx.db.get(existing._id);
@@ -150,7 +154,8 @@ export const updateById = mutation({
 		proxy: v.optional(v.string()),
 		proxyType: v.optional(v.string()),
 		testIp: v.optional(v.boolean()),
-		fingerprint: v.optional(v.string()),
+		fingerprintSeed: v.optional(v.string()),
+		fingerprintOs: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
@@ -163,7 +168,8 @@ export const updateById = mutation({
 			proxy,
 			proxyType: args.proxyType,
 			testIp: args.testIp ?? false,
-			fingerprint: args.fingerprint,
+			fingerprintSeed: args.fingerprintSeed,
+			fingerprintOs: args.fingerprintOs,
 			mode: computeProfileMode(proxy),
 		});
 		return await ctx.db.get(args.profileId);

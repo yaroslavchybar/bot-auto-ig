@@ -13,7 +13,8 @@ export type Profile = {
 	name: string;
 	proxy?: string;
 	proxy_type?: string;
-	fingerprint?: string;
+	fingerprint_seed?: string;
+	fingerprint_os?: string;
 	test_ip?: boolean;
 	status?: string;
 	using?: boolean;
@@ -29,7 +30,8 @@ export class ProfileManager {
 				name: p.name,
 				proxy: p.proxy,
 				proxy_type: p.proxy_type,
-				fingerprint: p.fingerprint,
+				fingerprint_seed: p.fingerprint_seed,
+				fingerprint_os: p.fingerprint_os,
 				test_ip: p.test_ip,
 				status: p.status,
 				using: p.Using,
@@ -102,7 +104,8 @@ export class ProfileManager {
 				name: profile.name,
 				proxy: profile.proxy,
 				proxy_type: profile.proxy_type,
-				fingerprint: profile.fingerprint,
+				fingerprint_seed: profile.fingerprint_seed,
+				fingerprint_os: profile.fingerprint_os,
 				test_ip: profile.test_ip,
 			});
 		} catch (e) {
@@ -123,7 +126,8 @@ export class ProfileManager {
 				name: profile.name,
 				proxy: profile.proxy,
 				proxy_type: profile.proxy_type,
-				fingerprint: profile.fingerprint,
+				fingerprint_seed: profile.fingerprint_seed,
+				fingerprint_os: profile.fingerprint_os,
 				test_ip: profile.test_ip,
 			});
 		} catch (e) {

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Fingerprint, Loader2 } from "lucide-react"
+import { Fingerprint, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ProfileFormProps {
@@ -17,19 +17,14 @@ interface ProfileFormProps {
   className?: string
 }
 
-// Parse fingerprint JSON to extract display info
-function getFingerprintSummary(fingerprintJson?: string): { platform: string; screen: string; webgl: string } | null {
-  if (!fingerprintJson) return null
-  try {
-    const fp = JSON.parse(fingerprintJson)
-    return {
-      platform: fp.navigator?.platform || 'Unknown',
-      screen: fp.screen ? `${fp.screen.width}x${fp.screen.height}` : 'Unknown',
-      webgl: fp.videoCard?.renderer?.substring(0, 50) || 'Unknown',
-    }
-  } catch {
-    return null
+// Generate a random seed string
+function generateSeed(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  let result = ''
+  for (let i = 0; i < 32; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
+  return result
 }
 
 export function ProfileForm({
@@ -48,12 +43,9 @@ export function ProfileForm({
     using: false,
     status: 'idle',
     proxy_type: 'http',
+    fingerprint_os: 'windows',
     ...initialData,
   })
-
-  // OS selection for fingerprint generation
-  const [selectedOs, setSelectedOs] = useState<'windows' | 'macos' | 'linux'>('windows')
-  const [generatingFingerprint, setGeneratingFingerprint] = useState(false)
 
   // Connection state: 'direct' or 'proxy'
   const [connection, setConnection] = useState<'direct' | 'proxy'>(
@@ -70,33 +62,15 @@ export function ProfileForm({
     }
   }, [initialData])
 
-  const handleGenerateFingerprint = async () => {
-    setGeneratingFingerprint(true)
-    setLocalError(null)
-
-    try {
-      const response = await fetch('/api/profiles/generate-fingerprint', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ os: selectedOs }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate fingerprint')
-      }
-
-      // Store fingerprint as JSON string
-      setDraft((prev) => ({
-        ...prev,
-        fingerprint: JSON.stringify(data.fingerprint),
-      }))
-    } catch (err) {
-      setLocalError(err instanceof Error ? err.message : 'Failed to generate fingerprint')
-    } finally {
-      setGeneratingFingerprint(false)
+  // Generate seed on create mode if not present
+  useEffect(() => {
+    if (mode === 'create' && !draft.fingerprint_seed) {
+      setDraft((prev) => ({ ...prev, fingerprint_seed: generateSeed() }))
     }
+  }, [mode, draft.fingerprint_seed])
+
+  const handleRegenerateSeed = () => {
+    setDraft((prev) => ({ ...prev, fingerprint_seed: generateSeed() }))
   }
 
   const handleSave = () => {
@@ -130,8 +104,6 @@ export function ProfileForm({
     setLocalError(null)
     onSave(finalData)
   }
-
-  const fingerprintSummary = getFingerprintSummary(draft.fingerprint)
 
   return (
     <div className={cn("flex flex-col gap-6", className)}>
@@ -203,9 +175,9 @@ export function ProfileForm({
           <div className="p-4 border rounded-md bg-muted/20 space-y-3">
             <div className="flex items-center gap-3">
               <Select
-                value={selectedOs}
-                onValueChange={(value) => setSelectedOs(value as 'windows' | 'macos' | 'linux')}
-                disabled={saving || generatingFingerprint}
+                value={draft.fingerprint_os || 'windows'}
+                onValueChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
+                disabled={saving}
               >
                 <SelectTrigger className="w-32">
                   <SelectValue placeholder="OS" />
@@ -219,32 +191,27 @@ export function ProfileForm({
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleGenerateFingerprint}
-                disabled={saving || generatingFingerprint}
+                onClick={handleRegenerateSeed}
+                disabled={saving}
                 className="flex items-center gap-2"
               >
-                {generatingFingerprint ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Fingerprint className="h-4 w-4" />
-                )}
-                {draft.fingerprint ? 'Regenerate' : 'Generate'} Fingerprint
+                <RefreshCw className="h-4 w-4" />
+                Regenerate Seed
               </Button>
             </div>
 
-            {fingerprintSummary && (
-              <div className="text-xs text-muted-foreground space-y-1 font-mono">
-                <div><span className="text-foreground">Platform:</span> {fingerprintSummary.platform}</div>
-                <div><span className="text-foreground">Screen:</span> {fingerprintSummary.screen}</div>
-                <div><span className="text-foreground">WebGL:</span> {fingerprintSummary.webgl}...</div>
+            {draft.fingerprint_seed && (
+              <div className="text-xs text-muted-foreground font-mono flex items-center gap-2">
+                <Fingerprint className="h-4 w-4" />
+                <span className="text-foreground">Seed:</span>
+                <span className="bg-muted px-2 py-1 rounded">{draft.fingerprint_seed}</span>
               </div>
             )}
 
-            {!draft.fingerprint && (
-              <p className="text-xs text-muted-foreground">
-                Generate a fingerprint to enable anti-detection features. Using Camoufox (Firefox-based).
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              Fingerprint is generated from seed on each browser launch. Same seed = same fingerprint.
+              Uses Camoufox with BrowserForge for anti-detection.
+            </p>
           </div>
         </div>
       </div>

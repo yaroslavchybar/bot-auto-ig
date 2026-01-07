@@ -136,7 +136,8 @@ export function ProfilesPage() {
             name,
             proxy: String(data.proxy ?? '').trim() || undefined,
             proxy_type: String(data.proxy_type ?? '').trim() || undefined,
-            fingerprint: data.fingerprint || undefined,
+            fingerprint_seed: data.fingerprint_seed || undefined,
+            fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
           },
         })
@@ -149,7 +150,8 @@ export function ProfilesPage() {
             name,
             proxy: String(data.proxy ?? '').trim() || undefined,
             proxy_type: String(data.proxy_type ?? '').trim() || undefined,
-            fingerprint: data.fingerprint || undefined,
+            fingerprint_seed: data.fingerprint_seed || undefined,
+            fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
           },
         })

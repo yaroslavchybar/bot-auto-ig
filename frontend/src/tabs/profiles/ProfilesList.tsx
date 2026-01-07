@@ -85,7 +85,7 @@ export function ProfilesList({
                   {profile.login && <Badge variant="outline">Login</Badge>}
                 </div>
               </TableCell>
-              <TableCell>{profile.fingerprint ? '✓' : '-'}</TableCell>
+              <TableCell>{profile.fingerprint_seed ? profile.fingerprint_os || 'windows' : '-'}</TableCell>
               <TableCell>
                 {profile.proxy ? (
                   <span className="max-w-[150px] truncate block" title={profile.proxy}>

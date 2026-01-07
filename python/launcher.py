@@ -67,7 +67,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--user-agent", type=str, default=None, help="Custom User Agent string")
     parser.add_argument("--os", type=str, default=None, help="Emulated OS: windows, macos, linux")
-    parser.add_argument("--fingerprint", type=str, default=None, help="JSON fingerprint string for Camoufox")
+    parser.add_argument("--fingerprint-seed", type=str, default=None, help="Seed for consistent fingerprint generation")
+    parser.add_argument("--fingerprint-os", type=str, default=None, help="OS for fingerprint generation: windows, macos, linux")
     
     args = parser.parse_args()
 
@@ -150,7 +151,8 @@ if __name__ == "__main__":
                 reels_match_follows=args.reels_match_follows,
                 user_agent=args.user_agent,
                 os=args.os,
-                fingerprint=args.fingerprint
+                fingerprint_seed=getattr(args, 'fingerprint_seed', None),
+                fingerprint_os=getattr(args, 'fingerprint_os', None)
             )
             logger.info("Session completed successfully.")
             break

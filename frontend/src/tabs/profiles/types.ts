@@ -3,7 +3,8 @@ export type Profile = {
   name: string
   proxy?: string
   proxy_type?: string
-  fingerprint?: string
+  fingerprint_seed?: string
+  fingerprint_os?: string
   test_ip?: boolean
   status?: string
   using?: boolean
