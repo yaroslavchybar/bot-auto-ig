@@ -17,9 +17,6 @@ jobs:
           - service: frontend
             dockerfile: frontend/Dockerfile
             tag: frontend
-          - service: python
-            dockerfile: python/Dockerfile
-            tag: python
     
     steps:
       - name: Checkout code
