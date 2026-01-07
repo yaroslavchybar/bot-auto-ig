@@ -1,0 +1,71 @@
+#19 [build 10/10] RUN npm run build
+#19 0.168 
+#19 0.168 > frontend@0.0.0 build
+#19 0.168 > tsc -b && vite build
+#19 0.168 
+#19 5.329 src/components/VncViewer.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.329 src/components/account-dialog.tsx(4,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.329 src/components/ui/alert-dialog.tsx(4,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/avatar.tsx(6,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/badge.tsx(4,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/breadcrumb.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/button.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/card.tsx(3,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/checkbox.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/dialog.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/dropdown-menu.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/input.tsx(3,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/label.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/scroll-area.tsx(4,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/select.tsx(5,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/separator.tsx(4,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/sheet.tsx(6,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/sidebar.tsx(7,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/skeleton.tsx(1,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/table.tsx(3,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/tabs.tsx(3,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.330 src/components/ui/textarea.tsx(3,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.331 src/components/ui/tooltip.tsx(6,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.331 src/hooks/useAuthenticatedFetch.ts(3,32): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+#19 5.331 src/hooks/useProfiles.ts(2,26): error TS2307: Cannot find module '../lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/instagram/components/AutomationControls.tsx(7,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/instagram/components/LiveLogsPanel.tsx(6,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.331 src/tabs/instagram/components/SourceListsSelector.tsx(8,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/instagram/hooks/useInstagramSettings.ts(4,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/lists/api.ts(1,26): error TS2307: Cannot find module '../../lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/logs/LogsPage.tsx(2,26): error TS2307: Cannot find module '../../lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/logs/LogsPage.tsx(70,39): error TS7006: Parameter 'f' implicitly has an 'any' type.
+#19 5.331 src/tabs/profiles/LoginDialog.tsx(9,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/profiles/ProfileForm.tsx(8,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+#19 5.331 src/tabs/profiles/ProfilesPage.tsx(2,26): error TS2307: Cannot find module '../../lib/api' or its corresponding type declarations.
+#19 5.331 src/tabs/profiles/ProfilesPage.tsx(55,51): error TS7006: Parameter 'l' implicitly has an 'any' type.
+#19 ERROR: process "/bin/sh -c npm run build" did not complete successfully: exit code: 2
+------
+ > [build 10/10] RUN npm run build:
+5.331 src/tabs/instagram/components/LiveLogsPanel.tsx(6,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+5.331 src/tabs/instagram/components/SourceListsSelector.tsx(8,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+5.331 src/tabs/instagram/hooks/useInstagramSettings.ts(4,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+5.331 src/tabs/lists/api.ts(1,26): error TS2307: Cannot find module '../../lib/api' or its corresponding type declarations.
+5.331 src/tabs/logs/LogsPage.tsx(2,26): error TS2307: Cannot find module '../../lib/api' or its corresponding type declarations.
+5.331 src/tabs/logs/LogsPage.tsx(70,39): error TS7006: Parameter 'f' implicitly has an 'any' type.
+5.331 src/tabs/profiles/LoginDialog.tsx(9,26): error TS2307: Cannot find module '@/lib/api' or its corresponding type declarations.
+5.331 src/tabs/profiles/ProfileForm.tsx(8,20): error TS2307: Cannot find module '@/lib/utils' or its corresponding type declarations.
+5.331 src/tabs/profiles/ProfilesPage.tsx(2,26): error TS2307: Cannot find module '../../lib/api' or its corresponding type declarations.
+5.331 src/tabs/profiles/ProfilesPage.tsx(55,51): error TS7006: Parameter 'l' implicitly has an 'any' type.
+------
+
+ 2 warnings found (use docker --debug to expand):
+ - SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ARG "VITE_CLERK_PUBLISHABLE_KEY") (line 19)
+ - SecretsUsedInArgOrEnv: Do not use ARG or ENV instructions for sensitive data (ENV "VITE_CLERK_PUBLISHABLE_KEY") (line 20)
+Dockerfile:22
+--------------------
+  20 |     ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
+  21 |     
+  22 | >>> RUN npm run build
+  23 |     
+  24 |     FROM nginx:1.27-alpine
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 2
+Reference
+Check build summary support
+Error: buildx failed with: ERROR: failed to build: failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 2

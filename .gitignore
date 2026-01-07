@@ -17,6 +17,10 @@ eggs/
 lib/
 !source/lib/
 !source/lib/**
+!frontend/src/lib/
+!frontend/src/lib/**
+!server/lib/
+!server/lib/**
 /data/
 /data/*
 !/data/.gitkeep
