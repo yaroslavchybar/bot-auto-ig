@@ -1,16 +1,17 @@
 FROM node:20-bookworm-slim AS build
 
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
 WORKDIR /app/frontend
 
-# Copy frontend package files and install dependencies
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-# Copy frontend source code
 COPY frontend/ ./
-
-# Copy convex for shared types (if needed)
-COPY convex/ ../convex/
+COPY convex/ /app/convex/
 
 ARG VITE_CONVEX_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL

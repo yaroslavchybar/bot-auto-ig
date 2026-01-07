@@ -31,6 +31,11 @@ RUN apt-get update \
   libpci3 \
   procps \
   supervisor \
+  # Video codecs for Firefox video playback
+  ffmpeg \
+  libavcodec-extra \
+  libva2 \
+  libva-drm2 \
   && rm -rf /var/lib/apt/lists/*
 
 # Layer 2: Python venv (rarely changes)

@@ -327,7 +327,7 @@ def create_browser_context(
         proxy=proxy_config,
         block_images=block_images,
         os=os or "windows",
-        window=(1280, 800),
+        window=(1920, 1080),
         humanize=True,
         user_agent=user_agent,
     )

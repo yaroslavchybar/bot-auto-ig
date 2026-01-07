@@ -28,11 +28,3 @@ services:
     depends_on:
       - server
     restart: unless-stopped
-
-  python:
-    profiles: [ "python" ]
-    build:
-      context: .
-      dockerfile: python/Dockerfile
-    env_file:
-      - .env

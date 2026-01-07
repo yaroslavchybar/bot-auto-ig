@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { UserButton } from '@clerk/clerk-react'
+import { UserMenu } from '@/components/user-menu'
 import { ProfilesPage } from './tabs/profiles/ProfilesPage'
 import { ListsPage } from './tabs/lists/ListsPage'
 import { DashboardPage } from './tabs/dashboard/DashboardPage'
@@ -88,15 +88,7 @@ function MainLayout() {
           </div>
           <div className="ml-auto px-4 flex items-center gap-2">
             <ModeToggle />
-            <UserButton
-              afterSignOutUrl="/sign-in"
-              appearance={{
-                elements: {
-                  avatarBox: 'h-8 w-8',
-                  userButtonPopoverFooter: { display: 'none' }
-                }
-              }}
-            />
+            <UserMenu />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden min-h-0">
