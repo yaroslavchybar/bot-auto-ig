@@ -30,7 +30,8 @@ type CooldownKind = 'profile_reopen' | 'messaging';
 
 export function InstagramPage() {
     const { settings, loading, saving, error, load, updateSettings } = useInstagramSettings();
-    const { logs, status, progress, clearLogs } = useWebSocket();
+    const { logs, status, progress, clearLogs, connected } = useWebSocket();
+    const [localStatus, setLocalStatus] = useState<'idle' | 'running' | 'stopping'>('idle');
 
     // Dialog states
     const [showListsDialog, setShowListsDialog] = useState(false);
@@ -71,6 +72,12 @@ export function InstagramPage() {
             {error && (
                 <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
                     {error}
+                </div>
+            )}
+
+            {!connected && (
+                <div className="p-3 rounded-lg bg-yellow-500/10 text-yellow-500 text-sm">
+                    Live connection is disconnected. Status and live logs may not update.
                 </div>
             )}
 
@@ -115,8 +122,9 @@ export function InstagramPage() {
 
                     <AutomationControls
                         settings={settings}
-                        status={status}
+                        status={connected ? status : localStatus}
                         progress={progress}
+                        onStatusChange={setLocalStatus}
                     />
 
                     <Tabs defaultValue="logs" className="flex flex-col flex-1 min-h-0">

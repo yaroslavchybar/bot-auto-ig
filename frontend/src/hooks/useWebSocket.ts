@@ -30,8 +30,15 @@ interface UseWebSocketOptions {
     autoConnect?: boolean
 }
 
+function getDefaultWebSocketUrl() {
+    if (typeof window === 'undefined') return 'ws://localhost:3001/ws'
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}/ws`
+}
+
 export function useWebSocket(options: UseWebSocketOptions = {}) {
-    const { url = 'ws://localhost:3001/ws', autoConnect = true } = options
+    const { url, autoConnect = true } = options
+    const wsUrl = url ?? getDefaultWebSocketUrl()
 
     const [logs, setLogs] = useState<LogEntry[]>([])
     const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
@@ -67,7 +74,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         let cancelled = false
 
         try {
-            const ws = new WebSocket(url)
+            const ws = new WebSocket(wsUrl)
 
             ws.onopen = () => {
                 if (cancelled) {
@@ -150,7 +157,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             wsRef.current?.close()
             wsRef.current = null
         }
-    }, [url, autoConnect, reconnectCounter])
+    }, [wsUrl, autoConnect, reconnectCounter])
 
     const connect = useCallback(() => {
         setReconnectCounter((c) => c + 1)
