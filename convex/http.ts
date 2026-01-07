@@ -16,7 +16,7 @@ function jsonResponse(body: unknown, status: number = 200): Response {
 }
 
 async function requireAuth(request: Request): Promise<Response | null> {
-	const token = process.env.CONVEX_API_KEY;
+	const token = (globalThis as any)?.process?.env?.CONVEX_API_KEY as string | undefined;
 	if (!token) return null;
 	const auth = request.headers.get("authorization") || "";
 	if (auth !== `Bearer ${token}`) return jsonResponse({ error: "Unauthorized" }, 401);
@@ -26,13 +26,6 @@ async function requireAuth(request: Request): Promise<Response | null> {
 function toIso(ms: unknown): string | null {
 	if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
 	return new Date(ms).toISOString();
-}
-
-function fromIso(value: unknown): number | undefined {
-	if (typeof value !== "string") return undefined;
-	const d = new Date(value);
-	const ms = d.getTime();
-	return Number.isFinite(ms) ? ms : undefined;
 }
 
 function mapProfileToPython(profile: any): any {

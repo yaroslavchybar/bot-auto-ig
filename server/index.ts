@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 
 import { initWebSocket } from './websocket.js'
+import { clerkAuth, requireApiAuth } from './middleware/auth.js'
 
 import automationRouter from './routes/automation.js'
 import logsRouter from './routes/logs.js'
@@ -43,18 +44,21 @@ app.use((req, res, next) => {
 
 app.use(express.json())
 
-// Register Routes
-app.use('/api/automation', automationRouter)
-app.use('/api/logs', logsRouter)
-app.use('/api/profiles', profilesRouter)
-app.use('/api/lists', listsRouter)
-app.use('/api/instagram', instagramRouter)
+// Initialize Clerk middleware (parses auth tokens)
+app.use(clerkAuth)
 
-
-// Health check
+// Health check (public)
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
+
+// Protected API Routes - require authentication
+app.use('/api/automation', requireApiAuth, automationRouter)
+app.use('/api/logs', requireApiAuth, logsRouter)
+app.use('/api/profiles', requireApiAuth, profilesRouter)
+app.use('/api/lists', requireApiAuth, listsRouter)
+app.use('/api/instagram', requireApiAuth, instagramRouter)
+
 
 const PORT = process.env.SERVER_PORT || 3001
 

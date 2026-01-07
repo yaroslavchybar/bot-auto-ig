@@ -24,7 +24,7 @@ class TestExecutorLifecycle(unittest.TestCase):
             
             with patch("python.convex.profiles_client.ResilientHttpClient"):
                 with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
-                    from scripts.instagram_automation import InstagramAutomationRunner
+                    from python.scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
@@ -48,7 +48,7 @@ class TestExecutorLifecycle(unittest.TestCase):
             
             with patch("python.convex.profiles_client.ResilientHttpClient"):
                 with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
-                    from scripts.instagram_automation import InstagramAutomationRunner
+                    from python.scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
@@ -73,7 +73,7 @@ class TestExecutorLifecycle(unittest.TestCase):
             
             with patch("python.convex.profiles_client.ResilientHttpClient"):
                 with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
-                    from scripts.instagram_automation import InstagramAutomationRunner
+                    from python.scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)
@@ -98,7 +98,7 @@ class TestExecutorLifecycle(unittest.TestCase):
             
             with patch("python.convex.profiles_client.ResilientHttpClient"):
                 with patch("python.convex.instagram_accounts_client.ResilientHttpClient"):
-                    from scripts.instagram_automation import InstagramAutomationRunner
+                    from python.scripts.instagram_automation import InstagramAutomationRunner
                     from python.core.domain.models import ScrollingConfig
                     
                     mock_config = MagicMock(spec=ScrollingConfig)

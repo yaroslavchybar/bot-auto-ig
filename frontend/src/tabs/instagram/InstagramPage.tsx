@@ -11,6 +11,8 @@ import { SourceListsSelector } from './components/SourceListsSelector';
 import { ActionOrderManager } from './components/ActionOrderManager';
 import { AutomationControls } from './components/AutomationControls';
 import { LiveLogsPanel } from './components/LiveLogsPanel';
+import { VncViewer } from '@/components/VncViewer';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Dialogs
 import { FeedSettingsDialog } from './dialogs/FeedSettingsDialog';
@@ -117,11 +119,22 @@ export function InstagramPage() {
                         progress={progress}
                     />
 
-                    <LiveLogsPanel
-                        logs={logs}
-                        onClear={clearLogs}
-                        className="flex-1"
-                    />
+                    <Tabs defaultValue="logs" className="flex flex-col flex-1 min-h-0">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="logs">Live Logs</TabsTrigger>
+                            <TabsTrigger value="browser">Browser View</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="logs" className="flex-1 min-h-0 mt-2">
+                            <LiveLogsPanel
+                                logs={logs}
+                                onClear={clearLogs}
+                                className="h-full"
+                            />
+                        </TabsContent>
+                        <TabsContent value="browser" className="flex-1 min-h-0 mt-2">
+                            <VncViewer className="h-full" />
+                        </TabsContent>
+                    </Tabs>
                 </div>
             </div>
 

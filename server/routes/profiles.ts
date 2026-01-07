@@ -16,7 +16,8 @@ import { broadcast } from '../websocket.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, '../..')
+// From dist/routes/ we need to go up to server/, then up to project root
+const PROJECT_ROOT = path.resolve(__dirname, '../../..')
 const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'launcher.py')
 
 const router = Router()

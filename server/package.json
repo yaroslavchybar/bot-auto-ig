@@ -9,6 +9,7 @@
         "start": "node dist/index.js"
     },
     "dependencies": {
+        "@clerk/express": "^1.7.60",
         "dotenv": "^17.2.3",
         "express": "^4.21.0",
         "ws": "^8.18.0"

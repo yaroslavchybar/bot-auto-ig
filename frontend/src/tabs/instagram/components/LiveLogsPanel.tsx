@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,11 +15,16 @@ interface LiveLogsPanelProps {
 export function LiveLogsPanel({ logs, onClear, className }: LiveLogsPanelProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Only show last 20 logs
+    const visibleLogs = useMemo(() => logs.slice(-20), [logs]);
+
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        // Target the ScrollArea viewport for auto-scroll
+        const viewport = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
+        if (viewport) {
+            viewport.scrollTop = viewport.scrollHeight;
         }
-    }, [logs]);
+    }, [visibleLogs]);
 
     const getLevelColor = (level: string) => {
         switch (level) {
@@ -58,12 +63,12 @@ export function LiveLogsPanel({ logs, onClear, className }: LiveLogsPanelProps) 
             <CardContent className="flex-1 overflow-hidden p-0">
                 <ScrollArea className="h-full" ref={scrollRef}>
                     <div className="p-3 pt-0 space-y-1">
-                        {logs.length === 0 ? (
+                        {visibleLogs.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-8">
                                 No logs yet
                             </p>
                         ) : (
-                            logs.map((log, index) => (
+                            visibleLogs.map((log, index) => (
                                 <div
                                     key={`${log.ts}-${index}`}
                                     className={`text-xs font-mono ${getLevelColor(log.level)}`}

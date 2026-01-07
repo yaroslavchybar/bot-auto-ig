@@ -9,9 +9,10 @@ import { profilesSetLoginTrue } from '../lib/convex.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, '../..')
-const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'scripts', 'instagram_automation.py')
-const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'scripts', 'login_automation.py')
+// From dist/routes/ we need to go up to server/, then up to project root
+const PROJECT_ROOT = path.resolve(__dirname, '../../..')
+const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'scripts', 'instagram_automation.py')
+const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'scripts', 'login_automation.py')
 
 const router = Router()
 
@@ -37,9 +38,10 @@ router.post('/start', async (req, res) => {
         broadcast({ type: 'log', message: 'Starting automation...', level: 'info', source: 'server' })
 
         // Spawn Python process with stdin for settings
+        // Use detached on Linux to create a process group we can kill
         automationState.process = spawn('python', [PYTHON_RUNNER], {
             cwd: PROJECT_ROOT,
-            shell: true,
+            detached: process.platform !== 'win32',
             stdio: ['pipe', 'pipe', 'pipe']
         })
 
@@ -112,27 +114,38 @@ router.post('/stop', async (req, res) => {
     broadcast({ type: 'log', message: 'Stopping automation...', level: 'warn', source: 'server' })
 
     try {
+        const pid = automationState.process.pid;
+
         // On Windows, we need to use taskkill to kill the process tree
-        if (process.platform === 'win32' && automationState.process.pid) {
-            await new Promise<void>((resolve, reject) => {
-                execFile('taskkill', ['/pid', String(automationState.process!.pid), '/t', '/f'], (err) => {
+        if (process.platform === 'win32' && pid) {
+            await new Promise<void>((resolve) => {
+                execFile('taskkill', ['/pid', String(pid), '/t', '/f'], (err) => {
                     if (err) {
                         console.error('[Taskkill Error]', err)
                     }
                     resolve()
                 })
             })
-        } else {
-            automationState.process.kill('SIGTERM')
+        } else if (pid) {
+            // On Linux, kill the entire process group using negative PID
+            try {
+                process.kill(-pid, 'SIGTERM')
+            } catch {
+                // Process group might not exist, try killing just the process
+                automationState.process.kill('SIGTERM')
+            }
+
+            // Wait a bit then force kill if still running
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+
+            try {
+                process.kill(-pid, 'SIGKILL')
+            } catch {
+                // Already dead
+            }
         }
 
-        // Wait for process to exit
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-
-        if (automationState.process) {
-            automationState.process.kill('SIGKILL')
-            automationState.process = null
-        }
+        automationState.process = null
 
         automationState.status = 'idle'
         broadcast({ type: 'status', status: 'idle' })

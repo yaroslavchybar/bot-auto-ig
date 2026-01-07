@@ -16,7 +16,7 @@ import requests
 
 def _project_root() -> str:
     here = os.path.abspath(os.path.dirname(__file__))
-    return os.path.abspath(os.path.join(here, ".."))
+    return os.path.abspath(os.path.join(here, "..", ".."))
 
 
 sys.path.insert(0, _project_root())
@@ -171,6 +171,14 @@ class InstagramAutomationRunner:
     def stop(self) -> None:
         self.running = False
         log("Остановка автоматизации...")
+        
+        # Reset all profile statuses to idle when stopping
+        for account in self.accounts:
+            try:
+                self.profiles_client.sync_profile_status(account.username, "idle", False)
+            except Exception:
+                pass
+        
         try:
             self._executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:

@@ -4,8 +4,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Play, Square, Loader2, User, Activity } from 'lucide-react';
 import type { InstagramSettings } from '../types';
 import type { AutomationProgress } from '@/hooks/useWebSocket';
-
-const API_BASE = 'http://localhost:3001';
+import { apiFetch } from '@/lib/api';
 
 interface AutomationControlsProps {
     settings: InstagramSettings;
@@ -51,16 +50,10 @@ export function AutomationControls({ settings, status, progress, onStatusChange 
         setLoading(true);
 
         try {
-            const res = await fetch(`${API_BASE}/api/automation/start`, {
+            await apiFetch('/api/automation/start', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings),
+                body: settings,
             });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to start automation');
-            }
 
             onStatusChange?.('running');
         } catch (e) {
@@ -75,14 +68,9 @@ export function AutomationControls({ settings, status, progress, onStatusChange 
         setLoading(true);
 
         try {
-            const res = await fetch(`${API_BASE}/api/automation/stop`, {
+            await apiFetch('/api/automation/stop', {
                 method: 'POST',
             });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || 'Failed to stop automation');
-            }
 
             onStatusChange?.('stopping');
         } catch (e) {

@@ -1,12 +1,38 @@
 services:
-  anti:
-    build: .
-    image: yaroslavchybar/anti-instagram:latest
-    container_name: anti-instagram
-    stdin_open: true
-    tty: true
-    restart: unless-stopped
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "3001:3001"
+      - "6080:6080"
     volumes:
-      - ./.env:/app/.env
-      - ./data/profiles:/app/data/profiles
-      - ./data/logs:/app/data/logs
+      - ./data:/app/data
+    env_file:
+      - .env
+    environment:
+      - SERVER_PORT=3001
+      - DISPLAY=:99
+      - CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_CONVEX_URL: ${VITE_CONVEX_URL}
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY}
+    ports:
+      - "5173:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  python:
+    profiles: [ "python" ]
+    build:
+      context: .
+      dockerfile: python/Dockerfile
+    env_file:
+      - .env

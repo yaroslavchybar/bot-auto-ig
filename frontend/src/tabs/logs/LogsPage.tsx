@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '../../lib/api'
 import type { LogEntry } from '../profiles/types'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -30,7 +31,6 @@ export function LogsPage() {
   const [mode, setMode] = useState<LogsMode>('live')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
-  const [syncing, setSyncing] = useState(false)
   const [filesLoading, setFilesLoading] = useState(false)
   const [files, setFiles] = useState<LogFileItem[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -39,10 +39,12 @@ export function LogsPage() {
   const [levelFilter, setLevelFilter] = useState<LogLevel>('all')
   const [showTime, setShowTime] = useState(false)
   const [showSource, setShowSource] = useState(false)
-  const [autoRefresh, setAutoRefresh] = useState(true)
   const [autoScroll, setAutoScroll] = useState(true)
 
   const [error, setError] = useState<string | null>(null)
+
+  // WebSocket for real-time log streaming
+  const { logs: wsLogs, connected: wsConnected } = useWebSocket()
 
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
 
@@ -57,18 +59,6 @@ export function LogsPage() {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
-    }
-  }, [])
-
-  const syncLiveLogs = useCallback(async () => {
-    setSyncing(true)
-    try {
-      const data = await apiFetch<LogEntry[]>('/api/logs')
-      setLogs(data.slice(-1000))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSyncing(false)
     }
   }, [])
 
@@ -125,15 +115,17 @@ export function LogsPage() {
     void loadFiles()
   }, [loadLiveLogs, loadFiles])
 
+  // Update logs from WebSocket in live mode
   useEffect(() => {
-    if (mode !== 'live' || !autoRefresh) return
-    const id = window.setInterval(() => {
-      void syncLiveLogs()
-    }, 2000)
-    return () => {
-      window.clearInterval(id)
-    }
-  }, [mode, autoRefresh, syncLiveLogs])
+    if (mode !== 'live') return
+    // Merge WebSocket logs with existing logs, keeping only latest 1000
+    setLogs(prev => {
+      const combined = [...prev, ...wsLogs.filter(
+        wsLog => !prev.some(p => p.ts === wsLog.ts && p.message === wsLog.message)
+      )]
+      return combined.slice(-1000)
+    })
+  }, [mode, wsLogs])
 
   useEffect(() => {
     if (mode === 'static' && selectedFile) {
@@ -200,9 +192,9 @@ export function LogsPage() {
             disabled={loading}
           >
             <RefreshCw
-              className={`mr-2 h-4 w-4 ${((loading && mode === 'live') || syncing) ? 'animate-spin' : ''}`}
+              className={`mr-2 h-4 w-4 ${loading && mode === 'live' ? 'animate-spin' : ''}`}
             />
-            Live
+            Live {wsConnected && <span className="ml-1 h-2 w-2 rounded-full bg-green-500 inline-block" />}
           </Button>
           <Button
             variant={mode === 'static' ? 'default' : 'outline'}
@@ -289,13 +281,6 @@ export function LogsPage() {
           {mode === 'live' && (
             <div className="flex items-center gap-2">
               <ArrowDownToLine className="h-4 w-4 text-muted-foreground" />
-              <Button
-                variant={autoRefresh ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setAutoRefresh((v) => !v)}
-              >
-                Auto refresh
-              </Button>
               <Button
                 variant={autoScroll ? 'default' : 'outline'}
                 size="sm"

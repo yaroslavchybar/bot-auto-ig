@@ -3,7 +3,7 @@ import { api } from '../../../../../convex/_generated/api';
 import { useState, useCallback } from 'react';
 
 export function useMessageTemplates(kind: 'message' | 'message_2') {
-    const templates = useQuery(api.messageTemplates.get, { kind });
+    const templates = useQuery(api.messageTemplates.get, { kind }) as string[] | undefined;
     const upsertMutation = useMutation(api.messageTemplates.upsert);
 
     const [error, setError] = useState<string | null>(null);

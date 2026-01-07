@@ -191,8 +191,12 @@ export function ProfilesPage() {
     setError(null)
     try {
       if (target.using) {
-        // Stop the browser
-        await apiFetch(`/api/profiles/${encodeURIComponent(target.name)}/stop`, { method: 'POST' })
+        // Stop the browser - ignore errors as browser may have already stopped
+        try {
+          await apiFetch(`/api/profiles/${encodeURIComponent(target.name)}/stop`, { method: 'POST' })
+        } catch {
+          // Browser may have already stopped externally - just refresh state
+        }
       } else {
         // Start the browser
         await apiFetch(`/api/profiles/${encodeURIComponent(target.name)}/start`, { method: 'POST' })

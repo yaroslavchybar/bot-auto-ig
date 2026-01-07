@@ -15,7 +15,7 @@ class TestBufferedLogging(unittest.TestCase):
 
     def test_logger_uses_memory_handler(self):
         """Logger should use MemoryHandler for buffered output."""
-        from scripts.instagram_automation import _logger
+        from python.scripts.instagram_automation import _logger
         
         has_memory_handler = any(
             isinstance(h, MemoryHandler) for h in _logger.handlers
@@ -24,14 +24,14 @@ class TestBufferedLogging(unittest.TestCase):
 
     def test_memory_handler_has_capacity(self):
         """MemoryHandler should buffer messages (capacity > 1)."""
-        from scripts.instagram_automation import _log_memory_handler
+        from python.scripts.instagram_automation import _log_memory_handler
         
         self.assertIsInstance(_log_memory_handler, MemoryHandler)
         self.assertGreater(_log_memory_handler.capacity, 1)
 
     def test_log_function_uses_logger(self):
         """log() function should route messages through the logger."""
-        from scripts.instagram_automation import log, _logger
+        from python.scripts.instagram_automation import log, _logger
         
         with patch.object(_logger, "log") as mock_log:
             log("test message")
@@ -39,7 +39,7 @@ class TestBufferedLogging(unittest.TestCase):
 
     def test_log_function_detects_errors(self):
         """log() should use ERROR level for error messages."""
-        from scripts.instagram_automation import log, _logger
+        from python.scripts.instagram_automation import log, _logger
         
         with patch.object(_logger, "log") as mock_log:
             log("Ошибка: something failed")

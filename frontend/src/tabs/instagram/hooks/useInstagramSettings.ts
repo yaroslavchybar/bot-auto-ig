@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { InstagramSettings, ActionName } from '../types';
 import { DEFAULT_SETTINGS, ACTIONS } from '../types';
+import { apiFetch } from '@/lib/api';
 
-const API_BASE = 'http://localhost:3001';
 const STORAGE_KEY = 'cached_instagram_settings';
 
 export function useInstagramSettings() {
@@ -108,9 +108,7 @@ export function useInstagramSettings() {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/instagram/settings?scope=global`);
-            if (!res.ok) throw new Error(`Failed to load settings: ${res.statusText}`);
-            const cloud = await res.json();
+            const cloud = await apiFetch<unknown>('/api/instagram/settings?scope=global');
             const normalized = normalizeLoadedSettings(cloud);
             setSettings(normalized);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
@@ -128,12 +126,10 @@ export function useInstagramSettings() {
         setSaving(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/instagram/settings`, {
+            await apiFetch('/api/instagram/settings', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ scope: 'global', ...next }),
+                body: { scope: 'global', ...next },
             });
-            if (!res.ok) throw new Error(`Failed to save settings: ${res.statusText}`);
         } catch (e) {
             setError(e instanceof Error ? e.message : String(e));
             throw e;

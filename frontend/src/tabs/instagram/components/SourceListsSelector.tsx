@@ -5,8 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { ListRow, InstagramSettings } from '../types';
 import { RefreshCw } from 'lucide-react';
-
-const API_BASE = 'http://localhost:3001';
+import { apiFetch } from '@/lib/api';
 
 interface SourceListsSelectorProps {
     open: boolean;
@@ -24,11 +23,9 @@ export function SourceListsSelector({ open, onOpenChange, settings, onUpdate }: 
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`${API_BASE}/api/lists`);
-            if (!res.ok) throw new Error('Failed to fetch lists');
-            const data = await res.json();
+            const data = await apiFetch<Array<{ id?: unknown; _id?: unknown; name?: unknown }>>('/api/lists');
             const fetchedLists = (Array.isArray(data) ? data : [])
-                .map((l: { id?: unknown; _id?: unknown; name?: unknown }) => {
+                .map((l) => {
                     const id = String(l.id ?? l._id ?? '').trim();
                     const name = String(l.name ?? '').trim();
                     if (!id || !name) return null;

@@ -8,6 +8,18 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: server
+            dockerfile: server/Dockerfile
+            tag: server
+          - service: frontend
+            dockerfile: frontend/Dockerfile
+            tag: frontend
+          - service: python
+            dockerfile: python/Dockerfile
+            tag: python
     
     steps:
       - name: Checkout code
@@ -22,13 +34,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile
+          file: ./${{ matrix.dockerfile }}
           pull: true
           no-cache: true
           progress: plain
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}
+          build-args: |
+            ${{ matrix.service == 'frontend' && format('VITE_CONVEX_URL={0}', secrets.VITE_CONVEX_URL) || '' }}
+            ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', secrets.VITE_CLERK_PUBLISHABLE_KEY) || '' }}

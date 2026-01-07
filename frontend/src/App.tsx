@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { UserButton } from '@clerk/clerk-react'
 import { ProfilesPage } from './tabs/profiles/ProfilesPage'
 import { ListsPage } from './tabs/lists/ListsPage'
 import { DashboardPage } from './tabs/dashboard/DashboardPage'
@@ -9,6 +11,10 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/s
 import { AppSidebar } from '@/components/app-sidebar'
 import type { NavId } from '@/components/app-sidebar'
 import { Separator } from '@/components/ui/separator'
+import { AuthGuard } from '@/components/AuthGuard'
+import { SignInPage } from '@/pages/SignInPage'
+import { SignUpPage } from '@/pages/SignUpPage'
+import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -18,10 +24,13 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 
-function App() {
+function MainLayout() {
   const [activeId, setActiveId] = useState<NavId>(() => {
     return (localStorage.getItem('anti-active-tab') as NavId) || 'dashboard'
   })
+
+  // Initialize authenticated fetch (sets up token getter for API calls)
+  useAuthenticatedFetch()
 
   useEffect(() => {
     localStorage.setItem('anti-active-tab', activeId)
@@ -77,8 +86,17 @@ function App() {
               </BreadcrumbList>
             </Breadcrumb>
           </div>
-          <div className="ml-auto px-4">
+          <div className="ml-auto px-4 flex items-center gap-2">
             <ModeToggle />
+            <UserButton
+              afterSignOutUrl="/sign-in"
+              appearance={{
+                elements: {
+                  avatarBox: 'h-8 w-8',
+                  userButtonPopoverFooter: { display: 'none' }
+                }
+              }}
+            />
           </div>
         </header>
         <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden min-h-0">
@@ -86,6 +104,25 @@ function App() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+  )
+}
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/sign-in/*" element={<SignInPage />} />
+        <Route path="/sign-up/*" element={<SignUpPage />} />
+        <Route
+          path="/*"
+          element={
+            <AuthGuard>
+              <MainLayout />
+            </AuthGuard>
+          }
+        />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
