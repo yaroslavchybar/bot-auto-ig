@@ -31,7 +31,32 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push ${{ matrix.service }}
+      - name: Ensure frontend build args are set
+        if: matrix.service == 'frontend'
+        run: |
+          if [ -z "${{ secrets.VITE_CONVEX_URL }}" ]; then
+            echo "Missing secret: VITE_CONVEX_URL"
+            exit 1
+          fi
+          if [ -z "${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}" ]; then
+            echo "Missing secret: VITE_CLERK_PUBLISHABLE_KEY"
+            exit 1
+          fi
+
+      - name: Build and push server
+        if: matrix.service == 'server'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./${{ matrix.dockerfile }}
+          pull: true
+          no-cache: true
+          progress: plain
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}
+
+      - name: Build and push frontend
+        if: matrix.service == 'frontend'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -42,5 +67,5 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}
           build-args: |
-            ${{ matrix.service == 'frontend' && format('VITE_CONVEX_URL={0}', secrets.VITE_CONVEX_URL) || '' }}
-            ${{ matrix.service == 'frontend' && format('VITE_CLERK_PUBLISHABLE_KEY={0}', secrets.VITE_CLERK_PUBLISHABLE_KEY) || '' }}
+            VITE_CONVEX_URL=${{ secrets.VITE_CONVEX_URL }}
+            VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
