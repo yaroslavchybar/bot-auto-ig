@@ -1,6 +1,6 @@
 from typing import List
 
-from python.database_sync.message_templates_client import MessageTemplatesClient
+from python.database_sync.messages_client import MessageTemplatesClient
 
 
 def load_message_2_texts() -> List[str]:

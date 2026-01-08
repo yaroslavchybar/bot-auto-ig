@@ -1,7 +1,7 @@
 from typing import Callable, Optional
 
 from python.browser_control.browser_setup import create_browser_context
-from python.database_sync.instagram_accounts_client import InstagramAccountsClient
+from python.database_sync.accounts_client import InstagramAccountsClient
 
 from python.instagram_actions.engagement.approve_follow_requests.flow import run_approve_follow_requests
 
