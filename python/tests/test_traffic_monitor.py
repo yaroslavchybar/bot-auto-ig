@@ -1,9 +1,9 @@
 import pytest
 import time
 from unittest.mock import MagicMock, patch
-from python.core.resilience.traffic_monitor import TrafficMonitor
-from python.core.resilience.config import config
-from python.automation.browser import (
+from python.internal_systems.error_handling.traffic_monitor import TrafficMonitor
+from python.internal_systems.error_handling.config import config
+from python.browser_control.browser_setup import (
     mark_proxy_failure, is_proxy_healthy, ProxyCircuitBreaker, _proxy_health, proxy_circuit
 )
 

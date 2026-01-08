@@ -2,17 +2,17 @@ import pytest
 from unittest.mock import MagicMock, patch
 import json
 from pathlib import Path
-from python.core.persistence.selector_cache import (
+from python.internal_systems.storage.selector_cache import (
     load_cache, save_cache, record_success, get_preferred_strategy
 )
-from python.core.automation.selectors import SemanticSelector
+from python.internal_systems.shared_utilities.selectors import SemanticSelector
 
 # --- Selector Cache Tests ---
 
 @pytest.fixture
 def mock_cache_file(tmp_path):
     cache_file = tmp_path / "selector_cache.json"
-    with patch("python.core.persistence.selector_cache.CACHE_FILE", cache_file):
+    with patch("python.internal_systems.storage.selector_cache.CACHE_FILE", cache_file):
         yield cache_file
 
 def test_save_and_load_cache(mock_cache_file):

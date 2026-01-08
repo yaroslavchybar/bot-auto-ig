@@ -18,8 +18,8 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 // From dist/routes/ we need to go up to server/, then up to project root
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
-const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'launcher.py')
-const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'fingerprint_generator.py')
+const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'getting_started', 'launcher.py')
+const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'browser_control', 'fingerprint_generator.py')
 
 const router = Router()
 
@@ -34,6 +34,7 @@ router.post('/generate-fingerprint', async (req, res) => {
             const child = spawn(python, args, {
                 cwd: PROJECT_ROOT,
                 stdio: ['ignore', 'pipe', 'pipe'],
+                env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
             })
 
             let stdout = ''
@@ -174,7 +175,7 @@ router.post('/:name/start', async (req, res) => {
             cwd: PROJECT_ROOT,
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: process.platform === 'win32',
-            env: { ...process.env, PYTHONUNBUFFERED: '1' },
+            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
         })
 
         child.stdout?.on('data', (data) => {

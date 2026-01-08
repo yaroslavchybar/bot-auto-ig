@@ -1,7 +1,7 @@
 def test_cleanup_orphaned_processes_runs_without_error():
-    from python.core.runtime.process_manager import ProcessManager
+    from python.internal_systems.process_management.process_manager import ProcessManager
     import os
-    import python.core.runtime.process_manager as pm_mod
+    import python.internal_systems.process_management.process_manager as pm_mod
     from unittest.mock import MagicMock, patch
 
     pm = ProcessManager()
@@ -24,7 +24,7 @@ def test_cleanup_orphaned_processes_runs_without_error():
         assert count == 1
 
 def test_memory_functions():
-    from python.core.runtime.process_manager import ProcessManager
+    from python.internal_systems.process_management.process_manager import ProcessManager
     import psutil
     from unittest.mock import MagicMock, patch
     

@@ -25,7 +25,7 @@ import os
 import time
 import subprocess
 sys.path.insert(0, r"{root}")
-from python.core.runtime.job_object import WindowsJobObject
+from python.internal_systems.process_management.job_object import WindowsJobObject
 
 # Create Job Object
 job = WindowsJobObject()

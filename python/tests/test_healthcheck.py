@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from python.core.runtime.healthcheck import check_internet, check_disk_space, check_proxy, run_all_checks
+from python.internal_systems.process_management.healthcheck import check_internet, check_disk_space, check_proxy, run_all_checks
 
 def test_check_internet_success():
     with patch("socket.create_connection") as mock_conn:
@@ -34,9 +34,9 @@ def test_check_proxy_failure():
         assert check_proxy({"http": "foo"}) is False
 
 def test_run_all_checks():
-    with patch("python.core.runtime.healthcheck.check_internet", return_value=True), \
-         patch("python.core.runtime.healthcheck.check_disk_space", return_value=True), \
-         patch("python.core.runtime.healthcheck.check_proxy", return_value=True):
+    with patch("python.internal_systems.process_management.healthcheck.check_internet", return_value=True), \
+         patch("python.internal_systems.process_management.healthcheck.check_disk_space", return_value=True), \
+         patch("python.internal_systems.process_management.healthcheck.check_proxy", return_value=True):
         
         results = run_all_checks(proxy_config={"http": "foo"})
         assert results["internet"] is True

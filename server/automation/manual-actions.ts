@@ -25,7 +25,7 @@ class ManualAutomationService extends EventEmitter {
         const name = profile.name;
         if (this._processes.has(name)) return;
 
-        const scriptPath = path.join(PROJECT_ROOT, 'python', 'launcher.py');
+        const scriptPath = path.join(PROJECT_ROOT, 'python', 'getting_started', 'launcher.py');
         const args = ['--name', name];
         if (profile.proxy) args.push('--proxy', profile.proxy);
         args.push('--action', 'manual');
@@ -38,7 +38,7 @@ class ManualAutomationService extends EventEmitter {
                 cwd: PROJECT_ROOT,
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: process.platform === 'win32',
-                env: { ...process.env, PYTHONUNBUFFERED: '1' },
+                env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
             });
 
             if (child.stdout) {

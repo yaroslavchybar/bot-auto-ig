@@ -16,7 +16,7 @@ class TestSharedSession(unittest.TestCase):
     def setUp(self):
         """Reset the global session before each test."""
         # Import here to avoid module-level import issues
-        import python.convex.shared_session as ss
+        import python.database_sync.shared_session as ss
         self.ss = ss
         # Reset global state
         ss._session = None
@@ -88,14 +88,14 @@ class TestProfilesClientResilientHttpClient(unittest.TestCase):
         }):
             # Reset config cache
             import importlib
-            import python.convex.config as config_mod
+            import python.database_sync.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.convex.profiles_client.ResilientHttpClient") as MockClient:
+            with patch("python.database_sync.profiles_client.ResilientHttpClient") as MockClient:
                 mock_http_client = MagicMock()
                 MockClient.return_value = mock_http_client
                 
-                from python.convex.profiles_client import ProfilesClient
+                from python.database_sync.profiles_client import ProfilesClient
                 client = ProfilesClient()
                 
                 MockClient.assert_called_once()
@@ -112,14 +112,14 @@ class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
             "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.convex.config as config_mod
+            import python.database_sync.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.convex.instagram_accounts_client.ResilientHttpClient") as MockClient:
+            with patch("python.database_sync.accounts_client.ResilientHttpClient") as MockClient:
                 mock_http_client = MagicMock()
                 MockClient.return_value = mock_http_client
                 
-                from python.convex.instagram_accounts_client import InstagramAccountsClient
+                from python.database_sync.accounts_client import InstagramAccountsClient
                 client = InstagramAccountsClient()
                 
                 MockClient.assert_called_once()

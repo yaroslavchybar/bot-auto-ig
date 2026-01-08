@@ -8,7 +8,7 @@
 |--------|---------|
 | **Python Version** | 3.10+ required |
 | **Browser Engine** | Camoufox (Firefox fork with fingerprint spoofing) |
-| **Entry Point** | `launcher.py` (single session) or `scripts/instagram_automation.py` (multi-profile) |
+| **Entry Point** | `getting_started/launcher.py` (single session) or `getting_started/run_multiple_accounts.py` (multi-profile) |
 | **Profile Storage** | `data/profiles/<profile_name>/` |
 | **Logs** | JSON format, `data/logs/bot.log` and console |
 | **Dependencies** | `requirements.txt` (camoufox[geoip], playwright, pyotp, python-dotenv, requests, psutil) |
@@ -19,56 +19,65 @@
 
 ```
 python/
-├── launcher.py              # CLI entry point for single-session automation
-├── supervisor.py            # Process supervisor (WIP)
-├── fingerprint_generator.py # Browser fingerprint generation utilities
-├── automation/              # Browser automation workflows
-│   ├── browser.py           # Core: browser context creation, proxy handling, circuit breaker
-│   ├── scrolling/           # Feed and Reels scrolling logic
-│   │   ├── feed/            # Instagram feed interactions
-│   │   └── reels/           # Instagram reels interactions
-│   ├── stories/             # Story watching automation
-│   ├── Follow/              # Follow-by-username workflows
-│   ├── unfollow/            # Unfollow automation
-│   ├── approvefollow/       # Follow request approval
-│   ├── messaging/           # Direct message automation
-│   └── login/               # Login flow handlers
-├── core/                    # Shared infrastructure
-│   ├── domain/models.py     # Data classes (ScrollingConfig, ThreadsAccount)
-│   ├── observability/       # Logging, debugging, snapshots
-│   ├── resilience/          # Error handling, retry logic, circuit breakers
-│   ├── runtime/             # Health checks, process management
-│   ├── automation/          # Shared automation utilities
-│   └── persistence/         # Local state persistence
-├── convex/                  # HTTP clients for Convex backend
-│   ├── config.py            # CONVEX_URL, CONVEX_API_KEY from env
-│   ├── profiles_client.py   # Browser profile management
-│   ├── instagram_accounts_client.py  # Account data access
-│   ├── instagram_settings_client.py  # Automation settings
-│   └── message_templates_client.py   # Message template retrieval
-├── scripts/                 # Multi-profile automation scripts
-│   └── instagram_automation.py  # ThreadPoolExecutor-based multi-profile runner
-├── data/                    # Runtime data (gitignored)
-│   ├── profiles/            # Persistent browser profiles (created on demand)
-│   └── logs/                # Application logs
-└── tests/                   # Unit tests (unittest framework)
+├── getting_started/               # ✨ Entry points - START HERE
+│   ├── launcher.py                # CLI for single-session automation
+│   └── run_multiple_accounts.py   # Multi-profile automation runner
+│
+├── instagram_actions/             # 📱 All Instagram automations
+│   ├── browsing/                  # Feed & Reels scrolling
+│   │   ├── feed_scrolling/        # Feed scroll, likes, follows
+│   │   ├── reels_scrolling/       # Reels scroll and interactions
+│   │   └── utils.py               # Shared scrolling utilities
+│   ├── engagement/                # User engagement actions
+│   │   ├── follow_users/          # Follow-by-username workflows
+│   │   ├── unfollow_users/        # Unfollow automation
+│   │   └── approve_follow_requests/  # Follow request approval
+│   ├── stories/                   # Story watching automation
+│   ├── messaging/                 # Direct message automation
+│   ├── login/                     # Login flow handlers
+│   └── actions.py                 # Shared action utilities
+│
+├── browser_control/               # 🌐 Browser & anti-detection
+│   ├── browser_setup.py           # Browser context, proxy, circuit breaker
+│   └── fingerprint_generator.py   # Browser fingerprint generation
+│
+├── database_sync/                 # 🔄 Convex backend communication
+│   ├── config.py                  # CONVEX_URL, CONVEX_API_KEY from env
+│   ├── profiles_client.py         # Browser profile management
+│   ├── accounts_client.py         # Instagram account data
+│   ├── settings_client.py         # Automation settings
+│   └── messages_client.py         # Message template retrieval
+│
+├── internal_systems/              # ⚙️ Core infrastructure (don't modify)
+│   ├── error_handling/            # Retry logic, circuit breakers
+│   ├── logging/                   # Logging, debugging, snapshots
+│   ├── storage/                   # Local state persistence
+│   ├── process_management/        # Health checks, job objects
+│   ├── data_models/               # Data classes
+│   └── shared_utilities/          # Selectors, worker utilities
+│
+├── data/                          # Runtime data (gitignored)
+│   ├── profiles/                  # Persistent browser profiles
+│   └── logs/                      # Application logs
+│
+└── tests/                         # Unit tests (unittest framework)
 ```
 
 ---
 
 ## Key Components
 
-### `launcher.py` - Single Session Entry Point
+### `getting_started/launcher.py` - Single Session Entry Point
 
 **Purpose**: Run one browser session with specified action and configuration.
 
 **Invocation**:
 ```bash
 # From python/ directory
-python launcher.py --name <profile_name> --proxy <proxy_string|None> --action <action>
+python getting_started/launcher.py --name <profile_name> --proxy <proxy_string|None> --action <action>
 
 # From repository root
-python python/launcher.py --name my_profile --proxy None --action manual
+python python/getting_started/launcher.py --name my_profile --proxy None --action manual
 ```
 
 **CLI Arguments**:
@@ -99,11 +108,11 @@ python python/launcher.py --name my_profile --proxy None --action manual
 2. Run health checks (internet, disk, proxy)
 3. Initialize Windows Job Object (for child process cleanup)
 4. Retry loop with exponential backoff
-5. Call `run_browser()` from `automation/browser.py`
+5. Call `run_browser()` from `browser_control/browser_setup.py`
 
 ---
 
-### `automation/browser.py` - Browser Context Management
+### `browser_control/browser_setup.py` - Browser Context Management
 
 **Purpose**: Create and manage Camoufox browser contexts with anti-detection features.
 

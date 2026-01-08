@@ -17,8 +17,8 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 // From dist/routes/ we need to go up to server/, then up to project root
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
-const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'scripts', 'instagram_automation.py')
-const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'scripts', 'login_automation.py')
+const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'getting_started', 'run_multiple_accounts.py')
+const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'instagram_actions', 'login', 'session.py')
 
 const router = Router()
 
@@ -55,7 +55,8 @@ router.post('/start', async (req, res) => {
         automationState.process = spawn('python', ['-u', PYTHON_RUNNER], {
             cwd: PROJECT_ROOT,
             detached: process.platform !== 'win32',
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
         })
 
         // Send settings via stdin
@@ -227,7 +228,8 @@ router.post('/login', async (req, res) => {
         const loginProcess = spawn('python', args, {
             cwd: PROJECT_ROOT,
             shell: true,
-            stdio: ['pipe', 'pipe', 'pipe']
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
         })
 
         // Send credentials via stdin
