@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Overview } from "./Overview.tsx"
 import { RecentActivity } from "./RecentActivity.tsx"
 import { useQuery } from "convex/react"
-import { api } from "../../../../convex/_generated/api"
+import { api } from "@convex/_generated/api"
 
 export function DashboardPage() {
   const stats = useQuery(api.dashboard.getStats)
