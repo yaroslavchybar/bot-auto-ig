@@ -1,180 +1,417 @@
-# Anti (Python)
+# Anti Python Automation Module
 
-Automation utilities built around Playwright + Camoufox to run Instagram-style browsing sessions (feed scrolling, reels scrolling, stories watching, follow/unfollow flows, messaging, and follow-request approval) with basic resilience primitives (health checks, retry/backoff, traffic monitoring, structured logging) and optional Convex-backed data sources.
+> **AI Agent Context**: This module provides Instagram browser automation using Playwright + Camoufox. It acts as the "execution muscle" for the Anti system, controlled via CLI or programmatic invocation. The Node.js server in `../server/` orchestrates this module.
 
-This folder is designed to run either:
+## Quick Reference
 
-- Locally (Windows-friendly; uses Windows Job Objects for cleanup).
-- In Docker (see [Dockerfile](file:///c:/Users/yaros/Downloads/anti/python/Dockerfile)).
+| Aspect | Details |
+|--------|---------|
+| **Python Version** | 3.10+ required |
+| **Browser Engine** | Camoufox (Firefox fork with fingerprint spoofing) |
+| **Entry Point** | `launcher.py` (single session) or `scripts/instagram_automation.py` (multi-profile) |
+| **Profile Storage** | `data/profiles/<profile_name>/` |
+| **Logs** | JSON format, `data/logs/bot.log` and console |
+| **Dependencies** | `requirements.txt` (camoufox[geoip], playwright, pyotp, python-dotenv, requests, psutil) |
 
-## Project Layout
+---
 
-- `launcher.py`: main single-session entrypoint (CLI).
-- `automation/`: browser automation flows.
-  - `browser.py`: creates Camoufox/Playwright contexts, proxy parsing, circuit breaker, snapshots.
-  - `scrolling/`: feed + reels scrolling logic.
-  - `stories/`: story tray + story watching.
-  - `Follow/`: follow-by-username flow.
-  - `unfollow/`, `approvefollow/`, `messaging/`: additional flows.
-- `core/`: shared infrastructure.
-  - `domain/models.py`: config/data models.
-  - `observability/logging_config.py`: JSON file logs + console logs.
-  - `resilience/`: retry/backoff, traffic monitor, error classification.
-  - `runtime/`: health checks, Windows Job Object, process cleanup.
-- `convex/`: HTTP clients for Convex endpoints (profiles, accounts, settings, templates).
-- `data/`: runtime data.
-  - `profiles/` (created on demand): persistent browser profiles.
-  - `selector_cache.json`: cached selector strategies.
-- `tests/`: unit tests (unittest).
+## Architecture Overview
 
-## Requirements
-
-- Python 3.10+ recommended.
-- Playwright (Firefox) installed.
-- Camoufox runtime (Camoufox wraps Firefox with extra features).
-
-Python deps are listed in [requirements.txt](file:///c:/Users/yaros/Downloads/anti/python/requirements.txt).
-
-## Install (Local)
-
-From the repository root:
-
-```bash
-python -m venv .venv
-./.venv/Scripts/activate
-pip install -r python/requirements.txt
-python -m playwright install firefox
+```
+python/
+├── launcher.py              # CLI entry point for single-session automation
+├── supervisor.py            # Process supervisor (WIP)
+├── fingerprint_generator.py # Browser fingerprint generation utilities
+├── automation/              # Browser automation workflows
+│   ├── browser.py           # Core: browser context creation, proxy handling, circuit breaker
+│   ├── scrolling/           # Feed and Reels scrolling logic
+│   │   ├── feed/            # Instagram feed interactions
+│   │   └── reels/           # Instagram reels interactions
+│   ├── stories/             # Story watching automation
+│   ├── Follow/              # Follow-by-username workflows
+│   ├── unfollow/            # Unfollow automation
+│   ├── approvefollow/       # Follow request approval
+│   ├── messaging/           # Direct message automation
+│   └── login/               # Login flow handlers
+├── core/                    # Shared infrastructure
+│   ├── domain/models.py     # Data classes (ScrollingConfig, ThreadsAccount)
+│   ├── observability/       # Logging, debugging, snapshots
+│   ├── resilience/          # Error handling, retry logic, circuit breakers
+│   ├── runtime/             # Health checks, process management
+│   ├── automation/          # Shared automation utilities
+│   └── persistence/         # Local state persistence
+├── convex/                  # HTTP clients for Convex backend
+│   ├── config.py            # CONVEX_URL, CONVEX_API_KEY from env
+│   ├── profiles_client.py   # Browser profile management
+│   ├── instagram_accounts_client.py  # Account data access
+│   ├── instagram_settings_client.py  # Automation settings
+│   └── message_templates_client.py   # Message template retrieval
+├── scripts/                 # Multi-profile automation scripts
+│   └── instagram_automation.py  # ThreadPoolExecutor-based multi-profile runner
+├── data/                    # Runtime data (gitignored)
+│   ├── profiles/            # Persistent browser profiles (created on demand)
+│   └── logs/                # Application logs
+└── tests/                   # Unit tests (unittest framework)
 ```
 
-On Linux you may also need Playwright OS deps:
+---
 
+## Key Components
+
+### `launcher.py` - Single Session Entry Point
+
+**Purpose**: Run one browser session with specified action and configuration.
+
+**Invocation**:
 ```bash
-python -m playwright install-deps firefox
-```
+# From python/ directory
+python launcher.py --name <profile_name> --proxy <proxy_string|None> --action <action>
 
-## Quick Start (Single Session)
-
-You can run from the `python/` folder:
-
-```bash
-cd python
-python launcher.py --name my_profile --proxy None --action manual
-```
-
-Or from the repository root:
-
-```bash
+# From repository root
 python python/launcher.py --name my_profile --proxy None --action manual
 ```
 
-### Common Arguments
+**CLI Arguments**:
 
-`launcher.py` accepts (non-exhaustive):
+| Argument | Type | Default | Description |
+|----------|------|---------|-------------|
+| `--name` | str | **required** | Profile name (maps to `data/profiles/<name>/`) |
+| `--proxy` | str | `"None"` | Proxy URL or `"None"` to skip |
+| `--action` | str | `"manual"` | One of: `manual`, `scroll`, `reels`, `mixed` |
+| `--duration` | int | 5 | Session duration in minutes |
+| `--feed-duration` | int | 0 | Feed duration in `mixed` mode |
+| `--reels-duration` | int | 0 | Reels duration in `mixed` mode |
+| `--match-likes` | int | 0 | Like chance 0-100% for feed |
+| `--match-comments` | int | 0 | Comment chance 0-100% for feed |
+| `--match-follows` | int | 0 | Follow chance 0-100% for feed |
+| `--reels-match-likes` | int | None | Like chance for reels (inherits from `--match-likes`) |
+| `--reels-match-follows` | int | None | Follow chance for reels (inherits from `--match-follows`) |
+| `--carousel-watch-chance` | int | 0 | Chance to advance carousel slides 0-100% |
+| `--carousel-max-slides` | int | 3 | Max slides to view in carousels |
+| `--watch-stories` | int | 1 | Watch stories at session start (1/0) |
+| `--stories-max` | int | 3 | Maximum stories to watch |
+| `--user-agent` | str | None | Override browser user agent |
+| `--os` | str | None | Emulated OS: `windows`, `macos`, `linux` |
+| `--fingerprint-os` | str | None | Fingerprint OS flavor |
 
-- `--name` (required): profile name. Used as the directory name under `python/data/profiles/`.
-- `--proxy`: proxy string or `None`.
-- `--action`: `manual`, `scroll`, `reels`, `mixed`.
-- `--duration`: minutes for single-action modes.
-- `--feed-duration`, `--reels-duration`: minutes in `mixed` mode.
-- `--match-likes`, `--match-comments`, `--match-follows`: chances (0–100) for interactions.
-- `--reels-match-likes`, `--reels-match-follows`: per-reels interaction chances.
-- `--carousel-watch-chance`, `--carousel-max-slides`: carousel behavior.
-- `--watch-stories` (`1`/`0`), `--stories-max`: story behavior.
-- `--user-agent`: override UA.
-- `--os`: emulated OS (`windows`, `macos`, `linux`).
+**Execution Flow**:
+1. Parse arguments
+2. Run health checks (internet, disk, proxy)
+3. Initialize Windows Job Object (for child process cleanup)
+4. Retry loop with exponential backoff
+5. Call `run_browser()` from `automation/browser.py`
 
-The launcher performs pre-flight checks (internet, disk space, and optional proxy check) via [healthcheck.py](file:///c:/Users/yaros/Downloads/anti/python/core/runtime/healthcheck.py).
+---
 
-## Proxy Format
+### `automation/browser.py` - Browser Context Management
 
-Proxy parsing is implemented in [parse_proxy_string](file:///c:/Users/yaros/Downloads/anti/python/automation/browser.py#L161-L231). Supported inputs include:
+**Purpose**: Create and manage Camoufox browser contexts with anti-detection features.
 
-- `scheme://user:pass@host:port`
-- `scheme://host:port:user:pass` (non-standard)
-- `host:port:user:pass` (assumes `http`)
-- `host:port`
+**Key Functions**:
 
-The launcher uses a requests-style proxy dict for its proxy health check. If you pass `--proxy None`, it skips that check.
+| Function | Signature | Purpose |
+|----------|-----------|---------|
+| `run_browser` | `(profile_name, proxy_string, action, duration, ...)` | Main orchestrator - creates context, dispatches to action handlers |
+| `create_browser_context` | `(profile_name, proxy_string, user_agent, ...)` | Initializes Camoufox with fingerprint spoofing |
+| `parse_proxy_string` | `(proxy_string) -> dict` | Parses various proxy formats to Playwright format |
+| `ensure_profile_path` | `(profile_name, base_dir) -> str` | Creates/returns profile directory path |
+| `safe_goto` | `(page, url, timeout)` | Navigation with timeout handling |
 
-## Profiles and State
+**Proxy Format Support**:
+```
+scheme://user:pass@host:port      # Standard
+scheme://host:port:user:pass      # Non-standard colon-separated
+host:port:user:pass               # No scheme (assumes HTTP)
+host:port                         # No auth
+```
 
-- Profile directories are created under `python/data/profiles/<profile_name>/` by [ensure_profile_path](file:///c:/Users/yaros/Downloads/anti/python/automation/browser.py#L233-L249).
-- A legacy location (`cli/profiles/<profile_name>`) is migrated if present.
+**Circuit Breaker**:
+The `ProxyCircuitBreaker` class tracks consecutive proxy failures and pauses automation when threshold is exceeded.
 
-## Logging and Debugging
+```python
+proxy_circuit = ProxyCircuitBreaker()
+# After 3 consecutive failures, circuit opens for 60 seconds
+```
 
-- Logging is configured in [logging_config.py](file:///c:/Users/yaros/Downloads/anti/python/core/observability/logging_config.py).
-- Default log file path is `data/logs/bot.log` at the repository root (created if missing).
-- Logs are JSON-formatted in the file and also emitted to console.
-- Browser-side failures can trigger debug snapshots via [snapshot_debugger.py](file:///c:/Users/yaros/Downloads/anti/python/core/observability/snapshot_debugger.py) (used from `automation/browser.py`).
+---
 
-## Resilience Model
+### `core/resilience/error_handler.py` - Error Classification
 
-- Exception classification is implemented in [classify_exception](file:///c:/Users/yaros/Downloads/anti/python/core/resilience/error_handler.py#L21-L75) and drives “retry / restart / backoff / abort” behavior.
-- Network/proxy failures are treated as retryable; login-required and banned-account errors abort.
-- A proxy circuit breaker and health/taint tracking is implemented in [automation/browser.py](file:///c:/Users/yaros/Downloads/anti/python/automation/browser.py).
+**Purpose**: Route exceptions to appropriate recovery strategies.
 
-## Convex Integration (Optional)
+**Error Decisions**:
 
-The clients in `python/convex/` use:
+| Decision | Trigger Exceptions | Behavior |
+|----------|-------------------|----------|
+| `ABORT` | `AccountBannedException`, `LoginRequiredException`, `FatalError` | Stop immediately |
+| `RESTART_BROWSER` | `StaleStateError`, Playwright "Target closed" | Close and reopen browser |
+| `BACKOFF_AND_SLOW` | `RateLimitException` | Wait 60s + jitter, continue |
+| `RETRY` | `TransientError`, `NetworkError`, `ProxyError`, `TimeoutError` | Retry with exponential backoff |
 
-- `CONVEX_URL`: Convex deployment URL.
-- `CONVEX_API_KEY`: bearer token used for HTTP actions.
+**Usage**:
+```python
+from python.core.resilience.error_handler import classify_exception, ErrorDecision
 
-These values are read from environment variables in [convex/config.py](file:///c:/Users/yaros/Downloads/anti/python/convex/config.py) and will also be loaded from a repo-root `.env` file if `python-dotenv` is installed.
+decision = classify_exception(caught_exception)
+if decision == ErrorDecision.RETRY:
+    # implement retry logic
+```
 
-Typical `.env` at repository root:
+---
 
+### `core/domain/models.py` - Data Models
+
+**`ScrollingConfig`** - Complete automation configuration:
+```python
+@dataclass
+class ScrollingConfig:
+    # Profile settings
+    use_private_profiles: bool
+    use_threads_profiles: bool
+    
+    # Interaction chances (0-100%)
+    like_chance: int
+    comment_chance: int
+    follow_chance: int
+    reels_like_chance: int
+    reels_follow_chance: int
+    
+    # Timing (minutes)
+    feed_min_time_minutes: int
+    feed_max_time_minutes: int
+    reels_min_time_minutes: int
+    reels_max_time_minutes: int
+    
+    # Feature toggles
+    enable_feed: bool = True
+    enable_reels: bool = False
+    enable_follow: bool = False
+    enable_unfollow: bool = False
+    enable_approve: bool = False
+    enable_message: bool = False
+    
+    # Advanced settings
+    carousel_watch_chance: int = 0
+    carousel_max_slides: int = 3
+    watch_stories: bool = True
+    stories_max: int = 3
+    headless: bool = False
+```
+
+---
+
+### Convex Integration
+
+**Purpose**: Fetch configuration and account data from Convex backend.
+
+**Environment Variables** (set in `.env` at repo root):
 ```ini
-CONVEX_URL=https://<your-deployment>.convex.site
+CONVEX_URL=https://<deployment>.convex.site
 CONVEX_API_KEY=<server-side-key>
 ```
 
-If you don’t set these variables, Convex-backed features will raise a “Convex config missing” error when those clients are instantiated.
+**Clients**:
 
-## Docker
+| Client | File | Purpose |
+|--------|------|---------|
+| `ProfilesClient` | `convex/profiles_client.py` | Manage browser profiles |
+| `InstagramAccountsClient` | `convex/instagram_accounts_client.py` | Account credentials, cooldowns |
+| `InstagramSettingsClient` | `convex/instagram_settings_client.py` | Global automation settings |
+| `MessageTemplatesClient` | `convex/message_templates_client.py` | DM templates |
 
-Build from the `python/` folder:
+---
+
+## Installation
+
+### Local (Windows/Linux/macOS)
+
+```bash
+# Create virtual environment
+python -m venv .venv
+
+# Activate (Windows PowerShell)
+.\.venv\Scripts\Activate.ps1
+
+# Activate (Linux/macOS)
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r python/requirements.txt
+
+# Install Playwright Firefox
+python -m playwright install firefox
+
+# Linux only: Install system dependencies
+python -m playwright install-deps firefox
+```
+
+### Docker
 
 ```bash
 cd python
 docker build -t anti-python .
-```
 
-Run a session (example):
-
-```bash
+# Run session
 docker run --rm -e PYTHONUNBUFFERED=1 anti-python \
   python launcher.py --name my_profile --proxy None --action scroll --duration 5
 ```
 
-Notes:
+> **Note**: Headful browsers in Docker require Xvfb or display forwarding.
 
-- The image installs Playwright Firefox and OS dependencies.
-- In containers, running headful browsers can require extra configuration (Xvfb, display forwarding).
+---
 
-## Running Tests
+## Usage Examples
 
-Tests use the standard library `unittest` framework.
-
-From repository root:
-
+### Manual Session (Interactive)
 ```bash
-python -m unittest discover -s python/tests -p "test_*.py" -v
+python launcher.py --name test_profile --proxy None --action manual
 ```
 
-From `python/`:
+### Automated Feed Scrolling
+```bash
+python launcher.py --name prod_account \
+  --proxy "http://user:pass@proxy.example.com:8080" \
+  --action scroll \
+  --duration 10 \
+  --match-likes 30 \
+  --match-follows 5 \
+  --watch-stories 1 \
+  --stories-max 5
+```
+
+### Mixed Mode (Feed + Reels)
+```bash
+python launcher.py --name mixed_session \
+  --proxy None \
+  --action mixed \
+  --feed-duration 5 \
+  --reels-duration 5 \
+  --match-likes 20 \
+  --reels-match-likes 40
+```
+
+### Multi-Profile Automation (Script)
+```bash
+# Requires Convex environment variables
+python scripts/instagram_automation.py
+```
+
+---
+
+## Logging & Debugging
+
+**Log Configuration**: `core/observability/logging_config.py`
+
+**Log Locations**:
+- File: `data/logs/bot.log` (JSON formatted)
+- Console: Human-readable with colors
+
+**Debug Snapshots**: On browser errors, screenshots and HTML are saved via `core/observability/snapshot_debugger.py` to `data/debug/`.
+
+**Log Levels**:
+```python
+import logging
+logger = logging.getLogger(__name__)
+logger.debug("Detailed trace")
+logger.info("Normal operation")
+logger.warning("Potential issue")
+logger.error("Error occurred", extra={"decision": "RETRY", "exception": str(e)})
+```
+
+---
+
+## Testing
 
 ```bash
+# From repository root
+python -m unittest discover -s python/tests -p "test_*.py" -v
+
+# From python/ directory
 python -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-## Related Entry Points
+---
 
-- `python/scripts/instagram_automation.py` runs multi-profile automation with Convex clients and `ThreadPoolExecutor`.
-- `supervisor.py` exists in this folder but currently references modules that are not present under `python/core/` in this repository state.
+## Error Handling & Resilience
 
-## Safety and Compliance
+### Exception Hierarchy
 
-Browser automation against third-party services can violate terms of service and trigger account restrictions. Use responsibly, keep interaction rates conservative, and prefer dedicated test accounts.
+```
+Exception
+├── FatalError                  # → ABORT (unrecoverable)
+│   ├── AccountBannedException
+│   └── LoginRequiredException
+├── RecoverableError            # → Depends on subclass
+│   ├── TransientError          # → RETRY
+│   ├── NetworkError            # → RETRY
+│   ├── ProxyError              # → RETRY
+│   ├── StaleStateError         # → RESTART_BROWSER
+│   └── RateLimitException      # → BACKOFF_AND_SLOW
+├── ElementNotFoundError        # → RETRY
+└── SelectorTimeoutError        # → RETRY
+```
 
+### Retry Behavior
+
+The launcher implements a retry loop with:
+- Max 3 retries for transient errors
+- Exponential backoff: `base * (2 ** attempt) + jitter`
+- 60-second pause for rate limits
+- Immediate abort for fatal errors
+
+---
+
+## Process Management
+
+### Windows Job Objects
+On Windows, child processes (browsers) are attached to a Job Object ensuring they terminate when the parent process exits.
+
+```python
+from python.core.runtime.win_job_object import create_job_object
+job = create_job_object()  # Browsers auto-terminate on parent exit
+```
+
+### Signal Handling
+```python
+# Handled signals: SIGINT, SIGTERM, SIGBREAK (Windows)
+# Graceful shutdown closes browser contexts before exit
+```
+
+---
+
+## File Paths
+
+| Path | Purpose |
+|------|---------|
+| `python/data/profiles/<name>/` | Browser profile storage (cookies, localStorage) |
+| `python/data/logs/bot.log` | Application logs |
+| `python/data/debug/` | Error snapshots (screenshots, HTML) |
+| `python/data/selector_cache.json` | Cached CSS selector strategies |
+
+---
+
+## Integration with Node.js Server
+
+The Node.js server (`../server/`) spawns this Python module as child processes:
+
+```typescript
+// server/automation/spawn-python.ts
+spawn('python', ['python/launcher.py', '--name', profileName, ...args])
+```
+
+Communication happens via:
+- **stdout/stderr**: Parsed for JSON log lines
+- **Exit codes**: 0 = success, non-zero = failure
+- **Process signals**: SIGTERM for graceful shutdown
+
+---
+
+## Safety & Compliance
+
+> ⚠️ **Warning**: Browser automation against third-party services may violate Terms of Service.
+
+**Recommendations**:
+- Use dedicated test accounts
+- Keep interaction rates conservative
+- Implement rate limiting and cooldowns
+- Monitor for account restrictions

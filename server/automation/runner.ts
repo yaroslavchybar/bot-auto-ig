@@ -3,7 +3,7 @@
  * This allows both TUI and web frontend to control the same automation
  */
 import { EventEmitter } from 'events';
-import { appendLog } from './logStore.js';
+import { appendLog } from '../logs/store.js';
 import { registerCleanup } from './shutdown.js';
 import WebSocket from 'ws';
 

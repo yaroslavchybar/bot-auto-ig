@@ -3,14 +3,14 @@ import { Router } from 'express'
 import { spawn, execFile } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { profileManager } from '../lib/profiles.js'
+import { profileManager } from '../data/profiles.js'
 import {
     profilesListAssigned,
     profilesListUnassigned,
     profilesBulkSetListId,
     profilesSyncStatus,
     profilesSetLoginTrue
-} from '../lib/convex.js'
+} from '../data/convex.js'
 import { profileProcesses } from '../store.js'
 import { broadcast } from '../websocket.js'
 

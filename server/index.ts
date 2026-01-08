@@ -9,15 +9,15 @@ import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 
 import { initWebSocket } from './websocket.js'
-import { clerkAuth, requireApiAuth } from './middleware/auth.js'
+import { clerkAuth, requireApiAuth } from './security/auth.js'
 
-import automationRouter from './routes/automation.js'
-import logsRouter from './routes/logs.js'
-import profilesRouter from './routes/profiles.js'
-import listsRouter from './routes/lists.js'
-import instagramRouter from './routes/instagram.js'
-import { cleanupOrphanedProcesses } from './lib/pidManager.js'
-import { apiLimiter, automationLimiter } from './middleware/rateLimit.js'
+import automationRouter from './api/automation.js'
+import logsRouter from './api/logs.js'
+import profilesRouter from './api/profiles.js'
+import listsRouter from './api/lists.js'
+import instagramRouter from './api/instagram.js'
+import { cleanupOrphanedProcesses } from './automation/process-manager.js'
+import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 
 
 const __filename = fileURLToPath(import.meta.url)

@@ -1,6 +1,6 @@
 
 import { Router } from 'express'
-import { instagramSettingsGet, instagramSettingsUpsert } from '../lib/convex.js'
+import { instagramSettingsGet, instagramSettingsUpsert } from '../data/convex.js'
 
 const router = Router()
 

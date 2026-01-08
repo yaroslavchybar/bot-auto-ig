@@ -5,7 +5,7 @@ import {
     listsCreate,
     listsUpdate,
     listsDelete
-} from '../lib/convex.js'
+} from '../data/convex.js'
 
 const router = Router()
 

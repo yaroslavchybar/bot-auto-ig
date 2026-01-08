@@ -1,184 +1,286 @@
 # Anti Server
 
-Backend API Server for the Anti Automation System. This server acts as the control center for Instagram automation, managing Python subprocesses, handling WebSocket communication for real-time logs, and syncing data with a Convex backend.
+Backend API server for Instagram automation. Controls Python subprocesses, handles real-time WebSocket communication, and syncs data with Convex.
 
-## Features
+---
 
-- **REST API**: Comprehensive endpoints for controlling automation, managing profiles, and configuring settings.
-- **Real-time Communication**: WebSocket server for live log streaming and status updates.
-- **Process Management**: Orchestrates Python scripts for Instagram automation and profile browsing.
-- **Data Persistence**: seamless integration with Convex for storing profiles, lists, and settings.
-- **Docker Support**: Multi-stage Docker build for optimized production deployment.
+## Quick Reference
 
-## Prerequisites
+| Item | Value |
+|------|-------|
+| Entry point | `index.ts` |
+| Default port | `3001` |
+| WebSocket path | `/ws` |
+| Python scripts | `../python/scripts/` |
 
-- **Node.js**: v20 or higher
-- **Python**: v3.x (with required dependencies installed)
-- **Convex**: A configured Convex project
+---
 
-## Installation
+## Directory Structure
 
-1.  **Clone the repository** (if part of a larger repo, navigate to `server/`):
-    ```bash
-    cd server
-    ```
-
-2.  **Install Node.js dependencies**:
-    ```bash
-    npm install
-    ```
-
-3.  **Install Python dependencies** (ensure you have a virtual environment if needed):
-    ```bash
-    # Assuming requirements.txt is in the root or scripts folder
-    pip install -r ../requirements.txt
-    ```
-
-## Configuration
-
-Create a `.env` file in the project root (or ensure environment variables are set):
-
-```env
-# Server Configuration
-SERVER_PORT=3001
-
-# Convex Configuration
-CONVEX_URL=https://your-convex-project.convex.site
-CONVEX_API_KEY=your_convex_api_key
-# OR
-CONVEX_HTTP_BEARER_TOKEN=your_convex_token
+```
+server/
+├── index.ts              # Server entry point, Express app, CORS, route mounting
+├── websocket.ts          # WebSocket server for real-time log streaming
+├── store.ts              # In-memory state (connected clients, logs, running processes)
+│
+├── api/                  # REST API endpoints
+│   ├── automation.ts     # Start/stop automation, login
+│   ├── profiles.ts       # CRUD profiles, start/stop browser
+│   ├── lists.ts          # CRUD lists (profile groups)
+│   ├── logs.ts           # Get/clear logs
+│   └── instagram.ts      # Get/set Instagram settings
+│
+├── automation/           # Automation control logic
+│   ├── runner.ts         # AutomationService class (connects to server API)
+│   ├── manual-actions.ts # ManualAutomationService for per-profile browser control
+│   ├── process-manager.ts# PID tracking for orphan cleanup
+│   ├── state.ts          # State manager (tracks running automation)
+│   └── shutdown.ts       # Cleanup handlers on shutdown
+│
+├── data/                 # Data access layer
+│   ├── convex.ts         # Convex client and all Convex API calls
+│   ├── profiles.ts       # ProfileManager class (file + Convex sync)
+│   ├── lists.ts          # ListsService
+│   └── messages.ts       # MessagesService
+│
+├── logs/                 # Logging utilities
+│   ├── store.ts          # In-memory log store + file persistence
+│   └── parser.ts         # Parse Python log output into structured entries
+│
+├── security/             # Auth & rate limiting middleware
+│   ├── auth.ts           # Clerk authentication middleware
+│   └── rate-limit.ts     # Rate limiters (API, automation)
+│
+├── helpers/              # Utility functions
+│   ├── errors.ts         # Error codes and response helpers
+│   ├── mutex.ts          # Async mutex for automation lock
+│   ├── utils.ts          # General utilities
+│   ├── user-agents.ts    # User agent strings
+│   ├── settings-schema.ts# Validation for InstagramSettings
+│   └── instagram-settings.ts # (placeholder)
+│
+├── types/                # TypeScript definitions
+│   └── index.ts          # ActionName, LogEntry, InstagramSettings, etc.
+│
+└── session-logs/         # Generated log files (gitignored)
 ```
 
-## Running the Server
+---
 
-### Development
-Starts the server with hot-reloading using `tsx`.
+## Key Files
 
-```bash
-npm run dev
+### `index.ts`
+- Creates Express app and HTTP server
+- Mounts all API routes under `/api/*`
+- Applies Clerk auth and rate limiting middleware
+- Initializes WebSocket on `/ws`
+- Cleans up orphaned Python processes on startup
+
+### `websocket.ts`
+- WebSocket server with Clerk token authentication
+- Broadcasts log entries and status changes to connected clients
+- Maintains `clients` Set for active connections
+
+### `store.ts`
+- In-memory stores: `clients`, `logsStore`, `automationState`, `profileProcesses`
+- Shared state between routes and WebSocket
+
+---
+
+## API Endpoints
+
+### Health Check
 ```
-
-### Production
-Builds the TypeScript code and starts the compiled server.
-
-```bash
-npm run build
-npm start
+GET /api/health
+Response: { status: 'ok', timestamp: '...' }
 ```
-
-### Docker
-
-Build the image:
-```bash
-docker build -t anti-server .
-```
-
-Run the container:
-```bash
-docker run -p 3001:3001 --env-file .env anti-server
-```
-
-## API Reference
 
 ### Automation
 
--   **GET /api/automation/status**
-    -   Returns the current status of the automation process.
-    -   Response: `{ status: 'idle' | 'running', running: boolean }`
-
--   **POST /api/automation/start**
-    -   Starts the Instagram automation Python script.
-    -   Body: Instagram Settings object (see types).
-    -   Response: `{ success: true, message: 'Automation started' }`
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/automation/status` | Get current status (`idle`, `running`, `stopping`) |
+| POST | `/api/automation/start` | Start automation with settings (body: InstagramSettings) |
+| POST | `/api/automation/stop` | Stop running automation |
+| POST | `/api/automation/login` | Run login script for a profile |
 
 ### Profiles
 
--   **GET /api/profiles**
-    -   List all profiles.
-
--   **POST /api/profiles**
-    -   Create a new profile.
-    -   Body: `{ name: string, ... }`
-
--   **PUT /api/profiles/:name**
-    -   Update an existing profile.
-
--   **DELETE /api/profiles/:name**
-    -   Delete a profile.
-
--   **POST /api/profiles/:name/start**
-    -   Launch a browser instance for manual control of a profile.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/profiles` | List all profiles |
+| POST | `/api/profiles` | Create profile (body: `{ name, ...options }`) |
+| PUT | `/api/profiles/:name` | Update profile |
+| DELETE | `/api/profiles/:name` | Delete profile |
+| POST | `/api/profiles/:name/start` | Launch browser for manual control |
+| POST | `/api/profiles/:name/stop` | Stop browser |
+| GET | `/api/profiles/assigned?list_id=X` | Profiles assigned to list |
+| GET | `/api/profiles/unassigned` | Profiles not in any list |
+| POST | `/api/profiles/bulk-set-list-id` | Assign multiple profiles to list |
+| POST | `/api/profiles/generate-fingerprint` | Generate browser fingerprint |
 
 ### Lists
 
--   **GET /api/lists**
-    -   Get all lists.
-
--   **POST /api/lists**
-    -   Create a new list.
-    -   Body: `{ name: string }`
-
--   **PUT /api/lists/:id**
-    -   Update a list name.
-
--   **DELETE /api/lists/:id**
-    -   Delete a list.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/lists` | Get all lists |
+| POST | `/api/lists` | Create list (body: `{ name }`) |
+| PUT | `/api/lists/:id` | Update list name |
+| DELETE | `/api/lists/:id` | Delete list |
 
 ### Logs
 
--   **GET /api/logs**
-    -   Get recent logs stored in memory (max 500).
-
--   **GET /api/logs/files**
-    -   List available log files on disk.
-
--   **GET /api/logs/file/:name**
-    -   Get content of a specific log file.
-
--   **DELETE /api/logs**
-    -   Clear in-memory and file logs.
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/logs` | Get in-memory logs |
+| GET | `/api/logs/files` | List log files on disk |
+| GET | `/api/logs/file/:name` | Load specific log file |
+| DELETE | `/api/logs` | Clear all logs |
 
 ### Instagram Settings
 
--   **GET /api/instagram/settings**
-    -   Get current Instagram automation settings.
-    -   Query: `?scope=global` (default)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/instagram/settings?scope=global` | Get settings |
+| POST | `/api/instagram/settings` | Update settings |
 
--   **POST /api/instagram/settings**
-    -   Update Instagram automation settings.
-    -   Body: `{ scope: string, ...settings }`
+---
 
-## WebSocket API
+## WebSocket Protocol
 
-Connect to `ws://localhost:3001/ws` for real-time updates.
+**Connection**: `ws://localhost:3001/ws?token=<clerk_jwt>`
 
-### Events (Server -> Client)
+### Server → Client Messages
 
--   **Status Update**
-    ```json
-    {
-      "type": "status",
-      "status": "idle" | "running"
-    }
-    ```
+```typescript
+// Status change
+{ type: 'status', status: 'idle' | 'running' | 'stopping' }
 
--   **Log Entry**
-    ```json
-    {
-      "type": "log",
-      "message": "Log message content",
-      "level": "info" | "warn" | "error" | "success",
-      "source": "server" | "python",
-      "ts": 1700000000000
-    }
-    ```
+// Log entry
+{ type: 'log', message: string, level: 'info' | 'warn' | 'error' | 'success', source: string }
+```
 
-## Project Structure
+---
 
--   `index.ts`: Server entry point and Express app setup.
--   `websocket.ts`: WebSocket server implementation.
--   `store.ts`: In-memory state management (clients, logs, processes).
--   `routes/`: API route handlers.
--   `lib/`: Helper libraries (Convex client, logging, profile management).
--   `types/`: TypeScript type definitions.
--   `python/scripts/`: Python automation scripts (referenced).
+## Types Reference
+
+### `InstagramSettings`
+```typescript
+{
+  automation_enabled: boolean;
+  headless: boolean;
+  max_sessions: number;
+  parallel_profiles: number;
+  action_order: ActionName[];
+  source_list_ids: string[];
+  // Feed settings
+  enable_feed: boolean;
+  feed_min_time_minutes: number;
+  feed_max_time_minutes: number;
+  like_chance: number;
+  carousel_watch_chance: number;
+  // Reels settings
+  enable_reels: boolean;
+  reels_min_time_minutes: number;
+  reels_max_time_minutes: number;
+  reels_like_chance: number;
+  reels_follow_chance: number;
+  reels_skip_chance: number;
+  // Follow/Unfollow
+  enable_follow: boolean;
+  follow_chance: number;
+  follow_min_count: number;
+  follow_max_count: number;
+  do_unfollow: boolean;
+  unfollow_min_count: number;
+  unfollow_max_count: number;
+  // Stories
+  watch_stories: boolean;
+  stories_max: number;
+  highlights_min: number;
+  highlights_max: number;
+  // Messaging
+  do_message: boolean;
+  messaging_cooldown_enabled: boolean;
+  messaging_cooldown_hours: number;
+  // Other
+  use_private_profiles: boolean;
+  profile_reopen_cooldown_enabled: boolean;
+  profile_reopen_cooldown_minutes: number;
+  do_approve: boolean;
+  following_limit: number;
+  min_delay: number;
+  max_delay: number;
+}
+```
+
+### `ActionName`
+```typescript
+'Feed Scroll' | 'Reels Scroll' | 'Watch Stories' | 'Follow' | 'Unfollow' | 'Approve Requests' | 'Send Messages'
+```
+
+### `LogEntry`
+```typescript
+{ ts: number; message: string; source?: string; level?: 'info' | 'warn' | 'error' | 'success' }
+```
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SERVER_PORT` | No | Server port (default: 3001) |
+| `CONVEX_URL` | Yes | Convex deployment URL |
+| `CLERK_SECRET_KEY` | Yes | Clerk secret for JWT verification |
+| `ALLOWED_ORIGINS` | No | Comma-separated CORS origins |
+| `NODE_ENV` | No | `production` for strict CORS |
+| `PYTHON` | No | Python executable path (default: `python`) |
+
+---
+
+## External Dependencies
+
+### Python Scripts (in `../python/`)
+- `scripts/instagram_automation.py` — Main automation script
+- `scripts/login_automation.py` — Login helper script
+- `launcher.py` — Profile browser launcher
+
+### Convex Backend
+All persistent data stored in Convex:
+- Profiles, Lists, Instagram Settings, Message Templates
+- See `data/convex.ts` for all Convex function calls
+
+---
+
+## Commands
+
+```bash
+# Development (hot reload)
+npm run dev
+
+# Build TypeScript
+npm run build
+
+# Production
+npm start
+
+# Type check only
+npx tsc --noEmit
+```
+
+---
+
+## Docker
+
+Build and run with the parent `docker-compose.yml`:
+```bash
+docker compose build server
+docker compose up server
+```
+
+The Dockerfile:
+1. Installs Node.js and Python dependencies
+2. Downloads Camoufox browser and Playwright
+3. Builds TypeScript
+4. Runs via supervisord (Node + can manage Python)

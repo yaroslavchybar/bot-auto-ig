@@ -2,7 +2,7 @@ import { EventEmitter } from 'events';
 import { spawn, ChildProcess, execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Profile, profileManager } from './profiles.js';
+import { Profile, profileManager } from '../data/profiles.js';
 import { registerCleanup } from './shutdown.js';
 
 const __filename = fileURLToPath(import.meta.url);

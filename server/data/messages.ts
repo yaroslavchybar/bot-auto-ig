@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { messageTemplatesGet, messageTemplatesUpsert } from './convex.js';
-import { appendLog } from './logStore.js';
+import { appendLog } from '../logs/store.js';
 
 export class MessagesService extends EventEmitter {
     private _templates: Record<string, string[]> = {

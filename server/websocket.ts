@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
 import { clients, logsStore, MAX_LOGS, automationState } from './store.js'
-import { appendLog as appendFileLog } from './lib/logStore.js'
+import { appendLog as appendFileLog } from './logs/store.js'
 import { verifyToken } from '@clerk/express'
 
 export function initWebSocket(server: Server, path: string = '/ws') {

@@ -1,7 +1,7 @@
 
 import { Router } from 'express'
 import { logsStore } from '../store.js'
-import { clearLogs as clearFileLogs, getLogFiles, loadLogFile } from '../lib/logStore.js'
+import { clearLogs as clearFileLogs, getLogFiles, loadLogFile } from '../logs/store.js'
 
 const router = Router()
 
