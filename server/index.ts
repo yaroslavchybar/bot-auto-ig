@@ -16,6 +16,8 @@ import logsRouter from './routes/logs.js'
 import profilesRouter from './routes/profiles.js'
 import listsRouter from './routes/lists.js'
 import instagramRouter from './routes/instagram.js'
+import { cleanupOrphanedProcesses } from './lib/pidManager.js'
+import { apiLimiter, automationLimiter } from './middleware/rateLimit.js'
 
 
 const __filename = fileURLToPath(import.meta.url)
@@ -31,11 +33,26 @@ const server = createServer(app)
 // Initialize WebSocket
 initWebSocket(server)
 
-// CORS middleware - allow frontend requests
+// CORS configuration
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(',').map(o => o.trim())
+const IS_DEV = process.env.NODE_ENV !== 'production'
+
+// CORS middleware - environment-aware origin checking
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*')
+    const origin = req.headers.origin
+
+    // In development, allow all origins. In production, check whitelist.
+    if (IS_DEV) {
+        res.header('Access-Control-Allow-Origin', origin || '*')
+    } else if (origin && ALLOWED_ORIGINS.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin)
+    }
+    // If origin is not allowed in production, don't set the header (browser will block)
+
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.header('Access-Control-Allow-Credentials', 'true')
+
     if (req.method === 'OPTIONS') {
         return res.sendStatus(200)
     }
@@ -52,17 +69,20 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-// Protected API Routes - require authentication
-app.use('/api/automation', requireApiAuth, automationRouter)
-app.use('/api/logs', requireApiAuth, logsRouter)
-app.use('/api/profiles', requireApiAuth, profilesRouter)
-app.use('/api/lists', requireApiAuth, listsRouter)
-app.use('/api/instagram', requireApiAuth, instagramRouter)
+// Protected API Routes - require authentication and rate limiting
+app.use('/api/automation', requireApiAuth, automationLimiter, automationRouter)
+app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
+app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
+app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
+app.use('/api/instagram', requireApiAuth, apiLimiter, instagramRouter)
 
 
 const PORT = process.env.SERVER_PORT || 3001
 
-server.listen(PORT, () => {
-    console.log(`[Server] API server running on http://localhost:${PORT}`)
-    console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`)
+// Clean up any orphaned processes from previous server runs
+cleanupOrphanedProcesses().then(() => {
+    server.listen(PORT, () => {
+        console.log(`[Server] API server running on http://localhost:${PORT}`)
+        console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`)
+    })
 })

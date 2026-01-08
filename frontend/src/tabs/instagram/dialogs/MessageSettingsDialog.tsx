@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -51,8 +52,9 @@ export function MessageSettingsDialog({ open, onOpenChange }: MessageSettingsDia
             setEditingIndex(null);
             setIsCreating(false);
             setEditValue('');
+            toast.success('Template saved');
         } catch {
-            // Error handled by hook
+            toast.error('Failed to save template');
         }
     };
 
@@ -61,8 +63,9 @@ export function MessageSettingsDialog({ open, onOpenChange }: MessageSettingsDia
         next.splice(index, 1);
         try {
             await saveTemplates(kind, next);
+            toast.success('Template deleted');
         } catch {
-            // Error handled by hook
+            toast.error('Failed to delete template');
         }
     };
 

@@ -7,7 +7,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 import logging
-from logging.handlers import MemoryHandler
 from typing import Any, Dict, List, Optional, Tuple
 from threading import Lock
 
@@ -63,13 +62,10 @@ _configure_stdio()
 
 _log_stream_handler = logging.StreamHandler(sys.stdout)
 _log_stream_handler.setFormatter(logging.Formatter("%(message)s"))
-_log_memory_handler = MemoryHandler(
-    capacity=10, flushLevel=logging.ERROR, target=_log_stream_handler
-)
 
 _logger = logging.getLogger("instagram_automation")
 _logger.handlers.clear()
-_logger.addHandler(_log_memory_handler)
+_logger.addHandler(_log_stream_handler)
 _logger.setLevel(logging.INFO)
 _logger.propagate = False
 
@@ -84,6 +80,7 @@ def log(message: str) -> None:
     except Exception:
         level = logging.INFO
     _logger.log(level, msg)
+    sys.stdout.flush()
 
 
 def emit_event(event_type: str, **data: Any) -> None:

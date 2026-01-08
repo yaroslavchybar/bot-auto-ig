@@ -1,15 +1,31 @@
-
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
 import { clients, logsStore, MAX_LOGS, automationState } from './store.js'
 import { appendLog as appendFileLog } from './lib/logStore.js'
+import { verifyToken } from '@clerk/express'
 
 export function initWebSocket(server: Server, path: string = '/ws') {
     const wss = new WebSocketServer({ server, path })
 
-    wss.on('connection', (ws) => {
+    wss.on('connection', async (ws, req) => {
+        // Extract token from query string: /ws?token=xxx
+        const url = new URL(req.url || '', `http://${req.headers.host}`)
+        const token = url.searchParams.get('token')
+
+        if (!token) {
+            ws.close(4001, 'Missing auth token')
+            return
+        }
+
+        try {
+            await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
+        } catch {
+            ws.close(4003, 'Invalid auth token')
+            return
+        }
+
         clients.add(ws)
-        console.log('[WS] Client connected')
+        console.log('[WS] Client connected (authenticated)')
 
         // Send current status
         ws.send(JSON.stringify({ type: 'status', status: automationState.status }))

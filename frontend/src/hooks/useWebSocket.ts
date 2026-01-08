@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 
 export interface LogEntry {
     message: string
@@ -30,15 +31,26 @@ interface UseWebSocketOptions {
     autoConnect?: boolean
 }
 
+// Reconnection backoff constants
+const BASE_RECONNECT_DELAY = 1000
+const MAX_RECONNECT_DELAY = 30000
+
 function getDefaultWebSocketUrl() {
     if (typeof window === 'undefined') return 'ws://localhost:3001/ws'
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${protocol}//${window.location.host}/ws`
 }
 
+function getReconnectDelay(attempt: number): number {
+    const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, attempt), MAX_RECONNECT_DELAY)
+    const jitter = delay * 0.2 * Math.random()
+    return delay + jitter
+}
+
 export function useWebSocket(options: UseWebSocketOptions = {}) {
     const { url, autoConnect = true } = options
     const wsUrl = url ?? getDefaultWebSocketUrl()
+    const { getToken } = useAuth()
 
     const [logs, setLogs] = useState<LogEntry[]>([])
     const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
@@ -51,6 +63,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     const [reconnectCounter, setReconnectCounter] = useState(0)
     const wsRef = useRef<WebSocket | null>(null)
     const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const reconnectAttemptRef = useRef(0)
 
     const clearLogs = useCallback(() => {
         setLogs([])
@@ -73,80 +86,98 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
         let cancelled = false
 
-        try {
-            const ws = new WebSocket(wsUrl)
-
-            ws.onopen = () => {
-                if (cancelled) {
-                    ws.close()
-                    return
-                }
-                setConnected(true)
-            }
-
-            ws.onmessage = (event) => {
-                if (cancelled) return
+            // Async IIFE to fetch token before connecting
+            ; (async () => {
+                let tokenParam = ''
                 try {
-                    const data: WebSocketMessage = JSON.parse(event.data)
-
-                    if (data.type === 'log' && data.message) {
-                        const entry: LogEntry = {
-                            message: data.message,
-                            level: data.level || 'info',
-                            source: data.source || 'unknown',
-                            ts: Date.now(),
-                        }
-                        setLogs((prev) => [...prev.slice(-499), entry])
-                    } else if (data.type === 'status' && data.status) {
-                        setStatus(data.status as 'idle' | 'running' | 'stopping')
-                    } else if (data.type === 'session_started') {
-                        setProgress({
-                            totalAccounts: data.total_accounts || 0,
-                            currentProfile: null,
-                            currentTask: null,
-                        });
-                    } else if (data.type === 'profile_started') {
-                        setProgress(prev => ({ ...prev, currentProfile: data.profile || null, currentTask: null }));
-                    } else if (data.type === 'task_started') {
-                        setProgress(prev => ({ ...prev, currentTask: data.task || null }));
-                    } else if (data.type === 'profile_completed') {
-                        setProgress(prev => ({ ...prev, currentProfile: null, currentTask: null }));
+                    const token = await getToken()
+                    if (token) {
+                        tokenParam = `?token=${encodeURIComponent(token)}`
                     }
                 } catch {
-                    // ignore parse errors
+                    // Continue without token - server will reject if required
                 }
-            }
 
-            ws.onclose = () => {
                 if (cancelled) return
-                setConnected(false)
-                wsRef.current = null
 
-                // Auto-reconnect after 3 seconds
-                if (autoConnect) {
-                    reconnectTimeoutRef.current = setTimeout(() => {
-                        if (!cancelled) {
-                            setReconnectCounter((c) => c + 1)
+                try {
+                    const ws = new WebSocket(`${wsUrl}${tokenParam}`)
+
+                    ws.onopen = () => {
+                        if (cancelled) {
+                            ws.close()
+                            return
                         }
-                    }, 3000)
-                }
-            }
-
-            ws.onerror = () => {
-                ws.close()
-            }
-
-            wsRef.current = ws
-        } catch {
-            // connection failed, schedule retry
-            if (autoConnect && !cancelled) {
-                reconnectTimeoutRef.current = setTimeout(() => {
-                    if (!cancelled) {
-                        setReconnectCounter((c) => c + 1)
+                        reconnectAttemptRef.current = 0 // Reset on successful connect
+                        setConnected(true)
                     }
-                }, 3000)
-            }
-        }
+
+                    ws.onmessage = (event) => {
+                        if (cancelled) return
+                        try {
+                            const data: WebSocketMessage = JSON.parse(event.data)
+
+                            if (data.type === 'log' && data.message) {
+                                const entry: LogEntry = {
+                                    message: data.message,
+                                    level: data.level || 'info',
+                                    source: data.source || 'unknown',
+                                    ts: Date.now(),
+                                }
+                                setLogs((prev) => [...prev.slice(-499), entry])
+                            } else if (data.type === 'status' && data.status) {
+                                setStatus(data.status as 'idle' | 'running' | 'stopping')
+                            } else if (data.type === 'session_started') {
+                                setProgress({
+                                    totalAccounts: data.total_accounts || 0,
+                                    currentProfile: null,
+                                    currentTask: null,
+                                });
+                            } else if (data.type === 'profile_started') {
+                                setProgress(prev => ({ ...prev, currentProfile: data.profile || null, currentTask: null }));
+                            } else if (data.type === 'task_started') {
+                                setProgress(prev => ({ ...prev, currentTask: data.task || null }));
+                            } else if (data.type === 'profile_completed') {
+                                setProgress(prev => ({ ...prev, currentProfile: null, currentTask: null }));
+                            }
+                        } catch {
+                            // ignore parse errors
+                        }
+                    }
+
+                    ws.onclose = () => {
+                        if (cancelled) return
+                        setConnected(false)
+                        wsRef.current = null
+
+                        // Auto-reconnect with exponential backoff
+                        if (autoConnect) {
+                            const delay = getReconnectDelay(reconnectAttemptRef.current++)
+                            reconnectTimeoutRef.current = setTimeout(() => {
+                                if (!cancelled) {
+                                    setReconnectCounter((c) => c + 1)
+                                }
+                            }, delay)
+                        }
+                    }
+
+                    ws.onerror = () => {
+                        ws.close()
+                    }
+
+                    wsRef.current = ws
+                } catch {
+                    // connection failed, schedule retry with exponential backoff
+                    if (autoConnect && !cancelled) {
+                        const delay = getReconnectDelay(reconnectAttemptRef.current++)
+                        reconnectTimeoutRef.current = setTimeout(() => {
+                            if (!cancelled) {
+                                setReconnectCounter((c) => c + 1)
+                            }
+                        }, delay)
+                    }
+                }
+            })()
 
         return () => {
             cancelled = true
@@ -157,7 +188,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             wsRef.current?.close()
             wsRef.current = null
         }
-    }, [wsUrl, autoConnect, reconnectCounter])
+    }, [wsUrl, autoConnect, reconnectCounter, getToken])
 
     const connect = useCallback(() => {
         setReconnectCounter((c) => c + 1)

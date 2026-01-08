@@ -6,6 +6,12 @@ import { fileURLToPath } from 'url'
 import { automationState } from '../store.js'
 import { broadcast } from '../websocket.js'
 import { profilesSetLoginTrue } from '../lib/convex.js'
+import { automationMutex } from '../lib/mutex.js'
+import { savePid, clearPid } from '../lib/pidManager.js'
+import { errorResponse, ErrorCodes } from '../lib/errors.js'
+import { validateSettings } from '../lib/validation/settingsSchema.js'
+import { markStarted, markStopped } from '../lib/stateManager.js'
+import { parseLogOutput } from '../lib/logParser.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -26,20 +32,27 @@ router.get('/status', (req, res) => {
 
 // Start automation
 router.post('/start', async (req, res) => {
-    if (automationState.process) {
-        return res.status(400).json({ error: 'Automation already running' })
-    }
-
-    const settings = req.body
+    const release = await automationMutex.acquire()
 
     try {
+        if (automationState.process) {
+            return res.status(400).json(errorResponse(ErrorCodes.AUTOMATION_RUNNING, 'Automation already running'))
+        }
+
+        const validationResult = validateSettings(req.body)
+        if (validationResult instanceof Error) {
+            return res.status(400).json(errorResponse(ErrorCodes.VALIDATION_ERROR, validationResult.message))
+        }
+        const settings = validationResult
+
         automationState.status = 'running'
         broadcast({ type: 'status', status: 'running' })
         broadcast({ type: 'log', message: 'Starting automation...', level: 'info', source: 'server' })
 
         // Spawn Python process with stdin for settings
         // Use detached on Linux to create a process group we can kill
-        automationState.process = spawn('python', [PYTHON_RUNNER], {
+        // -u flag disables output buffering so logs stream in real-time
+        automationState.process = spawn('python', ['-u', PYTHON_RUNNER], {
             cwd: PROJECT_ROOT,
             detached: process.platform !== 'win32',
             stdio: ['pipe', 'pipe', 'pipe']
@@ -50,27 +63,50 @@ router.post('/start', async (req, res) => {
         automationState.process.stdin?.write(payload)
         automationState.process.stdin?.end()
 
-        // Handle stdout
+        // Track PID for orphan cleanup on server restart
+        if (automationState.process.pid) {
+            savePid(automationState.process.pid)
+            markStarted(automationState.process.pid, settings as Record<string, unknown>)
+        }
+
+        // Handle stdout - parse and format logs
         automationState.process.stdout?.on('data', (data) => {
-            const message = data.toString().trim()
-            if (message) {
-                console.log('[Python]', message)
-                broadcast({ type: 'log', message, level: 'info', source: 'python' })
+            const raw = data.toString()
+            const parsed = parseLogOutput(raw)
+
+            for (const log of parsed) {
+                console.log(`[Python] ${log.message}`)
+                broadcast({
+                    type: log.eventType ? log.eventType : 'log',
+                    message: log.message,
+                    level: log.level,
+                    source: 'python',
+                    ...log.metadata
+                })
             }
         })
 
-        // Handle stderr
+        // Handle stderr - parse and format as errors
         automationState.process.stderr?.on('data', (data) => {
-            const message = data.toString().trim()
-            if (message) {
-                console.error('[Python Error]', message)
-                broadcast({ type: 'log', message, level: 'error', source: 'python' })
+            const raw = data.toString()
+            const parsed = parseLogOutput(raw)
+
+            for (const log of parsed) {
+                console.error(`[Python Error] ${log.message}`)
+                broadcast({
+                    type: 'log',
+                    message: log.message,
+                    level: 'error',
+                    source: 'python'
+                })
             }
         })
 
         // Handle process exit
         automationState.process.on('close', (code) => {
             console.log(`[Python] Process exited with code ${code}`)
+            clearPid()
+            markStopped()
             automationState.process = null
             automationState.status = 'idle'
             broadcast({ type: 'status', status: 'idle' })
@@ -84,6 +120,8 @@ router.post('/start', async (req, res) => {
 
         automationState.process.on('error', (err) => {
             console.error('[Python] Process error:', err)
+            clearPid()
+            markStopped()
             automationState.process = null
             automationState.status = 'idle'
             broadcast({ type: 'status', status: 'idle' })
@@ -99,21 +137,25 @@ router.post('/start', async (req, res) => {
     } catch (error) {
         automationState.status = 'idle'
         const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
+        res.status(500).json(errorResponse(ErrorCodes.INTERNAL_ERROR, message))
+    } finally {
+        release()
     }
 })
 
 // Stop automation
 router.post('/stop', async (req, res) => {
-    if (!automationState.process) {
-        return res.status(400).json({ error: 'No automation running' })
-    }
-
-    automationState.status = 'stopping'
-    broadcast({ type: 'status', status: 'stopping' })
-    broadcast({ type: 'log', message: 'Stopping automation...', level: 'warn', source: 'server' })
+    const release = await automationMutex.acquire()
 
     try {
+        if (!automationState.process) {
+            return res.status(400).json(errorResponse(ErrorCodes.AUTOMATION_NOT_RUNNING, 'No automation running'))
+        }
+
+        automationState.status = 'stopping'
+        broadcast({ type: 'status', status: 'stopping' })
+        broadcast({ type: 'log', message: 'Stopping automation...', level: 'warn', source: 'server' })
+
         const pid = automationState.process.pid;
 
         // On Windows, we need to use taskkill to kill the process tree
@@ -156,6 +198,8 @@ router.post('/stop', async (req, res) => {
         automationState.status = 'idle'
         const message = error instanceof Error ? error.message : 'Unknown error'
         res.status(500).json({ error: message })
+    } finally {
+        release()
     }
 })
 
