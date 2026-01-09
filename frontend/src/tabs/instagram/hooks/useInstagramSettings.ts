@@ -5,6 +5,88 @@ import { apiFetch } from '@/lib/api';
 
 const STORAGE_KEY = 'cached_instagram_settings';
 
+const coerceBoolean = (val: unknown, fallback: boolean): boolean => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'number') return val !== 0;
+    if (typeof val === 'string') {
+        const s = val.trim().toLowerCase();
+        if (s === 'true' || s === '1' || s === 'yes' || s === 'y') return true;
+        if (s === 'false' || s === '0' || s === 'no' || s === 'n' || s === '') return false;
+    }
+    return fallback;
+};
+
+const coerceNumber = (val: unknown, fallback: number): number => {
+    if (typeof val === 'number' && Number.isFinite(val)) return val;
+    if (typeof val === 'string') {
+        const parsed = Number.parseFloat(val.trim());
+        if (Number.isFinite(parsed)) return parsed;
+    }
+    return fallback;
+};
+
+const normalizeStringArray = (val: unknown): string[] => {
+    if (!Array.isArray(val)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const item of val) {
+        const s = String(item ?? '').trim();
+        if (!s) continue;
+        if (seen.has(s)) continue;
+        seen.add(s);
+        out.push(s);
+    }
+    return out;
+};
+
+const normalizeActionOrder = (val: unknown): ActionName[] => {
+    const list = Array.isArray(val) ? val : [];
+    const out: ActionName[] = [];
+    for (const item of list) {
+        if (!ACTIONS.includes(item as ActionName)) continue;
+        out.push(item as ActionName);
+    }
+    return out.length > 0 ? out : [...ACTIONS];
+};
+
+const clampNumber = (n: number, min: number, max: number): number => {
+    return Math.max(min, Math.min(max, n));
+};
+
+const normalizeLoadedSettings = (cloud: unknown): InstagramSettings => {
+    const raw = typeof cloud === 'object' && cloud ? cloud : {};
+    const merged = { ...DEFAULT_SETTINGS, ...raw } as Record<string, unknown>;
+    const next = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
+
+    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof InstagramSettings)[]) {
+        if (key === 'action_order') {
+            next.action_order = normalizeActionOrder(merged.action_order);
+            continue;
+        }
+        if (key === 'source_list_ids') {
+            next.source_list_ids = normalizeStringArray(merged.source_list_ids);
+            continue;
+        }
+
+        const defVal = DEFAULT_SETTINGS[key];
+        const val = merged[key];
+
+        if (typeof defVal === 'boolean') next[key] = coerceBoolean(val, defVal);
+        else if (typeof defVal === 'number') next[key] = coerceNumber(val, defVal);
+        else next[key] = val ?? defVal;
+    }
+
+    next.max_sessions = clampNumber(next.max_sessions as number, 1, 100);
+    next.parallel_profiles = clampNumber(next.parallel_profiles as number, 1, 10);
+    next.like_chance = clampNumber(next.like_chance as number, 0, 100);
+    next.follow_chance = clampNumber(next.follow_chance as number, 0, 100);
+    next.reels_like_chance = clampNumber(next.reels_like_chance as number, 0, 100);
+    next.reels_follow_chance = clampNumber(next.reels_follow_chance as number, 0, 100);
+    next.reels_skip_chance = clampNumber(next.reels_skip_chance as number, 0, 100);
+
+    return next as InstagramSettings;
+};
+
 export function useInstagramSettings() {
     const [settings, setSettings] = useState<InstagramSettings>(() => {
         try {
@@ -20,89 +102,6 @@ export function useInstagramSettings() {
 
     const saveInFlightRef = useRef<Promise<void> | null>(null);
     const pendingSaveRef = useRef<InstagramSettings | null>(null);
-
-    const coerceBoolean = (val: unknown, fallback: boolean): boolean => {
-        if (typeof val === 'boolean') return val;
-        if (typeof val === 'number') return val !== 0;
-        if (typeof val === 'string') {
-            const s = val.trim().toLowerCase();
-            if (s === 'true' || s === '1' || s === 'yes' || s === 'y') return true;
-            if (s === 'false' || s === '0' || s === 'no' || s === 'n' || s === '') return false;
-        }
-        return fallback;
-    };
-
-    const coerceNumber = (val: unknown, fallback: number): number => {
-        if (typeof val === 'number' && Number.isFinite(val)) return val;
-        if (typeof val === 'string') {
-            const parsed = Number.parseFloat(val.trim());
-            if (Number.isFinite(parsed)) return parsed;
-        }
-        return fallback;
-    };
-
-    const normalizeStringArray = (val: unknown): string[] => {
-        if (!Array.isArray(val)) return [];
-        const out: string[] = [];
-        const seen = new Set<string>();
-        for (const item of val) {
-            const s = String(item ?? '').trim();
-            if (!s) continue;
-            if (seen.has(s)) continue;
-            seen.add(s);
-            out.push(s);
-        }
-        return out;
-    };
-
-    const normalizeActionOrder = (val: unknown): ActionName[] => {
-        const list = Array.isArray(val) ? val : [];
-        const out: ActionName[] = [];
-        // Allow duplicate actions - don't filter them out
-        for (const item of list) {
-            if (!ACTIONS.includes(item as ActionName)) continue;
-            out.push(item as ActionName);
-        }
-        return out.length > 0 ? out : [...ACTIONS];
-    };
-
-    const clampNumber = (n: number, min: number, max: number): number => {
-        return Math.max(min, Math.min(max, n));
-    };
-
-    const normalizeLoadedSettings = (cloud: unknown): InstagramSettings => {
-        const raw = typeof cloud === 'object' && cloud ? cloud : {};
-        const merged = { ...DEFAULT_SETTINGS, ...raw } as Record<string, unknown>;
-        const next = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
-
-        for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof InstagramSettings)[]) {
-            if (key === 'action_order') {
-                next.action_order = normalizeActionOrder(merged.action_order);
-                continue;
-            }
-            if (key === 'source_list_ids') {
-                next.source_list_ids = normalizeStringArray(merged.source_list_ids);
-                continue;
-            }
-
-            const defVal = DEFAULT_SETTINGS[key];
-            const val = merged[key];
-
-            if (typeof defVal === 'boolean') next[key] = coerceBoolean(val, defVal);
-            else if (typeof defVal === 'number') next[key] = coerceNumber(val, defVal);
-            else next[key] = val ?? defVal;
-        }
-
-        next.max_sessions = clampNumber(next.max_sessions as number, 1, 100);
-        next.parallel_profiles = clampNumber(next.parallel_profiles as number, 1, 10);
-        next.like_chance = clampNumber(next.like_chance as number, 0, 100);
-        next.follow_chance = clampNumber(next.follow_chance as number, 0, 100);
-        next.reels_like_chance = clampNumber(next.reels_like_chance as number, 0, 100);
-        next.reels_follow_chance = clampNumber(next.reels_follow_chance as number, 0, 100);
-        next.reels_skip_chance = clampNumber(next.reels_skip_chance as number, 0, 100);
-
-        return next as InstagramSettings;
-    };
 
     const load = useCallback(async () => {
         setLoading(true);

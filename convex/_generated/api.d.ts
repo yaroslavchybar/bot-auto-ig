@@ -16,6 +16,7 @@ import type * as instagramSettings from "../instagramSettings.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles from "../profiles.js";
+import type * as scrapingTasks from "../scrapingTasks.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
   profiles: typeof profiles;
+  scrapingTasks: typeof scrapingTasks;
 }>;
 
 /**

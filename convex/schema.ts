@@ -14,6 +14,8 @@ export default defineSchema({
 		proxyType: v.optional(v.string()),
 		status: v.optional(v.string()),
 		mode: v.optional(v.string()),
+		automation: v.optional(v.boolean()),
+		sessionId: v.optional(v.string()),
 		using: v.boolean(),
 		testIp: v.boolean(),
 		fingerprintSeed: v.optional(v.string()),
@@ -55,4 +57,24 @@ export default defineSchema({
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index("by_kind", ["kind"]),
+
+	scrapingTasks: defineTable({
+		name: v.string(),
+		kind: v.string(),
+		mode: v.string(),
+		profileId: v.optional(v.string()),
+		targetUsername: v.string(),
+		limit: v.number(),
+		limitPerProfile: v.optional(v.number()),
+		status: v.optional(v.string()),
+		lastRunAt: v.optional(v.number()),
+		lastScraped: v.optional(v.number()),
+		lastError: v.optional(v.string()),
+		lastOutput: v.optional(v.any()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index("by_createdAt", ["createdAt"])
+		.index("by_status", ["status"])
+		.index("by_kind", ["kind"]),
 });

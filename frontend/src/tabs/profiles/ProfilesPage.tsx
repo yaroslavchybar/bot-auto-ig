@@ -139,6 +139,7 @@ export function ProfilesPage() {
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
+            automation: Boolean(data.automation),
           },
         })
         await refreshProfiles()
@@ -153,6 +154,7 @@ export function ProfilesPage() {
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
+            automation: Boolean(data.automation),
           },
         })
         await refreshProfiles()

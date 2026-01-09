@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Profile } from './types'
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -39,6 +40,7 @@ export function ProfileForm({
   const [draft, setDraft] = useState<Partial<Profile>>({
     name: '',
     test_ip: false,
+    automation: false,
     login: false,
     using: false,
     status: 'idle',
@@ -137,6 +139,16 @@ export function ProfileForm({
               <SelectItem value="proxy">Proxy</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="automation"
+            checked={Boolean(draft.automation)}
+            onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, automation: Boolean(checked) }))}
+            disabled={saving}
+          />
+          <Label htmlFor="automation">Automation / scraping</Label>
         </div>
 
         {connection === 'proxy' && (

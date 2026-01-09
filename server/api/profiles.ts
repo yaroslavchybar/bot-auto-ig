@@ -215,7 +215,7 @@ router.post('/:name/start', async (req, res) => {
         })
 
         profileProcesses.set(name, child)
-        void profilesSyncStatus(name, 'running', true)
+        await profilesSyncStatus(name, 'running', true)
 
         res.json({ success: true, message: `Browser started for ${name}` })
     } catch (error) {

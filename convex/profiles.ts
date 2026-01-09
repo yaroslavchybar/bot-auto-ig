@@ -87,11 +87,14 @@ export const create = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
+		automation: v.optional(v.boolean()),
+		sessionId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 		const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
+		const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 		const id = await ctx.db.insert("profiles", {
 			createdAt: Date.now(),
 			name,
@@ -99,6 +102,8 @@ export const create = mutation({
 			proxyType: args.proxyType,
 			status: "idle",
 			mode: computeProfileMode(proxy),
+			automation: args.automation ?? false,
+			sessionId: sessionIdRaw ? sessionIdRaw : undefined,
 			using: false,
 			testIp: args.testIp ?? false,
 			fingerprintSeed: args.fingerprintSeed,
@@ -121,6 +126,8 @@ export const updateByName = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
+		automation: v.optional(v.boolean()),
+		sessionId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const oldClean = String(args.oldName || "").trim();
@@ -133,15 +140,32 @@ export const updateByName = mutation({
 
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
-		const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
+		const next: Record<string, unknown> = { name };
+		if (typeof args.proxy === "string") {
+			next.proxy = args.proxy;
+			next.mode = computeProfileMode(args.proxy);
+		}
+		if (typeof args.proxyType === "string") {
+			next.proxyType = args.proxyType;
+		}
+		if (typeof args.testIp === "boolean") {
+			next.testIp = args.testIp;
+		}
+		if (typeof args.fingerprintSeed === "string") {
+			next.fingerprintSeed = args.fingerprintSeed;
+		}
+		if (typeof args.fingerprintOs === "string") {
+			next.fingerprintOs = args.fingerprintOs;
+		}
+		if (typeof args.automation === "boolean") {
+			next.automation = args.automation;
+		}
+		if (typeof args.sessionId === "string") {
+			const cleaned = args.sessionId.trim();
+			next.sessionId = cleaned ? cleaned : undefined;
+		}
 		await ctx.db.patch(existing._id, {
-			name,
-			proxy,
-			proxyType: args.proxyType,
-			testIp: args.testIp ?? false,
-			fingerprintSeed: args.fingerprintSeed,
-			fingerprintOs: args.fingerprintOs,
-			mode: computeProfileMode(proxy),
+			...(next as any),
 		});
 		return await ctx.db.get(existing._id);
 	},
@@ -156,21 +180,40 @@ export const updateById = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
+		automation: v.optional(v.boolean()),
+		sessionId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 		const existing = await ctx.db.get(args.profileId);
 		if (!existing) throw new Error("Profile not found");
-		const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
+		const next: Record<string, unknown> = { name };
+		if (typeof args.proxy === "string") {
+			next.proxy = args.proxy;
+			next.mode = computeProfileMode(args.proxy);
+		}
+		if (typeof args.proxyType === "string") {
+			next.proxyType = args.proxyType;
+		}
+		if (typeof args.testIp === "boolean") {
+			next.testIp = args.testIp;
+		}
+		if (typeof args.fingerprintSeed === "string") {
+			next.fingerprintSeed = args.fingerprintSeed;
+		}
+		if (typeof args.fingerprintOs === "string") {
+			next.fingerprintOs = args.fingerprintOs;
+		}
+		if (typeof args.automation === "boolean") {
+			next.automation = args.automation;
+		}
+		if (typeof args.sessionId === "string") {
+			const cleaned = args.sessionId.trim();
+			next.sessionId = cleaned ? cleaned : undefined;
+		}
 		await ctx.db.patch(args.profileId, {
-			name,
-			proxy,
-			proxyType: args.proxyType,
-			testIp: args.testIp ?? false,
-			fingerprintSeed: args.fingerprintSeed,
-			fingerprintOs: args.fingerprintOs,
-			mode: computeProfileMode(proxy),
+			...(next as any),
 		});
 		return await ctx.db.get(args.profileId);
 	},

@@ -16,6 +16,7 @@ import logsRouter from './api/logs.js'
 import profilesRouter from './api/profiles.js'
 import listsRouter from './api/lists.js'
 import instagramRouter from './api/instagram.js'
+import scrapingRouter from './api/scraping.js'
 import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 
@@ -75,6 +76,7 @@ app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
 app.use('/api/instagram', requireApiAuth, apiLimiter, instagramRouter)
+app.use('/api/scraping', requireApiAuth, apiLimiter, scrapingRouter)
 
 
 const PORT = process.env.SERVER_PORT || 3001

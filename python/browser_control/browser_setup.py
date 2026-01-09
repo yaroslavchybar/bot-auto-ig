@@ -72,6 +72,35 @@ def _safe_get(value, default=None):
     except Exception:
         return default
 
+def _extract_instagram_session_id(context) -> str | None:
+    try:
+        cookies = context.cookies()
+    except Exception:
+        return None
+    for c in cookies or []:
+        try:
+            if c.get("name") != "sessionid":
+                continue
+            domain = str(c.get("domain") or "")
+            if "instagram.com" not in domain:
+                continue
+            value = str(c.get("value") or "").strip()
+            if value:
+                return value
+        except Exception:
+            continue
+    return None
+
+def _try_store_session_id(context, profile_name: str) -> None:
+    session_id = _extract_instagram_session_id(context)
+    if not session_id:
+        return
+    try:
+        from python.database_sync.profiles_client import ProfilesClient
+        ProfilesClient().set_profile_session_id(profile_name, session_id)
+    except Exception:
+        return
+
 def _attach_error_snapshots(page, base_dir: str = "data/debug"):
     state = {"window_start": time.time(), "count": 0, "last_by_key": {}}
 
@@ -417,6 +446,12 @@ def create_browser_context(
             mark_proxy_failure(proxy_string)
             proxy_circuit.record_failure()
             
+        try:
+            if context:
+                _try_store_session_id(context, profile_name)
+        except Exception:
+            pass
+
         yield context, page
 
     finally:

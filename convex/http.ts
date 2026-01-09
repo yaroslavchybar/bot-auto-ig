@@ -38,6 +38,8 @@ function mapProfileToPython(profile: any): any {
 		proxy_type: profile.proxyType ?? null,
 		status: profile.status ?? null,
 		mode: profile.mode ?? null,
+		automation: typeof profile.automation === "boolean" ? profile.automation : false,
+		session_id: typeof profile.sessionId === "string" ? profile.sessionId : null,
 		Using: Boolean(profile.using),
 		test_ip: Boolean(profile.testIp),
 		fingerprint_seed: profile.fingerprintSeed ?? null,
@@ -235,6 +237,8 @@ http.route({
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
+				automation: body?.automation ?? undefined,
+				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(created));
 		} catch (err: any) {
@@ -251,7 +255,17 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.profiles.updateByName, body as any);
+			const updated = await ctx.runMutation(api.profiles.updateByName, {
+				oldName: body?.oldName ?? body?.old_name,
+				name: body?.name,
+				proxy: body?.proxy ?? undefined,
+				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
+				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
+				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
+				testIp: body?.testIp ?? body?.test_ip ?? undefined,
+				automation: body?.automation ?? undefined,
+				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
+			} as any);
 			return jsonResponse(mapProfileToPython(updated));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -275,6 +289,8 @@ http.route({
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
+				automation: body?.automation ?? undefined,
+				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(updated));
 		} catch (err: any) {

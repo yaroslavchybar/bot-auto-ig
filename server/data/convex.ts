@@ -32,8 +32,10 @@ export type DbProfileRow = {
     name: string;
     proxy?: string | null;
     proxy_type?: string | null;
+    automation?: boolean | null;
     status?: string | null;
     mode?: string | null;
+    session_id?: string | null;
     Using: boolean;
     test_ip: boolean;
     fingerprint_seed?: string | null;
@@ -51,6 +53,7 @@ export type ProfileInput = {
     fingerprint_seed?: string;
     fingerprint_os?: string;
     test_ip?: boolean;
+    automation?: boolean;
 };
 
 // HTTP client for Convex
@@ -107,6 +110,12 @@ export async function profilesList(): Promise<DbProfileRow[]> {
     return convexFetch<DbProfileRow[]>('/api/profiles');
 }
 
+export async function profilesGetById(profileId: string): Promise<DbProfileRow | null> {
+    const cleaned = String(profileId || '').trim();
+    if (!cleaned) throw new Error('profile_id is required');
+    return convexFetch<DbProfileRow | null>(`/api/profiles/by-id?profileId=${encodeURIComponent(cleaned)}`);
+}
+
 export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRow | null> {
     const name = String(profile?.name || '').trim();
     if (!name) throw new Error('name is required');
@@ -119,6 +128,7 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             fingerprintSeed: profile.fingerprint_seed,
             fingerprintOs: profile.fingerprint_os,
             testIp: profile.test_ip,
+            automation: profile.automation,
         },
     });
 }
@@ -138,6 +148,7 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             fingerprintSeed: profile.fingerprint_seed,
             fingerprintOs: profile.fingerprint_os,
             testIp: profile.test_ip,
+            automation: profile.automation,
         },
     });
 }

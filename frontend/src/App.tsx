@@ -7,6 +7,7 @@ import { DashboardPage } from './tabs/dashboard/DashboardPage'
 import { LogsPage } from './tabs/logs/LogsPage'
 import { AccountsPage } from './tabs/accounts/AccountsPage'
 import { InstagramPage } from './tabs/instagram'
+import { ScrapingPage } from './tabs/scraping/ScrapingPage'
 import { ModeToggle } from '@/components/mode-toggle'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -47,6 +48,8 @@ function MainLayout() {
         return <ListsPage />
       case 'instagram':
         return <InstagramPage />
+      case 'scraping':
+        return <ScrapingPage />
       case 'accounts':
         return <AccountsPage />
       case 'logs':
@@ -61,6 +64,7 @@ function MainLayout() {
       case 'dashboard': return 'Dashboard'
       case 'profiles': return 'Profiles Manager'
       case 'instagram': return 'Instagram Automation'
+      case 'scraping': return 'Scraping'
       case 'lists': return 'Lists Manager'
       case 'accounts': return 'Upload Accounts'
       case 'logs': return 'Logs'

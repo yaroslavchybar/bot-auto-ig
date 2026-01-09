@@ -101,6 +101,25 @@ class ProfilesClient:
         result = self._make_request("POST", "/update-by-id", data=db_data)
         return result if isinstance(result, dict) else None
 
+    def update_profile_by_name(self, old_name: str, profile_data: Dict) -> Dict:
+        db_data = dict(profile_data or {})
+        db_data["old_name"] = old_name
+        if "name" not in db_data:
+            db_data["name"] = old_name
+        result = self._make_request("POST", "/update-by-name", data=db_data)
+        return result if isinstance(result, dict) else None
+
+    def set_profile_session_id(self, name: str, session_id: str) -> bool:
+        clean_name = str(name or "").strip()
+        clean_session = str(session_id or "").strip()
+        if not clean_name or not clean_session:
+            return False
+        try:
+            self.update_profile_by_name(clean_name, {"name": clean_name, "session_id": clean_session})
+            return True
+        except ProfilesError:
+            return False
+
     def delete_profile(self, profile_id: str) -> bool:
         """Delete profile from database"""
         try:

@@ -31,6 +31,14 @@ services:
       - CONVEX_URL_PROD=${CONVEX_URL_PROD}
     restart: unless-stopped
 
+  scraper:
+    build:
+      context: ./Instagram-Followers-Scraper_Suite
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    restart: unless-stopped
+
   frontend:
     build:
       context: .
@@ -43,4 +51,5 @@ services:
     depends_on:
       - server
       - datauploader
+      - scraper
     restart: unless-stopped
