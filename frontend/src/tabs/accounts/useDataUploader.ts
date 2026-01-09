@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react'
 import type { UploadResponse, ProcessRequest, ProcessResponse, UploadState } from './types'
 
-const API_BASE = import.meta.env.VITE_DATAUPLOADER_URL || 'http://localhost:3002'
+// In production, use relative path that nginx proxies. In dev, use localhost.
+const API_BASE = import.meta.env.VITE_DATAUPLOADER_URL || (import.meta.env.DEV ? 'http://localhost:3002' : '/api/datauploader')
 
 export function useDataUploader() {
     const [state, setState] = useState<UploadState>({ step: 'idle' })
