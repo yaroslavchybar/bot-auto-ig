@@ -17,6 +17,9 @@ jobs:
           - service: frontend
             dockerfile: frontend/Dockerfile
             tag: frontend
+          - service: datauploader
+            dockerfile: datauploader/Dockerfile
+            tag: datauploader
     
     steps:
       - name: Checkout code
@@ -71,3 +74,16 @@ jobs:
           build-args: |
             VITE_CONVEX_URL=${{ secrets.VITE_CONVEX_URL }}
             VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+
+      - name: Build and push datauploader
+        if: matrix.service == 'datauploader'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./datauploader
+          file: ./${{ matrix.dockerfile }}
+          pull: true
+          progress: plain
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

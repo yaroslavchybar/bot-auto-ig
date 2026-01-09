@@ -6,6 +6,7 @@ import {
   List,
   FileText,
   Command,
+  Upload,
 } from "lucide-react"
 
 import {
@@ -21,7 +22,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type NavId = 'dashboard' | 'profiles' | 'instagram' | 'lists' | 'logs';
+export type NavId = 'dashboard' | 'profiles' | 'instagram' | 'lists' | 'accounts' | 'logs';
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeId: NavId;
@@ -52,6 +53,11 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
           title: "Lists Manager",
           id: "lists",
           icon: List,
+        },
+        {
+          title: "Upload Accounts",
+          id: "accounts",
+          icon: Upload,
         },
         {
           title: "Logs",
@@ -87,7 +93,7 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
               <SidebarMenu>
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton 
+                    <SidebarMenuButton
                       isActive={activeId === item.id}
                       onClick={() => onNavigate(item.id as NavId)}
                       tooltip={item.title}

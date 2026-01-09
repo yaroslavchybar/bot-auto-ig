@@ -16,6 +16,21 @@ services:
       - CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
     restart: unless-stopped
 
+  datauploader:
+    build:
+      context: ./datauploader
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./data/uploads:/app/uploads
+    env_file:
+      - .env
+    environment:
+      - CONVEX_URL_DEV=${CONVEX_URL_DEV}
+      - CONVEX_URL_PROD=${CONVEX_URL_PROD}
+    restart: unless-stopped
+
   frontend:
     build:
       context: .
@@ -27,4 +42,5 @@ services:
       - "5173:80"
     depends_on:
       - server
+      - datauploader
     restart: unless-stopped
