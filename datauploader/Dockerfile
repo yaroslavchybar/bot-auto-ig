@@ -13,12 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 COPY keywords ./keywords
 
-# Create non-root user and writable dirs
-RUN useradd -m appuser \
-    && mkdir -p /app/uploads \
-    && chown -R appuser:appuser /app
-
-USER appuser
+# Create uploads directory
+RUN mkdir -p /app/uploads
 
 EXPOSE 3002
 
