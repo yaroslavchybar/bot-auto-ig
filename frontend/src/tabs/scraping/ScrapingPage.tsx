@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, apiFetchWithRetry } from '@/lib/api'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
@@ -37,11 +37,11 @@ function parseTargets(raw: string): string[] {
 }
 
 export function ScrapingPage() {
+  const [kind, setKind] = useState<'followers' | 'following'>('followers')
   const [autoMode, setAutoMode] = useState(false)
   const [selectedProfileId, setSelectedProfileId] = useState<string>('')
   const [targetUsername, setTargetUsername] = useState('')
   const [limit, setLimit] = useState('200')
-  const [limitPerProfile, setLimitPerProfile] = useState('')
   const [taskName, setTaskName] = useState('')
 
   const [error, setError] = useState<string | null>(null)
@@ -85,7 +85,7 @@ export function ScrapingPage() {
     if (!eligibleSet.has(selectedProfileId)) setSelectedProfileId('')
   }, [autoMode, eligibleSet, selectedProfileId])
 
-  const tasks = useQuery(api.scrapingTasks.list, { kind: 'followers' }) as Doc<'scrapingTasks'>[] | undefined
+  const tasks = useQuery(api.scrapingTasks.list, {}) as Doc<'scrapingTasks'>[] | undefined
   const createTaskMutation = useMutation(api.scrapingTasks.create)
   const updateTaskMutation = useMutation(api.scrapingTasks.update)
   const removeTaskMutation = useMutation(api.scrapingTasks.remove)
@@ -101,11 +101,11 @@ export function ScrapingPage() {
     return true
   }, [autoMode, eligibleSet, selectedProfileId, targetUsername])
 
+  const [editKind, setEditKind] = useState<'followers' | 'following'>('followers')
   const [editAutoMode, setEditAutoMode] = useState(false)
   const [editSelectedProfileId, setEditSelectedProfileId] = useState<string>('')
   const [editTargetUsername, setEditTargetUsername] = useState('')
   const [editLimit, setEditLimit] = useState('200')
-  const [editLimitPerProfile, setEditLimitPerProfile] = useState('')
   const [editTaskName, setEditTaskName] = useState('')
 
   const handleOpenCreate = useCallback(() => {
@@ -127,23 +127,16 @@ export function ScrapingPage() {
       setIsEditOpen(true)
       setError(null)
 
+      const taskKind = task.kind === 'following' ? 'following' : 'followers'
       const mode = task.mode === 'manual' ? 'manual' : 'auto'
+      setEditKind(taskKind)
       setEditAutoMode(mode === 'auto')
       setEditSelectedProfileId(typeof task.profileId === 'string' ? task.profileId : '')
       setEditTargetUsername(String(task.targetUsername || ''))
       setEditLimit(String(task.limit ?? 200))
-      setEditLimitPerProfile(
-        mode === 'auto'
-          ? typeof task.limitPerProfile === 'number'
-            ? String(task.limitPerProfile)
-            : eligibleProfiles.length > 0
-              ? String(Math.ceil((task.limit ?? 200) / eligibleProfiles.length))
-              : ''
-          : ''
-      )
       setEditTaskName(String(task.name || ''))
     },
-    [eligibleProfiles.length]
+    []
   )
 
   const handleCloseEdit = useCallback(() => {
@@ -167,30 +160,28 @@ export function ScrapingPage() {
     if (!firstTarget) return
     const packedTargets = targets.join('\n')
 
-    const perProfile = autoMode && limitPerProfile.trim() ? clampLimit(limitPerProfile) : null
-    const effectiveLimit = autoMode && perProfile ? clampLimit(perProfile * Math.max(1, eligibleProfiles.length)) : clampLimit(limit)
+    const effectiveLimit = clampLimit(limit)
     const baseName = String(taskName || '').trim()
 
     try {
-      const name = baseName ? baseName : `${firstTarget} followers`
+      const name = baseName ? baseName : `${firstTarget} ${kind}`
       const created = await createTaskMutation({
         name,
-        kind: 'followers',
+        kind,
         mode: autoMode ? 'auto' : 'manual',
         ...(autoMode ? {} : { profileId: selectedProfileId }),
         targetUsername: packedTargets,
         limit: effectiveLimit,
-        ...(autoMode && perProfile ? { limitPerProfile: perProfile } : {}),
       })
       setIsCreateOpen(false)
       if (created?._id) setSelectedId(created._id)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [autoMode, canCreate, createTaskMutation, eligibleProfiles.length, limit, limitPerProfile, selectedProfileId, taskName, targetUsername])
+  }, [autoMode, canCreate, createTaskMutation, kind, limit, selectedProfileId, taskName, targetUsername])
 
   const handleRunTask = useCallback(
-    async (task: Doc<'scrapingTasks'>) => {
+    async (task: Doc<'scrapingTasks'>, opts?: { resume?: boolean }) => {
       if (runningId) return
 
       const taskMode = task.mode === 'manual' ? 'manual' : 'auto'
@@ -215,54 +206,125 @@ export function ScrapingPage() {
         lastScraped: undefined,
       })
 
+      const taskKind = task.kind === 'following' ? 'following' : 'followers'
+      const apiEndpoint = taskKind === 'following' ? '/api/scraping/following-chunk' : '/api/scraping/followers-chunk'
+      const resume = Boolean(opts?.resume)
+      const existingResumeState = (() => {
+        if (!task.lastOutput || typeof task.lastOutput !== 'object') return undefined
+        const r = task.lastOutput as Record<string, unknown>
+        return r.resumeState
+      })()
+
       try {
-        const output = await apiFetch<unknown>('/api/scraping/followers', {
-          method: 'POST',
-          body: {
-            ...(taskMode === 'auto' ? { distribution: 'auto' } : { profileId: taskProfileId }),
-            targetUsernames: taskTargets,
-            limit: clampLimit(task.limit),
-            ...(taskMode === 'auto' && typeof task.limitPerProfile === 'number'
-              ? { limitPerProfile: clampLimit(task.limitPerProfile) }
-              : {}),
-          },
-          timeout: 120000,
-        })
+        const startedAt = Date.now()
+        let lastOutput: unknown = null
+        let lastStorageId: unknown = task.storageId
+        let resumeState: unknown = resume ? existingResumeState : undefined
+        let done = false
+        let chunkLimit = 100
+        let maxPages = 3
+
+        const getDone = (res: unknown): boolean => {
+          if (!res || typeof res !== 'object') return false
+          const r = res as Record<string, unknown>
+          return r.done === true
+        }
+
+        const getResumeState = (res: unknown): unknown => {
+          if (!res || typeof res !== 'object') return undefined
+          const r = res as Record<string, unknown>
+          return r.resumeState
+        }
+
+        const getStorageId = (res: unknown): unknown => {
+          if (!res || typeof res !== 'object') return undefined
+          const r = res as Record<string, unknown>
+          return r.storageId
+        }
+
+        const maxIterations = 50
+        for (let i = 0; i < maxIterations; i++) {
+          if (Date.now() - startedAt > 110000) break
+
+          let output: unknown
+          try {
+            output = await apiFetchWithRetry<unknown>(apiEndpoint, {
+              method: 'POST',
+              body: {
+                ...(taskMode === 'auto' ? { distribution: 'auto' } : { profileId: taskProfileId }),
+                targetUsernames: taskTargets,
+                limit: clampLimit(task.limit),
+                taskId: task._id,
+                resume: resume || i > 0,
+                ...((resume || i > 0) ? { resumeState, storageId: lastStorageId } : {}),
+                chunkLimit,
+                maxPages,
+              },
+              timeout: 45000,
+              maxRetries: 2,
+            })
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e)
+            const lower = msg.toLowerCase()
+            const looksLike504 = lower.includes('504') || lower.includes('gateway time-out') || lower.includes('gateway timeout')
+            if (looksLike504 && (chunkLimit > 25 || maxPages > 1)) {
+              chunkLimit = Math.max(25, Math.min(chunkLimit, 50))
+              maxPages = 1
+              output = await apiFetchWithRetry<unknown>(apiEndpoint, {
+                method: 'POST',
+                body: {
+                  ...(taskMode === 'auto' ? { distribution: 'auto' } : { profileId: taskProfileId }),
+                  targetUsernames: taskTargets,
+                  limit: clampLimit(task.limit),
+                  taskId: task._id,
+                  resume: resume || i > 0,
+                  ...((resume || i > 0) ? { resumeState, storageId: lastStorageId } : {}),
+                  chunkLimit,
+                  maxPages,
+                },
+                timeout: 45000,
+                maxRetries: 1,
+              })
+            } else {
+              throw e
+            }
+          }
+
+          lastOutput = output
+          resumeState = getResumeState(output)
+          const sid = getStorageId(output)
+          if (sid !== undefined) lastStorageId = sid
+
+          done = getDone(output)
+
+          await setTaskStatusMutation({
+            id: task._id,
+            status: done ? 'completed' : 'running',
+            lastRunAt: startAt,
+            lastScraped: undefined,
+            lastError: undefined,
+            lastOutput,
+          })
+
+          if (done) break
+          await new Promise((r) => setTimeout(r, 250))
+        }
 
         const getLastScraped = (res: unknown): number | undefined => {
           if (!res || typeof res !== 'object') return undefined
           const r = res as Record<string, unknown>
-          const v = typeof r.totalScraped === 'number' ? r.totalScraped : typeof r.scraped === 'number' ? r.scraped : undefined
+          const v = typeof r.totalStored === 'number' ? r.totalStored : typeof r.totalScraped === 'number' ? r.totalScraped : typeof r.scraped === 'number' ? r.scraped : undefined
           return typeof v === 'number' && Number.isFinite(Number(v)) ? Number(v) : undefined
         }
 
-        const hasFailures = (): boolean => {
-          if (!output || typeof output !== 'object') return false
-          const r = output as Record<string, unknown>
-          return Boolean(r.partial) || (typeof r.failures === 'number' && r.failures > 0)
-        }
-
-        const hasSuccess = (): boolean => {
-          if (!output || typeof output !== 'object') return true
-          const r = output as Record<string, unknown>
-          if (!Array.isArray(r.perTarget)) return true
-          return r.perTarget.some((v) => {
-            if (!v || typeof v !== 'object') return false
-            const o = v as Record<string, unknown>
-            return o.ok === true
-          })
-        }
-
-        const lastScraped = getLastScraped(output)
-        const ok = !hasFailures()
-        const anyOk = hasSuccess()
+        const lastScraped = getLastScraped(lastOutput)
         await setTaskStatusMutation({
           id: task._id,
-          status: anyOk ? 'completed' : 'failed',
+          status: done ? 'completed' : 'paused',
           lastRunAt: startAt,
-          lastScraped: anyOk ? lastScraped : undefined,
-          lastError: ok ? undefined : anyOk ? 'Some targets failed.' : 'All targets failed.',
-          lastOutput: output,
+          lastScraped,
+          lastError: undefined,
+          lastOutput: lastOutput ?? undefined,
         })
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e)
@@ -317,24 +379,23 @@ export function ScrapingPage() {
     const cleanedTargets = parseTargets(editTargetUsername)
     const packedTargets = cleanedTargets.join('\n')
     if (!packedTargets) return
-    const perProfile = editAutoMode && editLimitPerProfile.trim() ? clampLimit(editLimitPerProfile) : null
-    const safeLimit = editAutoMode && perProfile ? clampLimit(perProfile * Math.max(1, eligibleProfiles.length)) : clampLimit(editLimit)
+    const safeLimit = clampLimit(editLimit)
 
     try {
       await updateTaskMutation({
         id: selectedId,
         name: cleanedName,
+        kind: editKind,
         mode: editAutoMode ? 'auto' : 'manual',
         ...(editAutoMode ? {} : { profileId: editSelectedProfileId }),
         targetUsername: packedTargets,
         limit: safeLimit,
-        ...(editAutoMode && perProfile ? { limitPerProfile: perProfile } : { limitPerProfile: undefined }),
       })
       setIsEditOpen(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [canSaveEdit, editAutoMode, editLimit, editLimitPerProfile, editSelectedProfileId, editTargetUsername, editTaskName, eligibleProfiles.length, selectedId, updateTaskMutation])
+  }, [canSaveEdit, editAutoMode, editKind, editLimit, editSelectedProfileId, editTargetUsername, editTaskName, selectedId, updateTaskMutation])
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -375,7 +436,8 @@ export function ScrapingPage() {
             onSelect={setSelectedId}
             eligibleProfiles={eligibleProfiles}
             running={Boolean(runningId)}
-            onRun={(task) => void handleRunTask(task)}
+            onRun={(task) => void handleRunTask(task, { resume: false })}
+            onResume={(task) => void handleRunTask(task, { resume: true })}
             onEdit={handleOpenEdit}
             onViewOutput={handleViewOutput}
             onDelete={(task) => {
@@ -396,6 +458,8 @@ export function ScrapingPage() {
         idPrefix="create_scraping_task"
         taskName={taskName}
         onTaskNameChange={setTaskName}
+        kind={kind}
+        onKindChange={setKind}
         autoMode={autoMode}
         onAutoModeChange={setAutoMode}
         selectedProfileId={selectedProfileId}
@@ -404,8 +468,6 @@ export function ScrapingPage() {
         onTargetUsernameChange={setTargetUsername}
         limit={limit}
         onLimitChange={setLimit}
-        limitPerProfile={limitPerProfile}
-        onLimitPerProfileChange={setLimitPerProfile}
         eligibleProfiles={eligibleProfiles}
         eligibleSet={eligibleSet}
         eligibleLoading={eligibleLoading}
@@ -426,6 +488,8 @@ export function ScrapingPage() {
         idPrefix="edit_scraping_task"
         taskName={editTaskName}
         onTaskNameChange={setEditTaskName}
+        kind={editKind}
+        onKindChange={setEditKind}
         autoMode={editAutoMode}
         onAutoModeChange={setEditAutoMode}
         selectedProfileId={editSelectedProfileId}
@@ -434,8 +498,6 @@ export function ScrapingPage() {
         onTargetUsernameChange={setEditTargetUsername}
         limit={editLimit}
         onLimitChange={setEditLimit}
-        limitPerProfile={editLimitPerProfile}
-        onLimitPerProfileChange={setEditLimitPerProfile}
         eligibleProfiles={eligibleProfiles}
         eligibleSet={eligibleSet}
         eligibleLoading={eligibleLoading}

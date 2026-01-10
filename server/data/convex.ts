@@ -44,6 +44,8 @@ export type DbProfileRow = {
     sessions_today?: number | null;
     last_opened_at?: string | null;
     login: boolean;
+    daily_scraping_limit?: number | null;
+    daily_scraping_used?: number | null;
 };
 
 export type ProfileInput = {
@@ -54,6 +56,7 @@ export type ProfileInput = {
     fingerprint_os?: string;
     test_ip?: boolean;
     automation?: boolean;
+    daily_scraping_limit?: number | null;
 };
 
 // HTTP client for Convex
@@ -129,6 +132,7 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             fingerprintOs: profile.fingerprint_os,
             testIp: profile.test_ip,
             automation: profile.automation,
+            dailyScrapingLimit: profile.daily_scraping_limit,
         },
     });
 }
@@ -149,6 +153,7 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             fingerprintOs: profile.fingerprint_os,
             testIp: profile.test_ip,
             automation: profile.automation,
+            dailyScrapingLimit: profile.daily_scraping_limit,
         },
     });
 }
@@ -205,6 +210,15 @@ export async function profilesClearBusyForLists(listIds: string[]): Promise<true
     return true;
 }
 
+export async function profilesIncrementDailyScrapingUsed(name: string, amount: number): Promise<true> {
+    const cleanedName = String(name || '').trim();
+    if (!cleanedName) throw new Error('name is required');
+    const safeAmount = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
+    if (safeAmount === 0) return true;
+    await convexFetch<any>('/api/profiles/increment-daily-scraping-used', { method: 'POST', body: { name: cleanedName, amount: safeAmount } });
+    return true;
+}
+
 // ==================== INSTAGRAM SETTINGS ====================
 
 export async function instagramSettingsGet(scope: string = 'global'): Promise<Record<string, any> | null> {
@@ -230,8 +244,40 @@ export async function messageTemplatesGet(kind: string): Promise<string[]> {
 export async function messageTemplatesUpsert(kind: string, texts: string[]): Promise<true> {
     const cleanedKind = String(kind || '').trim();
     if (!cleanedKind) throw new Error('kind is required');
-    if (!Array.isArray(texts)) throw new Error('texts must be a list');
+    if (!Array.isArray(texts)) throw new Error('texts must be an array');
     const cleanedTexts = texts.map(t => String(t)).filter(t => t.trim());
     await convexFetch<any>('/api/message-templates', { method: 'POST', body: { kind: cleanedKind, texts: cleanedTexts } });
     return true;
+}
+
+// ==================== SCRAPING TASKS ====================
+
+export async function scrapingTasksStoreData(
+    taskId: string,
+    users: any[],
+    metadata?: Record<string, any>
+): Promise<{ storageId: string; count: number }> {
+    const cleanedTaskId = String(taskId || '').trim();
+    if (!cleanedTaskId) throw new Error('taskId is required');
+    
+    // Call the Convex action via HTTP
+    // Note: Actions are called differently - we need to use the Convex SDK or HTTP actions
+    const result = await convexFetch<{ storageId: string; count: number }>(
+        '/api/scraping-tasks/store-data',
+        {
+            method: 'POST',
+            body: {
+                taskId: cleanedTaskId,
+                users: users || [],
+                metadata: metadata || {},
+            },
+        }
+    );
+    return result;
+}
+
+export async function scrapingTasksGetStorageUrl(storageId: string): Promise<string | null> {
+    const cleaned = String(storageId || '').trim();
+    if (!cleaned) throw new Error('storageId is required');
+    return convexFetch<string | null>(`/api/scraping-tasks/storage-url?storageId=${encodeURIComponent(cleaned)}`);
 }

@@ -115,7 +115,8 @@ class ProfilesClient:
         if not clean_name or not clean_session:
             return False
         try:
-            self.update_profile_by_name(clean_name, {"name": clean_name, "session_id": clean_session})
+            # Use sessionId (camelCase) to match Convex HTTP endpoint expectations
+            self.update_profile_by_name(clean_name, {"name": clean_name, "sessionId": clean_session})
             return True
         except ProfilesError:
             return False

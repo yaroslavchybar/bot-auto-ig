@@ -30,6 +30,34 @@ def get_convex_url(env: str = "dev") -> str:
     return url
 
 
+def convex_query(path: str, args: dict[str, Any] | None = None, env: str = "dev") -> Any:
+    url = f"{get_convex_url(env)}/api/query"
+    body = {"path": path, "args": args or {}, "format": "json"}
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=body)
+    response.raise_for_status()
+    result = response.json()
+    if result.get("status") == "success" and "value" in result:
+        return result["value"]
+    if result.get("status") == "error":
+        raise RuntimeError(result.get("errorMessage", "Unknown error"))
+    return result
+
+
+def convex_mutation(path: str, args: dict[str, Any] | None = None, env: str = "dev") -> Any:
+    url = f"{get_convex_url(env)}/api/mutation"
+    body = {"path": path, "args": args or {}, "format": "json"}
+    headers = {"Content-Type": "application/json"}
+    response = requests.post(url, headers=headers, json=body)
+    response.raise_for_status()
+    result = response.json()
+    if result.get("status") == "success" and "value" in result:
+        return result["value"]
+    if result.get("status") == "error":
+        raise RuntimeError(result.get("errorMessage", "Unknown error"))
+    return result
+
+
 def insert_account(account: dict[str, Any], env: str = "dev") -> dict:
     """Insert a single account using Convex HTTP API mutation.
     
@@ -40,16 +68,7 @@ def insert_account(account: dict[str, Any], env: str = "dev") -> dict:
     Returns:
         API response dict
     """
-    url = f"{get_convex_url(env)}/api/mutation"
-    body = {
-        "path": "instagramAccounts:insert",
-        "args": account,
-        "format": "json"
-    }
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=body)
-    response.raise_for_status()
-    return response.json()
+    return convex_mutation("instagramAccounts:insert", account, env=env)
 
 
 def insert_accounts_batch(accounts: list[dict[str, Any]], env: str = "dev") -> dict:
@@ -62,37 +81,11 @@ def insert_accounts_batch(accounts: list[dict[str, Any]], env: str = "dev") -> d
     Returns:
         API response dict with inserted and skipped counts
     """
-    url = f"{get_convex_url(env)}/api/mutation"
-    body = {
-        "path": "instagramAccounts:insertBatch",
-        "args": {"accounts": accounts},
-        "format": "json"
-    }
-    headers = {"Content-Type": "application/json"}
-    response = requests.post(url, headers=headers, json=body)
-    response.raise_for_status()
-    result = response.json()
-    
-    # Convex HTTP API returns { status: "success", value: {...} } or { status: "error", ... }
-    if result.get("status") == "success" and "value" in result:
-        value = result["value"]
-        return {
-            "status": "success",
-            "inserted": value.get("inserted", 0),
-            "skipped": value.get("skipped", 0),
-        }
-    elif result.get("status") == "error":
-        return {
-            "status": "error",
-            "errorMessage": result.get("errorMessage", "Unknown error"),
-        }
-    else:
-        # Try parsing the result directly (in case format changed)
-        return {
-            "status": "success",
-            "inserted": result.get("inserted", 0),
-            "skipped": result.get("skipped", 0),
-        }
+    try:
+        value = convex_mutation("instagramAccounts:insertBatch", {"accounts": accounts}, env=env)
+        return {"status": "success", "inserted": value.get("inserted", 0), "skipped": value.get("skipped", 0)}
+    except Exception as e:
+        return {"status": "error", "errorMessage": str(e)}
 
 
 def prepare_account(username: str, status: str = "available") -> dict[str, Any]:

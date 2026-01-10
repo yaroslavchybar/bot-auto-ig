@@ -89,12 +89,21 @@ export const create = mutation({
 		fingerprintOs: v.optional(v.string()),
 		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
+		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 		const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
+		const proxyTrimmed = typeof proxy === "string" ? proxy.trim() : "";
 		const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
+		const dailyLimit = typeof args.dailyScrapingLimit === "number" ? args.dailyScrapingLimit : undefined;
+		
+		// Validate: automation=false requires proxy
+		if (args.automation === false && !proxyTrimmed) {
+			throw new Error("Proxy is required when automation is disabled (for scraping)");
+		}
+		
 		const id = await ctx.db.insert("profiles", {
 			createdAt: Date.now(),
 			name,
@@ -112,6 +121,8 @@ export const create = mutation({
 			sessionsToday: 0,
 			lastOpenedAt: undefined,
 			login: false,
+			dailyScrapingLimit: dailyLimit,
+			dailyScrapingUsed: 0,
 		});
 		return await ctx.db.get(id);
 	},
@@ -128,6 +139,7 @@ export const updateByName = mutation({
 		fingerprintOs: v.optional(v.string()),
 		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
+		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
 	handler: async (ctx, args) => {
 		const oldClean = String(args.oldName || "").trim();
@@ -140,10 +152,26 @@ export const updateByName = mutation({
 
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
+		
+		// Determine final values for validation BEFORE building update object
+		const finalProxy = typeof args.proxy === "string" ? args.proxy : existing.proxy;
+		const finalAutomation = typeof args.automation === "boolean" ? args.automation : existing.automation;
+		
+		// Validate: automation=false requires proxy - do this FIRST before any updates
+		const proxyTrimmed = typeof finalProxy === "string" ? finalProxy.trim() : "";
+		if (finalAutomation === false && !proxyTrimmed) {
+			throw new Error("Proxy is required when automation is disabled (for scraping)");
+		}
+		
+		// Now build the update object after validation passed
 		const next: Record<string, unknown> = { name };
+		
 		if (typeof args.proxy === "string") {
 			next.proxy = args.proxy;
 			next.mode = computeProfileMode(args.proxy);
+		}
+		if (typeof args.automation === "boolean") {
+			next.automation = args.automation;
 		}
 		if (typeof args.proxyType === "string") {
 			next.proxyType = args.proxyType;
@@ -157,12 +185,14 @@ export const updateByName = mutation({
 		if (typeof args.fingerprintOs === "string") {
 			next.fingerprintOs = args.fingerprintOs;
 		}
-		if (typeof args.automation === "boolean") {
-			next.automation = args.automation;
-		}
 		if (typeof args.sessionId === "string") {
 			const cleaned = args.sessionId.trim();
 			next.sessionId = cleaned ? cleaned : undefined;
+		}
+		if (typeof args.dailyScrapingLimit === "number") {
+			next.dailyScrapingLimit = args.dailyScrapingLimit;
+		} else if (args.dailyScrapingLimit === null) {
+			next.dailyScrapingLimit = undefined;
 		}
 		await ctx.db.patch(existing._id, {
 			...(next as any),
@@ -182,16 +212,33 @@ export const updateById = mutation({
 		fingerprintOs: v.optional(v.string()),
 		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
+		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
 	handler: async (ctx, args) => {
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 		const existing = await ctx.db.get(args.profileId);
 		if (!existing) throw new Error("Profile not found");
+		
+		// Determine final values for validation BEFORE building update object
+		const finalProxy = typeof args.proxy === "string" ? args.proxy : existing.proxy;
+		const finalAutomation = typeof args.automation === "boolean" ? args.automation : existing.automation;
+		
+		// Validate: automation=false requires proxy - do this FIRST before any updates
+		const proxyTrimmed = typeof finalProxy === "string" ? finalProxy.trim() : "";
+		if (finalAutomation === false && !proxyTrimmed) {
+			throw new Error("Proxy is required when automation is disabled (for scraping)");
+		}
+		
+		// Now build the update object after validation passed
 		const next: Record<string, unknown> = { name };
+		
 		if (typeof args.proxy === "string") {
 			next.proxy = args.proxy;
 			next.mode = computeProfileMode(args.proxy);
+		}
+		if (typeof args.automation === "boolean") {
+			next.automation = args.automation;
 		}
 		if (typeof args.proxyType === "string") {
 			next.proxyType = args.proxyType;
@@ -205,12 +252,14 @@ export const updateById = mutation({
 		if (typeof args.fingerprintOs === "string") {
 			next.fingerprintOs = args.fingerprintOs;
 		}
-		if (typeof args.automation === "boolean") {
-			next.automation = args.automation;
-		}
 		if (typeof args.sessionId === "string") {
 			const cleaned = args.sessionId.trim();
 			next.sessionId = cleaned ? cleaned : undefined;
+		}
+		if (typeof args.dailyScrapingLimit === "number") {
+			next.dailyScrapingLimit = args.dailyScrapingLimit;
+		} else if (args.dailyScrapingLimit === null) {
+			next.dailyScrapingLimit = undefined;
 		}
 		await ctx.db.patch(args.profileId, {
 			...(next as any),
@@ -371,6 +420,56 @@ export const resetSessionsToday = internalMutation({
 		const rows = await ctx.db.query("profiles").collect();
 		const toUpdate = rows.filter((r) => (r.sessionsToday || 0) !== 0);
 		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { sessionsToday: 0 })));
+		return true;
+	},
+});
+
+export const incrementDailyScrapingUsed = mutation({
+	args: { name: v.string(), amount: v.number() },
+	handler: async (ctx, args) => {
+		const cleanedName = String(args.name || "").trim();
+		if (!cleanedName) throw new Error("name is required");
+		const amount = Number.isFinite(args.amount) ? Math.max(0, Math.floor(args.amount)) : 0;
+		if (amount === 0) return true;
+		const existing = await ctx.db
+			.query("profiles")
+			.withIndex("by_name", (q) => q.eq("name", cleanedName))
+			.first();
+		if (!existing) return true;
+		await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
+		return true;
+	},
+});
+
+export const incrementDailyScrapingUsedById = mutation({
+	args: { profileId: v.id("profiles"), amount: v.number() },
+	handler: async (ctx, args) => {
+		const amount = Number.isFinite(args.amount) ? Math.max(0, Math.floor(args.amount)) : 0;
+		if (amount === 0) return true;
+		const existing = await ctx.db.get(args.profileId);
+		if (!existing) return true;
+		await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
+		return true;
+	},
+});
+
+export const updateDailyScrapingLimit = mutation({
+	args: { profileId: v.id("profiles"), limit: v.union(v.number(), v.null()) },
+	handler: async (ctx, args) => {
+		const existing = await ctx.db.get(args.profileId);
+		if (!existing) throw new Error("Profile not found");
+		const limit = args.limit === null ? undefined : Number.isFinite(args.limit) ? Math.max(0, Math.floor(args.limit)) : undefined;
+		await ctx.db.patch(args.profileId, { dailyScrapingLimit: limit });
+		return await ctx.db.get(args.profileId);
+	},
+});
+
+export const resetDailyScrapingUsed = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query("profiles").collect();
+		const toUpdate = rows.filter((r) => (r.dailyScrapingUsed || 0) !== 0);
+		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { dailyScrapingUsed: 0 })));
 		return true;
 	},
 });

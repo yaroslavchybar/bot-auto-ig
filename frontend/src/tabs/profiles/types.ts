@@ -10,6 +10,8 @@ export type Profile = {
   status?: string
   using?: boolean
   login?: boolean
+  daily_scraping_limit?: number | null
+  daily_scraping_used?: number
 }
 
 export type LogEntry = {

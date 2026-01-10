@@ -38,6 +38,64 @@ export interface JobStatus {
     error?: string
 }
 
+export interface ScrapingTaskRow {
+    _id: string
+    name: string
+    kind: string
+    mode?: string
+    targetUsername?: string
+    limit?: number
+    status?: string
+    storageId?: string
+    imported?: boolean
+    createdAt?: number
+    updatedAt?: number
+    lastScraped?: number
+}
+
+export interface ListScrapingTasksResponse {
+    tasks: ScrapingTaskRow[]
+}
+
+export interface ImportScrapingTaskRequest {
+    env: 'dev' | 'prod'
+    accountStatus?: string
+}
+
+export interface ImportScrapingTaskResponse {
+    taskId: string
+    env: string
+    usernamesExtracted: number
+    inserted: number
+    skipped: number
+}
+
+export interface ScrapingTaskFieldsResponse {
+    taskId: string
+    env: string
+    fields: string[]
+    sampleRow: Record<string, string>
+    rowCount: number
+}
+
+export interface ProcessScrapingTaskRequest {
+    env: 'dev' | 'prod'
+    keepFields: string[]
+    uploadToConvex: boolean
+    environments: string[]
+    accountStatus?: string
+}
+
+export interface ProcessScrapingTaskResponse {
+    status: 'completed' | 'failed'
+    taskId: string
+    env: string
+    usernamesExtracted: number
+    stats: FilterStats
+    uploaded: Record<string, number>
+    duplicates: Record<string, number>
+}
+
 /** State for the upload process */
 export type UploadState =
     | { step: 'idle' }

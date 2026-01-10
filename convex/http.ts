@@ -48,6 +48,8 @@ function mapProfileToPython(profile: any): any {
 		sessions_today: typeof profile.sessionsToday === "number" ? profile.sessionsToday : 0,
 		last_opened_at: toIso(profile.lastOpenedAt),
 		login: Boolean(profile.login),
+		daily_scraping_limit: typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null,
+		daily_scraping_used: typeof profile.dailyScrapingUsed === "number" ? profile.dailyScrapingUsed : 0,
 	};
 }
 
@@ -109,6 +111,7 @@ const apiPaths = [
 	"/api/profiles/sync-status",
 	"/api/profiles/set-login-true",
 	"/api/profiles/increment-sessions-today",
+	"/api/profiles/increment-daily-scraping-used",
 	"/api/profiles/assigned",
 	"/api/profiles/unassigned",
 	"/api/profiles/bulk-set-list-id",
@@ -127,6 +130,8 @@ const apiPaths = [
 	"/api/instagram-accounts/last-message-sent-at",
 	"/api/instagram-accounts/usernames",
 	"/api/instagram-accounts/profiles-with-assigned",
+	"/api/scraping-tasks/store-data",
+	"/api/scraping-tasks/storage-url",
 ];
 
 for (const path of apiPaths) {
@@ -239,6 +244,7 @@ http.route({
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 				automation: body?.automation ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
+				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(created));
 		} catch (err: any) {
@@ -265,6 +271,7 @@ http.route({
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 				automation: body?.automation ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
+				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			} as any);
 			return jsonResponse(mapProfileToPython(updated));
 		} catch (err: any) {
@@ -291,6 +298,7 @@ http.route({
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 				automation: body?.automation ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
+				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			});
 			return jsonResponse(mapProfileToPython(updated));
 		} catch (err: any) {
@@ -406,6 +414,22 @@ http.route({
 		try {
 			const body = await parseBody(request);
 			const ok = await ctx.runMutation(api.profiles.incrementSessionsToday, body as any);
+			return jsonResponse({ ok });
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/increment-daily-scraping-used",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const ok = await ctx.runMutation(api.profiles.incrementDailyScrapingUsed, body as any);
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -773,6 +797,60 @@ http.route({
 			const status = statusParam === null ? undefined : statusParam;
 			const profiles = await ctx.runQuery(api.instagramAccounts.getProfilesWithAssignedAccounts, { status });
 			return jsonResponse(profiles.map(mapProfileToPython));
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+// ==================== SCRAPING TASKS ====================
+
+http.route({
+	path: "/api/scraping-tasks/store-data",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const taskId = body?.taskId ?? body?.task_id;
+			const users = body?.users ?? [];
+			const metadata = body?.metadata ?? {};
+			
+			// Run the action to store scraped data
+			const result = await ctx.runAction(api.scrapingTasks.storeScrapedData, {
+				taskId: taskId as any,
+				users,
+				metadata,
+			});
+			
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/storage-url",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const storageId = url.searchParams.get("storageId") || url.searchParams.get("storage_id") || "";
+			
+			if (!storageId) {
+				return jsonResponse({ error: "storageId is required" }, 400);
+			}
+			
+			// Run the query to get storage URL
+			const fileUrl = await ctx.runQuery(api.scrapingTasks.getStorageUrl, {
+				storageId: storageId as any,
+			});
+			
+			return jsonResponse(fileUrl);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}

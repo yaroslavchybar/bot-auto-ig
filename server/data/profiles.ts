@@ -20,6 +20,8 @@ export type Profile = {
 	status?: string;
 	using?: boolean;
 	login?: boolean;
+	daily_scraping_limit?: number | null;
+	daily_scraping_used?: number;
 };
 
 export class ProfileManager {
@@ -37,7 +39,9 @@ export class ProfileManager {
 				automation: Boolean(p.automation),
 				status: p.status,
 				using: p.Using,
-				login: p.login
+				login: p.login,
+				daily_scraping_limit: typeof p.daily_scraping_limit === 'number' ? p.daily_scraping_limit : null,
+				daily_scraping_used: typeof p.daily_scraping_used === 'number' ? p.daily_scraping_used : 0,
 			}));
 		} catch (e) {
 			console.error('Error fetching profiles:', e);
@@ -110,6 +114,7 @@ export class ProfileManager {
 				fingerprint_os: profile.fingerprint_os,
 				test_ip: profile.test_ip,
 				automation: profile.automation,
+				daily_scraping_limit: profile.daily_scraping_limit,
 			});
 		} catch (e) {
 			console.error('Error creating profile in DB:', e);
@@ -133,6 +138,7 @@ export class ProfileManager {
 				fingerprint_os: profile.fingerprint_os,
 				test_ip: profile.test_ip,
 				automation: profile.automation,
+				daily_scraping_limit: profile.daily_scraping_limit,
 			});
 		} catch (e) {
 			console.error('Error updating profile in DB:', e);

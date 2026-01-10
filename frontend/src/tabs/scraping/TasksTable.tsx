@@ -16,7 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Eye, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
+import { Download, Eye, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
 
 type EligibleProfile = { id: string; name: string }
@@ -52,6 +52,7 @@ type Props = {
   eligibleProfiles: EligibleProfile[]
   running: boolean
   onRun: (task: Doc<'scrapingTasks'>) => void
+  onResume: (task: Doc<'scrapingTasks'>) => void
   onEdit: (task: Doc<'scrapingTasks'>) => void
   onViewOutput: (task: Doc<'scrapingTasks'>) => void
   onDelete: (task: Doc<'scrapingTasks'>) => void
@@ -64,16 +65,42 @@ export function TasksTable({
   eligibleProfiles,
   running,
   onRun,
+  onResume,
   onEdit,
   onViewOutput,
   onDelete,
 }: Props) {
+  const handleDownload = async (task: Doc<'scrapingTasks'>) => {
+    if (!task.storageId) return
+
+    try {
+      // Get the download URL from Convex
+      const url = await fetch(`https://${import.meta.env.VITE_CONVEX_URL?.replace('.convex.cloud', '.convex.site')}/api/scraping-tasks/storage-url?storageId=${task.storageId}`, {
+        headers: {
+          'Authorization': `Bearer ${import.meta.env.VITE_CONVEX_API_KEY || ''}`,
+        },
+      }).then(r => r.json())
+
+      if (url) {
+        // Download the file
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `${task.name}_${task.kind}_${new Date(task.lastRunAt || task.createdAt).toISOString().split('T')[0]}.json`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+    } catch (error) {
+      console.error('Failed to download file:', error)
+    }
+  }
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Name</TableHead>
+            <TableHead>Type</TableHead>
             <TableHead>Target</TableHead>
             <TableHead>Mode</TableHead>
             <TableHead>Limit</TableHead>
@@ -89,19 +116,13 @@ export function TasksTable({
               taskMode === 'manual'
                 ? eligibleProfiles.find((p) => p.id === task.profileId)?.name || task.profileId || '—'
                 : 'Auto distribution'
-            const eligibleCount = eligibleProfiles.length
-            const perProfileHint =
-              taskMode === 'auto'
-                ? typeof task.limitPerProfile === 'number'
-                  ? task.limitPerProfile
-                  : eligibleCount > 0
-                    ? Math.ceil(task.limit / eligibleCount)
-                    : null
-                : null
-            const taskStatus = task.status === 'running' || task.status === 'completed' || task.status === 'failed' ? task.status : 'idle'
+            const taskStatus =
+              task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'failed' ? task.status : 'idle'
             const statusBadge =
               taskStatus === 'running' ? (
                 <Badge className="bg-green-600 hover:bg-green-700">Running</Badge>
+              ) : taskStatus === 'paused' ? (
+                <Badge variant="outline">Paused</Badge>
               ) : taskStatus === 'failed' ? (
                 <Badge variant="destructive">Failed</Badge>
               ) : taskStatus === 'completed' ? (
@@ -110,6 +131,15 @@ export function TasksTable({
                 <Badge variant="secondary">Idle</Badge>
               )
             const canViewOutput = task.lastOutput !== undefined || (typeof task.lastError === 'string' && task.lastError.trim())
+            const canResume = (() => {
+              if (taskStatus === 'paused') return true
+              if (!task.lastOutput || typeof task.lastOutput !== 'object') return false
+              const r = task.lastOutput as Record<string, unknown>
+              const state = r.resumeState
+              if (!state || typeof state !== 'object') return false
+              const done = (state as Record<string, unknown>).done
+              return done === false
+            })()
 
             return (
               <TableRow
@@ -122,6 +152,11 @@ export function TasksTable({
                     <span className="truncate max-w-[320px]">{task.name}</span>
                     <span className="text-xs text-muted-foreground">{String(task._id)}</span>
                   </div>
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">
+                    {task.kind === 'following' ? 'Following' : 'Followers'}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   {(() => {
@@ -144,16 +179,18 @@ export function TasksTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className="flex flex-col">
-                    <span>{task.limit}</span>
-                    {perProfileHint ? <span className="text-xs text-muted-foreground">~{perProfileHint}/profile</span> : null}
-                  </div>
+                  <span>{task.limit}</span>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">{formatWhen(task.lastRunAt)}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     {statusBadge}
                     {typeof task.lastScraped === 'number' && <span className="text-xs text-muted-foreground">{task.lastScraped}</span>}
+                    {task.storageId && (
+                      <Badge variant="outline" className="text-xs">
+                        <Download className="mr-1 h-3 w-3" /> File
+                      </Badge>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className="text-right">
@@ -175,12 +212,22 @@ export function TasksTable({
                       <DropdownMenuItem onClick={() => onRun(task)} disabled={running}>
                         <Play className="mr-2 h-4 w-4" /> Run
                       </DropdownMenuItem>
+                      {canResume && (
+                        <DropdownMenuItem onClick={() => onResume(task)} disabled={running}>
+                          <Play className="mr-2 h-4 w-4" /> Resume
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem onClick={() => onEdit(task)} disabled={running || task.status === 'running'}>
                         <Pencil className="mr-2 h-4 w-4" /> Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onViewOutput(task)} disabled={!canViewOutput}>
                         <Eye className="mr-2 h-4 w-4" /> View output
                       </DropdownMenuItem>
+                      {task.storageId && (
+                        <DropdownMenuItem onClick={() => void handleDownload(task)}>
+                          <Download className="mr-2 h-4 w-4" /> Download JSON
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => onDelete(task)}

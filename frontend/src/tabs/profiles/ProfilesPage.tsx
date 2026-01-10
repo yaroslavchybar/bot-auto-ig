@@ -9,8 +9,9 @@ import { ProfilesList } from './ProfilesList'
 import { LoginDialog } from './LoginDialog'
 import type { LogEntry, Profile } from './types'
 import { Button } from '@/components/ui/button'
-import { Plus, RefreshCw } from 'lucide-react'
+import { Plus, RefreshCw, Terminal } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export function ProfilesPage() {
@@ -18,7 +19,6 @@ export function ProfilesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // Local loading state for actions (save, delete, etc)
-  // We rename the hook's loading to profilesLoading to distinguish it
   const loading = profilesLoading
   const [saving, setSaving] = useState(false)
 
@@ -42,7 +42,6 @@ export function ProfilesPage() {
     if (!selectedId && profiles.length > 0) {
       setSelectedId(profiles[0].id)
     } else if (selectedId && !profiles.find(p => p.id === selectedId) && profiles.length > 0) {
-      // If selected ID is gone, select first
       setSelectedId(profiles[0].id)
     }
   }, [profiles, selectedId])
@@ -103,6 +102,7 @@ export function ProfilesPage() {
   const handleSelect = (profile: Profile) => {
     setSelectedId(profile.id)
     setError(null)
+    // Optional: Auto open details on selection if desired, but maybe keep it explicit
   }
 
   const handleCloseDialogs = () => {
@@ -140,6 +140,7 @@ export function ProfilesPage() {
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
             automation: Boolean(data.automation),
+            daily_scraping_limit: typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
           },
         })
         await refreshProfiles()
@@ -155,6 +156,7 @@ export function ProfilesPage() {
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
             automation: Boolean(data.automation),
+            daily_scraping_limit: typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
           },
         })
         await refreshProfiles()
@@ -189,14 +191,12 @@ export function ProfilesPage() {
     setError(null)
     try {
       if (target.using) {
-        // Stop the browser - ignore errors as browser may have already stopped
         try {
           await apiFetch(`/api/profiles/${encodeURIComponent(target.name)}/stop`, { method: 'POST' })
         } catch {
-          // Browser may have already stopped externally - just refresh state
+          // ignore
         }
       } else {
-        // Start the browser
         await apiFetch(`/api/profiles/${encodeURIComponent(target.name)}/start`, { method: 'POST' })
       }
       await refreshProfiles()
@@ -208,46 +208,66 @@ export function ProfilesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-2xl font-bold tracking-tight">Profiles Manager</h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => refreshProfiles()} disabled={loading || saving}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+        <div>
+          <h2 className="text-xl font-semibold tracking-tight">Profiles</h2>
+          <p className="text-sm text-muted-foreground">Manage your browser automation instances.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refreshProfiles()}
+            disabled={loading || saving}
+            className="h-8 shadow-none"
+          >
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
 
-          <Button size="sm" onClick={handleCreate} disabled={loading || saving}>
-            <Plus className="mr-2 h-4 w-4" />
-            Create
+          <Button
+            size="sm"
+            onClick={handleCreate}
+            disabled={loading || saving}
+            className="h-8 shadow-none bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            New Profile
           </Button>
         </div>
       </div>
 
       {error && !showDeleteDialog && !isCreateOpen && !isEditOpen && !isLogsOpen && !isDetailsOpen && (
-        <div className="p-4 bg-destructive/10 text-destructive text-sm border-b border-destructive/20">
+        <div className="px-6 py-3 bg-destructive/5 text-destructive text-sm border-b border-destructive/10 flex items-center">
+          <span className="w-1.5 h-1.5 rounded-full bg-destructive mr-2" />
           {error}
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-4 bg-muted/10">
-        <ProfilesList
-          profiles={profiles}
-          selectedId={selectedId}
-          loading={loading}
-          onSelect={handleSelect}
-          onDetails={handleDetails}
-          onEdit={handleEdit}
-          onDelete={handleDeleteClick}
-          onLogs={handleLogs}
-          onToggleStatus={(p) => toggleUsing(p)}
-          onLogin={handleLogin}
-        />
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto p-6">
+        <div className="max-w-[2000px] mx-auto">
+          <ProfilesList
+            profiles={profiles}
+            selectedId={selectedId}
+            loading={loading}
+            onSelect={handleSelect}
+            onDetails={handleDetails}
+            onEdit={handleEdit}
+            onDelete={handleDeleteClick}
+            onLogs={handleLogs}
+            onToggleStatus={(p) => toggleUsing(p)}
+            onLogin={handleLogin}
+          />
+        </div>
       </div>
 
+      {/* Dialogs & Sheets */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Create Profile</DialogTitle>
           </DialogHeader>
           <ProfileForm
@@ -261,8 +281,8 @@ export function ProfilesPage() {
       </Dialog>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>Edit Profile</DialogTitle>
           </DialogHeader>
           {selected && (
@@ -279,9 +299,12 @@ export function ProfilesPage() {
       </Dialog>
 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Activity Logs: {selected?.name}</DialogTitle>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="p-6 pb-2 border-b">
+            <DialogTitle className="flex items-center gap-2">
+              <Terminal className="h-5 w-5" />
+              Logs: <span className="font-mono text-muted-foreground">{selected?.name}</span>
+            </DialogTitle>
           </DialogHeader>
           {selected && (
             <ProfileLogs
@@ -293,20 +316,22 @@ export function ProfilesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Profile details</DialogTitle>
-          </DialogHeader>
-          {selected ? (
-            <ProfileDetails
-              profile={selected}
-            />
-          ) : (
-            <div className="text-sm text-muted-foreground">Select a profile first</div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col gap-0 border-l border-border/50 shadow-xl">
+          <SheetHeader className="p-6 pb-4 border-b bg-muted/5">
+            <SheetTitle>Profile Details</SheetTitle>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto">
+            {selected ? (
+              <ProfileDetails
+                profile={selected}
+              />
+            ) : (
+              <div className="p-8 text-center text-sm text-muted-foreground">Select a profile first</div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {selected && (
         <DeleteConfirmation

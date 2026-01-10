@@ -93,3 +93,65 @@ def upload_to_convex(csv_path: Path, envs: list[str] | None = None) -> dict[str,
         results[env] = {"inserted": total_inserted, "skipped": total_skipped}
 
     return results
+
+
+def _extract_username_from_user(user: object) -> str | None:
+    if user is None:
+        return None
+    if isinstance(user, str):
+        s = user.strip().lstrip("@")
+        return s if s else None
+    if isinstance(user, dict):
+        for key in ["userName", "username", "user_name", "login", "User Name"]:
+            v = user.get(key)
+            if v is None:
+                continue
+            s = str(v).strip().lstrip("@")
+            if s:
+                return s
+    return None
+
+
+def upload_usernames_to_convex(
+    usernames: list[str],
+    env: str = "dev",
+    status: str = "available",
+) -> UploadResult:
+    cleaned = [str(u).strip().lstrip("@") for u in (usernames or [])]
+    cleaned = [u for u in cleaned if u]
+    if not cleaned:
+        return {"inserted": 0, "skipped": 0}
+
+    get_convex_url(env)
+
+    total_inserted = 0
+    total_skipped = 0
+    for i in range(0, len(cleaned), BATCH_SIZE):
+        batch_usernames = cleaned[i : i + BATCH_SIZE]
+        accounts = [prepare_account(u, status) for u in batch_usernames]
+        result = insert_accounts_batch(accounts, env)
+        if result.get("status") == "success":
+            total_inserted += result.get("inserted", 0)
+            total_skipped += result.get("skipped", 0)
+        else:
+            raise RuntimeError(result.get("errorMessage", "Unknown error"))
+
+    return {"inserted": total_inserted, "skipped": total_skipped}
+
+
+def extract_usernames_from_scraping_task_payload(payload: dict) -> list[str]:
+    users = payload.get("users")
+    if not isinstance(users, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for u in users:
+        username = _extract_username_from_user(u)
+        if not username:
+            continue
+        key = username.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(username)
+    return out

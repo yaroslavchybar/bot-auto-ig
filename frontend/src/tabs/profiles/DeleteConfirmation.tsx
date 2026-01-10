@@ -8,7 +8,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { AlertCircle } from "lucide-react"
 
 interface DeleteConfirmationProps {
   profileName: string
@@ -19,13 +18,13 @@ interface DeleteConfirmationProps {
   open: boolean
 }
 
-export function DeleteConfirmation({ 
-  profileName, 
-  saving, 
-  error, 
-  onConfirm, 
-  onCancel, 
-  open 
+export function DeleteConfirmation({
+  profileName,
+  saving,
+  error,
+  onConfirm,
+  onCancel,
+  open
 }: DeleteConfirmationProps) {
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => {
@@ -33,34 +32,29 @@ export function DeleteConfirmation({
     }}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete Profile</AlertDialogTitle>
+          <AlertDialogTitle>Delete Profile?</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete <span className="font-medium text-foreground">{profileName}</span>? 
-            This action cannot be undone.
+            This will permanently remove <span className="font-medium text-foreground">{profileName}</span> and its data.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        
+
         {error && (
-          <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5" />
-            <div className="flex flex-col gap-1">
-              <span className="font-medium">Error</span>
-              <span>{error}</span>
-            </div>
+          <div className="text-[13px] text-destructive bg-destructive/5 p-2 px-3 rounded-md border border-destructive/10">
+            {error}
           </div>
         )}
 
         <AlertDialogFooter>
           <AlertDialogCancel disabled={saving} onClick={onCancel}>Cancel</AlertDialogCancel>
-          <AlertDialogAction 
-            disabled={saving} 
+          <AlertDialogAction
+            disabled={saving}
             onClick={(e) => {
               e.preventDefault()
               onConfirm()
             }}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            {saving ? "Deleting..." : "Delete"}
+            {saving ? "Deleting..." : "Delete Profile"}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

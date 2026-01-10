@@ -15,6 +15,8 @@ type Props = {
   idPrefix: string
   taskName: string
   onTaskNameChange: (next: string) => void
+  kind: 'followers' | 'following'
+  onKindChange: (next: 'followers' | 'following') => void
   autoMode: boolean
   onAutoModeChange: (next: boolean) => void
   selectedProfileId: string
@@ -23,8 +25,6 @@ type Props = {
   onTargetUsernameChange: (next: string) => void
   limit: string
   onLimitChange: (next: string) => void
-  limitPerProfile: string
-  onLimitPerProfileChange: (next: string) => void
   eligibleProfiles: EligibleProfile[]
   eligibleSet: Set<string>
   eligibleLoading: boolean
@@ -42,6 +42,8 @@ export function TaskDialog({
   idPrefix,
   taskName,
   onTaskNameChange,
+  kind,
+  onKindChange,
   autoMode,
   onAutoModeChange,
   selectedProfileId,
@@ -50,8 +52,6 @@ export function TaskDialog({
   onTargetUsernameChange,
   limit,
   onLimitChange,
-  limitPerProfile,
-  onLimitPerProfileChange,
   eligibleProfiles,
   eligibleSet,
   eligibleLoading,
@@ -77,6 +77,19 @@ export function TaskDialog({
               value={taskName}
               onChange={(e) => onTaskNameChange(e.target.value)}
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor={`${idPrefix}_kind`}>Scraping type</Label>
+            <Select value={kind} onValueChange={(v) => onKindChange(v as 'followers' | 'following')}>
+              <SelectTrigger id={`${idPrefix}_kind`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="followers">Followers</SelectItem>
+                <SelectItem value="following">Following</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="rounded-md border bg-background p-3 flex items-center justify-between gap-3">
@@ -135,28 +148,19 @@ export function TaskDialog({
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor={`${idPrefix}_limit`}>Limit</Label>
-              <Input
-                id={`${idPrefix}_limit`}
-                inputMode="numeric"
-                placeholder="200"
-                value={limit}
-                onChange={(e) => onLimitChange(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor={`${idPrefix}_limit_per_profile`}>Limit per profile</Label>
-              <Input
-                id={`${idPrefix}_limit_per_profile`}
-                inputMode="numeric"
-                placeholder={autoMode ? '200' : 'Auto distribution only'}
-                value={limitPerProfile}
-                onChange={(e) => onLimitPerProfileChange(e.target.value)}
-                disabled={!autoMode}
-              />
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}_limit`}>Total Limit</Label>
+            <Input
+              id={`${idPrefix}_limit`}
+              inputMode="numeric"
+              placeholder="200"
+              value={limit}
+              onChange={(e) => onLimitChange(e.target.value)}
+            />
+            <div className="text-xs text-muted-foreground">
+              {autoMode 
+                ? 'Work will be distributed across profiles based on their daily limits.'
+                : 'Maximum items to scrape for the selected profile.'}
             </div>
           </div>
 

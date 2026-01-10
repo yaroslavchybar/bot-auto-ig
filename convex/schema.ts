@@ -24,6 +24,8 @@ export default defineSchema({
 		sessionsToday: v.number(),
 		lastOpenedAt: v.optional(v.number()),
 		login: v.boolean(),
+		dailyScrapingLimit: v.optional(v.number()),
+		dailyScrapingUsed: v.optional(v.number()),
 	})
 		.index("by_listId", ["listId"])
 		.index("by_name", ["name"])
@@ -65,12 +67,13 @@ export default defineSchema({
 		profileId: v.optional(v.string()),
 		targetUsername: v.string(),
 		limit: v.number(),
-		limitPerProfile: v.optional(v.number()),
+		imported: v.optional(v.boolean()),
 		status: v.optional(v.string()),
 		lastRunAt: v.optional(v.number()),
 		lastScraped: v.optional(v.number()),
 		lastError: v.optional(v.string()),
 		lastOutput: v.optional(v.any()),
+		storageId: v.optional(v.id("_storage")),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	})
