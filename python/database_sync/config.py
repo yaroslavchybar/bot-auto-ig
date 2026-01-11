@@ -17,7 +17,7 @@ except ImportError:
     pass
 
 CONVEX_URL = os.environ.get("CONVEX_URL")
-CONVEX_API_KEY = os.environ.get("CONVEX_API_KEY")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY")
 
 # HTTP Actions are served at .convex.site, not .convex.cloud
 # Convert the URL if needed
@@ -25,8 +25,8 @@ if CONVEX_URL:
     CONVEX_URL = CONVEX_URL.replace(".convex.cloud", ".convex.site")
 
 PROJECT_URL = CONVEX_URL
-SECRET_KEY = CONVEX_API_KEY
-API_KEY = CONVEX_API_KEY
+SECRET_KEY = INTERNAL_API_KEY
+API_KEY = INTERNAL_API_KEY
 
 # Default table/column names
 DEFAULT_TABLE = "instagram_accounts"

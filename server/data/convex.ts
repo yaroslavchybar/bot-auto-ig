@@ -13,7 +13,8 @@ dotenv.config({ quiet: true });
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
 const convexCloudUrl = process.env.CONVEX_URL;
-const convexApiKey = process.env.CONVEX_API_KEY || process.env.CONVEX_HTTP_BEARER_TOKEN;
+// Use INTERNAL_API_KEY to call Convex HTTP endpoints (same key as CONVEX_API_KEY in Convex Dashboard)
+const convexApiKey = process.env.INTERNAL_API_KEY || '';
 
 if (!convexCloudUrl) {
     throw new Error('Convex config missing. Set CONVEX_URL in environment.');
@@ -41,7 +42,6 @@ export type DbProfileRow = {
     fingerprint_seed?: string | null;
     fingerprint_os?: string | null;
     list_id?: string | null;
-    sessions_today?: number | null;
     last_opened_at?: string | null;
     login: boolean;
     daily_scraping_limit?: number | null;
@@ -219,19 +219,6 @@ export async function profilesIncrementDailyScrapingUsed(name: string, amount: n
     return true;
 }
 
-// ==================== INSTAGRAM SETTINGS ====================
-
-export async function instagramSettingsGet(scope: string = 'global'): Promise<Record<string, any> | null> {
-    const cleaned = String(scope || 'global');
-    return convexFetch<Record<string, any> | null>(`/api/instagram-settings?scope=${encodeURIComponent(cleaned)}`);
-}
-
-export async function instagramSettingsUpsert(scope: string, data: Record<string, any>): Promise<Record<string, any> | null> {
-    const cleanedScope = String(scope || '').trim() || 'global';
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('data must be an object');
-    return convexFetch<Record<string, any> | null>('/api/instagram-settings', { method: 'POST', body: { scope: cleanedScope, data } });
-}
-
 // ==================== MESSAGE TEMPLATES ====================
 
 export async function messageTemplatesGet(kind: string): Promise<string[]> {
@@ -280,4 +267,73 @@ export async function scrapingTasksGetStorageUrl(storageId: string): Promise<str
     const cleaned = String(storageId || '').trim();
     if (!cleaned) throw new Error('storageId is required');
     return convexFetch<string | null>(`/api/scraping-tasks/storage-url?storageId=${encodeURIComponent(cleaned)}`);
+}
+
+// ==================== WORKFLOWS ====================
+
+export type DbWorkflowRow = Record<string, any> & { _id: string }
+
+export async function workflowsGetById(workflowId: string): Promise<DbWorkflowRow | null> {
+    const cleaned = String(workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowRow | null>(`/api/workflows/by-id?workflowId=${encodeURIComponent(cleaned)}`)
+}
+
+export async function workflowsStart(workflowId: string): Promise<DbWorkflowRow | null> {
+    const cleaned = String(workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowRow | null>('/api/workflows/start', { method: 'POST', body: { id: cleaned } })
+}
+
+export async function workflowsUpdateStatus(input: {
+    workflowId: string
+    status: string
+    currentNodeId?: string
+    nodeStates?: any
+    progress?: number
+    error?: string
+}): Promise<DbWorkflowRow | null> {
+    const cleaned = String(input?.workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowRow | null>('/api/workflows/update-status', {
+        method: 'POST',
+        body: {
+            id: cleaned,
+            status: input.status,
+            currentNodeId: input.currentNodeId,
+            nodeStates: input.nodeStates,
+            progress: input.progress,
+            error: input.error,
+        },
+    })
+}
+
+export type DbWorkflowLogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug'
+
+export async function workflowLogsCreateBatch(input: {
+    logs: Array<{
+        workflowId: string
+        nodeId?: string
+        level: DbWorkflowLogLevel
+        message: string
+        metadata?: any
+    }>
+}): Promise<string[]> {
+    const logs = Array.isArray(input?.logs) ? input.logs : []
+    if (logs.length === 0) return []
+    const payload = {
+        logs: logs.map((l) => ({
+            workflowId: String(l.workflowId || '').trim(),
+            nodeId: l.nodeId,
+            level: l.level,
+            message: String(l.message || ''),
+            metadata: l.metadata,
+        })).filter((l) => l.workflowId && l.message),
+    }
+    if (payload.logs.length === 0) return []
+    const result = await convexFetch<{ ids: string[] } | null>('/api/workflow-logs/create-batch', {
+        method: 'POST',
+        body: payload,
+    })
+    return Array.isArray((result as any)?.ids) ? (result as any).ids : []
 }

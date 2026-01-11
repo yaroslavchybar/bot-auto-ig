@@ -144,9 +144,10 @@ def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
 
 
 class InstagramAutomationRunner:
-    def __init__(self, config: ScrollingConfig, accounts: List[ThreadsAccount]):
+    def __init__(self, config: ScrollingConfig, accounts: List[ThreadsAccount], workflow_id: Optional[str] = None):
         self.config = config
         self.accounts = accounts
+        self.workflow_id = workflow_id  # For per-workflow session tracking
         self.running = True
         self.accounts_client = InstagramAccountsClient()
         self.profiles_client = ProfilesClient()
@@ -156,6 +157,15 @@ class InstagramAutomationRunner:
         account_count = len(accounts) if accounts else 1
         self._max_workers = max(1, min(account_count, configured))
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+        # Pre-fetch workflow session data if workflow_id is provided
+        self._workflow_sessions: Dict[str, int] = {}
+        if self.workflow_id:
+            try:
+                workflow = self.profiles_client.get_workflow(self.workflow_id)
+                if workflow and isinstance(workflow.get("profileSessions"), dict):
+                    self._workflow_sessions = workflow["profileSessions"]
+            except Exception:
+                pass
 
     def _get_cached_profile(self, profile_name: str) -> Optional[Dict[str, Any]]:
         with self._profile_cache_lock:
@@ -246,14 +256,6 @@ class InstagramAutomationRunner:
                 if profile_data:
                     self._set_cached_profile(profile_name, profile_data)
             if profile_data:
-                sessions = int(profile_data.get("sessions_today") or 0)
-                if sessions >= self.config.max_sessions_per_day:
-                    log(
-                        f"Пропуск @{profile_name}: достигнут лимит сессий "
-                        f"({sessions}/{self.config.max_sessions_per_day})"
-                    )
-                    return False
-
                 profile_id = profile_data.get("profile_id")
                 if profile_id and self.accounts_client.is_profile_busy(profile_id):
                     log(f"Пропуск @{profile_name}: профиль занят.")
@@ -363,15 +365,6 @@ class InstagramAutomationRunner:
                 if self.running:
                     log(f"Все задачи завершены для @{profile_name}")
                     emit_event("profile_completed", profile=profile_name, status="success")
-                    try:
-                        self.profiles_client.increment_sessions_today(profile_name)
-                    except Exception as e:
-                        log(f"Не удалось обновить счетчик сессий: {e}")
-                    try:
-                        if profile_data is not None:
-                            profile_data["sessions_today"] = int(profile_data.get("sessions_today") or 0) + 1
-                    except Exception:
-                        pass
 
                 try:
                     self.profiles_client.sync_profile_status(profile_name, "idle", False)

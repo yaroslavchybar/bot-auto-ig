@@ -9,14 +9,14 @@ import { fileURLToPath } from 'url'
 import dotenv from 'dotenv'
 
 import { initWebSocket } from './websocket.js'
-import { clerkAuth, requireApiAuth } from './security/auth.js'
+import { clerkAuth, requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
 
 import automationRouter from './api/automation.js'
 import logsRouter from './api/logs.js'
 import profilesRouter from './api/profiles.js'
 import listsRouter from './api/lists.js'
-import instagramRouter from './api/instagram.js'
 import scrapingRouter from './api/scraping.js'
+import workflowsRouter from './api/workflows.js'
 import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 
@@ -75,8 +75,8 @@ app.use('/api/automation', requireApiAuth, automationLimiter, automationRouter)
 app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
-app.use('/api/instagram', requireApiAuth, apiLimiter, instagramRouter)
 app.use('/api/scraping', requireApiAuth, apiLimiter, scrapingRouter)
+app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
 
 
 const PORT = process.env.SERVER_PORT || 3001

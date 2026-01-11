@@ -38,13 +38,11 @@ export const getById = query({
 export const getAvailableForLists = query({
 	args: {
 		listIds: v.array(v.string()),
-		maxSessions: v.number(),
 		cooldownMinutes: v.number(),
 	},
 	handler: async (ctx, args) => {
 		const cleanIds = (args.listIds || []).map((v) => String(v || "").trim()).filter(Boolean);
 		if (cleanIds.length === 0) return [];
-		const maxSessions = Number.isFinite(args.maxSessions) ? args.maxSessions : 0;
 		const cooldownMs = Math.max(0, (Number.isFinite(args.cooldownMinutes) ? args.cooldownMinutes : 0) * 60 * 1000);
 		const cutoffMs = Date.now() - cooldownMs;
 		const allowed = new Set(cleanIds);
@@ -52,7 +50,6 @@ export const getAvailableForLists = query({
 		const filtered = rows.filter((p) => {
 			if (!p.listId) return false;
 			if (!allowed.has(String(p.listId))) return false;
-			if ((p.sessionsToday || 0) >= maxSessions) return false;
 			if (typeof p.lastOpenedAt !== "number") return true;
 			return p.lastOpenedAt < cutoffMs;
 		});
@@ -118,7 +115,6 @@ export const create = mutation({
 			fingerprintSeed: args.fingerprintSeed,
 			fingerprintOs: args.fingerprintOs,
 			listId: undefined,
-			sessionsToday: 0,
 			lastOpenedAt: undefined,
 			login: false,
 			dailyScrapingLimit: dailyLimit,
@@ -399,31 +395,6 @@ export const clearBusyForLists = mutation({
 	},
 });
 
-export const incrementSessionsToday = mutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		const cleanedName = String(args.name || "").trim();
-		if (!cleanedName) throw new Error("name is required");
-		const existing = await ctx.db
-			.query("profiles")
-			.withIndex("by_name", (q) => q.eq("name", cleanedName))
-			.first();
-		if (!existing) return true;
-		await ctx.db.patch(existing._id, { sessionsToday: (existing.sessionsToday || 0) + 1 });
-		return true;
-	},
-});
-
-export const resetSessionsToday = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const rows = await ctx.db.query("profiles").collect();
-		const toUpdate = rows.filter((r) => (r.sessionsToday || 0) !== 0);
-		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { sessionsToday: 0 })));
-		return true;
-	},
-});
-
 export const incrementDailyScrapingUsed = mutation({
 	args: { name: v.string(), amount: v.number() },
 	handler: async (ctx, args) => {
@@ -471,5 +442,22 @@ export const resetDailyScrapingUsed = internalMutation({
 		const toUpdate = rows.filter((r) => (r.dailyScrapingUsed || 0) !== 0);
 		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { dailyScrapingUsed: 0 })));
 		return true;
+	},
+});
+
+// Migration completed - can be deleted
+export const migrateRemoveSessionsToday = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query("profiles").collect();
+		let migrated = 0;
+		for (const row of rows) {
+			const doc = row as any;
+			if ("sessionsToday" in doc) {
+				await ctx.db.patch(row._id, { sessionsToday: undefined } as any);
+				migrated++;
+			}
+		}
+		return { migrated };
 	},
 });

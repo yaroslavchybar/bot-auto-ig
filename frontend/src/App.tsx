@@ -6,9 +6,9 @@ import { ListsPage } from './tabs/lists/ListsPage'
 import { DashboardPage } from './tabs/dashboard/DashboardPage'
 import { LogsPage } from './tabs/logs/LogsPage'
 import { AccountsPage } from './tabs/accounts/AccountsPage'
-import { InstagramPage } from './tabs/instagram'
 import { ScrapingPage } from './tabs/scraping/ScrapingPage'
-import { FlowBuilderPage } from './tabs/flow/FlowBuilderPage'
+import { WorkflowsPage } from './tabs/workflows'
+import { VncPage } from './tabs/vnc'
 import { ModeToggle } from '@/components/mode-toggle'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -47,16 +47,16 @@ function MainLayout() {
         return <ProfilesPage />
       case 'lists':
         return <ListsPage />
-      case 'instagram':
-        return <InstagramPage />
-      case 'flow':
-        return <FlowBuilderPage />
+      case 'workflows':
+        return <WorkflowsPage />
       case 'scraping':
         return <ScrapingPage />
       case 'accounts':
         return <AccountsPage />
       case 'logs':
         return <LogsPage />
+      case 'vnc':
+        return <VncPage />
       default:
         return <DashboardPage />
     }
@@ -66,12 +66,12 @@ function MainLayout() {
     switch (id) {
       case 'dashboard': return 'Dashboard'
       case 'profiles': return 'Profiles Manager'
-      case 'instagram': return 'Instagram Automation'
-      case 'flow': return 'Flow Builder'
+      case 'workflows': return 'Workflows'
       case 'scraping': return 'Scraping'
       case 'lists': return 'Lists Manager'
       case 'accounts': return 'Upload Accounts'
       case 'logs': return 'Logs'
+      case 'vnc': return 'Browser View'
       default: return 'Dashboard'
     }
   }

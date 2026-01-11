@@ -16,7 +16,7 @@ function jsonResponse(body: unknown, status: number = 200): Response {
 }
 
 async function requireAuth(request: Request): Promise<Response | null> {
-	const token = (globalThis as any)?.process?.env?.CONVEX_API_KEY as string | undefined;
+	const token = (globalThis as any)?.process?.env?.INTERNAL_API_KEY as string | undefined;
 	if (!token) return null;
 	const auth = request.headers.get("authorization") || "";
 	if (auth !== `Bearer ${token}`) return jsonResponse({ error: "Unauthorized" }, 401);
@@ -45,7 +45,6 @@ function mapProfileToPython(profile: any): any {
 		fingerprint_seed: profile.fingerprintSeed ?? null,
 		fingerprint_os: profile.fingerprintOs ?? null,
 		list_id: profile.listId ?? null,
-		sessions_today: typeof profile.sessionsToday === "number" ? profile.sessionsToday : 0,
 		last_opened_at: toIso(profile.lastOpenedAt),
 		login: Boolean(profile.login),
 		daily_scraping_limit: typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null,
@@ -110,7 +109,6 @@ const apiPaths = [
 	"/api/profiles/clear-busy-for-lists",
 	"/api/profiles/sync-status",
 	"/api/profiles/set-login-true",
-	"/api/profiles/increment-sessions-today",
 	"/api/profiles/increment-daily-scraping-used",
 	"/api/profiles/assigned",
 	"/api/profiles/unassigned",
@@ -132,6 +130,13 @@ const apiPaths = [
 	"/api/instagram-accounts/profiles-with-assigned",
 	"/api/scraping-tasks/store-data",
 	"/api/scraping-tasks/storage-url",
+	"/api/workflows",
+	"/api/workflows/by-id",
+	"/api/workflows/start",
+	"/api/workflows/update-status",
+	"/api/workflow-logs",
+	"/api/workflow-logs/create",
+	"/api/workflow-logs/create-batch",
 ];
 
 for (const path of apiPaths) {
@@ -196,11 +201,9 @@ http.route({
 		try {
 			const body = await parseBody(request);
 			const listIds = (body?.listIds ?? body?.list_ids ?? []) as any[];
-			const maxSessions = body?.maxSessions ?? body?.max_sessions ?? 0;
 			const cooldownMinutes = body?.cooldownMinutes ?? body?.cooldown_minutes ?? 0;
 			const profiles = await ctx.runQuery(api.profiles.getAvailableForLists, {
 				listIds,
-				maxSessions,
 				cooldownMinutes,
 			});
 			return jsonResponse(profiles.map(mapProfileToPython));
@@ -406,22 +409,6 @@ http.route({
 });
 
 http.route({
-	path: "/api/profiles/increment-sessions-today",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.incrementSessionsToday, body as any);
-			return jsonResponse({ ok });
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
 	path: "/api/profiles/increment-daily-scraping-used",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
@@ -565,39 +552,6 @@ http.route({
 				listId: listId === null ? null : (listId as any),
 			});
 			return jsonResponse({ ok });
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/instagram-settings",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const scope = url.searchParams.get("scope") || undefined;
-			const data = await ctx.runQuery(api.instagramSettings.get, { scope });
-			return jsonResponse(data);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/instagram-settings",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const data = await ctx.runMutation(api.instagramSettings.upsert, body as any);
-			return jsonResponse(data);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}
@@ -851,6 +805,151 @@ http.route({
 			});
 			
 			return jsonResponse(fileUrl);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+// ==================== WORKFLOWS ====================
+
+http.route({
+	path: "/api/workflows",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const isTemplateParam = url.searchParams.get("isTemplate");
+			const category = url.searchParams.get("category") || undefined;
+			const status = url.searchParams.get("status") || undefined;
+			const isTemplate = isTemplateParam === null ? undefined : isTemplateParam === "true";
+			const rows = await ctx.runQuery(api.workflows.list, {
+				isTemplate,
+				category,
+				status: status as any,
+			});
+			return jsonResponse(rows);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflows/by-id",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const workflowId = url.searchParams.get("workflowId") || url.searchParams.get("id") || "";
+			if (!workflowId) return jsonResponse({ error: "workflowId is required" }, 400);
+			const row = await ctx.runQuery(api.workflows.get, { id: workflowId as any });
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflows/start",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
+			if (!id) return jsonResponse({ error: "id is required" }, 400);
+			const row = await ctx.runMutation(api.workflows.start, { id: id as any });
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflows/update-status",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
+			if (!id) return jsonResponse({ error: "id is required" }, 400);
+			const row = await ctx.runMutation(api.workflows.updateStatus, {
+				id: id as any,
+				status: body?.status,
+				currentNodeId: body?.currentNodeId ?? body?.current_node_id,
+				nodeStates: body?.nodeStates ?? body?.node_states,
+				progress: body?.progress,
+				error: body?.error,
+			});
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+// ==================== WORKFLOW LOGS ====================
+
+http.route({
+	path: "/api/workflow-logs",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const workflowId = url.searchParams.get("workflowId") || url.searchParams.get("workflow_id") || "";
+			if (!workflowId) return jsonResponse({ error: "workflowId is required" }, 400);
+			const limit = Number(url.searchParams.get("limit") || 100);
+			const level = url.searchParams.get("level") || undefined;
+			const rows = await ctx.runQuery(api.workflowLogs.list, {
+				workflowId: workflowId as any,
+				limit,
+				level: level as any,
+			});
+			return jsonResponse(rows);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-logs/create",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const row = await ctx.runMutation(api.workflowLogs.create, body as any);
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-logs/create-batch",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const ids = await ctx.runMutation(api.workflowLogs.createBatch, body as any);
+			return jsonResponse({ ids });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}

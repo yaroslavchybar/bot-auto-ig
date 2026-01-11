@@ -81,13 +81,6 @@ class ProfilesClient:
         except Exception:
             return None
 
-    def increment_sessions_today(self, profile_name: str):
-        """Increment sessions_today count for a profile."""
-        try:
-            self._make_request("POST", "/increment-sessions-today", data={"name": profile_name})
-        except Exception as e:
-            logger.error(f"Error incrementing sessions for {profile_name}: {e}")
-
     def create_profile(self, profile_data: Dict) -> Dict:
         """Create new profile in database"""
         db_data = dict(profile_data or {})

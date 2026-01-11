@@ -2,13 +2,13 @@ import * as React from "react"
 import {
   LayoutDashboard,
   Users,
-  Instagram,
-  Workflow,
   Search,
   List,
   FileText,
   Command,
   Upload,
+  GitBranch,
+  Monitor,
 } from "lucide-react"
 
 import {
@@ -24,7 +24,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type NavId = 'dashboard' | 'profiles' | 'instagram' | 'flow' | 'scraping' | 'lists' | 'accounts' | 'logs';
+export type NavId = 'dashboard' | 'profiles' | 'workflows' | 'scraping' | 'lists' | 'accounts' | 'logs' | 'vnc';
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeId: NavId;
@@ -47,14 +47,9 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
           icon: Users,
         },
         {
-          title: "Instagram Automation",
-          id: "instagram",
-          icon: Instagram,
-        },
-        {
-          title: "Flow Builder",
-          id: "flow",
-          icon: Workflow,
+          title: "Workflows",
+          id: "workflows",
+          icon: GitBranch,
         },
         {
           title: "Scraping",
@@ -70,6 +65,11 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
           title: "Upload Accounts",
           id: "accounts",
           icon: Upload,
+        },
+        {
+          title: "Browser View",
+          id: "vnc",
+          icon: Monitor,
         },
         {
           title: "Logs",
