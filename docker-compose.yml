@@ -33,7 +33,7 @@ services:
 
   scraper:
     build:
-      context: ./Instagram-Followers-Scraper_Suite
+      context: ./scraper
       dockerfile: Dockerfile
     ports:
       - "3003:3003"

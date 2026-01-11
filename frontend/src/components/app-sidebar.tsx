@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Users,
   Instagram,
+  Workflow,
   Search,
   List,
   FileText,
@@ -23,7 +24,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type NavId = 'dashboard' | 'profiles' | 'instagram' | 'scraping' | 'lists' | 'accounts' | 'logs';
+export type NavId = 'dashboard' | 'profiles' | 'instagram' | 'flow' | 'scraping' | 'lists' | 'accounts' | 'logs';
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeId: NavId;
@@ -49,6 +50,11 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
           title: "Instagram Automation",
           id: "instagram",
           icon: Instagram,
+        },
+        {
+          title: "Flow Builder",
+          id: "flow",
+          icon: Workflow,
         },
         {
           title: "Scraping",

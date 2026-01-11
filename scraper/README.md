@@ -36,7 +36,7 @@ The tool uses Instagram's private API endpoints with proper session authenticati
 1. Clone the repository:
    ```bash
    git clone https://github.com/yourusername/Instagram-Followers-Scraper_Suite.git
-   cd Instagram-Followers-Scraper_Suite
+   cd scraper
    ```
 
 2. Install the required dependencies:
@@ -78,7 +78,7 @@ You'll be presented with a menu:
 ## 🗂️ Project Structure
 
 ```
-Instagram-Followers-Scraper_Suite/
+scraper/
 │
 ├── main.py                # Main application entry point
 ├── requirements.txt       # Python dependencies
