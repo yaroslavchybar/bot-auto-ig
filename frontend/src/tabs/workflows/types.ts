@@ -5,7 +5,6 @@ export type WorkflowStatus = 'idle' | 'pending' | 'running' | 'paused' | 'comple
 export type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline'
 
 export type Workflow = Doc<'workflows'>
-export type WorkflowLog = Doc<'workflowLogs'>
 
 export function getStatusColor(status?: WorkflowStatus): BadgeVariant {
 	switch (status) {

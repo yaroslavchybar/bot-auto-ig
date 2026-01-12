@@ -23,7 +23,6 @@ import { WorkflowsList } from './WorkflowsList'
 import { WorkflowDialog } from './WorkflowDialog'
 import { WorkflowDetails } from './WorkflowDetails'
 import { WorkflowFlowEditor } from './WorkflowFlowEditor'
-import { WorkflowLogsDialog } from './WorkflowLogsDialog'
 import { ScheduleDialog } from './ScheduleDialog'
 import type { Workflow } from './types'
 import type { Node, Edge } from 'reactflow'
@@ -34,9 +33,7 @@ export function WorkflowsPage() {
 	const [isEditOpen, setIsEditOpen] = useState(false)
 	const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 	const [isFlowEditorOpen, setIsFlowEditorOpen] = useState(false)
-	const [isLogsOpen, setIsLogsOpen] = useState(false)
 	const [isScheduleOpen, setIsScheduleOpen] = useState(false)
-	const [logsWorkflowId, setLogsWorkflowId] = useState<Id<'workflows'> | null>(null)
 	const [deleteId, setDeleteId] = useState<Id<'workflows'> | null>(null)
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -93,14 +90,13 @@ export function WorkflowsPage() {
 	}, [])
 
 	const handleSaveCreate = useCallback(
-		async (data: { name: string; description?: string; isTemplate: boolean; category?: string }) => {
+		async (data: { name: string; description?: string; category?: string }) => {
 			setSaving(true)
 			setError(null)
 			try {
 				const created = await createWorkflow({
 					name: data.name,
 					description: data.description,
-					isTemplate: data.isTemplate,
 					category: data.category,
 					nodes: [],
 					edges: [],
@@ -117,7 +113,7 @@ export function WorkflowsPage() {
 	)
 
 	const handleSaveEdit = useCallback(
-		async (data: { name: string; description?: string; isTemplate: boolean; category?: string }) => {
+		async (data: { name: string; description?: string; category?: string }) => {
 			if (!selectedId) return
 			setSaving(true)
 			setError(null)
@@ -126,7 +122,6 @@ export function WorkflowsPage() {
 					id: selectedId,
 					name: data.name,
 					description: data.description,
-					isTemplate: data.isTemplate,
 					category: data.category,
 				})
 				setIsEditOpen(false)
@@ -178,12 +173,11 @@ export function WorkflowsPage() {
 		async (workflow: Workflow) => {
 			setError(null)
 			try {
-				// If currently active (turning off), also stop the automation
-				if (workflow.isActive && status === 'running') {
+				if (workflow.isActive && workflow.status === 'running') {
 					try {
-						await apiFetch('/api/automation/stop', { method: 'POST' })
-					} catch {
-						// Continue with toggle even if stop fails
+						await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
+					} catch (e) {
+						void e
 					}
 				}
 				await toggleActiveWorkflow({ id: workflow._id })
@@ -191,8 +185,17 @@ export function WorkflowsPage() {
 				setError(e instanceof Error ? e.message : String(e))
 			}
 		},
-		[toggleActiveWorkflow, status]
+		[toggleActiveWorkflow]
 	)
+
+	const handleStopRun = useCallback(async (workflow: Workflow) => {
+		setError(null)
+		try {
+			await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e))
+		}
+	}, [])
 
 	const handleEditSchedule = useCallback((workflow: Workflow) => {
 		setSelectedId(workflow._id)
@@ -244,11 +247,6 @@ export function WorkflowsPage() {
 			setError(e instanceof Error ? e.message : String(e))
 		}
 	}, [selectedId, resetWorkflow])
-
-	const handleViewLogs = useCallback((workflow: Workflow) => {
-		setLogsWorkflowId(workflow._id)
-		setIsLogsOpen(true)
-	}, [])
 
 	const handleSaveFlow = useCallback(
 		async (nodes: Node[], edges: Edge[]) => {
@@ -324,12 +322,12 @@ export function WorkflowsPage() {
 						loading={workflowsLoading}
 						onSelect={handleSelect}
 						onToggleActive={handleToggleActive}
+						onStopRun={handleStopRun}
 						onEdit={handleEdit}
 						onEditFlow={handleEditFlow}
 						onEditSchedule={handleEditSchedule}
 						onDuplicate={handleDuplicate}
 						onDelete={handleDelete}
-						onViewLogs={handleViewLogs}
 						onViewDetails={handleViewDetails}
 					/>
 				</div>
@@ -456,6 +454,7 @@ export function WorkflowsPage() {
 							onToggleActive={() => handleToggleActive(selected)}
 							onEditSchedule={() => handleEditSchedule(selected)}
 							onReset={handleReset}
+							onStopRun={() => handleStopRun(selected)}
 						/>
 					) : (
 						<div className="p-8 text-center text-muted-foreground">
@@ -494,14 +493,6 @@ export function WorkflowsPage() {
 				saving={saving}
 				onSave={handleSaveFlow}
 				onClose={() => setIsFlowEditorOpen(false)}
-			/>
-
-			{/* Logs Dialog */}
-			<WorkflowLogsDialog
-				open={isLogsOpen}
-				onOpenChange={setIsLogsOpen}
-				workflowId={logsWorkflowId}
-				workflowName={workflowsList.find(w => w._id === logsWorkflowId)?.name}
 			/>
 
 			{/* Schedule Dialog */}

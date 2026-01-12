@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
 	Select,
 	SelectContent,
@@ -29,7 +28,6 @@ interface WorkflowDialogProps {
 	onSave: (data: {
 		name: string
 		description?: string
-		isTemplate: boolean
 		category?: string
 	}) => void
 	onCancel: () => void
@@ -54,7 +52,6 @@ export function WorkflowDialog({
 }: WorkflowDialogProps) {
 	const [name, setName] = useState('')
 	const [description, setDescription] = useState('')
-	const [isTemplate, setIsTemplate] = useState(false)
 	const [category, setCategory] = useState<string>('')
 
 	// Reset form when dialog opens or workflow changes
@@ -63,12 +60,10 @@ export function WorkflowDialog({
 			if (mode === 'edit' && workflow) {
 				setName(workflow.name || '')
 				setDescription(workflow.description || '')
-				setIsTemplate(workflow.isTemplate || false)
 				setCategory(workflow.category || '')
 			} else {
 				setName('')
 				setDescription('')
-				setIsTemplate(false)
 				setCategory('')
 			}
 		}
@@ -83,7 +78,6 @@ export function WorkflowDialog({
 		onSave({
 			name: name.trim(),
 			description: description.trim() || undefined,
-			isTemplate,
 			category: category || undefined,
 		})
 	}
@@ -135,23 +129,6 @@ export function WorkflowDialog({
 								))}
 							</SelectContent>
 						</Select>
-					</div>
-
-					<div className="flex items-center space-x-2 rounded-lg border p-4">
-						<Checkbox
-							id="workflow-template"
-							checked={isTemplate}
-							onCheckedChange={(checked) => setIsTemplate(checked === true)}
-							disabled={saving}
-						/>
-						<div className="space-y-0.5">
-							<Label htmlFor="workflow-template" className="text-base cursor-pointer">
-								Template
-							</Label>
-							<p className="text-sm text-muted-foreground">
-								Templates are reusable designs. Duplicate to create a runnable instance.
-							</p>
-						</div>
 					</div>
 
 					<DialogFooter>

@@ -134,9 +134,6 @@ const apiPaths = [
 	"/api/workflows/by-id",
 	"/api/workflows/start",
 	"/api/workflows/update-status",
-	"/api/workflow-logs",
-	"/api/workflow-logs/create",
-	"/api/workflow-logs/create-batch",
 ];
 
 for (const path of apiPaths) {
@@ -821,12 +818,9 @@ http.route({
 		if (authError) return authError;
 		try {
 			const url = new URL(request.url);
-			const isTemplateParam = url.searchParams.get("isTemplate");
 			const category = url.searchParams.get("category") || undefined;
 			const status = url.searchParams.get("status") || undefined;
-			const isTemplate = isTemplateParam === null ? undefined : isTemplateParam === "true";
 			const rows = await ctx.runQuery(api.workflows.list, {
-				isTemplate,
 				category,
 				status: status as any,
 			});
@@ -888,68 +882,9 @@ http.route({
 				status: body?.status,
 				currentNodeId: body?.currentNodeId ?? body?.current_node_id,
 				nodeStates: body?.nodeStates ?? body?.node_states,
-				progress: body?.progress,
 				error: body?.error,
 			});
 			return jsonResponse(row);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-// ==================== WORKFLOW LOGS ====================
-
-http.route({
-	path: "/api/workflow-logs",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const workflowId = url.searchParams.get("workflowId") || url.searchParams.get("workflow_id") || "";
-			if (!workflowId) return jsonResponse({ error: "workflowId is required" }, 400);
-			const limit = Number(url.searchParams.get("limit") || 100);
-			const level = url.searchParams.get("level") || undefined;
-			const rows = await ctx.runQuery(api.workflowLogs.list, {
-				workflowId: workflowId as any,
-				limit,
-				level: level as any,
-			});
-			return jsonResponse(rows);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/workflow-logs/create",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const row = await ctx.runMutation(api.workflowLogs.create, body as any);
-			return jsonResponse(row);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/workflow-logs/create-batch",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const ids = await ctx.runMutation(api.workflowLogs.createBatch, body as any);
-			return jsonResponse({ ids });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}

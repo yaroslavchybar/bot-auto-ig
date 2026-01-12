@@ -16,7 +16,6 @@ import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles from "../profiles.js";
 import type * as scrapingTasks from "../scrapingTasks.js";
-import type * as workflowLogs from "../workflowLogs.js";
 import type * as workflows from "../workflows.js";
 
 import type {
@@ -34,7 +33,6 @@ declare const fullApi: ApiFromModules<{
   messageTemplates: typeof messageTemplates;
   profiles: typeof profiles;
   scrapingTasks: typeof scrapingTasks;
-  workflowLogs: typeof workflowLogs;
   workflows: typeof workflows;
 }>;
 

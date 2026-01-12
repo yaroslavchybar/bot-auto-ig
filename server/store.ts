@@ -15,5 +15,10 @@ export const automationState = {
     status: 'idle' as 'idle' | 'running' | 'stopping'
 }
 
+export const workflowWorkers = new Map<
+    string,
+    { process: ChildProcess; status: 'running' | 'stopping'; startedAt: number }
+>()
+
 // Profile browser processes
 export const profileProcesses = new Map<string, ChildProcess>()

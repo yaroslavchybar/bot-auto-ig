@@ -83,7 +83,6 @@ export default defineSchema({
 		description: v.optional(v.string()),
 		nodes: v.any(), // ReactFlow nodes array with positions and configs
 		edges: v.any(), // ReactFlow edges array with connections
-		isTemplate: v.boolean(),
 		category: v.optional(v.string()), // warmup, outreach, engagement, etc.
 
 		// Scheduling fields
@@ -114,8 +113,8 @@ export default defineSchema({
 		lastRunAt: v.optional(v.number()),
 		cronJobId: v.optional(v.string()), // ID from @convex-dev/crons
 
-		// Execution fields (for non-template workflows)
-		profileId: v.optional(v.id("profiles")), // assigned profile for execution
+		// Execution fields
+		listId: v.optional(v.id("lists")),
 		status: v.optional(v.union(
 			v.literal("idle"),
 			v.literal("pending"),
@@ -125,10 +124,8 @@ export default defineSchema({
 			v.literal("failed"),
 			v.literal("cancelled")
 		)),
-		priority: v.optional(v.number()), // higher runs first
 		currentNodeId: v.optional(v.string()), // currently executing node
 		nodeStates: v.optional(v.any()), // map of nodeId -> execution state
-		progress: v.optional(v.number()), // 0-100 percentage
 		scheduledAt: v.optional(v.number()), // when to run
 		startedAt: v.optional(v.number()),
 		completedAt: v.optional(v.number()),
@@ -142,28 +139,8 @@ export default defineSchema({
 	})
 		.index("by_name", ["name"])
 		.index("by_category", ["category"])
-		.index("by_isTemplate", ["isTemplate"])
 		.index("by_isActive", ["isActive"])
 		.index("by_status", ["status"])
-		.index("by_profileId", ["profileId"])
-		.index("by_scheduledAt", ["scheduledAt"])
-		.index("by_priority", ["priority"]),
-
-	workflowLogs: defineTable({
-		workflowId: v.id("workflows"),
-		nodeId: v.optional(v.string()), // which node produced this log
-		level: v.union(
-			v.literal("info"),
-			v.literal("warn"),
-			v.literal("error"),
-			v.literal("success"),
-			v.literal("debug")
-		),
-		message: v.string(),
-		metadata: v.optional(v.any()),
-		timestamp: v.number(),
-	})
-		.index("by_workflowId", ["workflowId"])
-		.index("by_timestamp", ["timestamp"])
-		.index("by_workflowId_timestamp", ["workflowId", "timestamp"]),
+		.index("by_listId", ["listId"])
+		.index("by_scheduledAt", ["scheduledAt"]),
 });

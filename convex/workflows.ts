@@ -59,19 +59,13 @@ const statusValidator = v.union(
 
 export const list = query({
 	args: {
-		isTemplate: v.optional(v.boolean()),
 		category: v.optional(v.string()),
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, args) => {
 		let rows;
 
-		if (args.isTemplate !== undefined) {
-			rows = await ctx.db
-				.query("workflows")
-				.withIndex("by_isTemplate", (q) => q.eq("isTemplate", args.isTemplate!))
-				.collect();
-		} else if (args.status) {
+		if (args.status) {
 			rows = await ctx.db
 				.query("workflows")
 				.withIndex("by_status", (q) => q.eq("status", args.status!))
@@ -84,11 +78,6 @@ export const list = query({
 		let filtered = args.category
 			? rows.filter((r) => r.category === args.category)
 			: rows;
-
-		// Filter by status if provided and we didn't use index
-		if (args.status && args.isTemplate !== undefined) {
-			filtered = filtered.filter((r) => r.status === args.status);
-		}
 
 		filtered.sort((a, b) => b.updatedAt - a.updatedAt);
 		return filtered;
@@ -118,18 +107,18 @@ export const getQueue = query({
 			.collect();
 
 		const all = [...running, ...pending];
-		all.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+		all.sort((a, b) => b.updatedAt - a.updatedAt);
 
 		return all.slice(0, limit);
 	},
 });
 
-export const getByProfile = query({
-	args: { profileId: v.id("profiles") },
+export const getByList = query({
+	args: { listId: v.id("lists") },
 	handler: async (ctx, args) => {
 		return await ctx.db
 			.query("workflows")
-			.withIndex("by_profileId", (q) => q.eq("profileId", args.profileId))
+			.withIndex("by_listId", (q) => q.eq("listId", args.listId))
 			.collect();
 	},
 });
@@ -144,9 +133,8 @@ export const create = mutation({
 		description: v.optional(v.string()),
 		nodes: v.any(),
 		edges: v.any(),
-		isTemplate: v.boolean(),
 		category: v.optional(v.string()),
-		profileId: v.optional(v.id("profiles")),
+		listId: v.optional(v.id("lists")),
 	},
 	handler: async (ctx, args) => {
 		const cleaned = String(args.name || "").trim();
@@ -158,10 +146,9 @@ export const create = mutation({
 			description: args.description,
 			nodes: args.nodes || [],
 			edges: args.edges || [],
-			isTemplate: args.isTemplate,
 			category: args.category,
-			profileId: args.profileId,
-			status: args.isTemplate ? undefined : "idle",
+			listId: args.listId,
+			status: "idle",
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -176,10 +163,8 @@ export const update = mutation({
 		description: v.optional(v.string()),
 		nodes: v.optional(v.any()),
 		edges: v.optional(v.any()),
-		isTemplate: v.optional(v.boolean()),
 		category: v.optional(v.string()),
-		profileId: v.optional(v.id("profiles")),
-		priority: v.optional(v.number()),
+		listId: v.optional(v.id("lists")),
 		scheduledAt: v.optional(v.number()),
 		maxRetries: v.optional(v.number()),
 	},
@@ -203,10 +188,8 @@ export const update = mutation({
 		if (updates.description !== undefined) patch.description = updates.description;
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.edges !== undefined) patch.edges = updates.edges;
-		if (updates.isTemplate !== undefined) patch.isTemplate = updates.isTemplate;
 		if (updates.category !== undefined) patch.category = updates.category;
-		if (updates.profileId !== undefined) patch.profileId = updates.profileId;
-		if (updates.priority !== undefined) patch.priority = updates.priority;
+		if (updates.listId !== undefined) patch.listId = updates.listId;
 		if (updates.scheduledAt !== undefined) patch.scheduledAt = updates.scheduledAt;
 		if (updates.maxRetries !== undefined) patch.maxRetries = updates.maxRetries;
 
@@ -226,13 +209,6 @@ export const remove = mutation({
 			throw new Error("Cannot delete running workflow");
 		}
 
-		// Delete associated logs
-		const logs = await ctx.db
-			.query("workflowLogs")
-			.withIndex("by_workflowId", (q) => q.eq("workflowId", args.id))
-			.collect();
-		await Promise.all(logs.map((log) => ctx.db.delete(log._id)));
-
 		await ctx.db.delete(args.id);
 		return true;
 	},
@@ -242,7 +218,6 @@ export const duplicate = mutation({
 	args: { 
 		id: v.id("workflows"), 
 		newName: v.optional(v.string()),
-		asTemplate: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.get(args.id);
@@ -250,16 +225,15 @@ export const duplicate = mutation({
 
 		const now = Date.now();
 		const name = args.newName?.trim() || `${existing.name} (copy)`;
-		const isTemplate = args.asTemplate ?? false;
 
 		const newId = await ctx.db.insert("workflows", {
 			name,
 			description: existing.description,
 			nodes: existing.nodes,
 			edges: existing.edges,
-			isTemplate,
 			category: existing.category,
-			status: isTemplate ? undefined : "idle",
+			listId: existing.listId,
+			status: "idle",
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -277,10 +251,6 @@ export const start = mutation({
 		const workflow = await ctx.db.get(args.id);
 		if (!workflow) throw new Error("Workflow not found");
 
-		if (workflow.isTemplate) {
-			throw new Error("Cannot run a template directly. Duplicate it first.");
-		}
-
 		if (workflow.status === "running") {
 			throw new Error("Workflow is already running");
 		}
@@ -290,7 +260,6 @@ export const start = mutation({
 			error: undefined,
 			currentNodeId: undefined,
 			nodeStates: {},
-			progress: 0,
 			startedAt: undefined,
 			completedAt: undefined,
 			updatedAt: Date.now(),
@@ -305,7 +274,6 @@ export const updateStatus = mutation({
 		status: statusValidator,
 		currentNodeId: v.optional(v.string()),
 		nodeStates: v.optional(v.any()),
-		progress: v.optional(v.number()),
 		error: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -319,7 +287,6 @@ export const updateStatus = mutation({
 
 		if (args.currentNodeId !== undefined) patch.currentNodeId = args.currentNodeId;
 		if (args.nodeStates !== undefined) patch.nodeStates = args.nodeStates;
-		if (args.progress !== undefined) patch.progress = args.progress;
 		if (args.error !== undefined) patch.error = args.error;
 
 		// Set timestamps based on status
@@ -412,7 +379,6 @@ export const retry = mutation({
 			retryCount,
 			error: undefined,
 			currentNodeId: undefined,
-			progress: 0,
 			completedAt: undefined,
 			updatedAt: Date.now(),
 		});
@@ -430,19 +396,11 @@ export const reset = mutation({
 			throw new Error("Cannot reset running workflow");
 		}
 
-		// Clear logs
-		const logs = await ctx.db
-			.query("workflowLogs")
-			.withIndex("by_workflowId", (q) => q.eq("workflowId", args.id))
-			.collect();
-		await Promise.all(logs.map((log) => ctx.db.delete(log._id)));
-
 		await ctx.db.patch(args.id, {
 			status: "idle",
 			error: undefined,
 			currentNodeId: undefined,
 			nodeStates: undefined,
-			progress: undefined,
 			startedAt: undefined,
 			completedAt: undefined,
 			retryCount: 0,
@@ -484,7 +442,6 @@ export const updateSchedule = mutation({
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
 		if (!workflow) throw new Error("Workflow not found");
-		if (workflow.isTemplate) throw new Error("Cannot schedule a template");
 
 		await ctx.db.patch(args.id, {
 			scheduleType: args.scheduleType,
@@ -518,7 +475,6 @@ export const activate = mutation({
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
 		if (!workflow) throw new Error("Workflow not found");
-		if (workflow.isTemplate) throw new Error("Cannot activate a template");
 		if (workflow.isActive) throw new Error("Workflow is already active");
 
 		// Require schedule to be configured
@@ -580,7 +536,6 @@ export const toggleActive = mutation({
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
 		if (!workflow) throw new Error("Workflow not found");
-		if (workflow.isTemplate) throw new Error("Cannot toggle a template");
 
 		if (workflow.isActive) {
 			// Deactivate
@@ -646,7 +601,6 @@ export const executeScheduledWorkflow = internalMutation({
 			error: undefined,
 			currentNodeId: undefined,
 			nodeStates: {},
-			progress: 0,
 			startedAt: undefined,
 			completedAt: undefined,
 			updatedAt: Date.now(),

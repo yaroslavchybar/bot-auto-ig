@@ -21,11 +21,11 @@ import {
 	Pencil,
 	Trash2,
 	Copy,
-	FileText,
 	Eye,
 	GitBranch,
 	Clock,
 	Settings2,
+	Square,
 } from 'lucide-react'
 import type { Workflow } from './types'
 import { formatTimestamp, formatSchedule } from './types'
@@ -37,12 +37,12 @@ interface WorkflowsListProps {
 	loading?: boolean
 	onSelect: (workflow: Workflow) => void
 	onToggleActive: (workflow: Workflow) => void
+	onStopRun: (workflow: Workflow) => void
 	onEdit: (workflow: Workflow) => void
 	onEditFlow: (workflow: Workflow) => void
 	onEditSchedule: (workflow: Workflow) => void
 	onDuplicate: (workflow: Workflow) => void
 	onDelete: (workflow: Workflow) => void
-	onViewLogs: (workflow: Workflow) => void
 	onViewDetails: (workflow: Workflow) => void
 }
 
@@ -52,12 +52,12 @@ export function WorkflowsList({
 	loading,
 	onSelect,
 	onToggleActive,
+	onStopRun,
 	onEdit,
 	onEditFlow,
 	onEditSchedule,
 	onDuplicate,
 	onDelete,
-	onViewLogs,
 	onViewDetails,
 }: WorkflowsListProps) {
 	if (loading) {
@@ -81,7 +81,6 @@ export function WorkflowsList({
 					<TableRow className="bg-muted/50">
 						<TableHead className="w-[80px]">Active</TableHead>
 						<TableHead className="w-[250px]">Name</TableHead>
-						<TableHead className="w-[100px]">Type</TableHead>
 						<TableHead className="w-[200px]">Schedule</TableHead>
 						<TableHead className="w-[150px]">Last Run</TableHead>
 						<TableHead className="w-[100px] text-right">Actions</TableHead>
@@ -89,10 +88,10 @@ export function WorkflowsList({
 				</TableHeader>
 				<TableBody>
 					{workflows.map((workflow) => {
-						const isTemplate = workflow.isTemplate
 						const isActive = workflow.isActive ?? false
 						const isRunning = workflow.status === 'running'
 						const hasSchedule = !!workflow.scheduleType
+						const canToggleActive = hasSchedule && (!isRunning || isActive)
 
 						return (
 							<TableRow
@@ -101,14 +100,12 @@ export function WorkflowsList({
 								onClick={() => onSelect(workflow)}
 							>
 								<TableCell onClick={(e) => e.stopPropagation()}>
-									{!isTemplate && (
-										<Switch
-											checked={isActive}
-											onCheckedChange={() => onToggleActive(workflow)}
-											disabled={isRunning || !hasSchedule}
-											title={!hasSchedule ? 'Configure schedule first' : isActive ? 'Deactivate' : 'Activate'}
-										/>
-									)}
+									<Switch
+										checked={isActive}
+										onCheckedChange={() => onToggleActive(workflow)}
+										disabled={!canToggleActive}
+										title={!hasSchedule ? 'Configure schedule first' : isActive ? 'Deactivate (will stop if running)' : 'Activate'}
+									/>
 								</TableCell>
 								<TableCell className="font-medium">
 									<div className="flex flex-col">
@@ -121,41 +118,34 @@ export function WorkflowsList({
 									</div>
 								</TableCell>
 								<TableCell>
-									<Badge variant={isTemplate ? 'outline' : 'secondary'}>
-										{isTemplate ? 'Template' : 'Runnable'}
-									</Badge>
-								</TableCell>
-								<TableCell>
-									{!isTemplate && (
-										<div className="flex items-center gap-2">
-											{hasSchedule ? (
-												<>
-													<Clock className="h-4 w-4 text-muted-foreground" />
-													<span className="text-sm">
-														{formatSchedule(workflow.scheduleType, workflow.scheduleConfig)}
-													</span>
-													{workflow.maxRunsPerDay && (
-														<Badge variant="outline" className="text-xs">
-															{workflow.runsToday ?? 0}/{workflow.maxRunsPerDay}/day
-														</Badge>
-													)}
-												</>
-											) : (
-												<Button
-													variant="ghost"
-													size="sm"
-													className="h-7 text-xs text-muted-foreground"
-													onClick={(e) => {
-														e.stopPropagation()
-														onEditSchedule(workflow)
-													}}
-												>
-													<Settings2 className="h-3 w-3 mr-1" />
-													Configure
-												</Button>
-											)}
-										</div>
-									)}
+									<div className="flex items-center gap-2">
+										{hasSchedule ? (
+											<>
+												<Clock className="h-4 w-4 text-muted-foreground" />
+												<span className="text-sm">
+													{formatSchedule(workflow.scheduleType, workflow.scheduleConfig)}
+												</span>
+												{workflow.maxRunsPerDay && (
+													<Badge variant="outline" className="text-xs">
+														{workflow.runsToday ?? 0}/{workflow.maxRunsPerDay}/day
+													</Badge>
+												)}
+											</>
+										) : (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="h-7 text-xs text-muted-foreground"
+												onClick={(e) => {
+													e.stopPropagation()
+													onEditSchedule(workflow)
+												}}
+											>
+												<Settings2 className="h-3 w-3 mr-1" />
+												Configure
+											</Button>
+										)}
+									</div>
 								</TableCell>
 								<TableCell className="text-sm text-muted-foreground">
 									{formatTimestamp(workflow.lastRunAt)}
@@ -170,22 +160,26 @@ export function WorkflowsList({
 												</Button>
 											</DropdownMenuTrigger>
 											<DropdownMenuContent align="end">
+												{isRunning && (
+													<>
+														<DropdownMenuItem
+															onClick={() => onStopRun(workflow)}
+															className="text-destructive focus:text-destructive"
+														>
+															<Square className="mr-2 h-4 w-4" />
+															Stop Run
+														</DropdownMenuItem>
+														<DropdownMenuSeparator />
+													</>
+												)}
 												<DropdownMenuItem onClick={() => onViewDetails(workflow)}>
 													<Eye className="mr-2 h-4 w-4" />
 													View Details
 												</DropdownMenuItem>
-												{!isTemplate && (
-													<>
-														<DropdownMenuItem onClick={() => onViewLogs(workflow)}>
-															<FileText className="mr-2 h-4 w-4" />
-															View Logs
-														</DropdownMenuItem>
-														<DropdownMenuItem onClick={() => onEditSchedule(workflow)}>
-															<Clock className="mr-2 h-4 w-4" />
-															Edit Schedule
-														</DropdownMenuItem>
-													</>
-												)}
+												<DropdownMenuItem onClick={() => onEditSchedule(workflow)}>
+													<Clock className="mr-2 h-4 w-4" />
+													Edit Schedule
+												</DropdownMenuItem>
 												<DropdownMenuSeparator />
 												<DropdownMenuItem onClick={() => onEditFlow(workflow)} disabled={isRunning}>
 													<GitBranch className="mr-2 h-4 w-4" />

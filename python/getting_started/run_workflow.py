@@ -249,7 +249,7 @@ class WorkflowRunner:
                 pass
 
         emit_event("session_ended", status="completed" if self.running else "cancelled", workflow_id=self.workflow_id)
-        return 0 if self.running else 1
+        return 0
 
     def process_account(self, account: ThreadsAccount) -> bool:
         profile_name = account.username
@@ -341,6 +341,24 @@ class WorkflowRunner:
                 pass
             return True
         except Exception as e:
+            if not self.running:
+                emit_event("profile_completed", profile=profile_name, status="cancelled", workflow_id=self.workflow_id)
+                try:
+                    self.profiles_client.sync_profile_status(profile_name, "idle", False)
+                except Exception:
+                    pass
+                return False
+
+            msg = str(e)
+            if "Target page, context or browser has been closed" in msg:
+                emit_event("profile_completed", profile=profile_name, status="cancelled", workflow_id=self.workflow_id)
+                try:
+                    self.profiles_client.sync_profile_status(profile_name, "idle", False)
+                except Exception:
+                    pass
+                log(f"Остановлено @{profile_name}")
+                return False
+
             log(f"Ошибка @{profile_name}: {e}")
             try:
                 self.profiles_client.sync_profile_status(profile_name, "idle", False)

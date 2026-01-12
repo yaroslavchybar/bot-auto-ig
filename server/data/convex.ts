@@ -290,7 +290,6 @@ export async function workflowsUpdateStatus(input: {
     status: string
     currentNodeId?: string
     nodeStates?: any
-    progress?: number
     error?: string
 }): Promise<DbWorkflowRow | null> {
     const cleaned = String(input?.workflowId || '').trim()
@@ -302,38 +301,7 @@ export async function workflowsUpdateStatus(input: {
             status: input.status,
             currentNodeId: input.currentNodeId,
             nodeStates: input.nodeStates,
-            progress: input.progress,
             error: input.error,
         },
     })
-}
-
-export type DbWorkflowLogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug'
-
-export async function workflowLogsCreateBatch(input: {
-    logs: Array<{
-        workflowId: string
-        nodeId?: string
-        level: DbWorkflowLogLevel
-        message: string
-        metadata?: any
-    }>
-}): Promise<string[]> {
-    const logs = Array.isArray(input?.logs) ? input.logs : []
-    if (logs.length === 0) return []
-    const payload = {
-        logs: logs.map((l) => ({
-            workflowId: String(l.workflowId || '').trim(),
-            nodeId: l.nodeId,
-            level: l.level,
-            message: String(l.message || ''),
-            metadata: l.metadata,
-        })).filter((l) => l.workflowId && l.message),
-    }
-    if (payload.logs.length === 0) return []
-    const result = await convexFetch<{ ids: string[] } | null>('/api/workflow-logs/create-batch', {
-        method: 'POST',
-        body: payload,
-    })
-    return Array.isArray((result as any)?.ids) ? (result as any).ids : []
 }
