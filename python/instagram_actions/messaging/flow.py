@@ -2,45 +2,38 @@ import random
 from typing import Callable, Dict, List
 
 from python.instagram_actions.actions import random_delay
-from python.instagram_actions.messaging.db import should_skip_by_cooldown, update_after_send
-from python.instagram_actions.messaging.detection import detect_incoming_messages
-from python.instagram_actions.messaging.templates import load_message_2_texts
+from python.instagram_actions.messaging.db import mark_sent
 from python.instagram_actions.messaging.ui import (
-    cleanup_return_home,
-    dismiss_turn_on_notifications_popup,
+    click_follow_button,
+    click_message_button,
     ensure_instagram_open,
     find_message_box,
-    find_modal_search_input,
     find_send_button,
-    open_direct_inbox,
-    open_new_message_search,
-    recover_to_inbox,
-    select_user_row,
+    navigate_to_profile,
 )
 
 
-def _split_message_parts(template: str) -> List[str]:
-    if "|" not in template:
-        return [template]
-    first, second = template.split("|", 1)
-    if str(second).strip():
-        return [first, second]
-    return [template]
-
-
-def _type_template(page, msg_box, template: str) -> None:
-    chunks = str(template).split("\\")
-    for i, chunk in enumerate(chunks):
-        if chunk:
-            msg_box.type(chunk, delay=random.randint(100, 200))
-        if i < len(chunks) - 1:
-            page.keyboard.down("Shift")
-            page.keyboard.press("Enter")
-            page.keyboard.up("Shift")
-            random_delay(0.2, 0.4)
+def _type_message(page, msg_box, text: str, target: Dict) -> None:
+    """Type a message character by character with human-like delays, replacing macros."""
+    # Replace macros with target data
+    final_text = text
+    
+    # Define mapping from macro to target field
+    macros = {
+        "{userName}": target.get("user_name", ""),
+        "{fullName}": target.get("full_name", ""),
+        "{matchedName}": target.get("matched_name", "")
+    }
+    
+    for macro, value in macros.items():
+        # If value is None or empty, we replace it with empty string
+        final_text = final_text.replace(macro, str(value) if value else "")
+        
+    msg_box.type(final_text, delay=random.randint(100, 200))
 
 
 def _send_current_message(page) -> None:
+    """Click Send button or press Enter to send the message."""
     send_btn = find_send_button(page)
     if send_btn:
         try:
@@ -59,132 +52,107 @@ def run_messaging_flow(
     log: Callable[[str], None],
     should_stop: Callable[[], bool],
     client,
-    cooldown_enabled: bool,
-    cooldown_hours: int,
 ) -> int:
+    """
+    Simplified messaging flow:
+    1. Navigate to user's profile
+    2. Click Message button (follow first if needed)
+    3. Type and send the message
+    4. Mark as sent (message -> false)
+    """
     processed_count = 0
 
     try:
         ensure_instagram_open(page)
         random_delay(2, 4)
 
-        open_direct_inbox(page, log)
-        random_delay(3, 5)
-
-        dismiss_turn_on_notifications_popup(page)
-
-        message_2_texts = load_message_2_texts()
-        log(f"Загружено {len(message_2_texts)} альтернативных сообщений из базы")
-
         for target in targets:
             if should_stop():
                 break
 
             username = target.get("user_name")
-            account_id = target.get("id")
-
             if not username:
                 continue
 
             log(f"Обработка сообщения для: {username}")
 
-            if should_skip_by_cooldown(
-                client=client,
-                account_id=account_id,
-                username=username,
-                cooldown_enabled=cooldown_enabled,
-                cooldown_hours=cooldown_hours,
-                log=log,
-            ):
-                continue
-
             try:
-                search_input = open_new_message_search(page, log)
-                if not search_input:
-                    log(f"Поле поиска не найдено, пропускаю {username}...")
+                if not navigate_to_profile(page, username, log):
                     continue
-
-                random_delay(3, 4)
-
-                modal_search = find_modal_search_input(page, log)
-                if not modal_search or not modal_search.is_visible():
-                    log(f"Поле поиска в модальном окне не найдено, пропускаю {username}...")
-                    try:
-                        page.keyboard.press("Escape")
-                    except Exception:
-                        pass
-                    random_delay(1, 2)
-                    continue
-
-                modal_search.clear()
-                random_delay(0.5, 1)
-                modal_search.type(username, delay=random.randint(100, 200))
-                log(f"Набрал имя пользователя: {username}")
 
                 random_delay(2, 3)
 
-                search_input.fill(username)
-                random_delay(2, 3)
+                # Try to click Message button
+                message_clicked = click_message_button(page, log)
 
-                if not select_user_row(page, username, log):
+                if not message_clicked:
+                    # No Message button — try to Follow first
+                    log(f"Кнопка Message не найдена для {username}, пробую Follow...")
+                    followed = click_follow_button(page, log)
+                    if followed:
+                        # Update status to subscribed in DB
+                        account_id = target.get("id")
+                        if account_id:
+                            try:
+                                client.update_account_status(account_id, status="subscribed")
+                                log(f"{username}: статус обновлён на subscribed")
+                            except Exception as e:
+                                log(f"Ошибка обновления статуса {username}: {e}")
+                        random_delay(2, 3)
+                        # After following, try Message again
+                        message_clicked = click_message_button(page, log)
+
+                if not message_clicked:
+                    log(f"Не удалось найти кнопку Message для {username}, пропускаю")
                     continue
 
-                random_delay(2, 4)
+                random_delay(2, 3)
 
-                has_incoming = detect_incoming_messages(page)
-                if has_incoming:
-                    log(f"Обнаружены входящие сообщения от {username}, отправляю альтернативное сообщение")
-                else:
-                    log(f"Входящих сообщений от {username} не обнаружено, отправляю обычное сообщение")
-
-                msg_box = find_message_box(page, log)
-                if msg_box and msg_box.is_visible():
+                # Find message input box and type message
+                try:
+                    msg_box = find_message_box(page, log)
                     msg_box.click()
                     random_delay(0.5, 1)
 
-                    if has_incoming:
-                        selected_message = random.choice(message_2_texts)
-                        log(f"Использую альтернативное сообщение: {selected_message[:50]}...")
-                    else:
-                        selected_message = random.choice(message_texts)
-                        log(f"Использую обычное сообщение: {selected_message[:50]}...")
+                    selected_message = random.choice(message_texts)
+                    log(f"Набираю сообщение: {str(selected_message)[:80]}")
 
-                    parts = _split_message_parts(selected_message)
-                    sent_any = False
-                    for pi, part in enumerate(parts):
-                        msg_box.click()
-                        random_delay(0.4, 0.8)
-                        _type_template(page, msg_box, part)
-                        log(f"Набрал сообщение {pi + 1}/{len(parts)}: {str(part)[:80]}")
+                    _type_message(page, msg_box, selected_message, target)
+                    random_delay(1, 2)
 
-                        random_delay(1, 2)
+                    _send_current_message(page)
+                    log(f"Отправил сообщение для {username}")
 
-                        _send_current_message(page)
-                        sent_any = True
-                        random_delay(1.2, 2.2)
-
-                    if sent_any:
-                        log(f"Отправил сообщение для {username}")
-                        update_after_send(
-                            client=client,
-                            account_id=account_id,
-                            username=username,
-                            has_incoming=has_incoming,
-                            log=log,
-                        )
-                        processed_count += 1
-                else:
-                    log(f"Не удалось найти поле ввода сообщения для {username}")
+                    mark_sent(client, username, log)
+                    processed_count += 1
+                except Exception as e:
+                    log(f"Не удалось отправить сообщение {username}: {str(e)[:50]}")
 
                 random_delay(3, 5)
             except Exception as e:
                 log(f"Ошибка в процессе отправки для {username}: {e}")
-                recover_to_inbox(page)
 
         log(f"Рассылка завершена. Отправлено: {processed_count}")
     except Exception as e:
         log(f"Критическая ошибка браузера: {e}")
-    finally:
-        cleanup_return_home(page, log)
+
+    # Close any open DM popup
+    try:
+        from python.instagram_actions.actions import random_delay as _rd
+        close_svg = page.query_selector('svg[aria-label="Close"]')
+        if close_svg:
+            close_btn = close_svg.query_selector(
+                'xpath=ancestor-or-self::*[self::button or @role="button"][1]'
+            ) or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
+            (close_btn or close_svg).click()
+            log("Закрыл окно сообщений")
+        else:
+            page.keyboard.press("Escape")
+        _rd(0.5, 1.0)
+    except Exception:
+        try:
+            page.keyboard.press("Escape")
+        except Exception:
+            pass
 
     return processed_count

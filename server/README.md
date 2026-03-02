@@ -62,7 +62,7 @@ server/
 ├── types/                # TypeScript definitions
 │   └── index.ts          # ActionName, LogEntry, InstagramSettings, etc.
 │
-└── session-logs/         # Generated log files (gitignored)
+└── ../data/logs/         # Generated log files (gitignored, max 1000 lines/file)
 ```
 
 ---

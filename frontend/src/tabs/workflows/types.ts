@@ -64,13 +64,29 @@ export type ScheduleConfig = {
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export function formatSchedule(scheduleType?: ScheduleType | string, config?: ScheduleConfig): string {
+export function formatSchedule(scheduleType?: ScheduleType | string, config?: ScheduleConfig, timezone?: string): string {
 	if (!scheduleType) return 'Not configured'
 
 	const cfg = config || {}
-	const hour = cfg.hourUTC ?? 9
-	const minute = cfg.minuteUTC ?? 0
-	const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} UTC`
+	const tz = timezone || 'UTC'
+	let hour = cfg.hourUTC ?? 9
+	let minute = cfg.minuteUTC ?? 0
+	let tzLabel = 'UTC'
+
+	if (tz !== 'UTC') {
+		// Convert UTC to local timezone for display
+		const now = new Date()
+		const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00Z`
+		const utcDate = new Date(dateStr)
+		const localStr = utcDate.toLocaleString('en-US', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' })
+		const [h, m] = localStr.split(':').map(Number)
+		hour = h === 24 ? 0 : h
+		minute = m
+		const tzAbbr = utcDate.toLocaleString('en-US', { timeZone: tz, timeZoneName: 'short' }).split(' ').pop() || tz
+		tzLabel = tzAbbr
+	}
+
+	const timeStr = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')} ${tzLabel}`
 
 	switch (scheduleType) {
 		case 'interval': {

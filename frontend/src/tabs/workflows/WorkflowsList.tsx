@@ -123,7 +123,7 @@ export function WorkflowsList({
 											<>
 												<Clock className="h-4 w-4 text-muted-foreground" />
 												<span className="text-sm">
-													{formatSchedule(workflow.scheduleType, workflow.scheduleConfig)}
+													{formatSchedule(workflow.scheduleType, workflow.scheduleConfig, workflow.timezone)}
 												</span>
 												{workflow.maxRunsPerDay && (
 													<Badge variant="outline" className="text-xs">

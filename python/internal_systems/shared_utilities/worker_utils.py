@@ -15,6 +15,8 @@ def create_browser_context(
     user_agent: Optional[str] = None,
     base_dir: Optional[str] = None,
     headless: bool = False,
+    fingerprint_seed: Optional[str] = None,
+    fingerprint_os: Optional[str] = None,
 ):
     """
     Create a Camoufox browser context with standard configuration.
@@ -24,6 +26,8 @@ def create_browser_context(
         proxy_string: Optional proxy string (format: protocol://user:pass@host:port)
         user_agent: Optional custom user agent
         base_dir: Base directory for profiles (defaults to cwd)
+        fingerprint_seed: Optional seed for deterministic fingerprint generation
+        fingerprint_os: Optional OS for fingerprint generation
     
     Yields:
         Tuple of (context, page)
@@ -34,6 +38,8 @@ def create_browser_context(
         user_agent=user_agent,
         base_dir=base_dir,
         headless=headless,
+        fingerprint_seed=fingerprint_seed,
+        fingerprint_os=fingerprint_os,
     ) as (context, page):
         yield context, page
 

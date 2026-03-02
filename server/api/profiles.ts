@@ -2,6 +2,7 @@
 import { Router } from 'express'
 import { spawn, execFile } from 'child_process'
 import path from 'path'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { profileManager } from '../data/profiles.js'
 import {
@@ -9,7 +10,8 @@ import {
     profilesListUnassigned,
     profilesBulkSetListId,
     profilesSyncStatus,
-    profilesSetLoginTrue
+    profilesSetLoginTrue,
+    profilesUpdateByName
 } from '../data/convex.js'
 import { profileProcesses } from '../store.js'
 import { broadcast } from '../websocket.js'
@@ -151,6 +153,35 @@ router.post('/:name/start', async (req, res) => {
             return res.status(404).json({ error: 'Profile not found' })
         }
 
+        // Auto-generate fingerprint seed if missing
+        if (!profile.fingerprint_seed) {
+            const newSeed = crypto.randomUUID()
+            const defaultOs = profile.fingerprint_os || 'windows'
+            try {
+                await profilesUpdateByName(name, {
+                    name,
+                    proxy: profile.proxy,
+                    proxy_type: profile.proxy_type,
+                    fingerprint_seed: newSeed,
+                    fingerprint_os: defaultOs,
+                    test_ip: profile.test_ip,
+                    automation: profile.automation,
+                    daily_scraping_limit: profile.daily_scraping_limit,
+                })
+                profile.fingerprint_seed = newSeed
+                profile.fingerprint_os = defaultOs
+                broadcast({
+                    type: 'log',
+                    message: `Auto-generated fingerprint seed for ${name}: ${newSeed.slice(0, 8)}...`,
+                    level: 'info',
+                    source: 'server',
+                    profileName: name,
+                })
+            } catch (e) {
+                console.error(`Failed to auto-generate fingerprint seed for ${name}:`, e)
+            }
+        }
+
         const python = process.env.PYTHON || 'python'
         const args = [LAUNCHER_SCRIPT, '--name', name, '--action', 'manual']
 
@@ -169,6 +200,7 @@ router.post('/:name/start', async (req, res) => {
             message: `Starting browser for profile: ${name}`,
             level: 'info',
             source: 'server',
+            profileName: name,
         })
 
         const child = spawn(python, args, {
@@ -181,14 +213,14 @@ router.post('/:name/start', async (req, res) => {
         child.stdout?.on('data', (data) => {
             const message = data.toString().trim()
             if (message) {
-                broadcast({ type: 'log', message, level: 'info', source: `profile:${name}` })
+                broadcast({ type: 'log', message, level: 'info', source: `profile:${name}`, profileName: name })
             }
         })
 
         child.stderr?.on('data', (data) => {
             const message = data.toString().trim()
             if (message) {
-                broadcast({ type: 'log', message, level: 'error', source: `profile:${name}` })
+                broadcast({ type: 'log', message, level: 'error', source: `profile:${name}`, profileName: name })
             }
         })
 
@@ -200,6 +232,7 @@ router.post('/:name/start', async (req, res) => {
                 message: `Browser closed for profile: ${name} (code: ${code})`,
                 level: 'info',
                 source: 'server',
+                profileName: name,
             })
         })
 
@@ -211,6 +244,7 @@ router.post('/:name/start', async (req, res) => {
                 message: `Browser error for profile ${name}: ${err.message}`,
                 level: 'error',
                 source: 'server',
+                profileName: name,
             })
         })
 
@@ -239,6 +273,7 @@ router.post('/:name/stop', async (req, res) => {
             message: `Stopping browser for profile: ${name}`,
             level: 'warn',
             source: 'server',
+            profileName: name,
         })
 
         // Windows needs taskkill to kill process tree

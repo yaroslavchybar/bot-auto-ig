@@ -75,7 +75,7 @@ export function WorkflowDetails({
 					<div className="text-sm">
 						{hasSchedule ? (
 							<>
-								<p>{formatSchedule(workflow.scheduleType, workflow.scheduleConfig as ScheduleConfig)}</p>
+								<p>{formatSchedule(workflow.scheduleType, workflow.scheduleConfig as ScheduleConfig, workflow.timezone)}</p>
 								{workflow.maxRunsPerDay && (
 									<p className="text-muted-foreground mt-1">
 										Limit: {workflow.runsToday ?? 0}/{workflow.maxRunsPerDay} runs today

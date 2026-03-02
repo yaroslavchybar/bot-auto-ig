@@ -2,8 +2,9 @@ import time
 import random
 import math
 import logging
-
 from typing import Callable
+
+from python.instagram_actions.actions import safe_mouse_move
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ def scroll_to_element(
             return True
 
         x, y = _pick_point(viewport_w, viewport_h)
-        page.mouse.move(x, y)
+        safe_mouse_move(page, x, y)
         time.sleep(random.uniform(0.03, 0.10))
         if should_stop and should_stop():
             return False
@@ -166,7 +167,7 @@ def human_scroll(page, total_delta: int | None = None, should_stop: Callable[[],
     try:
         viewport_w, viewport_h = _get_viewport_size(page)
         x, y = _pick_point(viewport_w, viewport_h)
-        page.mouse.move(x, y)
+        safe_mouse_move(page, x, y)
         time.sleep(random.uniform(0.05, 0.15))
 
         if should_stop and should_stop():
@@ -275,7 +276,11 @@ def human_mouse_move(page, target_x: int | None = None, target_y: int | None = N
             jitter_x = point[0] + random.uniform(-1.5, 1.5)
             jitter_y = point[1] + random.uniform(-1.5, 1.5)
             
-            page.mouse.move(int(jitter_x), int(jitter_y))
+            # Clamp coordinates to viewport to prevent going out of bounds
+            clamped_x = max(2, min(int(jitter_x), viewport_w - 2))
+            clamped_y = max(2, min(int(jitter_y), viewport_h - 2))
+            
+            safe_mouse_move(page, clamped_x, clamped_y)
             
             # Variable delay - slower at start and end, faster in middle
             if t < 0.15 or t > 0.85:
@@ -294,7 +299,12 @@ def human_mouse_move(page, target_x: int | None = None, target_y: int | None = N
             time.sleep(random.uniform(0.04, 0.10))
             correction_x = end_x + random.randint(-6, 6)
             correction_y = end_y + random.randint(-6, 6)
-            page.mouse.move(correction_x, correction_y)
+            
+            # Clamp correction coordinates to viewport
+            clamped_corr_x = max(2, min(correction_x, viewport_w - 2))
+            clamped_corr_y = max(2, min(correction_y, viewport_h - 2))
+            
+            safe_mouse_move(page, clamped_corr_x, clamped_corr_y)
 
     except Exception:
         pass

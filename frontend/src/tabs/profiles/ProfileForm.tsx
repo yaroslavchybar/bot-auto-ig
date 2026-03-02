@@ -102,7 +102,7 @@ export function ProfileForm({
       finalData.proxy = `${pType}://${pVal}`;
     } else if (connection === 'direct') {
       finalData.proxy = '';
-      finalData.proxy_type = undefined;
+      finalData.proxy_type = '';
     }
 
     // Validate: automation=false requires proxy
@@ -121,191 +121,191 @@ export function ProfileForm({
       {/* Scrollable form body */}
       <ScrollArea className="flex-1 min-h-0 pr-4">
         <div className="grid gap-5 pb-2">
-        <div className="grid gap-1.5">
-          <Label htmlFor="name" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profile Name</Label>
-          <Input
-            id="name"
-            value={String(draft.name ?? '')}
-            onChange={(e) => {
-              setDraft((prev) => ({ ...prev, name: e.target.value }))
-              setLocalError(null)
-            }}
-            disabled={saving}
-            placeholder="e.g. Work Account 1"
-            className="h-9 font-medium"
-          />
-        </div>
-
-        <Separator />
-
-        <div className="grid gap-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Globe className="h-4 w-4" /> Network Connection
-            </Label>
-            <Select
-              value={connection}
-              onValueChange={(value) => setConnection(value as 'direct' | 'proxy')}
+          <div className="grid gap-1.5">
+            <Label htmlFor="name" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profile Name</Label>
+            <Input
+              id="name"
+              value={String(draft.name ?? '')}
+              onChange={(e) => {
+                setDraft((prev) => ({ ...prev, name: e.target.value }))
+                setLocalError(null)
+              }}
               disabled={saving}
-            >
-              <SelectTrigger id="connection" className="w-[180px] h-8 text-xs">
-                <SelectValue placeholder="Select connection" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="direct">Direct Connection</SelectItem>
-                <SelectItem value="proxy">Proxy</SelectItem>
-              </SelectContent>
-            </Select>
+              placeholder="e.g. Work Account 1"
+              className="h-9 font-medium"
+            />
           </div>
 
-          {connection === 'proxy' && (
-            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-              <div className="flex rounded-md shadow-sm">
-                <div className="relative">
-                  <Select
-                    value={String(draft.proxy_type ?? 'http')}
-                    onValueChange={(value) => setDraft((prev) => ({ ...prev, proxy_type: value }))}
-                    disabled={saving}
-                  >
-                    <SelectTrigger id="proxy_type" className="h-9 w-[100px] rounded-r-none border-r-0 focus:ring-0 focus:ring-offset-0 bg-muted/50">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="http">HTTP</SelectItem>
-                      <SelectItem value="socks5">SOCKS5</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="relative flex-1">
-                  <Input
-                    id="proxy"
-                    value={String(draft.proxy ?? '')}
-                    onChange={(e) => setDraft((prev) => ({ ...prev, proxy: e.target.value }))}
-                    disabled={saving}
-                    placeholder="host:port:user:pass"
-                    className="h-9 rounded-l-none font-mono text-sm focus-visible:ring-1 focus-visible:ring-offset-0"
-                  />
-                </div>
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-1.5 ml-1">
-                Format: <span className="font-mono">host:port:user:pass</span> or <span className="font-mono">host:port</span>
-              </p>
-            </div>
-          )}
-        </div>
+          <Separator />
 
-        <Separator />
-
-        <div className="grid gap-4">
-          <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Fingerprint className="h-4 w-4" /> Browser Fingerprint
-            </Label>
-          </div>
-
-          <div className="p-4 border rounded-md bg-card space-y-4">
-            <div className="flex items-end gap-4">
-              <div className="grid gap-1.5 flex-1">
-                <Label className="text-xs text-muted-foreground">Operating System</Label>
-                <Select
-                  value={draft.fingerprint_os || 'windows'}
-                  onValueChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
-                  disabled={saving}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="OS" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="windows">Windows</SelectItem>
-                    <SelectItem value="macos">macOS</SelectItem>
-                    <SelectItem value="linux">Linux</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleRegenerateSeed}
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Globe className="h-4 w-4" /> Network Connection
+              </Label>
+              <Select
+                value={connection}
+                onValueChange={(value) => setConnection(value as 'direct' | 'proxy')}
                 disabled={saving}
-                className="h-9"
               >
-                <RefreshCw className="h-3.5 w-3.5 mr-2" />
-                New Seed
-              </Button>
+                <SelectTrigger id="connection" className="w-[180px] h-8 text-xs">
+                  <SelectValue placeholder="Select connection" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="direct">Direct Connection</SelectItem>
+                  <SelectItem value="proxy">Proxy</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {draft.fingerprint_seed && (
-              <div className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded border border-border/50">
-                <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-mono text-muted-foreground truncate flex-1">{draft.fingerprint_seed}</span>
+            {connection === 'proxy' && (
+              <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex rounded-md shadow-sm">
+                  <div className="relative">
+                    <Select
+                      value={String(draft.proxy_type ?? 'http')}
+                      onValueChange={(value) => setDraft((prev) => ({ ...prev, proxy_type: value }))}
+                      disabled={saving}
+                    >
+                      <SelectTrigger id="proxy_type" className="h-9 w-[100px] rounded-r-none border-r-0 focus:ring-0 focus:ring-offset-0 bg-muted/50">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="http">HTTP</SelectItem>
+                        <SelectItem value="socks5">SOCKS5</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="relative flex-1">
+                    <Input
+                      id="proxy"
+                      value={String(draft.proxy ?? '')}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, proxy: e.target.value }))}
+                      disabled={saving}
+                      placeholder="host:port:user:pass"
+                      className="h-9 rounded-l-none font-mono text-sm focus-visible:ring-1 focus-visible:ring-offset-0"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-1.5 ml-1">
+                  Format: <span className="font-mono">host:port:user:pass</span> or <span className="font-mono">host:port</span>
+                </p>
               </div>
             )}
           </div>
-        </div>
 
-        <Separator />
+          <Separator />
 
-        <div className="flex items-center justify-between py-2">
-          <Label htmlFor="automation" className="cursor-pointer flex flex-col gap-0.5">
-            <span className="font-medium">Automation Mode</span>
-            <span className="text-xs text-muted-foreground font-normal">Enable additional scraping protections</span>
-          </Label>
-          <Checkbox
-            id="automation"
-            checked={Boolean(draft.automation)}
-            onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, automation: Boolean(checked) }))}
-            disabled={saving}
-          />
-        </div>
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Fingerprint className="h-4 w-4" /> Browser Fingerprint
+              </Label>
+            </div>
 
-        {draft.automation === false && (
-          <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-            <Separator className="mb-4" />
-            <div className="grid gap-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium flex items-center gap-2">
-                  <Target className="h-4 w-4" /> Daily Scraping Limit
-                </Label>
-              </div>
-              <div className="p-4 border rounded-md bg-card space-y-3">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="daily_scraping_limit" className="text-xs text-muted-foreground">
-                    Maximum items to scrape per day
-                  </Label>
-                  <Input
-                    id="daily_scraping_limit"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={draft.daily_scraping_limit ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value.trim()
-                      setDraft((prev) => ({
-                        ...prev,
-                        daily_scraping_limit: val === '' ? null : Math.max(0, Math.floor(Number(val)))
-                      }))
-                    }}
+            <div className="p-4 border rounded-md bg-card space-y-4">
+              <div className="flex items-end gap-4">
+                <div className="grid gap-1.5 flex-1">
+                  <Label className="text-xs text-muted-foreground">Operating System</Label>
+                  <Select
+                    value={draft.fingerprint_os || 'windows'}
+                    onValueChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
                     disabled={saving}
-                    placeholder="Leave empty for unlimited"
-                    className="h-9"
-                  />
-                  <p className="text-[10px] text-muted-foreground ml-1">
-                    Set a daily limit to prevent overuse. Leave empty for no limit.
-                  </p>
+                  >
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="OS" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="windows">Windows</SelectItem>
+                      <SelectItem value="macos">macOS</SelectItem>
+                      <SelectItem value="linux">Linux</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
-                  <div className="text-xs bg-muted/50 p-2 rounded border border-border/50">
-                    <span className="text-muted-foreground">Used today: </span>
-                    <span className="font-semibold">{draft.daily_scraping_used}</span>
-                    {typeof draft.daily_scraping_limit === 'number' && (
-                      <span className="text-muted-foreground"> / {draft.daily_scraping_limit}</span>
-                    )}
-                  </div>
-                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleRegenerateSeed}
+                  disabled={saving}
+                  className="h-9"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                  New Seed
+                </Button>
               </div>
+
+              {draft.fingerprint_seed && (
+                <div className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded border border-border/50">
+                  <Shield className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="font-mono text-muted-foreground truncate flex-1">{draft.fingerprint_seed}</span>
+                </div>
+              )}
             </div>
           </div>
-        )}
+
+          <Separator />
+
+          <div className="flex items-center justify-between py-2">
+            <Label htmlFor="automation" className="cursor-pointer flex flex-col gap-0.5">
+              <span className="font-medium">Automation Mode</span>
+              <span className="text-xs text-muted-foreground font-normal">Enable additional scraping protections</span>
+            </Label>
+            <Checkbox
+              id="automation"
+              checked={Boolean(draft.automation)}
+              onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, automation: Boolean(checked) }))}
+              disabled={saving}
+            />
+          </div>
+
+          {draft.automation === false && (
+            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+              <Separator className="mb-4" />
+              <div className="grid gap-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Target className="h-4 w-4" /> Daily Scraping Limit
+                  </Label>
+                </div>
+                <div className="p-4 border rounded-md bg-card space-y-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="daily_scraping_limit" className="text-xs text-muted-foreground">
+                      Maximum items to scrape per day
+                    </Label>
+                    <Input
+                      id="daily_scraping_limit"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={draft.daily_scraping_limit ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value.trim()
+                        setDraft((prev) => ({
+                          ...prev,
+                          daily_scraping_limit: val === '' ? null : Math.max(0, Math.floor(Number(val)))
+                        }))
+                      }}
+                      disabled={saving}
+                      placeholder="Leave empty for unlimited"
+                      className="h-9"
+                    />
+                    <p className="text-[10px] text-muted-foreground ml-1">
+                      Set a daily limit to prevent overuse. Leave empty for no limit.
+                    </p>
+                  </div>
+                  {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
+                    <div className="text-xs bg-muted/50 p-2 rounded border border-border/50">
+                      <span className="text-muted-foreground">Used today: </span>
+                      <span className="font-semibold">{draft.daily_scraping_used}</span>
+                      {typeof draft.daily_scraping_limit === 'number' && (
+                        <span className="text-muted-foreground"> / {draft.daily_scraping_limit}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
 
@@ -316,12 +316,12 @@ export function ProfileForm({
         )}
 
         <div className="flex justify-end gap-3">
-        <Button variant="ghost" onClick={onCancel} disabled={saving}>
-          Cancel
-        </Button>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? 'Saving...' : 'Save Profile'}
-        </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Profile'}
+          </Button>
         </div>
       </div>
     </div>

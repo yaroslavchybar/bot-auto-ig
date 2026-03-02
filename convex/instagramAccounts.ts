@@ -12,6 +12,8 @@ function normalizeUserName(userName: string): string {
 export const insert = mutation({
 	args: {
 		userName: v.string(),
+		fullName: v.optional(v.string()),
+		matchedName: v.optional(v.string()),
 		status: v.string(),
 		message: v.boolean(),
 		createdAt: v.number(),
@@ -24,15 +26,13 @@ export const insert = mutation({
 			.withIndex("by_userName", (q) => q.eq("userName", userName))
 			.first();
 		if (existing) {
-			if (!existing.linkSent) {
-				await ctx.db.patch(existing._id, { linkSent: "not send" });
-			}
 			return { id: existing._id, alreadyExisted: true };
 		}
 		const id = await ctx.db.insert("instagramAccounts", {
 			userName,
+			fullName: args.fullName,
+			matchedName: args.matchedName,
 			status: args.status,
-			linkSent: "not send",
 			message: args.message,
 			createdAt: args.createdAt,
 		});
@@ -45,6 +45,8 @@ export const insertBatch = mutation({
 		accounts: v.array(
 			v.object({
 				userName: v.string(),
+				fullName: v.optional(v.string()),
+				matchedName: v.optional(v.string()),
 				status: v.string(),
 				message: v.boolean(),
 				createdAt: v.number(),
@@ -68,16 +70,14 @@ export const insertBatch = mutation({
 				.withIndex("by_userName", (q) => q.eq("userName", userName))
 				.first();
 			if (existing) {
-				if (!existing.linkSent) {
-					await ctx.db.patch(existing._id, { linkSent: "not send" });
-				}
 				skipped++;
 				continue;
 			}
 			const id = await ctx.db.insert("instagramAccounts", {
 				userName,
+				fullName: account.fullName,
+				matchedName: account.matchedName,
 				status: account.status,
-				linkSent: "not send",
 				message: account.message,
 				createdAt: account.createdAt,
 			});
@@ -107,9 +107,7 @@ export const getToMessage = query({
 			.query("instagramAccounts")
 			.withIndex("by_assignedTo", (q) => q.eq("assignedTo", args.profileId))
 			.collect();
-		const filtered = rows.filter(
-			(r) => r.message === true && (r.linkSent === "not send" || r.linkSent === "needed to send"),
-		);
+		const filtered = rows.filter((r) => r.message === false);
 		filtered.sort((a, b) => a.createdAt - b.createdAt);
 		return filtered;
 	},
@@ -153,37 +151,7 @@ export const updateMessage = mutation({
 	},
 });
 
-export const updateLinkSent = mutation({
-	args: { userName: v.string(), linkSent: v.string() },
-	handler: async (ctx, args) => {
-		const normalized = normalizeUserName(args.userName);
-		if (!normalized) return null;
-		const rows = await ctx.db.query("instagramAccounts").collect();
-		const lower = normalized.toLowerCase();
-		const existing =
-			rows.find((r) => r.userName === normalized) ?? rows.find((r) => String(r.userName || "").toLowerCase() === lower);
-		if (!existing) return null;
-		await ctx.db.patch(existing._id, { linkSent: args.linkSent });
-		return await ctx.db.get(existing._id);
-	},
-});
 
-export const setLastMessageSentNow = mutation({
-	args: { accountId: v.id("instagramAccounts") },
-	handler: async (ctx, args) => {
-		await ctx.db.patch(args.accountId, { lastMessageSentAt: Date.now() });
-		return await ctx.db.get(args.accountId);
-	},
-});
-
-export const getLastMessageSentAt = query({
-	args: { accountId: v.id("instagramAccounts") },
-	handler: async (ctx, args) => {
-		const row = await ctx.db.get(args.accountId);
-		if (!row) return null;
-		return typeof row.lastMessageSentAt === "number" ? row.lastMessageSentAt : null;
-	},
-});
 
 export const listUserNames = query({
 	args: { limit: v.number() },

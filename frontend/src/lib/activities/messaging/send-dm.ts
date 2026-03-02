@@ -9,23 +9,12 @@ import type { ActivityDefinition } from '../types';
 export const sendDm: ActivityDefinition = {
 	id: 'send_dm',
 	name: 'Send Messages',
-	description: 'Send direct messages',
+	description: 'Send direct messages to assigned accounts',
 	category: 'messaging',
 	icon: 'MessageCircle',
 	color: '#a855f7',
-	
+
 	inputs: [
-		// Template Kind selection
-		{
-			name: 'template_kind',
-			type: 'select',
-			label: 'Message Template',
-			default: 'message',
-			options: [
-				{ label: 'Standard Messages', value: 'message' },
-				{ label: 'Alternative Messages', value: 'message_2' },
-			],
-		},
 		// Template preview and management
 		{
 			name: 'templates_preview',
@@ -34,7 +23,7 @@ export const sendDm: ActivityDefinition = {
 			helpText: 'Templates that will be randomly selected for messages',
 		},
 	],
-	
+
 	outputs: ['success', 'failure'],
 	pythonHandler: 'instagram_actions.messaging.send_dm',
 };

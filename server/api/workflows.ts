@@ -159,6 +159,8 @@ router.post('/run', async (req, res) => {
         proc.stdin?.write(payload)
         proc.stdin?.end()
 
+        let currentProfile: string | null = null;
+
         const maybeUpdateStatusFromEvent = async (log: any) => {
             const meta = (log?.metadata as any) || {}
             const eventType = log?.eventType
@@ -169,6 +171,12 @@ router.post('/run', async (req, res) => {
                 } catch {
                 }
                 return
+            }
+
+            if (eventType === 'profile_started') {
+                currentProfile = meta.profile || null;
+            } else if (eventType === 'profile_completed') {
+                currentProfile = null;
             }
 
             if (eventType === 'task_started' && (meta.node_id || meta.nodeId)) {
@@ -204,6 +212,7 @@ router.post('/run', async (req, res) => {
                     message: log.message,
                     level: log.level,
                     source: 'python',
+                    profileName: currentProfile,
                     ...log.metadata,
                 })
             }
@@ -271,7 +280,7 @@ router.post('/stop', async (req, res) => {
             const worker = workflowWorkers.get(id)
             if (!worker) continue
             workflowWorkers.set(id, { ...worker, status: 'stopping' })
-            ;(worker.process as any).__stopRequested = true
+                ; (worker.process as any).__stopRequested = true
             broadcast({ type: 'workflow_status', workflowId: id, status: 'stopping' })
             broadcast({ type: 'log', workflowId: id, message: 'Stopping workflow...', level: 'warn', source: 'server' })
             await stopProcess(worker.process)

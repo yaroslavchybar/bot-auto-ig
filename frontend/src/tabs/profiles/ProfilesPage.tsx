@@ -134,8 +134,8 @@ export function ProfilesPage() {
           method: 'POST',
           body: {
             name,
-            proxy: String(data.proxy ?? '').trim() || undefined,
-            proxy_type: String(data.proxy_type ?? '').trim() || undefined,
+            proxy: typeof data.proxy === 'string' ? data.proxy.trim() : undefined,
+            proxy_type: typeof data.proxy_type === 'string' ? data.proxy_type.trim() : undefined,
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
@@ -150,8 +150,8 @@ export function ProfilesPage() {
           method: 'PUT',
           body: {
             name,
-            proxy: String(data.proxy ?? '').trim() || undefined,
-            proxy_type: String(data.proxy_type ?? '').trim() || undefined,
+            proxy: typeof data.proxy === 'string' ? data.proxy.trim() : undefined,
+            proxy_type: typeof data.proxy_type === 'string' ? data.proxy_type.trim() : undefined,
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),

@@ -16,6 +16,7 @@ export type LogEntry = {
     message: string;
     source?: string;
     level?: LogLevel;
+    profileName?: string;
 };
 
 export type InstagramSettings = {

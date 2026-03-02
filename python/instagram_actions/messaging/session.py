@@ -15,8 +15,6 @@ def send_messages(
     should_stop: Optional[Callable[[], bool]] = None,
     page: Optional[object] = None,
     user_agent: Optional[str] = None,
-    cooldown_enabled: bool = True,
-    cooldown_hours: int = 2,
 ):
     """
     Send messages to a list of target users.
@@ -40,8 +38,6 @@ def send_messages(
             log=log,
             should_stop=should_stop,
             client=client,
-            cooldown_enabled=cooldown_enabled,
-            cooldown_hours=cooldown_hours,
         )
 
     if page:

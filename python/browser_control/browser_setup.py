@@ -5,6 +5,10 @@ import time
 import random
 import datetime
 import signal
+import json
+import hashlib
+import uuid
+import sys
 from contextlib import contextmanager
 from typing import Optional
 from threading import Thread
@@ -323,6 +327,67 @@ def _clean_cache2(profile_path: str) -> None:
             return
     _mark_cleaned_today(profile_path)
 
+def _fingerprint_cache_path(profile_path: str, seed: str, os_name: str) -> str:
+    """Return path to the fingerprint cache file for a given profile."""
+    return os.path.join(profile_path, ".fingerprint_cache.json")
+
+def _load_cached_fingerprint(cache_path: str, seed: str, os_name: str) -> Optional[dict]:
+    """Load a cached fingerprint if it exists and matches the current seed + OS."""
+    try:
+        if not os.path.exists(cache_path):
+            return None
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if data.get("seed") != seed or data.get("os") != os_name:
+            return None
+        fp = data.get("fingerprint")
+        if not isinstance(fp, dict):
+            return None
+        return fp
+    except Exception:
+        return None
+
+def _save_fingerprint_cache(cache_path: str, seed: str, os_name: str, fp_dict: dict) -> None:
+    """Save a fingerprint to the cache file."""
+    try:
+        data = {"seed": seed, "os": os_name, "fingerprint": fp_dict}
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[!] Failed to save fingerprint cache: {e}")
+
+def _apply_cached_properties(fingerprint_obj, cached: dict) -> None:
+    """Apply cached fingerprint properties onto a BrowserForge fingerprint object."""
+    # Screen properties
+    if "screen" in cached and hasattr(fingerprint_obj, "screen") and fingerprint_obj.screen:
+        screen_data = cached["screen"]
+        for key in ("width", "height", "availWidth", "availHeight", "colorDepth", "pixelDepth", "devicePixelRatio"):
+            if key in screen_data:
+                try:
+                    setattr(fingerprint_obj.screen, key, screen_data[key])
+                except Exception:
+                    pass
+
+    # Navigator properties
+    if "navigator" in cached and hasattr(fingerprint_obj, "navigator") and fingerprint_obj.navigator:
+        nav_data = cached["navigator"]
+        for key in ("userAgent", "platform", "language", "languages", "hardwareConcurrency", "deviceMemory", "maxTouchPoints"):
+            if key in nav_data:
+                try:
+                    setattr(fingerprint_obj.navigator, key, nav_data[key])
+                except Exception:
+                    pass
+
+    # Video card
+    if "videoCard" in cached and hasattr(fingerprint_obj, "videoCard") and fingerprint_obj.videoCard:
+        vc_data = cached["videoCard"]
+        for key in ("vendor", "renderer"):
+            if key in vc_data:
+                try:
+                    setattr(fingerprint_obj.videoCard, key, vc_data[key])
+                except Exception:
+                    pass
+
 @contextmanager
 def create_browser_context(
     profile_name: str,
@@ -350,28 +415,47 @@ def create_browser_context(
         
     proxy_config = build_proxy_config(proxy_string)
     
-    # Generate fingerprint from seed using BrowserForge
-    fingerprint_obj = None
+    # Generate fingerprint from seed using BrowserForge (cached for consistency)
+    # We cache the FLAT CONFIG (Camoufox format), not the Fingerprint object,
+    # because Camoufox re-randomizes many properties on each launch.
+    # By injecting via `config`, our cached values take precedence.
+    cached_config = None
     target_os = fingerprint_os or os or "windows"
     
     if fingerprint_seed:
         try:
-            from browserforge.fingerprints import FingerprintGenerator, Screen
+            cache_path = _fingerprint_cache_path(profile_path, fingerprint_seed, target_os)
+            cached_config = _load_cached_fingerprint(cache_path, fingerprint_seed, target_os)
             
-            # Set random seed for consistent fingerprint generation
-            random.seed(fingerprint_seed)
-            
-            screen = Screen(min_width=1280, max_width=1920, min_height=720, max_height=1080)
-            fg = FingerprintGenerator(browser='firefox', screen=screen)
-            fingerprint_obj = fg.generate(os=target_os)
-            
-            print(f"[*] Generated fingerprint from seed for {target_os}")
-            
-            # Reset random seed to not affect other randomness
-            random.seed()
+            if cached_config is not None:
+                print(f"[*] Loaded cached fingerprint config for {target_os} (seed: {fingerprint_seed[:8]}...)")
+            else:
+                # Generate a new fingerprint and convert to Camoufox flat config
+                from camoufox.fingerprints import generate_fingerprint, from_browserforge
+                from browserforge.fingerprints import Screen
+                
+                screen = Screen(min_width=1366, max_width=1366, min_height=768, max_height=768)
+                fp = generate_fingerprint(screen=screen, os=target_os)
+                cached_config = from_browserforge(fp)
+                
+                # Override to enforce exact full display size for VNC
+                cached_config["screen.width"] = 1366
+                cached_config["screen.height"] = 768
+                cached_config["screen.availWidth"] = 1366
+                cached_config["screen.availHeight"] = 768
+                cached_config["window.outerWidth"] = 1366
+                cached_config["window.outerHeight"] = 768
+                cached_config["window.screenX"] = 0
+                cached_config["window.screenY"] = 0
+                
+                # Save to cache
+                _save_fingerprint_cache(cache_path, fingerprint_seed, target_os, cached_config)
+                print(f"[*] Generated and cached new fingerprint config for {target_os} (seed: {fingerprint_seed[:8]}...)")
         except Exception as e:
-            print(f"[!] Failed to generate fingerprint: {e}")
-            fingerprint_obj = None
+            print(f"[!] Failed to generate/load fingerprint config: {e}")
+            import traceback as _tb
+            _tb.print_exc()
+            cached_config = None
 
     # Prepare common launch arguments
     launch_kwargs = dict(
@@ -382,11 +466,14 @@ def create_browser_context(
         block_images=block_images,
         os=target_os,
         humanize=True,
+        locale='en-US',
     )
     
-    # If fingerprint object is generated, pass it directly to Camoufox
-    if fingerprint_obj:
-        launch_kwargs['fingerprint'] = fingerprint_obj
+    # Inject cached fingerprint config directly — these take precedence 
+    # over Camoufox's auto-generated values
+    if cached_config:
+        launch_kwargs['config'] = dict(cached_config)
+        launch_kwargs['i_know_what_im_doing'] = True
     elif user_agent:
         launch_kwargs['user_agent'] = user_agent
 
@@ -417,7 +504,8 @@ def create_browser_context(
         
         try:
             if page.url == "about:blank":
-                safe_goto(page, "https://www.instagram.com", timeout=jitter(15000))
+                # Increased timeout to 45s for slower proxies
+                safe_goto(page, "https://www.instagram.com", timeout=jitter(45000))
                 
                 # Check monitor cooldown
                 if monitor.should_pause():
@@ -595,6 +683,13 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
                         
                     print("[*] Mixed session finished.")
 
+                if action in ("scroll", "reels", "mixed"):
+                    print("[*] Automated session complete. Force closing browser to proceed...")
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                    sys.exit(0)
                 else: # Manual mode
                     print("[*] Manual mode active. Keep window open.")
                     # Keep Alive Loop

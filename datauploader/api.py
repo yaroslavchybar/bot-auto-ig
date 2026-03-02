@@ -11,9 +11,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from clean_data import detect_csv_separator
-from filter_instagram import classify_gender, filter_csv
-from convex_client import convex_mutation, convex_query
-from uploader import extract_usernames_from_scraping_task_payload, upload_to_convex, upload_usernames_to_convex
+from filter_instagram import filter_csv, filter_with_keywords, load_all_keyword_sets
+from convex_client import convex_mutation, convex_query, get_keywords, upsert_keywords, list_keywords, remove_keywords
+from uploader import extract_usernames_from_scraping_task_payload, upload_to_convex, upload_usernames_to_convex, upload_accounts_to_convex
 
 import requests
 
@@ -33,6 +33,61 @@ jobs: dict[str, dict[str, Any]] = {}
 
 UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# ── Keywords endpoints ────────────────────────────────────────────────
+
+
+class KeywordUploadRequest(BaseModel):
+    filename: str
+    content: str
+    env: str = "dev"
+
+
+@app.post("/keywords/upload")
+async def upload_keywords(request: KeywordUploadRequest):
+    """Upload or update a keyword list in the DB."""
+    if not request.filename or not request.content.strip():
+        raise HTTPException(status_code=400, detail="filename and content are required")
+    try:
+        result = upsert_keywords(request.filename, request.content, env=request.env)
+        return {"status": "ok", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/keywords/upload-file")
+async def upload_keyword_file(file: UploadFile = File(...), env: str = "dev"):
+    """Upload a .txt keyword file and store it in the DB."""
+    if not file.filename or not file.filename.endswith(".txt"):
+        raise HTTPException(status_code=400, detail="Only .txt files are accepted")
+    try:
+        content = (await file.read()).decode("utf-8")
+        result = upsert_keywords(file.filename, content, env=env)
+        return {"status": "ok", "filename": file.filename, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/keywords")
+async def list_keywords_endpoint(env: str = "dev"):
+    """List all keyword entries."""
+    try:
+        entries = list_keywords(env=env)
+        return {"keywords": entries}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/keywords/{filename}")
+async def delete_keywords(filename: str, env: str = "dev"):
+    """Delete a keyword entry by filename."""
+    try:
+        result = remove_keywords(filename, env=env)
+        return {"status": "ok", **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 class ProcessRequest(BaseModel):
@@ -235,9 +290,12 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
         if not isinstance(users, list):
             users = []
 
+        # Load keyword sets from DB for filtering
+        keyword_sets = load_all_keyword_sets(env=env)
+
         total_processed = 0
         removed = 0
-        kept_users: list[Any] = []
+        kept_accounts: list[dict[str, Any]] = []
         for u in users:
             total_processed += 1
             username = ""
@@ -249,22 +307,31 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
                 username = u.strip()
 
             fullname = _extract_fullname_from_user(u)
-            if classify_gender(username, fullname) == "female":
+            action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
+            if action == "remove":
                 removed += 1
                 continue
-            kept_users.append(u)
 
-        selected_users: list[Any] = []
-        for u in kept_users:
-            if isinstance(u, str):
-                row: dict[str, Any] = {"userName": u}
-            elif isinstance(u, dict):
-                row = {k: u.get(k) for k in keep_fields if k in u}
-            else:
-                row = {}
-            selected_users.append(row)
+            # Build account entry with metadata
+            clean_username = username.lstrip("@").strip()
+            if not clean_username:
+                continue
+            account_entry: dict[str, Any] = {"userName": clean_username}
+            if fullname:
+                account_entry["fullName"] = fullname
+            if matched_name:
+                account_entry["matchedName"] = matched_name
+            kept_accounts.append(account_entry)
 
-        usernames = extract_usernames_from_scraping_task_payload({"users": selected_users})
+        # Deduplicate
+        seen: set[str] = set()
+        unique_accounts: list[dict[str, Any]] = []
+        for acc in kept_accounts:
+            key = acc["userName"].lower()
+            if key not in seen:
+                seen.add(key)
+                unique_accounts.append(acc)
+
         uploaded: dict[str, int] = {}
         duplicates: dict[str, int] = {}
 
@@ -273,7 +340,7 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
             if not envs:
                 raise HTTPException(status_code=400, detail="environments is required when uploadToConvex is true")
             for out_env in envs:
-                result = upload_usernames_to_convex(usernames, env=out_env, status=request.accountStatus)
+                result = upload_accounts_to_convex(unique_accounts, env=out_env, status=request.accountStatus)
                 uploaded[out_env] = int(result.get("inserted", 0))
                 duplicates[out_env] = int(result.get("skipped", 0))
             convex_mutation("scrapingTasks:setImported", {"id": task_id, "imported": True}, env=env)
@@ -282,7 +349,7 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
             "status": "completed",
             "taskId": task_id,
             "env": env,
-            "usernamesExtracted": len(usernames),
+            "usernamesExtracted": len(unique_accounts),
             "stats": {
                 "totalProcessed": total_processed,
                 "removed": removed,
@@ -397,28 +464,80 @@ async def process_csv(job_id: str, request: ProcessRequest):
     if not input_path.exists():
         raise HTTPException(status_code=404, detail="Uploaded file not found")
     
-    output_path = UPLOAD_DIR / f"{job_id}_filtered.csv"
-    
     job["status"] = "processing"
     
     try:
-        # Run filtering
-        stats = filter_csv(input_path, output_path, keep_fields=request.keepFields)
-        
-        if stats is None:
-            job["status"] = "failed"
-            job["error"] = "Filtering failed"
-            raise HTTPException(status_code=500, detail="Filtering failed")
-        
+        # Load keyword sets from DB for filtering
+        keyword_sets = load_all_keyword_sets()
+
+        # Read CSV and apply filtering inline to capture fullName + matchedName
+        sep = detect_csv_separator(str(input_path))
+        total_processed = 0
+        removed_count = 0
+        kept_accounts: list[dict[str, Any]] = []
+        seen: set[str] = set()
+
+        with input_path.open("r", encoding="utf-8-sig", newline="") as f:
+            import csv as _csv
+            reader = _csv.DictReader(f, delimiter=sep)
+            username_aliases = ["user_name", "userName", "username", "login", "User Name"]
+            fullname_aliases = ["full_name", "fullName", "name"]
+
+            for row in reader:
+                total_processed += 1
+
+                # Extract username
+                username = ""
+                for alias in username_aliases:
+                    v = row.get(alias)
+                    if v and str(v).strip():
+                        username = str(v).strip().lstrip("@")
+                        break
+
+                # Extract fullname
+                fullname = ""
+                for alias in fullname_aliases:
+                    v = row.get(alias)
+                    if v and str(v).strip():
+                        fullname = str(v).strip()
+                        break
+
+                if not username:
+                    removed_count += 1
+                    continue
+
+                # Apply filtering
+                action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
+                if action == "remove":
+                    removed_count += 1
+                    continue
+
+                # Deduplicate
+                key = username.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                account_entry: dict[str, Any] = {"userName": username}
+                if fullname:
+                    account_entry["fullName"] = fullname
+                if matched_name:
+                    account_entry["matchedName"] = matched_name
+                kept_accounts.append(account_entry)
+
+        stats = {
+            "total_processed": total_processed,
+            "removed": removed_count,
+            "remaining": total_processed - removed_count,
+        }
         job["stats"] = stats
         
         # Upload to Convex if requested
         uploaded = {}
         duplicates = {}
-        if request.uploadToConvex and output_path.exists():
-            upload_results = upload_to_convex(output_path, request.environments)
-            # Extract inserted counts and duplicate counts
-            for env, result in upload_results.items():
+        if request.uploadToConvex and kept_accounts:
+            for env in request.environments:
+                result = upload_accounts_to_convex(kept_accounts, env=env)
                 uploaded[env] = result.get("inserted", 0)
                 duplicates[env] = result.get("skipped", 0)
         

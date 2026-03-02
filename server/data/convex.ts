@@ -246,7 +246,7 @@ export async function scrapingTasksStoreData(
 ): Promise<{ storageId: string; count: number }> {
     const cleanedTaskId = String(taskId || '').trim();
     if (!cleanedTaskId) throw new Error('taskId is required');
-    
+
     // Call the Convex action via HTTP
     // Note: Actions are called differently - we need to use the Convex SDK or HTTP actions
     const result = await convexFetch<{ storageId: string; count: number }>(

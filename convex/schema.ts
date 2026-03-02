@@ -32,13 +32,13 @@ export default defineSchema({
 
 	instagramAccounts: defineTable({
 		userName: v.string(),
+		fullName: v.optional(v.string()),
+		matchedName: v.optional(v.string()),
 		createdAt: v.number(),
 		assignedTo: v.optional(v.id("profiles")),
 		status: v.optional(v.string()),
-		linkSent: v.optional(v.string()),
 		message: v.boolean(),
 		subscribedAt: v.optional(v.number()),
-		lastMessageSentAt: v.optional(v.number()),
 	})
 		.index("by_userName", ["userName"])
 		.index("by_assignedTo", ["assignedTo"])
@@ -143,4 +143,13 @@ export default defineSchema({
 		.index("by_status", ["status"])
 		.index("by_listId", ["listId"])
 		.index("by_scheduledAt", ["scheduledAt"]),
+
+	// ═══════════════════════════════════════════════════════════════════
+	// KEYWORDS TABLE (for filtration name lists)
+	// ═══════════════════════════════════════════════════════════════════
+
+	keywords: defineTable({
+		filename: v.string(), // e.g. "us_male_names.txt"
+		content: v.string(), // newline-separated list of words
+	}).index("by_filename", ["filename"]),
 });

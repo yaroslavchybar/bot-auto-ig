@@ -139,6 +139,52 @@ def upload_usernames_to_convex(
     return {"inserted": total_inserted, "skipped": total_skipped}
 
 
+def upload_accounts_to_convex(
+    accounts_data: list[dict],
+    env: str = "dev",
+    status: str = "available",
+) -> UploadResult:
+    """Upload accounts with full metadata (fullName, matchedName) to Convex.
+
+    Args:
+        accounts_data: List of dicts with keys: userName, fullName (optional), matchedName (optional)
+        env: Target environment
+        status: Account status
+
+    Returns:
+        UploadResult with inserted and skipped counts
+    """
+    if not accounts_data:
+        return {"inserted": 0, "skipped": 0}
+
+    get_convex_url(env)
+
+    total_inserted = 0
+    total_skipped = 0
+    for i in range(0, len(accounts_data), BATCH_SIZE):
+        batch = accounts_data[i : i + BATCH_SIZE]
+        prepared = [
+            prepare_account(
+                username=str(a.get("userName", "")).strip().lstrip("@"),
+                status=status,
+                full_name=a.get("fullName"),
+                matched_name=a.get("matchedName"),
+            )
+            for a in batch
+            if str(a.get("userName", "")).strip()
+        ]
+        if not prepared:
+            continue
+        result = insert_accounts_batch(prepared, env)
+        if result.get("status") == "success":
+            total_inserted += result.get("inserted", 0)
+            total_skipped += result.get("skipped", 0)
+        else:
+            raise RuntimeError(result.get("errorMessage", "Unknown error"))
+
+    return {"inserted": total_inserted, "skipped": total_skipped}
+
+
 def extract_usernames_from_scraping_task_payload(payload: dict) -> list[str]:
     users = payload.get("users")
     if not isinstance(users, list):

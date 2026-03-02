@@ -48,13 +48,14 @@ export function broadcast(data: object) {
             message: (data as any).message || '',
             level: (data as any).level || 'info',
             source: (data as any).source || 'unknown',
+            profileName: (data as any).profileName,
             ts: Date.now()
         }
         logsStore.push(logEntry)
         if (logsStore.length > MAX_LOGS) {
             logsStore.shift()
         }
-        appendFileLog(logEntry.message, logEntry.source, logEntry.level as any)
+        appendFileLog(logEntry.message, logEntry.source, logEntry.level as any, logEntry.profileName)
     }
 
     clients.forEach((client) => {

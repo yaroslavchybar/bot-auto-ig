@@ -57,12 +57,12 @@ function mapAccountToPython(account: any): any {
 	return {
 		id: account._id,
 		user_name: account.userName,
+		full_name: account.fullName ?? null,
+		matched_name: account.matchedName ?? null,
 		assigned_to: account.assignedTo ?? null,
 		status: account.status ?? null,
-		link_sent: account.linkSent ?? null,
 		message: Boolean(account.message),
 		subscribed_at: toIso(account.subscribedAt),
-		last_message_sent_at: toIso(account.lastMessageSentAt),
 		created_at: toIso(account.createdAt),
 	};
 }
@@ -123,9 +123,6 @@ const apiPaths = [
 	"/api/instagram-accounts/to-message",
 	"/api/instagram-accounts/update-status",
 	"/api/instagram-accounts/update-message",
-	"/api/instagram-accounts/update-link-sent",
-	"/api/instagram-accounts/set-last-message-sent-now",
-	"/api/instagram-accounts/last-message-sent-at",
 	"/api/instagram-accounts/usernames",
 	"/api/instagram-accounts/profiles-with-assigned",
 	"/api/scraping-tasks/store-data",
@@ -665,59 +662,6 @@ http.route({
 	}),
 });
 
-http.route({
-	path: "/api/instagram-accounts/update-link-sent",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.instagramAccounts.updateLinkSent, {
-				userName: body?.userName ?? body?.user_name,
-				linkSent: body?.linkSent ?? body?.link_sent,
-			});
-			return jsonResponse(mapAccountToPython(updated));
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/instagram-accounts/set-last-message-sent-now",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.instagramAccounts.setLastMessageSentNow, {
-				accountId: (body?.accountId ?? body?.account_id ?? body?.id) as any,
-			});
-			return jsonResponse(mapAccountToPython(updated));
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/instagram-accounts/last-message-sent-at",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const accountId = url.searchParams.get("accountId") || url.searchParams.get("account_id") || url.searchParams.get("id") || "";
-			const value = await ctx.runQuery(api.instagramAccounts.getLastMessageSentAt, { accountId: accountId as any });
-			return jsonResponse(value ? toIso(value) : null);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
 
 http.route({
 	path: "/api/instagram-accounts/usernames",
@@ -767,14 +711,14 @@ http.route({
 			const taskId = body?.taskId ?? body?.task_id;
 			const users = body?.users ?? [];
 			const metadata = body?.metadata ?? {};
-			
+
 			// Run the action to store scraped data
 			const result = await ctx.runAction(api.scrapingTasks.storeScrapedData, {
 				taskId: taskId as any,
 				users,
 				metadata,
 			});
-			
+
 			return jsonResponse(result);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -791,16 +735,16 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const storageId = url.searchParams.get("storageId") || url.searchParams.get("storage_id") || "";
-			
+
 			if (!storageId) {
 				return jsonResponse({ error: "storageId is required" }, 400);
 			}
-			
+
 			// Run the query to get storage URL
 			const fileUrl = await ctx.runQuery(api.scrapingTasks.getStorageUrl, {
 				storageId: storageId as any,
 			});
-			
+
 			return jsonResponse(fileUrl);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);

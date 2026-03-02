@@ -10,8 +10,9 @@ RUN apt-get update \
   python3-pip \
   python-is-python3 \
   ca-certificates \
-  # Virtual display for headless=false
+  # Virtual display and window manager for headless=false
   xvfb \
+  fluxbox \
   x11vnc \
   novnc \
   websockify \
@@ -61,6 +62,13 @@ RUN cd server && npm run build
 
 # Layer 7: Config files
 COPY server/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Setup fluxbox to hide the toolbar and window decorations
+RUN mkdir -p /root/.fluxbox && \
+  echo "session.screen0.toolbar.visible: false" > /root/.fluxbox/init && \
+  echo "[app] (name=.*)" > /root/.fluxbox/apps && \
+  echo "  [Deco] {NONE}" >> /root/.fluxbox/apps && \
+  echo "[end]" >> /root/.fluxbox/apps
 
 WORKDIR /app/server
 ENV NODE_ENV=production

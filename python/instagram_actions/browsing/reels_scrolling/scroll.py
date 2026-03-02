@@ -1,6 +1,6 @@
 import random
 import time
-from python.instagram_actions.actions import random_delay
+from python.instagram_actions.actions import random_delay, safe_mouse_move
 from .likes import perform_like
 from python.internal_systems.storage.state_persistence import save_state
 import logging
@@ -35,7 +35,7 @@ def _go_to_next_reel(page) -> bool:
                     center_x = box['x'] + box['width'] / 2
                     center_y = box['y'] + box['height'] / 2
                     
-                    page.mouse.move(center_x, center_y, steps=5)
+                    safe_mouse_move(page, center_x, center_y, steps=5)
                     random_delay(0.2, 0.5)
                     page.mouse.click(center_x, center_y)
                     logger.info("Clicked 'Next Reel' arrow")
@@ -62,7 +62,7 @@ def _navigate_reels(page):
                 # Move directly to the center of the button with minimal steps
                 target_x = box["x"] + (box["width"] / 2)
                 target_y = box["y"] + (box["height"] / 2)
-                page.mouse.move(target_x, target_y, steps=4)
+                safe_mouse_move(page, target_x, target_y, steps=4)
                 random_delay(0.2, 0.4)
                 page.mouse.click(target_x, target_y)
                 page.wait_for_url("**/reels/**", timeout=15000)
@@ -112,9 +112,36 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
         _navigate_reels(page)
         logger.info(f"Starting {duration_minutes} minute REELS session...")
 
-        while time.time() < end_time:
+        # Add a hard timeout buffer (2 minutes) to ensure we don't get stuck in Playwright hangs
+        hard_timeout_time = end_time + 120 
+        last_action_time = start_time
+
+        while True:
+            current_time = time.time()
+            if current_time >= end_time:
+                logger.info(f"Expected duration of {duration_minutes}m reached. Ending reels session.")
+                break
+            
+            if current_time >= hard_timeout_time:
+                logger.error(f"HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.")
+                break
+
+            if current_time - last_action_time >= 180:
+                logger.warning("No reels processed in the last 3 minutes. Auto-reloading page...")
+                try:
+                    page.reload(timeout=15000)
+                except Exception as e:
+                    logger.error(f"Failed to reload page: {e}")
+                last_action_time = current_time
+                random_delay(3, 6)
+                continue
+
+            # Log time remaining occasionally 
+            minutes_left = (end_time - current_time) / 60
+            logger.info(f"Time remaining in session: {minutes_left:.1f} minutes")
+
             # Save state
-            elapsed = time.time() - start_time
+            elapsed = current_time - start_time
             total_duration = duration_minutes * 60
             progress = int((elapsed / total_duration) * 100) if total_duration > 0 else 0
             progress = min(progress, 99)
@@ -150,6 +177,9 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
             if should_stop and should_stop():
                 logger.info("Stop signal received. Ending reels session.")
                 break
+
+            # Successfully watched a reel
+            last_action_time = time.time()
 
             actions_to_perform = _queue_actions(page, actions_config)
 

@@ -88,19 +88,64 @@ def insert_accounts_batch(accounts: list[dict[str, Any]], env: str = "dev") -> d
         return {"status": "error", "errorMessage": str(e)}
 
 
-def prepare_account(username: str, status: str = "available") -> dict[str, Any]:
+def prepare_account(
+    username: str,
+    status: str = "available",
+    full_name: str | None = None,
+    matched_name: str | None = None,
+) -> dict[str, Any]:
     """Prepare an account dict with all required fields.
     
     Args:
         username: Instagram username
         status: Account status (default: "available")
+        full_name: Original full name from the upload
+        matched_name: The keyword name that passed the filter
         
     Returns:
-        Dict with userName, status, message (False), and createdAt (now)
+        Dict with userName, status, message (False), createdAt, and optional fullName/matchedName
     """
-    return {
+    account: dict[str, Any] = {
         "userName": username,
         "status": status,
         "message": False,
         "createdAt": time.time() * 1000,  # JavaScript timestamp (milliseconds)
     }
+    if full_name is not None:
+        account["fullName"] = full_name
+    if matched_name is not None:
+        account["matchedName"] = matched_name
+    return account
+
+
+# ── Keywords helpers ──────────────────────────────────────────────────
+
+def get_keywords(filename: str, env: str = "dev") -> str | None:
+    """Fetch keyword content from the DB by filename.
+
+    Returns the content string or None if not found.
+    """
+    try:
+        return convex_query("keywords:get", {"filename": filename}, env=env)
+    except Exception:
+        return None
+
+
+def upsert_keywords(filename: str, content: str, env: str = "dev") -> dict:
+    """Insert or update a keyword entry in the DB."""
+    return convex_mutation("keywords:upsert", {"filename": filename, "content": content}, env=env)
+
+
+def list_keywords(env: str = "dev") -> list[dict]:
+    """List all keyword entries (filename + id)."""
+    try:
+        result = convex_query("keywords:list", {}, env=env)
+        return result if isinstance(result, list) else []
+    except Exception:
+        return []
+
+
+def remove_keywords(filename: str, env: str = "dev") -> dict:
+    """Delete a keyword entry by filename."""
+    return convex_mutation("keywords:remove", {"filename": filename}, env=env)
+

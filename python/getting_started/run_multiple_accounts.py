@@ -292,30 +292,7 @@ class InstagramAutomationRunner:
                 if not targets:
                     log(f"@{profile_name}: нет целей для сообщений (message=true), не открываю браузер.")
                     return False
-                now = datetime.now(timezone.utc)
-                eligible = []
-                for t in targets:
-                    ts = t.get("last_message_sent_at")
-                    if not ts:
-                        eligible.append(t)
-                        continue
-                    try:
-                        s = str(ts).replace("Z", "+00:00")
-                        dt = datetime.fromisoformat(s)
-                        if not dt.tzinfo:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        cooldown_enabled = bool(getattr(self.config, "messaging_cooldown_enabled", True))
-                        cooldown_hours = int(getattr(self.config, "messaging_cooldown_hours", 2) or 0)
-                        if not cooldown_enabled or cooldown_hours <= 0:
-                            eligible.append(t)
-                        elif now - dt >= timedelta(hours=cooldown_hours):
-                            eligible.append(t)
-                    except Exception:
-                        eligible.append(t)
-                if not eligible:
-                    log(f"@{profile_name}: все цели недавно получили сообщение, не открываю браузер.")
-                    return False
-                eligible_message_targets = eligible
+                eligible_message_targets = targets
         except Exception:
             pass
 
@@ -552,42 +529,16 @@ class InstagramAutomationRunner:
             if cached_targets is not None:
                 eligible = cached_targets
             else:
-                targets = self.accounts_client.get_accounts_to_message(profile_id)
-                if not targets:
+                eligible = self.accounts_client.get_accounts_to_message(profile_id)
+                if not eligible:
                     log("Нет целей для сообщений.")
                     return
-            now = datetime.now(timezone.utc)
-            if cached_targets is None:
-                eligible = []
-                for t in targets:
-                    ts = t.get("last_message_sent_at")
-                    if not ts:
-                        eligible.append(t)
-                        continue
-                    try:
-                        s = str(ts).replace("Z", "+00:00")
-                        dt = datetime.fromisoformat(s)
-                        if not dt.tzinfo:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        cooldown_enabled = bool(getattr(self.config, "messaging_cooldown_enabled", True))
-                        cooldown_hours = int(getattr(self.config, "messaging_cooldown_hours", 2) or 0)
-                        if not cooldown_enabled or cooldown_hours <= 0:
-                            eligible.append(t)
-                        elif now - dt >= timedelta(hours=cooldown_hours):
-                            eligible.append(t)
-                    except Exception:
-                        eligible.append(t)
-            if not eligible:
-                log("Нет целей для сообщений из-за кулдауна.")
-                return
             message_texts = self.config.message_texts or ["Hi!"]
             send_messages(
                 profile_name=account.username,
                 proxy_string=account.proxy or "",
                 targets=eligible,
                 message_texts=message_texts,
-                cooldown_enabled=bool(getattr(self.config, "messaging_cooldown_enabled", True)),
-                cooldown_hours=int(getattr(self.config, "messaging_cooldown_hours", 2) or 0),
                 log=log,
                 should_stop=lambda: not self.running,
                 page=page,

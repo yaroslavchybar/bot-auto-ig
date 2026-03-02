@@ -265,9 +265,13 @@ class WorkflowRunner:
             profile_data = profile_data
 
         user_agent = None
+        fingerprint_seed = None
+        fingerprint_os_val = None
         try:
             if profile_data:
                 user_agent = profile_data.get("user_agent")
+                fingerprint_seed = profile_data.get("fingerprint_seed")
+                fingerprint_os_val = profile_data.get("fingerprint_os")
         except Exception:
             user_agent = None
 
@@ -279,7 +283,7 @@ class WorkflowRunner:
             except Exception:
                 pass
 
-            with create_browser_context(profile_name, proxy_str, user_agent, headless=self.headless) as (_context, page):
+            with create_browser_context(profile_name, proxy_str, user_agent, headless=self.headless, fingerprint_seed=fingerprint_seed, fingerprint_os=fingerprint_os_val) as (_context, page):
                 start_node = _find_start_node(self.nodes)
                 if not start_node:
                     log("Не найден start node")
@@ -461,17 +465,42 @@ class WorkflowRunner:
                 unfollow_min_delay = _parse_int(cfg.get("min_delay"), 10)
                 unfollow_max_delay = _parse_int(cfg.get("max_delay"), 30)
                 unfollow_min_delay, unfollow_max_delay = normalize_range((unfollow_min_delay, unfollow_max_delay), (10, 30))
+
+                profile_id = profile_data.get("profile_id") if profile_data else None
+                if not profile_id:
+                    profiles = self.accounts_client.get_profiles_with_assigned_accounts()
+                    fallback = next((p for p in profiles if p.get("name") == account.username), None)
+                    profile_id = fallback.get("profile_id") if fallback else None
+                if not profile_id:
+                    return "failure"
+
+                accounts = self.accounts_client.get_accounts_for_profile(profile_id, status="unsubscribed")
+                usernames = [acc.get("user_name") for acc in accounts if acc.get("user_name")]
+                account_map = {acc["user_name"]: acc["id"] for acc in accounts if acc.get("id") and acc.get("user_name")}
+                if not usernames:
+                    return "failure"
+
                 unfollow_min_count = _parse_int(cfg.get("unfollow_min_count"), 5)
                 unfollow_max_count = _parse_int(cfg.get("unfollow_max_count"), 15)
                 unfollow_min_count, unfollow_max_count = normalize_range((unfollow_min_count, unfollow_max_count), (5, 15))
+                usernames = apply_count_limit(usernames, (unfollow_min_count, unfollow_max_count))
+
+                def _on_unfollow_success(uname: str):
+                    aid = account_map.get(uname)
+                    if aid:
+                        try:
+                            self.accounts_client.update_account_status(aid, status="done")
+                        except Exception:
+                            pass
+
                 unfollow_usernames(
                     profile_name=account.username,
                     proxy_string=account.proxy or "",
-                    min_delay=unfollow_min_delay,
-                    max_delay=unfollow_max_delay,
-                    count_range=(unfollow_min_count, unfollow_max_count),
+                    usernames=usernames,
                     log=log,
                     should_stop=lambda: not self.running,
+                    delay_range=(unfollow_min_delay, unfollow_max_delay),
+                    on_success=_on_unfollow_success,
                     page=page,
                 )
                 return "success"
@@ -502,7 +531,9 @@ class WorkflowRunner:
                     profile_id = fallback.get("profile_id") if fallback else None
                 if not profile_id:
                     return "failure"
-                targets = self.accounts_client.get_accounts_to_message(profile_id)
+                targets = self.accounts_client.get_accounts_for_profile(profile_id, status="assigned")
+                # Filter out already-messaged accounts (message=true means sent)
+                targets = [t for t in targets if not t.get("message")]
                 if not targets:
                     return "failure"
                 send_messages(
@@ -510,8 +541,6 @@ class WorkflowRunner:
                     proxy_string=account.proxy or "",
                     targets=targets,
                     message_texts=message_texts,
-                    cooldown_enabled=True,
-                    cooldown_hours=2,
                     log=log,
                     should_stop=lambda: not self.running,
                     page=page,

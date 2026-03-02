@@ -20,6 +20,38 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import type { Workflow, ScheduleType, ScheduleConfig } from './types'
 
+// Convert local hour/minute in a timezone to UTC hour/minute
+function localToUTC(hour: number, minute: number, tz: string): { hourUTC: number; minuteUTC: number } {
+	if (tz === 'UTC') return { hourUTC: hour, minuteUTC: minute }
+	// Create a date in the target timezone, then read its UTC equivalent
+	const now = new Date()
+	// Build a date string for today at the given local time
+	const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`
+	// Get the UTC offset for this timezone
+	const utcDate = new Date(dateStr + 'Z') // treat as UTC
+	const localStr = utcDate.toLocaleString('en-US', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' })
+	const [refH, refM] = localStr.split(':').map(Number)
+	const offsetMinutes = (refH * 60 + refM) - (hour * 60 + minute) // how far is tz from what we want
+	// We want: localTime = UTC + offset, so UTC = localTime - offset
+	// offset = refH:refM (what tz shows) - utcH:utcM (what we fed)
+	// So: utcH:utcM = enteredH:enteredM - offset
+	let targetMinutes = (hour * 60 + minute) - offsetMinutes
+	// Wrap around 24h
+	targetMinutes = ((targetMinutes % 1440) + 1440) % 1440
+	return { hourUTC: Math.floor(targetMinutes / 60), minuteUTC: targetMinutes % 60 }
+}
+
+// Convert UTC hour/minute to local hour/minute in a timezone
+function utcToLocal(hourUTC: number, minuteUTC: number, tz: string): { hour: number; minute: number } {
+	if (tz === 'UTC') return { hour: hourUTC, minute: minuteUTC }
+	const now = new Date()
+	const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(hourUTC).padStart(2, '0')}:${String(minuteUTC).padStart(2, '0')}:00Z`
+	const utcDate = new Date(dateStr)
+	const localStr = utcDate.toLocaleString('en-US', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' })
+	const [h, m] = localStr.split(':').map(Number)
+	return { hour: h === 24 ? 0 : h, minute: m }
+}
+
 interface ScheduleDialogProps {
 	open: boolean
 	onOpenChange: (open: boolean) => void
@@ -81,15 +113,18 @@ export function ScheduleDialog({
 	useEffect(() => {
 		if (workflow && open) {
 			const config = (workflow.scheduleConfig || {}) as ScheduleConfig
+			const tz = workflow.timezone ?? 'UTC'
 			setScheduleType((workflow.scheduleType as ScheduleType) || 'daily')
 			setIntervalMinutes(Math.round((config.intervalMs || 3600000) / 60000))
-			setHourUTC(config.hourUTC ?? 9)
-			setMinuteUTC(config.minuteUTC ?? 0)
+			// Convert stored UTC time to local timezone for display
+			const local = utcToLocal(config.hourUTC ?? 9, config.minuteUTC ?? 0, tz)
+			setHourUTC(local.hour)
+			setMinuteUTC(local.minute)
 			setDaysOfWeek(config.daysOfWeek ?? [1, 2, 3, 4, 5])
 			setDayOfMonth(config.dayOfMonth ?? 1)
 			setCronspec(config.cronspec ?? '0 9 * * *')
 			setMaxRunsPerDay(workflow.maxRunsPerDay)
-			setTimezone(workflow.timezone ?? 'UTC')
+			setTimezone(tz)
 		}
 	}, [workflow, open])
 
@@ -98,22 +133,25 @@ export function ScheduleDialog({
 
 		const scheduleConfig: ScheduleConfig = {}
 
+		// Convert user-entered local time to UTC
+		const utc = localToUTC(hourUTC, minuteUTC, timezone)
+
 		switch (scheduleType) {
 			case 'interval':
 				scheduleConfig.intervalMs = intervalMinutes * 60000
 				break
 			case 'daily':
-				scheduleConfig.hourUTC = hourUTC
-				scheduleConfig.minuteUTC = minuteUTC
+				scheduleConfig.hourUTC = utc.hourUTC
+				scheduleConfig.minuteUTC = utc.minuteUTC
 				break
 			case 'weekly':
-				scheduleConfig.hourUTC = hourUTC
-				scheduleConfig.minuteUTC = minuteUTC
+				scheduleConfig.hourUTC = utc.hourUTC
+				scheduleConfig.minuteUTC = utc.minuteUTC
 				scheduleConfig.daysOfWeek = daysOfWeek
 				break
 			case 'monthly':
-				scheduleConfig.hourUTC = hourUTC
-				scheduleConfig.minuteUTC = minuteUTC
+				scheduleConfig.hourUTC = utc.hourUTC
+				scheduleConfig.minuteUTC = utc.minuteUTC
 				scheduleConfig.dayOfMonth = dayOfMonth
 				break
 			case 'cron':

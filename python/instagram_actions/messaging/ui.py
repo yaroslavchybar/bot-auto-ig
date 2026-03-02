@@ -1,8 +1,9 @@
+import random
 from typing import Callable
 
 from python.instagram_actions.actions import random_delay
-from python.internal_systems.shared_utilities.selectors import MESSAGE_BUTTON, NOT_NOW_BUTTON
-
+from python.internal_systems.error_handling.retry import retry_with_backoff
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 def ensure_instagram_open(page) -> None:
     try:
@@ -12,229 +13,99 @@ def ensure_instagram_open(page) -> None:
         pass
 
 
-def _is_left_sidebar_locator(locator) -> bool:
+def navigate_to_profile(page, username: str, log: Callable[[str], None]) -> bool:
+    """Navigate to a user's Instagram profile page."""
+    url = f"https://www.instagram.com/{username}/"
     try:
-        handle = locator.element_handle()
-        if not handle:
-            return False
-        box = handle.bounding_box()
-        if not box:
-            return False
-        return float(box.get("x", 10_000)) < 400
-    except Exception:
+        # Increased timeouts for very slow proxies
+        page.goto(url, timeout=45000)
+        page.wait_for_load_state("networkidle", timeout=30000)
+        log(f"Перешёл на профиль: {username}")
+        return True
+    except Exception as e:
+        log(f"Ошибка перехода на профиль {username}: {e}")
         return False
 
 
-def _pick_left_sidebar_locator(candidates):
-    for cand in candidates:
-        try:
-            if cand.is_visible(timeout=1000) and _is_left_sidebar_locator(cand):
-                return cand
-        except Exception:
-            continue
-    return None
-
-
-def open_direct_inbox(page, log: Callable[[str], None]) -> None:
-    log("Перехожу в Direct Inbox через кнопку Messages...")
-
-    page.wait_for_load_state("networkidle", timeout=15000)
-
-    messages_button = None
-
-    try:
-        sidebar = page.locator("nav").filter(has=page.locator('a[href="/direct/inbox/"]')).first
-        if sidebar and sidebar.count() > 0:
-            messages_button = sidebar.locator('a[href="/direct/inbox/"][role="link"]').first
-            if not messages_button.is_visible(timeout=3000):
-                messages_button = None
-    except Exception:
-        messages_button = None
-
-    if not messages_button:
-        try:
-            sidebar = page.locator("nav").filter(has=page.locator('a[aria-label*="Direct messaging"]')).first
-            if sidebar and sidebar.count() > 0:
-                messages_button = sidebar.locator('a[aria-label*="Direct messaging"][role="link"]').first
-                if not messages_button.is_visible(timeout=3000):
-                    messages_button = None
-        except Exception:
-            messages_button = None
-
-    if not messages_button:
-        try:
-            messages_button = (
-                page.locator('a[href="/direct/inbox/"][role="link"]').filter(
-                    has=page.locator('svg[aria-label="Messages"]')
-                )
-            ).first
-            if not messages_button.is_visible(timeout=3000):
-                messages_button = None
-        except Exception:
-            messages_button = None
-
-    if not messages_button:
-        messages_button = MESSAGE_BUTTON.find(page)
-
-    if not messages_button:
-        try:
-            messages_button = page.locator('a[href="/direct/inbox/"]').first
-            if not messages_button.is_visible(timeout=3000):
-                messages_button = None
-        except Exception:
-            messages_button = None
-
-    if not messages_button:
-        try:
-            messages_button = page.locator('a[aria-label*="Direct messaging"]').first
-            if not messages_button.is_visible(timeout=3000):
-                messages_button = None
-        except Exception:
-            messages_button = None
-
-    if not messages_button:
-        try:
-            messages_button = page.locator('svg[aria-label="Messages"]').locator("xpath=ancestor::a").first
-            if not messages_button.is_visible(timeout=3000):
-                messages_button = None
-        except Exception:
-            messages_button = None
-
-    if not messages_button:
-        try:
-            messages_button = page.locator('a[href*="direct"]').first
-            if not messages_button.is_visible(timeout=3000):
-                messages_button = None
-        except Exception:
-            messages_button = None
-
-    if not messages_button:
-        raise Exception("Не удалось найти кнопку Messages в сайдбаре")
-
-    try:
-        if not _is_left_sidebar_locator(messages_button):
-            candidates = page.locator('a[href="/direct/inbox/"][role="link"]').all()
-            picked = _pick_left_sidebar_locator(candidates)
-            if picked:
-                messages_button = picked
-    except Exception:
-        pass
-
-    try:
-        messages_button.scroll_into_view_if_needed()
-    except Exception:
-        pass
-
-    messages_button.click()
-    log("Кликнул на кнопку Messages в сайдбаре")
-
-    page.wait_for_load_state("networkidle", timeout=10000)
-    log("Переход в Direct Inbox завершен")
-
-
-def dismiss_turn_on_notifications_popup(page) -> None:
-    try:
-        not_now_btn = NOT_NOW_BUTTON.find(page)
-        if not_now_btn:
-            not_now_btn.click()
-            random_delay(1, 2)
-    except Exception:
-        pass
-
-
-def open_new_message_search(page, log: Callable[[str], None]):
-    search_input = page.locator('input[name="searchInput"]').first
-    if not search_input.is_visible():
-        search_input = page.locator('input[placeholder="Search"]').first
-
-    if not search_input.is_visible():
-        search_input = page.locator('label input[placeholder="Search"]').first
-
-    if not search_input.is_visible():
-        log("Поле поиска не найдено")
-        return None
-
-    search_input.click()
-    log("Кликнул на поле поиска для начала нового сообщения")
-    return search_input
-
-
-def find_modal_search_input(page, log: Callable[[str], None]):
-    selectors_to_try = [
-        'input[name="queryBox"]',
-        'input[placeholder="Search..."]',
-        'input[placeholder*="Search"]',
-        'input[aria-label*="Search"]',
-        'input[type="text"]',
-        'input[role="textbox"]',
+@retry_with_backoff(exceptions=(PlaywrightTimeoutError, Exception), max_retries=3, initial_delay=1.5)
+def click_message_button(page, log: Callable[[str], None]) -> bool:
+    """Find and click the Message button on a profile page header (not the sidebar Messages nav)."""
+    # Use :text-is() for exact match — "Message" not "Messages"
+    selectors = [
+        'header div[role="button"]:text-is("Message")',
+        'header button:text-is("Message")',
+        'section div[role="button"]:text-is("Message")',
+        'section button:text-is("Message")',
+        'div[role="button"]:text-is("Message")',
+        'button:text-is("Message")',
     ]
-
-    for selector in selectors_to_try:
+    for selector in selectors:
         try:
-            modal_search = page.locator(selector).first
-            if modal_search.is_visible(timeout=2000):
-                log(f"Найдено поле поиска в модале: {selector}")
-                return modal_search
+            btn = page.locator(selector).first
+            if btn.is_visible(timeout=8000):
+                btn.click()
+                log("Нажал кнопку Message")
+                random_delay(2, 4)
+                return True
         except Exception:
             continue
-
-    return None
-
-
-def select_user_row(page, username: str, log: Callable[[str], None]) -> bool:
-    user_row = page.locator(f'div[role="button"]:has-text("{username}")').first
-    if user_row.is_visible(timeout=5000):
-        user_row.click()
-        log(f"Выбрал пользователя: {username}")
-        return True
-
-    log(f"Пользователь {username} не найден в поиске.")
-    try:
-        page.keyboard.press("Escape")
-    except Exception:
-        pass
     return False
 
 
+def click_follow_button(page, log: Callable[[str], None]) -> bool:
+    """Find and click the Follow button on a profile page."""
+    selectors = [
+        'button:has-text("Follow")',
+        'div[role="button"]:has-text("Follow")',
+    ]
+    for selector in selectors:
+        try:
+            btn = page.locator(selector).first
+            if btn.is_visible(timeout=3000):
+                text = btn.inner_text().strip().lower()
+                if text == "follow":
+                    btn.click()
+                    log("Нажал кнопку Follow")
+                    random_delay(3, 5)
+                    return True
+        except Exception:
+            continue
+    return False
+
+
+@retry_with_backoff(exceptions=(PlaywrightTimeoutError, Exception), max_retries=3, initial_delay=1.5)
 def find_message_box(page, log: Callable[[str], None]):
+    """Find the DM text input box."""
     msg_selectors = [
         'div[role="textbox"][contenteditable="true"]',
         'div[aria-label="Message"][contenteditable="true"]',
         'div[aria-placeholder="Message..."][contenteditable="true"]',
         '[data-lexical-editor="true"]',
     ]
-
     for selector in msg_selectors:
         try:
             msg_box = page.locator(selector).first
-            if msg_box.is_visible(timeout=3000):
+            if msg_box.is_visible(timeout=10000):
                 log(f"Найдено поле ввода сообщения: {selector}")
                 return msg_box
         except Exception:
             continue
+    raise Exception("Message box not found after retries")
 
-    return None
 
-
+@retry_with_backoff(exceptions=(PlaywrightTimeoutError, Exception), max_retries=3, initial_delay=1.5)
 def find_send_button(page):
+    """Find the Send button in the DM conversation."""
     send_btn = page.locator('div[role="button"]:has-text("Send")').first
-    if not send_btn.is_visible():
+    if not send_btn.is_visible(timeout=5000):
         send_btn = page.locator('button:has-text("Send")').first
-
-    if send_btn.is_visible():
+    if send_btn.is_visible(timeout=5000):
         return send_btn
-
-    return None
-
-
-def recover_to_inbox(page) -> None:
-    try:
-        page.goto("https://www.instagram.com/direct/inbox/", timeout=10000)
-    except Exception:
-        pass
+    raise Exception("Send button not found after retries")
 
 
 def cleanup_return_home(page, log: Callable[[str], None]) -> None:
+    """Navigate back to Instagram home page."""
     try:
         log("Messages: возвращаюсь домой")
         try:

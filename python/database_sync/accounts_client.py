@@ -78,7 +78,7 @@ class InstagramAccountsClient:
         return self._request("GET", f"{self.accounts_url}/for-profile", params=params) or []
 
     def get_accounts_to_message(self, profile_id: str) -> List[Dict]:
-        """Fetch accounts assigned to profile that need a message (message=true) and link_sent='not send' or 'needed to send'."""
+        """Fetch accounts assigned to profile that need a message (message=true)."""
         params = {
             "profileId": profile_id,
         }
@@ -113,25 +113,6 @@ class InstagramAccountsClient:
         )
         return result if isinstance(result, dict) else None
 
-    def get_last_message_sent_at(self, account_id: str) -> Optional[str]:
-        """
-        Return ISO string of last_message_sent_at for given account id, or None.
-        """
-        params = {"id": account_id}
-        value = self._request("GET", f"{self.accounts_url}/last-message-sent-at", params=params)
-        return value if isinstance(value, str) else None
-
-    def set_last_message_sent_now(self, account_id: str) -> Optional[Dict]:
-        """
-        Update last_message_sent_at to now() for the given account id.
-        """
-        result = self._request(
-            "POST",
-            f"{self.accounts_url}/set-last-message-sent-now",
-            data={"id": account_id},
-        )
-        return result if isinstance(result, dict) else None
-
     def update_account_message(self, user_name: str, message: bool = True):
         """
         Update the message field for an account by username.
@@ -147,17 +128,6 @@ class InstagramAccountsClient:
             "POST",
             f"{self.accounts_url}/update-message",
             data={"user_name": normalized, "message": message},
-        )
-        return result if isinstance(result, dict) else None
-
-    def update_account_link_sent(self, user_name: str, link_sent_status: str):
-        """
-        Update the link_sent field for an account by username.
-        """
-        result = self._request(
-            "POST",
-            f"{self.accounts_url}/update-link-sent",
-            data={"user_name": user_name, "link_sent": link_sent_status},
         )
         return result if isinstance(result, dict) else None
 

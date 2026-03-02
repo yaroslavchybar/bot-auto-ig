@@ -2,7 +2,7 @@ import random
 import time
 from typing import Callable, Iterable, List, Optional, Tuple
 
-from python.instagram_actions.actions import random_delay
+from python.instagram_actions.actions import random_delay, safe_mouse_move
 from python.browser_control.browser_setup import create_browser_context
 
 def unfollow_usernames(
@@ -52,7 +52,7 @@ def unfollow_usernames(
                     log("Двигаю курсор к аватару...")
                     x = box["x"] + box["width"] / 2
                     y = box["y"] + box["height"] / 2
-                    current_page.mouse.move(x, y)
+                    safe_mouse_move(current_page, x, y)
                     random_delay(0.5, 1.5)
                 
                 log(f"Кликаю на аватар...")

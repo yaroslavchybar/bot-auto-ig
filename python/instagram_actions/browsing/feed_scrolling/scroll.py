@@ -1,3 +1,4 @@
+import os
 import random
 import time
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
@@ -7,8 +8,16 @@ from python.internal_systems.error_handling.retry import jitter
 from python.instagram_actions.browsing.utils import human_scroll, scroll_to_element
 from .likes import perform_like
 from .following import perform_follow
+from .carousel import watch_carousel
 from python.instagram_actions.stories import watch_stories
 from python.internal_systems.storage.state_persistence import save_state
+
+_FEED_DEBUG_MOUSE = os.getenv("FEED_DEBUG_MOUSE", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _debug_mouse(message: str) -> None:
+    if _FEED_DEBUG_MOUSE:
+        print(f"[feed-scroll-debug] {message}")
 
 
 def _navigate_home(page):
@@ -180,6 +189,20 @@ def _get_next_post(page, posts, skip_count: int = 0):
     return candidates[idx][1]
 
 
+def _format_box(box) -> str:
+    if not box:
+        return "None"
+    return f"({box['x']:.1f},{box['y']:.1f},{box['width']:.1f},{box['height']:.1f})"
+
+
+def _viewport_h(page) -> int:
+    try:
+        value = page.evaluate("() => window.innerHeight") or 0
+        return int(value)
+    except Exception:
+        return 0
+
+
 def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=None, profile_name: str = "unknown") -> dict:
     """
     Scroll through Instagram feed and perform random actions.
@@ -220,9 +243,37 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 
         print(f"[*] Starting {duration_minutes} minute scroll session on Instagram...")
 
-        while time.time() < end_time:
+        # Add a hard timeout buffer (2 minutes) to ensure we don't get stuck in Playwright hangs
+        hard_timeout_time = end_time + 120 
+        last_action_time = start_time
+
+        while True:
+            current_time = time.time()
+            if current_time >= end_time:
+                print(f"[*] Expected duration of {duration_minutes}m reached. Ending feed session.")
+                break
+            
+            if current_time >= hard_timeout_time:
+                print(f"[!] HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.")
+                break
+
+            if current_time - last_action_time >= 180:
+                print("[!] No actions or posts processed in the last 3 minutes. Auto-reloading page...")
+                try:
+                    page.reload(timeout=15000)
+                except Exception as e:
+                    print(f"[!] Failed to reload page: {e}")
+                last_action_time = current_time
+                # Slight pause after reload
+                random_delay(3, 6)
+                continue
+
+            # Log time remaining occasionally (e.g. at start of loop if it takes a while)
+            minutes_left = (end_time - current_time) / 60
+            print(f"[*] Time remaining in session: {minutes_left:.1f} minutes")
+
             # Save state
-            elapsed = time.time() - start_time
+            elapsed = current_time - start_time
             total_duration = duration_minutes * 60
             progress = int((elapsed / total_duration) * 100) if total_duration > 0 else 0
             progress = min(progress, 99)
@@ -249,6 +300,15 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 continue
 
             target_y_ratio = random.uniform(0.45, 0.55)
+            pre_box = None
+            try:
+                pre_box = target_post.bounding_box()
+            except Exception:
+                pre_box = None
+            _debug_mouse(
+                f"target selected: skip_count={skip_count} target_y_ratio={target_y_ratio:.3f} "
+                f"pre_scroll_box={_format_box(pre_box)} viewport_h={_viewport_h(page)}"
+            )
             if not scroll_to_element(
                 page,
                 target_post,
@@ -258,17 +318,53 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
             ):
                 human_scroll(page, should_stop=should_stop)
                 continue
+
+            try:
+                post_box_after_scroll = target_post.bounding_box()
+                vp_h = _viewport_h(page)
+                post_bottom = (post_box_after_scroll["y"] + post_box_after_scroll["height"]) if post_box_after_scroll else -1
+                post_bottom_gap = (vp_h - post_bottom) if vp_h > 0 and post_box_after_scroll else -1
+                _debug_mouse(
+                    f"after scroll_to_element: post_box={_format_box(post_box_after_scroll)} "
+                    f"viewport_h={vp_h} post_bottom_gap={post_bottom_gap:.1f}"
+                )
+            except Exception:
+                _debug_mouse("after scroll_to_element: failed to read post bounding box")
             
             # View post for random time (like a real person looking at it)
             view_time = random.uniform(2.0, 5.0)
+            print(f"[*] Viewing feed post for {view_time:.1f}s")
             time.sleep(view_time)
+            
+            # Record that we successfully processed a post
+            last_action_time = time.time()
             
             if should_stop and should_stop():
                 break
 
+            # Carousel: step through slides if it's a multi-image post
+            carousel_chance = actions_config.get("carousel_watch_chance", 0)
+            if carousel_chance > 0 and random.randint(0, 100) < carousel_chance:
+                max_slides = actions_config.get("carousel_max_slides", 3)
+                watch_carousel(page, target_post, max_slides=max_slides)
+
             # Decide to like based on chance
             like_chance = actions_config.get("like_chance", 0)
-            if random.randint(0, 100) < like_chance:
+            like_roll = random.randint(0, 100)
+            _debug_mouse(f"like decision: roll={like_roll} chance={like_chance}")
+            if like_roll < like_chance:
+                try:
+                    like_area = target_post.query_selector('svg[aria-label="Like"]')
+                    like_box = like_area.bounding_box() if like_area else None
+                    vp_h = _viewport_h(page)
+                    like_bottom = (like_box["y"] + like_box["height"]) if like_box else -1
+                    like_bottom_gap = (vp_h - like_bottom) if vp_h > 0 and like_box else -1
+                    _debug_mouse(
+                        f"before perform_like: like_box={_format_box(like_box)} "
+                        f"viewport_h={vp_h} like_bottom_gap={like_bottom_gap:.1f}"
+                    )
+                except Exception:
+                    _debug_mouse("before perform_like: failed to read like button bounding box")
                 if perform_like(page, target_post):
                     stats["likes"] += 1
             

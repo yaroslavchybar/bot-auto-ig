@@ -95,12 +95,12 @@ export const create = mutation({
 		const proxyTrimmed = typeof proxy === "string" ? proxy.trim() : "";
 		const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 		const dailyLimit = typeof args.dailyScrapingLimit === "number" ? args.dailyScrapingLimit : undefined;
-		
+
 		// Validate: automation=false requires proxy
 		if (args.automation === false && !proxyTrimmed) {
 			throw new Error("Proxy is required when automation is disabled (for scraping)");
 		}
-		
+
 		const id = await ctx.db.insert("profiles", {
 			createdAt: Date.now(),
 			name,
@@ -148,20 +148,20 @@ export const updateByName = mutation({
 
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
-		
+
 		// Determine final values for validation BEFORE building update object
 		const finalProxy = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 		const finalAutomation = typeof args.automation === "boolean" ? args.automation : existing.automation;
-		
+
 		// Validate: automation=false requires proxy - do this FIRST before any updates
 		const proxyTrimmed = typeof finalProxy === "string" ? finalProxy.trim() : "";
 		if (finalAutomation === false && !proxyTrimmed) {
 			throw new Error("Proxy is required when automation is disabled (for scraping)");
 		}
-		
+
 		// Now build the update object after validation passed
 		const next: Record<string, unknown> = { name };
-		
+
 		if (typeof args.proxy === "string") {
 			next.proxy = args.proxy;
 			next.mode = computeProfileMode(args.proxy);
@@ -215,20 +215,20 @@ export const updateById = mutation({
 		if (!name) throw new Error("name is required");
 		const existing = await ctx.db.get(args.profileId);
 		if (!existing) throw new Error("Profile not found");
-		
+
 		// Determine final values for validation BEFORE building update object
 		const finalProxy = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 		const finalAutomation = typeof args.automation === "boolean" ? args.automation : existing.automation;
-		
+
 		// Validate: automation=false requires proxy - do this FIRST before any updates
 		const proxyTrimmed = typeof finalProxy === "string" ? finalProxy.trim() : "";
 		if (finalAutomation === false && !proxyTrimmed) {
 			throw new Error("Proxy is required when automation is disabled (for scraping)");
 		}
-		
+
 		// Now build the update object after validation passed
 		const next: Record<string, unknown> = { name };
-		
+
 		if (typeof args.proxy === "string") {
 			next.proxy = args.proxy;
 			next.mode = computeProfileMode(args.proxy);
@@ -364,7 +364,7 @@ export const listUnassigned = query({
 });
 
 export const bulkSetListId = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.union(v.null(), v.id("lists")) },
+	args: { profileIds: v.array(v.id("profiles")), listId: v.optional(v.union(v.null(), v.id("lists"))) },
 	handler: async (ctx, args) => {
 		if (!Array.isArray(args.profileIds) || args.profileIds.length === 0) return true;
 		await Promise.all(

@@ -1,5 +1,7 @@
-
 import logging
+import random
+import time
+from python.instagram_actions.actions import safe_mouse_move
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +85,13 @@ def perform_like(page) -> bool:
                     logger.debug(f"Skipped liking: Button y={y} is outside viewport")
                     return False
 
-                page.mouse.click(x, y)
+                if vp:
+                    x = max(5.0, min(float(x), float(vp['width']) - 5.0))
+                    y = max(5.0, min(float(y), float(vp['height']) - 5.0))
+
+                safe_mouse_move(page, x, y, steps=random.randint(5, 10))
+                time.sleep(random.uniform(0.05, 0.12))
+                page.mouse.click(x, y, delay=random.randint(25, 65))
                 logger.info("Liked reel")
                 return True
     except Exception as e:

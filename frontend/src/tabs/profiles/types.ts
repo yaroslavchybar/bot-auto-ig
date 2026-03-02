@@ -18,6 +18,7 @@ export type LogEntry = {
   message: string
   level: string
   source: string
+  profileName?: string
   ts: number
 }
 

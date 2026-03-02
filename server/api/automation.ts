@@ -70,18 +70,27 @@ router.post('/start', async (req, res) => {
             markStarted(automationState.process.pid, settings as Record<string, unknown>)
         }
 
+        let currentProfile: string | null = null;
+
         // Handle stdout - parse and format logs
         automationState.process.stdout?.on('data', (data) => {
             const raw = data.toString()
             const parsed = parseLogOutput(raw)
 
             for (const log of parsed) {
+                if (log.eventType === 'profile_started') {
+                    currentProfile = (log.metadata as any)?.profile || null;
+                } else if (log.eventType === 'profile_completed') {
+                    currentProfile = null;
+                }
+
                 console.log(`[Python] ${log.message}`)
                 broadcast({
                     type: log.eventType ? log.eventType : 'log',
                     message: log.message,
                     level: log.level,
                     source: 'python',
+                    profileName: currentProfile,
                     ...log.metadata
                 })
             }
@@ -246,20 +255,20 @@ router.post('/login', async (req, res) => {
             if (message) {
                 // Check for success signal
                 if (message.includes('__LOGIN_SUCCESS__')) {
-                    broadcast({ type: 'log', message: 'Login Successful', level: 'success', source: 'login' })
+                    broadcast({ type: 'log', message: 'Login Successful', level: 'success', source: 'login', profileName })
                     // Auto-mark profile as logged in
                     profilesSetLoginTrue(profileName).catch(err => {
                         console.error('[Login Auto-Update Error]', err)
                     })
                 }
-                broadcast({ type: 'log', message, level: 'info', source: 'login' })
+                broadcast({ type: 'log', message, level: 'info', source: 'login', profileName })
             }
         })
 
         loginProcess.stderr?.on('data', (data) => {
             const message = data.toString().trim()
             if (message) {
-                broadcast({ type: 'log', message, level: 'error', source: 'login' })
+                broadcast({ type: 'log', message, level: 'error', source: 'login', profileName })
             }
         })
 

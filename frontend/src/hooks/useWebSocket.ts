@@ -6,6 +6,7 @@ export interface LogEntry {
     level: string
     source: string
     workflowId?: string
+    profileName?: string
     ts: number
 }
 
@@ -26,6 +27,7 @@ interface WebSocketMessage {
     // Event payloads
     total_accounts?: number;
     profile?: string;
+    profileName?: string;
     task?: string;
 }
 
@@ -67,6 +69,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     const [reconnectCounter, setReconnectCounter] = useState(0)
     const wsRef = useRef<WebSocket | null>(null)
     const workflowIdRef = useRef<string | null>(workflowId ?? null)
+    const currentProfileRef = useRef<string | null>(null)
     const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const reconnectAttemptRef = useRef(0)
 
@@ -138,6 +141,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                                     level: data.level || 'info',
                                     source: data.source || 'unknown',
                                     workflowId: msgWorkflowId ?? undefined,
+                                    profileName: data.profileName || currentProfileRef.current || undefined,
                                     ts: Date.now(),
                                 }
                                 setLogs((prev) => [...prev.slice(-499), entry])
@@ -160,6 +164,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                             } else if (data.type === 'profile_started') {
                                 if (!matchesWorkflow) return
                                 if (activeWorkflowId && !msgWorkflowId) return
+                                currentProfileRef.current = data.profile || null
                                 setProgress(prev => ({ ...prev, currentProfile: data.profile || null, currentTask: null }));
                             } else if (data.type === 'task_started') {
                                 if (!matchesWorkflow) return
@@ -168,6 +173,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                             } else if (data.type === 'profile_completed') {
                                 if (!matchesWorkflow) return
                                 if (activeWorkflowId && !msgWorkflowId) return
+                                currentProfileRef.current = null
                                 setProgress(prev => ({ ...prev, currentProfile: null, currentTask: null }));
                             }
                         } catch {

@@ -39,7 +39,7 @@ export async function fetchProfilesForEdit(listId: string): Promise<ProfileRow[]
   ])
 
   const rows: ProfileRow[] = []
-  
+
   if (assigned.status === 'fulfilled' && assigned.value) {
     for (const r of assigned.value) {
       rows.push({
@@ -64,7 +64,7 @@ export async function fetchProfilesForEdit(listId: string): Promise<ProfileRow[]
 
   // Sort by name for better UX
   rows.sort((a, b) => a.name.localeCompare(b.name))
-  
+
   return rows
 }
 

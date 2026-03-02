@@ -5,6 +5,14 @@ import { Crons } from "@convex-dev/crons";
 
 const crons = new Crons(components.crons);
 
+// Check if lastRunAt is from a previous UTC day
+function isNewDay(lastRunAt?: number): boolean {
+	if (!lastRunAt) return true;
+	const lastDate = new Date(lastRunAt).toISOString().slice(0, 10);
+	const today = new Date().toISOString().slice(0, 10);
+	return lastDate !== today;
+}
+
 // Schedule type for building cron expressions
 type ScheduleType = "interval" | "daily" | "weekly" | "monthly" | "cron";
 type ScheduleConfig = {
@@ -215,8 +223,8 @@ export const remove = mutation({
 });
 
 export const duplicate = mutation({
-	args: { 
-		id: v.id("workflows"), 
+	args: {
+		id: v.id("workflows"),
 		newName: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
@@ -255,8 +263,24 @@ export const start = mutation({
 			throw new Error("Workflow is already running");
 		}
 
+		// If already pending (e.g., scheduled run already set it), just return
+		if (workflow.status === "pending") {
+			return workflow;
+		}
+
+		// Reset counter if last run was a different day
+		const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
+
+		// Check daily limit
+		const maxRuns = workflow.maxRunsPerDay ?? 0;
+		if (maxRuns > 0 && runsToday >= maxRuns) {
+			throw new Error("Daily run limit reached");
+		}
+
 		await ctx.db.patch(args.id, {
 			status: "pending",
+			runsToday: runsToday + 1,
+			lastRunAt: Date.now(),
 			error: undefined,
 			currentNodeId: undefined,
 			nodeStates: {},
@@ -497,7 +521,6 @@ export const activate = mutation({
 		await ctx.db.patch(args.id, {
 			isActive: true,
 			cronJobId,
-			runsToday: 0,
 			updatedAt: Date.now(),
 		});
 
@@ -568,7 +591,6 @@ export const toggleActive = mutation({
 			await ctx.db.patch(args.id, {
 				isActive: true,
 				cronJobId,
-				runsToday: 0,
 				updatedAt: Date.now(),
 			});
 		}
@@ -586,9 +608,11 @@ export const executeScheduledWorkflow = internalMutation({
 		if (!workflow.isActive) return { success: false, error: "Workflow not active" };
 		if (workflow.status === "running") return { success: false, error: "Already running" };
 
+		// Reset counter if last run was a different day
+		const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
+
 		// Check daily limit
 		const maxRuns = workflow.maxRunsPerDay ?? 0;
-		const runsToday = workflow.runsToday ?? 0;
 		if (maxRuns > 0 && runsToday >= maxRuns) {
 			return { success: false, error: "Daily limit reached" };
 		}
@@ -655,7 +679,7 @@ export const resetDailyRuns = internalMutation({
 			.collect();
 
 		for (const workflow of activeWorkflows) {
-			await ctx.db.patch(workflow._id, { 
+			await ctx.db.patch(workflow._id, {
 				runsToday: 0,
 			});
 		}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import type { Node } from 'reactflow'
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
@@ -19,6 +19,7 @@ import { getActivityById, type ActivityInput } from '@/lib/activities/index'
 import { X, Play, Settings2, MessageSquare, Plus, Trash2, Edit2, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import type { StartNodeData } from './StartNode'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 interface NodeSettingsPanelProps {
 	selectedNode: Node | null
@@ -75,26 +76,23 @@ function StartNodeSettings({ node, lists, onUpdate, onClose }: StartNodeSettings
 	const data = node.data as StartNodeData
 	const [headlessMode, setHeadlessMode] = useState(data.headlessMode ?? false)
 	const [cooldown, setCooldown] = useState(data.profileReopenCooldown ?? 30)
-	const [messagingCooldown, setMessagingCooldown] = useState(data.messagingCooldown ?? 24)
 	const [selectedLists, setSelectedLists] = useState<string[]>(data.sourceLists ?? [])
 
 	// Sync local state when node changes
 	useEffect(() => {
 		setHeadlessMode(data.headlessMode ?? false)
 		setCooldown(data.profileReopenCooldown ?? 30)
-		setMessagingCooldown(data.messagingCooldown ?? 24)
 		setSelectedLists(data.sourceLists ?? [])
-	}, [node.id, data.headlessMode, data.profileReopenCooldown, data.messagingCooldown, data.sourceLists])
+	}, [node.id, data.headlessMode, data.profileReopenCooldown, data.sourceLists])
 
 	const handleSave = useCallback(() => {
 		onUpdate(node.id, {
 			...data,
 			headlessMode,
 			profileReopenCooldown: cooldown,
-			messagingCooldown,
 			sourceLists: selectedLists,
 		})
-	}, [node.id, data, headlessMode, cooldown, messagingCooldown, selectedLists, onUpdate])
+	}, [node.id, data, headlessMode, cooldown, selectedLists, onUpdate])
 
 	const toggleList = useCallback((listId: string) => {
 		setSelectedLists((prev) =>
@@ -159,28 +157,6 @@ function StartNodeSettings({ node, lists, onUpdate, onClose }: StartNodeSettings
 						</div>
 						<p className="text-xs text-muted-foreground">
 							Wait time before reopening same profile
-						</p>
-					</div>
-
-					{/* Messaging Cooldown */}
-					<div className="space-y-2">
-						<Label htmlFor="messagingCooldown" className="text-sm font-medium">
-							Messaging Cooldown
-						</Label>
-						<div className="flex items-center gap-2">
-							<Input
-								id="messagingCooldown"
-								type="number"
-								min={0}
-								max={168}
-								value={messagingCooldown}
-								onChange={(e) => setMessagingCooldown(Number(e.target.value) || 0)}
-								className="h-8"
-							/>
-							<span className="text-sm text-muted-foreground">hours</span>
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Wait time before messaging same user again
 						</p>
 					</div>
 
@@ -400,22 +376,43 @@ interface InputFieldProps {
 	config?: Record<string, unknown>
 }
 
-function InputField({ input, value, onChange, compact, config }: InputFieldProps) {
+const MACROS = [
+	{ id: 'userName', label: '{userName}', desc: 'Instagram username' },
+	{ id: 'fullName', label: '{fullName}', desc: 'Full profile name' },
+	{ id: 'matchedName', label: '{matchedName}', desc: 'Extracted first name' },
+];
+
+function InputField({ input, value, onChange, compact }: InputFieldProps) {
 	const displayValue = value ?? input.default ?? ''
-	
+
 	// Get template kind from config for template inputs
-	const templateKind = (config?.template_kind as 'message' | 'message_2') || 'message'
+	const templateKind = 'message'
 	const templates = useQuery(
 		api.messageTemplates.get,
 		input.type === 'template' ? { kind: templateKind } : 'skip'
 	) as string[] | undefined
 	const upsertMutation = useMutation(api.messageTemplates.upsert)
-	
+
 	// Template editing state
 	const [editingIndex, setEditingIndex] = useState<number | null>(null)
 	const [editValue, setEditValue] = useState('')
 	const [isCreating, setIsCreating] = useState(false)
-	
+
+	// Macro popover state
+	const [macroDropdownOpen, setMacroDropdownOpen] = useState(false)
+	const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+	// Close macro dropdown on outside click or escape
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') setMacroDropdownOpen(false);
+		}
+		if (macroDropdownOpen) {
+			document.addEventListener('keydown', handleKeyDown)
+		}
+		return () => document.removeEventListener('keydown', handleKeyDown)
+	}, [macroDropdownOpen])
+
 	const handleSaveTemplate = async () => {
 		const trimmed = editValue.trim()
 		if (!trimmed || !templates) {
@@ -423,14 +420,14 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 			setIsCreating(false)
 			return
 		}
-		
+
 		const next = [...templates]
 		if (isCreating) {
 			next.push(trimmed)
 		} else if (editingIndex !== null) {
 			next[editingIndex] = trimmed
 		}
-		
+
 		try {
 			await upsertMutation({ kind: templateKind, texts: next })
 			setEditingIndex(null)
@@ -441,7 +438,7 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 			toast.error('Failed to save template')
 		}
 	}
-	
+
 	const handleDeleteTemplate = async (index: number) => {
 		if (!templates) return
 		const next = [...templates]
@@ -453,24 +450,66 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 			toast.error('Failed to delete template')
 		}
 	}
-	
+
 	const startEditTemplate = (index: number) => {
 		if (!templates) return
 		setEditingIndex(index)
 		setEditValue(templates[index])
 		setIsCreating(false)
 	}
-	
+
 	const startCreateTemplate = () => {
 		setEditingIndex(null)
 		setEditValue('')
 		setIsCreating(true)
 	}
-	
+
 	const cancelEditTemplate = () => {
 		setEditingIndex(null)
 		setEditValue('')
 		setIsCreating(false)
+	}
+
+	const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+		const val = e.target.value
+		setEditValue(val)
+
+		// Check if we should open the macro dropdown
+		const cursorPosition = e.target.selectionStart
+		const textBeforeCursor = val.slice(0, cursorPosition)
+
+		if (textBeforeCursor.endsWith('/')) {
+			setMacroDropdownOpen(true)
+		} else {
+			setMacroDropdownOpen(false)
+		}
+	}
+
+	const insertMacro = (macroLabel: string) => {
+		if (textareaRef.current) {
+			const cursorPosition = textareaRef.current.selectionStart
+			const textBeforeCursor = editValue.slice(0, cursorPosition)
+			const textAfterCursor = editValue.slice(cursorPosition)
+
+			// Replace the '/' that triggered the dropdown
+			let newTextBeforeCursor = textBeforeCursor
+			if (textBeforeCursor.endsWith('/')) {
+				newTextBeforeCursor = textBeforeCursor.slice(0, -1)
+			}
+
+			const newValue = newTextBeforeCursor + macroLabel + textAfterCursor
+			setEditValue(newValue)
+			setMacroDropdownOpen(false)
+
+			// Try to focus back and restore cursor position after render
+			setTimeout(() => {
+				if (textareaRef.current) {
+					textareaRef.current.focus()
+					const newPos = newTextBeforeCursor.length + macroLabel.length
+					textareaRef.current.setSelectionRange(newPos, newPos)
+				}
+			}, 0)
+		}
 	}
 
 	switch (input.type) {
@@ -597,17 +636,48 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 							Add
 						</Button>
 					</div>
-					
+
 					{/* New template form */}
 					{isCreating && (
-						<div className="border border-primary rounded-lg p-2 space-y-2">
+						<div className="border border-primary rounded-lg p-2 space-y-2 relative">
 							<span className="text-xs font-medium text-primary">New Template</span>
-							<Textarea
-								value={editValue}
-								onChange={(e) => setEditValue(e.target.value)}
-								placeholder="Enter message..."
-								className="min-h-[60px] text-xs"
-							/>
+
+							<Popover open={macroDropdownOpen} onOpenChange={setMacroDropdownOpen}>
+								<PopoverTrigger asChild>
+									<div className="relative w-full">
+										<Textarea
+											ref={textareaRef}
+											value={editValue}
+											onChange={handleTextareaChange}
+											placeholder="Enter message... (type / for macros)"
+											className="min-h-[60px] text-xs"
+										/>
+									</div>
+								</PopoverTrigger>
+								<PopoverContent
+									className="w-48 p-0"
+									align="start"
+									sideOffset={5}
+									onOpenAutoFocus={(e: Event) => e.preventDefault()}
+								>
+									<div className="max-h-60 overflow-y-auto">
+										{MACROS.map((macro) => (
+											<Button
+												key={macro.id}
+												variant="ghost"
+												className="w-full justify-start font-normal text-xs px-2 py-1.5 h-auto"
+												onClick={() => insertMacro(macro.label)}
+											>
+												<div className="flex flex-col items-start gap-0.5">
+													<span className="font-mono text-[10px] bg-muted px-1 rounded text-primary">{macro.label}</span>
+													<span className="text-muted-foreground">{macro.desc}</span>
+												</div>
+											</Button>
+										))}
+									</div>
+								</PopoverContent>
+							</Popover>
+
 							<div className="flex justify-end gap-1">
 								<Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={cancelEditTemplate}>
 									Cancel
@@ -618,7 +688,7 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 							</div>
 						</div>
 					)}
-					
+
 					{templates === undefined ? (
 						<div className="text-xs text-muted-foreground">Loading...</div>
 					) : templates.length === 0 && !isCreating ? (
@@ -631,12 +701,42 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 							{templates.map((template, index) => {
 								if (editingIndex === index) {
 									return (
-										<div key={index} className="border border-primary rounded-lg p-2 space-y-2">
-											<Textarea
-												value={editValue}
-												onChange={(e) => setEditValue(e.target.value)}
-												className="min-h-[60px] text-xs"
-											/>
+										<div key={index} className="border border-primary rounded-lg p-2 space-y-2 relative">
+											<Popover open={macroDropdownOpen} onOpenChange={setMacroDropdownOpen}>
+												<PopoverTrigger asChild>
+													<div className="relative w-full">
+														<Textarea
+															ref={textareaRef}
+															value={editValue}
+															onChange={handleTextareaChange}
+															className="min-h-[60px] text-xs"
+															placeholder="Enter message... (type / for macros)"
+														/>
+													</div>
+												</PopoverTrigger>
+												<PopoverContent
+													className="w-48 p-0"
+													align="start"
+													sideOffset={5}
+													onOpenAutoFocus={(e: Event) => e.preventDefault()}
+												>
+													<div className="max-h-60 overflow-y-auto">
+														{MACROS.map((macro) => (
+															<Button
+																key={macro.id}
+																variant="ghost"
+																className="w-full justify-start font-normal text-xs px-2 py-1.5 h-auto"
+																onClick={() => insertMacro(macro.label)}
+															>
+																<div className="flex flex-col items-start gap-0.5">
+																	<span className="font-mono text-[10px] bg-muted px-1 rounded text-primary">{macro.label}</span>
+																	<span className="text-muted-foreground">{macro.desc}</span>
+																</div>
+															</Button>
+														))}
+													</div>
+												</PopoverContent>
+											</Popover>
 											<div className="flex justify-end gap-1">
 												<Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={cancelEditTemplate}>
 													<X className="h-3 w-3" />
@@ -678,7 +778,7 @@ function InputField({ input, value, onChange, compact, config }: InputFieldProps
 							})}
 						</div>
 					)}
-					
+
 					{input.helpText && (
 						<p className="text-xs text-muted-foreground">{input.helpText}</p>
 					)}

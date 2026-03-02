@@ -12,6 +12,7 @@ import type * as crons from "../crons.js";
 import type * as dashboard from "../dashboard.js";
 import type * as http from "../http.js";
 import type * as instagramAccounts from "../instagramAccounts.js";
+import type * as keywords from "../keywords.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles from "../profiles.js";
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   dashboard: typeof dashboard;
   http: typeof http;
   instagramAccounts: typeof instagramAccounts;
+  keywords: typeof keywords;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
   profiles: typeof profiles;
