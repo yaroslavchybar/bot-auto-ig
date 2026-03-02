@@ -3,9 +3,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -16,7 +14,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Trash2, User, Activity, Wifi, WifiOff } from 'lucide-react'
+import { Plus, RefreshCw, Wifi, WifiOff } from 'lucide-react'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { apiFetch } from '@/lib/api'
 import { WorkflowsList } from './WorkflowsList'
@@ -38,8 +36,8 @@ export function WorkflowsPage() {
 	const [saving, setSaving] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
-	// WebSocket for live logs and progress
-	const { logs, status, progress, clearLogs, connected } = useWebSocket()
+	// WebSocket for connection status
+	const { connected } = useWebSocket()
 
 	// Queries
 	const workflows = useQuery(api.workflows.list, {})
@@ -332,93 +330,7 @@ export function WorkflowsPage() {
 					/>
 				</div>
 
-				{/* Live status panel */}
-				<div className="flex-none border-t p-4">
-					<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-						{/* Progress tracking */}
-						<Card>
-							<CardHeader className="p-3 pb-1">
-								<CardTitle className="text-sm font-medium flex items-center gap-2">
-									Progress
-									{status === 'running' && (
-										<span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-									)}
-								</CardTitle>
-							</CardHeader>
-							<CardContent className="p-3 pt-0">
-								{status === 'running' ? (
-									<div className="space-y-2">
-										{progress.currentProfile && (
-											<div className="flex items-center gap-2 text-sm">
-												<User className="h-4 w-4 text-muted-foreground" />
-												<span className="text-muted-foreground">Profile:</span>
-												<span className="font-medium">{progress.currentProfile}</span>
-											</div>
-										)}
-										{progress.currentTask && (
-											<div className="flex items-center gap-2 text-sm">
-												<Activity className="h-4 w-4 text-muted-foreground" />
-												<span className="text-muted-foreground">Task:</span>
-												<span>{progress.currentTask}</span>
-											</div>
-										)}
-										{!progress.currentProfile && !progress.currentTask && (
-											<p className="text-sm text-muted-foreground">Starting...</p>
-										)}
-									</div>
-								) : (
-									<p className="text-sm text-muted-foreground">
-										{status === 'idle' ? 'No workflow running' : 'Stopping...'}
-									</p>
-								)}
-							</CardContent>
-						</Card>
 
-						{/* Live logs */}
-						<Card>
-							<CardHeader className="p-3 pb-1">
-								<div className="flex items-center justify-between">
-									<CardTitle className="text-sm font-medium">Live Logs</CardTitle>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-7 w-7"
-										onClick={clearLogs}
-										disabled={logs.length === 0}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</div>
-							</CardHeader>
-							<CardContent className="p-3 pt-0">
-								<ScrollArea className="h-24">
-									{logs.length === 0 ? (
-										<p className="text-sm text-muted-foreground">No logs yet</p>
-									) : (
-										<div className="space-y-1">
-											{logs.slice(-10).map((log, index) => (
-												<div
-													key={`${log.ts}-${index}`}
-													className={`text-xs font-mono ${
-														log.level === 'error' ? 'text-red-500' :
-														log.level === 'warn' ? 'text-yellow-500' :
-														log.level === 'success' ? 'text-green-500' :
-														'text-muted-foreground'
-													}`}
-												>
-													<span className="text-muted-foreground">
-														[{new Date(log.ts).toLocaleTimeString('en-US', { hour12: false })}]
-													</span>
-													{' '}{log.message}
-												</div>
-											))}
-										</div>
-									)}
-								</ScrollArea>
-							</CardContent>
-						</Card>
-					</div>
-				</div>
 			</div>
 
 			{/* Create Dialog */}

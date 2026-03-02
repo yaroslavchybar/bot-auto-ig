@@ -41,7 +41,7 @@ export type DbProfileRow = {
     test_ip: boolean;
     fingerprint_seed?: string | null;
     fingerprint_os?: string | null;
-    list_id?: string | null;
+    list_ids?: string[] | null;
     last_opened_at?: string | null;
     login: boolean;
     daily_scraping_limit?: number | null;
@@ -198,6 +198,32 @@ export async function profilesBulkSetListId(profileIds: string[], listId: string
     await convexFetch<any>('/api/profiles/bulk-set-list-id', {
         method: 'POST',
         body: { profileIds: cleanedIds, listId },
+    });
+    return true;
+}
+
+export async function profilesBulkAddToList(profileIds: string[], listId: string): Promise<true> {
+    if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+    const cleanedListId = String(listId || '').trim();
+    if (!cleanedListId) throw new Error('list_id is required');
+    const cleanedIds = profileIds.map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanedIds.length === 0) return true;
+    await convexFetch<any>('/api/profiles/bulk-add-to-list', {
+        method: 'POST',
+        body: { profileIds: cleanedIds, listId: cleanedListId },
+    });
+    return true;
+}
+
+export async function profilesBulkRemoveFromList(profileIds: string[], listId: string): Promise<true> {
+    if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+    const cleanedListId = String(listId || '').trim();
+    if (!cleanedListId) throw new Error('list_id is required');
+    const cleanedIds = profileIds.map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanedIds.length === 0) return true;
+    await convexFetch<any>('/api/profiles/bulk-remove-from-list', {
+        method: 'POST',
+        body: { profileIds: cleanedIds, listId: cleanedListId },
     });
     return true;
 }

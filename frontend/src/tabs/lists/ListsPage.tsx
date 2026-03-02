@@ -3,7 +3,7 @@ import { DeleteConfirmation } from './DeleteConfirmation'
 import { ListsForm } from './ListsForm'
 import { ListsList } from './ListsList'
 import type { List } from './types'
-import { createList, updateList, deleteList, bulkSetListId } from './api'
+import { createList, updateList, deleteList, bulkAddToList, bulkRemoveFromList } from './api'
 import { useLists } from '@/hooks/useLists'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -73,10 +73,10 @@ export function ListsPage() {
           await updateList(selected.id, name)
         }
         if (addedIds.length > 0) {
-          await bulkSetListId(addedIds, selected.id)
+          await bulkAddToList(addedIds, selected.id)
         }
         if (removedIds.length > 0) {
-          await bulkSetListId(removedIds, null)
+          await bulkRemoveFromList(removedIds, selected.id)
         }
         await backgroundRefresh()
         setIsEditOpen(false)

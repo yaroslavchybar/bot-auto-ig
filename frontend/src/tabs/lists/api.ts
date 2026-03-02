@@ -33,34 +33,30 @@ export async function deleteList(id: string): Promise<void> {
 }
 
 export async function fetchProfilesForEdit(listId: string): Promise<ProfileRow[]> {
-  const [assigned, unassigned] = await Promise.allSettled([
-    apiFetch<Array<{ profile_id: string; name: string }>>(`/api/profiles/assigned?list_id=${encodeURIComponent(listId)}`),
-    apiFetch<Array<{ profile_id: string; name: string }>>('/api/profiles/unassigned'),
-  ])
+  const allProfiles = await apiFetch<Array<{
+    id?: string
+    profile_id?: string
+    name: string
+    login?: boolean
+    list_ids?: string[] | null
+  }>>('/api/profiles')
 
-  const rows: ProfileRow[] = []
-
-  if (assigned.status === 'fulfilled' && assigned.value) {
-    for (const r of assigned.value) {
-      rows.push({
-        profile_id: String(r.profile_id),
-        name: String(r.name || ''),
-        selected: true,
-        initialSelected: true,
-      })
-    }
-  }
-
-  if (unassigned.status === 'fulfilled' && unassigned.value) {
-    for (const r of unassigned.value) {
-      rows.push({
-        profile_id: String(r.profile_id),
-        name: String(r.name || ''),
-        selected: false,
-        initialSelected: false,
-      })
-    }
-  }
+  const rows: ProfileRow[] = (allProfiles || [])
+    .filter((profile) => Boolean(profile?.login))
+    .map((profile) => {
+      const profileId = String(profile.id ?? profile.profile_id ?? '')
+      const listIds = Array.isArray(profile.list_ids)
+        ? profile.list_ids.map((id) => String(id || '')).filter(Boolean)
+        : []
+      const selected = listIds.includes(listId)
+      return {
+        profile_id: profileId,
+        name: String(profile.name || ''),
+        selected,
+        initialSelected: selected,
+      }
+    })
+    .filter((row) => Boolean(row.profile_id))
 
   // Sort by name for better UX
   rows.sort((a, b) => a.name.localeCompare(b.name))
@@ -68,9 +64,19 @@ export async function fetchProfilesForEdit(listId: string): Promise<ProfileRow[]
   return rows
 }
 
-export async function bulkSetListId(profileIds: string[], listId: string | null): Promise<void> {
+export async function bulkAddToList(profileIds: string[], listId: string): Promise<void> {
   if (!profileIds.length) return
-  await apiFetch('/api/profiles/bulk-set-list-id', {
+  if (!listId) throw new Error('listId is required')
+  await apiFetch('/api/profiles/bulk-add-to-list', {
+    method: 'POST',
+    body: { profileIds, listId },
+  })
+}
+
+export async function bulkRemoveFromList(profileIds: string[], listId: string): Promise<void> {
+  if (!profileIds.length) return
+  if (!listId) throw new Error('listId is required')
+  await apiFetch('/api/profiles/bulk-remove-from-list', {
     method: 'POST',
     body: { profileIds, listId },
   })

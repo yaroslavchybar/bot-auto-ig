@@ -6,6 +6,25 @@ function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	return s ? "proxy" : "direct";
 }
 
+function getProfileListIds(profile: any): any[] {
+	const merged = Array.isArray(profile?.listIds) ? profile.listIds : [];
+	const seen = new Set<string>();
+	const deduped: any[] = [];
+	for (const id of merged) {
+		const key = String(id || "").trim();
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(id);
+	}
+	return deduped;
+}
+
+function buildListPatch(listIds: any[]): { listIds: any[] } {
+	return {
+		listIds,
+	};
+}
+
 export const list = query({
 	args: {},
 	handler: async (ctx) => {
@@ -48,8 +67,8 @@ export const getAvailableForLists = query({
 		const allowed = new Set(cleanIds);
 		const rows = await ctx.db.query("profiles").collect();
 		const filtered = rows.filter((p) => {
-			if (!p.listId) return false;
-			if (!allowed.has(String(p.listId))) return false;
+			const listIds = getProfileListIds(p);
+			if (!listIds.some((listId) => allowed.has(String(listId)))) return false;
 			if (typeof p.lastOpenedAt !== "number") return true;
 			return p.lastOpenedAt < cutoffMs;
 		});
@@ -68,8 +87,8 @@ export const getByListIds = query({
 		const allowed = new Set(cleanIds);
 		const rows = await ctx.db.query("profiles").collect();
 		const filtered = rows.filter((p) => {
-			if (!p.listId) return false;
-			return allowed.has(String(p.listId));
+			const listIds = getProfileListIds(p);
+			return listIds.some((listId) => allowed.has(String(listId)));
 		});
 		filtered.sort((a, b) => a.createdAt - b.createdAt);
 		return filtered;
@@ -114,7 +133,7 @@ export const create = mutation({
 			testIp: args.testIp ?? false,
 			fingerprintSeed: args.fingerprintSeed,
 			fingerprintOs: args.fingerprintOs,
-			listId: undefined,
+			listIds: [],
 			lastOpenedAt: undefined,
 			login: false,
 			dailyScrapingLimit: dailyLimit,
@@ -337,12 +356,9 @@ export const setLoginTrue = mutation({
 export const listAssigned = query({
 	args: { listId: v.id("lists") },
 	handler: async (ctx, args) => {
-		const rows = await ctx.db
-			.query("profiles")
-			.withIndex("by_listId", (q) => q.eq("listId", args.listId))
-			.collect();
+		const rows = await ctx.db.query("profiles").collect();
 		const result = rows
-			.filter((r) => r.login)
+			.filter((r) => r.login && getProfileListIds(r).some((listId) => String(listId) === String(args.listId)))
 			.map((r) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
 			.sort((a, b) => a.createdAt - b.createdAt)
 			.map((r) => ({ profileId: r._id, name: r.name }));
@@ -355,7 +371,7 @@ export const listUnassigned = query({
 	handler: async (ctx) => {
 		const rows = await ctx.db.query("profiles").collect();
 		const result = rows
-			.filter((r) => r.login && !r.listId)
+			.filter((r) => r.login && getProfileListIds(r).length === 0)
 			.map((r) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
 			.sort((a, b) => a.createdAt - b.createdAt)
 			.map((r) => ({ profileId: r._id, name: r.name }));
@@ -367,8 +383,42 @@ export const bulkSetListId = mutation({
 	args: { profileIds: v.array(v.id("profiles")), listId: v.optional(v.union(v.null(), v.id("lists"))) },
 	handler: async (ctx, args) => {
 		if (!Array.isArray(args.profileIds) || args.profileIds.length === 0) return true;
+		const nextListIds = args.listId === null || typeof args.listId === "undefined" ? [] : [args.listId];
+		await Promise.all(args.profileIds.map((id) => ctx.db.patch(id, buildListPatch(nextListIds))));
+		return true;
+	},
+});
+
+export const bulkAddToList = mutation({
+	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
+	handler: async (ctx, args) => {
+		if (!Array.isArray(args.profileIds) || args.profileIds.length === 0) return true;
 		await Promise.all(
-			args.profileIds.map((id) => ctx.db.patch(id, { listId: args.listId === null ? undefined : args.listId })),
+			args.profileIds.map(async (id) => {
+				const row = await ctx.db.get(id);
+				if (!row) return;
+				const next = getProfileListIds(row);
+				if (!next.some((listId) => String(listId) === String(args.listId))) {
+					next.push(args.listId);
+				}
+				await ctx.db.patch(id, buildListPatch(next));
+			}),
+		);
+		return true;
+	},
+});
+
+export const bulkRemoveFromList = mutation({
+	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
+	handler: async (ctx, args) => {
+		if (!Array.isArray(args.profileIds) || args.profileIds.length === 0) return true;
+		await Promise.all(
+			args.profileIds.map(async (id) => {
+				const row = await ctx.db.get(id);
+				if (!row) return;
+				const next = getProfileListIds(row).filter((listId) => String(listId) !== String(args.listId));
+				await ctx.db.patch(id, buildListPatch(next));
+			}),
 		);
 		return true;
 	},
@@ -378,17 +428,10 @@ export const clearBusyForLists = mutation({
 	args: { listIds: v.array(v.id("lists")) },
 	handler: async (ctx, args) => {
 		if (!Array.isArray(args.listIds) || args.listIds.length === 0) return true;
-		const listIds = args.listIds;
-		const rows = (
-			await Promise.all(
-				listIds.map((listId) =>
-					ctx.db
-						.query("profiles")
-						.withIndex("by_listId", (q) => q.eq("listId", listId))
-						.collect(),
-				),
-			)
-		).flat();
+		const allowed = new Set(args.listIds.map((id) => String(id)));
+		const rows = (await ctx.db.query("profiles").collect()).filter((profile) =>
+			getProfileListIds(profile).some((listId) => allowed.has(String(listId))),
+		);
 		const toUpdate = rows.filter((r) => (String(r.status || "").toLowerCase() === "running" ? true : Boolean(r.using)));
 		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { status: "idle", using: false })));
 		return true;
@@ -442,6 +485,38 @@ export const resetDailyScrapingUsed = internalMutation({
 		const toUpdate = rows.filter((r) => (r.dailyScrapingUsed || 0) !== 0);
 		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { dailyScrapingUsed: 0 })));
 		return true;
+	},
+});
+
+export const migrateLegacyListIdToListIds = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query("profiles").collect();
+		let migrated = 0;
+		for (const row of rows) {
+			const doc = row as any;
+			if (Array.isArray(doc.listIds)) continue;
+			const legacyListId = doc.listId;
+			const listIds = legacyListId ? [legacyListId] : [];
+			await ctx.db.patch(row._id, { listIds } as any);
+			migrated++;
+		}
+		return { migrated };
+	},
+});
+
+export const cleanupLegacyListIdField = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query("profiles").collect();
+		let cleaned = 0;
+		for (const row of rows) {
+			const doc = row as any;
+			if (!("listId" in doc)) continue;
+			await ctx.db.patch(row._id, { listId: undefined } as any);
+			cleaned++;
+		}
+		return { cleaned };
 	},
 });
 

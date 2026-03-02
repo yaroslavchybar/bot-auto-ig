@@ -33,13 +33,21 @@ export const update = mutation({
 export const remove = mutation({
 	args: { id: v.id("lists") },
 	handler: async (ctx, args) => {
-		const profiles = await ctx.db
-			.query("profiles")
-			.withIndex("by_listId", (q) => q.eq("listId", args.id))
-			.collect();
-		await Promise.all(profiles.map((p) => ctx.db.patch(p._id, { listId: undefined })));
+		const profiles = await ctx.db.query("profiles").collect();
+		const impacted = profiles.filter((profile: any) => {
+			const listIds = Array.isArray(profile.listIds) ? profile.listIds : [];
+			return listIds.some((listId: any) => String(listId) === String(args.id));
+		});
+		await Promise.all(
+			impacted.map((profile: any) => {
+				const listIds = Array.isArray(profile.listIds) ? profile.listIds : [];
+				const nextListIds = listIds.filter((listId: any) => String(listId) !== String(args.id));
+				return ctx.db.patch(profile._id, {
+					listIds: nextListIds,
+				});
+			}),
+		);
 		await ctx.db.delete(args.id);
 		return true;
 	},
 });
-

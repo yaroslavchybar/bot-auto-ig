@@ -51,6 +51,24 @@ function buildCronSchedule(
 	}
 }
 
+function normalizeListIds(listIds: any[] | undefined): any[] {
+	const raw = Array.isArray(listIds) ? listIds : [];
+	const seen = new Set<string>();
+	const deduped: any[] = [];
+	for (const id of raw) {
+		const key = String(id || "").trim();
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		deduped.push(id);
+	}
+	return deduped;
+}
+
+function getWorkflowListIds(workflow: any): any[] {
+	const raw = Array.isArray(workflow?.listIds) ? workflow.listIds : [];
+	return normalizeListIds(raw);
+}
+
 const statusValidator = v.union(
 	v.literal("idle"),
 	v.literal("pending"),
@@ -124,10 +142,11 @@ export const getQueue = query({
 export const getByList = query({
 	args: { listId: v.id("lists") },
 	handler: async (ctx, args) => {
-		return await ctx.db
-			.query("workflows")
-			.withIndex("by_listId", (q) => q.eq("listId", args.listId))
-			.collect();
+		const rows = await ctx.db.query("workflows").collect();
+		return rows.filter((row: any) => {
+			const listIds = getWorkflowListIds(row);
+			return listIds.some((listId) => String(listId) === String(args.listId));
+		});
 	},
 });
 
@@ -142,7 +161,7 @@ export const create = mutation({
 		nodes: v.any(),
 		edges: v.any(),
 		category: v.optional(v.string()),
-		listId: v.optional(v.id("lists")),
+		listIds: v.optional(v.array(v.id("lists"))),
 	},
 	handler: async (ctx, args) => {
 		const cleaned = String(args.name || "").trim();
@@ -155,7 +174,7 @@ export const create = mutation({
 			nodes: args.nodes || [],
 			edges: args.edges || [],
 			category: args.category,
-			listId: args.listId,
+			listIds: normalizeListIds(args.listIds),
 			status: "idle",
 			createdAt: now,
 			updatedAt: now,
@@ -172,7 +191,7 @@ export const update = mutation({
 		nodes: v.optional(v.any()),
 		edges: v.optional(v.any()),
 		category: v.optional(v.string()),
-		listId: v.optional(v.id("lists")),
+		listIds: v.optional(v.array(v.id("lists"))),
 		scheduledAt: v.optional(v.number()),
 		maxRetries: v.optional(v.number()),
 	},
@@ -197,7 +216,7 @@ export const update = mutation({
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.edges !== undefined) patch.edges = updates.edges;
 		if (updates.category !== undefined) patch.category = updates.category;
-		if (updates.listId !== undefined) patch.listId = updates.listId;
+		if (updates.listIds !== undefined) patch.listIds = normalizeListIds(updates.listIds);
 		if (updates.scheduledAt !== undefined) patch.scheduledAt = updates.scheduledAt;
 		if (updates.maxRetries !== undefined) patch.maxRetries = updates.maxRetries;
 
@@ -240,7 +259,7 @@ export const duplicate = mutation({
 			nodes: existing.nodes,
 			edges: existing.edges,
 			category: existing.category,
-			listId: existing.listId,
+			listIds: getWorkflowListIds(existing),
 			status: "idle",
 			createdAt: now,
 			updatedAt: now,
@@ -685,5 +704,37 @@ export const resetDailyRuns = internalMutation({
 		}
 
 		return { reset: activeWorkflows.length };
+	},
+});
+
+export const migrateLegacyListIdToListIds = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query("workflows").collect();
+		let migrated = 0;
+		for (const row of rows) {
+			const doc = row as any;
+			if (Array.isArray(doc.listIds)) continue;
+			const legacyListId = doc.listId;
+			const listIds = legacyListId ? [legacyListId] : [];
+			await ctx.db.patch(row._id, { listIds } as any);
+			migrated++;
+		}
+		return { migrated };
+	},
+});
+
+export const cleanupLegacyListIdField = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const rows = await ctx.db.query("workflows").collect();
+		let cleaned = 0;
+		for (const row of rows) {
+			const doc = row as any;
+			if (!("listId" in doc)) continue;
+			await ctx.db.patch(row._id, { listId: undefined } as any);
+			cleaned++;
+		}
+		return { cleaned };
 	},
 });

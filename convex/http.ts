@@ -30,6 +30,9 @@ function toIso(ms: unknown): string | null {
 
 function mapProfileToPython(profile: any): any {
 	if (!profile) return profile;
+	const listIds = Array.isArray(profile.listIds)
+		? profile.listIds.filter((id: unknown) => Boolean(id))
+		: [];
 	return {
 		profile_id: profile._id,
 		created_at: toIso(profile.createdAt),
@@ -44,7 +47,7 @@ function mapProfileToPython(profile: any): any {
 		test_ip: Boolean(profile.testIp),
 		fingerprint_seed: profile.fingerprintSeed ?? null,
 		fingerprint_os: profile.fingerprintOs ?? null,
-		list_id: profile.listId ?? null,
+		list_ids: listIds,
 		last_opened_at: toIso(profile.lastOpenedAt),
 		login: Boolean(profile.login),
 		daily_scraping_limit: typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null,
@@ -113,6 +116,8 @@ const apiPaths = [
 	"/api/profiles/assigned",
 	"/api/profiles/unassigned",
 	"/api/profiles/bulk-set-list-id",
+	"/api/profiles/bulk-add-to-list",
+	"/api/profiles/bulk-remove-from-list",
 	"/api/lists",
 	"/api/lists/update",
 	"/api/lists/remove",
@@ -544,6 +549,48 @@ http.route({
 			const ok = await ctx.runMutation(api.profiles.bulkSetListId, {
 				profileIds: profileIds as any[],
 				listId: listId === null ? null : (listId as any),
+			});
+			return jsonResponse({ ok });
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/bulk-add-to-list",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
+			const listId = body?.listId ?? body?.list_id;
+			const ok = await ctx.runMutation(api.profiles.bulkAddToList, {
+				profileIds: profileIds as any[],
+				listId: listId as any,
+			});
+			return jsonResponse({ ok });
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/bulk-remove-from-list",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
+			const listId = body?.listId ?? body?.list_id;
+			const ok = await ctx.runMutation(api.profiles.bulkRemoveFromList, {
+				profileIds: profileIds as any[],
+				listId: listId as any,
 			});
 			return jsonResponse({ ok });
 		} catch (err: any) {

@@ -9,6 +9,8 @@ import {
     profilesListAssigned,
     profilesListUnassigned,
     profilesBulkSetListId,
+    profilesBulkAddToList,
+    profilesBulkRemoveFromList,
     profilesSyncStatus,
     profilesSetLoginTrue,
     profilesUpdateByName
@@ -363,6 +365,40 @@ router.post('/bulk-set-list-id', async (req, res) => {
             return res.status(400).json({ error: 'profileIds must be an array' })
         }
         await profilesBulkSetListId(profileIds, listId ?? null)
+        res.json({ success: true })
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message })
+    }
+})
+
+router.post('/bulk-add-to-list', async (req, res) => {
+    try {
+        const { profileIds, listId } = req.body || {}
+        if (!Array.isArray(profileIds)) {
+            return res.status(400).json({ error: 'profileIds must be an array' })
+        }
+        if (!listId) {
+            return res.status(400).json({ error: 'listId is required' })
+        }
+        await profilesBulkAddToList(profileIds, String(listId))
+        res.json({ success: true })
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message })
+    }
+})
+
+router.post('/bulk-remove-from-list', async (req, res) => {
+    try {
+        const { profileIds, listId } = req.body || {}
+        if (!Array.isArray(profileIds)) {
+            return res.status(400).json({ error: 'profileIds must be an array' })
+        }
+        if (!listId) {
+            return res.status(400).json({ error: 'listId is required' })
+        }
+        await profilesBulkRemoveFromList(profileIds, String(listId))
         res.json({ success: true })
     } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'

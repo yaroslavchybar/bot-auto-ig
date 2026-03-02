@@ -20,6 +20,7 @@ export type Profile = {
 	status?: string;
 	using?: boolean;
 	login?: boolean;
+	list_ids?: string[];
 	daily_scraping_limit?: number | null;
 	daily_scraping_used?: number;
 };
@@ -40,6 +41,9 @@ export class ProfileManager {
 				status: p.status,
 				using: p.Using,
 				login: p.login,
+				list_ids: Array.isArray(p.list_ids)
+					? p.list_ids.map((id: unknown) => String(id || "")).filter(Boolean)
+					: [],
 				daily_scraping_limit: typeof p.daily_scraping_limit === 'number' ? p.daily_scraping_limit : null,
 				daily_scraping_used: typeof p.daily_scraping_used === 'number' ? p.daily_scraping_used : 0,
 			}));

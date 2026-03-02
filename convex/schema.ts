@@ -20,13 +20,12 @@ export default defineSchema({
 		testIp: v.boolean(),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
-		listId: v.optional(v.id("lists")),
+		listIds: v.optional(v.array(v.id("lists"))),
 		lastOpenedAt: v.optional(v.number()),
 		login: v.boolean(),
 		dailyScrapingLimit: v.optional(v.number()),
 		dailyScrapingUsed: v.optional(v.number()),
 	})
-		.index("by_listId", ["listId"])
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
 
@@ -114,7 +113,7 @@ export default defineSchema({
 		cronJobId: v.optional(v.string()), // ID from @convex-dev/crons
 
 		// Execution fields
-		listId: v.optional(v.id("lists")),
+		listIds: v.optional(v.array(v.id("lists"))),
 		status: v.optional(v.union(
 			v.literal("idle"),
 			v.literal("pending"),
@@ -141,7 +140,6 @@ export default defineSchema({
 		.index("by_category", ["category"])
 		.index("by_isActive", ["isActive"])
 		.index("by_status", ["status"])
-		.index("by_listId", ["listId"])
 		.index("by_scheduledAt", ["scheduledAt"]),
 
 	// ═══════════════════════════════════════════════════════════════════

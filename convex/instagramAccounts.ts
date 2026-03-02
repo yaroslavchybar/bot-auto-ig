@@ -210,7 +210,12 @@ export const _listProfileIds = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const profiles = await ctx.db.query("profiles").collect();
-		return profiles.filter((p) => Boolean(p.listId)).map((p) => p._id);
+		return profiles
+			.filter((p: any) => {
+				const listIds = Array.isArray(p.listIds) ? p.listIds : [];
+				return listIds.length > 0;
+			})
+			.map((p) => p._id);
 	},
 });
 
