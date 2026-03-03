@@ -28,6 +28,7 @@ import { engagementActivities } from './engagement';
 import { messagingActivities } from './messaging';
 import { storiesActivities } from './stories';
 import { controlActivities } from './control';
+import { pythonActivities } from './pythonnode';
 
 import type { ActivityCategory, ActivityDefinition } from './types';
 
@@ -41,6 +42,7 @@ export const ACTIVITY_REGISTRY: ActivityDefinition[] = [
 	...messagingActivities,
 	...storiesActivities,
 	...controlActivities,
+	...pythonActivities,
 ];
 
 // ============================================================================
@@ -65,7 +67,7 @@ export function getActivitiesByCategory(category: ActivityCategory): ActivityDef
  * Get list of all categories
  */
 export function getAllCategories(): ActivityCategory[] {
-	return ['browsing', 'engagement', 'messaging', 'stories', 'control'];
+	return ['browsing', 'engagement', 'messaging', 'stories', 'control', 'python'];
 }
 
 /**
@@ -78,6 +80,7 @@ export function getCategoryLabel(category: ActivityCategory): string {
 		messaging: 'Messaging',
 		stories: 'Stories',
 		control: 'Control Flow',
+		python: 'Python Script',
 	};
 	return labels[category];
 }
@@ -92,6 +95,7 @@ export function getCategoryIcon(category: ActivityCategory): string {
 		messaging: 'MessageCircle',
 		stories: 'CircleDot',
 		control: 'Settings2',
+		python: 'TerminalSquare',
 	};
 	return icons[category];
 }

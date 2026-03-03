@@ -14,7 +14,7 @@ function isNewDay(lastRunAt?: number): boolean {
 }
 
 // Schedule type for building cron expressions
-type ScheduleType = "interval" | "daily" | "weekly" | "monthly" | "cron";
+type ScheduleType = "interval" | "daily" | "weekly" | "monthly" | "cron" | "instant";
 type ScheduleConfig = {
 	intervalMs?: number;
 	hourUTC?: number;
@@ -85,7 +85,6 @@ const statusValidator = v.union(
 
 export const list = query({
 	args: {
-		category: v.optional(v.string()),
 		status: v.optional(statusValidator),
 	},
 	handler: async (ctx, args) => {
@@ -100,13 +99,8 @@ export const list = query({
 			rows = await ctx.db.query("workflows").collect();
 		}
 
-		// Filter by category if provided
-		let filtered = args.category
-			? rows.filter((r) => r.category === args.category)
-			: rows;
-
-		filtered.sort((a, b) => b.updatedAt - a.updatedAt);
-		return filtered;
+		rows.sort((a, b) => b.updatedAt - a.updatedAt);
+		return rows;
 	},
 });
 
@@ -160,7 +154,6 @@ export const create = mutation({
 		description: v.optional(v.string()),
 		nodes: v.any(),
 		edges: v.any(),
-		category: v.optional(v.string()),
 		listIds: v.optional(v.array(v.id("lists"))),
 	},
 	handler: async (ctx, args) => {
@@ -173,7 +166,6 @@ export const create = mutation({
 			description: args.description,
 			nodes: args.nodes || [],
 			edges: args.edges || [],
-			category: args.category,
 			listIds: normalizeListIds(args.listIds),
 			status: "idle",
 			createdAt: now,
@@ -190,7 +182,6 @@ export const update = mutation({
 		description: v.optional(v.string()),
 		nodes: v.optional(v.any()),
 		edges: v.optional(v.any()),
-		category: v.optional(v.string()),
 		listIds: v.optional(v.array(v.id("lists"))),
 		scheduledAt: v.optional(v.number()),
 		maxRetries: v.optional(v.number()),
@@ -215,7 +206,6 @@ export const update = mutation({
 		if (updates.description !== undefined) patch.description = updates.description;
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.edges !== undefined) patch.edges = updates.edges;
-		if (updates.category !== undefined) patch.category = updates.category;
 		if (updates.listIds !== undefined) patch.listIds = normalizeListIds(updates.listIds);
 		if (updates.scheduledAt !== undefined) patch.scheduledAt = updates.scheduledAt;
 		if (updates.maxRetries !== undefined) patch.maxRetries = updates.maxRetries;
@@ -258,7 +248,6 @@ export const duplicate = mutation({
 			description: existing.description,
 			nodes: existing.nodes,
 			edges: existing.edges,
-			category: existing.category,
 			listIds: getWorkflowListIds(existing),
 			status: "idle",
 			createdAt: now,
@@ -462,7 +451,8 @@ const scheduleTypeValidator = v.union(
 	v.literal("daily"),
 	v.literal("weekly"),
 	v.literal("monthly"),
-	v.literal("cron")
+	v.literal("cron"),
+	v.literal("instant")
 );
 
 const scheduleConfigValidator = v.object({
@@ -496,17 +486,23 @@ export const updateSchedule = mutation({
 
 		// If already active, update the cron job
 		if (workflow.isActive && workflow.cronJobId) {
-			// Delete old cron and create new one
+			// Delete old cron
 			await crons.delete(ctx, { id: workflow.cronJobId });
-			const schedule = buildCronSchedule(args.scheduleType, args.scheduleConfig);
-			const cronJobId = await crons.register(
-				ctx,
-				schedule,
-				internal.workflows.executeScheduledWorkflow,
-				{ workflowId: args.id },
-				`workflow_${args.id}`
-			);
-			await ctx.db.patch(args.id, { cronJobId });
+			if (args.scheduleType === "instant") {
+				// Instant doesn't need a recurring cron — clear cronJobId
+				await ctx.db.patch(args.id, { cronJobId: undefined });
+			} else {
+				// Create new cron
+				const schedule = buildCronSchedule(args.scheduleType, args.scheduleConfig);
+				const cronJobId = await crons.register(
+					ctx,
+					schedule,
+					internal.workflows.executeScheduledWorkflow,
+					{ workflowId: args.id },
+					`workflow_${args.id}`
+				);
+				await ctx.db.patch(args.id, { cronJobId });
+			}
 		}
 
 		return await ctx.db.get(args.id);
@@ -598,20 +594,33 @@ export const toggleActive = mutation({
 			if (!workflow.scheduleType) {
 				throw new Error("Please configure a schedule before activating");
 			}
-			const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
-			const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
-			const cronJobId = await crons.register(
-				ctx,
-				schedule,
-				internal.workflows.executeScheduledWorkflow,
-				{ workflowId: args.id },
-				`workflow_${args.id}`
-			);
-			await ctx.db.patch(args.id, {
-				isActive: true,
-				cronJobId,
-				updatedAt: Date.now(),
-			});
+
+			if (workflow.scheduleType === "instant") {
+				// Instant run: trigger immediately, no cron job
+				await ctx.db.patch(args.id, {
+					isActive: true,
+					updatedAt: Date.now(),
+				});
+				// Trigger immediate execution
+				await ctx.scheduler.runAfter(0, internal.workflows.executeScheduledWorkflow, {
+					workflowId: args.id,
+				});
+			} else {
+				const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
+				const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
+				const cronJobId = await crons.register(
+					ctx,
+					schedule,
+					internal.workflows.executeScheduledWorkflow,
+					{ workflowId: args.id },
+					`workflow_${args.id}`
+				);
+				await ctx.db.patch(args.id, {
+					isActive: true,
+					cronJobId,
+					updatedAt: Date.now(),
+				});
+			}
 		}
 
 		return await ctx.db.get(args.id);

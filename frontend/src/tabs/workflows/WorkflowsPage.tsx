@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
-import { useMutation, useQuery } from 'convex/react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,7 @@ import type { Workflow } from './types'
 import type { Node, Edge } from 'reactflow'
 
 export function WorkflowsPage() {
+	const convex = useConvex()
 	const [selectedId, setSelectedId] = useState<Id<'workflows'> | null>(null)
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
 	const [isEditOpen, setIsEditOpen] = useState(false)
@@ -34,15 +35,24 @@ export function WorkflowsPage() {
 	const [isScheduleOpen, setIsScheduleOpen] = useState(false)
 	const [deleteId, setDeleteId] = useState<Id<'workflows'> | null>(null)
 	const [saving, setSaving] = useState(false)
+	const [refreshing, setRefreshing] = useState(false)
 	const [error, setError] = useState<string | null>(null)
+	const [workflowsData, setWorkflowsData] = useState<Workflow[] | null>(null)
 
 	// WebSocket for connection status
 	const { connected } = useWebSocket()
 
 	// Queries
 	const workflows = useQuery(api.workflows.list, {})
-	const workflowsLoading = workflows === undefined
-	const workflowsList = useMemo(() => workflows ?? [], [workflows])
+	const workflowsLoading = workflows === undefined && workflowsData === null
+	const workflowsList = useMemo(() => workflowsData ?? [], [workflowsData])
+
+	// Keep local workflows state in sync with Convex subscription updates.
+	useEffect(() => {
+		if (workflows !== undefined) {
+			setWorkflowsData(workflows)
+		}
+	}, [workflows])
 
 	// Mutations
 	const createWorkflow = useMutation(api.workflows.create)
@@ -69,6 +79,19 @@ export function WorkflowsPage() {
 		setError(null)
 	}, [])
 
+	const handleRefresh = useCallback(async () => {
+		setRefreshing(true)
+		setError(null)
+		try {
+			const latest = await convex.query(api.workflows.list, {})
+			setWorkflowsData(latest)
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e))
+		} finally {
+			setRefreshing(false)
+		}
+	}, [convex])
+
 	const handleEdit = useCallback((workflow: Workflow) => {
 		setSelectedId(workflow._id)
 		setIsEditOpen(true)
@@ -88,14 +111,13 @@ export function WorkflowsPage() {
 	}, [])
 
 	const handleSaveCreate = useCallback(
-		async (data: { name: string; description?: string; category?: string }) => {
+		async (data: { name: string; description?: string }) => {
 			setSaving(true)
 			setError(null)
 			try {
 				const created = await createWorkflow({
 					name: data.name,
 					description: data.description,
-					category: data.category,
 					nodes: [],
 					edges: [],
 				})
@@ -111,7 +133,7 @@ export function WorkflowsPage() {
 	)
 
 	const handleSaveEdit = useCallback(
-		async (data: { name: string; description?: string; category?: string }) => {
+		async (data: { name: string; description?: string }) => {
 			if (!selectedId) return
 			setSaving(true)
 			setError(null)
@@ -120,7 +142,6 @@ export function WorkflowsPage() {
 					id: selectedId,
 					name: data.name,
 					description: data.description,
-					category: data.category,
 				})
 				setIsEditOpen(false)
 			} catch (e) {
@@ -203,7 +224,7 @@ export function WorkflowsPage() {
 
 	const handleSaveSchedule = useCallback(
 		async (data: {
-			scheduleType: 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron'
+			scheduleType: 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron' | 'instant'
 			scheduleConfig: {
 				intervalMs?: number
 				hourUTC?: number
@@ -291,9 +312,10 @@ export function WorkflowsPage() {
 					<Button
 						variant="outline"
 						size="sm"
-						disabled={workflowsLoading || saving}
+						onClick={() => void handleRefresh()}
+						disabled={workflowsLoading || saving || refreshing}
 					>
-						<RefreshCw className={`mr-2 h-4 w-4 ${workflowsLoading ? 'animate-spin' : ''}`} />
+						<RefreshCw className={`mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`} />
 						Refresh
 					</Button>
 					<Button size="sm" onClick={handleCreate} disabled={saving}>

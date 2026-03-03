@@ -277,65 +277,75 @@ class WorkflowRunner:
 
         emit_event("profile_started", profile=profile_name, workflow_id=self.workflow_id)
 
+        # Mutable browser state – start_browser creates it, close_browser destroys it
+        browser_state: Dict[str, Any] = {
+            "context": None,
+            "page": None,
+            "profile_name": profile_name,
+            "proxy_str": proxy_str,
+            "user_agent": user_agent,
+            "fingerprint_seed": fingerprint_seed,
+            "fingerprint_os_val": fingerprint_os_val,
+        }
+
         try:
             try:
                 self.profiles_client.sync_profile_status(profile_name, "running", True)
             except Exception:
                 pass
 
-            with create_browser_context(profile_name, proxy_str, user_agent, headless=self.headless, fingerprint_seed=fingerprint_seed, fingerprint_os=fingerprint_os_val) as (_context, page):
-                start_node = _find_start_node(self.nodes)
-                if not start_node:
-                    log("Не найден start node")
-                    return False
-                start_id = str(start_node.get("id"))
-                current = _next_node(self.edge_index, start_id, "")
-                loop_state: Dict[str, int] = {}
-                visited_steps = 0
+            start_node = _find_start_node(self.nodes)
+            if not start_node:
+                log("Не найден start node")
+                return False
+            start_id = str(start_node.get("id"))
+            current = _next_node(self.edge_index, start_id, "")
+            loop_state: Dict[str, int] = {}
+            visited_steps = 0
 
-                activity_nodes = [n for n in self.nodes if n.get("type") == "activity"]
-                total_steps = max(1, len(activity_nodes))
-                completed_steps = 0
+            activity_nodes = [n for n in self.nodes if n.get("type") == "activity"]
+            total_steps = max(1, len(activity_nodes))
+            completed_steps = 0
 
-                while self.running and current:
-                    visited_steps += 1
-                    if visited_steps > 500:
-                        log("Превышен лимит шагов workflow")
-                        break
+            while self.running and current:
+                visited_steps += 1
+                if visited_steps > 500:
+                    log("Превышен лимит шагов workflow")
+                    break
 
-                    node = self.node_index.get(current)
-                    if not node:
-                        break
+                node = self.node_index.get(current)
+                if not node:
+                    break
 
-                    node_type = node.get("type")
-                    if node_type == "start":
-                        current = _next_node(self.edge_index, str(node.get("id")), "")
-                        continue
+                node_type = node.get("type")
+                if node_type == "start":
+                    current = _next_node(self.edge_index, str(node.get("id")), "")
+                    continue
 
-                    data = node.get("data") if isinstance(node.get("data"), dict) else {}
-                    activity_id = str(data.get("activityId") or "")
-                    label = str(data.get("label") or activity_id or node.get("id") or "")
-                    config = data.get("config") if isinstance(data.get("config"), dict) else {}
+                data = node.get("data") if isinstance(node.get("data"), dict) else {}
+                activity_id = str(data.get("activityId") or "")
+                label = str(data.get("label") or activity_id or node.get("id") or "")
+                config = data.get("config") if isinstance(data.get("config"), dict) else {}
 
-                    progress = int(round(100.0 * min(1.0, float(completed_steps) / float(total_steps))))
-                    emit_event(
-                        "task_started",
-                        profile=profile_name,
-                        task=label,
-                        workflow_id=self.workflow_id,
-                        node_id=str(node.get("id")),
-                        progress=progress,
-                    )
+                progress = int(round(100.0 * min(1.0, float(completed_steps) / float(total_steps))))
+                emit_event(
+                    "task_started",
+                    profile=profile_name,
+                    task=label,
+                    workflow_id=self.workflow_id,
+                    node_id=str(node.get("id")),
+                    progress=progress,
+                )
 
-                    handle = self._execute_activity(str(node.get("id")), activity_id, config, page, account, profile_data, loop_state)
+                handle = self._execute_activity(str(node.get("id")), activity_id, config, browser_state, account, profile_data, loop_state)
 
-                    if node_type == "activity":
-                        completed_steps += 1
+                if node_type == "activity":
+                    completed_steps += 1
 
-                    next_id = _next_node(self.edge_index, str(node.get("id")), str(handle or ""))
-                    current = next_id
-                    if self.running and current:
-                        time.sleep(random.randint(1, 3))
+                next_id = _next_node(self.edge_index, str(node.get("id")), str(handle or ""))
+                current = next_id
+                if self.running and current:
+                    time.sleep(random.randint(1, 3))
 
             if self.running:
                 emit_event("profile_completed", profile=profile_name, status="success", workflow_id=self.workflow_id)
@@ -369,18 +379,157 @@ class WorkflowRunner:
             except Exception:
                 pass
             return False
+        finally:
+            # Always clean up browser if still open
+            try:
+                ctx_mgr = browser_state.get("_ctx_mgr")
+                if ctx_mgr:
+                    ctx_mgr.__exit__(None, None, None)
+            except Exception:
+                pass
 
     def _execute_activity(
         self,
         node_id: str,
         activity_id: str,
         cfg: Dict[str, Any],
-        page,
+        browser_state: Dict[str, Any],
         account: ThreadsAccount,
         profile_data: Optional[Dict[str, Any]],
         loop_state: Dict[str, int],
     ) -> str:
         try:
+            page = browser_state.get("page")
+
+            if activity_id == "start_browser":
+                # Close existing browser if one is already open
+                try:
+                    old_ctx = browser_state.get("context")
+                    if old_ctx:
+                        old_ctx.close()
+                except Exception:
+                    pass
+                browser_state["context"] = None
+                browser_state["page"] = None
+
+                # Create a new browser context
+                headless_cfg = bool(cfg.get("headlessMode", self.headless))
+                ctx_mgr = create_browser_context(
+                    browser_state["profile_name"],
+                    browser_state["proxy_str"],
+                    browser_state.get("user_agent"),
+                    headless=headless_cfg,
+                    fingerprint_seed=browser_state.get("fingerprint_seed"),
+                    fingerprint_os=browser_state.get("fingerprint_os_val"),
+                )
+                # Enter the context manager manually (cleanup in close_browser or finally)
+                ctx_page = ctx_mgr.__enter__()
+                browser_state["_ctx_mgr"] = ctx_mgr
+                browser_state["context"] = ctx_page[0]
+                browser_state["page"] = ctx_page[1]
+                log("Browser started.")
+                return "next"
+
+            if activity_id == "close_browser":
+                # Close the browser context
+                ctx_mgr = browser_state.get("_ctx_mgr")
+                if ctx_mgr:
+                    try:
+                        ctx_mgr.__exit__(None, None, None)
+                    except Exception:
+                        pass
+                    browser_state["context"] = None
+                    browser_state["page"] = None
+                    browser_state["_ctx_mgr"] = None
+                    log("Browser closed.")
+                return "next"
+
+            if activity_id == "select_list":
+                # List selection is resolved before workflow starts in main().
+                # This node is a pass-through at runtime.
+                return "next"
+
+            # --- Non-browser activities (work even without a browser) ---
+
+            if activity_id == "delay":
+                min_s = _parse_int(cfg.get("minSeconds"), 30)
+                max_s = _parse_int(cfg.get("maxSeconds"), 120)
+                min_s = max(1, min_s)
+                max_s = max(min_s, max_s)
+                time.sleep(random.randint(min_s, max_s))
+                return "next"
+
+            if activity_id == "condition":
+                check = str(cfg.get("check") or "random").strip().lower()
+                value = str(cfg.get("value") or "").strip()
+                if check == "random":
+                    pct = _parse_int(value, 50)
+                    pct = max(0, min(100, pct))
+                    return "true" if random.randint(1, 100) <= pct else "false"
+                return "true"
+
+            if activity_id == "loop":
+                iterations = _parse_int(cfg.get("iterations"), 3)
+                iterations = max(1, min(100, iterations))
+                key = str(node_id or "loop")
+                current_iter = loop_state.get(key, 0) + 1
+                loop_state[key] = current_iter
+                if current_iter < iterations:
+                    return "loop"
+                loop_state[key] = 0
+                return "done"
+
+            if activity_id == "random_branch":
+                handles = ["path_a", "path_b", "path_c"]
+                selected = _choose_weighted(handles, str(cfg.get("weights") or ""))
+                return selected
+
+            if activity_id == "python_script":
+                code_snippet = str(cfg.get("code") or "")
+                if not code_snippet.strip():
+                    return "success"
+                
+                exec_globals = {
+                    "page": page,
+                    "account": account,
+                    "profile_data": profile_data,
+                    "log": log,
+                    "time": time,
+                    "random": random,
+                    "loop_state": loop_state,
+                    "node_id": node_id,
+                }
+                
+                try:
+                    exec(code_snippet, exec_globals)
+                    return "success"
+                except Exception as e:
+                    log(f"Ошибка python_script: {e}")
+                    return "failure"
+
+            # --- All activities below require an open browser ---
+            if page is None:
+                log(f"No browser open for activity {activity_id} – auto-starting browser.")
+                try:
+                    headless_cfg = bool(cfg.get("headlessMode", self.headless))
+                    ctx_mgr = create_browser_context(
+                        browser_state["profile_name"],
+                        browser_state["proxy_str"],
+                        browser_state.get("user_agent"),
+                        headless=headless_cfg,
+                        fingerprint_seed=browser_state.get("fingerprint_seed"),
+                        fingerprint_os=browser_state.get("fingerprint_os_val"),
+                    )
+                    ctx_page = ctx_mgr.__enter__()
+                    browser_state["_ctx_mgr"] = ctx_mgr
+                    browser_state["context"] = ctx_page[0]
+                    browser_state["page"] = ctx_page[1]
+                    page = browser_state["page"]
+                    log("Browser auto-started.")
+                except Exception as e:
+                    log(f"Failed to auto-start browser: {e}")
+                    return "failure"
+
             if activity_id == "browse_feed":
                 min_t = _parse_int(cfg.get("feed_min_time_minutes"), 1)
                 max_t = _parse_int(cfg.get("feed_max_time_minutes"), 3)
@@ -547,39 +696,6 @@ class WorkflowRunner:
                 )
                 return "success"
 
-            if activity_id == "delay":
-                min_s = _parse_int(cfg.get("minSeconds"), 30)
-                max_s = _parse_int(cfg.get("maxSeconds"), 120)
-                min_s = max(1, min_s)
-                max_s = max(min_s, max_s)
-                time.sleep(random.randint(min_s, max_s))
-                return "next"
-
-            if activity_id == "condition":
-                check = str(cfg.get("check") or "random").strip().lower()
-                value = str(cfg.get("value") or "").strip()
-                if check == "random":
-                    pct = _parse_int(value, 50)
-                    pct = max(0, min(100, pct))
-                    return "true" if random.randint(1, 100) <= pct else "false"
-                return "true"
-
-            if activity_id == "loop":
-                iterations = _parse_int(cfg.get("iterations"), 3)
-                iterations = max(1, min(100, iterations))
-                key = str(node_id or "loop")
-                current_iter = loop_state.get(key, 0) + 1
-                loop_state[key] = current_iter
-                if current_iter < iterations:
-                    return "loop"
-                loop_state[key] = 0
-                return "done"
-
-            if activity_id == "random_branch":
-                handles = ["path_a", "path_b", "path_c"]
-                selected = _choose_weighted(handles, str(cfg.get("weights") or ""))
-                return selected
-
             return "success"
         except Exception as e:
             log(f"Ошибка activity {activity_id}: {e}")
@@ -611,12 +727,33 @@ def main() -> int:
     edges = workflow.get("edges") if isinstance(workflow.get("edges"), list) else []
     options = payload.get("options") if isinstance(payload.get("options"), dict) else {}
 
+    # --- Extract config from new modular nodes ---
+    # Look for select_list node(s) to get sourceLists
     start_node = _find_start_node(nodes)
     start_data = start_node.get("data") if start_node and isinstance(start_node.get("data"), dict) else {}
-    list_ids = start_data.get("sourceLists") or []
-    if not isinstance(list_ids, list):
-        list_ids = []
-    list_ids = [str(x) for x in list_ids if str(x).strip()]
+
+    list_ids: List[str] = []
+    headless = False
+
+    for n in nodes:
+        n_data = n.get("data") if isinstance(n.get("data"), dict) else {}
+        n_activity = str(n_data.get("activityId") or "")
+        n_config = n_data.get("config") if isinstance(n_data.get("config"), dict) else {}
+        if n_activity == "select_list":
+            src = n_config.get("sourceLists") or []
+            if isinstance(src, list):
+                list_ids.extend([str(x) for x in src if str(x).strip()])
+        if n_activity == "start_browser":
+            headless = bool(n_config.get("headlessMode"))
+
+    # Fallback: also check old-style start node data (backwards compat)
+    if not list_ids:
+        old_lists = start_data.get("sourceLists") or []
+        if isinstance(old_lists, list):
+            list_ids = [str(x) for x in old_lists if str(x).strip()]
+    if not headless:
+        headless = bool(start_data.get("headlessMode"))
+
     if not list_ids:
         log("Выберите список профилей!")
         emit_event("session_ended", status="failed", workflow_id=workflow_id)
@@ -640,7 +777,6 @@ def main() -> int:
         emit_event("session_ended", status="failed", workflow_id=workflow_id)
         return 2
 
-    headless = bool(start_data.get("headlessMode"))
     options = {**options, "headless": headless}
     runner = WorkflowRunner(workflow_id, nodes, edges, accounts, options)
 

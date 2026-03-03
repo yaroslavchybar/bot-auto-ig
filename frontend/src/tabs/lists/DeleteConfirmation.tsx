@@ -5,7 +5,7 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog"
-import { AlertCircle, X } from "lucide-react"
+import { AlertCircle, X, Trash2 } from "lucide-react"
 import { DenseButton } from "@/components/ui/dense-button"
 
 interface DeleteConfirmationProps {
@@ -25,10 +25,14 @@ export function DeleteConfirmation({ listName, saving, error, onConfirm, onCance
         if (!isOpen && !saving) onCancel()
       }}
     >
-      <DialogContent hideClose className="p-0 border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 rounded-[3px] gap-0 border shadow-md w-[400px] overflow-hidden flex flex-col font-sans select-none">
+      <DialogContent hideClose className="p-0 border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 rounded-[3px] gap-0 border shadow-md w-[460px] max-w-[92vw] overflow-hidden flex flex-col font-sans select-none">
 
         <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/50 dark:bg-neutral-900/50 w-full shrink-0">
-          <DialogTitle className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 m-0 leading-none">Confirm Deletion</DialogTitle>
+          <div className="flex items-center gap-2">
+            <Trash2 className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+            <DialogTitle className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 m-0 leading-none">Confirm Deletion</DialogTitle>
+            <span className="text-[10px] text-neutral-500 font-mono">[DESTRUCTIVE ACTION]</span>
+          </div>
           <DialogClose disabled={saving} className="rounded-[2px] opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-1 focus:ring-neutral-400 disabled:pointer-events-none disabled:opacity-50 text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100">
             <X className="h-3.5 w-3.5" />
             <span className="sr-only">Close</span>
@@ -36,10 +40,17 @@ export function DeleteConfirmation({ listName, saving, error, onConfirm, onCance
         </div>
 
         <div className="flex-1 w-full flex flex-col p-4 bg-white dark:bg-[#121212] gap-4">
-          <DialogDescription className="text-xs text-neutral-600 dark:text-neutral-400">
-            Are you sure you want to delete the list <span className="font-semibold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded-[2px] border border-neutral-200 dark:border-neutral-700">{listName}</span>?
-            <br className="mb-2" />
-            <span className="text-red-600 dark:text-red-400 font-medium">This action cannot be undone.</span>
+          <div className="border border-red-200 dark:border-red-900/50 bg-red-50/80 dark:bg-red-950/30 rounded-[3px] px-3 py-2">
+            <DialogDescription className="text-xs text-red-800 dark:text-red-200">
+              Removing this list will permanently delete its mapping state.
+            </DialogDescription>
+          </div>
+
+          <DialogDescription className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+            Delete list:
+            <span className="ml-1 font-semibold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 rounded-[2px] border border-neutral-200 dark:border-neutral-700">
+              {listName}
+            </span>
           </DialogDescription>
 
           {error && (

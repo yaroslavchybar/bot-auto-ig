@@ -121,12 +121,6 @@ export function WorkflowDetails({
 				<div>
 					<h4 className="text-sm font-medium text-muted-foreground mb-2">Information</h4>
 					<dl className="space-y-2 text-sm">
-						{workflow.category && (
-							<div className="flex justify-between">
-								<dt className="text-muted-foreground">Category</dt>
-								<dd className="capitalize">{workflow.category}</dd>
-							</div>
-						)}
 						<div className="flex justify-between">
 							<dt className="text-muted-foreground">Nodes</dt>
 							<dd>{Array.isArray(workflow.nodes) ? workflow.nodes.length : 0}</dd>

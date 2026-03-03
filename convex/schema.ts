@@ -82,7 +82,6 @@ export default defineSchema({
 		description: v.optional(v.string()),
 		nodes: v.any(), // ReactFlow nodes array with positions and configs
 		edges: v.any(), // ReactFlow edges array with connections
-		category: v.optional(v.string()), // warmup, outreach, engagement, etc.
 
 		// Scheduling fields
 		isActive: v.optional(v.boolean()), // whether workflow is scheduled to run
@@ -91,7 +90,8 @@ export default defineSchema({
 			v.literal("daily"),
 			v.literal("weekly"),
 			v.literal("monthly"),
-			v.literal("cron")
+			v.literal("cron"),
+			v.literal("instant")
 		)),
 		scheduleConfig: v.optional(v.object({
 			// For interval: milliseconds between runs
@@ -137,7 +137,6 @@ export default defineSchema({
 		updatedAt: v.number(),
 	})
 		.index("by_name", ["name"])
-		.index("by_category", ["category"])
 		.index("by_isActive", ["isActive"])
 		.index("by_status", ["status"])
 		.index("by_scheduledAt", ["scheduledAt"]),

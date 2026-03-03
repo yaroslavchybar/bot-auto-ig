@@ -3,67 +3,48 @@ import { Handle, Position, type NodeProps } from 'reactflow'
 import { Play, Settings } from 'lucide-react'
 
 export interface StartNodeData {
-	headlessMode: boolean
-	profileReopenCooldown: number
-	messagingCooldown: number
-	sourceLists: string[]
+	// Settings moved to specific nodes
 }
 
-function StartNodeComponent({ data, selected }: NodeProps<StartNodeData>) {
-	const listsCount = data.sourceLists?.length || 0
+function StartNodeComponent({ selected }: NodeProps<StartNodeData>) {
 
 	return (
 		<div
 			className={`
-				px-4 py-3 shadow-md rounded-lg border-2 bg-background min-w-[180px]
-				${selected ? 'border-primary ring-2 ring-primary/20' : 'border-green-500'}
+				w-[180px] bg-white rounded flex flex-col overflow-hidden
+				${selected ? 'ring-1 ring-[#2ECC71]' : 'shadow-sm border border-neutral-200'}
 			`}
-			style={{ borderLeftColor: '#22c55e', borderLeftWidth: 4 }}
 		>
-			{/* Content */}
-			<div className="flex items-center gap-2">
-				<div className="p-2 rounded bg-green-500/20">
-					<Play className="w-5 h-5 text-green-500" />
-				</div>
-				<div className="flex flex-col">
-					<span className="text-sm font-semibold">Start</span>
-					<span className="text-xs text-muted-foreground">Workflow Entry</span>
-				</div>
-			</div>
+			<div className="flex h-full w-full relative">
+				{/* Left colored border strip */}
+				<div className="w-1 bg-[#2ECC71] shrink-0 h-full absolute left-0 top-0 bottom-0" />
 
-			{/* Settings Summary */}
-			<div className="mt-3 pt-2 border-t space-y-1">
-				<div className="flex items-center justify-between text-xs">
-					<span className="text-muted-foreground">Headless</span>
-					<span className={data.headlessMode ? 'text-green-500' : 'text-muted-foreground'}>
-						{data.headlessMode ? 'Yes' : 'No'}
-					</span>
-				</div>
-				<div className="flex items-center justify-between text-xs">
-					<span className="text-muted-foreground">Cooldown</span>
-					<span>{data.profileReopenCooldown || 0}min</span>
-				</div>
-				<div className="flex items-center justify-between text-xs">
-					<span className="text-muted-foreground">Msg Cooldown</span>
-					<span>{data.messagingCooldown || 0}h</span>
-				</div>
-				<div className="flex items-center justify-between text-xs">
-					<span className="text-muted-foreground">Lists</span>
-					<span>{listsCount} selected</span>
-				</div>
-			</div>
+				<div className="flex flex-col w-full pl-1">
+					{/* Header */}
+					<div className="flex items-center gap-2.5 p-2.5 pb-2">
+						<div className="w-6 h-6 rounded bg-[#EAFBF1] flex items-center justify-center shrink-0">
+							<Play className="w-3.5 h-3.5 text-[#2ECC71]" fill="none" strokeWidth={2} />
+						</div>
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[11px] font-bold text-neutral-800 leading-none">START</span>
+							<span className="text-[9px] text-neutral-500 uppercase tracking-widest leading-none">WORKFLOW ENTRY</span>
+						</div>
+					</div>
 
-			{/* Click hint */}
-			<div className="mt-2 pt-2 border-t flex items-center justify-center gap-1 text-xs text-muted-foreground">
-				<Settings className="w-3 h-3" />
-				<span>Click to configure</span>
+					{/* Settings Overview removed */}
+					<div className="py-2 border-t border-neutral-100 flex items-center justify-center gap-1.5 text-[9px] text-neutral-400 uppercase tracking-widest bg-neutral-50/50">
+						<Settings className="w-3 h-3" />
+						<span>Click to configure</span>
+					</div>
+				</div>
 			</div>
 
 			{/* Output handle */}
 			<Handle
 				type="source"
-				position={Position.Bottom}
-				className="!bg-green-500 !w-3 !h-3 !border-2 !border-background"
+				position={Position.Right}
+				className="!bg-[#94a3b8] !w-2.5 !h-2.5 !border-0 !rounded-full"
+				style={{ right: -5 }}
 			/>
 		</div>
 	)
@@ -71,9 +52,4 @@ function StartNodeComponent({ data, selected }: NodeProps<StartNodeData>) {
 
 export const StartNode = memo(StartNodeComponent)
 
-export const DEFAULT_START_DATA: StartNodeData = {
-	headlessMode: false,
-	profileReopenCooldown: 30,
-	messagingCooldown: 24,
-	sourceLists: [],
-}
+export const DEFAULT_START_DATA: StartNodeData = {}

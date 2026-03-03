@@ -196,6 +196,7 @@ export function ScheduleDialog({
 								<SelectItem value="weekly">Weekly</SelectItem>
 								<SelectItem value="monthly">Monthly</SelectItem>
 								<SelectItem value="cron">Custom Cron</SelectItem>
+								<SelectItem value="instant">Instant Run</SelectItem>
 							</SelectContent>
 						</Select>
 					</div>

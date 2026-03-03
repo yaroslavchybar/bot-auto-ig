@@ -47,59 +47,74 @@ function ActivityNodeComponent({ data, selected }: NodeProps<ActivityNodeData>) 
 	return (
 		<div
 			className={`
-				px-4 py-3 shadow-md rounded-lg border-2 bg-background min-w-[160px]
-				${selected ? 'border-primary ring-2 ring-primary/20' : 'border-border'}
+				min-w-[180px] bg-white rounded flex flex-col overflow-visible relative
+				${selected ? 'ring-1 ring-primary/50' : 'shadow-sm border border-neutral-200'}
 			`}
-			style={{ borderLeftColor: color, borderLeftWidth: 4 }}
 		>
-			{/* Input handle */}
-			<Handle
-				type="target"
-				position={Position.Top}
-				className="!bg-muted-foreground !w-3 !h-3 !border-2 !border-background"
-			/>
-
-			{/* Content */}
-			<div className="flex items-center gap-2">
+			<div className="flex h-full w-full relative">
+				{/* Left colored border strip */}
 				<div
-					className="p-1.5 rounded"
-					style={{ backgroundColor: `${color}20` }}
-				>
-					<Icon className="w-4 h-4" style={{ color }} />
-				</div>
-				<div className="flex flex-col">
-					<span className="text-sm font-medium">{data.label || activity?.name || 'Unknown'}</span>
-					{activity && (
-						<span className="text-xs text-muted-foreground">{activity.category}</span>
+					className="w-1 shrink-0 absolute left-0 top-0 bottom-0 rounded-l-[2px]"
+					style={{ backgroundColor: color }}
+				/>
+
+				<div className="flex flex-col w-full pl-1">
+					{/* Input handle */}
+					<Handle
+						type="target"
+						position={Position.Left}
+						className="!bg-[#94a3b8] !w-2.5 !h-2.5 !border-0 !rounded-full"
+						style={{ left: -5 }}
+					/>
+
+					{/* Header */}
+					<div className="flex items-center gap-2.5 p-2.5 pb-2">
+						<div
+							className="w-6 h-6 rounded flex items-center justify-center shrink-0"
+							style={{ backgroundColor: `${color}15` }}
+						>
+							<Icon className="w-3.5 h-3.5" style={{ color }} strokeWidth={2} />
+						</div>
+						<div className="flex flex-col gap-0.5">
+							<span className="text-[11px] font-bold text-neutral-800 uppercase tracking-wide leading-none">
+								{data.label || activity?.name || 'Unknown'}
+							</span>
+							{activity && (
+								<span className="text-[9px] text-neutral-500 uppercase tracking-widest leading-none">
+									{activity.category}
+								</span>
+							)}
+						</div>
+					</div>
+
+					{/* Standard single output handle (if no multiple outputs defined) */}
+					{activity && activity.outputs.length === 1 && (
+						<Handle
+							type="source"
+							position={Position.Right}
+							className="!bg-[#94a3b8] !w-2.5 !h-2.5 !border-0 !rounded-full"
+							style={{ right: -5 }}
+						/>
+					)}
+
+					{/* Multiple Output handles with labels */}
+					{activity && activity.outputs.length > 1 && (
+						<div className="flex flex-col border-t border-neutral-100 mt-1">
+							{activity.outputs.map((output) => (
+								<div key={output} className="relative flex items-center justify-end px-2.5 py-1.5 border-b border-neutral-100 last:border-b-0">
+									<span className="text-[10px] uppercase tracking-widest text-neutral-500 mr-2">{output}</span>
+									<Handle
+										type="source"
+										position={Position.Right}
+										id={output}
+										className="!bg-[#94a3b8] !w-2.5 !h-2.5 !border-0 !rounded-full !absolute !right-[-5px] !top-1/2 !-translate-y-1/2 !transform-none"
+									/>
+								</div>
+							))}
+						</div>
 					)}
 				</div>
 			</div>
-
-			{/* Output handles based on activity outputs */}
-			{activity && activity.outputs.length === 1 && (
-				<Handle
-					type="source"
-					position={Position.Bottom}
-					className="!bg-muted-foreground !w-3 !h-3 !border-2 !border-background"
-				/>
-			)}
-
-			{activity && activity.outputs.length > 1 && (
-				<div className="flex justify-around mt-2 pt-2 border-t">
-					{activity.outputs.map((output) => (
-						<div key={output} className="relative flex flex-col items-center">
-							<span className="text-[10px] text-muted-foreground mb-1">{output}</span>
-							<Handle
-								type="source"
-								position={Position.Bottom}
-								id={output}
-								className="!bg-muted-foreground !w-2.5 !h-2.5 !border-2 !border-background !relative !transform-none !left-auto !right-auto"
-								style={{ bottom: -12 }}
-							/>
-						</div>
-					))}
-				</div>
-			)}
 		</div>
 	)
 }

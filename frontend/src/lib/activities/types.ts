@@ -6,10 +6,10 @@
  */
 
 // Which category an activity belongs to
-export type ActivityCategory = 'browsing' | 'engagement' | 'messaging' | 'stories' | 'control';
+export type ActivityCategory = 'browsing' | 'engagement' | 'messaging' | 'stories' | 'control' | 'python';
 
 // Types of inputs an activity can have
-export type InputType = 'string' | 'number' | 'boolean' | 'select' | 'template' | 'profile' | 'range';
+export type InputType = 'string' | 'number' | 'boolean' | 'select' | 'template' | 'profile' | 'range' | 'code' | 'list_select';
 
 // Options for dropdown/select inputs
 export interface ActivityInputOption {

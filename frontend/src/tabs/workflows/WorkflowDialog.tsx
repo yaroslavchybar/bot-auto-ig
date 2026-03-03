@@ -10,13 +10,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from '@/components/ui/select'
 import type { Workflow } from './types'
 
 interface WorkflowDialogProps {
@@ -28,18 +21,9 @@ interface WorkflowDialogProps {
 	onSave: (data: {
 		name: string
 		description?: string
-		category?: string
 	}) => void
 	onCancel: () => void
 }
-
-const CATEGORIES = [
-	{ value: 'warmup', label: 'Warmup' },
-	{ value: 'outreach', label: 'Outreach' },
-	{ value: 'engagement', label: 'Engagement' },
-	{ value: 'maintenance', label: 'Maintenance' },
-	{ value: 'other', label: 'Other' },
-]
 
 export function WorkflowDialog({
 	open,
@@ -52,7 +36,6 @@ export function WorkflowDialog({
 }: WorkflowDialogProps) {
 	const [name, setName] = useState('')
 	const [description, setDescription] = useState('')
-	const [category, setCategory] = useState<string>('')
 
 	// Reset form when dialog opens or workflow changes
 	useEffect(() => {
@@ -60,11 +43,9 @@ export function WorkflowDialog({
 			if (mode === 'edit' && workflow) {
 				setName(workflow.name || '')
 				setDescription(workflow.description || '')
-				setCategory(workflow.category || '')
 			} else {
 				setName('')
 				setDescription('')
-				setCategory('')
 			}
 		}
 	}, [open, mode, workflow])
@@ -78,7 +59,6 @@ export function WorkflowDialog({
 		onSave({
 			name: name.trim(),
 			description: description.trim() || undefined,
-			category: category || undefined,
 		})
 	}
 
@@ -113,22 +93,6 @@ export function WorkflowDialog({
 							rows={3}
 							disabled={saving}
 						/>
-					</div>
-
-					<div className="space-y-2">
-						<Label htmlFor="workflow-category">Category</Label>
-						<Select value={category} onValueChange={setCategory} disabled={saving}>
-							<SelectTrigger id="workflow-category">
-								<SelectValue placeholder="Select category..." />
-							</SelectTrigger>
-							<SelectContent>
-								{CATEGORIES.map((cat) => (
-									<SelectItem key={cat.value} value={cat.value}>
-										{cat.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
 					</div>
 
 					<DialogFooter>

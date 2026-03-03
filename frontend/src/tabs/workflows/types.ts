@@ -51,7 +51,7 @@ export function formatDuration(startMs?: number, endMs?: number): string {
 	return `${hours}h ${remainingMinutes}m`
 }
 
-export type ScheduleType = 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron'
+export type ScheduleType = 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron' | 'instant'
 
 export type ScheduleConfig = {
 	intervalMs?: number
@@ -109,6 +109,8 @@ export function formatSchedule(scheduleType?: ScheduleType | string, config?: Sc
 		}
 		case 'cron':
 			return cfg.cronspec ?? 'Custom cron'
+		case 'instant':
+			return 'Instant (run now)'
 		default:
 			return 'Unknown'
 	}

@@ -6,11 +6,11 @@ import type { List } from './types'
 import { createList, updateList, deleteList, bulkAddToList, bulkRemoveFromList } from './api'
 import { useLists } from '@/hooks/useLists'
 import { Dialog, DialogContent, DialogTitle, DialogClose } from '@/components/ui/dialog'
-import { Plus, RefreshCw, X } from 'lucide-react'
+import { Plus, RefreshCw, X, List as ListIcon, Hash, Pencil, Trash2, AlertCircle } from 'lucide-react'
 import { DenseButton } from '@/components/ui/dense-button'
 
 export function ListsPage() {
-  const { lists, loading: listsLoading, refresh, backgroundRefresh } = useLists()
+  const { lists, loading: listsLoading, error: listsError, refresh, backgroundRefresh } = useLists()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const loading = listsLoading
@@ -21,6 +21,12 @@ export function ListsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const selected = useMemo(() => lists.find((l) => l.id === selectedId) ?? null, [lists, selectedId])
+  const selectedPosition = useMemo(() => {
+    if (!selected) return null
+    const idx = lists.findIndex((l) => l.id === selected.id)
+    return idx >= 0 ? idx + 1 : null
+  }, [lists, selected])
+  const surfacedError = error ?? listsError
 
   // Ensure we have a selection if possible
   useEffect(() => {
@@ -103,45 +109,111 @@ export function ListsPage() {
     }
   }
 
+  const handleEditSelected = () => {
+    if (!selected) return
+    handleEdit(selected)
+  }
+
+  const handleDeleteSelected = () => {
+    if (!selected) return
+    handleDeleteClick(selected)
+  }
+
   return (
     <div className="flex flex-col h-full bg-neutral-200 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 font-sans text-xs overflow-hidden select-none">
       {/* Top Application Ribbon */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 shrink-0 shadow-sm z-10">
-        <div className="flex items-center gap-3">
-          <div className="flex items-baseline gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
-              Lists Manager
-            </h2>
-            <span className="text-[10px] text-neutral-500 font-mono">
-              [SYSTEM LISTS]
-            </span>
+      <div className="flex flex-col bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 shrink-0 shadow-sm z-10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 py-1.5 border-b border-neutral-200 dark:border-neutral-700/50 gap-2 sm:gap-0">
+          <div className="flex items-center gap-3">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                Lists Manager
+              </h2>
+              <span className="text-[10px] text-neutral-500 font-mono">[SYSTEM LISTS]</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <DenseButton onClick={() => void refresh()} disabled={loading || saving}>
+              <RefreshCw className={`mr-1.5 h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </DenseButton>
+
+            <div className="w-px h-3.5 bg-neutral-300 dark:bg-neutral-600 mx-1" />
+
+            <DenseButton
+              onClick={handleCreate}
+              disabled={loading || saving}
+              className="font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+            >
+              <Plus className="mr-1.5 h-3 w-3" />
+              Create List
+            </DenseButton>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <DenseButton onClick={() => refresh()} disabled={loading || saving}>
-            <RefreshCw className={`mr-1.5 h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </DenseButton>
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-2 py-1 bg-white/50 dark:bg-neutral-900/20 gap-2 md:gap-0">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="h-6 px-2 rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-[10px] uppercase tracking-wide text-neutral-600 dark:text-neutral-300 inline-flex items-center gap-1.5">
+              <ListIcon className="h-3 w-3 text-neutral-500" />
+              {lists.length} Lists
+            </div>
 
-          <div className="w-px h-3.5 bg-neutral-300 dark:bg-neutral-600 mx-1" />
+            <div className="h-6 px-2 rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-[10px] uppercase tracking-wide text-neutral-600 dark:text-neutral-300 inline-flex items-center gap-1.5">
+              <Hash className="h-3 w-3 text-neutral-500" />
+              {selectedPosition ? `Selected ${selectedPosition}/${lists.length}` : 'No Selection'}
+            </div>
 
-          <DenseButton onClick={handleCreate} disabled={loading || saving} className="font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30">
-            <Plus className="mr-1.5 h-3 w-3" />
-            Create List
-          </DenseButton>
+            {selected && (
+              <div className="h-6 px-2 rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-[10px] text-neutral-500 dark:text-neutral-400 inline-flex items-center font-mono max-w-[340px] truncate">
+                {selected.id}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <DenseButton onClick={handleEditSelected} disabled={!selected || loading || saving}>
+              <Pencil className="mr-1.5 h-3 w-3" />
+              Edit Selected
+            </DenseButton>
+            <DenseButton
+              onClick={handleDeleteSelected}
+              disabled={!selected || loading || saving}
+              className="text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
+            >
+              <Trash2 className="mr-1.5 h-3 w-3" />
+              Delete Selected
+            </DenseButton>
+          </div>
         </div>
       </div>
 
-      {error && !showDeleteDialog && !isCreateOpen && !isEditOpen && (
+      {surfacedError && !showDeleteDialog && !isCreateOpen && !isEditOpen && (
         <div className="px-3 py-1.5 bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border-b border-red-200 dark:border-red-900/50 text-[11px] font-medium shrink-0 flex items-center">
-          <div className="w-2 h-2 rounded-full bg-red-500 mr-2" />
-          {error}
+          <AlertCircle className="h-3.5 w-3.5 mr-1.5 shrink-0" />
+          {surfacedError}
         </div>
       )}
 
       {/* Main Data View */}
       <div className="flex min-h-0 flex-1 overflow-hidden flex-col bg-white dark:bg-[#121212] m-1 rounded-[3px] border border-neutral-300 dark:border-neutral-700 shadow-sm relative">
+        <div className="flex items-center justify-between px-2 py-1 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="uppercase tracking-wider font-semibold">Active List</span>
+            {selected ? (
+              <>
+                <span className="text-[11px] text-neutral-700 dark:text-neutral-200 font-medium truncate">{selected.name}</span>
+                <span className="hidden sm:inline font-mono truncate max-w-[280px]">{selected.id}</span>
+              </>
+            ) : (
+              <span className="text-[11px] italic">None selected</span>
+            )}
+          </div>
+          <div className="font-mono uppercase tracking-wide">
+            {loading ? 'Synchronizing' : 'Ready'}
+          </div>
+        </div>
+
         <ListsList
           lists={lists}
           selectedId={selectedId}
@@ -154,11 +226,12 @@ export function ListsPage() {
 
       {/* Bottom Status Bar */}
       <div className="h-auto min-h-[20px] shrink-0 bg-neutral-200 dark:bg-neutral-800 border-t border-neutral-300 dark:border-neutral-700 px-2 py-1 flex flex-wrap items-center justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <span>{lists.length} Lists Available</span>
+          {selected && <span>{selected.name}</span>}
         </div>
         <div className="flex items-center">
-          <span className="hidden sm:inline">{selected ? `Selected: ${selected.name} (${selected.id})` : 'Ready'}</span>
+          <span className="hidden sm:inline">{saving ? 'Saving changes...' : loading ? 'Refreshing data...' : 'Ready'}</span>
         </div>
       </div>
 

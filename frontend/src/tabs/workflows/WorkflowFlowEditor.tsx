@@ -7,6 +7,7 @@ import ReactFlow, {
 	useEdgesState,
 	useNodesState,
 	useReactFlow,
+	MarkerType,
 	type Connection,
 	type Edge,
 	type Node,
@@ -50,6 +51,9 @@ import {
 	Save,
 	X,
 	GripVertical,
+	List,
+	Play,
+	LogOut,
 } from 'lucide-react'
 import type { Workflow } from './types'
 
@@ -66,6 +70,9 @@ const iconMap: Record<string, React.ElementType> = {
 	GitBranch,
 	Repeat,
 	GitFork,
+	List,
+	Play,
+	LogOut,
 }
 
 const nodeTypes: NodeTypes = {
@@ -380,6 +387,14 @@ function WorkflowFlowEditorInner({
 							deleteKeyCode={['Backspace', 'Delete']}
 							className="bg-background"
 							selectNodesOnDrag={false}
+							defaultEdgeOptions={{
+								type: 'bezier',
+								style: { strokeWidth: 1.5, stroke: '#94a3b8' },
+								markerEnd: {
+									type: MarkerType.ArrowClosed,
+									color: '#94a3b8',
+								},
+							}}
 						>
 							<Controls />
 							<Background gap={16} size={1} />
