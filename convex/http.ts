@@ -809,10 +809,8 @@ http.route({
 		if (authError) return authError;
 		try {
 			const url = new URL(request.url);
-			const category = url.searchParams.get("category") || undefined;
 			const status = url.searchParams.get("status") || undefined;
 			const rows = await ctx.runQuery(api.workflows.list, {
-				category,
 				status: status as any,
 			});
 			return jsonResponse(rows);

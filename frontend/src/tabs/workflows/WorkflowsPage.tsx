@@ -83,8 +83,11 @@ export function WorkflowsPage() {
 		setRefreshing(true)
 		setError(null)
 		try {
-			const latest = await convex.query(api.workflows.list, {})
-			setWorkflowsData(latest)
+			const [latest] = await Promise.all([
+				convex.query(api.workflows.list, {}),
+				new Promise((r) => setTimeout(r, 400)),
+			])
+			setWorkflowsData(latest as Workflow[])
 		} catch (e) {
 			setError(e instanceof Error ? e.message : String(e))
 		} finally {

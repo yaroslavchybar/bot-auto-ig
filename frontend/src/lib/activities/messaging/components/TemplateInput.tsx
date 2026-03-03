@@ -154,9 +154,9 @@ export function TemplateInput({ input }: TemplateInputProps) {
                     {input.label}
                 </Label>
                 <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
-                    className="h-6 px-2 text-[10px] rounded-[2px] text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                    className="h-6 px-2 text-[10px] rounded-[3px] border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                     onClick={startCreateTemplate}
                     disabled={isCreating || editingIndex !== null}
                 >
@@ -167,7 +167,7 @@ export function TemplateInput({ input }: TemplateInputProps) {
 
             {/* New template form */}
             {isCreating && (
-                <div className="border border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20 rounded-[2px] p-2 space-y-2 relative">
+                <div className="border border-blue-500/50 bg-blue-50/40 dark:bg-blue-950/20 rounded-[3px] p-2 space-y-2 relative">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">NEW TEMPLATE</span>
 
                     <Popover open={macroDropdownOpen} onOpenChange={setMacroDropdownOpen}>
@@ -207,10 +207,10 @@ export function TemplateInput({ input }: TemplateInputProps) {
                     </Popover>
 
                     <div className="flex justify-end gap-1.5 pt-1 border-t border-blue-200 dark:border-blue-900/50">
-                        <Button variant="ghost" size="sm" className="h-6 px-2.5 text-[10px] rounded-[2px]" onClick={cancelEditTemplate}>
+                        <Button variant="outline" size="sm" className="h-6 px-2.5 text-[10px] rounded-[3px] border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700" onClick={cancelEditTemplate}>
                             Cancel
                         </Button>
-                        <Button size="sm" className="h-6 px-2.5 text-[10px] rounded-[2px] bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSaveTemplate}>
+                        <Button size="sm" className="h-6 px-2.5 text-[10px] rounded-[3px] bg-blue-600 hover:bg-blue-700 text-white" onClick={handleSaveTemplate}>
                             Save
                         </Button>
                     </div>
@@ -220,7 +220,7 @@ export function TemplateInput({ input }: TemplateInputProps) {
             {templates === undefined ? (
                 <div className="text-[10px] text-neutral-400 py-2">Loading templates...</div>
             ) : templates.length === 0 && !isCreating ? (
-                <div className="border border-neutral-200 dark:border-neutral-800 border-dashed rounded-[2px] p-3 text-center bg-neutral-50 dark:bg-neutral-900/30">
+                <div className="border border-neutral-300 dark:border-neutral-700 border-dashed rounded-[3px] p-3 text-center bg-neutral-50 dark:bg-neutral-900/30">
                     <MessageSquare className="h-4 w-4 mx-auto mb-1 opacity-20 text-neutral-400" />
                     <p className="text-[10px] text-neutral-400">No templates</p>
                 </div>
@@ -229,7 +229,7 @@ export function TemplateInput({ input }: TemplateInputProps) {
                     {templates.map((template, index) => {
                         if (editingIndex === index) {
                             return (
-                                <div key={index} className="border border-neutral-400/50 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-900/50 rounded-[2px] p-1.5 space-y-1.5 relative">
+                                <div key={index} className="border border-neutral-400/50 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-900/50 rounded-[3px] p-1.5 space-y-1.5 relative">
                                     <Popover open={macroDropdownOpen} onOpenChange={setMacroDropdownOpen}>
                                         <PopoverTrigger asChild>
                                             <div className="relative w-full">
@@ -266,10 +266,10 @@ export function TemplateInput({ input }: TemplateInputProps) {
                                         </PopoverContent>
                                     </Popover>
                                     <div className="flex justify-end gap-1">
-                                        <Button variant="ghost" size="sm" className="h-5 px-1.5 rounded-[2px] text-neutral-500" onClick={cancelEditTemplate}>
+                                        <Button variant="ghost" size="sm" className="h-5 px-1.5 rounded-[2px] text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800" onClick={cancelEditTemplate}>
                                             <X className="h-[10px] w-[10px]" />
                                         </Button>
-                                        <Button size="sm" className="h-5 px-1.5 rounded-[2px]" onClick={handleSaveTemplate}>
+                                        <Button size="sm" className="h-5 px-1.5 rounded-[2px] bg-neutral-700 hover:bg-neutral-800 dark:bg-neutral-200 dark:hover:bg-neutral-100 dark:text-neutral-900" onClick={handleSaveTemplate}>
                                             <Save className="h-[10px] w-[10px]" />
                                         </Button>
                                     </div>
@@ -277,7 +277,7 @@ export function TemplateInput({ input }: TemplateInputProps) {
                             )
                         }
                         return (
-                            <div key={index} className="border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 rounded-[2px] p-1.5 group hover:border-blue-400 dark:hover:border-blue-500/50 transition-colors">
+                            <div key={index} className="border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900 rounded-[3px] p-1.5 group hover:border-blue-400 dark:hover:border-blue-500/50 transition-colors">
                                 <div className="flex items-start gap-1.5">
                                     <p className="text-[11px] text-neutral-600 dark:text-neutral-300 flex-1 whitespace-pre-wrap break-words font-medium">
                                         {template.length > 80 ? template.slice(0, 80) + '...' : template}

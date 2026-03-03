@@ -32,14 +32,14 @@ export function ListSelectInput({ input, value, onChange }: ListSelectInputProps
                     {input.helpText}
                 </p>
             )}
-            <div className="border border-neutral-300 dark:border-neutral-700 rounded-[2px] p-2 space-y-1.5 max-h-40 overflow-auto bg-neutral-50 dark:bg-neutral-900/50 mt-1">
+            <div className="border border-neutral-300 dark:border-neutral-700 rounded-[3px] p-2 space-y-1.5 max-h-40 overflow-auto bg-neutral-50 dark:bg-neutral-900/50 mt-1">
                 {!lists ? (
                     <p className="text-[10px] text-neutral-500 text-center py-2">Loading lists...</p>
                 ) : lists.length === 0 ? (
                     <p className="text-[10px] text-neutral-500 text-center py-2">No lists available</p>
                 ) : (
                     lists.map((list: any) => (
-                        <div key={list._id} className="flex items-center space-x-2">
+                        <div key={list._id} className="flex items-center space-x-2 border border-transparent rounded-[2px] px-1 py-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-800/60">
                             <Checkbox
                                 id={`list-${list._id}`}
                                 checked={selectedLists.includes(list._id)}

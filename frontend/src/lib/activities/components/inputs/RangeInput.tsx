@@ -13,7 +13,7 @@ export function RangeInput({ input, value, onChange, compact }: RangeInputProps)
     const displayValue = value ?? input.default ?? ''
 
     return (
-        <div className={compact ? "space-y-1" : "space-y-1"}>
+        <div className={compact ? 'space-y-1' : 'space-y-1'}>
             <Label htmlFor={input.name} className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
                 {input.label}
             </Label>
@@ -26,7 +26,7 @@ export function RangeInput({ input, value, onChange, compact }: RangeInputProps)
                     step={input.step ?? 1}
                     value={displayValue as number}
                     onChange={(e) => onChange(Number(e.target.value))}
-                    className="flex-1 h-3.5 accent-neutral-700 dark:accent-neutral-300 bg-neutral-200 dark:bg-neutral-800 rounded-full appearance-none cursor-pointer"
+                    className="flex-1 h-3.5 accent-neutral-700 dark:accent-neutral-300 bg-neutral-200 dark:bg-neutral-800 rounded-full appearance-none cursor-pointer border-0"
                 />
                 <span className="w-10 text-right text-[11px] text-neutral-500 font-mono">
                     {String(displayValue)}{input.unit || ''}

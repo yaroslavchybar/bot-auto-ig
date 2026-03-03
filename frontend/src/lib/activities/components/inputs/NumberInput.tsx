@@ -31,7 +31,7 @@ export function NumberInput({ input, value, onChange, compact }: NumberInputProp
                     value={displayValue as number}
                     onChange={(e) => onChange(Number(e.target.value))}
                     placeholder={input.placeholder}
-                    className="h-7 rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 border-neutral-300 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900"
+                    className="h-6 rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-900"
                 />
                 {compact && input.unit && (
                     <span className="text-[10px] text-neutral-500 font-mono w-6 shrink-0">{input.unit}</span>

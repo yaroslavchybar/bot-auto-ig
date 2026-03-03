@@ -23,7 +23,7 @@ export function TextInput({ input, value, onChange }: TextInputProps) {
                 value={displayValue as string}
                 onChange={(e) => onChange(e.target.value)}
                 placeholder={input.placeholder}
-                className="h-7 rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 border-neutral-300 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900"
+                className="h-6 rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-900"
             />
             {input.helpText && (
                 <p className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-tight">{input.helpText}</p>

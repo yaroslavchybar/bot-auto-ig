@@ -37,8 +37,8 @@ export function GroupedInputs({ inputs, config, onChange }: GroupedInputsProps) 
 
             {/* Grouped inputs */}
             {Object.entries(groups).map(([groupName, groupInputs]) => (
-                <div key={groupName} className="border-t border-neutral-200 dark:border-neutral-800 pt-2 mt-2">
-                    <Label className="text-[9px] font-bold text-neutral-400 uppercase tracking-widest block mb-1.5">
+                <div key={groupName} className="border border-neutral-300 dark:border-neutral-700 rounded-[3px] p-2 mt-2 bg-neutral-50/70 dark:bg-neutral-900/40">
+                    <Label className="text-[9px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest block mb-2 font-mono">
                         {groupName}
                     </Label>
                     <div className="grid grid-cols-2 gap-2">

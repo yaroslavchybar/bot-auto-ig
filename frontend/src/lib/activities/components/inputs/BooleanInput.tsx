@@ -12,7 +12,7 @@ export function BooleanInput({ input, value, onChange }: BooleanInputProps) {
     const displayValue = value ?? input.default ?? ''
 
     return (
-        <div className="space-y-1">
+        <div className="space-y-1.5 border border-neutral-300 dark:border-neutral-700 rounded-[3px] p-2 bg-neutral-50/70 dark:bg-neutral-900/40">
             <div className="flex items-center space-x-2">
                 <Checkbox
                     id={input.name}

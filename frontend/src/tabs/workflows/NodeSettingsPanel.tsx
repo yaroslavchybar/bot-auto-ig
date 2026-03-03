@@ -52,9 +52,9 @@ interface StartNodeSettingsProps {
 function StartNodeSettings({ onClose }: StartNodeSettingsProps) {
 	return (
 		<div className="w-[320px] border-l border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 flex flex-col shrink-0">
-			<div className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
+			<div className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/60 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
 				<div className="flex items-center gap-2">
-					<div className="p-1 rounded-[2px] bg-green-500/10">
+					<div className="p-1 rounded-[2px] bg-green-500/10 border border-green-500/20">
 						<Play className="w-3.5 h-3.5 text-green-600 dark:text-green-500" />
 					</div>
 					<div className="flex flex-col gap-0.5">
@@ -68,7 +68,7 @@ function StartNodeSettings({ onClose }: StartNodeSettingsProps) {
 			</div>
 
 			<ScrollArea className="flex-1 bg-white dark:bg-[#121212]">
-				<div className="p-4 space-y-3">
+				<div className="p-3 space-y-3">
 					<p className="text-[11px] text-neutral-500 leading-relaxed">
 						This is the entry point for your workflow. Connect this node to the first action you want to perform.
 					</p>
@@ -117,13 +117,13 @@ function ActivityNodeSettings({ node, onUpdate, onClose }: ActivityNodeSettingsP
 	if (!activity) {
 		return (
 			<div className="w-[320px] border-l border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 flex flex-col shrink-0">
-				<div className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
+				<div className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/60 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
 					<h3 className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 leading-none">Unknown Activity</h3>
-					<Button variant="ghost" size="icon" className="h-6 w-6 rounded-[2px]" onClick={onClose}>
+					<Button variant="ghost" size="icon" className="h-6 w-6 rounded-[2px] text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-300/50 dark:hover:bg-neutral-700/50" onClick={onClose}>
 						<X className="h-3.5 w-3.5" />
 					</Button>
 				</div>
-				<div className="p-4 text-[11px] text-neutral-500">
+				<div className="p-3 text-[11px] text-neutral-500">
 					Activity "{activityId}" not found in registry
 				</div>
 			</div>
@@ -132,10 +132,10 @@ function ActivityNodeSettings({ node, onUpdate, onClose }: ActivityNodeSettingsP
 
 	return (
 		<div className="w-[320px] border-l border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 flex flex-col shrink-0">
-			<div className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/50 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
+			<div className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-200/60 dark:bg-neutral-900/50 flex items-center justify-between shrink-0">
 				<div className="flex items-center gap-2">
 					<div
-						className="p-1 rounded-[2px]"
+						className="p-1 rounded-[2px] border border-neutral-300/70 dark:border-neutral-700/70"
 						style={{ backgroundColor: `${activity.color}15` }}
 					>
 						<Settings2 className="w-3.5 h-3.5" style={{ color: activity.color }} />
@@ -145,7 +145,7 @@ function ActivityNodeSettings({ node, onUpdate, onClose }: ActivityNodeSettingsP
 						<p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono leading-none">{activity.category.toUpperCase()}</p>
 					</div>
 				</div>
-				<Button variant="ghost" size="icon" className="h-6 w-6 rounded-[2px]" onClick={onClose}>
+				<Button variant="ghost" size="icon" className="h-6 w-6 rounded-[2px] text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 hover:bg-neutral-300/50 dark:hover:bg-neutral-700/50" onClick={onClose}>
 					<X className="h-3.5 w-3.5" />
 				</Button>
 			</div>
@@ -168,8 +168,8 @@ function ActivityNodeSettings({ node, onUpdate, onClose }: ActivityNodeSettingsP
 				</div>
 			</ScrollArea>
 
-			<div className="p-3 border-t">
-				<Button className="w-full" size="sm" onClick={handleSave}>
+			<div className="p-2 border-t border-neutral-300 dark:border-neutral-700 bg-neutral-200/60 dark:bg-neutral-900/50">
+				<Button className="w-full h-6 rounded-[3px] text-[11px]" size="sm" onClick={handleSave}>
 					Apply Changes
 				</Button>
 			</div>

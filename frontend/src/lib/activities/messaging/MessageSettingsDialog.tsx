@@ -5,7 +5,7 @@
  * Supports standard and alternative message templates.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ComponentProps } from 'react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,17 @@ import { Plus, Trash2, Edit2, Save, X, Loader2, MessageSquare } from 'lucide-rea
 interface MessageSettingsDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+}
+
+function DenseButton({ className = '', ...props }: ComponentProps<typeof Button>) {
+    return (
+        <Button
+            variant="outline"
+            size="sm"
+            className={`h-6 px-2 py-0 text-[11px] rounded-[3px] border-neutral-300 dark:border-neutral-600 shadow-none transition-none bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 ${className}`}
+            {...props}
+        />
+    );
 }
 
 export function MessageSettingsDialog({ open, onOpenChange }: MessageSettingsDialogProps) {
@@ -94,85 +105,89 @@ export function MessageSettingsDialog({ open, onOpenChange }: MessageSettingsDia
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl h-[600px] flex flex-col">
-                <DialogHeader>
-                    <DialogTitle>Message Templates</DialogTitle>
-                    <DialogDescription>
+            <DialogContent className="max-w-2xl h-[600px] flex flex-col p-0 gap-0 bg-neutral-200 dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 overflow-hidden">
+                <DialogHeader className="px-3 py-2 border-b border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800">
+                    <DialogTitle className="text-[11px] font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">Message Templates</DialogTitle>
+                    <DialogDescription className="text-[10px] text-neutral-500 dark:text-neutral-400">
                         Manage templates used for automated direct messages.
                     </DialogDescription>
                 </DialogHeader>
 
                 <Tabs value={kind} onValueChange={(v) => setKind(v as MessageTemplateKind)} className="flex-1 flex flex-col min-h-0">
-                    <div className="flex items-center justify-between mb-4">
-                        <TabsList>
-                            <TabsTrigger value="message">Standard Messages</TabsTrigger>
-                            <TabsTrigger value="message_2">Alternative Messages</TabsTrigger>
+                    <div className="flex items-center justify-between px-2 py-1.5 border-b border-neutral-300 dark:border-neutral-700 bg-white/50 dark:bg-neutral-900/20">
+                        <TabsList className="h-6 p-0.5 bg-neutral-200/70 dark:bg-neutral-900/70 border border-neutral-300 dark:border-neutral-700 rounded-[4px]">
+                            <TabsTrigger value="message" className="h-5 px-2 rounded-[3px] text-[10px] data-[state=active]:bg-white data-[state=active]:dark:bg-neutral-800 data-[state=active]:shadow-none">
+                                Standard
+                            </TabsTrigger>
+                            <TabsTrigger value="message_2" className="h-5 px-2 rounded-[3px] text-[10px] data-[state=active]:bg-white data-[state=active]:dark:bg-neutral-800 data-[state=active]:shadow-none">
+                                Alternative
+                            </TabsTrigger>
                         </TabsList>
-                        <Button onClick={startCreate} disabled={isCreating || editingIndex !== null || loading}>
-                            <Plus className="h-4 w-4 mr-2" />
+                        <DenseButton onClick={startCreate} disabled={isCreating || editingIndex !== null || loading}>
+                            <Plus className="h-3 w-3 mr-1.5" />
                             Add Template
-                        </Button>
+                        </DenseButton>
                     </div>
 
                     {error && (
-                        <div className="p-3 mb-4 rounded-lg bg-destructive/10 text-destructive text-sm">
+                        <div className="px-3 py-1.5 bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border-b border-red-200 dark:border-red-900/50 text-[11px] font-medium shrink-0">
                             {error}
                         </div>
                     )}
 
-                    <TabsContent value={kind} className="flex-1 mt-0 min-h-0 relative">
+                    <TabsContent value={kind} className="flex-1 mt-0 min-h-0 relative p-1 bg-neutral-200 dark:bg-neutral-900">
                         {loading && !isCreating && editingIndex === null ? (
-                            <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10">
-                                <Loader2 className="h-8 w-8 animate-spin" />
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-[#121212]/60 z-10">
+                                <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
                             </div>
                         ) : null}
 
-                        <ScrollArea className="h-full pr-4">
-                            <div className="space-y-4 pb-4">
+                        <ScrollArea className="h-full border border-neutral-300 dark:border-neutral-700 rounded-[3px] bg-white dark:bg-[#121212]">
+                            <div className="space-y-2 p-2 pb-3">
                                 {isCreating && (
-                                    <Card className="border-primary">
-                                        <CardContent className="p-4 space-y-3">
+                                    <Card className="border-blue-500/50 rounded-[3px] shadow-none">
+                                        <CardContent className="p-2.5 space-y-2.5">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm font-medium text-primary">New Template</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">New Template</span>
                                             </div>
                                             <Textarea
                                                 value={editValue}
                                                 onChange={(e) => setEditValue(e.target.value)}
                                                 placeholder="Enter message template..."
-                                                className="min-h-[100px]"
+                                                className="min-h-[88px] text-[11px] rounded-[2px] border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus-visible:ring-1 focus-visible:ring-offset-0"
                                             />
                                             <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="sm" onClick={cancelEdit}>Cancel</Button>
-                                                <Button size="sm" onClick={handleSave}>Save</Button>
+                                                <DenseButton variant="ghost" size="sm" onClick={cancelEdit}>Cancel</DenseButton>
+                                                <Button size="sm" className="h-6 px-2.5 rounded-[3px] text-[11px]" onClick={handleSave}>Save</Button>
                                             </div>
                                         </CardContent>
                                     </Card>
                                 )}
 
                                 {templates.length === 0 && !isCreating ? (
-                                    <div className="text-center py-12 text-muted-foreground">
-                                        <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                                        <p>No templates found.</p>
-                                        <p className="text-sm">Create one to get started.</p>
+                                    <div className="text-center py-10 text-neutral-500 dark:text-neutral-400 border border-dashed border-neutral-300 dark:border-neutral-700 rounded-[3px] bg-neutral-50 dark:bg-neutral-900/40">
+                                        <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-25" />
+                                        <p className="text-[11px]">No templates found.</p>
+                                        <p className="text-[10px]">Create one to get started.</p>
                                     </div>
                                 ) : (
                                     templates.map((template, index) => {
                                         if (editingIndex === index) {
                                             return (
-                                                <Card key={index} className="border-primary">
-                                                    <CardContent className="p-4 space-y-3">
+                                                <Card key={index} className="border-blue-500/50 rounded-[3px] shadow-none">
+                                                    <CardContent className="p-2.5 space-y-2.5">
                                                         <Textarea
                                                             value={editValue}
                                                             onChange={(e) => setEditValue(e.target.value)}
-                                                            className="min-h-[100px]"
+                                                            className="min-h-[88px] text-[11px] rounded-[2px] border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus-visible:ring-1 focus-visible:ring-offset-0"
                                                         />
                                                         <div className="flex justify-end gap-2">
-                                                            <Button variant="ghost" size="sm" onClick={cancelEdit}>
-                                                                <X className="h-4 w-4 mr-1" />
+                                                            <DenseButton variant="ghost" size="sm" onClick={cancelEdit}>
+                                                                <X className="h-3 w-3 mr-1" />
                                                                 Cancel
-                                                            </Button>
-                                                            <Button size="sm" onClick={handleSave}>
-                                                                <Save className="h-4 w-4 mr-1" />
+                                                            </DenseButton>
+                                                            <Button size="sm" className="h-6 px-2.5 rounded-[3px] text-[11px]" onClick={handleSave}>
+                                                                <Save className="h-3 w-3 mr-1" />
                                                                 Save
                                                             </Button>
                                                         </div>
@@ -182,26 +197,26 @@ export function MessageSettingsDialog({ open, onOpenChange }: MessageSettingsDia
                                         }
 
                                         return (
-                                            <Card key={index} className="group hover:border-accent">
-                                                <CardContent className="p-4">
-                                                    <div className="flex items-start gap-4">
-                                                        <p className="text-sm whitespace-pre-wrap flex-1">{template}</p>
+                                            <Card key={index} className="group rounded-[3px] shadow-none border-neutral-300 dark:border-neutral-700 hover:border-blue-400/70 dark:hover:border-blue-500/60 transition-colors">
+                                                <CardContent className="p-2.5">
+                                                    <div className="flex items-start gap-3">
+                                                        <p className="text-[11px] whitespace-pre-wrap flex-1 text-neutral-700 dark:text-neutral-300">{template}</p>
                                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
-                                                                className="h-8 w-8"
+                                                                className="h-6 w-6 rounded-[2px] text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-800"
                                                                 onClick={() => startEdit(index)}
                                                             >
-                                                                <Edit2 className="h-4 w-4" />
+                                                                <Edit2 className="h-3 w-3" />
                                                             </Button>
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
-                                                                className="h-8 w-8 text-destructive"
+                                                                className="h-6 w-6 rounded-[2px] text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                                                                 onClick={() => handleDelete(index)}
                                                             >
-                                                                <Trash2 className="h-4 w-4" />
+                                                                <Trash2 className="h-3 w-3" />
                                                             </Button>
                                                         </div>
                                                     </div>

@@ -27,10 +27,10 @@ export function SelectInput({ input, value, onChange }: SelectInputProps) {
                 value={String(displayValue)}
                 onValueChange={(v) => onChange(v)}
             >
-                <SelectTrigger className="h-7 rounded-[2px] text-[11px] focus:ring-1 focus:ring-offset-0 border-neutral-300 bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900">
+                <SelectTrigger className="h-6 rounded-[2px] text-[11px] focus:ring-1 focus:ring-offset-0 border-neutral-300 bg-white dark:border-neutral-700 dark:bg-neutral-900">
                     <SelectValue placeholder={input.placeholder || 'Select...'} />
                 </SelectTrigger>
-                <SelectContent className="rounded-[2px] text-[11px]">
+                <SelectContent className="rounded-[2px] text-[11px] border-neutral-300 dark:border-neutral-700">
                     {input.options?.map((opt: ActivityInputOption) => (
                         <SelectItem key={opt.value} value={opt.value} className="text-[11px]">
                             {opt.label}

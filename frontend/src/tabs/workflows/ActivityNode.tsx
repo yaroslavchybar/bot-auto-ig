@@ -47,14 +47,14 @@ function ActivityNodeComponent({ data, selected }: NodeProps<ActivityNodeData>) 
 	return (
 		<div
 			className={`
-				min-w-[180px] bg-white rounded flex flex-col overflow-visible relative
-				${selected ? 'ring-1 ring-primary/50' : 'shadow-sm border border-neutral-200'}
+				min-w-[180px] bg-neutral-100 dark:bg-neutral-900 rounded-[3px] flex flex-col overflow-visible relative border
+				${selected ? 'border-blue-500/70 shadow-[0_0_0_1px_rgba(59,130,246,0.35)]' : 'shadow-sm border-neutral-300 dark:border-neutral-700'}
 			`}
 		>
 			<div className="flex h-full w-full relative">
 				{/* Left colored border strip */}
 				<div
-					className="w-1 shrink-0 absolute left-0 top-0 bottom-0 rounded-l-[2px]"
+					className="w-1 shrink-0 absolute left-0 top-0 bottom-0 rounded-l-[3px]"
 					style={{ backgroundColor: color }}
 				/>
 
@@ -68,19 +68,19 @@ function ActivityNodeComponent({ data, selected }: NodeProps<ActivityNodeData>) 
 					/>
 
 					{/* Header */}
-					<div className="flex items-center gap-2.5 p-2.5 pb-2">
+					<div className="flex items-center gap-2 p-2 pb-1.5 border-b border-neutral-200 dark:border-neutral-700/80 bg-white/70 dark:bg-neutral-900/70">
 						<div
-							className="w-6 h-6 rounded flex items-center justify-center shrink-0"
-							style={{ backgroundColor: `${color}15` }}
+							className="w-5 h-5 rounded-[2px] flex items-center justify-center shrink-0 border border-neutral-300/70 dark:border-neutral-700/70"
+							style={{ backgroundColor: `${color}18` }}
 						>
-							<Icon className="w-3.5 h-3.5" style={{ color }} strokeWidth={2} />
+							<Icon className="w-3 h-3" style={{ color }} strokeWidth={2} />
 						</div>
 						<div className="flex flex-col gap-0.5">
-							<span className="text-[11px] font-bold text-neutral-800 uppercase tracking-wide leading-none">
+							<span className="text-[10px] font-bold text-neutral-800 dark:text-neutral-200 uppercase tracking-wider leading-none">
 								{data.label || activity?.name || 'Unknown'}
 							</span>
 							{activity && (
-								<span className="text-[9px] text-neutral-500 uppercase tracking-widest leading-none">
+								<span className="text-[9px] text-neutral-500 dark:text-neutral-400 uppercase tracking-widest leading-none font-mono">
 									{activity.category}
 								</span>
 							)}
@@ -99,10 +99,10 @@ function ActivityNodeComponent({ data, selected }: NodeProps<ActivityNodeData>) 
 
 					{/* Multiple Output handles with labels */}
 					{activity && activity.outputs.length > 1 && (
-						<div className="flex flex-col border-t border-neutral-100 mt-1">
+						<div className="flex flex-col bg-white dark:bg-[#121212]">
 							{activity.outputs.map((output) => (
-								<div key={output} className="relative flex items-center justify-end px-2.5 py-1.5 border-b border-neutral-100 last:border-b-0">
-									<span className="text-[10px] uppercase tracking-widest text-neutral-500 mr-2">{output}</span>
+								<div key={output} className="relative flex items-center justify-end px-2 py-1 border-b border-neutral-200 dark:border-neutral-700/70 last:border-b-0">
+									<span className="text-[9px] uppercase tracking-widest text-neutral-500 dark:text-neutral-400 mr-2 font-mono">{output}</span>
 									<Handle
 										type="source"
 										position={Position.Right}

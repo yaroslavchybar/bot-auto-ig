@@ -309,9 +309,9 @@ export function PythonCodeField({ input, value, onChange }: PythonCodeFieldProps
                         {input.required && <span className="text-red-500 ml-0.5">*</span>}
                     </span>
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
-                        className="h-5 w-5 rounded-[2px] text-neutral-400 hover:text-neutral-100 hover:bg-neutral-700/50"
+                        className="h-5 w-5 rounded-[2px] border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                         onClick={() => setModalOpen(true)}
                         title="Open in full editor"
                     >
@@ -340,9 +340,9 @@ export function PythonCodeField({ input, value, onChange }: PythonCodeFieldProps
             <Dialog open={modalOpen} onOpenChange={setModalOpen}>
                 <DialogContent
                     hideClose
-                    className="max-w-[85vw] w-[85vw] h-[80vh] p-0 gap-0 bg-[#0d0d0d] border-neutral-700 rounded-[4px] flex flex-col overflow-hidden"
+                    className="max-w-[85vw] w-[85vw] h-[80vh] p-0 gap-0 bg-neutral-900 border-neutral-700 rounded-[4px] flex flex-col overflow-hidden"
                 >
-                    <DialogHeader className="px-4 py-2.5 border-b border-neutral-800 bg-[#141414] flex-row items-center justify-between space-y-0 shrink-0">
+                    <DialogHeader className="px-4 py-2.5 border-b border-neutral-700 bg-neutral-800 flex-row items-center justify-between space-y-0 shrink-0">
                         <div className="flex items-center gap-2.5">
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded-[2px] bg-yellow-500/15 text-yellow-500 text-[10px] font-bold font-mono tracking-wider">
                                 PYTHON
@@ -359,9 +359,9 @@ export function PythonCodeField({ input, value, onChange }: PythonCodeFieldProps
                         </div>
                         <div className="flex items-center gap-1.5">
                             <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="sm"
-                                className="h-6 px-2.5 rounded-[2px] text-[10px] font-medium text-green-400 hover:text-green-300 hover:bg-green-500/10 gap-1"
+                                className="h-6 px-2.5 rounded-[2px] text-[10px] font-medium text-green-500 dark:text-green-400 border-neutral-600 bg-neutral-900 hover:bg-neutral-700 gap-1"
                                 onClick={() => setModalOpen(false)}
                             >
                                 <Check className="h-3 w-3" />
@@ -384,7 +384,7 @@ export function PythonCodeField({ input, value, onChange }: PythonCodeFieldProps
                     </div>
 
                     {/* Status bar */}
-                    <div className="px-4 py-1.5 border-t border-neutral-800 bg-[#141414] flex items-center justify-between text-[10px] text-neutral-500 font-mono shrink-0">
+                    <div className="px-4 py-1.5 border-t border-neutral-700 bg-neutral-800 flex items-center justify-between text-[10px] text-neutral-500 font-mono shrink-0">
                         <div className="flex items-center gap-3">
                             <span>Python</span>
                             <span>UTF-8</span>
