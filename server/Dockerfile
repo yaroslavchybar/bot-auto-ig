@@ -76,5 +76,6 @@ ENV DISPLAY=:99
 
 EXPOSE 3001
 EXPOSE 6080
+EXPOSE 6081-6130
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

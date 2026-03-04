@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { spawn, execFile } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { workflowWorkers } from '../store.js'
+import { activeDisplays, workflowWorkers } from '../store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../helpers/mutex.js'
 import { parseLogOutput } from '../logs/parser.js'
@@ -86,6 +86,18 @@ function isStopNoiseLog(message: string): boolean {
         /Traceback \(most recent call last\)/i.test(m) ||
         /asyncio\/unix_events\.py/i.test(m)
     )
+}
+
+function displayKey(workflowId: string, profileName: string): string {
+    return `${workflowId}:${profileName}`
+}
+
+function clearWorkflowDisplays(workflowId: string): void {
+    for (const [key, session] of activeDisplays.entries()) {
+        if (session.workflowId === workflowId) {
+            activeDisplays.delete(key)
+        }
+    }
 }
 
 router.get('/status', (req, res) => {
@@ -198,6 +210,33 @@ router.post('/run', async (req, res) => {
             }
         }
 
+        const maybeTrackDisplaysFromEvent = (log: any) => {
+            const meta = (log?.metadata as any) || {}
+            const eventType = String(log?.eventType || '')
+            const profileName = String(meta.profile ?? meta.profileName ?? '').trim()
+            const key = profileName ? displayKey(workflowId, profileName) : null
+
+            if (eventType === 'display_allocated' && key) {
+                const vncPort = Number(meta.vnc_port ?? meta.vncPort)
+                const displayNum = Number(meta.display_num ?? meta.displayNum)
+                if (!Number.isFinite(vncPort) || !Number.isFinite(displayNum)) {
+                    return
+                }
+                activeDisplays.set(key, {
+                    workflowId,
+                    profileName,
+                    vncPort,
+                    displayNum,
+                    status: 'active',
+                })
+                return
+            }
+
+            if ((eventType === 'display_released' || eventType === 'profile_completed') && key) {
+                activeDisplays.delete(key)
+            }
+        }
+
         proc.stdout?.on('data', (data) => {
             const raw = data.toString()
             const parsed = parseLogOutput(raw)
@@ -206,6 +245,7 @@ router.post('/run', async (req, res) => {
                 const stopRequested = Boolean((proc as any).__stopRequested)
                 if (stopRequested && isStopNoiseLog(log?.message)) continue
                 void maybeUpdateStatusFromEvent(log)
+                maybeTrackDisplaysFromEvent(log)
                 broadcast({
                     workflowId,
                     type: log.eventType ? log.eventType : 'log',
@@ -230,6 +270,7 @@ router.post('/run', async (req, res) => {
 
         proc.on('close', async (code) => {
             workflowWorkers.delete(workflowId)
+            clearWorkflowDisplays(workflowId)
             broadcast({ type: 'workflow_status', workflowId, status: 'idle' })
             broadcast({
                 type: 'log',
@@ -249,6 +290,7 @@ router.post('/run', async (req, res) => {
 
         proc.on('error', async (err) => {
             workflowWorkers.delete(workflowId)
+            clearWorkflowDisplays(workflowId)
             broadcast({ type: 'workflow_status', workflowId, status: 'idle' })
             broadcast({ type: 'log', workflowId, message: `Workflow error: ${err.message}`, level: 'error', source: 'server' })
             try {

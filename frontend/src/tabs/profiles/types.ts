@@ -19,6 +19,7 @@ export type LogEntry = {
   level: string
   source: string
   profileName?: string
+  workflowId?: string
   ts: number
 }
 

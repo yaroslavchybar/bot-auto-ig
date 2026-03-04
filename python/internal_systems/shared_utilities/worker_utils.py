@@ -17,6 +17,7 @@ def create_browser_context(
     headless: bool = False,
     fingerprint_seed: Optional[str] = None,
     fingerprint_os: Optional[str] = None,
+    display: Optional[str] = None,
 ):
     """
     Create a Camoufox browser context with standard configuration.
@@ -40,6 +41,7 @@ def create_browser_context(
         headless=headless,
         fingerprint_seed=fingerprint_seed,
         fingerprint_os=fingerprint_os,
+        display=display,
     ) as (context, page):
         yield context, page
 

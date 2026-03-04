@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 
@@ -17,18 +18,52 @@ from python.internal_systems.process_management.process_manager import ProcessMa
 from python.internal_systems.logging.logging_config import setup_logging
 from python.internal_systems.process_management.healthcheck import run_all_checks
 from python.browser_control.browser_setup import parse_proxy_string
+from python.browser_control.display_manager import DisplayManager
 
 # Setup logging
 setup_logging()
 logger = logging.getLogger(__name__)
 
 _cleanup_done = False
+_display_mgr = None
+_display_session = None
+_display_profile = None
+_display_workflow_id = "manual"
+
+
+def emit_event(event_type: str, **data):
+    event = {"type": event_type, **data}
+    try:
+        sys.stdout.write(f"__EVENT__{json.dumps(event)}__EVENT__\n")
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+
+def _release_display():
+    global _display_session
+    if not _display_mgr or not _display_session or not _display_profile:
+        return
+    try:
+        released = _display_mgr.release(_display_workflow_id, _display_profile)
+        if released:
+            emit_event(
+                "display_released",
+                workflow_id=_display_workflow_id,
+                profile=_display_profile,
+                vnc_port=released.get("vnc_port"),
+                display_num=released.get("display_num"),
+            )
+    except Exception:
+        pass
+    _display_session = None
 
 def _graceful_shutdown():
     global _cleanup_done
     if _cleanup_done:
         return
     _cleanup_done = True
+    _release_display()
     logger.info("Graceful shutdown initiated...")
     # Context manager in run_browser handles browser cleanup
 
@@ -69,6 +104,7 @@ if __name__ == "__main__":
     parser.add_argument("--os", type=str, default=None, help="Emulated OS: windows, macos, linux")
     parser.add_argument("--fingerprint-seed", type=str, default=None, help="Seed for consistent fingerprint generation")
     parser.add_argument("--fingerprint-os", type=str, default=None, help="OS for fingerprint generation: windows, macos, linux")
+    parser.add_argument("--workflow-id", type=str, default="manual", help="Workflow identifier for display session tracking")
     
     args = parser.parse_args()
 
@@ -111,11 +147,14 @@ if __name__ == "__main__":
 
     logger.info(f"Health checks passed: {checks}")
 
-    # Pre-flight cleanup
+    # Pre-flight cleanup:
+    # In manual mode we allow multiple concurrent profile sessions, so we must not
+    # kill other running Camoufox/Firefox processes started by sibling launchers.
     pm = ProcessManager()
-    cleaned = pm.cleanup_orphaned_processes()
-    if cleaned:
-        logger.info(f"Cleaned {cleaned} orphaned processes.")
+    if args.action != "manual":
+        cleaned = pm.cleanup_orphaned_processes()
+        if cleaned:
+            logger.info(f"Cleaned {cleaned} orphaned processes.")
 
     # Initialize Job Object for process cleanup
     job = None
@@ -126,6 +165,24 @@ if __name__ == "__main__":
             logger.info("Windows Job Object active: Child processes will terminate with parent.")
         except Exception as e:
             logger.error(f"Failed to initialize Windows Job Object: {e}")
+
+    _display_profile = args.name
+    _display_workflow_id = str(args.workflow_id or "manual")
+    display_value = None
+    try:
+        _display_mgr = DisplayManager()
+        _display_session = _display_mgr.allocate(_display_workflow_id, args.name)
+        if _display_session:
+            display_value = _display_session.get("display")
+            emit_event(
+                "display_allocated",
+                workflow_id=_display_workflow_id,
+                profile=args.name,
+                vnc_port=_display_session.get("vnc_port"),
+                display_num=_display_session.get("display_num"),
+            )
+    except Exception as e:
+        logger.error(f"Display allocation failed for {args.name}: {e}")
 
     max_retries = 3
     retry_count = 0
@@ -152,7 +209,8 @@ if __name__ == "__main__":
                 user_agent=args.user_agent,
                 os=args.os,
                 fingerprint_seed=getattr(args, 'fingerprint_seed', None),
-                fingerprint_os=getattr(args, 'fingerprint_os', None)
+                fingerprint_os=getattr(args, 'fingerprint_os', None),
+                display=display_value,
             )
             logger.info("Session completed successfully.")
             break
@@ -192,3 +250,5 @@ if __name__ == "__main__":
                 # If we get rate limited indefinitely, we might want to stop.
                 # But typically we want to wait it out.
                 continue
+
+    _release_display()

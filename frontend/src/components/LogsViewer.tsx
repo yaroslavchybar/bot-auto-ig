@@ -47,7 +47,13 @@ function DenseButton({ active, className, children, ...props }: React.ComponentP
   )
 }
 
-export function LogsViewer({ className }: { className?: string }) {
+interface LogsViewerProps {
+  className?: string
+  workflowId?: string | null
+  profileName?: string | null
+}
+
+export function LogsViewer({ className, workflowId = null, profileName = null }: LogsViewerProps) {
   const [mode, setMode] = useState<LogsMode>('live')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -68,7 +74,7 @@ export function LogsViewer({ className }: { className?: string }) {
   const [error, setError] = useState<string | null>(null)
 
   // WebSocket for real-time log streaming
-  const { logs: wsLogs, connected: wsConnected } = useWebSocket()
+  const { logs: wsLogs, connected: wsConnected } = useWebSocket({ workflowId })
 
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
 
@@ -189,7 +195,20 @@ export function LogsViewer({ className }: { className?: string }) {
 
   const filteredLogs = useMemo(() => {
     const q = filterQuery.trim().toLowerCase()
+    const scopedProfile = String(profileName || '').trim().toLowerCase()
     return logs.filter((log) => {
+      if (workflowId) {
+        const logWorkflowId = String((log as any).workflowId || '').trim()
+        if (!logWorkflowId || logWorkflowId !== workflowId) {
+          return false
+        }
+      }
+      if (scopedProfile) {
+        const logProfile = String(log.profileName || '').trim().toLowerCase()
+        if (!logProfile || logProfile !== scopedProfile) {
+          return false
+        }
+      }
       if (levelFilter !== 'all' && String(log.level || '').toLowerCase() !== levelFilter) {
         return false
       }
@@ -202,7 +221,7 @@ export function LogsViewer({ className }: { className?: string }) {
       const profile = String(log.profileName || '').toLowerCase()
       return msg.includes(q) || src.includes(q) || profile.includes(q)
     })
-  }, [logs, filterQuery, levelFilter, feedDebugOnly])
+  }, [logs, filterQuery, levelFilter, feedDebugOnly, workflowId, profileName])
 
   const visibleLogs = useMemo(() => {
     return filteredLogs.slice(Math.max(filteredLogs.length - visibleCount, 0))

@@ -6,6 +6,7 @@ services:
     ports:
       - "3001:3001"
       - "6080:6080"
+      - "6081-6130:6081-6130"
     volumes:
       - ./data:/app/data
     env_file:

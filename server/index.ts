@@ -18,6 +18,7 @@ import listsRouter from './api/lists.js'
 import scrapingRouter from './api/scraping.js'
 import workflowsRouter from './api/workflows.js'
 import monitoringRouter from './api/monitoring.js'
+import displaysRouter from './api/displays.js'
 import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 
@@ -79,6 +80,7 @@ app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
 app.use('/api/scraping', requireApiAuth, apiLimiter, scrapingRouter)
 app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
 app.use('/api/monitoring', requireApiAuth, apiLimiter, monitoringRouter)
+app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
 
 const PORT = process.env.SERVER_PORT || 3001

@@ -15,8 +15,9 @@ import {
     profilesSetLoginTrue,
     profilesUpdateByName
 } from '../data/convex.js'
-import { profileProcesses } from '../store.js'
+import { activeDisplays, profileProcesses } from '../store.js'
 import { broadcast } from '../websocket.js'
+import { parseLogOutput } from '../logs/parser.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -26,6 +27,24 @@ const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'getting_started', 'la
 const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'browser_control', 'fingerprint_generator.py')
 
 const router = Router()
+
+function manualDisplayKey(profileName: string): string {
+    return `manual:${profileName}`
+}
+
+function setManualDisplay(profileName: string, vncPort: number, displayNum: number, workflowId: string = 'manual') {
+    activeDisplays.set(manualDisplayKey(profileName), {
+        workflowId,
+        profileName,
+        vncPort,
+        displayNum,
+        status: 'active',
+    })
+}
+
+function clearManualDisplay(profileName: string): boolean {
+    return activeDisplays.delete(manualDisplayKey(profileName))
+}
 
 // Generate a new fingerprint using BrowserForge
 router.post('/generate-fingerprint', async (req, res) => {
@@ -185,7 +204,7 @@ router.post('/:name/start', async (req, res) => {
         }
 
         const python = process.env.PYTHON || 'python'
-        const args = [LAUNCHER_SCRIPT, '--name', name, '--action', 'manual']
+        const args = [LAUNCHER_SCRIPT, '--name', name, '--action', 'manual', '--workflow-id', 'manual']
 
         if (profile.proxy) {
             args.push('--proxy', profile.proxy)
@@ -213,22 +232,63 @@ router.post('/:name/start', async (req, res) => {
         })
 
         child.stdout?.on('data', (data) => {
-            const message = data.toString().trim()
-            if (message) {
-                broadcast({ type: 'log', message, level: 'info', source: `profile:${name}`, profileName: name })
+            const raw = data.toString()
+            const parsed = parseLogOutput(raw)
+            for (const log of parsed) {
+                const meta = (log.metadata as any) || {}
+                const eventType = log.eventType || 'log'
+                if (eventType === 'display_allocated') {
+                    const vncPort = Number(meta.vnc_port ?? meta.vncPort)
+                    const displayNum = Number(meta.display_num ?? meta.displayNum)
+                    const workflowId = String(meta.workflow_id ?? meta.workflowId ?? 'manual')
+                    if (Number.isFinite(vncPort) && Number.isFinite(displayNum)) {
+                        setManualDisplay(name, vncPort, displayNum, workflowId)
+                    }
+                } else if (eventType === 'display_released') {
+                    clearManualDisplay(name)
+                }
+                broadcast({
+                    type: eventType,
+                    workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
+                    message: log.message,
+                    level: log.level,
+                    source: 'python',
+                    profileName: name,
+                    ...meta,
+                })
             }
         })
 
         child.stderr?.on('data', (data) => {
-            const message = data.toString().trim()
-            if (message) {
-                broadcast({ type: 'log', message, level: 'error', source: `profile:${name}`, profileName: name })
+            const raw = data.toString()
+            const parsed = parseLogOutput(raw)
+            for (const log of parsed) {
+                const meta = (log.metadata as any) || {}
+                broadcast({
+                    type: log.eventType ? log.eventType : 'log',
+                    workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
+                    message: log.message,
+                    level: 'error',
+                    source: 'python',
+                    profileName: name,
+                    ...meta,
+                })
             }
         })
 
         child.on('exit', (code) => {
             profileProcesses.delete(name)
             void profilesSyncStatus(name, 'idle', false)
+            const hadDisplay = clearManualDisplay(name)
+            if (hadDisplay) {
+                broadcast({
+                    type: 'display_released',
+                    workflowId: 'manual',
+                    profile: name,
+                    profileName: name,
+                    source: 'server',
+                })
+            }
             broadcast({
                 type: 'log',
                 message: `Browser closed for profile: ${name} (code: ${code})`,
@@ -241,6 +301,16 @@ router.post('/:name/start', async (req, res) => {
         child.on('error', (err) => {
             profileProcesses.delete(name)
             void profilesSyncStatus(name, 'idle', false)
+            const hadDisplay = clearManualDisplay(name)
+            if (hadDisplay) {
+                broadcast({
+                    type: 'display_released',
+                    workflowId: 'manual',
+                    profile: name,
+                    profileName: name,
+                    source: 'server',
+                })
+            }
             broadcast({
                 type: 'log',
                 message: `Browser error for profile ${name}: ${err.message}`,
@@ -298,6 +368,16 @@ router.post('/:name/stop', async (req, res) => {
 
         profileProcesses.delete(name)
         await profilesSyncStatus(name, 'idle', false)
+        const hadDisplay = clearManualDisplay(name)
+        if (hadDisplay) {
+            broadcast({
+                type: 'display_released',
+                workflowId: 'manual',
+                profile: name,
+                profileName: name,
+                source: 'server',
+            })
+        }
 
         res.json({ success: true, message: `Browser stopped for ${name}` })
     } catch (error) {

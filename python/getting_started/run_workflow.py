@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import random
@@ -30,6 +31,7 @@ from python.database_sync.config import PROJECT_URL, SECRET_KEY
 from python.database_sync.accounts_client import InstagramAccountsClient
 from python.database_sync.profiles_client import ProfilesClient
 from python.database_sync.messages_client import MessageTemplatesClient
+from python.browser_control.display_manager import DisplayManager
 from python.internal_systems.shared_utilities.worker_utils import (
     apply_count_limit,
     create_browser_context,
@@ -200,6 +202,7 @@ class WorkflowRunner:
         account_count = len(accounts) if accounts else 1
         self._max_workers = max(1, min(account_count, configured))
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
+        self.display_mgr = DisplayManager()
 
     def stop(self) -> None:
         self.running = False
@@ -247,6 +250,10 @@ class WorkflowRunner:
                 self._executor.shutdown(wait=True)
             except Exception:
                 pass
+            try:
+                self.display_mgr.cleanup_all()
+            except Exception:
+                pass
 
         emit_event("session_ended", status="completed" if self.running else "cancelled", workflow_id=self.workflow_id)
         return 0
@@ -276,6 +283,7 @@ class WorkflowRunner:
             user_agent = None
 
         emit_event("profile_started", profile=profile_name, workflow_id=self.workflow_id)
+        display_session: Optional[Dict[str, Any]] = None
 
         # Mutable browser state – start_browser creates it, close_browser destroys it
         browser_state: Dict[str, Any] = {
@@ -286,6 +294,7 @@ class WorkflowRunner:
             "user_agent": user_agent,
             "fingerprint_seed": fingerprint_seed,
             "fingerprint_os_val": fingerprint_os_val,
+            "display": None,
         }
 
         try:
@@ -293,6 +302,20 @@ class WorkflowRunner:
                 self.profiles_client.sync_profile_status(profile_name, "running", True)
             except Exception:
                 pass
+
+            try:
+                display_session = self.display_mgr.allocate(self.workflow_id, profile_name)
+                if display_session:
+                    browser_state["display"] = display_session.get("display")
+                    emit_event(
+                        "display_allocated",
+                        workflow_id=self.workflow_id,
+                        profile=profile_name,
+                        vnc_port=display_session.get("vnc_port"),
+                        display_num=display_session.get("display_num"),
+                    )
+            except Exception as alloc_err:
+                log(f"Display allocation failed for @{profile_name}: {alloc_err}")
 
             start_node = _find_start_node(self.nodes)
             if not start_node:
@@ -387,6 +410,18 @@ class WorkflowRunner:
                     ctx_mgr.__exit__(None, None, None)
             except Exception:
                 pass
+            try:
+                released = self.display_mgr.release(self.workflow_id, profile_name)
+                if released:
+                    emit_event(
+                        "display_released",
+                        workflow_id=self.workflow_id,
+                        profile=profile_name,
+                        vnc_port=released.get("vnc_port"),
+                        display_num=released.get("display_num"),
+                    )
+            except Exception:
+                pass
 
     def _execute_activity(
         self,
@@ -421,6 +456,7 @@ class WorkflowRunner:
                     headless=headless_cfg,
                     fingerprint_seed=browser_state.get("fingerprint_seed"),
                     fingerprint_os=browser_state.get("fingerprint_os_val"),
+                    display=browser_state.get("display"),
                 )
                 # Enter the context manager manually (cleanup in close_browser or finally)
                 ctx_page = ctx_mgr.__enter__()
@@ -519,6 +555,7 @@ class WorkflowRunner:
                         headless=headless_cfg,
                         fingerprint_seed=browser_state.get("fingerprint_seed"),
                         fingerprint_os=browser_state.get("fingerprint_os_val"),
+                        display=browser_state.get("display"),
                     )
                     ctx_page = ctx_mgr.__enter__()
                     browser_state["_ctx_mgr"] = ctx_mgr
@@ -779,6 +816,7 @@ def main() -> int:
 
     options = {**options, "headless": headless}
     runner = WorkflowRunner(workflow_id, nodes, edges, accounts, options)
+    atexit.register(DisplayManager.cleanup_owner_sessions, os.getpid())
 
     def _handle_signal(_sig, _frame):
         runner.stop()

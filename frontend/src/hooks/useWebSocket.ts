@@ -17,7 +17,7 @@ export interface AutomationProgress {
 }
 
 interface WebSocketMessage {
-    type: 'log' | 'status' | 'workflow_status' | 'error' | 'session_started' | 'profile_started' | 'task_started' | 'profile_completed' | 'session_ended';
+    type: 'log' | 'status' | 'workflow_status' | 'error' | 'session_started' | 'profile_started' | 'task_started' | 'profile_completed' | 'session_ended' | 'display_allocated' | 'display_released';
     message?: string;
     level?: string;
     source?: string;
@@ -29,12 +29,17 @@ interface WebSocketMessage {
     profile?: string;
     profileName?: string;
     task?: string;
+    vnc_port?: number;
+    vncPort?: number;
+    display_num?: number;
+    displayNum?: number;
 }
 
 interface UseWebSocketOptions {
     url?: string
     autoConnect?: boolean
     workflowId?: string | null
+    onEvent?: (message: WebSocketMessage) => void
 }
 
 // Reconnection backoff constants
@@ -54,7 +59,7 @@ function getReconnectDelay(attempt: number): number {
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
-    const { url, autoConnect = true, workflowId } = options
+    const { url, autoConnect = true, workflowId, onEvent } = options
     const wsUrl = url ?? getDefaultWebSocketUrl()
     const { getToken } = useAuth()
 
@@ -69,6 +74,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     const [reconnectCounter, setReconnectCounter] = useState(0)
     const wsRef = useRef<WebSocket | null>(null)
     const workflowIdRef = useRef<string | null>(workflowId ?? null)
+    const onEventRef = useRef<((message: WebSocketMessage) => void) | null>(onEvent ?? null)
     const currentProfileRef = useRef<string | null>(null)
     const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const reconnectAttemptRef = useRef(0)
@@ -76,6 +82,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     useEffect(() => {
         workflowIdRef.current = workflowId ?? null
     }, [workflowId])
+
+    useEffect(() => {
+        onEventRef.current = onEvent ?? null
+    }, [onEvent])
 
     const clearLogs = useCallback(() => {
         setLogs([])
@@ -128,6 +138,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                         if (cancelled) return
                         try {
                             const data: WebSocketMessage = JSON.parse(event.data)
+                            try {
+                                onEventRef.current?.(data)
+                            } catch {
+                                // ignore callback errors
+                            }
                             const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
                             const activeWorkflowId = workflowIdRef.current
                             const matchesWorkflow =

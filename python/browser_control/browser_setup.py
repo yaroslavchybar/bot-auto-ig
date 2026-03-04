@@ -399,6 +399,7 @@ def create_browser_context(
     os: Optional[str] = None,
     fingerprint_seed: Optional[str] = None,
     fingerprint_os: Optional[str] = None,
+    display: Optional[str] = None,
 ):
     if proxy_circuit.is_open():
         wait_time = proxy_circuit.global_pause_until - time.time()
@@ -468,6 +469,9 @@ def create_browser_context(
         humanize=True,
         locale='en-US',
     )
+    if display:
+        import os as _os
+        launch_kwargs["env"] = {**_os.environ, "DISPLAY": str(display)}
     
     # Inject cached fingerprint config directly — these take precedence 
     # over Camoufox's auto-generated values
@@ -575,7 +579,8 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
               feed_duration=0, reels_duration=0,
               reels_match_likes=None, reels_match_follows=None,
               user_agent=None, headless=False, os=None, 
-              fingerprint_seed=None, fingerprint_os=None):
+              fingerprint_seed=None, fingerprint_os=None,
+              display: Optional[str] = None):
     print(f"[*] Starting Profile: {profile_name}")
     print(f"[*] Action: {action}")
     
@@ -610,6 +615,7 @@ def run_browser(profile_name, proxy_string, action="manual", duration=5,
             os=os,
             fingerprint_seed=fingerprint_seed,
             fingerprint_os=fingerprint_os,
+            display=display,
         ) as (context, page):
             print("[*] Camoufox initialized successfully")
 
