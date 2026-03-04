@@ -9,6 +9,7 @@ import { AccountsPage } from './tabs/accounts/AccountsPage'
 import { ScrapingPage } from './tabs/scraping/ScrapingPage'
 import { WorkflowsPage } from './tabs/workflows'
 import { VncPage } from './tabs/vnc'
+import { MonitoringPage } from './tabs/monitoring/MonitoringPage'
 import { ModeToggle } from '@/components/mode-toggle'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
@@ -57,6 +58,8 @@ function MainLayout() {
         return <LogsPage />
       case 'vnc':
         return <VncPage />
+      case 'monitoring':
+        return <MonitoringPage />
       default:
         return <DashboardPage />
     }
@@ -72,6 +75,7 @@ function MainLayout() {
       case 'accounts': return 'Upload Accounts'
       case 'logs': return 'Logs'
       case 'vnc': return 'Browser View'
+      case 'monitoring': return 'VPS Monitor'
       default: return 'Dashboard'
     }
   }

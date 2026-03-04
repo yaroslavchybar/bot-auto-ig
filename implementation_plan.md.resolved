@@ -1,0 +1,167 @@
+# Multi-Profile VNC Display (Option A — Virtual Display Per Profile)
+
+Each running profile gets its own isolated virtual display with its own VNC stream. The frontend shows a grid of live VNC tiles.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Port range**: The plan exposes Docker ports `6081–6090` for up to 10 concurrent VNC sessions. Adjust if you need more/fewer.
+
+> [!IMPORTANT]
+> **Existing VNC tab**: The current single-VNC "Browser View" tab will be **replaced** by the new multi-profile grid. The old single-viewer behavior is preserved — clicking a tile maximizes it to full view. Confirm this is acceptable.
+
+---
+
+## Proposed Changes
+
+### 1. Python — Display Manager
+
+A new module that allocates/deallocates Xvfb + x11vnc + noVNC instances per profile.
+
+#### [NEW] [display_manager.py](file:///c:/Users/yaros/Downloads/anti/python/browser_control/display_manager.py)
+
+Thread-safe `DisplayManager` class:
+- `allocate(profile_name) → { display_num, vnc_port }` — starts Xvfb on `:100+N` at `1366x768x16`, x11vnc on `5901+N`, noVNC proxy on `6081+N`
+- `release(profile_name)` — kills all three processes for that profile
+- `get_all_sessions() → [{ profile_name, vnc_port, display_num }]` — returns active sessions
+- `cleanup_all()` — kills everything on shutdown
+- Uses a `Lock` and tracks PIDs in a dict
+- Display numbers start at `:100` to avoid conflict with the main `:99`
+
+---
+
+### 2. Python — Wire Display Into Browser Launch
+
+#### [MODIFY] [run_workflow.py](file:///c:/Users/yaros/Downloads/anti/python/getting_started/run_workflow.py)
+
+- Import `DisplayManager`; create a single instance in `WorkflowRunner.__init__`
+- In [process_account()](file:///c:/Users/yaros/Downloads/anti/python/getting_started/run_workflow.py#254-390): call `display_mgr.allocate(profile_name)` before browser start, store display_num in `browser_state`
+- In [process_account() finally](file:///c:/Users/yaros/Downloads/anti/python/getting_started/run_workflow.py#254-390): call `display_mgr.release(profile_name)`
+- Emit new event `display_allocated` with `{ profile, vnc_port, display_num }` so the server knows
+
+#### [MODIFY] [browser_setup.py](file:///c:/Users/yaros/Downloads/anti/python/browser_control/browser_setup.py)
+
+- Add optional `display` parameter to [create_browser_context()](file:///c:/Users/yaros/Downloads/anti/python/browser_control/browser_setup.py#391-570)
+- When `display` is provided and running on Linux, set `os.environ["DISPLAY"]` to the given display number **in the current thread** before launching Camoufox (use a threading Lock to safely override/restore the env var)
+
+#### [MODIFY] [worker_utils.py](file:///c:/Users/yaros/Downloads/anti/python/internal_systems/shared_utilities/worker_utils.py)
+
+- Pass through the new `display` parameter to `_create_browser_context()`
+
+---
+
+### 3. Server — API Endpoint for Active Displays
+
+#### [MODIFY] [workflows.ts](file:///c:/Users/yaros/Downloads/anti/server/api/workflows.ts)
+
+- Parse `display_allocated` events from Python stdout (already comes through `__EVENT__` protocol)
+- Track active VNC sessions in an in-memory `Map<string, { profileName, vncPort, displayNum }>`
+- Clean up entries on `profile_completed` or process exit
+
+#### [NEW] [displays.ts](file:///c:/Users/yaros/Downloads/anti/server/api/displays.ts)
+
+New Express router with one endpoint:
+- `GET /api/displays` — returns the list of active `{ profileName, vncPort }` sessions
+- Registered in [index.ts](file:///c:/Users/yaros/Downloads/anti/server/index.ts)
+
+#### [MODIFY] [websocket.ts](file:///c:/Users/yaros/Downloads/anti/server/websocket.ts)
+
+- Forward `display_allocated` / `display_released` events as WebSocket broadcasts so the frontend can update the grid in real time
+
+#### [MODIFY] [index.ts](file:///c:/Users/yaros/Downloads/anti/server/index.ts)
+
+- Mount the new `/api/displays` router
+
+---
+
+### 4. Docker — Expose Port Range
+
+#### [MODIFY] [docker-compose.yml](file:///c:/Users/yaros/Downloads/anti/docker-compose.yml)
+
+- Add port mapping `6081-6090:6081-6090` to the `server` service
+- Keep existing `6080:6080` for the main display (login, manual actions)
+
+#### [MODIFY] [Dockerfile](file:///c:/Users/yaros/Downloads/anti/server/Dockerfile)
+
+- `EXPOSE 6081-6090` (in addition to existing 6080)
+
+---
+
+### 5. Frontend — Multi-Profile VNC Grid
+
+#### [MODIFY] [VncViewer.tsx](file:///c:/Users/yaros/Downloads/anti/frontend/src/components/VncViewer.tsx)
+
+- Accept `url` prop already (no change needed to the component itself — it already supports dynamic URLs)
+
+#### [MODIFY] [VncPage.tsx](file:///c:/Users/yaros/Downloads/anti/frontend/src/tabs/vnc/VncPage.tsx)
+
+Complete rewrite of the VNC page to support multi-profile view:
+
+**Two modes**:
+1. **Grid Mode** (default) — shows all active profile VNC streams in a responsive grid
+2. **Focus Mode** — click a tile to maximize one profile's display + show logs
+
+**Grid Mode UI**:
+- Header bar with "Active Sessions" title, session count, and a "Refresh" button
+- Responsive CSS grid: `grid-template-columns: repeat(auto-fill, minmax(400px, 1fr))`
+- Each tile: profile name label (top-left), VNC iframe (read-only, pointer-events-none), status indicator
+- Empty state: "No active sessions — start a workflow to see browser displays"
+
+**Focus Mode UI**:
+- Full-size VNC viewer (with interactive "Take Control" button from current design)
+- "Back to Grid" button
+- Logs panel on the right (existing `LogsViewer`)
+
+**Data fetching**:
+- On mount: `GET /api/displays` to get initial list
+- Listen to WebSocket for `display_allocated` / `display_released` events to update grid in real time
+- Poll `/api/displays` every 5s as fallback
+
+#### [NEW] [VncTile.tsx](file:///c:/Users/yaros/Downloads/anti/frontend/src/tabs/vnc/VncTile.tsx)
+
+Small component for one grid tile:
+- Profile name badge
+- Embedded `<VncViewer url={...} interactive={false} />`
+- Click handler → switch to focus mode
+- Status dot (green = active)
+- Utilitarian styling consistent with existing Logs/Monitoring pages
+
+---
+
+## Summary of File Changes
+
+| File | Action | Layer |
+|---|---|---|
+| `python/browser_control/display_manager.py` | NEW | Backend |
+| [python/getting_started/run_workflow.py](file:///c:/Users/yaros/Downloads/anti/python/getting_started/run_workflow.py) | MODIFY | Backend |
+| [python/browser_control/browser_setup.py](file:///c:/Users/yaros/Downloads/anti/python/browser_control/browser_setup.py) | MODIFY | Backend |
+| [python/internal_systems/shared_utilities/worker_utils.py](file:///c:/Users/yaros/Downloads/anti/python/internal_systems/shared_utilities/worker_utils.py) | MODIFY | Backend |
+| `server/api/displays.ts` | NEW | Server |
+| [server/api/workflows.ts](file:///c:/Users/yaros/Downloads/anti/server/api/workflows.ts) | MODIFY | Server |
+| [server/websocket.ts](file:///c:/Users/yaros/Downloads/anti/server/websocket.ts) | MODIFY | Server |
+| [server/index.ts](file:///c:/Users/yaros/Downloads/anti/server/index.ts) | MODIFY | Server |
+| [server/Dockerfile](file:///c:/Users/yaros/Downloads/anti/server/Dockerfile) | MODIFY | Infra |
+| [docker-compose.yml](file:///c:/Users/yaros/Downloads/anti/docker-compose.yml) | MODIFY | Infra |
+| [frontend/src/tabs/vnc/VncPage.tsx](file:///c:/Users/yaros/Downloads/anti/frontend/src/tabs/vnc/VncPage.tsx) | MODIFY (rewrite) | Frontend |
+| `frontend/src/tabs/vnc/VncTile.tsx` | NEW | Frontend |
+
+---
+
+## Verification Plan
+
+### Manual Verification (Recommended — requires Docker)
+
+Since this feature requires a running Docker environment with Xvfb/x11vnc/noVNC processes, automated unit tests are not practical for the VNC display portions. The verification is manual:
+
+1. **Build & Deploy**: `docker compose build && docker compose up -d`
+2. **Start a workflow** with 2–3 profiles from the Workflows page
+3. **Navigate to "Browser View"** tab — you should see a grid with one tile per running profile, each showing a live noVNC stream
+4. **Click a tile** — should switch to Focus Mode showing that profile's full VNC display + logs
+5. **Click "Back to Grid"** — returns to the grid view
+6. **Stop the workflow** — tiles should disappear from the grid automatically
+7. **Verify no port conflicts**: check `docker logs` for any Xvfb/x11vnc errors
+
+### Code-Level Verification
+
+- **Display Manager**: Can be tested standalone by running `python -c "from python.browser_control.display_manager import DisplayManager; dm = DisplayManager(); s = dm.allocate('test'); print(s); dm.release('test')"` inside the Docker container
+- **API Endpoint**: `curl http://localhost:3001/api/displays` — should return `[]` when no workflows are running, and populated array when profiles are active

@@ -54,15 +54,13 @@ export function VncPage() {
 
 							{!isInteractive && (
 								<div
-									className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${
-										isConfirming ? 'bg-black/35 pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'
-									}`}
+									className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-black/35 pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'
+										}`}
 								>
 									<div className={`${isConfirming ? 'w-full max-w-[360px] mx-4' : ''}`}>
 										<div
-											className={`bg-neutral-100/95 dark:bg-neutral-800/95 border border-neutral-300 dark:border-neutral-600 rounded-[3px] shadow-sm overflow-hidden ${
-												isConfirming ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 pointer-events-auto transition-opacity'
-											}`}
+											className={`bg-neutral-100/95 dark:bg-neutral-800/95 border border-neutral-300 dark:border-neutral-600 rounded-[3px] shadow-sm overflow-hidden ${isConfirming ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 pointer-events-auto transition-opacity'
+												}`}
 										>
 											{isConfirming && (
 												<>

@@ -9,6 +9,7 @@ import {
   Upload,
   GitBranch,
   Monitor,
+  Activity,
 } from "lucide-react"
 
 import {
@@ -24,7 +25,7 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type NavId = 'dashboard' | 'profiles' | 'workflows' | 'scraping' | 'lists' | 'accounts' | 'logs' | 'vnc';
+export type NavId = 'dashboard' | 'profiles' | 'workflows' | 'scraping' | 'lists' | 'accounts' | 'logs' | 'vnc' | 'monitoring';
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeId: NavId;
@@ -75,6 +76,11 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
           title: "Logs",
           id: "logs",
           icon: FileText,
+        },
+        {
+          title: "VPS Monitor",
+          id: "monitoring",
+          icon: Activity,
         },
       ],
     },
