@@ -15,7 +15,7 @@ import {
     Wifi,
 } from 'lucide-react'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 const POLL_INTERVAL = 5000
 
 interface MonitoringData {
@@ -111,7 +111,8 @@ export function MonitoringPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            const result = await apiFetch<MonitoringData>(`${API_BASE}/api/monitoring`)
+            const endpoint = API_BASE ? `${API_BASE}/api/monitoring` : '/api/monitoring'
+            const result = await apiFetch<MonitoringData>(endpoint)
             setData(result)
             setLastUpdate(new Date())
             setError(null)
