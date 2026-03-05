@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { apiFetch } from '../lib/api'
 import type { Profile } from '../tabs/profiles/types'
 
@@ -51,18 +51,20 @@ export function useProfiles() {
         }
     }, [])
 
+    const refresh = useCallback(() => fetchProfiles(false), [fetchProfiles])
+    const backgroundRefresh = useCallback(() => fetchProfiles(true), [fetchProfiles])
+
     useEffect(() => {
         // Initial fetch (background update while showing cached data)
-        void fetchProfiles(true)
-    }, [fetchProfiles])
+        void backgroundRefresh()
+    }, [backgroundRefresh])
 
-    return {
+    return useMemo(() => ({
         profiles,
         loading, // Mostly false unless manual refresh is triggered
         error,
-        refresh: () => fetchProfiles(false), // Manual refresh shows loading state
-        backgroundRefresh: () => fetchProfiles(true), // Background refresh doesn't show loading state
+        refresh, // Manual refresh shows loading state
+        backgroundRefresh, // Background refresh doesn't show loading state
         setProfiles, // Exposed for optimistic updates if needed
-    }
+    }), [profiles, loading, error, refresh, backgroundRefresh])
 }
-
