@@ -1,8 +1,4 @@
 # Unfollow Users
 
-Automation for unfollowing Instagram users.
-
-## Features
-- Unfollow users from following list
-- Batch unfollow with delays
-- Respect rate limits
+Canonical documentation moved to:
+- [docs/python/components.md#instagram-actions-layer](../../../../docs/python/components.md#instagram-actions-layer)

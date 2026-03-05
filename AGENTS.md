@@ -1,43 +1,70 @@
-# Repository Guidelines
+# Agent Navigation Map
 
-## Project Structure & Module Organization
-- `frontend/`: React + Vite + TypeScript UI (`src/tabs/*`, `src/components/*`, `src/lib/*`).
-- `server/`: Express + TypeScript API, automation orchestration, and WebSocket (`api/`, `automation/`, `security/`, `logs/`).
-- `python/`: browser automation and shared internals; tests live in `python/tests/`.
-- `convex/`: Convex schema/functions. Treat `convex/_generated/*` as generated code.
-- `datauploader/` and `scraper/`: standalone Python services used by Docker Compose.
-- `data/`: runtime artifacts (logs, uploads), mounted by containers.
+This file is intentionally short and map-first.
 
-## Build, Test, and Development Commands
-- `npm run dev` (repo root): starts server dev mode via root script.
-- `npm --prefix frontend run dev`: runs frontend at `http://localhost:5173`.
-- `npm --prefix server run dev`: runs backend with hot reload on `:3001`.
-- `npm --prefix frontend run build`: TypeScript compile + production bundle.
-- `npm --prefix server run build`: compile server TypeScript to `server/dist`.
-- `npm --prefix frontend run lint`: run ESLint for TS/TSX.
-- `python -m pytest python/tests -q`: run Python test suite.
-- `docker compose up --build`: start full stack (frontend, server, scraper, datauploader).
+Rule of precedence:
+- `docs/` is the system of record.
+- If `AGENTS.md` conflicts with `docs/`, follow `docs/`.
 
-## Coding Style & Naming Conventions
-- TypeScript/TSX: 2-space indentation, single quotes, semicolon-light style matching existing files.
-- React components: `PascalCase` filenames (`LogsViewer.tsx`); hooks: `useX.ts`.
-- Keep UI primitives in `frontend/src/components/ui/`; feature logic under `src/tabs/<feature>/`.
-- Python: PEP 8 (4-space indentation), `snake_case` module/function names.
+## Canonical Documentation
 
-## Testing Guidelines
-- Python tests follow `test_*.py` naming in `python/tests/`, written in pytest style.
-- For frontend/server changes without dedicated tests, run lint + build before PR.
-- Add or update tests when changing automation logic, parsing, retries, or state handling.
+- Docs index: [docs/README.md](docs/README.md)
+- Knowledge model: [docs/overview/knowledge-model.md](docs/overview/knowledge-model.md)
+- Repository map: [docs/overview/repository-map.md](docs/overview/repository-map.md)
+- Developer workflow: [docs/overview/developer-workflow.md](docs/overview/developer-workflow.md)
 
-## Commit & Pull Request Guidelines
-- Recent history uses short subjects (`updates`, `fixes`, `Workflows`); prefer clearer imperative messages, e.g. `server: tighten auth rate limiter`.
-- Keep commits scoped to one concern.
-- PRs should include:
-  - what changed and why,
-  - impacted areas (`frontend`, `server`, `python`, etc.),
-  - verification commands run,
-  - screenshots/GIFs for UI changes.
+Domain guides:
+- Frontend: [docs/frontend/guide.md](docs/frontend/guide.md)
+- Server: [docs/server/guide.md](docs/server/guide.md)
+- Python automation: [docs/python/automation.md](docs/python/automation.md)
+- Python components: [docs/python/components.md](docs/python/components.md)
+- Convex backend: [docs/convex/backend.md](docs/convex/backend.md)
 
-## Security & Configuration Tips
-- Use `.env`/`.env.local`; never commit secrets (Clerk keys, Convex URLs, API keys).
-- Validate CORS/auth settings when editing `server/security/*`.
+Service guides:
+- Data uploader: [docs/services/datauploader.md](docs/services/datauploader.md)
+- Scraper: [docs/services/scraper.md](docs/services/scraper.md)
+
+Operations:
+- Environment and security: [docs/operations/environment-and-security.md](docs/operations/environment-and-security.md)
+- Docker runtime: [docs/operations/docker-and-runtime.md](docs/operations/docker-and-runtime.md)
+- Troubleshooting: [docs/operations/troubleshooting.md](docs/operations/troubleshooting.md)
+- Content mapping: [docs/operations/content-parity.md](docs/operations/content-parity.md)
+- Drift matrix: [docs/operations/drift-matrix.md](docs/operations/drift-matrix.md)
+- Verification log: [docs/operations/verification-log.md](docs/operations/verification-log.md)
+
+## Quick Repo Map
+
+- `frontend/`: UI tabs (`dashboard`, `profiles`, `lists`, `scraping`, `workflows`, `accounts`, `logs`, `vnc`, `monitoring`).
+- `server/`: API domains (`automation`, `profiles`, `lists`, `logs`, `scraping`, `workflows`, `monitoring`, `displays`) + WebSocket.
+- `python/`: automation runtime entrypoints and internal systems.
+- `convex/`: schema/modules/http/crons including `keywords`, `scrapingTasks`, `workflows`.
+- `datauploader/`: CSV + scraping-task ingest service.
+- `scraper/`: follower/following scraping service.
+- `data/`: runtime logs/uploads.
+
+## Quick Commands
+
+- `npm run dev` (root)
+- `npm run build` (root)
+- `npm --prefix frontend run dev`
+- `npm --prefix frontend run build`
+- `npm --prefix frontend run lint`
+- `npm --prefix server run dev`
+- `npm --prefix server run build`
+- `python -m pytest python/tests -q`
+- `docker compose up --build`
+
+## Coding and Testing Rules
+
+- TypeScript/TSX: 2-space indentation, single quotes, semicolon-light style.
+- React components: `PascalCase` filenames.
+- Hooks: `useX.ts` naming.
+- Python: PEP 8 and snake_case naming.
+- For frontend/server changes without dedicated tests, run lint + build.
+- Add/update tests when changing automation behavior, parsing, retries, or state handling.
+
+## Security Notes
+
+- Use `.env` and `.env.local`; never commit secrets.
+- Validate auth/CORS/rate-limit behavior when editing `server/security/*`.
+- Keep links repo-relative.

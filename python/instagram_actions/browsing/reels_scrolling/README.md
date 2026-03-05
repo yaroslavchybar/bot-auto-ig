@@ -1,9 +1,4 @@
 # Reels Scrolling
 
-Automation for watching Instagram Reels.
-
-## Features
-- Scroll through Reels
-- Watch videos for realistic duration
-- Like reels based on configured chance
-- Follow creators from reels
+Canonical documentation moved to:
+- [docs/python/components.md#instagram-actions-layer](../../../../docs/python/components.md#instagram-actions-layer)

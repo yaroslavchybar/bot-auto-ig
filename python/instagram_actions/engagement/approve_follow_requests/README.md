@@ -1,8 +1,4 @@
 # Approve Follow Requests
 
-Automation for approving pending follow requests on private accounts.
-
-## Features
-- View pending follow requests
-- Approve/deny requests
-- Batch processing
+Canonical documentation moved to:
+- [docs/python/components.md#instagram-actions-layer](../../../../docs/python/components.md#instagram-actions-layer)
