@@ -1,3 +1,6 @@
+import argparse
+import json
+import sys
 import time
 import traceback
 from python.browser_control.browser_setup import create_browser_context
@@ -106,6 +109,34 @@ def _extract_instagram_session_id(context) -> str | None:
     return None
 
 
+def _has_authenticated_instagram_session(context) -> bool:
+    """Heuristic for authenticated session when UI selectors are unreliable."""
+    try:
+        cookies = context.cookies()
+    except Exception:
+        return False
+
+    has_sessionid = False
+    has_ds_user_id = False
+    for c in cookies or []:
+        try:
+            domain = str(c.get("domain") or "")
+            if "instagram.com" not in domain:
+                continue
+            name = str(c.get("name") or "")
+            value = str(c.get("value") or "").strip()
+            if not value:
+                continue
+            if name == "sessionid":
+                has_sessionid = True
+            elif name == "ds_user_id":
+                has_ds_user_id = True
+        except Exception:
+            continue
+
+    return has_sessionid and has_ds_user_id
+
+
 def _try_store_session_id(context, profile_name: str, log: callable) -> None:
     try:
         session_id = _extract_instagram_session_id(context)
@@ -123,13 +154,15 @@ def _try_store_session_id(context, profile_name: str, log: callable) -> None:
 
 def login_session(
     profile_name: str,
-    proxy_string: str,
+    proxy_string: str | None,
     username: str,
     password: str,
     log: callable,
     two_factor_secret: str = None,
     user_agent: str = None,
-    headless: bool = False
+    headless: bool = False,
+    fingerprint_seed: str | None = None,
+    fingerprint_os: str | None = None
 ):
     log(f"Starting login session for {username} (Profile: {profile_name})")
     login_succeeded = False
@@ -140,7 +173,9 @@ def login_session(
             proxy_string=proxy_string,
             user_agent=user_agent,
             headless=headless,
-            block_images=False
+            block_images=False,
+            fingerprint_seed=fingerprint_seed,
+            fingerprint_os=fingerprint_os
         ) as (context, page):
             
             def mark_login_success():
@@ -296,10 +331,86 @@ def login_session(
             # Keep open for a bit to ensure cookies are saved
             log("Keeping session open for 10s to ensure persistence...")
             time.sleep(10)
-            
+
+            # Fallback: selectors can miss success on some Instagram variants.
+            # If authenticated cookies exist, treat login as successful.
+            if not login_succeeded and _has_authenticated_instagram_session(context):
+                log("Login confirmed via authenticated Instagram cookies")
+                mark_login_success()
+                _try_store_session_id(context, profile_name, log)
+
             return login_succeeded
     except Exception as e:
         log(f"Critical error: {e}")
         traceback.print_exc()
         return False
+
+
+
+def _log_stdout(message: str) -> None:
+    print(message, flush=True)
+
+
+def _read_credentials_from_stdin() -> dict:
+    raw = sys.stdin.read().strip()
+    if not raw:
+        raise ValueError('Missing credentials payload on stdin')
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'Invalid credentials JSON: {exc}') from exc
+    if not isinstance(data, dict):
+        raise ValueError('Credentials payload must be a JSON object')
+    return data
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description='Run Instagram login session for a profile')
+    parser.add_argument('--profile', required=True, help='Profile name from database')
+    parser.add_argument('--headless', action='store_true', help='Run browser in headless mode')
+    args = parser.parse_args()
+
+    try:
+        creds = _read_credentials_from_stdin()
+        username = str(creds.get('username') or '').strip()
+        password = str(creds.get('password') or '').strip()
+        two_factor_secret = creds.get('two_factor_secret')
+
+        if not username or not password:
+            raise ValueError('username and password are required in credentials payload')
+
+        profile = ProfilesClient().get_profile_by_name(args.profile)
+        if not profile:
+            raise ValueError(f'Profile not found: {args.profile}')
+
+        proxy_string = str(profile.get('proxy') or '').strip() or None
+        user_agent = str(profile.get('user_agent') or profile.get('userAgent') or '').strip() or None
+        fingerprint_seed = str(profile.get('fingerprint_seed') or profile.get('fingerprintSeed') or '').strip() or None
+        fingerprint_os = str(profile.get('fingerprint_os') or profile.get('fingerprintOs') or '').strip() or None
+
+        success = login_session(
+            profile_name=args.profile,
+            proxy_string=proxy_string,
+            username=username,
+            password=password,
+            log=_log_stdout,
+            two_factor_secret=two_factor_secret,
+            user_agent=user_agent,
+            headless=args.headless,
+            fingerprint_seed=fingerprint_seed,
+            fingerprint_os=fingerprint_os,
+        )
+
+        return 0 if success else 1
+    except Exception as exc:
+        print(f'Login script error: {exc}', file=sys.stderr, flush=True)
+        traceback.print_exc()
+        return 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
+
+
+
 
