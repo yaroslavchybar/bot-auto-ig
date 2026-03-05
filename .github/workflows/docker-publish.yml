@@ -20,7 +20,10 @@ jobs:
           - service: datauploader
             dockerfile: datauploader/Dockerfile
             tag: datauploader
-    
+          - service: scraper
+            dockerfile: scraper/Dockerfile
+            tag: scraper
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,6 +83,19 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./datauploader
+          file: ./${{ matrix.dockerfile }}
+          pull: true
+          progress: plain
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push scraper
+        if: matrix.service == 'scraper'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./scraper
           file: ./${{ matrix.dockerfile }}
           pull: true
           progress: plain
