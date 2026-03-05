@@ -197,6 +197,53 @@ export class ProfileManager {
 		}
 	}
 
+	/**
+	 * Reconcile DB "running/using" flags with actual in-memory runtime state.
+	 * Any busy profile that has no active process is reset to idle.
+	 */
+	async reconcileRuntimeStatuses(activeProfileNames: Iterable<string>): Promise<{ cleared: number; errors: string[] }> {
+		const active = new Set(
+			Array.from(activeProfileNames || [])
+				.map((name) => String(name || '').trim())
+				.filter(Boolean),
+		);
+
+		let profiles: Profile[] = [];
+		try {
+			profiles = await this.getProfiles();
+		} catch (e: any) {
+			const msg = `Failed to load profiles for runtime reconciliation: ${e?.message || e}`;
+			console.error(msg);
+			return { cleared: 0, errors: [msg] };
+		}
+
+		const stale = profiles.filter((p) => {
+			const name = String(p.name || '').trim();
+			if (!name) return false;
+			const status = String(p.status || '').trim().toLowerCase();
+			const isBusy = Boolean(p.using) || status === 'running';
+			return isBusy && !active.has(name);
+		});
+
+		if (stale.length === 0) return { cleared: 0, errors: [] };
+
+		let cleared = 0;
+		const errors: string[] = [];
+
+		for (const profile of stale) {
+			try {
+				await profilesSyncStatus(profile.name, 'idle', false);
+				cleared++;
+			} catch (e: any) {
+				const msg = `Failed to clear stale status for profile "${profile.name}": ${e?.message || e}`;
+				console.error(msg);
+				errors.push(msg);
+			}
+		}
+
+		return { cleared, errors };
+	}
+
 	// Start/Stop would involve spawning Python processes, which is complex.
 	// For now, we'll just toggle the status in DB to mimic "Start/Stop" signal if the backend watcher picks it up,
 	// BUT the Python backend is not a daemon watcher. It's an app.

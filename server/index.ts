@@ -20,6 +20,8 @@ import workflowsRouter from './api/workflows.js'
 import monitoringRouter from './api/monitoring.js'
 import displaysRouter from './api/displays.js'
 import { cleanupOrphanedProcesses } from './automation/process-manager.js'
+import { profileManager } from './data/profiles.js'
+import { profileProcesses } from './store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 
 
@@ -85,10 +87,28 @@ app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
 const PORT = process.env.SERVER_PORT || 3001
 
-// Clean up any orphaned processes from previous server runs
-cleanupOrphanedProcesses().then(() => {
+async function startServer(): Promise<void> {
+    // Clean up any orphaned processes from previous server runs
+    await cleanupOrphanedProcesses()
+
+    // Reset stale profile runtime flags left behind by unexpected restarts.
+    const reconciled = await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
+    if (reconciled.cleared > 0) {
+        console.log(`[Server] Cleared stale running status for ${reconciled.cleared} profile(s)`)
+    }
+    if (reconciled.errors.length > 0) {
+        for (const err of reconciled.errors) {
+            console.error(`[Server] ${err}`)
+        }
+    }
+
     server.listen(PORT, () => {
         console.log(`[Server] API server running on http://localhost:${PORT}`)
         console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`)
     })
+}
+
+startServer().catch((err) => {
+    console.error('[Server] Startup failed:', err)
+    process.exit(1)
 })

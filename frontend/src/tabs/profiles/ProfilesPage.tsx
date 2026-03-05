@@ -37,6 +37,28 @@ export function ProfilesPage() {
 
   const selected = useMemo(() => profiles.find((p) => p.id === selectedId) ?? null, [profiles, selectedId])
 
+  // On page mount, reconcile stale runtime status left after app/container restarts.
+  useEffect(() => {
+    let active = true
+
+    const reconcileRuntimeState = async () => {
+      try {
+        await apiFetch<{ success: boolean; cleared?: number; errors?: string[] }>('/api/profiles/reconcile-runtime', { method: 'POST' })
+      } catch {
+        // Ignore reconcile errors here; regular refresh below still runs.
+      }
+
+      if (active) {
+        await refreshProfiles()
+      }
+    }
+
+    void reconcileRuntimeState()
+
+    return () => {
+      active = false
+    }
+  }, [refreshProfiles])
   // Ensure we have a selection if possible
   useEffect(() => {
     if (!selectedId && profiles.length > 0) {

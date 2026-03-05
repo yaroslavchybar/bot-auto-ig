@@ -92,8 +92,10 @@ router.post('/generate-fingerprint', async (req, res) => {
 })
 
 // Get all profiles
-router.get('/', async (req, res) => {
+router.get('/', async (_req, res) => {
     try {
+        // Keep DB runtime flags in sync with currently tracked processes.
+        await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
         const profiles = await profileManager.getProfiles()
         res.json(profiles)
     } catch (error) {
@@ -386,6 +388,15 @@ router.post('/:name/stop', async (req, res) => {
     }
 })
 
+router.post('/reconcile-runtime', async (_req, res) => {
+    try {
+        const result = await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
+        res.json({ success: true, ...result })
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message })
+    }
+})
 router.post('/sync-status', async (req, res) => {
     try {
         const { name, status, using } = req.body || {}

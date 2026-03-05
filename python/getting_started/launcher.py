@@ -19,6 +19,7 @@ from python.internal_systems.logging.logging_config import setup_logging
 from python.internal_systems.process_management.healthcheck import run_all_checks
 from python.browser_control.browser_setup import parse_proxy_string
 from python.browser_control.display_manager import DisplayManager
+from python.database_sync.profiles_client import ProfilesClient
 
 # Setup logging
 setup_logging()
@@ -29,6 +30,8 @@ _display_mgr = None
 _display_session = None
 _display_profile = None
 _display_workflow_id = "manual"
+_profile_name = None
+_profiles_client = None
 
 
 def emit_event(event_type: str, **data):
@@ -39,6 +42,17 @@ def emit_event(event_type: str, **data):
     except Exception:
         pass
 
+
+def _sync_profile_status(status: str, using: bool):
+    global _profiles_client
+    if not _profile_name:
+        return
+    try:
+        if _profiles_client is None:
+            _profiles_client = ProfilesClient()
+        _profiles_client.sync_profile_status(_profile_name, status, using)
+    except Exception as e:
+        logger.warning(f"Profile status sync failed for {_profile_name}: {e}")
 
 def _release_display():
     global _display_session
@@ -63,6 +77,7 @@ def _graceful_shutdown():
     if _cleanup_done:
         return
     _cleanup_done = True
+    _sync_profile_status("idle", False)
     _release_display()
     logger.info("Graceful shutdown initiated...")
     # Context manager in run_browser handles browser cleanup
@@ -107,6 +122,7 @@ if __name__ == "__main__":
     parser.add_argument("--workflow-id", type=str, default="manual", help="Workflow identifier for display session tracking")
     
     args = parser.parse_args()
+    _profile_name = args.name
 
     # Pre-flight Health Checks
     proxy_cfg = None
@@ -184,71 +200,74 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Display allocation failed for {args.name}: {e}")
 
+    _sync_profile_status("running", True)
+
     max_retries = 3
     retry_count = 0
-    
-    while True:
-        try:
-            run_browser(
-                profile_name=args.name, 
-                proxy_string=args.proxy, 
-                action=args.action, 
-                duration=args.duration, 
-                match_likes=args.match_likes,
-                match_comments=args.match_comments,
-                match_follows=args.match_follows,
-                carousel_watch_chance=args.carousel_watch_chance,
-                carousel_max_slides=args.carousel_max_slides,
-                watch_stories=bool(args.watch_stories),
-                stories_max=args.stories_max,
-                feed_duration=args.feed_duration,
-                reels_duration=args.reels_duration,
 
-                reels_match_likes=args.reels_match_likes,
-                reels_match_follows=args.reels_match_follows,
-                user_agent=args.user_agent,
-                os=args.os,
-                fingerprint_seed=getattr(args, 'fingerprint_seed', None),
-                fingerprint_os=getattr(args, 'fingerprint_os', None),
-                display=display_value,
-            )
-            logger.info("Session completed successfully.")
-            break
-            
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user.")
-            sys.exit(0)
-            
-        except Exception as e:
-            decision = classify_exception(e)
-            logger.error(f"Error encountered: {type(e).__name__}: {e}", extra={"decision": decision.name, "exception": str(e)})
-            
-            if decision == ErrorDecision.ABORT:
-                logger.critical("Fatal error or unknown exception. Aborting.")
-                sys.exit(1)
-                
-            elif decision in (ErrorDecision.RETRY, ErrorDecision.RESTART_BROWSER):
-                if retry_count >= max_retries:
-                    logger.error(f"Max retries ({max_retries}) reached. Aborting.")
+    try:
+        while True:
+            try:
+                run_browser(
+                    profile_name=args.name,
+                    proxy_string=args.proxy,
+                    action=args.action,
+                    duration=args.duration,
+                    match_likes=args.match_likes,
+                    match_comments=args.match_comments,
+                    match_follows=args.match_follows,
+                    carousel_watch_chance=args.carousel_watch_chance,
+                    carousel_max_slides=args.carousel_max_slides,
+                    watch_stories=bool(args.watch_stories),
+                    stories_max=args.stories_max,
+                    feed_duration=args.feed_duration,
+                    reels_duration=args.reels_duration,
+                    reels_match_likes=args.reels_match_likes,
+                    reels_match_follows=args.reels_match_follows,
+                    user_agent=args.user_agent,
+                    os=args.os,
+                    fingerprint_seed=getattr(args, "fingerprint_seed", None),
+                    fingerprint_os=getattr(args, "fingerprint_os", None),
+                    display=display_value,
+                )
+                logger.info("Session completed successfully.")
+                break
+
+            except KeyboardInterrupt:
+                logger.info("Interrupted by user.")
+                sys.exit(0)
+
+            except Exception as e:
+                decision = classify_exception(e)
+                logger.error(f"Error encountered: {type(e).__name__}: {e}", extra={"decision": decision.name, "exception": str(e)})
+
+                if decision == ErrorDecision.ABORT:
+                    logger.critical("Fatal error or unknown exception. Aborting.")
                     sys.exit(1)
-                
-                retry_count += 1
-                delay = (2 ** retry_count) + random.uniform(0, 1)
-                
-                if decision == ErrorDecision.RESTART_BROWSER:
-                    logger.warning(f"State stale. Restarting browser in {delay:.2f}s...")
-                else:
-                    logger.warning(f"Transient error. Retrying in {delay:.2f}s...")
-                    
-                time.sleep(delay)
-                continue
-                
-            elif decision == ErrorDecision.BACKOFF_AND_SLOW:
-                logger.warning("Rate limit detected. Backing off for 60s...")
-                time.sleep(60 + random.uniform(0, 10))
-                # Don't increment retry_count for rate limits, or maybe we should?
-                # If we get rate limited indefinitely, we might want to stop.
-                # But typically we want to wait it out.
-                continue
 
-    _release_display()
+                elif decision in (ErrorDecision.RETRY, ErrorDecision.RESTART_BROWSER):
+                    if retry_count >= max_retries:
+                        logger.error(f"Max retries ({max_retries}) reached. Aborting.")
+                        sys.exit(1)
+
+                    retry_count += 1
+                    delay = (2 ** retry_count) + random.uniform(0, 1)
+
+                    if decision == ErrorDecision.RESTART_BROWSER:
+                        logger.warning(f"State stale. Restarting browser in {delay:.2f}s...")
+                    else:
+                        logger.warning(f"Transient error. Retrying in {delay:.2f}s...")
+
+                    time.sleep(delay)
+                    continue
+
+                elif decision == ErrorDecision.BACKOFF_AND_SLOW:
+                    logger.warning("Rate limit detected. Backing off for 60s...")
+                    time.sleep(60 + random.uniform(0, 10))
+                    # Don't increment retry_count for rate limits, or maybe we should?
+                    # If we get rate limited indefinitely, we might want to stop.
+                    # But typically we want to wait it out.
+                    continue
+    finally:
+        _sync_profile_status("idle", False)
+        _release_display()
