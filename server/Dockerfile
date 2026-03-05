@@ -11,9 +11,8 @@ RUN apt-get update \
   python-is-python3 \
   ca-certificates \
   # Virtual display and window manager for headless=false
-  xvfb \
   fluxbox \
-  x11vnc \
+  tigervnc-standalone-server \
   novnc \
   websockify \
   # X11 dependencies for browsers

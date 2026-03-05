@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -84,7 +85,7 @@ class SessionInfo:
     owner_pid: int
     xvfb_pid: int = 0
     fluxbox_pid: int = 0
-    x11vnc_pid: int = 0
+    xvnc_pid: int = 0
     novnc_pid: int = 0
     status: str = "active"
     started_at: float = 0.0
@@ -114,7 +115,7 @@ class SessionInfo:
             "owner_pid": self.owner_pid,
             "xvfb_pid": self.xvfb_pid,
             "fluxbox_pid": self.fluxbox_pid,
-            "x11vnc_pid": self.x11vnc_pid,
+            "xvnc_pid": self.xvnc_pid,
             "novnc_pid": self.novnc_pid,
             "status": self.status,
             "started_at": self.started_at,
@@ -133,7 +134,7 @@ class SessionInfo:
             owner_pid=int(payload.get("owner_pid") or 0),
             xvfb_pid=int(payload.get("xvfb_pid") or 0),
             fluxbox_pid=int(payload.get("fluxbox_pid") or 0),
-            x11vnc_pid=int(payload.get("x11vnc_pid") or 0),
+            xvnc_pid=int(payload.get("xvnc_pid") or payload.get("x11vnc_pid") or 0),
             novnc_pid=int(payload.get("novnc_pid") or 0),
             status=str(payload.get("status") or "active"),
             started_at=float(payload.get("started_at") or 0.0),
@@ -210,7 +211,7 @@ class DisplayManager:
                 alive.append(session)
                 continue
 
-            for pid in (session.novnc_pid, session.x11vnc_pid, session.fluxbox_pid, session.xvfb_pid):
+            for pid in (session.novnc_pid, session.xvnc_pid, session.fluxbox_pid, session.xvfb_pid):
                 _terminate_pid(pid)
         return alive
 
@@ -219,6 +220,31 @@ class DisplayManager:
 
     def _spawn(self, cmd: List[str]) -> subprocess.Popen[Any]:
         return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def _xvnc_binary(self) -> str:
+        for candidate in ("Xvnc", "Xtigervnc"):
+            path = shutil.which(candidate)
+            if path:
+                return path
+        return "Xvnc"
+
+    def _xvnc_command(self, display: str, rfb_port: int) -> List[str]:
+        width = _env_int("XVNC_WIDTH", 1366)
+        height = _env_int("XVNC_HEIGHT", 768)
+        depth = _env_int("XVNC_DEPTH", 16)
+        return [
+            self._xvnc_binary(),
+            display,
+            "-geometry",
+            f"{width}x{height}",
+            "-depth",
+            str(depth),
+            "-rfbport",
+            str(rfb_port),
+            "-SecurityTypes",
+            "None",
+            "-AlwaysShared",
+        ]
 
     def _novnc_command(self, rfb_port: int, vnc_port: int) -> List[str]:
         novnc_proxy = "/usr/share/novnc/utils/novnc_proxy"
@@ -278,21 +304,19 @@ class DisplayManager:
             procs: Dict[str, subprocess.Popen[Any]] = {}
             try:
                 display = f":{session.display_num}"
-                procs["xvfb"] = self._spawn(["Xvfb", display, "-screen", "0", "1366x768x16"])
-                procs["fluxbox"] = self._spawn(["fluxbox", "-display", display])
-                procs["x11vnc"] = self._spawn(
-                    ["x11vnc", "-display", display, "-forever", "-nopw", "-shared", "-rfbport", str(session.rfb_port)]
-                )
+                procs["xvnc"] = self._spawn(self._xvnc_command(display, session.rfb_port))
                 if not _wait_for_port(session.rfb_port, timeout_s=12.0):
-                    raise RuntimeError(f"x11vnc did not open port {session.rfb_port}")
+                    raise RuntimeError(f"Xvnc did not open port {session.rfb_port}")
+
+                procs["fluxbox"] = self._spawn(["fluxbox", "-display", display])
 
                 procs["novnc"] = self._spawn(self._novnc_command(session.rfb_port, session.vnc_port))
                 if not _wait_for_port(session.vnc_port, timeout_s=12.0):
                     raise RuntimeError(f"noVNC did not open port {session.vnc_port}")
 
-                session.xvfb_pid = int(procs["xvfb"].pid or 0)
+                session.xvfb_pid = 0
                 session.fluxbox_pid = int(procs["fluxbox"].pid or 0)
-                session.x11vnc_pid = int(procs["x11vnc"].pid or 0)
+                session.xvnc_pid = int(procs["xvnc"].pid or 0)
                 session.novnc_pid = int(procs["novnc"].pid or 0)
                 session.status = "active"
                 session.started_at = time.time()
@@ -314,7 +338,7 @@ class DisplayManager:
                 raise
 
     def _stop_runtime_processes(self, procs: Dict[str, subprocess.Popen[Any]]) -> None:
-        for name in ("novnc", "x11vnc", "fluxbox", "xvfb"):
+        for name in ("novnc", "fluxbox", "xvnc", "xvfb"):
             proc = procs.get(name)
             if not proc:
                 continue
@@ -324,7 +348,7 @@ class DisplayManager:
                 pass
 
         deadline = time.time() + 3.0
-        for name in ("novnc", "x11vnc", "fluxbox", "xvfb"):
+        for name in ("novnc", "fluxbox", "xvnc", "xvfb"):
             proc = procs.get(name)
             if not proc:
                 continue
@@ -361,7 +385,7 @@ class DisplayManager:
                             break
 
                 if session:
-                    for pid in (session.novnc_pid, session.x11vnc_pid, session.fluxbox_pid, session.xvfb_pid):
+                    for pid in (session.novnc_pid, session.xvnc_pid, session.fluxbox_pid, session.xvfb_pid):
                         _terminate_pid(pid)
 
             with self._global_lock():
@@ -422,5 +446,6 @@ class DisplayManager:
                     fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
         for session in to_cleanup:
-            for child_pid in (session.novnc_pid, session.x11vnc_pid, session.fluxbox_pid, session.xvfb_pid):
+            for child_pid in (session.novnc_pid, session.xvnc_pid, session.fluxbox_pid, session.xvfb_pid):
                 _terminate_pid(child_pid)
+
