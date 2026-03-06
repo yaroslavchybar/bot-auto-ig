@@ -169,3 +169,6 @@ Thumbs.db
 *.backup
 
 .env.local
+
+# Codex / AI temporary directory
+.codex_tmp/
