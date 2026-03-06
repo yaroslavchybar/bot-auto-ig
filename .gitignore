@@ -172,3 +172,6 @@ Thumbs.db
 
 # Codex / AI temporary directory
 .codex_tmp/
+
+.codex/
+
