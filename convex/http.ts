@@ -41,7 +41,6 @@ function mapProfileToPython(profile: any): any {
 		proxy_type: profile.proxyType ?? null,
 		status: profile.status ?? null,
 		mode: profile.mode ?? null,
-		automation: typeof profile.automation === "boolean" ? profile.automation : false,
 		session_id: typeof profile.sessionId === "string" ? profile.sessionId : null,
 		Using: Boolean(profile.using),
 		test_ip: Boolean(profile.testIp),
@@ -244,7 +243,6 @@ http.route({
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
-				automation: body?.automation ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			});
@@ -271,7 +269,6 @@ http.route({
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
-				automation: body?.automation ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			} as any);
@@ -298,7 +295,6 @@ http.route({
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
-				automation: body?.automation ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			});

@@ -16,7 +16,6 @@ export type Profile = {
 	fingerprint_seed?: string;
 	fingerprint_os?: string;
 	test_ip?: boolean;
-	automation?: boolean;
 	status?: string;
 	using?: boolean;
 	login?: boolean;
@@ -37,7 +36,6 @@ export class ProfileManager {
 				fingerprint_seed: p.fingerprint_seed,
 				fingerprint_os: p.fingerprint_os,
 				test_ip: p.test_ip,
-				automation: Boolean(p.automation),
 				status: p.status,
 				using: p.Using,
 				login: p.login,
@@ -117,7 +115,6 @@ export class ProfileManager {
 				fingerprint_seed: profile.fingerprint_seed,
 				fingerprint_os: profile.fingerprint_os,
 				test_ip: profile.test_ip,
-				automation: profile.automation,
 				daily_scraping_limit: profile.daily_scraping_limit,
 			});
 		} catch (e) {
@@ -141,7 +138,6 @@ export class ProfileManager {
 				fingerprint_seed: profile.fingerprint_seed,
 				fingerprint_os: profile.fingerprint_os,
 				test_ip: profile.test_ip,
-				automation: profile.automation,
 				daily_scraping_limit: profile.daily_scraping_limit,
 			});
 		} catch (e) {

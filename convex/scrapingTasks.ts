@@ -6,16 +6,6 @@ function cleanString(val: unknown): string {
 	return String(val ?? "").trim();
 }
 
-function clampLimit(val: unknown): number {
-	const lim = Number.isFinite(Number(val)) ? Math.floor(Number(val)) : 200;
-	return Math.max(1, Math.min(5000, lim));
-}
-
-function cleanMode(val: unknown): "auto" | "manual" {
-	const s = cleanString(val).toLowerCase();
-	return s === "manual" ? "manual" : "auto";
-}
-
 function cleanStatus(val: unknown): "idle" | "running" | "paused" | "completed" | "failed" {
 	const s = cleanString(val).toLowerCase();
 	if (s === "running" || s === "paused" || s === "completed" || s === "failed") return s;
@@ -48,10 +38,7 @@ export const create = mutation({
 	args: {
 		name: v.string(),
 		kind: v.optional(v.string()),
-		mode: v.optional(v.string()),
-		profileId: v.optional(v.string()),
 		targetUsername: v.string(),
-		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const name = cleanString(args.name);
@@ -61,21 +48,12 @@ export const create = mutation({
 		if (!targetUsername) throw new Error("targetUsername is required");
 
 		const kind = cleanString(args.kind) || "followers";
-		const mode = cleanMode(args.mode);
-		const profileId = cleanString(args.profileId);
-
-		if (mode === "manual" && !profileId) {
-			throw new Error("profileId is required for manual mode");
-		}
 
 		const now = Date.now();
 		const id = await ctx.db.insert("scrapingTasks", {
 			name,
 			kind,
-			mode,
-			profileId: mode === "manual" ? profileId : undefined,
 			targetUsername,
-			limit: clampLimit(args.limit),
 			imported: false,
 			status: "idle",
 			createdAt: now,
@@ -118,20 +96,11 @@ export const update = mutation({
 		id: v.id("scrapingTasks"),
 		name: v.optional(v.string()),
 		kind: v.optional(v.string()),
-		mode: v.optional(v.string()),
-		profileId: v.optional(v.string()),
 		targetUsername: v.optional(v.string()),
-		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.get(args.id);
 		if (!existing) throw new Error("Task not found");
-
-		const nextMode = args.mode !== undefined ? cleanMode(args.mode) : (existing.mode as "auto" | "manual");
-		const nextProfileId = args.profileId !== undefined ? cleanString(args.profileId) : (existing.profileId ?? "");
-		if (nextMode === "manual" && !nextProfileId) {
-			throw new Error("profileId is required for manual mode");
-		}
 
 		const patch: Record<string, unknown> = { updatedAt: Date.now() };
 		if (args.name !== undefined) patch.name = cleanString(args.name) || existing.name;
@@ -141,9 +110,6 @@ export const update = mutation({
 			if (!cleaned) throw new Error("targetUsername is required");
 			patch.targetUsername = cleaned;
 		}
-		if (args.mode !== undefined) patch.mode = nextMode;
-		if (args.profileId !== undefined) patch.profileId = nextMode === "manual" ? nextProfileId : undefined;
-		if (args.limit !== undefined) patch.limit = clampLimit(args.limit);
 
 		await ctx.db.patch(args.id, patch);
 		return await ctx.db.get(args.id);

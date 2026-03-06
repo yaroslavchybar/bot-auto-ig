@@ -1,11 +1,13 @@
 // Shared helper functions for scraping API
 
-import { profilesList, profilesGetById, scrapingTasksStoreData, scrapingTasksGetStorageUrl } from '../../data/convex.js'
+import { profilesList, scrapingTasksStoreData, scrapingTasksGetStorageUrl } from '../../data/convex.js'
 import { EligibleProfile, ResumeTarget, ResumeState, HttpError } from './types.js'
 
 export { HttpError } from './types.js'
 
 export const SCRAPER_URL = process.env.SCRAPER_URL || 'http://scraper:3003'
+export const NO_ELIGIBLE_PROFILES_ERROR = 'No eligible profiles with proxy, sessionId, and remaining daily scraping capacity'
+export const CAPACITY_EXHAUSTED_ERROR = 'Daily scraping capacity exhausted before all targets were completed'
 
 // Clean and normalize target usernames from various input formats
 export function cleanTargets(raw: unknown): string[] {
@@ -24,12 +26,12 @@ export function cleanTargets(raw: unknown): string[] {
     .filter(Boolean)
 }
 
-// Get profiles eligible for scraping (automation=false, has sessionId, has proxy, within daily limit)
+// Get profiles eligible for scraping (has sessionId, has proxy, within daily limit)
 export async function getEligibleProfiles(): Promise<EligibleProfile[]> {
   const all = await profilesList()
   const eligible = (all || [])
     .filter((p: any) => {
-      if (!p || p.automation !== false || typeof p.session_id !== 'string' || !p.session_id.trim()) {
+      if (!p || typeof p.session_id !== 'string' || !p.session_id.trim()) {
         return false
       }
       // Require proxy for scraping
@@ -56,6 +58,21 @@ export async function getEligibleProfiles(): Promise<EligibleProfile[]> {
   return eligible
 }
 
+export function getRemainingDailyCapacity(profile: EligibleProfile): number | null {
+  if (profile.dailyLimit === null) {
+    return null
+  }
+  return Math.max(0, profile.dailyLimit - profile.dailyUsed)
+}
+
+export function getChunkLimitForProfile(profile: EligibleProfile, desiredChunkLimit: number): number {
+  const remainingCapacity = getRemainingDailyCapacity(profile)
+  if (remainingCapacity === null) {
+    return Math.max(1, desiredChunkLimit)
+  }
+  return Math.max(1, Math.min(desiredChunkLimit, remainingCapacity))
+}
+
 
 // Store scraped data in Convex file storage
 export async function storeScrapedDataIfNeeded(
@@ -76,43 +93,18 @@ export async function storeScrapedDataIfNeeded(
   }
 }
 
-// Pick a profile for scraping (auto or manual selection)
+// Pick the next eligible profile for auto-only scraping.
 export async function pickProfile(
-  distribution: string,
-  profileId: string
-): Promise<{ profile: { id: string; name: string; sessionId: string; proxy: string }; usedProfile: { id: string; name: string } }> {
-  if (distribution === 'auto') {
-    const eligible = await getEligibleProfiles()
-    if (eligible.length === 0) {
-      throw new HttpError(400, 'No eligible profiles (automation=false, sessionId set, and proxy configured)')
-    }
-    const profile = eligible[0]!
-    return { profile, usedProfile: { id: profile.id, name: profile.name } }
+  started: boolean
+): Promise<{ profile: EligibleProfile; usedProfile: { id: string; name: string } }> {
+  const eligible = await getEligibleProfiles()
+  if (eligible.length === 0) {
+    throw new HttpError(started ? 429 : 400, started ? CAPACITY_EXHAUSTED_ERROR : NO_ELIGIBLE_PROFILES_ERROR)
   }
-
-  if (!profileId) {
-    throw new HttpError(400, 'profileId is required (or use distribution="auto")')
-  }
-  
-  const profile = await profilesGetById(profileId)
-  if (!profile) throw new HttpError(404, 'Profile not found')
-  if (profile.automation === true) throw new HttpError(400, 'Profile automation must be false')
-  
-  const sessionId = String(profile.session_id || '').trim()
-  if (!sessionId) throw new HttpError(400, 'Profile sessionId is missing')
-
-  const proxy = String(profile.proxy || '').trim()
-  if (!proxy) throw new HttpError(400, 'Profile proxy is required for scraping')
-
-  const dailyLimit = typeof profile.daily_scraping_limit === 'number' ? profile.daily_scraping_limit : null
-  const dailyUsed = typeof profile.daily_scraping_used === 'number' ? profile.daily_scraping_used : 0
-  if (dailyLimit !== null && dailyUsed >= dailyLimit) {
-    throw new HttpError(429, `Profile ${profile.name} has reached daily scraping limit (${dailyLimit})`)
-  }
-
+  const profile = eligible[0]!
   return {
-    profile: { id: profileId, name: profile.name, sessionId, proxy },
-    usedProfile: { id: profileId, name: profile.name }
+    profile,
+    usedProfile: { id: profile.id, name: profile.name }
   }
 }
 
@@ -120,20 +112,18 @@ export async function pickProfile(
 export function normalizeResume(
   raw: unknown,
   targets: string[],
-  safeLimit: number,
   kind: 'followers' | 'following',
   isResume: boolean
 ): ResumeState {
   const now = Date.now()
   if (!isResume) {
     const perTarget = targets.map((t) => ({ targetUsername: t, cursor: null, scrapedTotal: 0, done: false }))
-    return { version: 1, kind, limit: safeLimit, perTarget, done: false, updatedAt: now }
+    return { version: 2, kind, perTarget, done: false, updatedAt: now }
   }
 
   const base: ResumeState = {
-    version: 1,
+    version: 2,
     kind,
-    limit: safeLimit,
     perTarget: [],
     done: false,
     updatedAt: now,
@@ -167,7 +157,7 @@ export function normalizeResume(
     const scrapedTotalVal = existing ? existing.scrapedTotal : 0
     const cursorVal = existing ? existing.cursor : null
     const doneVal = existing ? existing.done : false
-    const doneFinal = doneVal || scrapedTotalVal >= safeLimit
+    const doneFinal = doneVal
     return { targetUsername: t, cursor: doneFinal ? null : cursorVal, scrapedTotal: scrapedTotalVal, done: doneFinal }
   })
   base.done = base.perTarget.every((p) => p.done)

@@ -19,8 +19,6 @@ import {
 import { Download, Eye, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
 
-type EligibleProfile = { id: string; name: string }
-
 function parseTargets(raw: string): string[] {
   const text = String(raw || '')
   if (!text.trim()) return []
@@ -49,7 +47,6 @@ type Props = {
   tasks: Doc<'scrapingTasks'>[]
   selectedId: Id<'scrapingTasks'> | null
   onSelect: (id: Id<'scrapingTasks'>) => void
-  eligibleProfiles: EligibleProfile[]
   running: boolean
   onRun: (task: Doc<'scrapingTasks'>) => void
   onResume: (task: Doc<'scrapingTasks'>) => void
@@ -62,7 +59,6 @@ export function TasksTable({
   tasks,
   selectedId,
   onSelect,
-  eligibleProfiles,
   running,
   onRun,
   onResume,
@@ -102,8 +98,6 @@ export function TasksTable({
             <TableHead>Name</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Target</TableHead>
-            <TableHead>Mode</TableHead>
-            <TableHead>Limit</TableHead>
             <TableHead>Last run</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Actions</TableHead>
@@ -111,11 +105,6 @@ export function TasksTable({
         </TableHeader>
         <TableBody>
           {tasks.map((task) => {
-            const taskMode = task.mode === 'manual' ? 'manual' : 'auto'
-            const profileName =
-              taskMode === 'manual'
-                ? eligibleProfiles.find((p) => p.id === task.profileId)?.name || task.profileId || '—'
-                : 'Auto distribution'
             const taskStatus =
               task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'failed' ? task.status : 'idle'
             const statusBadge =
@@ -169,17 +158,6 @@ export function TasksTable({
                       </span>
                     )
                   })()}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={taskMode === 'auto' ? 'outline' : 'secondary'}>{taskMode === 'auto' ? 'Auto' : 'Manual'}</Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground truncate max-w-[220px]">{profileName}</span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <span>{task.limit}</span>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm">{formatWhen(task.lastRunAt)}</TableCell>
                 <TableCell>

@@ -161,7 +161,6 @@ export function ProfilesPage() {
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
-            automation: Boolean(data.automation),
             daily_scraping_limit: typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
           },
         })
@@ -177,7 +176,6 @@ export function ProfilesPage() {
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
             test_ip: Boolean(data.test_ip),
-            automation: Boolean(data.automation),
             daily_scraping_limit: typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
           },
         })
@@ -235,7 +233,7 @@ export function ProfilesPage() {
       <div className="flex items-center justify-between px-6 py-4 border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Profiles</h2>
-          <p className="text-sm text-muted-foreground">Manage your browser automation instances.</p>
+          <p className="text-sm text-muted-foreground">Manage your browser profiles, proxies, and scraping capacity.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button

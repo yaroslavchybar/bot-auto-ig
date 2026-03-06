@@ -1,27 +1,26 @@
-// Core chunked scraping logic shared between followers-chunk and following-chunk
+// Core chunked scraping logic shared between followers-chunk and following-chunk.
 
 import { profilesIncrementDailyScrapingUsed } from '../../data/convex.js'
-import { ResumeState, HttpError } from './types.js'
+import { HttpError } from './types.js'
 import {
+  CAPACITY_EXHAUSTED_ERROR,
   SCRAPER_URL,
   cleanTargets,
-  parseLimit,
-  normalizeResume,
-  pickProfile,
-  loadExistingUsers,
   dedupeUsers,
-  storeScrapedDataIfNeeded,
+  getChunkLimitForProfile,
   handleError,
+  loadExistingUsers,
+  normalizeResume,
+  parseLimit,
+  pickProfile,
+  storeScrapedDataIfNeeded,
 } from './helpers.js'
 
 export type ChunkKind = 'followers' | 'following'
 
 interface ChunkRequestBody {
-  profileId?: string
   targetUsername?: string
   targetUsernames?: string | string[]
-  limit?: number
-  distribution?: string
   taskId?: string
   resume?: boolean
   resumeState?: unknown
@@ -63,7 +62,6 @@ async function fetchScrapeChunk(params: {
   authUsername: string
   sessionId: string
   targetUsername: string
-  limit: number
   chunkLimit: number
   maxPages: number
   cursor: string | null
@@ -76,7 +74,6 @@ async function fetchScrapeChunk(params: {
       auth_username: params.authUsername,
       session_id: params.sessionId,
       target_username: params.targetUsername,
-      limit: params.limit,
       chunk_limit: params.chunkLimit,
       max_pages: params.maxPages,
       cursor: params.cursor,
@@ -89,6 +86,10 @@ async function fetchScrapeChunk(params: {
   return { resp, text, payload }
 }
 
+function hasResumeProgress(resumeState: ReturnType<typeof normalizeResume>): boolean {
+  return resumeState.perTarget.some((target) => target.scrapedTotal > 0 || target.done || Boolean(target.cursor))
+}
+
 export async function handleChunkRequest(
   kind: ChunkKind,
   body: ChunkRequestBody,
@@ -96,11 +97,8 @@ export async function handleChunkRequest(
 ) {
   try {
     const {
-      profileId,
       targetUsername,
       targetUsernames,
-      limit,
-      distribution,
       taskId,
       resume,
       resumeState,
@@ -114,24 +112,18 @@ export async function handleChunkRequest(
       return res.status(400).json({ error: 'targetUsername is required' })
     }
 
-    const safeLimit = parseLimit(limit, 200, 1, 5000)
     const safeChunkLimit = parseLimit(chunkLimit, 200, 1, 5000)
     const safeMaxPages = parseLimit(maxPages, 10, 1, 100)
-
-    const dist = String(distribution || '').trim().toLowerCase()
     const isResume = Boolean(resume)
-    const cleanedProfileId = String(profileId || '').trim()
 
-    const resumeObj = normalizeResume(resumeState, targets, safeLimit, kind, isResume)
-    const next = resumeObj.perTarget.find((t) => !t.done) || null
-    
-    // All targets done
+    const resumeObj = normalizeResume(resumeState, targets, kind, isResume)
+    const next = resumeObj.perTarget.find((target) => !target.done) || null
+
     if (!next) {
       resumeObj.done = true
       resumeObj.updatedAt = Date.now()
       return res.json({
         kind,
-        limit: safeLimit,
         targets,
         done: true,
         resumeState: resumeObj,
@@ -139,34 +131,37 @@ export async function handleChunkRequest(
       })
     }
 
-    const remaining = Math.max(0, safeLimit - next.scrapedTotal)
-    if (remaining <= 0) {
-      next.done = true
-      next.cursor = null
-      resumeObj.done = resumeObj.perTarget.every((p) => p.done)
-      resumeObj.updatedAt = Date.now()
-      return res.json({
-        kind,
-        limit: safeLimit,
-        targets,
-        done: resumeObj.done,
-        resumeState: resumeObj,
-        ...(storageId ? { storageId } : {}),
-      })
+    let profileSelection: Awaited<ReturnType<typeof pickProfile>>
+    try {
+      profileSelection = await pickProfile(isResume || hasResumeProgress(resumeObj))
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 429 && error.message === CAPACITY_EXHAUSTED_ERROR) {
+        resumeObj.done = false
+        resumeObj.updatedAt = Date.now()
+        return res.json({
+          kind,
+          targets,
+          resumed: isResume,
+          done: false,
+          capacityExhausted: true,
+          error: CAPACITY_EXHAUSTED_ERROR,
+          resumeState: resumeObj,
+          ...(storageId ? { storageId } : {}),
+        })
+      }
+      throw error
     }
 
-    const effectiveChunk = Math.max(1, Math.min(safeChunkLimit, remaining))
-    const { profile, usedProfile } = await pickProfile(dist, cleanedProfileId)
+    const { profile, usedProfile } = profileSelection
+    let usedChunkLimit = getChunkLimitForProfile(profile, safeChunkLimit)
+    let usedMaxPages = safeMaxPages
 
     const endpoint = kind === 'followers' ? 'followers' : 'following'
-    let usedChunkLimit = effectiveChunk
-    let usedMaxPages = safeMaxPages
     let result = await fetchScrapeChunk({
       endpoint,
       authUsername: profile.name,
       sessionId: profile.sessionId,
       targetUsername: next.targetUsername,
-      limit: safeLimit,
       chunkLimit: usedChunkLimit,
       maxPages: usedMaxPages,
       cursor: next.cursor,
@@ -187,7 +182,6 @@ export async function handleChunkRequest(
           authUsername: profile.name,
           sessionId: profile.sessionId,
           targetUsername: next.targetUsername,
-          limit: safeLimit,
           chunkLimit: usedChunkLimit,
           maxPages: usedMaxPages,
           cursor: next.cursor,
@@ -226,23 +220,20 @@ export async function handleChunkRequest(
       }
     }
 
-    // Update resume state
     next.scrapedTotal = Math.max(0, next.scrapedTotal + Math.max(0, scraped))
     next.cursor = hasMore ? nextCursor : null
-    next.done = !hasMore || next.scrapedTotal >= safeLimit
+    next.done = !hasMore
     if (next.done) next.cursor = null
 
-    resumeObj.done = resumeObj.perTarget.every((p) => p.done)
+    resumeObj.done = resumeObj.perTarget.every((target) => target.done)
     resumeObj.updatedAt = Date.now()
 
-    // Merge with existing users if resuming
     const existingUsers = await loadExistingUsers(storageId, isResume)
     const mergedUsers = dedupeUsers(isResume ? [...existingUsers, ...users] : users)
 
     const storedStorageId = await storeScrapedDataIfNeeded(taskId, mergedUsers, {
       kind,
-      mode: dist === 'auto' ? 'auto' : 'manual',
-      limit: safeLimit,
+      autoOnly: true,
       chunkLimit: usedChunkLimit,
       maxPages: usedMaxPages,
       targets,
@@ -253,14 +244,10 @@ export async function handleChunkRequest(
         usedProfile,
         hasMore,
       },
-      ...(dist === 'auto' ? { distribution: 'auto' } : {}),
     })
 
     return res.json({
       kind,
-      mode: dist === 'auto' ? 'auto' : 'manual',
-      ...(dist === 'auto' ? { distribution: 'auto' } : { profileId: cleanedProfileId }),
-      limit: safeLimit,
       chunkLimit: usedChunkLimit,
       maxPages: usedMaxPages,
       targets,

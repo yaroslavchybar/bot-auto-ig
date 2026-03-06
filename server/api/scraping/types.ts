@@ -17,9 +17,8 @@ export type ResumeTarget = {
 }
 
 export type ResumeState = {
-  version: 1
+  version: 2
   kind: 'followers' | 'following'
-  limit: number
   perTarget: ResumeTarget[]
   done: boolean
   updatedAt: number

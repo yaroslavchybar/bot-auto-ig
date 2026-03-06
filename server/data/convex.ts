@@ -33,7 +33,6 @@ export type DbProfileRow = {
     name: string;
     proxy?: string | null;
     proxy_type?: string | null;
-    automation?: boolean | null;
     status?: string | null;
     mode?: string | null;
     session_id?: string | null;
@@ -55,7 +54,6 @@ export type ProfileInput = {
     fingerprint_seed?: string;
     fingerprint_os?: string;
     test_ip?: boolean;
-    automation?: boolean;
     daily_scraping_limit?: number | null;
 };
 
@@ -131,7 +129,6 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             fingerprintSeed: profile.fingerprint_seed,
             fingerprintOs: profile.fingerprint_os,
             testIp: profile.test_ip,
-            automation: profile.automation,
             dailyScrapingLimit: profile.daily_scraping_limit,
         },
     });
@@ -152,7 +149,6 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             fingerprintSeed: profile.fingerprint_seed,
             fingerprintOs: profile.fingerprint_os,
             testIp: profile.test_ip,
-            automation: profile.automation,
             dailyScrapingLimit: profile.daily_scraping_limit,
         },
     });

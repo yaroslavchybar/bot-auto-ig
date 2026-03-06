@@ -14,7 +14,6 @@ export default defineSchema({
 		proxyType: v.optional(v.string()),
 		status: v.optional(v.string()),
 		mode: v.optional(v.string()),
-		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
 		using: v.boolean(),
 		testIp: v.boolean(),
@@ -54,10 +53,7 @@ export default defineSchema({
 	scrapingTasks: defineTable({
 		name: v.string(),
 		kind: v.string(),
-		mode: v.string(),
-		profileId: v.optional(v.string()),
 		targetUsername: v.string(),
-		limit: v.number(),
 		imported: v.optional(v.boolean()),
 		status: v.optional(v.string()),
 		lastRunAt: v.optional(v.number()),

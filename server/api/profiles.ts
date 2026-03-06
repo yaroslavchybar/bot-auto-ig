@@ -188,7 +188,6 @@ router.post('/:name/start', async (req, res) => {
                     fingerprint_seed: newSeed,
                     fingerprint_os: defaultOs,
                     test_ip: profile.test_ip,
-                    automation: profile.automation,
                     daily_scraping_limit: profile.daily_scraping_limit,
                 })
                 profile.fingerprint_seed = newSeed

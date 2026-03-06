@@ -102,7 +102,7 @@ export function ProfileDetails({
                     <Box className="h-4 w-4" /> Metadata
                 </h4>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                    This profile is managed by the automation system. Be careful when modifying fingerprint settings as it may trigger re-authentication verification on target platforms.
+                    This profile can be used for manual browser sessions and, when it has a proxy and session, contribute scraping capacity. Be careful when modifying fingerprint settings as it may trigger re-authentication verification on target platforms.
                 </p>
             </div>
         </div>
