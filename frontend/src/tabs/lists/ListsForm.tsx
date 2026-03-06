@@ -27,7 +27,7 @@ export function ListsForm({ mode, initialData, saving, error: externalError, onS
     setName(initialData?.name || '')
     setLocalError(null)
     setSearchQuery('')
-  }, [initialData?.id, mode])
+  }, [initialData?.id, initialData?.name, mode])
 
   useEffect(() => {
     if (mode === 'edit' && initialData) {
@@ -72,15 +72,13 @@ export function ListsForm({ mode, initialData, saving, error: externalError, onS
 
   const error = externalError || localError
 
-  const filteredProfiles = useMemo(() => {
+  const filteredProfiles = profiles
+    .map((p, i) => ({ ...p, originalIndex: i }))
+    .filter((p) => {
     const query = searchQuery.trim().toLowerCase()
-    return profiles
-      .map((p, i) => ({ ...p, originalIndex: i }))
-      .filter((p) => {
-        if (!query) return true
-        return p.name.toLowerCase().includes(query) || p.profile_id.toLowerCase().includes(query)
-      })
-  }, [profiles, searchQuery])
+      if (!query) return true
+      return p.name.toLowerCase().includes(query) || p.profile_id.toLowerCase().includes(query)
+    })
 
   const selectedCount = useMemo(() => profiles.filter((p) => p.selected).length, [profiles])
   const changedCount = useMemo(

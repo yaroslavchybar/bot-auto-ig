@@ -7,11 +7,24 @@ import { LogsViewer } from '@/components/LogsViewer'
 import { VncViewer } from '@/components/VncViewer'
 import { VncTile, type DisplaySession } from './VncTile'
 
+type DisplayEvent = {
+  type?: unknown
+  status?: unknown
+  workflowId?: unknown
+  workflow_id?: unknown
+  profileName?: unknown
+  profile?: unknown
+  vncPort?: unknown
+  vnc_port?: unknown
+  displayNum?: unknown
+  display_num?: unknown
+}
+
 function sessionKey(session: DisplaySession): string {
   return `${session.workflowId}:${session.profileName}`
 }
 
-function getEventWorkflowId(event: any): string {
+function getEventWorkflowId(event: DisplayEvent): string {
   return String(event?.workflowId ?? event?.workflow_id ?? '').trim()
 }
 
@@ -27,7 +40,7 @@ function normalizeSessions(input: unknown): DisplaySession[] {
 
   for (const raw of input) {
     if (!raw || typeof raw !== 'object') continue
-    const item = raw as any
+    const item = raw as DisplayEvent
     const workflowId = getEventWorkflowId(item)
     const profileName = String(item.profileName ?? item.profile ?? '').trim()
     const vncPort = toNumber(item.vncPort ?? item.vnc_port)
@@ -72,7 +85,7 @@ export function VncPage() {
     }
   }, [])
 
-  const handleSocketEvent = useCallback((event: any) => {
+  const handleSocketEvent = useCallback((event: DisplayEvent) => {
     const eventType = String(event?.type || '')
     const workflowId = getEventWorkflowId(event)
     const profileName = String(event?.profileName ?? event?.profile ?? '').trim()

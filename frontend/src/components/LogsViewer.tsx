@@ -171,7 +171,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
           combined.push({
             ...w,
             profileName: w.profileName || undefined,
-          } as LogEntry)
+          })
         } else {
           if (w.profileName) {
             const existing = combined.find((p) => p.ts === w.ts && p.message === w.message)
@@ -198,7 +198,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
     const scopedProfile = String(profileName || '').trim().toLowerCase()
     return logs.filter((log) => {
       if (workflowId) {
-        const logWorkflowId = String((log as any).workflowId || '').trim()
+        const logWorkflowId = String(log.workflowId || '').trim()
         if (!logWorkflowId || logWorkflowId !== workflowId) {
           return false
         }

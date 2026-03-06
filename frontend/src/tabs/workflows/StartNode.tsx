@@ -2,9 +2,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
 import { Play, Settings } from 'lucide-react'
 
-export interface StartNodeData {
-	// Settings moved to specific nodes
-}
+export type StartNodeData = Record<string, never>
 
 function StartNodeComponent({ selected }: NodeProps<StartNodeData>) {
 
