@@ -1,0 +1,6 @@
+PASS: happy-path valid import passes
+PASS: negative invalid extension is rejected
+PASS: negative unknown activity ID fails hard
+PASS: negative missing edge endpoint fails
+
+4/4 scenarios passed

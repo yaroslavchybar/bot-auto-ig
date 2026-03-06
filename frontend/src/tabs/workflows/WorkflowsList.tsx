@@ -196,7 +196,7 @@ export function WorkflowsList({
 													<Copy className="mr-2 h-4 w-4" />
 													Duplicate
 												</DropdownMenuItem>
-												<DropdownMenuItem onClick={() => onExport(workflow)}>
+												<DropdownMenuItem onClick={() => onExport(workflow)} disabled={isRunning}>
 													<Download className="mr-2 h-4 w-4" />
 													Export JSON
 												</DropdownMenuItem>

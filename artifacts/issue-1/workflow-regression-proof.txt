@@ -1,0 +1,5 @@
+PASS: create/edit/duplicate/run wiring remains present
+PASS: runtime protocol files untouched by import/export change
+PASS: import remains create-only (no overwrite path)
+PASS: export action is running-state gated
+PASS: changed-files-count=8

@@ -51,3 +51,44 @@ Verification date: 2026-03-05
 
 - Drift matrix backlog items are marked resolved.
 - No unresolved docs-link or machine-local URI issues remain in scope.
+
+## Issue #1 QA Remediation Evidence (2026-03-06)
+
+Required command reruns (feature branch `issue-1` / PR #6 head):
+
+1. `npm --prefix frontend run lint`
+- Result: fail.
+- Error class: pre-existing frontend lint violations unrelated to workflow import/export changes.
+- Evidence: `artifacts/issue-1/frontend-lint.txt`.
+
+2. `npm --prefix frontend run build`
+- Result: pass.
+- Evidence: `artifacts/issue-1/frontend-build.txt`.
+
+3. `npm --prefix server run build`
+- Result: pass.
+- Evidence: `artifacts/issue-1/server-build.txt`.
+
+Baseline-vs-feature separation:
+- Baseline commit used: `02e0cc3` (parent of import/export implementation commit).
+- Baseline reruns:
+  - `npm --prefix .tmp_baseline_prev/frontend run lint` -> same lint failures as feature.
+  - `npm --prefix .tmp_baseline_prev/frontend run build` -> pass.
+  - `npm --prefix .tmp_baseline_prev/server run build` -> pass.
+- Evidence:
+  - `artifacts/issue-1/baseline-prev-frontend-lint.txt`
+  - `artifacts/issue-1/baseline-prev-frontend-build.txt`
+  - `artifacts/issue-1/baseline-prev-server-build.txt`
+
+Regression/runtime protocol proof:
+- Import contract scenarios (1 happy + 3 negative):
+  - `npx --yes tsx frontend/scripts/workflow-import-e2e.ts`
+  - Evidence: `artifacts/issue-1/workflow-import-e2e.txt`
+- Existing create/edit/duplicate/run behavior safety checks:
+  - `npx --yes tsx frontend/scripts/workflow-regression-proof.ts`
+  - Evidence: `artifacts/issue-1/workflow-regression-proof.txt`
+
+Task #5 execution evidence and canary mapping:
+- Local canary proof is attached under `artifacts/issue-1/`.
+- Production runtime is not executed from this environment.
+- Reproducible operator plan is attached in `artifacts/issue-1/task5-execution-plan.md`.
