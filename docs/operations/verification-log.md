@@ -81,7 +81,7 @@ Baseline-vs-feature separation:
   - `artifacts/issue-1/baseline-prev-server-build.txt`
 
 Regression/runtime protocol proof:
-- Import contract scenarios (1 happy + 3 negative):
+- Import contract scenarios (10 total: happy path, export envelope, collision rename, missing-list warning, invalid extension, unknown activity, missing edge endpoint, missing start node, file size cap, node cap):
   - `npx --yes tsx frontend/scripts/workflow-import-e2e.ts`
   - Evidence: `artifacts/issue-1/workflow-import-e2e.txt`
 - Existing create/edit/duplicate/run behavior safety checks:
