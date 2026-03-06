@@ -1,0 +1,11 @@
+{
+  "ts_utc": "2026-03-06T14:32:18Z",
+  "category": "workflow",
+  "text": "This repo currently has no dedicated frontend/browser E2E harness (no Playwright/Cypress/Vitest/Jest setup).\nFor workflow UI contract changes, provide closest integration proof via deterministic TypeScript scenario runners plus required lint/build commands.\nIf repeat UI-E2E work is expected, add a canonical E2E harness and document it in docs/overview/developer-workflow.md.",
+  "issue": "#1",
+  "pointers": [
+    "frontend/package.json",
+    "server/package.json",
+    "docs/overview/developer-workflow.md"
+  ]
+}
