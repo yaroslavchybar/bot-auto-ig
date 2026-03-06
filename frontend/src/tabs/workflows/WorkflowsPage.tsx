@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -14,9 +14,11 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Wifi, WifiOff } from 'lucide-react'
+import { Plus, RefreshCw, Upload, Wifi, WifiOff } from 'lucide-react'
+import { toast } from 'sonner'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { apiFetch } from '@/lib/api'
+import { getActivityById } from '@/lib/activities'
 import { WorkflowsList } from './WorkflowsList'
 import { WorkflowDialog } from './WorkflowDialog'
 import { WorkflowDetails } from './WorkflowDetails'
@@ -24,9 +26,11 @@ import { WorkflowFlowEditor } from './WorkflowFlowEditor'
 import { ScheduleDialog } from './ScheduleDialog'
 import type { Workflow } from './types'
 import type { Node, Edge } from 'reactflow'
+import { buildWorkflowExportEnvelope, validateWorkflowImport } from './workflowImportExport'
 
 export function WorkflowsPage() {
 	const convex = useConvex()
+	const importInputRef = useRef<HTMLInputElement | null>(null)
 	const [selectedId, setSelectedId] = useState<Id<'workflows'> | null>(null)
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
 	const [isEditOpen, setIsEditOpen] = useState(false)
@@ -44,6 +48,7 @@ export function WorkflowsPage() {
 
 	// Queries
 	const workflows = useQuery(api.workflows.list, {})
+	const lists = useQuery(api.lists.list, {})
 	const workflowsLoading = workflows === undefined && workflowsData === null
 	const workflowsList = useMemo(() => workflowsData ?? [], [workflowsData])
 
@@ -191,6 +196,71 @@ export function WorkflowsPage() {
 		[duplicateWorkflow]
 	)
 
+	const handleExport = useCallback((workflow: Workflow) => {
+		try {
+			const payload = buildWorkflowExportEnvelope({
+				name: workflow.name,
+				description: workflow.description,
+				nodes: workflow.nodes,
+				edges: workflow.edges,
+			})
+			const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+			const url = URL.createObjectURL(blob)
+			const link = document.createElement('a')
+			const safeName = workflow.name.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '') || 'workflow'
+			link.href = url
+			link.download = `${safeName}.workflow.json`
+			document.body.appendChild(link)
+			link.click()
+			document.body.removeChild(link)
+			URL.revokeObjectURL(url)
+			toast.success(`Exported "${workflow.name}"`)
+		} catch (e) {
+			setError(e instanceof Error ? e.message : String(e))
+		}
+	}, [])
+
+	const handleImportClick = useCallback(() => {
+		importInputRef.current?.click()
+	}, [])
+
+	const handleImportFile = useCallback(
+		async (event: ChangeEvent<HTMLInputElement>) => {
+			const file = event.target.files?.[0]
+			event.target.value = ''
+			if (!file) return
+
+			setSaving(true)
+			setError(null)
+			try {
+				const rawText = await file.text()
+				const imported = validateWorkflowImport({
+					fileName: file.name,
+					fileSizeBytes: file.size,
+					rawText,
+					existingWorkflowNames: workflowsList.map((workflow) => workflow.name),
+					existingListIds: (lists ?? []).map((list) => String(list._id)),
+					resolveActivityById: getActivityById,
+				})
+
+				const created = await createWorkflow(imported.workflow)
+				if (created?._id) {
+					setSelectedId(created._id)
+				}
+
+				imported.warnings.forEach((warning) => toast.warning(warning))
+				toast.success(`Imported "${imported.workflow.name}"`)
+			} catch (e) {
+				const message = e instanceof Error ? e.message : String(e)
+				setError(message)
+				toast.error(message)
+			} finally {
+				setSaving(false)
+			}
+		},
+		[createWorkflow, lists, workflowsList]
+	)
+
 	const handleToggleActive = useCallback(
 		async (workflow: Workflow) => {
 			setError(null)
@@ -321,10 +391,21 @@ export function WorkflowsPage() {
 						<RefreshCw className={`mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`} />
 						Refresh
 					</Button>
+					<Button variant="outline" size="sm" onClick={handleImportClick} disabled={saving}>
+						<Upload className="mr-2 h-4 w-4" />
+						Import JSON
+					</Button>
 					<Button size="sm" onClick={handleCreate} disabled={saving}>
 						<Plus className="mr-2 h-4 w-4" />
 						New Workflow
 					</Button>
+					<input
+						ref={importInputRef}
+						type="file"
+						accept=".json,application/json"
+						className="hidden"
+						onChange={(event) => void handleImportFile(event)}
+					/>
 				</div>
 			</div>
 
@@ -350,6 +431,7 @@ export function WorkflowsPage() {
 						onEditFlow={handleEditFlow}
 						onEditSchedule={handleEditSchedule}
 						onDuplicate={handleDuplicate}
+						onExport={handleExport}
 						onDelete={handleDelete}
 						onViewDetails={handleViewDetails}
 					/>

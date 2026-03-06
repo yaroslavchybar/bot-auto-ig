@@ -21,6 +21,14 @@
 
 - Workflow run denied:
   - check `WORKFLOW_MAX_CONCURRENCY` cap.
+- Workflow JSON import rejected (`Import accepts only .json files`):
+  - rename/export using `.json` extension, then retry.
+- Workflow JSON import rejected (`Invalid format` / `Unsupported version`):
+  - ensure envelope uses `format: bot-auto-ig.workflow` and `version: 1.0`.
+- Workflow JSON import rejected (`Unknown activity IDs: ...`):
+  - open workflow editor and replace/remove unsupported activity nodes before export/import.
+- Workflow JSON import warning (`Select List node references missing list IDs`):
+  - import succeeds; create missing lists or remap `select_list.sourceLists` in the editor.
 - No eligible scraping profiles:
   - verify profile login/runtime/list assignment state.
 - Scraping target failures:
@@ -53,6 +61,8 @@ Expected: no matches.
 - `frontend/src/main.tsx`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/tabs/scraping/ScrapingPage.tsx`
+- `frontend/src/tabs/workflows/WorkflowsPage.tsx`
+- `frontend/src/tabs/workflows/workflowImportExport.ts`
 - `frontend/src/tabs/monitoring/MonitoringPage.tsx`
 - `server/api/scraping/*`
 - `server/api/workflows.ts`

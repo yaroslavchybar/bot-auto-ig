@@ -1,0 +1,55 @@
+
+> frontend@0.0.0 lint
+> eslint .
+
+
+C:\Users\yaros\Downloads\anti-recover\frontend\src\components\LogsViewer.tsx
+  201:46  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\yaros\Downloads\anti-recover\frontend\src\lib\activities\components\inputs\ListSelectInput.tsx
+  41:38  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\yaros\Downloads\anti-recover\frontend\src\tabs\lists\ListsForm.tsx
+  30:6   warning  React Hook useEffect has a missing dependency: 'initialData?.name'. Either include it or remove the dependency array. If 'setName' needs the current value of 'initialData.name', you can also switch to useReducer instead of useState and read 'initialData.name' in the reducer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                react-hooks/exhaustive-deps
+  75:28  error    Compilation Skipped: Existing memoization could not be preserved
+
+React Compiler has skipped optimizing this component because the existing manual memoization could not be preserved. This value was memoized in source but not in compilation output.
+
+C:\Users\yaros\Downloads\anti-recover\frontend\src\tabs\lists\ListsForm.tsx:75:28
+  73 |   const error = externalError || localError
+  74 |
+> 75 |   const filteredProfiles = useMemo(() => {
+     |                            ^^^^^^^^^^^^^^^
+> 76 |     const query = searchQuery.trim().toLowerCase()
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 77 |     return profiles
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 78 |       .map((p, i) => ({ ...p, originalIndex: i }))
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 79 |       .filter((p) => {
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 80 |         if (!query) return true
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 81 |         return p.name.toLowerCase().includes(query) || p.profile_id.toLowerCase().includes(query)
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 82 |       })
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 83 |   }, [profiles, searchQuery])
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Could not preserve existing memoization
+  84 |
+  85 |   const selectedCount = useMemo(() => profiles.filter((p) => p.selected).length, [profiles])
+  86 |   const changedCount = useMemo(  react-hooks/preserve-manual-memoization
+
+C:\Users\yaros\Downloads\anti-recover\frontend\src\tabs\vnc\VncPage.tsx
+  14:36  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  30:25  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  75:49  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\yaros\Downloads\anti-recover\frontend\src\tabs\workflows\StartNode.tsx
+  5:18  error  An empty interface declaration allows any non-nullish value, including literals like `0` and `""`.
+- If that's what you want, disable this lint rule with an inline comment or configure the 'allowInterfaces' rule option.
+- If you want a type meaning "any object", you probably want `object` instead.
+- If you want a type meaning "any value", you probably want `unknown` instead  @typescript-eslint/no-empty-object-type
+
+✖ 8 problems (7 errors, 1 warning)
+

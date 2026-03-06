@@ -37,6 +37,35 @@ Primary tabs in app shell:
 - Convex client consumes `VITE_CONVEX_URL` (with fallback env prefix support).
 - Scraping tab may read storage URLs via Convex HTTP domain conversion logic.
 
+## Workflow JSON Import/Export
+
+Workflows tab supports:
+- `Import JSON` from header actions.
+- `Export JSON` from each workflow row action menu.
+
+Export contract:
+- Envelope shape:
+  - `format: 'bot-auto-ig.workflow'`
+  - `version: '1.0'`
+  - `exportedAt` (ISO timestamp)
+  - `workflow` with allowed fields only: `name`, `description`, `nodes`, `edges`
+- Export never includes runtime metadata (`_id`, status, schedule, timestamps, etc).
+
+Import contract and validation:
+- Accepts `.json` files only.
+- Max file size: `2MB` (`2097152` bytes).
+- Max graph size: `nodes <= 500`, `edges <= 2000`.
+- Requires valid envelope format/version and required `workflow` fields.
+- Graph checks:
+  - node IDs must be non-empty and unique
+  - every edge `source`/`target` must reference an existing node ID
+  - at least one start node (`type === 'start'` or `id === 'start_node'`)
+- Unknown activity IDs (`getActivityById`) hard-fail and list offending IDs.
+- `select_list.config.sourceLists` IDs missing from current lists are warning-only.
+- Persistence is create-only (`api.workflows.create`), never overwrite existing workflows.
+- Name collision auto-rename:
+  - `"<name> (imported YYYY-MM-DD HH:mm)"`
+
 ## Environment Variables
 
 - `VITE_CLERK_PUBLISHABLE_KEY` (required)
@@ -62,5 +91,8 @@ npm --prefix frontend run preview
 - `frontend/src/hooks/useWebSocket.ts`
 - `frontend/src/tabs/accounts/useDataUploader.ts`
 - `frontend/src/tabs/scraping/ScrapingPage.tsx`
+- `frontend/src/tabs/workflows/WorkflowsPage.tsx`
+- `frontend/src/tabs/workflows/WorkflowsList.tsx`
+- `frontend/src/tabs/workflows/workflowImportExport.ts`
 - `frontend/src/tabs/monitoring/MonitoringPage.tsx`
 - `frontend/vite.config.ts`
