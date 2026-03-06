@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Profile } from './types'
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -42,7 +41,6 @@ export function ProfileForm({
   const [draft, setDraft] = useState<Partial<Profile>>({
     name: '',
     test_ip: false,
-    automation: false,
     login: false,
     using: false,
     status: 'idle',
@@ -103,13 +101,6 @@ export function ProfileForm({
     } else if (connection === 'direct') {
       finalData.proxy = '';
       finalData.proxy_type = '';
-    }
-
-    // Validate: automation=false requires proxy
-    const hasProxy = connection === 'proxy' && finalData.proxy && finalData.proxy.trim()
-    if (finalData.automation === false && !hasProxy) {
-      setLocalError('Proxy is required when automation is disabled (for scraping)')
-      return
     }
 
     setLocalError(null)
@@ -245,67 +236,49 @@ export function ProfileForm({
 
           <Separator />
 
-          <div className="flex items-center justify-between py-2">
-            <Label htmlFor="automation" className="cursor-pointer flex flex-col gap-0.5">
-              <span className="font-medium">Automation Mode</span>
-              <span className="text-xs text-muted-foreground font-normal">Enable additional scraping protections</span>
-            </Label>
-            <Checkbox
-              id="automation"
-              checked={Boolean(draft.automation)}
-              onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, automation: Boolean(checked) }))}
-              disabled={saving}
-            />
-          </div>
-
-          {draft.automation === false && (
-            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-              <Separator className="mb-4" />
-              <div className="grid gap-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium flex items-center gap-2">
-                    <Target className="h-4 w-4" /> Daily Scraping Limit
-                  </Label>
-                </div>
-                <div className="p-4 border rounded-md bg-card space-y-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="daily_scraping_limit" className="text-xs text-muted-foreground">
-                      Maximum items to scrape per day
-                    </Label>
-                    <Input
-                      id="daily_scraping_limit"
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={draft.daily_scraping_limit ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value.trim()
-                        setDraft((prev) => ({
-                          ...prev,
-                          daily_scraping_limit: val === '' ? null : Math.max(0, Math.floor(Number(val)))
-                        }))
-                      }}
-                      disabled={saving}
-                      placeholder="Leave empty for unlimited"
-                      className="h-9"
-                    />
-                    <p className="text-[10px] text-muted-foreground ml-1">
-                      Set a daily limit to prevent overuse. Leave empty for no limit.
-                    </p>
-                  </div>
-                  {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
-                    <div className="text-xs bg-muted/50 p-2 rounded border border-border/50">
-                      <span className="text-muted-foreground">Used today: </span>
-                      <span className="font-semibold">{draft.daily_scraping_used}</span>
-                      {typeof draft.daily_scraping_limit === 'number' && (
-                        <span className="text-muted-foreground"> / {draft.daily_scraping_limit}</span>
-                      )}
-                    </div>
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium flex items-center gap-2">
+                <Target className="h-4 w-4" /> Daily Scraping Limit
+              </Label>
+            </div>
+            <div className="p-4 border rounded-md bg-card space-y-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="daily_scraping_limit" className="text-xs text-muted-foreground">
+                  Maximum items to scrape per day
+                </Label>
+                <Input
+                  id="daily_scraping_limit"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={draft.daily_scraping_limit ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value.trim()
+                    setDraft((prev) => ({
+                      ...prev,
+                      daily_scraping_limit: val === '' ? null : Math.max(0, Math.floor(Number(val)))
+                    }))
+                  }}
+                  disabled={saving}
+                  placeholder="Leave empty for unlimited"
+                  className="h-9"
+                />
+                <p className="text-[10px] text-muted-foreground ml-1">
+                  Controls how much scraping capacity this profile can contribute each day. Leave empty for no limit.
+                </p>
+              </div>
+              {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
+                <div className="text-xs bg-muted/50 p-2 rounded border border-border/50">
+                  <span className="text-muted-foreground">Used today: </span>
+                  <span className="font-semibold">{draft.daily_scraping_used}</span>
+                  {typeof draft.daily_scraping_limit === 'number' && (
+                    <span className="text-muted-foreground"> / {draft.daily_scraping_limit}</span>
                   )}
                 </div>
-              </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </ScrollArea>
 

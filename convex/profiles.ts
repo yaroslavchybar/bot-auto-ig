@@ -103,7 +103,6 @@ export const create = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
-		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
 		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
@@ -111,14 +110,8 @@ export const create = mutation({
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 		const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
-		const proxyTrimmed = typeof proxy === "string" ? proxy.trim() : "";
 		const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 		const dailyLimit = typeof args.dailyScrapingLimit === "number" ? args.dailyScrapingLimit : undefined;
-
-		// Validate: automation=false requires proxy
-		if (args.automation === false && !proxyTrimmed) {
-			throw new Error("Proxy is required when automation is disabled (for scraping)");
-		}
 
 		const id = await ctx.db.insert("profiles", {
 			createdAt: Date.now(),
@@ -127,7 +120,6 @@ export const create = mutation({
 			proxyType: args.proxyType,
 			status: "idle",
 			mode: computeProfileMode(proxy),
-			automation: args.automation ?? false,
 			sessionId: sessionIdRaw ? sessionIdRaw : undefined,
 			using: false,
 			testIp: args.testIp ?? false,
@@ -152,7 +144,6 @@ export const updateByName = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
-		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
 		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
@@ -168,25 +159,11 @@ export const updateByName = mutation({
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 
-		// Determine final values for validation BEFORE building update object
-		const finalProxy = typeof args.proxy === "string" ? args.proxy : existing.proxy;
-		const finalAutomation = typeof args.automation === "boolean" ? args.automation : existing.automation;
-
-		// Validate: automation=false requires proxy - do this FIRST before any updates
-		const proxyTrimmed = typeof finalProxy === "string" ? finalProxy.trim() : "";
-		if (finalAutomation === false && !proxyTrimmed) {
-			throw new Error("Proxy is required when automation is disabled (for scraping)");
-		}
-
-		// Now build the update object after validation passed
 		const next: Record<string, unknown> = { name };
 
 		if (typeof args.proxy === "string") {
 			next.proxy = args.proxy;
 			next.mode = computeProfileMode(args.proxy);
-		}
-		if (typeof args.automation === "boolean") {
-			next.automation = args.automation;
 		}
 		if (typeof args.proxyType === "string") {
 			next.proxyType = args.proxyType;
@@ -225,7 +202,6 @@ export const updateById = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
-		automation: v.optional(v.boolean()),
 		sessionId: v.optional(v.string()),
 		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
@@ -235,25 +211,11 @@ export const updateById = mutation({
 		const existing = await ctx.db.get(args.profileId);
 		if (!existing) throw new Error("Profile not found");
 
-		// Determine final values for validation BEFORE building update object
-		const finalProxy = typeof args.proxy === "string" ? args.proxy : existing.proxy;
-		const finalAutomation = typeof args.automation === "boolean" ? args.automation : existing.automation;
-
-		// Validate: automation=false requires proxy - do this FIRST before any updates
-		const proxyTrimmed = typeof finalProxy === "string" ? finalProxy.trim() : "";
-		if (finalAutomation === false && !proxyTrimmed) {
-			throw new Error("Proxy is required when automation is disabled (for scraping)");
-		}
-
-		// Now build the update object after validation passed
 		const next: Record<string, unknown> = { name };
 
 		if (typeof args.proxy === "string") {
 			next.proxy = args.proxy;
 			next.mode = computeProfileMode(args.proxy);
-		}
-		if (typeof args.automation === "boolean") {
-			next.automation = args.automation;
 		}
 		if (typeof args.proxyType === "string") {
 			next.proxyType = args.proxyType;

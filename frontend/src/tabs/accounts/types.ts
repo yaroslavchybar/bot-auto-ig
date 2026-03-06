@@ -42,9 +42,7 @@ export interface ScrapingTaskRow {
     _id: string
     name: string
     kind: string
-    mode?: string
     targetUsername?: string
-    limit?: number
     status?: string
     storageId?: string
     imported?: boolean

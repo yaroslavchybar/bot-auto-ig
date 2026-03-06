@@ -70,7 +70,6 @@ class FollowersScrapeRequest(BaseModel):
     auth_username: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
     target_username: str = Field(min_length=1)
-    limit: int = Field(default=200, ge=1, le=5000)
     cursor: Optional[str] = None
     chunk_limit: int = Field(default=200, ge=1, le=5000)
     max_pages: int = Field(default=10, ge=1, le=100)
@@ -81,7 +80,6 @@ class FollowingScrapeRequest(BaseModel):
     auth_username: str = Field(min_length=1)
     session_id: str = Field(min_length=1)
     target_username: str = Field(min_length=1)
-    limit: int = Field(default=200, ge=1, le=5000)
     cursor: Optional[str] = None
     chunk_limit: int = Field(default=200, ge=1, le=5000)
     max_pages: int = Field(default=10, ge=1, le=100)
@@ -110,14 +108,12 @@ async def scrape_followers(req: FollowersScrapeRequest):
     if not user_id:
         raise HTTPException(status_code=404, detail="Failed to resolve target user id")
 
-    overall_limit = int(req.limit)
-    chunk_limit = min(int(req.chunk_limit), overall_limit)
     users, next_cursor, has_more = Get_Followers.get_data_chunk(
         user_id=user_id,
         username=target_username,
         session_id=session_id,
         cursor=cursor,
-        chunk_limit=chunk_limit,
+        chunk_limit=int(req.chunk_limit),
         max_pages=int(req.max_pages),
         proxy=proxy,
     )
@@ -125,8 +121,7 @@ async def scrape_followers(req: FollowersScrapeRequest):
     return {
         "targetUsername": target_username,
         "scraped": len(users or []),
-        "limit": overall_limit,
-        "chunkLimit": chunk_limit,
+        "chunkLimit": int(req.chunk_limit),
         "cursor": cursor,
         "nextCursor": next_cursor,
         "hasMore": bool(has_more),
@@ -152,14 +147,12 @@ async def scrape_following(req: FollowingScrapeRequest):
     if not user_id:
         raise HTTPException(status_code=404, detail="Failed to resolve target user id")
 
-    overall_limit = int(req.limit)
-    chunk_limit = min(int(req.chunk_limit), overall_limit)
     users, next_cursor, has_more = Get_Following.get_data_chunk(
         user_id=user_id,
         username=target_username,
         session_id=session_id,
         cursor=cursor,
-        chunk_limit=chunk_limit,
+        chunk_limit=int(req.chunk_limit),
         max_pages=int(req.max_pages),
         proxy=proxy,
     )
@@ -167,8 +160,7 @@ async def scrape_following(req: FollowingScrapeRequest):
     return {
         "targetUsername": target_username,
         "scraped": len(users or []),
-        "limit": overall_limit,
-        "chunkLimit": chunk_limit,
+        "chunkLimit": int(req.chunk_limit),
         "cursor": cursor,
         "nextCursor": next_cursor,
         "hasMore": bool(has_more),

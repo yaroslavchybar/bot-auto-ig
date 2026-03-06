@@ -1,5 +1,4 @@
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,16 +16,9 @@ type Props = {
   onTaskNameChange: (next: string) => void
   kind: 'followers' | 'following'
   onKindChange: (next: 'followers' | 'following') => void
-  autoMode: boolean
-  onAutoModeChange: (next: boolean) => void
-  selectedProfileId: string
-  onSelectedProfileIdChange: (next: string) => void
   targetUsername: string
   onTargetUsernameChange: (next: string) => void
-  limit: string
-  onLimitChange: (next: string) => void
   eligibleProfiles: EligibleProfile[]
-  eligibleSet: Set<string>
   eligibleLoading: boolean
   submitLabel: string
   submitDisabled: boolean
@@ -44,16 +36,9 @@ export function TaskDialog({
   onTaskNameChange,
   kind,
   onKindChange,
-  autoMode,
-  onAutoModeChange,
-  selectedProfileId,
-  onSelectedProfileIdChange,
   targetUsername,
   onTargetUsernameChange,
-  limit,
-  onLimitChange,
   eligibleProfiles,
-  eligibleSet,
   eligibleLoading,
   submitLabel,
   submitDisabled,
@@ -92,40 +77,12 @@ export function TaskDialog({
             </Select>
           </div>
 
-          <div className="rounded-md border bg-background p-3 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-medium">Auto distribution</div>
-              <div className="text-xs text-muted-foreground mt-1">Split work across all eligible profiles.</div>
-            </div>
-            <Checkbox checked={autoMode} onCheckedChange={(v) => onAutoModeChange(Boolean(v))} />
-          </div>
-
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Profile</Label>
-              <Select value={selectedProfileId} onValueChange={onSelectedProfileIdChange} disabled={autoMode}>
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      autoMode
-                        ? 'Auto distribution enabled'
-                        : eligibleLoading
-                          ? 'Loading eligible profiles...'
-                          : 'Select a profile'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {eligibleProfiles.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!autoMode && selectedProfileId && !eligibleSet.has(selectedProfileId) && (
-                <div className="text-xs text-destructive">Selected profile is not eligible.</div>
-              )}
+              <Label>Assignment</Label>
+              <div className="rounded-md border bg-background px-3 py-2 text-sm text-muted-foreground">
+                Tasks are distributed automatically across eligible profiles.
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -145,22 +102,6 @@ export function TaskDialog({
                 className="min-h-[140px]"
               />
               <div className="text-xs text-muted-foreground">One username per line. Task runs each one.</div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor={`${idPrefix}_limit`}>Total Limit</Label>
-            <Input
-              id={`${idPrefix}_limit`}
-              inputMode="numeric"
-              placeholder="200"
-              value={limit}
-              onChange={(e) => onLimitChange(e.target.value)}
-            />
-            <div className="text-xs text-muted-foreground">
-              {autoMode 
-                ? 'Work will be distributed across profiles based on their daily limits.'
-                : 'Maximum items to scrape for the selected profile.'}
             </div>
           </div>
 
