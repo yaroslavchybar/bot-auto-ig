@@ -5,13 +5,17 @@
   "scripts": {
     "build": "npm --prefix server run build",
     "dev": "npm --prefix server run dev",
-    "start": "npm --prefix server run start"
+    "start": "npm --prefix server run start",
+    "test:convex": "vitest run --config vitest.convex.config.ts"
   },
   "dependencies": {
     "@convex-dev/crons": "^0.2.0",
     "convex": "^1.31.2"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "@types/node": "^24.10.1",
+    "convex-test": "^0.0.41",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

@@ -1,22 +1,12 @@
 {
-    "compilerOptions": {
-        "target": "ESNext",
-        "lib": [
-            "ES2021",
-            "DOM",
-            "DOM.Iterable"
-        ],
-        "module": "ESNext",
-        "moduleResolution": "Bundler",
-        "allowSyntheticDefaultImports": true,
-        "strict": true,
-        "noEmit": true,
-        "skipLibCheck": true
-    },
-    "include": [
-        "./**/*"
-    ],
-    "exclude": [
-        "_generated"
-    ]
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "./_generated/**/*.d.ts"
+  ]
 }
