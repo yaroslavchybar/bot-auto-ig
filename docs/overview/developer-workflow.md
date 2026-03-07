@@ -6,6 +6,7 @@ From repository root:
 - `npm run dev` (server dev mode)
 - `npm run build` (server build via root script)
 - `npm run start` (server start via root script)
+- `npm run test:convex` (Convex self-test harness via Vitest + convex-test)
 - `docker compose up --build` (full stack)
 
 Module-level:
@@ -28,6 +29,8 @@ Module-level:
 ## Testing Expectations
 
 - Python tests are `test_*.py` in `python/tests/` (unittest style, pytest-compatible execution).
+- Convex tests live under `convex/tests/` and run with `npm run test:convex`.
+- Any change touching `convex/` must add or update relevant Convex tests.
 - For frontend/server changes without dedicated tests, run lint + build.
 - Add/update tests when changing automation logic, parsing, retries, or state handling.
 

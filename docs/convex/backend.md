@@ -48,9 +48,17 @@ Current daily jobs:
 ```bash
 npx convex dev
 npx convex deploy
+npm run test:convex
 ```
 
 Treat `convex/_generated/*` as generated artifacts.
+
+## Local Verification
+
+- `npm run test:convex` runs the isolated Convex self-test harness with `convex-test` + Vitest.
+- The local suite covers the owned top-level `convex/*.ts` cohort and excludes `convex/_generated/*`.
+- Tests must remain deterministic and local-only: no live Convex backend, no real outbound network calls, no deployed data writes.
+- Any change under `convex/` must add or update relevant tests in `convex/tests/`.
 
 ## Verified Against
 

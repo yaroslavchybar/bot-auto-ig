@@ -1,0 +1,40 @@
+import { expect, test } from 'vitest'
+
+import { api } from '../_generated/api'
+import { createConvexTest, insertDoc } from './helpers'
+
+test('cleans scraper-auto-only task runtime state and resets running tasks', async () => {
+  const t = createConvexTest()
+  const task = await insertDoc(t, 'scrapingTasks', {
+    name: 'Task A',
+    kind: 'followers',
+    targetUsername: 'target-a',
+    imported: false,
+    status: 'running',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    lastOutput: {
+      mode: 'legacy',
+      resumeState: { mode: 'legacy' },
+      kept: true,
+    },
+  })
+
+  const taskCleanup = await t.mutation(api.migrations.scraperAutoOnlyApplyTaskCleanup, {
+    taskId: task!._id,
+  })
+  const cleanedTask = await t.run(async (ctx) => ctx.db.get(task!._id))
+
+  expect(taskCleanup).toMatchObject({
+    updated: true,
+    removedLegacyFields: 0,
+    resetToIdle: true,
+    clearedRuntimeState: true,
+  })
+  expect(cleanedTask).toMatchObject({
+    status: 'idle',
+    lastOutput: {
+      kept: true,
+    },
+  })
+})

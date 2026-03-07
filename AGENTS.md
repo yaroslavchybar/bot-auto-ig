@@ -46,6 +46,7 @@ Operations:
 
 - `npm run dev` (root)
 - `npm run build` (root)
+- `npm run test:convex`
 - `npm --prefix frontend run dev`
 - `npm --prefix frontend run build`
 - `npm --prefix frontend run lint`
@@ -60,6 +61,7 @@ Operations:
 - React components: `PascalCase` filenames.
 - Hooks: `useX.ts` naming.
 - Python: PEP 8 and snake_case naming.
+- For Convex changes, run `npm run test:convex` and add or update relevant tests in `convex/tests/`.
 - For frontend/server changes without dedicated tests, run lint + build.
 - Add/update tests when changing automation behavior, parsing, retries, or state handling.
 

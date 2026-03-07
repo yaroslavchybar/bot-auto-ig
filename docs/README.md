@@ -44,4 +44,5 @@ Conflict resolution order:
 - Keep README stubs link-first and concise.
 - Use repo-relative links only (no machine-local absolute URIs).
 - Update docs in the same change as runtime behavior changes.
+- Keep root proof commands discoverable; Convex local verification runs through `npm run test:convex`.
 - Keep drift matrix current when stale docs are discovered.
