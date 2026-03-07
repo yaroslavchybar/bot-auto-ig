@@ -1,13 +1,17 @@
 import os
 import pickle
 import random
+import logging
 import pyfiglet
 import requests
 from time import sleep
 from colorama import init, Fore
 from fake_useragent import UserAgent
 
+from modules.diagnostics import body_preview, json_keys, mask_session_id, response_preview, safe_json_loads
+
 init()
+logger = logging.getLogger(__name__)
 
 class Colors:
     RED = Fore.RED
@@ -59,6 +63,12 @@ def save_sessions(sessions, filename='session_file.txt'):
 def get_userid(to_scrape_username, session_id=None):
     """Get user ID from Instagram API"""
     #print(f'\n{Colors.GREEN}Getting userid {Colors.RESET}\n')
+    session_summary = mask_session_id(session_id)
+    logger.info(
+        "sessions.get_userid start probe_username=%s session=%s",
+        to_scrape_username,
+        session_summary,
+    )
     headers = {
             "authority": "www.instagram.com",
             "method": "GET",
@@ -81,13 +91,48 @@ def get_userid(to_scrape_username, session_id=None):
     
     try:
         response = requests.get(url, headers=headers, cookies=cookies)
-        return response.json().get('data').get('user').get('id')
+        payload = safe_json_loads(response.text)
+        user = payload.get('data', {}).get('user') if isinstance(payload, dict) else None
+        user_id = user.get('id') if isinstance(user, dict) else None
+        if user_id:
+            logger.info(
+                "sessions.get_userid success probe_username=%s session=%s status=%s content_type=%s user_id=%s",
+                to_scrape_username,
+                session_summary,
+                response.status_code,
+                response.headers.get('content-type', ''),
+                user_id,
+            )
+            return user_id
+
+        logger.warning(
+            "sessions.get_userid unresolved probe_username=%s session=%s status=%s content_type=%s payload_keys=%s body_preview=%r",
+            to_scrape_username,
+            session_summary,
+            response.status_code,
+            response.headers.get('content-type', ''),
+            json_keys(payload),
+            body_preview(response_preview(response)),
+        )
+        return None
     except Exception as e:
+        logger.exception(
+            "sessions.get_userid exception probe_username=%s session=%s error=%s",
+            to_scrape_username,
+            session_summary,
+            e,
+        )
         print(f"{UI.WARNING} Error getting user ID: {e}")
         return None
 
 def verify_session(username, session_id):
     """Verify if a session ID is valid"""
+    session_summary = mask_session_id(session_id)
+    logger.info(
+        "verify_session start username=%s session=%s",
+        username,
+        session_summary,
+    )
     test_usernames = [
         username,
         "instagram",
@@ -107,10 +152,28 @@ def verify_session(username, session_id):
             continue
         user_id = get_userid(test_username, session_id)
         if user_id:
+            logger.info(
+                "verify_session probe resolved username=%s probe_username=%s session=%s user_id=%s",
+                username,
+                test_username,
+                session_summary,
+                user_id,
+            )
             break
+        logger.warning(
+            "verify_session probe failed username=%s probe_username=%s session=%s",
+            username,
+            test_username,
+            session_summary,
+        )
         sleep(random.uniform(0.2, 0.6))
 
     if not user_id:
+        logger.error(
+            "verify_session failed to resolve any probe usernames username=%s session=%s",
+            username,
+            session_summary,
+        )
         return False, "Failed to get test user ID"
     
     params = {'count': '25'}
@@ -137,6 +200,14 @@ def verify_session(username, session_id):
     
     try:
         response = requests.get(url, headers=headers, cookies=cookies, params=params)
+        logger.info(
+            "verify_session friendships response username=%s session=%s status=%s content_type=%s body_preview=%r",
+            username,
+            session_summary,
+            response.status_code,
+            response.headers.get('content-type', ''),
+            body_preview(response_preview(response)),
+        )
         
         if response.status_code == 200:
             return True, "Session is valid!"
@@ -149,6 +220,12 @@ def verify_session(username, session_id):
         else:
             return False, f"Request failed with status {response.status_code}"
     except Exception as e:
+        logger.exception(
+            "verify_session exception username=%s session=%s error=%s",
+            username,
+            session_summary,
+            e,
+        )
         return False, f"Request error: {str(e)}"
 
 def add_sessions():

@@ -3,6 +3,7 @@
 import { Router } from 'express'
 import { HttpError } from './types.js'
 import { cleanTargets, storeScrapedDataIfNeeded, handleError } from './helpers.js'
+import { emitScraperLog } from './logging.js'
 import { scrapeOne } from './scrape-core.js'
 
 const router = Router()
@@ -37,6 +38,7 @@ router.post('/', async (req, res) => {
     }
 
     // Multiple targets - process sequentially
+    emitScraperLog(`Starting batch followers scrape for ${targets.length} targets`)
     const perTarget: any[] = []
     for (const t of targets) {
       try {
@@ -76,6 +78,11 @@ router.post('/', async (req, res) => {
         ...(r.ok ? {} : { error: r.error })
       })),
     })
+
+    emitScraperLog(
+      `Finished batch followers scrape for ${targets.length} targets: ${totalScraped} records collected${failures.length > 0 ? `, ${failures.length} failed` : ''}`,
+      { level: failures.length > 0 ? 'warn' : 'success' }
+    )
 
     return res.json({
       batch: true,

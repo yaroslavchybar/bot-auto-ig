@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import random
 import time
@@ -9,7 +10,10 @@ from colorama import init, Fore
 import pickle
 import sys
 
+from modules.diagnostics import body_preview, json_keys, response_preview, safe_json_loads, summarize_proxy
+
 init()
+logger = logging.getLogger(__name__)
 
 class Colors:
     RED = Fore.RED
@@ -210,6 +214,12 @@ def load_existing_data(data_json_file):
 
 def get_userid(to_scrape_username, proxy=None):
     print(f'\n{Colors.GREEN}Getting userid {Colors.RESET}\n')
+    proxy_summary = summarize_proxy(proxy)
+    logger.info(
+        "following.get_userid start target_username=%s proxy=%s",
+        to_scrape_username,
+        proxy_summary,
+    )
     headers = {
             "authority": "www.instagram.com",
             "method": "GET",
@@ -229,8 +239,39 @@ def get_userid(to_scrape_username, proxy=None):
     proxies = {"http": proxy, "https": proxy} if proxy else None
     try:
         response = requests.request('GET', url, headers=headers, proxies=proxies, timeout=30)
-        return response.json().get('data').get('user').get('id'),response.json().get('data').get('user').get('edge_follow').get('count')
+        payload = safe_json_loads(response.text)
+        user = payload.get('data', {}).get('user') if isinstance(payload, dict) else None
+        user_id = user.get('id') if isinstance(user, dict) else None
+        following_count = user.get('edge_follow', {}).get('count') if isinstance(user, dict) else None
+        if user_id:
+            logger.info(
+                "following.get_userid success target_username=%s user_id=%s status=%s content_type=%s proxy=%s following_count=%s",
+                to_scrape_username,
+                user_id,
+                response.status_code,
+                response.headers.get('content-type', ''),
+                proxy_summary,
+                following_count,
+            )
+            return user_id, following_count
+
+        logger.warning(
+            "following.get_userid unresolved target_username=%s status=%s content_type=%s proxy=%s payload_keys=%s body_preview=%r",
+            to_scrape_username,
+            response.status_code,
+            response.headers.get('content-type', ''),
+            proxy_summary,
+            json_keys(payload),
+            body_preview(response_preview(response)),
+        )
+        return None, None
     except Exception as e:
+        logger.exception(
+            "following.get_userid exception target_username=%s proxy=%s error=%s",
+            to_scrape_username,
+            proxy_summary,
+            e,
+        )
         print(f"{UI.WARNING} Error loading existing data: {e}")
         return None, None
 

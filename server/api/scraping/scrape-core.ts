@@ -2,6 +2,7 @@
 
 import { profilesIncrementDailyScrapingUsed } from '../../data/convex.js'
 import { HttpError } from './types.js'
+import { emitScraperLog, formatScrapeLabel, formatTarget } from './logging.js'
 import {
   CAPACITY_EXHAUSTED_ERROR,
   NO_ELIGIBLE_PROFILES_ERROR,
@@ -37,6 +38,8 @@ function sanitizeUpstreamError(status: number, message: string): string {
 }
 
 async function scrapeWithAutoDistribution(kind: ScrapeKind, cleanedTarget: string) {
+  const scrapeLabel = formatScrapeLabel(kind)
+  const targetLabel = formatTarget(cleanedTarget)
   const endpoint = kind === 'followers' ? 'followers' : 'following'
   const users: any[] = []
   const perProfile: Array<{
@@ -51,12 +54,21 @@ async function scrapeWithAutoDistribution(kind: ScrapeKind, cleanedTarget: strin
   let totalScraped = 0
   let started = false
 
+  emitScraperLog(`Starting ${scrapeLabel} scrape for ${targetLabel}`)
+
   while (true) {
     const eligible = await getEligibleProfiles()
     if (eligible.length === 0) {
       if (!started) {
+        emitScraperLog(`Unable to start ${scrapeLabel} scrape for ${targetLabel}: ${NO_ELIGIBLE_PROFILES_ERROR}`, {
+          level: 'warn',
+        })
         throw new HttpError(400, NO_ELIGIBLE_PROFILES_ERROR)
       }
+
+      emitScraperLog(`Paused ${scrapeLabel} scrape for ${targetLabel}: ${CAPACITY_EXHAUSTED_ERROR}`, {
+        level: 'warn',
+      })
 
       return {
         targetUsername: cleanedTarget,
@@ -72,6 +84,11 @@ async function scrapeWithAutoDistribution(kind: ScrapeKind, cleanedTarget: strin
 
     const profile = eligible[0]!
     const chunkLimit = getChunkLimitForProfile(profile, DEFAULT_SCRAPE_CHUNK_LIMIT)
+
+    emitScraperLog(
+      `Requesting ${scrapeLabel} chunk for ${targetLabel} using profile ${profile.name} (limit ${chunkLimit}, maxPages ${DEFAULT_SCRAPE_MAX_PAGES}, cursor ${cursor ? 'resume' : 'start'})`,
+      { profileName: profile.name }
+    )
 
     const resp = await fetch(`${SCRAPER_URL}/scrape/${endpoint}`, {
       method: 'POST',
@@ -97,7 +114,12 @@ async function scrapeWithAutoDistribution(kind: ScrapeKind, cleanedTarget: strin
 
     if (!resp.ok) {
       const message = (payload && (payload.detail || payload.error)) || text || `Scraper error (${resp.status})`
-      throw new HttpError(resp.status, sanitizeUpstreamError(resp.status, String(message)))
+      const sanitized = sanitizeUpstreamError(resp.status, String(message))
+      emitScraperLog(
+        `${scrapeLabel} scrape failed for ${targetLabel} using profile ${profile.name}: ${sanitized}`,
+        { level: 'error', profileName: profile.name }
+      )
+      throw new HttpError(resp.status, sanitized)
     }
 
     const chunkUsers = Array.isArray(payload?.users) ? payload.users : []
@@ -118,11 +140,20 @@ async function scrapeWithAutoDistribution(kind: ScrapeKind, cleanedTarget: strin
       scraped,
     })
 
+    emitScraperLog(
+      `${hasMore ? 'Fetched' : 'Completed'} ${scraped} ${scrapeLabel} for ${targetLabel} using profile ${profile.name}${hasMore ? '; more pages remain' : `; total ${totalScraped}`}`,
+      { level: hasMore ? 'info' : 'success', profileName: profile.name }
+    )
+
     if (scraped > 0) {
       try {
         await profilesIncrementDailyScrapingUsed(profile.name, scraped)
       } catch (err) {
         console.error(`Failed to increment daily scraping for ${profile.name}:`, err)
+        emitScraperLog(
+          `Failed to update daily scraping usage for profile ${profile.name} after ${scrapeLabel} scrape of ${targetLabel}`,
+          { level: 'warn', profileName: profile.name }
+        )
       }
     }
 

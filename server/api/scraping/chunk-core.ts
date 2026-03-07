@@ -2,6 +2,7 @@
 
 import { profilesIncrementDailyScrapingUsed } from '../../data/convex.js'
 import { HttpError } from './types.js'
+import { emitScraperLog, formatScrapeLabel, formatTarget } from './logging.js'
 import {
   CAPACITY_EXHAUSTED_ERROR,
   SCRAPER_URL,
@@ -96,6 +97,7 @@ export async function handleChunkRequest(
   res: any
 ) {
   try {
+    const scrapeLabel = formatScrapeLabel(kind)
     const {
       targetUsername,
       targetUsernames,
@@ -122,6 +124,9 @@ export async function handleChunkRequest(
     if (!next) {
       resumeObj.done = true
       resumeObj.updatedAt = Date.now()
+      emitScraperLog(`No remaining ${scrapeLabel} chunks to process; request is already complete`, {
+        level: 'success',
+      })
       return res.json({
         kind,
         targets,
@@ -138,6 +143,10 @@ export async function handleChunkRequest(
       if (error instanceof HttpError && error.status === 429 && error.message === CAPACITY_EXHAUSTED_ERROR) {
         resumeObj.done = false
         resumeObj.updatedAt = Date.now()
+        emitScraperLog(
+          `Paused ${scrapeLabel} chunk processing for ${formatTarget(next.targetUsername)}: ${CAPACITY_EXHAUSTED_ERROR}`,
+          { level: 'warn' }
+        )
         return res.json({
           kind,
           targets,
@@ -155,6 +164,12 @@ export async function handleChunkRequest(
     const { profile, usedProfile } = profileSelection
     let usedChunkLimit = getChunkLimitForProfile(profile, safeChunkLimit)
     let usedMaxPages = safeMaxPages
+    const targetLabel = formatTarget(next.targetUsername)
+
+    emitScraperLog(
+      `${isResume ? 'Resuming' : 'Starting'} ${scrapeLabel} chunk for ${targetLabel} using profile ${usedProfile.name} (limit ${usedChunkLimit}, maxPages ${usedMaxPages})`,
+      { profileName: usedProfile.name }
+    )
 
     const endpoint = kind === 'followers' ? 'followers' : 'following'
     let result = await fetchScrapeChunk({
@@ -177,6 +192,10 @@ export async function handleChunkRequest(
       if (retryableStatus && shouldReduce) {
         usedChunkLimit = reducedChunkLimit
         usedMaxPages = reducedMaxPages
+        emitScraperLog(
+          `Retrying ${scrapeLabel} chunk for ${targetLabel} using smaller limits (${usedChunkLimit}/${usedMaxPages}) after upstream ${result.resp.status}`,
+          { level: 'warn', profileName: usedProfile.name }
+        )
         result = await fetchScrapeChunk({
           endpoint,
           authUsername: profile.name,
@@ -201,7 +220,12 @@ export async function handleChunkRequest(
       } catch {
         // ignore
       }
-      throw new HttpError(result.resp.status, sanitizeUpstreamError(result.resp.status, finalMessage))
+      const sanitized = sanitizeUpstreamError(result.resp.status, finalMessage)
+      emitScraperLog(
+        `${scrapeLabel} chunk failed for ${targetLabel} using profile ${usedProfile.name}: ${sanitized}`,
+        { level: 'error', profileName: usedProfile.name }
+      )
+      throw new HttpError(result.resp.status, sanitized)
     }
 
     const users = Array.isArray(result.payload?.users) ? result.payload.users : []
@@ -217,6 +241,10 @@ export async function handleChunkRequest(
         await profilesIncrementDailyScrapingUsed(usedProfile.name, scraped)
       } catch (err) {
         console.error(`Failed to increment daily scraping for ${usedProfile.name}:`, err)
+        emitScraperLog(
+          `Failed to update daily scraping usage for profile ${usedProfile.name} after ${scrapeLabel} chunk for ${targetLabel}`,
+          { level: 'warn', profileName: usedProfile.name }
+        )
       }
     }
 
@@ -245,6 +273,11 @@ export async function handleChunkRequest(
         hasMore,
       },
     })
+
+    emitScraperLog(
+      `${resumeObj.done ? 'Completed' : 'Fetched'} ${scraped} ${scrapeLabel} for ${targetLabel} using profile ${usedProfile.name}${hasMore ? '; resume cursor saved' : `; total stored ${mergedUsers.length}`}`,
+      { level: resumeObj.done ? 'success' : 'info', profileName: usedProfile.name }
+    )
 
     return res.json({
       kind,

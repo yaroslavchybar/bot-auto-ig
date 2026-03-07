@@ -44,6 +44,7 @@ Mounted under `/api/*`:
 - Eligible profile discovery.
 - Followers/following scraping (single/batch).
 - Chunked scraping endpoints for resumable pagination.
+- Scraping lifecycle events are emitted into the shared log stream with `source: scraper`, so they appear on the Logs page and in archived session logs.
 
 ### Workflows
 - Run/stop workflow execution.

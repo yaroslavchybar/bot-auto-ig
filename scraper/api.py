@@ -1,9 +1,19 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional
 
 from modules import Get_Followers, Get_Following, Sessions_Manager
+from modules.diagnostics import mask_session_id, summarize_proxy
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s [%(name)s] %(message)s',
+)
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Instagram Scraper API", version="1.0.0")
@@ -99,14 +109,51 @@ async def scrape_followers(req: FollowersScrapeRequest):
     cursor = req.cursor.strip() if isinstance(req.cursor, str) and req.cursor.strip() else None
     proxy = convert_proxy_format(req.proxy)
 
+    logger.info(
+        "followers scrape request auth_username=%s target_username=%s chunk_limit=%s max_pages=%s cursor_present=%s proxy=%s session=%s",
+        auth_username,
+        target_username,
+        int(req.chunk_limit),
+        int(req.max_pages),
+        bool(cursor),
+        summarize_proxy(proxy),
+        mask_session_id(session_id),
+    )
+
     ok, message = Sessions_Manager.verify_session(auth_username, session_id)
     if not ok:
+        logger.warning(
+            "followers session verification failed auth_username=%s target_username=%s message=%s session=%s",
+            auth_username,
+            target_username,
+            message,
+            mask_session_id(session_id),
+        )
         if message != "Failed to get test user ID":
             raise HTTPException(status_code=401, detail=message)
+        logger.warning(
+            "followers scrape continuing despite unresolved verification probe auth_username=%s target_username=%s",
+            auth_username,
+            target_username,
+        )
 
     user_id, followers_count = Get_Followers.get_userid(target_username, proxy=proxy)
     if not user_id:
+        logger.error(
+            "followers target resolution failed auth_username=%s target_username=%s proxy=%s",
+            auth_username,
+            target_username,
+            summarize_proxy(proxy),
+        )
         raise HTTPException(status_code=404, detail="Failed to resolve target user id")
+
+    logger.info(
+        "followers target resolved auth_username=%s target_username=%s user_id=%s total_followers=%s",
+        auth_username,
+        target_username,
+        user_id,
+        followers_count,
+    )
 
     users, next_cursor, has_more = Get_Followers.get_data_chunk(
         user_id=user_id,
@@ -116,6 +163,15 @@ async def scrape_followers(req: FollowersScrapeRequest):
         chunk_limit=int(req.chunk_limit),
         max_pages=int(req.max_pages),
         proxy=proxy,
+    )
+
+    logger.info(
+        "followers scrape response auth_username=%s target_username=%s scraped=%s has_more=%s next_cursor_present=%s",
+        auth_username,
+        target_username,
+        len(users or []),
+        bool(has_more),
+        bool(next_cursor),
     )
 
     return {
@@ -138,14 +194,51 @@ async def scrape_following(req: FollowingScrapeRequest):
     cursor = req.cursor.strip() if isinstance(req.cursor, str) and req.cursor.strip() else None
     proxy = convert_proxy_format(req.proxy)
 
+    logger.info(
+        "following scrape request auth_username=%s target_username=%s chunk_limit=%s max_pages=%s cursor_present=%s proxy=%s session=%s",
+        auth_username,
+        target_username,
+        int(req.chunk_limit),
+        int(req.max_pages),
+        bool(cursor),
+        summarize_proxy(proxy),
+        mask_session_id(session_id),
+    )
+
     ok, message = Sessions_Manager.verify_session(auth_username, session_id)
     if not ok:
+        logger.warning(
+            "following session verification failed auth_username=%s target_username=%s message=%s session=%s",
+            auth_username,
+            target_username,
+            message,
+            mask_session_id(session_id),
+        )
         if message != "Failed to get test user ID":
             raise HTTPException(status_code=401, detail=message)
+        logger.warning(
+            "following scrape continuing despite unresolved verification probe auth_username=%s target_username=%s",
+            auth_username,
+            target_username,
+        )
 
     user_id, following_count = Get_Following.get_userid(target_username, proxy=proxy)
     if not user_id:
+        logger.error(
+            "following target resolution failed auth_username=%s target_username=%s proxy=%s",
+            auth_username,
+            target_username,
+            summarize_proxy(proxy),
+        )
         raise HTTPException(status_code=404, detail="Failed to resolve target user id")
+
+    logger.info(
+        "following target resolved auth_username=%s target_username=%s user_id=%s total_following=%s",
+        auth_username,
+        target_username,
+        user_id,
+        following_count,
+    )
 
     users, next_cursor, has_more = Get_Following.get_data_chunk(
         user_id=user_id,
@@ -155,6 +248,15 @@ async def scrape_following(req: FollowingScrapeRequest):
         chunk_limit=int(req.chunk_limit),
         max_pages=int(req.max_pages),
         proxy=proxy,
+    )
+
+    logger.info(
+        "following scrape response auth_username=%s target_username=%s scraped=%s has_more=%s next_cursor_present=%s",
+        auth_username,
+        target_username,
+        len(users or []),
+        bool(has_more),
+        bool(next_cursor),
     )
 
     return {
