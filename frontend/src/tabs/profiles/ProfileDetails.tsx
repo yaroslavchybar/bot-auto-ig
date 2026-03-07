@@ -16,10 +16,10 @@ export function ProfileDetails({
             <div className="p-6 pb-2">
                 <div className="flex items-start justify-between">
                     <div>
-                        <h3 className="text-2xl font-semibold tracking-tight">{profile.name}</h3>
-                        <p className="text-sm text-muted-foreground font-mono mt-1 opacity-50 select-all">{profile.id}</p>
+                        <h3 className="text-2xl font-semibold tracking-tight text-gray-200">{profile.name}</h3>
+                        <p className="text-sm text-gray-500 font-mono mt-1 opacity-50 select-all">{profile.id}</p>
                     </div>
-                    <Badge variant={profile.using ? "default" : "secondary"} className={profile.using ? "bg-green-600 hover:bg-green-700" : ""}>
+                    <Badge variant={profile.using ? "default" : "secondary"} className={profile.using ? "bg-green-500/10 text-green-400 border border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.2)] hover:bg-green-500/20" : "bg-white/5 text-gray-300 border-white/10 hover:bg-white/10"}>
                         {profile.using ? 'Active' : 'Idle'}
                     </Badge>
                 </div>
@@ -40,68 +40,71 @@ export function ProfileDetails({
                 </div>
             </div>
 
-            <Separator />
+            <Separator className="bg-white/5" />
 
             {/* Application Data */}
             <div className="p-6">
-                <h4 className="text-sm font-medium mb-4 flex items-center gap-2 text-foreground/80">
+                <h4 className="text-sm font-medium mb-4 flex items-center gap-2 text-gray-300">
                     <Globe className="h-4 w-4" /> Network & Proxy
                 </h4>
-                <div className="grid gap-4 pl-2 border-l border-border/50 ml-1.5">
+                <div className="grid gap-4 pl-2 border-l border-white/5 ml-1.5">
                     <DetailRow
                         label="Proxy Host"
                         value={profile.proxy || 'Direct Connection'}
                         mono={!!profile.proxy}
-                        className={!profile.proxy ? "text-muted-foreground/50" : ""}
+                        className={!profile.proxy ? "text-gray-500/50" : "text-gray-200"}
                     />
                     <DetailRow
                         label="Protocol"
                         value={profile.proxy_type || 'HTTP'}
+                        className="text-gray-200"
                     />
                     <DetailRow
                         label="IP Check"
                         value={profile.test_ip ? 'Enabled' : 'Disabled'}
+                        className="text-gray-200"
                     />
                 </div>
             </div>
 
-            <Separator />
+            <Separator className="bg-white/5" />
 
             {/* Fingerprint Data */}
             <div className="p-6">
-                <h4 className="text-sm font-medium mb-4 flex items-center gap-2 text-foreground/80">
+                <h4 className="text-sm font-medium mb-4 flex items-center gap-2 text-gray-300">
                     <Fingerprint className="h-4 w-4" /> Digital Fingerprint
                 </h4>
                 {profile.fingerprint_seed ? (
-                    <div className="grid gap-4 pl-2 border-l border-border/50 ml-1.5">
+                    <div className="grid gap-4 pl-2 border-l border-white/5 ml-1.5">
                         <DetailRow
                             icon={<Monitor className="h-3.5 w-3.5" />}
                             label="Operating System"
                             value={profile.fingerprint_os === 'mac' ? 'macOS' : 'Windows'}
+                            className="text-gray-200"
                         />
                         <div className="space-y-1.5">
-                            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
                                 <Shield className="h-3.5 w-3.5" /> Seed
                             </span>
-                            <div className="bg-muted/40 border rounded-md p-2 font-mono text-xs break-all text-muted-foreground/80">
+                            <div className="bg-white/5 border border-white/5 rounded-md p-2 font-mono text-xs break-all text-gray-400">
                                 {profile.fingerprint_seed}
                             </div>
                         </div>
                     </div>
                 ) : (
-                    <div className="text-sm text-muted-foreground pl-4 border-l-2 border-muted">
+                    <div className="text-sm text-gray-500 pl-4 border-l-2 border-white/10">
                         No custom fingerprint configured.
                     </div>
                 )}
             </div>
 
-            <Separator />
+            <Separator className="bg-white/5" />
 
-            <div className="p-6 bg-muted/5">
-                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-foreground/80">
+            <div className="p-6 bg-white/[0.02]">
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-gray-300">
                     <Box className="h-4 w-4" /> Metadata
                 </h4>
-                <p className="text-xs text-muted-foreground leading-relaxed">
+                <p className="text-xs text-gray-500 leading-relaxed">
                     This profile can be used for manual browser sessions and, when it has a proxy and session, contribute scraping capacity. Be careful when modifying fingerprint settings as it may trigger re-authentication verification on target platforms.
                 </p>
             </div>
@@ -124,10 +127,10 @@ function DetailRow({
 }) {
     return (
         <div className="grid grid-cols-[120px_1fr] items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-400 flex items-center gap-1.5">
                 {icon} {label}
             </span>
-            <span className={`text-sm ${mono ? 'font-mono' : ''} ${className} truncate`}>
+            <span className={`text-sm ${mono ? 'font-mono' : ''} ${className || 'text-gray-200'} truncate`}>
                 {value}
             </span>
         </div>

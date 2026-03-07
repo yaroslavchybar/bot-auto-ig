@@ -20,23 +20,28 @@ type Props = {
 export function DeleteTaskDialog({ open, onOpenChange, taskName, disabled, onConfirm }: Props) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
+      <AlertDialogContent className="bg-[#0a0a0a] border-white/10 text-gray-200">
         <AlertDialogHeader>
-          <AlertDialogTitle>Delete task</AlertDialogTitle>
-          <AlertDialogDescription>
-            Are you sure you want to delete <span className="font-medium text-foreground">{taskName}</span>? This action
+          <AlertDialogTitle className="text-xl font-bold text-white">Delete task</AlertDialogTitle>
+          <AlertDialogDescription className="text-gray-400">
+            Are you sure you want to delete <span className="font-medium text-red-400">{taskName}</span>? This action
             cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={disabled}>Cancel</AlertDialogCancel>
+        <AlertDialogFooter className="mt-4">
+          <AlertDialogCancel
+            disabled={disabled}
+            className="bg-transparent border-white/10 text-gray-300 hover:bg-white/5 hover:text-white"
+          >
+            Cancel
+          </AlertDialogCancel>
           <AlertDialogAction
             disabled={disabled}
             onClick={(e) => {
               e.preventDefault()
               onConfirm()
             }}
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            className="bg-red-500/10 text-red-500 border border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.2)] hover:bg-red-500/20 transition-all font-semibold"
           >
             Delete
           </AlertDialogAction>

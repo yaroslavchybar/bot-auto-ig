@@ -41,20 +41,20 @@ interface MonitoringData {
 
 function getStatusColor(percent: number): string {
     if (percent >= 80) return 'text-red-400'
-    if (percent >= 60) return 'text-yellow-400'
-    return 'text-emerald-400'
+    if (percent >= 60) return 'text-orange-400'
+    return 'text-green-400'
 }
 
 function getProgressColor(percent: number): string {
-    if (percent >= 80) return '[&>div]:bg-red-500'
-    if (percent >= 60) return '[&>div]:bg-yellow-500'
-    return '[&>div]:bg-emerald-500'
+    if (percent >= 80) return '[&>div]:bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]'
+    if (percent >= 60) return '[&>div]:bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.4)]'
+    return '[&>div]:bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]'
 }
 
 function getStatusBadge(percent: number) {
-    if (percent >= 80) return <Badge variant="destructive" className="text-xs">Critical</Badge>
-    if (percent >= 60) return <Badge className="text-xs bg-yellow-500/20 text-yellow-400 border-yellow-500/30 hover:bg-yellow-500/20">Warning</Badge>
-    return <Badge className="text-xs bg-emerald-500/20 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20">Healthy</Badge>
+    if (percent >= 80) return <Badge className="text-xs bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.2)] hover:bg-red-500/20">Critical</Badge>
+    if (percent >= 60) return <Badge className="text-xs bg-orange-500/10 text-orange-400 border-orange-500/20 hover:bg-orange-500/20">Warning</Badge>
+    return <Badge className="text-xs bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.2)]">Healthy</Badge>
 }
 
 // ─── Gauge Card ─────────────────────────────────────────────
@@ -66,11 +66,11 @@ function GaugeCard({
     used: string; total: string; free: string
 }) {
     return (
-        <Card className="relative overflow-hidden">
-            <div className={`absolute top-0 left-0 w-1 h-full ${percent >= 80 ? 'bg-red-500' : percent >= 60 ? 'bg-yellow-500' : 'bg-emerald-500'}`} />
+        <Card className="relative overflow-hidden bg-white/[0.02] border-white/5 backdrop-blur-sm rounded-2xl">
+            <div className={`absolute top-0 left-0 w-1 h-full ${percent >= 80 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : percent >= 60 ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]' : 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]'}`} />
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
+                    <Icon className="h-4 w-4 text-gray-500" />
                     {title}
                 </CardTitle>
                 {getStatusBadge(percent)}
@@ -82,17 +82,17 @@ function GaugeCard({
                     </span>
                 </div>
                 <Progress value={percent} className={`h-2 ${getProgressColor(percent)}`} />
-                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
                     <div>
-                        <div className="font-medium text-foreground">{used}</div>
+                        <div className="font-medium text-gray-200">{used}</div>
                         <div>Used</div>
                     </div>
                     <div>
-                        <div className="font-medium text-foreground">{free}</div>
+                        <div className="font-medium text-gray-200">{free}</div>
                         <div>Free</div>
                     </div>
                     <div>
-                        <div className="font-medium text-foreground">{total}</div>
+                        <div className="font-medium text-gray-200">{total}</div>
                         <div>Total</div>
                     </div>
                 </div>
@@ -131,21 +131,22 @@ export function MonitoringPage() {
 
     if (loading) {
         return (
-            <div className="flex-1 space-y-4 p-6 pt-4 overflow-auto h-full">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-2xl font-bold tracking-tight">VPS Monitor</h2>
+            <div className="flex-1 space-y-4 p-6 pt-4 overflow-auto h-full relative bg-[#050505] text-gray-200">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+                <div className="flex items-center justify-between relative z-10 border-b border-white/5 pb-4">
+                    <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">VPS Monitor</h2>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 relative z-10">
                     {[1, 2, 3].map(i => (
-                        <Card key={i}>
-                            <CardHeader><Skeleton className="h-4 w-24" /></CardHeader>
+                        <Card key={i} className="bg-white/[0.02] border border-white/5 backdrop-blur-sm rounded-2xl">
+                            <CardHeader><Skeleton className="h-4 w-24 bg-white/10" /></CardHeader>
                             <CardContent className="space-y-3">
-                                <Skeleton className="h-8 w-16" />
-                                <Skeleton className="h-2 w-full" />
+                                <Skeleton className="h-8 w-16 bg-white/10" />
+                                <Skeleton className="h-2 w-full bg-white/10" />
                                 <div className="grid grid-cols-3 gap-2">
-                                    <Skeleton className="h-8 w-full" />
-                                    <Skeleton className="h-8 w-full" />
-                                    <Skeleton className="h-8 w-full" />
+                                    <Skeleton className="h-8 w-full bg-white/10" />
+                                    <Skeleton className="h-8 w-full bg-white/10" />
+                                    <Skeleton className="h-8 w-full bg-white/10" />
                                 </div>
                             </CardContent>
                         </Card>
@@ -157,14 +158,15 @@ export function MonitoringPage() {
 
     if (error && !data) {
         return (
-            <div className="flex-1 flex items-center justify-center p-6">
-                <Card className="max-w-md w-full">
+            <div className="flex-1 flex items-center justify-center p-6 relative bg-[#050505]">
+                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+                <Card className="max-w-md w-full bg-[#0a0a0a] border border-white/10 relative z-10 rounded-2xl">
                     <CardContent className="pt-6 text-center space-y-4">
                         <div className="text-red-400 text-lg font-medium">Connection Error</div>
-                        <p className="text-muted-foreground text-sm">{error}</p>
+                        <p className="text-gray-400 text-sm">{error}</p>
                         <button
                             onClick={fetchData}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-gradient-to-r from-red-600 to-orange-500 text-white text-sm hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] shadow-[0_0_15px_rgba(239,68,68,0.4)] border-none transition-all"
                         >
                             <RefreshCw className="h-4 w-4" /> Retry
                         </button>
@@ -183,31 +185,33 @@ export function MonitoringPage() {
         )
 
     return (
-        <div className="flex-1 space-y-4 p-6 pt-4 overflow-auto h-full">
+        <div className="flex-1 space-y-4 p-6 pt-4 overflow-auto h-full relative bg-[#050505] text-gray-200">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between relative z-10 border-b border-white/5 pb-4">
                 <div className="flex items-center gap-3">
-                    <h2 className="text-2xl font-bold tracking-tight">VPS Monitor</h2>
+                    <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">VPS Monitor</h2>
                     {error && (
-                        <Badge variant="destructive" className="text-xs">Connection lost — using cached data</Badge>
+                        <Badge className="text-xs bg-red-500/10 text-red-400 border-red-500/20">Connection lost — using cached data</Badge>
                     )}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div className="flex items-center gap-3 text-xs text-gray-500">
                     <div className="flex items-center gap-1.5">
                         <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                         </span>
                         Live
                     </div>
                     {lastUpdate && (
-                        <span>Updated {lastUpdate.toLocaleTimeString()}</span>
+                        <span className="text-gray-400">Updated {lastUpdate.toLocaleTimeString()}</span>
                     )}
                 </div>
             </div>
 
             {/* Gauge Cards */}
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 relative z-10">
                 <GaugeCard
                     title="CPU Usage"
                     icon={Cpu}
@@ -235,83 +239,83 @@ export function MonitoringPage() {
             </div>
 
             {/* System Info & Network */}
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 relative z-10">
                 {/* System Information */}
-                <Card>
+                <Card className="bg-white/[0.02] border-white/5 backdrop-blur-sm rounded-2xl">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            <Server className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
+                            <Server className="h-4 w-4 text-gray-500" />
                             System Information
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-3">
-                            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
-                                <span className="text-sm text-muted-foreground">Hostname</span>
-                                <span className="text-sm font-mono">{data.system.hostname}</span>
+                            <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                                <span className="text-sm text-gray-400">Hostname</span>
+                                <span className="text-sm font-mono text-gray-200">{data.system.hostname}</span>
                             </div>
-                            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
-                                <span className="text-sm text-muted-foreground">Platform</span>
-                                <span className="text-sm font-mono">{data.system.platform}</span>
+                            <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                                <span className="text-sm text-gray-400">Platform</span>
+                                <span className="text-sm font-mono text-gray-200">{data.system.platform}</span>
                             </div>
-                            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
-                                <span className="text-sm text-muted-foreground">Architecture</span>
-                                <span className="text-sm font-mono">{data.system.arch}</span>
+                            <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                                <span className="text-sm text-gray-400">Architecture</span>
+                                <span className="text-sm font-mono text-gray-200">{data.system.arch}</span>
                             </div>
-                            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
-                                <span className="text-sm text-muted-foreground">Kernel</span>
-                                <span className="text-sm font-mono truncate ml-4 max-w-[200px]">{data.system.release}</span>
+                            <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                                <span className="text-sm text-gray-400">Kernel</span>
+                                <span className="text-sm font-mono truncate ml-4 max-w-[200px] text-gray-200">{data.system.release}</span>
                             </div>
-                            <div className="flex justify-between items-center py-1.5 border-b border-border/50">
-                                <span className="text-sm text-muted-foreground">CPU Model</span>
-                                <span className="text-sm font-mono truncate ml-4 max-w-[200px]" title={data.cpu.model}>{data.cpu.model}</span>
+                            <div className="flex justify-between items-center py-1.5 border-b border-white/[0.05]">
+                                <span className="text-sm text-gray-400">CPU Model</span>
+                                <span className="text-sm font-mono truncate ml-4 max-w-[200px] text-gray-200" title={data.cpu.model}>{data.cpu.model}</span>
                             </div>
                             <div className="flex justify-between items-center py-1.5">
-                                <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-                                    <Clock className="h-3.5 w-3.5" /> Uptime
+                                <span className="text-sm text-gray-400 flex items-center gap-1.5">
+                                    <Clock className="h-3.5 w-3.5 text-gray-500" /> Uptime
                                 </span>
-                                <span className="text-sm font-mono text-emerald-400">{data.system.uptimeFormatted}</span>
+                                <span className="text-sm font-mono text-green-400">{data.system.uptimeFormatted}</span>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
 
                 {/* Network */}
-                <Card>
+                <Card className="bg-white/[0.02] border-white/5 backdrop-blur-sm rounded-2xl">
                     <CardHeader className="pb-3">
-                        <CardTitle className="text-sm font-medium flex items-center gap-2">
-                            <Wifi className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
+                            <Wifi className="h-4 w-4 text-gray-500" />
                             Network Interfaces
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {externalInterfaces.length === 0 ? (
-                            <div className="text-sm text-muted-foreground py-4 text-center">
+                            <div className="text-sm text-gray-500 py-4 text-center">
                                 No external network interfaces found
                             </div>
                         ) : (
                             <div className="space-y-3">
                                 {externalInterfaces.map((iface, i) => (
-                                    <div key={i} className="p-3 rounded-lg bg-muted/30 border border-border/50 space-y-2">
+                                    <div key={i} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] transition-colors space-y-2">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm font-medium flex items-center gap-2">
-                                                <Activity className="h-3.5 w-3.5 text-emerald-400" />
+                                            <span className="text-sm font-medium flex items-center gap-2 text-gray-200">
+                                                <Activity className="h-3.5 w-3.5 text-green-400" />
                                                 {iface.name}
                                             </span>
-                                            <Badge variant="outline" className="text-xs">IPv4</Badge>
+                                            <Badge className="text-xs bg-transparent border border-white/10 text-gray-300">IPv4</Badge>
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 text-xs">
                                             <div>
-                                                <span className="text-muted-foreground">IP: </span>
-                                                <span className="font-mono">{iface.address}</span>
+                                                <span className="text-gray-500">IP: </span>
+                                                <span className="font-mono text-gray-200">{iface.address}</span>
                                             </div>
                                             <div>
-                                                <span className="text-muted-foreground">MAC: </span>
-                                                <span className="font-mono">{iface.mac}</span>
+                                                <span className="text-gray-500">MAC: </span>
+                                                <span className="font-mono text-gray-200">{iface.mac}</span>
                                             </div>
                                             <div className="col-span-2">
-                                                <span className="text-muted-foreground">Netmask: </span>
-                                                <span className="font-mono">{iface.netmask}</span>
+                                                <span className="text-gray-500">Netmask: </span>
+                                                <span className="font-mono text-gray-200">{iface.netmask}</span>
                                             </div>
                                         </div>
                                     </div>

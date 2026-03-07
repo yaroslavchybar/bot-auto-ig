@@ -362,16 +362,35 @@ export function ScrapingPage() {
   }, [canSaveEdit, editKind, editTargetUsername, editTaskName, selectedId, updateTaskMutation])
 
   return (
-    <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-2xl font-bold tracking-tight">Scraping Tasks</h2>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => void refreshAll()} disabled={eligibleLoading || Boolean(runningId)}>
+    <div className="flex flex-col h-full bg-[#050505] text-gray-200 min-h-screen relative overflow-hidden">
+      {/* Background ambient glow */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+
+      <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
+        <div>
+          <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+            Scraping Tasks
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">Manage and monitor your data extraction jobs</p>
+        </div>
+        <div className="flex items-center gap-3 mt-4 md:mt-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refreshAll()}
+            disabled={eligibleLoading || Boolean(runningId)}
+            className="bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+          >
             <RefreshCw className={`mr-2 h-4 w-4 ${eligibleLoading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
 
-          <Button size="sm" onClick={handleOpenCreate} disabled={eligibleLoading || Boolean(runningId)}>
+          <Button
+            size="sm"
+            onClick={handleOpenCreate}
+            disabled={eligibleLoading || Boolean(runningId)}
+            className="bg-gradient-to-r from-red-600 to-orange-500 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all"
+          >
             <Plus className="mr-2 h-4 w-4" />
             Create task
           </Button>
@@ -379,36 +398,48 @@ export function ScrapingPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-destructive/10 text-destructive text-sm border-b border-destructive/20">
+        <div className="mx-6 mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm backdrop-blur-md">
           {error}
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-4 bg-muted/10">
+      <div className="flex-1 overflow-auto p-6 relative z-10">
+
+
         {eligibleError && (
-          <div className="mb-4 p-3 rounded-md border bg-destructive/10 text-destructive text-sm">{eligibleError}</div>
+          <div className="mb-6 p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-400 text-sm backdrop-blur-md">
+            {eligibleError}
+          </div>
         )}
 
-        {tasksLoading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading tasks...</div>
-        ) : tasksList.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">No tasks found. Create one to get started.</div>
-        ) : (
-          <TasksTable
-            tasks={tasksList}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            running={Boolean(runningId)}
-            onRun={(task) => void handleRunTask(task, { resume: false })}
-            onResume={(task) => void handleRunTask(task, { resume: true })}
-            onEdit={handleOpenEdit}
-            onViewOutput={handleViewOutput}
-            onDelete={(task) => {
-              setDeleteId(task._id)
-              setSelectedId(task._id)
-            }}
-          />
-        )}
+        <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden backdrop-blur-sm">
+          {tasksLoading ? (
+            <div className="p-12 text-center text-gray-500">Loading tasks...</div>
+          ) : tasksList.length === 0 ? (
+            <div className="p-12 text-center flex flex-col items-center justify-center">
+              <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+                <RefreshCw className="h-6 w-6 text-gray-500" />
+              </div>
+              <p className="text-gray-400 font-medium">No tasks found</p>
+              <p className="text-gray-600 text-sm mt-1">Create a new task to get started.</p>
+            </div>
+          ) : (
+            <TasksTable
+              tasks={tasksList}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              running={Boolean(runningId)}
+              onRun={(task) => void handleRunTask(task, { resume: false })}
+              onResume={(task) => void handleRunTask(task, { resume: true })}
+              onEdit={handleOpenEdit}
+              onViewOutput={handleViewOutput}
+              onDelete={(task) => {
+                setDeleteId(task._id)
+                setSelectedId(task._id)
+              }}
+            />
+          )}
+        </div>
       </div>
 
       <TaskDialog

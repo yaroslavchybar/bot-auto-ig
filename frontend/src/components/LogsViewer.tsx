@@ -18,11 +18,11 @@ type LogFileItem = {
 }
 
 const LevelAppearance: Record<LogLevel | string, { text: string; bg: string }> = {
-  info: { text: 'text-neutral-700 dark:text-neutral-300', bg: 'hover:bg-blue-50/50 dark:hover:bg-blue-900/10' },
-  warn: { text: 'text-amber-600 dark:text-amber-400 font-medium', bg: 'bg-amber-50/40 dark:bg-amber-950/20 hover:bg-amber-100/50 dark:hover:bg-amber-900/40' },
-  error: { text: 'text-red-600 dark:text-red-400 font-semibold', bg: 'bg-red-50/80 dark:bg-red-950/30 hover:bg-red-100/80 dark:hover:bg-red-900/40 border-l-2 border-l-red-500' },
-  success: { text: 'text-emerald-600 dark:text-emerald-400 font-medium', bg: 'bg-emerald-50/40 dark:bg-emerald-950/20 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/40' },
-  debug: { text: 'text-neutral-500 dark:text-neutral-500', bg: 'hover:bg-neutral-100 dark:hover:bg-neutral-800/50' },
+  info: { text: 'text-blue-400', bg: 'hover:bg-blue-500/10' },
+  warn: { text: 'text-orange-400 font-medium', bg: 'bg-orange-500/10 hover:bg-orange-500/20' },
+  error: { text: 'text-red-400 font-semibold', bg: 'bg-red-500/10 hover:bg-red-500/20 border-l-2 border-l-red-500/50' },
+  success: { text: 'text-green-400 font-medium', bg: 'bg-green-500/10 hover:bg-green-500/20' },
+  debug: { text: 'text-gray-500', bg: 'hover:bg-white/5' },
   all: { text: '', bg: '' },
 }
 
@@ -39,7 +39,10 @@ function DenseButton({ active, className, children, ...props }: React.ComponentP
     <Button
       variant="outline"
       size="sm"
-      className={`h-6 px-2 py-0 text-[11px] rounded-[3px] border-neutral-300 dark:border-neutral-600 font-sans shadow-none transition-none ${active ? 'bg-neutral-200 dark:bg-neutral-700 border-neutral-400 dark:border-neutral-500 font-medium text-neutral-900 dark:text-white' : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700'} ${className}`}
+      className={`h-6 px-2 py-0 text-[11px] rounded-[3px] border-white/10 font-sans shadow-none transition-all ${active
+        ? 'bg-white/10 border-white/20 font-medium text-white shadow-[0_0_10px_rgba(255,255,255,0.05)]'
+        : 'bg-transparent text-gray-300 hover:bg-white/10 hover:text-white'
+        } ${className}`}
       {...props}
     >
       {children}
@@ -271,15 +274,15 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
   }
 
   return (
-    <div className={`flex min-h-0 flex-col bg-neutral-200 dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 font-sans text-xs overflow-hidden select-none ${className || 'h-full'}`}>
+    <div className={`flex min-h-0 flex-col bg-transparent font-sans text-xs overflow-hidden select-none ${className || 'h-full'}`}>
 
       {/* Top Application Ribbon */}
-      <div className="flex flex-col bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 shrink-0 shadow-sm">
+      <div className="flex flex-col bg-transparent border-b border-white/[0.05] shrink-0 shadow-sm relative z-10">
 
         {/* Row 1: Main Controls & Connection State */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 py-1.5 border-b border-neutral-200 dark:border-neutral-700/50 gap-2 sm:gap-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 py-1.5 border-b border-white/[0.05] gap-2 sm:gap-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex bg-neutral-200/50 dark:bg-neutral-900/50 p-0.5 rounded-[4px] border border-neutral-300/50 dark:border-neutral-700/50 shadow-inner">
+            <div className="flex bg-black/20 p-0.5 rounded-[4px] border border-white/5 shadow-inner">
               <DenseButton
                 active={mode === 'live'}
                 onClick={() => {
@@ -303,14 +306,14 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
               </DenseButton>
             </div>
 
-            <div className="w-px h-4 bg-neutral-300 dark:bg-neutral-600 mx-1" />
+            <div className="w-px h-4 bg-white/10 mx-1" />
 
             <DenseButton onClick={mode === 'live' ? () => void loadLiveLogs() : () => void loadFiles()} disabled={loading || filesLoading}>
               <RefreshCw className={`mr-1.5 h-3 w-3 ${(loading || filesLoading) ? 'animate-spin' : ''}`} />
               Refresh
             </DenseButton>
 
-            <DenseButton onClick={() => void handleClearLive()} disabled={loading || mode !== 'live'} className="text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-800">
+            <DenseButton onClick={() => void handleClearLive()} disabled={loading || mode !== 'live'} className="text-red-400 hover:bg-red-500/10 hover:text-red-300 hover:border-red-500/20">
               <Trash2 className="mr-1.5 h-3 w-3" />
               Clear
             </DenseButton>
@@ -318,7 +321,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
 
           <div className="flex items-center gap-3">
             {mode === 'live' ? (
-              <div className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
+              <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
                 <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
                 {wsConnected ? 'Connected (WebSocket)' : 'Disconnected'}
               </div>
@@ -326,7 +329,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
               <div className="flex items-center gap-1.5">
                 <History className="h-3 w-3 text-neutral-500" />
                 <Select value={selectedFile ?? undefined} onValueChange={handleFileChange} disabled={files.length === 0}>
-                  <SelectTrigger className="h-6 text-[11px] w-56 rounded-[3px] border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 focus:ring-0 focus:ring-offset-0 px-2 py-0">
+                  <SelectTrigger className="h-6 text-[11px] w-56 rounded-[3px] border-white/10 bg-black/50 text-gray-200 focus:ring-1 focus:ring-red-500/50 focus:border-red-500 px-2 py-0">
                     <SelectValue placeholder={files.length === 0 ? 'No log archives' : 'Select history log...'} />
                   </SelectTrigger>
                   <SelectContent>
@@ -343,33 +346,33 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         </div>
 
         {/* Row 2: Filters and View Configuration */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between px-2 py-1 bg-white/50 dark:bg-neutral-900/20 gap-2 md:gap-0">
+        <div className="flex flex-col md:flex-row md:items-center justify-between px-2 py-1 bg-transparent gap-2 md:gap-0">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex items-center w-full sm:w-auto">
-              <Filter className="absolute left-1.5 h-3 w-3 text-neutral-400" />
+              <Filter className="absolute left-1.5 h-3 w-3 text-gray-500" />
               <Input
                 placeholder="Filter output..."
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
-                className="w-full sm:w-48 h-6 pl-6 text-[11px] rounded-[3px] border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:ring-offset-0"
+                className="w-full sm:w-48 h-6 pl-6 text-[11px] rounded-[3px] border-white/10 bg-black/50 text-gray-200 focus-visible:ring-1 focus-visible:ring-red-500/50 focus-visible:border-red-500 focus-visible:ring-offset-0"
               />
             </div>
 
             <Select value={levelFilter} onValueChange={(v) => setLevelFilter(v as LogLevel)}>
-              <SelectTrigger className="w-28 h-6 text-[11px] rounded-[3px] border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 focus:ring-0 px-2 py-0">
+              <SelectTrigger className="w-28 h-6 text-[11px] rounded-[3px] border-white/10 bg-black/50 text-gray-200 focus:ring-0 px-2 py-0">
                 <SelectValue placeholder="Severity" />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-[11px] py-1">All Levels</SelectItem>
-                <SelectItem value="info" className="text-[11px] py-1 text-blue-600 dark:text-blue-400">Info</SelectItem>
-                <SelectItem value="warn" className="text-[11px] py-1 text-amber-600 dark:text-amber-500">Warning</SelectItem>
-                <SelectItem value="error" className="text-[11px] py-1 text-red-600 dark:text-red-500">Error</SelectItem>
-                <SelectItem value="success" className="text-[11px] py-1 text-emerald-600 dark:text-emerald-500">Success</SelectItem>
-                <SelectItem value="debug" className="text-[11px] py-1 text-neutral-500">Debug</SelectItem>
+              <SelectContent className="bg-[#0a0a0a] border-white/10 text-gray-200">
+                <SelectItem value="all" className="text-[11px] py-1 hover:bg-white/10 focus:bg-white/10">All Levels</SelectItem>
+                <SelectItem value="info" className="text-[11px] py-1 text-blue-400 hover:bg-white/10 focus:bg-white/10">Info</SelectItem>
+                <SelectItem value="warn" className="text-[11px] py-1 text-orange-400 hover:bg-white/10 focus:bg-white/10">Warning</SelectItem>
+                <SelectItem value="error" className="text-[11px] py-1 text-red-400 hover:bg-white/10 focus:bg-white/10">Error</SelectItem>
+                <SelectItem value="success" className="text-[11px] py-1 text-green-400 hover:bg-white/10 focus:bg-white/10">Success</SelectItem>
+                <SelectItem value="debug" className="text-[11px] py-1 text-gray-500 hover:bg-white/10 focus:bg-white/10">Debug</SelectItem>
               </SelectContent>
             </Select>
 
-            <div className="hidden sm:block w-px h-3.5 bg-neutral-300 dark:bg-neutral-600 mx-1" />
+            <div className="hidden sm:block w-px h-3.5 bg-white/10 mx-1" />
 
             <div className="hidden sm:flex items-center gap-1">
               <DenseButton active={showTime} onClick={() => setShowTime((v) => !v)} title="Toggle Time Column">
@@ -383,10 +386,10 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
               </DenseButton>
             </div>
 
-            <div className="hidden sm:block w-px h-3.5 bg-neutral-300 dark:bg-neutral-600 mx-1" />
+            <div className="hidden sm:block w-px h-3.5 bg-white/10 mx-1" />
 
             <DenseButton active={feedDebugOnly} onClick={() => setFeedDebugOnly((v) => !v)} title="Filter UI feed-specific debug logic">
-              <Bug className={`h-3 w-3 mr-1 ${feedDebugOnly ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-500'}`} /> Feed Debug
+              <Bug className={`h-3 w-3 mr-1 ${feedDebugOnly ? 'text-amber-400' : 'text-gray-500'}`} /> Feed Debug
             </DenseButton>
           </div>
 
@@ -400,37 +403,37 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       </div>
 
       {error && (
-        <div className="px-3 py-1.5 bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border-b border-red-200 dark:border-red-900/50 text-[11px] font-medium shrink-0 flex items-center">
+        <div className="px-3 py-1.5 bg-red-500/10 text-red-400 border-b border-red-500/20 text-[11px] font-medium shrink-0 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.2)]">
           <div className="w-2 h-2 rounded-full bg-red-500 mr-2" />
           {error}
         </div>
       )}
 
       {/* Main Data Grid */}
-      <div className="flex min-h-0 flex-1 overflow-hidden flex-col bg-white dark:bg-[#121212] m-1 rounded-[3px] border border-neutral-300 dark:border-neutral-700 shadow-sm relative">
+      <div className="flex min-h-0 flex-1 overflow-hidden flex-col bg-transparent mx-1 mb-1 rounded-[3px] border border-white/[0.05] shadow-sm relative">
 
         {/* Table Header Row */}
-        <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 text-[10px] uppercase font-semibold text-neutral-500 dark:text-neutral-400 shrink-0 select-none">
+        <div className="flex items-center bg-transparent border-b border-white/[0.05] text-[10px] uppercase font-semibold text-gray-400 shrink-0 select-none hidden md:flex">
           {showTime && (
-            <div className="hidden sm:flex w-[100px] shrink-0 border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 items-center">
+            <div className="hidden sm:flex w-[100px] shrink-0 border-r border-transparent px-2 py-1 items-center">
               Timestamp
             </div>
           )}
           {showProfile && (
-            <div className="hidden md:flex w-[120px] shrink-0 border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 items-center">
+            <div className="hidden md:flex w-[120px] shrink-0 border-r border-transparent px-2 py-1 items-center">
               Profile
             </div>
           )}
           {showSource && (
-            <div className="hidden lg:flex w-[110px] shrink-0 border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 items-center">
+            <div className="hidden lg:flex w-[110px] shrink-0 border-r border-transparent px-2 py-1 items-center">
               Module
             </div>
           )}
-          <div className="w-[70px] shrink-0 border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 flex items-center">
+          <div className="w-[70px] shrink-0 border-r border-transparent px-2 py-1 flex items-center">
             Sev
           </div>
           <div className="flex-1 px-2 py-1 flex items-center gap-1.5">
-            <AlignLeft className="w-3 h-3 text-neutral-400" />
+            <AlignLeft className="w-3 h-3 text-gray-500" />
             Message Payload
           </div>
         </div>
@@ -438,20 +441,20 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         {/* Scaled-down ScrollArea for absolute density */}
         <ScrollArea
           ref={scrollAreaRef}
-          className="flex min-h-0 flex-1 font-mono text-[11px] leading-[1.3] bg-white dark:bg-[#121212] select-text"
+          className="flex min-h-0 flex-1 font-mono text-[11px] leading-[1.3] bg-transparent select-text"
         >
           {loading && visibleLogs.length === 0 ? (
-            <div className="flex items-center justify-center p-4 text-neutral-500 font-sans italic">
+            <div className="flex items-center justify-center p-4 text-gray-500 font-sans italic">
               <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> Fetching stream...
             </div>
           ) : visibleLogs.length === 0 ? (
-            <div className="flex items-center justify-center p-4 text-neutral-500 font-sans">
+            <div className="flex items-center justify-center p-4 text-gray-500 font-sans">
               No matching records found.
             </div>
           ) : (
             <div className="flex flex-col pb-4">
               {showLoadMore && hasMoreLogs && (
-                <div className="sticky top-0 z-10 flex justify-center py-1 bg-white/95 dark:bg-[#121212]/95 border-b border-neutral-200 dark:border-neutral-800">
+                <div className="sticky top-0 z-10 flex justify-center py-1 bg-[#0a0a0a]/95 border-b border-white/[0.05]">
                   <DenseButton
                     onClick={() => setVisibleCount((prev) => Math.min(prev + LOGS_PAGE_SIZE, filteredLogs.length))}
                     className="h-5 px-2 text-[10px]"
@@ -469,23 +472,23 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
                 return (
                   <div
                     key={`${entry.ts}-${idx}`}
-                    className={`flex items-start border-b border-neutral-100 dark:border-neutral-800/60 ${appearance.bg} ${isFeedDebug ? 'bg-indigo-50/30 dark:bg-indigo-950/20' : ''}`}
+                    className={`flex items-start border-b border-white/[0.02] ${appearance.bg} ${isFeedDebug ? 'bg-indigo-500/10' : ''}`}
                     style={appearance.bg.includes('border-l') ? {} : { borderLeft: '2px solid transparent' }}
                   >
                     {showTime && (
-                      <div className="hidden sm:block w-[100px] shrink-0 px-2 py-0.5 text-[10px] text-neutral-500 dark:text-neutral-500 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent">
+                      <div className="hidden sm:block w-[100px] shrink-0 px-2 py-0.5 text-[10px] text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent">
                         {formatTime(entry.ts)}
                       </div>
                     )}
 
                     {showProfile && (
-                      <div className="hidden md:flex w-[120px] shrink-0 px-2 py-0.5 text-neutral-600 dark:text-neutral-400 whitespace-nowrap overflow-hidden text-ellipsis items-center border-r border-transparent">
+                      <div className="hidden md:flex w-[120px] shrink-0 px-2 py-0.5 text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis items-center border-r border-transparent">
                         <span className="truncate">{entry.profileName || '-'}</span>
                       </div>
                     )}
 
                     {showSource && (
-                      <div className="hidden lg:block w-[110px] shrink-0 px-2 py-0.5 text-blue-700/80 dark:text-blue-400/80 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent">
+                      <div className="hidden lg:block w-[110px] shrink-0 px-2 py-0.5 text-blue-400/80 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent">
                         {entry.source || '-'}
                       </div>
                     )}
@@ -494,7 +497,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
                       {severityString}
                     </div>
 
-                    <div className={`flex-1 px-2 py-0.5 break-words whitespace-pre-wrap ${appearance.text} ${isFeedDebug ? 'text-indigo-700 dark:text-indigo-400 font-medium' : ''}`}>
+                    <div className={`flex-1 px-2 py-0.5 break-words whitespace-pre-wrap ${appearance.text} ${isFeedDebug ? 'text-indigo-400 font-medium' : ''}`}>
                       {entry.message}
                     </div>
                   </div>
@@ -506,7 +509,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       </div>
 
       {/* Bottom Status Bar */}
-      <div className="h-auto min-h-[20px] shrink-0 bg-neutral-200 dark:bg-neutral-800 border-t border-neutral-300 dark:border-neutral-700 px-2 py-1 flex flex-wrap items-center justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+      <div className="h-auto min-h-[20px] shrink-0 bg-transparent border-t border-white/[0.05] px-2 py-1 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500">
         <div className="flex flex-wrap items-center gap-3">
           <span>{visibleLogs.length}/{filteredLogs.length} Records</span>
           {filterQuery && <span>Filter active</span>}

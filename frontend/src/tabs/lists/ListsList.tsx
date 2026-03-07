@@ -1,7 +1,22 @@
-import { Pencil, Trash2, List as ListIcon, Hash, RefreshCw, ArrowRight } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { MoreHorizontal, Pencil, Trash2, RefreshCw, List as ListIcon } from "lucide-react"
 import type { List } from './types'
-import { DenseButton } from "@/components/ui/dense-button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 
 interface ListsListProps {
   lists: List[]
@@ -14,105 +29,92 @@ interface ListsListProps {
 
 export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDelete }: ListsListProps) {
   if (loading && lists.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center p-4 text-neutral-500 text-[11px] italic">
-        <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
-        Fetching lists registry...
-      </div>
-    )
+    return <div className="p-12 text-center text-sm text-muted-foreground animate-pulse flex items-center justify-center gap-2"><RefreshCw className="h-4 w-4 animate-spin shrink-0" /> Loading lists...</div>
   }
 
   if (lists.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center p-4 text-neutral-500 text-[11px]">
-        No lists available. Create one to begin mapping profiles.
+      <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-white/5 rounded-2xl bg-white/[0.01]">
+        <ListIcon className="h-10 w-10 text-gray-500 mb-4" />
+        <h3 className="text-lg font-medium text-gray-200">No lists</h3>
+        <p className="text-sm text-gray-500 mt-1">Create a new list to organize your profiles.</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full w-full">
-      {/* Table Header Row */}
-      <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 text-[10px] uppercase font-semibold text-neutral-500 dark:text-neutral-400 shrink-0 select-none">
-        <div className="w-[72px] shrink-0 border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 flex items-center justify-center">
-          State
-        </div>
+    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-sm shadow-sm overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-transparent hover:bg-transparent border-b border-white/[0.05]">
+            <TableHead className="w-[80px] pl-4 text-gray-400 font-medium h-12">No.</TableHead>
+            <TableHead className="w-full text-gray-400 font-medium h-12">Name</TableHead>
+            <TableHead className="w-[180px] text-gray-400 font-medium h-12">List ID</TableHead>
+            <TableHead className="w-[140px] text-right pr-4 text-gray-400 font-medium h-12">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {lists.map((list, idx) => (
+            <TableRow
+              key={list.id}
+              onClick={() => onSelect(list)}
+              className={cn(
+                "group cursor-pointer transition-colors h-14 border-b border-white/[0.05]",
+                selectedId === list.id ? "bg-white/[0.04]" : "hover:bg-white/[0.02]"
+              )}
+            >
+              <TableCell className="pl-4">
+                <span className="text-sm text-gray-500 font-mono">{idx + 1}</span>
+              </TableCell>
 
-        {/* Name Column */}
-        <div className="flex-1 w-0 min-w-[200px] border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 flex items-center gap-1.5">
-          <ListIcon className="w-3 h-3 text-neutral-400" />
-          List Name
-        </div>
+              <TableCell className="font-medium">
+                <span className="text-gray-200">{list.name}</span>
+              </TableCell>
 
-        {/* ID Column */}
-        <div className="w-[180px] shrink-0 border-r border-neutral-300 dark:border-neutral-700 px-2 py-1 flex items-center gap-1.5">
-          <Hash className="w-3 h-3 text-neutral-400" />
-          List ID
-        </div>
-
-        {/* Actions Column */}
-        <div className="w-[140px] shrink-0 px-2 py-1 flex items-center justify-end">
-          Actions
-        </div>
-      </div>
-
-      <ScrollArea className="flex-1 min-h-0 bg-white dark:bg-[#121212] select-text">
-        <div className="flex flex-col pb-4">
-          {lists.map((list, idx) => {
-            const isSelected = selectedId === list.id
-
-            return (
-              <div
-                key={list.id}
-                onClick={() => onSelect(list)}
-                className={`group flex items-center border-b border-neutral-100 dark:border-neutral-800/60 cursor-pointer ${isSelected
-                  ? 'bg-blue-50/60 dark:bg-blue-900/20 border-l-2 border-l-blue-500'
-                  : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 border-l-2 border-l-transparent'
-                  }`}
-              >
-                <div className="w-[72px] shrink-0 px-2 py-0.5 border-r border-transparent flex items-center justify-center">
-                  {isSelected ? (
-                    <span className="h-4 px-1.5 rounded-[2px] border border-blue-600/50 dark:border-blue-500/50 bg-blue-50 dark:bg-blue-950/40 text-[9px] font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400 inline-flex items-center">
-                      Active
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">{idx + 1}</span>
-                  )}
-                </div>
-
-                {/* Name */}
-                <div className={`flex-1 w-0 min-w-[200px] px-2 py-0.5 text-[11px] whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent ${isSelected ? 'text-blue-700 dark:text-blue-400 font-medium' : 'text-neutral-700 dark:text-neutral-300'}`}>
-                  <span className="inline-flex items-center gap-1">
-                    {list.name}
-                    {isSelected && <ArrowRight className="h-2.5 w-2.5 shrink-0" />}
-                  </span>
-                </div>
-
-                {/* ID Column */}
-                <div className="w-[180px] shrink-0 px-2 py-0.5 text-[10px] text-neutral-500 dark:text-neutral-500 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent font-mono">
+              <TableCell>
+                <span className="text-[10px] text-gray-500 font-mono truncate">
                   {list.id}
-                </div>
+                </span>
+              </TableCell>
 
-                {/* Actions Column */}
-                <div className="w-[140px] shrink-0 px-2 py-0.5 flex items-center justify-end gap-1">
-                  <DenseButton
-                    onClick={(e) => { e.stopPropagation(); onEdit(list); }}
-                    className={`h-5 px-1.5 w-auto border-transparent shadow-none bg-transparent text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-blue-600 dark:hover:text-blue-400 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+              <TableCell className="text-right pr-4">
+                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/5"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onEdit(list)
+                    }}
+                    title="Edit List"
                   >
-                    <Pencil className="h-3 w-3 mr-1" /> Edit
-                  </DenseButton>
-                  <DenseButton
-                    onClick={(e) => { e.stopPropagation(); onDelete(list); }}
-                    className={`h-5 px-1.5 w-auto border-transparent shadow-none bg-transparent text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 hover:text-red-700 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-opacity ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                  >
-                    <Trash2 className="h-3 w-3 mr-1" /> Delete
-                  </DenseButton>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-white/5" onClick={(e) => e.stopPropagation()}>
+                        <span className="sr-only">Open menu</span>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 bg-[#0f0f0f] border-white/10 text-gray-200" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenuLabel className="text-gray-400">Actions</DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => onEdit(list)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+                        <Pencil className="mr-2 h-4 w-4" /> Edit List
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => onDelete(list)} className="text-red-400 focus:text-red-400 focus:bg-red-500/10 hover:bg-red-500/10 cursor-pointer">
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete List
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      </ScrollArea>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   )
 }

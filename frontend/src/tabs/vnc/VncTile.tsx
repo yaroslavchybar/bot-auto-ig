@@ -24,18 +24,18 @@ export function VncTile({ session, onSelect }: VncTileProps) {
     <button
       type="button"
       onClick={onSelect}
-      className="group text-left flex flex-col min-h-[250px] bg-black border border-neutral-300 dark:border-neutral-700 rounded-[4px] overflow-hidden shadow-sm hover:border-neutral-400 dark:hover:border-neutral-500 transition-colors"
+      className="group text-left flex flex-col min-h-[250px] bg-white/[0.02] border border-white/5 rounded-[4px] overflow-hidden backdrop-blur-sm shadow-sm hover:bg-white/[0.04] hover:border-white/10 transition-colors"
     >
-      <div className="h-8 px-2.5 flex items-center justify-between bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700">
+      <div className="h-8 px-2.5 flex items-center justify-between bg-transparent border-b border-white/[0.05]">
         <div className="flex items-center gap-2 min-w-0">
-          <Monitor className="h-3.5 w-3.5 text-neutral-600 dark:text-neutral-300 shrink-0" />
-          <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-200 truncate">
+          <Monitor className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+          <span className="text-[11px] font-semibold text-gray-200 truncate">
             {session.profileName}
           </span>
-          <span className="text-[10px] text-neutral-500 font-mono shrink-0">:{session.displayNum}</span>
+          <span className="text-[10px] text-gray-500 font-mono shrink-0">:{session.displayNum}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-[10px] text-neutral-500 font-mono shrink-0">
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+        <div className="flex items-center gap-1.5 text-[10px] text-green-400 font-mono shrink-0">
+          <span className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]" />
           active
         </div>
       </div>

@@ -6,6 +6,7 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { LogsViewer } from '@/components/LogsViewer'
 import { VncViewer } from '@/components/VncViewer'
 import { VncTile, type DisplaySession } from './VncTile'
+import { Button } from '@/components/ui/button'
 
 type DisplayEvent = {
   type?: unknown
@@ -159,37 +160,40 @@ export function VncPage() {
 
   if (focusedSession) {
     return (
-      <div className="flex flex-col h-full bg-neutral-200 dark:bg-neutral-900 overflow-hidden font-sans">
-        <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 shrink-0 select-none shadow-sm z-10">
+      <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+        <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setFocusedSessionKey(null)
                 setControlState('locked')
               }}
-              className="h-7 px-2.5 text-[11px] rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors inline-flex items-center gap-1.5"
+              className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <ArrowLeft className="mr-2 h-3.5 w-3.5" />
               Back to Grid
-            </button>
+            </Button>
             <div className="flex items-baseline gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+              <h2 className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
                 {focusedSession.profileName}
               </h2>
-              <span className="text-[10px] text-neutral-500 font-mono">
+              <span className="text-[10px] text-gray-500 font-mono">
                 {focusedSession.workflowId} / :{focusedSession.displayNum}
               </span>
             </div>
           </div>
-          <button
-            type="button"
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => void fetchSessions()}
-            className="h-7 px-2.5 text-[11px] rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors inline-flex items-center gap-1.5"
+            className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
-          </button>
+          </Button>
         </div>
 
         <div className="flex-1 min-h-0 p-1">
@@ -209,9 +213,9 @@ export function VncPage() {
             })()}
           >
             <Panel id="left-vnc" defaultSize={60} minSize={30}>
-              <div className="flex flex-col h-full bg-black border border-neutral-300 dark:border-neutral-700 rounded-[3px] shadow-sm relative overflow-hidden group">
+              <div className="flex flex-col h-full bg-[#050505] border border-white/[0.05] rounded-[3px] shadow-sm relative overflow-hidden group">
                 <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-black/80 to-transparent z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center px-2 pointer-events-none">
-                  <div className="text-[10px] text-white/70 font-mono tracking-widest uppercase">
+                  <div className="text-[10px] text-gray-400 font-mono tracking-widest uppercase">
                     Display Stream :{focusedSession.displayNum}
                   </div>
                 </div>
@@ -220,48 +224,47 @@ export function VncPage() {
 
                 {!isInteractive && (
                   <div
-                    className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-black/35 pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'}`}
+                    className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-black/50 backdrop-blur-sm pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'}`}
                   >
                     <div className={`${isConfirming ? 'w-full max-w-[360px] mx-4' : ''}`}>
                       <div
-                        className={`bg-neutral-100/95 dark:bg-neutral-800/95 border border-neutral-300 dark:border-neutral-600 rounded-[3px] shadow-sm overflow-hidden ${isConfirming ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 pointer-events-auto transition-opacity'}`}
+                        className={`bg-[#0a0a0a] border border-white/10 rounded-lg shadow-lg overflow-hidden sm:rounded-lg ${isConfirming ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 pointer-events-auto transition-opacity'}`}
                       >
                         {isConfirming && (
-                          <>
-                            <div className="px-3 py-1 text-[10px] uppercase tracking-wider font-mono text-neutral-500 dark:text-neutral-400 bg-white/60 dark:bg-neutral-900/40 border-b border-neutral-300 dark:border-neutral-700">
+                          <div className="flex flex-col space-y-1.5 text-center sm:text-left px-6 py-4">
+                            <h2 className="text-lg font-semibold leading-none tracking-tight bg-gradient-to-r from-red-500 to-orange-400 bg-clip-text text-transparent">
                               Control Handoff
-                            </div>
-                            <div className="px-3 py-2.5 text-xs text-neutral-700 dark:text-neutral-200">
+                            </h2>
+                            <p className="text-sm text-gray-500">
                               Taking control will interrupt the agent.
-                            </div>
-                          </>
+                            </p>
+                          </div>
                         )}
-                        <div className={`px-3 ${isConfirming ? 'pb-3 flex items-center justify-end gap-1.5' : 'py-3'}`}>
+                        <div className={`flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 px-6 ${isConfirming ? 'pb-6 pt-2' : 'py-6'}`}>
                           {isConfirming ? (
                             <>
-                              <button
-                                type="button"
+                              <Button
+                                variant="outline"
                                 onClick={() => setControlState('locked')}
-                                className="h-6 px-2.5 text-[11px] rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                                className="mt-2 sm:mt-0 bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
                               >
                                 Cancel
-                              </button>
-                              <button
-                                type="button"
+                              </Button>
+                              <Button
                                 onClick={() => setControlState('unlocked')}
-                                className="h-6 px-2.5 text-[11px] rounded-[3px] border border-red-600/70 dark:border-red-500/70 bg-red-600 text-white hover:bg-red-700 transition-colors"
+                                className="border-none bg-gradient-to-r from-red-600 to-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-500 transition-all font-medium"
                               >
                                 Confirm
-                              </button>
+                              </Button>
                             </>
                           ) : (
-                            <button
-                              type="button"
+                            <Button
+                              variant="outline"
                               onClick={() => setControlState('confirm')}
-                              className="h-7 px-3 text-[11px] rounded-[3px] border border-neutral-300 dark:border-neutral-600 font-medium text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                              className="bg-black/50 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none backdrop-blur-sm"
                             >
                               Take Control
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -270,21 +273,21 @@ export function VncPage() {
                 )}
 
                 {isInteractive && (
-                  <div className="absolute bottom-2 right-2 z-20">
-                    <button
-                      type="button"
+                  <div className="absolute bottom-4 right-4 z-20">
+                    <Button
+                      variant="outline"
                       onClick={() => setControlState('locked')}
-                      className="h-6 px-2.5 text-[11px] rounded-[3px] border border-neutral-300/70 dark:border-neutral-600/70 bg-neutral-100/90 dark:bg-neutral-800/90 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                      className="bg-black/80 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none backdrop-blur-md"
                     >
                       Return To Agent
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
             </Panel>
 
-            <Separator className="w-2 relative mx-0.5 flex items-center justify-center transition-colors hover:bg-neutral-300/50 dark:hover:bg-neutral-700/50 rounded group focus:outline-none focus:ring-0 active:outline-none">
-              <div className="w-1 h-8 bg-neutral-300 dark:bg-neutral-600 rounded-full group-hover:bg-neutral-400 dark:group-hover:bg-neutral-500 transition-colors" />
+            <Separator className="w-2 relative mx-0.5 flex items-center justify-center transition-colors hover:bg-white/5 rounded group focus:outline-none focus:ring-0 active:outline-none">
+              <div className="w-1 h-8 bg-white/10 rounded-full group-hover:bg-white/30 transition-colors" />
             </Separator>
 
             <Panel id="right-logs" defaultSize={40} minSize={20}>
@@ -303,41 +306,52 @@ export function VncPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-neutral-200 dark:bg-neutral-900 overflow-hidden font-sans">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-300 dark:border-neutral-700 shrink-0 select-none shadow-sm z-10">
+    <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/5 blur-[120px] rounded-full pointer-events-none" />
+      <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
         <div className="flex items-center gap-3">
           <div className="flex items-baseline gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+            <h2 className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
               Active Sessions
             </h2>
-            <span className="text-[10px] text-neutral-500 font-mono">
+            <span className="text-[10px] text-gray-500 font-mono">
               [{sessions.length} live]
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-mono text-neutral-500">
-            <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500' : 'bg-red-500'}`} />
-            {connected ? 'ws connected' : 'ws reconnecting'}
+          <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-400">
+            <span
+              className={`w-2 h-2 rounded-full ${connected
+                ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]'
+                : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]'
+                }`}
+            />
+            <span className={connected ? 'text-green-400' : 'text-red-400'}>
+              {connected ? 'ws connected' : 'ws reconnecting'}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void fetchSessions()}
+              className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+            >
+              <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void fetchSessions()}
-          className="h-7 px-2.5 text-[11px] rounded-[3px] border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors inline-flex items-center gap-1.5"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
       </div>
 
-      <div className="flex-1 min-h-0 p-2 overflow-auto">
+      <div className="flex-1 min-h-0 p-2 overflow-auto z-10">
         {error ? (
-          <div className="mb-2 rounded-[3px] border border-red-300 bg-red-100/70 dark:bg-red-950/40 dark:border-red-800 text-red-700 dark:text-red-300 px-3 py-2 text-xs">
+          <div className="mb-2 rounded-[3px] border border-red-500/20 bg-red-500/10 text-red-400 px-3 py-2 text-xs">
             Failed to load displays: {error}
           </div>
         ) : null}
 
         {sessions.length === 0 ? (
-          <div className="h-full min-h-[260px] border border-dashed border-neutral-400/70 dark:border-neutral-600 rounded-[4px] bg-neutral-100/60 dark:bg-neutral-800/40 flex flex-col items-center justify-center gap-2 text-neutral-500 dark:text-neutral-400">
+          <div className="h-full min-h-[260px] border border-white/10 rounded-[4px] bg-white/[0.02] flex flex-col items-center justify-center gap-2 text-gray-500 backdrop-blur-sm">
             <LayoutGrid className="h-6 w-6" />
             <p className="text-xs font-medium">No active sessions</p>
             <p className="text-[11px]">Start a workflow to see browser displays.</p>

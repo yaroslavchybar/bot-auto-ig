@@ -113,7 +113,7 @@ export function ProfileForm({
       <ScrollArea className="flex-1 min-h-0 pr-4">
         <div className="grid gap-5 pb-2">
           <div className="grid gap-1.5">
-            <Label htmlFor="name" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profile Name</Label>
+            <Label htmlFor="name" className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Profile Name</Label>
             <Input
               id="name"
               value={String(draft.name ?? '')}
@@ -123,15 +123,15 @@ export function ProfileForm({
               }}
               disabled={saving}
               placeholder="e.g. Work Account 1"
-              className="h-9 font-medium"
+              className="h-9 font-medium bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
             />
           </div>
 
-          <Separator />
+          <Separator className="bg-white/5" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2">
+              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
                 <Globe className="h-4 w-4" /> Network Connection
               </Label>
               <Select
@@ -139,12 +139,12 @@ export function ProfileForm({
                 onValueChange={(value) => setConnection(value as 'direct' | 'proxy')}
                 disabled={saving}
               >
-                <SelectTrigger id="connection" className="w-[180px] h-8 text-xs">
+                <SelectTrigger id="connection" className="w-[180px] h-8 text-xs bg-black/50 border-white/10 text-white focus:ring-red-500/50">
                   <SelectValue placeholder="Select connection" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="direct">Direct Connection</SelectItem>
-                  <SelectItem value="proxy">Proxy</SelectItem>
+                <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
+                  <SelectItem value="direct" className="focus:bg-white/10 focus:text-white cursor-pointer">Direct Connection</SelectItem>
+                  <SelectItem value="proxy" className="focus:bg-white/10 focus:text-white cursor-pointer">Proxy</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -158,12 +158,12 @@ export function ProfileForm({
                       onValueChange={(value) => setDraft((prev) => ({ ...prev, proxy_type: value }))}
                       disabled={saving}
                     >
-                      <SelectTrigger id="proxy_type" className="h-9 w-[100px] rounded-r-none border-r-0 focus:ring-0 focus:ring-offset-0 bg-muted/50">
+                      <SelectTrigger id="proxy_type" className="h-9 w-[100px] rounded-r-none border-r-0 focus:ring-0 focus:ring-offset-0 bg-white/5 border-white/10 text-white">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="http">HTTP</SelectItem>
-                        <SelectItem value="socks5">SOCKS5</SelectItem>
+                      <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
+                        <SelectItem value="http" className="focus:bg-white/10 focus:text-white cursor-pointer">HTTP</SelectItem>
+                        <SelectItem value="socks5" className="focus:bg-white/10 focus:text-white cursor-pointer">SOCKS5</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -174,51 +174,50 @@ export function ProfileForm({
                       onChange={(e) => setDraft((prev) => ({ ...prev, proxy: e.target.value }))}
                       disabled={saving}
                       placeholder="host:port:user:pass"
-                      className="h-9 rounded-l-none font-mono text-sm focus-visible:ring-1 focus-visible:ring-offset-0"
+                      className="h-9 rounded-l-none font-mono text-sm focus-visible:ring-1 focus-visible:ring-offset-0 bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
                     />
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5 ml-1">
+                <p className="text-[10px] text-gray-500 mt-1.5 ml-1">
                   Format: <span className="font-mono">host:port:user:pass</span> or <span className="font-mono">host:port</span>
                 </p>
               </div>
             )}
           </div>
 
-          <Separator />
+          <Separator className="bg-white/5" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2">
+              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
                 <Fingerprint className="h-4 w-4" /> Browser Fingerprint
               </Label>
             </div>
 
-            <div className="p-4 border rounded-md bg-card space-y-4">
+            <div className="p-4 rounded-md bg-white/[0.02] border-white/5 border space-y-4">
               <div className="flex items-end gap-4">
                 <div className="grid gap-1.5 flex-1">
-                  <Label className="text-xs text-muted-foreground">Operating System</Label>
+                  <Label className="text-xs text-gray-400">Operating System</Label>
                   <Select
                     value={draft.fingerprint_os || 'windows'}
                     onValueChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
                     disabled={saving}
                   >
-                    <SelectTrigger className="h-9">
+                    <SelectTrigger className="h-9 bg-black/50 border-white/10 text-white focus:ring-red-500/50">
                       <SelectValue placeholder="OS" />
                     </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="windows">Windows</SelectItem>
-                      <SelectItem value="macos">macOS</SelectItem>
-                      <SelectItem value="linux">Linux</SelectItem>
+                    <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
+                      <SelectItem value="windows" className="focus:bg-white/10 focus:text-white cursor-pointer">Windows</SelectItem>
+                      <SelectItem value="macos" className="focus:bg-white/10 focus:text-white cursor-pointer">macOS</SelectItem>
+                      <SelectItem value="linux" className="focus:bg-white/10 focus:text-white cursor-pointer">Linux</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <Button
                   type="button"
-                  variant="outline"
                   onClick={handleRegenerateSeed}
                   disabled={saving}
-                  className="h-9"
+                  className="h-9 bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
                 >
                   <RefreshCw className="h-3.5 w-3.5 mr-2" />
                   New Seed
@@ -226,25 +225,25 @@ export function ProfileForm({
               </div>
 
               {draft.fingerprint_seed && (
-                <div className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded border border-border/50">
-                  <Shield className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="font-mono text-muted-foreground truncate flex-1">{draft.fingerprint_seed}</span>
+                <div className="flex items-center gap-2 text-xs bg-black/30 p-2 rounded border border-white/5">
+                  <Shield className="h-3.5 w-3.5 text-gray-500" />
+                  <span className="font-mono text-gray-400 truncate flex-1">{draft.fingerprint_seed}</span>
                 </div>
               )}
             </div>
           </div>
 
-          <Separator />
+          <Separator className="bg-white/5" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2">
+              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
                 <Target className="h-4 w-4" /> Daily Scraping Limit
               </Label>
             </div>
-            <div className="p-4 border rounded-md bg-card space-y-3">
+            <div className="p-4 rounded-md bg-white/[0.02] border-white/5 border space-y-3">
               <div className="grid gap-1.5">
-                <Label htmlFor="daily_scraping_limit" className="text-xs text-muted-foreground">
+                <Label htmlFor="daily_scraping_limit" className="text-xs text-gray-400">
                   Maximum items to scrape per day
                 </Label>
                 <Input
@@ -262,18 +261,18 @@ export function ProfileForm({
                   }}
                   disabled={saving}
                   placeholder="Leave empty for unlimited"
-                  className="h-9"
+                  className="h-9 bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
                 />
-                <p className="text-[10px] text-muted-foreground ml-1">
+                <p className="text-[10px] text-gray-500 ml-1">
                   Controls how much scraping capacity this profile can contribute each day. Leave empty for no limit.
                 </p>
               </div>
               {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
-                <div className="text-xs bg-muted/50 p-2 rounded border border-border/50">
-                  <span className="text-muted-foreground">Used today: </span>
-                  <span className="font-semibold">{draft.daily_scraping_used}</span>
+                <div className="text-xs bg-black/30 p-2 rounded border border-white/5">
+                  <span className="text-gray-500">Used today: </span>
+                  <span className="font-semibold text-gray-200">{draft.daily_scraping_used}</span>
                   {typeof draft.daily_scraping_limit === 'number' && (
-                    <span className="text-muted-foreground"> / {draft.daily_scraping_limit}</span>
+                    <span className="text-gray-500"> / {draft.daily_scraping_limit}</span>
                   )}
                 </div>
               )}
@@ -283,16 +282,16 @@ export function ProfileForm({
       </ScrollArea>
 
       {/* Fixed footer with error and buttons */}
-      <div className="flex-shrink-0 pt-4 border-t mt-4">
+      <div className="flex-shrink-0 pt-4 border-t border-white/10 mt-4">
         {localError && (
-          <div className="text-sm text-destructive font-medium bg-destructive/10 p-3 rounded-md mb-4">{localError}</div>
+          <div className="text-sm text-red-500 font-medium bg-red-500/10 p-3 rounded-md mb-4 border border-red-500/20">{localError}</div>
         )}
 
         <div className="flex justify-end gap-3">
-          <Button variant="ghost" onClick={onCancel} disabled={saving}>
+          <Button variant="ghost" onClick={onCancel} disabled={saving} className="bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none">
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium">
             {saving ? 'Saving...' : 'Save Profile'}
           </Button>
         </div>

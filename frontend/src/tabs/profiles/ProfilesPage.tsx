@@ -228,12 +228,13 @@ export function ProfilesPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground animate-in fade-in duration-300">
+    <div className="flex flex-col h-full bg-[#050505] text-gray-200 animate-in fade-in duration-300 relative">
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-sm sticky top-0 z-10">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight">Profiles</h2>
-          <p className="text-sm text-muted-foreground">Manage your browser profiles, proxies, and scraping capacity.</p>
+          <h2 className="text-xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Profiles</h2>
+          <p className="text-sm text-gray-400">Manage your browser profiles, proxies, and scraping capacity.</p>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -241,7 +242,7 @@ export function ProfilesPage() {
             size="sm"
             onClick={() => refreshProfiles()}
             disabled={loading || saving}
-            className="h-8 shadow-none"
+            className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
           >
             <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
@@ -251,7 +252,7 @@ export function ProfilesPage() {
             size="sm"
             onClick={handleCreate}
             disabled={loading || saving}
-            className="h-8 shadow-none bg-primary text-primary-foreground hover:bg-primary/90"
+            className="h-8 border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />
             New Profile
@@ -260,8 +261,8 @@ export function ProfilesPage() {
       </div>
 
       {error && !showDeleteDialog && !isCreateOpen && !isEditOpen && !isLogsOpen && !isDetailsOpen && (
-        <div className="px-6 py-3 bg-destructive/5 text-destructive text-sm border-b border-destructive/10 flex items-center">
-          <span className="w-1.5 h-1.5 rounded-full bg-destructive mr-2" />
+        <div className="px-6 py-3 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-2" />
           {error}
         </div>
       )}
@@ -286,9 +287,9 @@ export function ProfilesPage() {
 
       {/* Dialogs & Sheets */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Create Profile</DialogTitle>
+            <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Create Profile</DialogTitle>
           </DialogHeader>
           <ProfileForm
             mode="create"
@@ -301,9 +302,9 @@ export function ProfilesPage() {
       </Dialog>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col">
+        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
           <DialogHeader className="flex-shrink-0">
-            <DialogTitle>Edit Profile</DialogTitle>
+            <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Edit Profile</DialogTitle>
           </DialogHeader>
           {selected && (
             <ProfileForm
@@ -319,11 +320,11 @@ export function ProfilesPage() {
       </Dialog>
 
       <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="p-6 pb-2 border-b">
-            <DialogTitle className="flex items-center gap-2">
-              <Terminal className="h-5 w-5" />
-              Logs: <span className="font-mono text-muted-foreground">{selected?.name}</span>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0 overflow-hidden bg-[#0a0a0a] border-white/10 text-gray-200">
+          <DialogHeader className="p-6 pb-2 border-b border-white/5">
+            <DialogTitle className="flex items-center gap-2 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              <Terminal className="h-5 w-5 text-gray-300" />
+              Logs: <span className="font-mono text-gray-400">{selected?.name}</span>
             </DialogTitle>
           </DialogHeader>
           {selected && (
@@ -337,9 +338,9 @@ export function ProfilesPage() {
       </Dialog>
 
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col gap-0 border-l border-border/50 shadow-xl">
-          <SheetHeader className="p-6 pb-4 border-b bg-muted/5">
-            <SheetTitle>Profile Details</SheetTitle>
+        <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col gap-0 border-l border-white/10 shadow-xl bg-[#0a0a0a] text-gray-200">
+          <SheetHeader className="p-6 pb-4 border-b border-white/5 bg-white/[0.02]">
+            <SheetTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Profile Details</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
             {selected ? (
