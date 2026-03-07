@@ -505,6 +505,7 @@ def create_browser_context(
         monitor = TrafficMonitor()
         page.on("response", monitor.on_response)
         _attach_error_snapshots(page)
+        actions.seed_mouse_cursor(page)
         
         try:
             if page.url == "about:blank":
