@@ -7,41 +7,46 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+NEXT_REEL_BUTTON_XPATH = (
+    "//div[@role='button' and "
+    "(contains(@aria-label, 'next Reel') or contains(@aria-label, 'Next Reel'))]"
+)
+PREVIOUS_REEL_BUTTON_XPATH = (
+    "//div[@role='button' and "
+    "(contains(@aria-label, 'previous Reel') or contains(@aria-label, 'Previous Reel'))]"
+)
+
+
+def _find_reels_navigation_button(page, button_xpath: str):
+    """Return the first visible Reels navigation button matching the semantic XPath."""
+    button = page.locator(f'xpath={button_xpath}').first
+    if button.count() == 0 or not button.is_visible():
+        return None
+    return button
+
 
 def _go_to_next_reel(page) -> bool:
     """
-    Click the specific 'Navigate to next Reel' button to advance.
+    Click the semantic Reels "next" control to advance.
     """
     try:
-        # User observation: The navigation buttons are in a separate toolbar div
-        # <div aria-label="Reels navigation controls" role="toolbar">
-        # We should look for the button INSIDE this specific toolbar to avoid finding hidden/other buttons.
-        
-        toolbar = page.query_selector('[aria-label="Reels navigation controls"][role="toolbar"]')
-        if not toolbar:
-            logger.warning("Navigation toolbar not found.")
-            return False
-
-        next_btn = toolbar.query_selector('[aria-label="Navigate to next Reel"]')
+        next_btn = _find_reels_navigation_button(page, NEXT_REEL_BUTTON_XPATH)
         if next_btn:
-            # Check visibility
-            if next_btn.is_visible():
-                box = next_btn.bounding_box()
-                if box:
-                    logger.debug(f"Found 'Next Reel' arrow at ({box['x']}, {box['y']})")
-                    
-                    # Human-like interaction: Hover first -> Wait -> Click
-                    # This helps trigger any 'onHover' pre-fetching logic Instagram might have
-                    center_x = box['x'] + box['width'] / 2
-                    center_y = box['y'] + box['height'] / 2
-                    
-                    safe_mouse_move(page, center_x, center_y, steps=5)
-                    random_delay(0.2, 0.5)
-                    page.mouse.click(center_x, center_y)
-                    logger.info("Clicked 'Next Reel' arrow")
-                    return True
+            box = next_btn.bounding_box()
+            if box:
+                logger.debug(f"Found 'Next Reel' arrow at ({box['x']}, {box['y']})")
+
+                # Hover first to keep the interaction pattern human-like.
+                center_x = box['x'] + box['width'] / 2
+                center_y = box['y'] + box['height'] / 2
+
+                safe_mouse_move(page, center_x, center_y, steps=5)
+                random_delay(0.2, 0.5)
+                page.mouse.click(center_x, center_y)
+                logger.info("Clicked 'Next Reel' arrow")
+                return True
         
-        logger.warning("'Navigate to next Reel' button not found in toolbar.")
+        logger.warning("Semantic 'Next Reel' button not found.")
         return False
     except Exception as e:
         logger.error(f"Error navigating to next reel: {e}")

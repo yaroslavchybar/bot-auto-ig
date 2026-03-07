@@ -5,24 +5,40 @@ from python.instagram_actions.actions import safe_mouse_move
 
 logger = logging.getLogger(__name__)
 
+REELS_LIKE_BUTTON_XPATH = (
+    "//div[@role='button' and "
+    "descendant::*[local-name()='svg' and (@aria-label='Like' or @aria-label='Unlike')]]"
+)
+
 
 def perform_like(page) -> bool:
     """Like the current active reel."""
     try:
-        # Strict approach: Find the Like button that is visually closest to the center of the viewport.
-        # AND ensure it is strictly within the viewport bounds.
-        # AND ensure it is inside a container that has overflow: visible (as per user observation).
+        # Find the clickable Reels like wrapper closest to the viewport center.
+        # Match by semantic XPath so the selector survives Instagram CSS churn.
         
         btn_handle = page.evaluate_handle("""
-            () => {
+            (buttonXPath) => {
                 const center = window.innerHeight / 2;
-                // Find ALL Like buttons
-                const allButtons = Array.from(document.querySelectorAll('svg[aria-label="Like"]'));
+                const snapshot = document.evaluate(
+                    buttonXPath,
+                    document,
+                    null,
+                    XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
+                    null
+                );
+                const allButtons = [];
+                for (let i = 0; i < snapshot.snapshotLength; i++) {
+                    allButtons.push(snapshot.snapshotItem(i));
+                }
                 
                 let bestBtn = null;
                 let minDiff = Infinity;
                 
                 for (const btn of allButtons) {
+                    const heartIcon = btn.querySelector('svg[aria-label="Like"], svg[aria-label="Unlike"]');
+                    if (!heartIcon) continue;
+
                     const rect = btn.getBoundingClientRect();
                     
                     // 1. STRICT VISIBILITY CHECK
@@ -65,11 +81,21 @@ def perform_like(page) -> bool:
                 
                 return bestBtn;
             }
-        """)
+        """, REELS_LIKE_BUTTON_XPATH)
 
         active_btn = btn_handle.as_element()
         
         if active_btn:
+            heart_icon = active_btn.query_selector('svg[aria-label="Like"], svg[aria-label="Unlike"]')
+            if not heart_icon:
+                logger.debug("Skipped liking: Reels like icon not found inside button")
+                return False
+
+            heart_label = heart_icon.get_attribute('aria-label')
+            if heart_label == 'Unlike':
+                logger.debug("Skipped liking: Reel already liked")
+                return False
+
             # Use mouse click to prevent Playwright from auto-scrolling
             box = active_btn.bounding_box()
             if box:
