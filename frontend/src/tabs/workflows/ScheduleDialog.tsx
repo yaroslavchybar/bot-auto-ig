@@ -175,22 +175,22 @@ export function ScheduleDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-[500px]">
+			<DialogContent className="sm:max-w-[500px] bg-[#0a0a0a] border border-white/10 text-gray-200">
 				<DialogHeader>
-					<DialogTitle>Schedule Settings</DialogTitle>
-					<DialogDescription>
+					<DialogTitle className="text-gray-200">Schedule Settings</DialogTitle>
+					<DialogDescription className="text-gray-400">
 						Configure when this workflow should run automatically.
 					</DialogDescription>
 				</DialogHeader>
 
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="space-y-2">
-						<Label>Schedule Type</Label>
+						<Label className="text-gray-400">Schedule Type</Label>
 						<Select value={scheduleType} onValueChange={(v) => setScheduleType(v as ScheduleType)}>
-							<SelectTrigger>
+							<SelectTrigger className="bg-black/50 border-white/10 text-white focus:ring-red-500/50">
 								<SelectValue />
 							</SelectTrigger>
-							<SelectContent>
+							<SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
 								<SelectItem value="interval">Interval (every X minutes)</SelectItem>
 								<SelectItem value="daily">Daily</SelectItem>
 								<SelectItem value="weekly">Weekly</SelectItem>
@@ -203,15 +203,16 @@ export function ScheduleDialog({
 
 					{scheduleType === 'interval' && (
 						<div className="space-y-2">
-							<Label>Run every (minutes)</Label>
+							<Label className="text-gray-400">Run every (minutes)</Label>
 							<Input
 								type="number"
 								min={1}
 								max={1440}
 								value={intervalMinutes}
 								onChange={(e) => setIntervalMinutes(Number(e.target.value))}
+								className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50"
 							/>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-gray-500">
 								{intervalMinutes >= 60
 									? `Every ${Math.round(intervalMinutes / 60)} hour(s)`
 									: `Every ${intervalMinutes} minute(s)`}
@@ -222,12 +223,12 @@ export function ScheduleDialog({
 					{(scheduleType === 'daily' || scheduleType === 'weekly' || scheduleType === 'monthly') && (
 						<>
 							<div className="space-y-2">
-								<Label>Timezone</Label>
+								<Label className="text-gray-400">Timezone</Label>
 								<Select value={timezone} onValueChange={setTimezone}>
-									<SelectTrigger>
+									<SelectTrigger className="bg-black/50 border-white/10 text-white focus:ring-red-500/50">
 										<SelectValue />
 									</SelectTrigger>
-									<SelectContent>
+									<SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
 										{TIMEZONE_OPTIONS.map((tz) => (
 											<SelectItem key={tz.value} value={tz.value}>
 												{tz.label}
@@ -239,23 +240,25 @@ export function ScheduleDialog({
 
 							<div className="grid grid-cols-2 gap-4">
 								<div className="space-y-2">
-									<Label>Hour</Label>
+									<Label className="text-gray-400">Hour</Label>
 									<Input
 										type="number"
 										min={0}
 										max={23}
 										value={hourUTC}
 										onChange={(e) => setHourUTC(Number(e.target.value))}
+										className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50"
 									/>
 								</div>
 								<div className="space-y-2">
-									<Label>Minute</Label>
+									<Label className="text-gray-400">Minute</Label>
 									<Input
 										type="number"
 										min={0}
 										max={59}
 										value={minuteUTC}
 										onChange={(e) => setMinuteUTC(Number(e.target.value))}
+										className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50"
 									/>
 								</div>
 							</div>
@@ -264,7 +267,7 @@ export function ScheduleDialog({
 
 					{scheduleType === 'weekly' && (
 						<div className="space-y-2">
-							<Label>Days of Week</Label>
+							<Label className="text-gray-400">Days of Week</Label>
 							<div className="grid grid-cols-4 gap-2">
 								{DAY_OPTIONS.map((day) => (
 									<div key={day.value} className="flex items-center space-x-2">
@@ -287,50 +290,53 @@ export function ScheduleDialog({
 
 					{scheduleType === 'monthly' && (
 						<div className="space-y-2">
-							<Label>Day of Month</Label>
+							<Label className="text-gray-400">Day of Month</Label>
 							<Input
 								type="number"
 								min={1}
 								max={31}
 								value={dayOfMonth}
 								onChange={(e) => setDayOfMonth(Number(e.target.value))}
+								className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50"
 							/>
 						</div>
 					)}
 
 					{scheduleType === 'cron' && (
 						<div className="space-y-2">
-							<Label>Cron Expression</Label>
+							<Label className="text-gray-400">Cron Expression</Label>
 							<Input
 								value={cronspec}
 								onChange={(e) => setCronspec(e.target.value)}
 								placeholder="0 9 * * *"
+								className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50"
 							/>
-							<p className="text-xs text-muted-foreground">
+							<p className="text-xs text-gray-500">
 								Format: minute hour day-of-month month day-of-week
 							</p>
 						</div>
 					)}
 
 					<div className="space-y-2">
-						<Label>Max Runs Per Day (optional)</Label>
+						<Label className="text-gray-400">Max Runs Per Day (optional)</Label>
 						<Input
 							type="number"
 							min={0}
 							value={maxRunsPerDay ?? ''}
 							onChange={(e) => setMaxRunsPerDay(e.target.value ? Number(e.target.value) : undefined)}
 							placeholder="Unlimited"
+							className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50"
 						/>
-						<p className="text-xs text-muted-foreground">
+						<p className="text-xs text-gray-500">
 							Leave empty for unlimited runs
 						</p>
 					</div>
 
 					<DialogFooter>
-						<Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+						<Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300">
 							Cancel
 						</Button>
-						<Button type="submit" disabled={saving}>
+						<Button type="submit" disabled={saving} className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)]">
 							{saving ? 'Saving...' : 'Save Schedule'}
 						</Button>
 					</DialogFooter>

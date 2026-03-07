@@ -364,22 +364,25 @@ export function WorkflowsPage() {
 	)
 
 	return (
-		<div className="flex flex-col h-full bg-background">
+		<div className="flex flex-col h-full bg-[#050505] text-gray-200 relative overflow-hidden">
+			{/* Ambient Background Glow */}
+			<div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+
 			{/* Header */}
-			<div className="flex items-center justify-between p-4 border-b flex-none">
+			<div className="flex items-center justify-between p-6 bg-white/[0.02] border-b border-white/5 flex-none relative z-10">
 				<div>
-					<h2 className="text-2xl font-bold tracking-tight">Workflows</h2>
-					<p className="text-sm text-muted-foreground">
+					<h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Workflows</h2>
+					<p className="text-sm text-gray-500 mt-1">
 						Create and manage automation workflows
 					</p>
 				</div>
-				<div className="flex items-center gap-2">
+				<div className="flex items-center gap-3">
 					{/* Connection status */}
-					<div className="flex items-center gap-1 text-sm text-muted-foreground">
+					<div className="flex items-center gap-1 text-sm text-gray-500 mr-2">
 						{connected ? (
 							<Wifi className="h-4 w-4 text-green-500" />
 						) : (
-							<WifiOff className="h-4 w-4 text-muted-foreground" />
+							<WifiOff className="h-4 w-4 text-gray-600" />
 						)}
 					</div>
 					<Button
@@ -387,15 +390,27 @@ export function WorkflowsPage() {
 						size="sm"
 						onClick={() => void handleRefresh()}
 						disabled={workflowsLoading || saving || refreshing}
+						className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
 					>
 						<RefreshCw className={`mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`} />
 						Refresh
 					</Button>
-					<Button variant="outline" size="sm" onClick={handleImportClick} disabled={saving}>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={handleImportClick}
+						disabled={saving}
+						className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
+					>
 						<Upload className="mr-2 h-4 w-4" />
 						Import JSON
 					</Button>
-					<Button size="sm" onClick={handleCreate} disabled={saving}>
+					<Button
+						size="sm"
+						onClick={handleCreate}
+						disabled={saving}
+						className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all font-medium"
+					>
 						<Plus className="mr-2 h-4 w-4" />
 						New Workflow
 					</Button>
@@ -411,15 +426,15 @@ export function WorkflowsPage() {
 
 			{/* Error */}
 			{error && (
-				<div className="p-4 bg-destructive/10 text-destructive text-sm border-b border-destructive/20 flex-none">
+				<div className="p-4 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex-none relative z-10">
 					{error}
 				</div>
 			)}
 
 			{/* Main content area */}
-			<div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+			<div className="flex-1 flex flex-col min-h-0 overflow-hidden relative z-10">
 				{/* Workflows list */}
-				<div className="flex-1 overflow-auto p-4">
+				<div className="flex-1 overflow-auto p-6">
 					<WorkflowsList
 						workflows={workflowsList}
 						selectedId={selectedId}
@@ -463,9 +478,9 @@ export function WorkflowsPage() {
 
 			{/* Details Sheet */}
 			<Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-				<SheetContent className="w-[400px] sm:w-[540px] p-0">
-					<SheetHeader className="p-6 pb-4 border-b">
-						<SheetTitle>Workflow Details</SheetTitle>
+				<SheetContent className="w-[400px] sm:w-[540px] p-0 bg-[#0a0a0a] border-l border-white/10 text-gray-200">
+					<SheetHeader className="p-6 pb-4 border-b border-white/5 bg-white/[0.02]">
+						<SheetTitle className="text-gray-200">Workflow Details</SheetTitle>
 					</SheetHeader>
 					{selected ? (
 						<WorkflowDetails
@@ -485,19 +500,19 @@ export function WorkflowsPage() {
 
 			{/* Delete Confirmation */}
 			<AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-				<AlertDialogContent>
+				<AlertDialogContent className="bg-[#0a0a0a] border border-white/10 shadow-xl">
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete Workflow</AlertDialogTitle>
-						<AlertDialogDescription>
+						<AlertDialogTitle className="text-gray-200">Delete Workflow</AlertDialogTitle>
+						<AlertDialogDescription className="text-gray-400">
 							Are you sure you want to delete this workflow? This action cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					<AlertDialogFooter>
-						<AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
+						<AlertDialogCancel disabled={saving} className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300">Cancel</AlertDialogCancel>
 						<AlertDialogAction
 							onClick={handleConfirmDelete}
 							disabled={saving}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+							className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
 						>
 							{saving ? 'Deleting...' : 'Delete'}
 						</AlertDialogAction>

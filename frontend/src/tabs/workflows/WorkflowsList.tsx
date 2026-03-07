@@ -65,28 +65,28 @@ export function WorkflowsList({
 }: WorkflowsListProps) {
 	if (loading) {
 		return (
-			<div className="p-8 text-center text-muted-foreground">Loading workflows...</div>
+			<div className="p-8 text-center text-gray-500">Loading workflows...</div>
 		)
 	}
 
 	if (workflows.length === 0) {
 		return (
-			<div className="p-8 text-center text-muted-foreground">
+			<div className="p-8 text-center text-gray-500">
 				No workflows found. Create one to get started.
 			</div>
 		)
 	}
 
 	return (
-		<div className="border rounded-lg overflow-hidden">
+		<div className="bg-white/[0.02] rounded-2xl backdrop-blur-sm border border-white/[0.05] overflow-hidden">
 			<Table>
 				<TableHeader>
-					<TableRow className="bg-muted/50">
-						<TableHead className="w-[80px]">Active</TableHead>
-						<TableHead className="w-[250px]">Name</TableHead>
-						<TableHead className="w-[200px]">Schedule</TableHead>
-						<TableHead className="w-[150px]">Last Run</TableHead>
-						<TableHead className="w-[100px] text-right">Actions</TableHead>
+					<TableRow className="border-b border-white/[0.05] hover:bg-transparent">
+						<TableHead className="w-[80px] text-gray-400 font-medium">Active</TableHead>
+						<TableHead className="w-[250px] text-gray-400 font-medium">Name</TableHead>
+						<TableHead className="w-[200px] text-gray-400 font-medium">Schedule</TableHead>
+						<TableHead className="w-[150px] text-gray-400 font-medium">Last Run</TableHead>
+						<TableHead className="w-[100px] text-right text-gray-400 font-medium">Actions</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -99,7 +99,7 @@ export function WorkflowsList({
 						return (
 							<TableRow
 								key={workflow._id}
-								className={`cursor-pointer transition-colors ${selectedId === workflow._id ? 'bg-muted' : 'hover:bg-muted/50'}`}
+								className={`cursor-pointer transition-colors border-b border-white/[0.05] ${selectedId === workflow._id ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
 								onClick={() => onSelect(workflow)}
 							>
 								<TableCell onClick={(e) => e.stopPropagation()}>
@@ -112,9 +112,9 @@ export function WorkflowsList({
 								</TableCell>
 								<TableCell className="font-medium">
 									<div className="flex flex-col">
-										<span>{workflow.name}</span>
+										<span className="text-gray-200">{workflow.name}</span>
 										{workflow.description && (
-											<span className="text-xs text-muted-foreground truncate max-w-[200px]">
+											<span className="text-xs text-gray-500 truncate max-w-[200px]">
 												{workflow.description}
 											</span>
 										)}
@@ -124,12 +124,12 @@ export function WorkflowsList({
 									<div className="flex items-center gap-2">
 										{hasSchedule ? (
 											<>
-												<Clock className="h-4 w-4 text-muted-foreground" />
-												<span className="text-sm">
+												<Clock className="h-4 w-4 text-gray-500" />
+												<span className="text-sm text-gray-300">
 													{formatSchedule(workflow.scheduleType, workflow.scheduleConfig, workflow.timezone)}
 												</span>
 												{workflow.maxRunsPerDay && (
-													<Badge variant="outline" className="text-xs">
+													<Badge variant="outline" className="text-xs bg-transparent border-white/10 text-gray-400">
 														{workflow.runsToday ?? 0}/{workflow.maxRunsPerDay}/day
 													</Badge>
 												)}
@@ -138,7 +138,7 @@ export function WorkflowsList({
 											<Button
 												variant="ghost"
 												size="sm"
-												className="h-7 text-xs text-muted-foreground"
+												className="h-7 text-xs text-gray-400 hover:text-gray-200 hover:bg-white/5"
 												onClick={(e) => {
 													e.stopPropagation()
 													onEditSchedule(workflow)
@@ -150,7 +150,7 @@ export function WorkflowsList({
 										)}
 									</div>
 								</TableCell>
-								<TableCell className="text-sm text-muted-foreground">
+								<TableCell className="text-sm text-gray-500">
 									{formatTimestamp(workflow.lastRunAt)}
 								</TableCell>
 								<TableCell className="text-right">
@@ -158,16 +158,16 @@ export function WorkflowsList({
 										{/* More menu */}
 										<DropdownMenu>
 											<DropdownMenuTrigger asChild>
-												<Button variant="ghost" size="icon" className="h-8 w-8">
+												<Button variant="ghost" size="icon" className="h-8 w-8 text-gray-400 hover:text-gray-200 hover:bg-white/5 data-[state=open]:bg-white/5 data-[state=open]:text-gray-200">
 													<MoreHorizontal className="h-4 w-4" />
 												</Button>
 											</DropdownMenuTrigger>
-											<DropdownMenuContent align="end">
+											<DropdownMenuContent align="end" className="bg-[#0f0f0f] border-white/10 text-gray-300">
 												{isRunning && (
 													<>
 														<DropdownMenuItem
 															onClick={() => onStopRun(workflow)}
-															className="text-destructive focus:text-destructive"
+															className="text-red-400 focus:text-red-300 focus:bg-red-500/10 cursor-pointer"
 														>
 															<Square className="mr-2 h-4 w-4" />
 															Stop Run
@@ -204,7 +204,7 @@ export function WorkflowsList({
 												<DropdownMenuItem
 													onClick={() => onDelete(workflow)}
 													disabled={isRunning}
-													className="text-destructive focus:text-destructive"
+													className="text-red-400 focus:text-red-300 focus:bg-red-500/10 cursor-pointer"
 												>
 													<Trash2 className="mr-2 h-4 w-4" />
 													Delete

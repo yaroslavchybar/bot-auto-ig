@@ -64,27 +64,28 @@ export function WorkflowDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-[500px]">
+			<DialogContent className="sm:max-w-[500px] bg-[#0a0a0a] border border-white/10 text-gray-200">
 				<DialogHeader>
-					<DialogTitle>
+					<DialogTitle className="text-gray-200">
 						{mode === 'create' ? 'Create Workflow' : 'Edit Workflow'}
 					</DialogTitle>
 				</DialogHeader>
 
 				<form onSubmit={handleSubmit} className="space-y-4">
 					<div className="space-y-2">
-						<Label htmlFor="workflow-name">Name</Label>
+						<Label htmlFor="workflow-name" className="text-gray-400">Name</Label>
 						<Input
 							id="workflow-name"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
 							placeholder="My workflow"
 							disabled={saving}
+							className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
 						/>
 					</div>
 
 					<div className="space-y-2">
-						<Label htmlFor="workflow-description">Description</Label>
+						<Label htmlFor="workflow-description" className="text-gray-400">Description</Label>
 						<Textarea
 							id="workflow-description"
 							value={description}
@@ -92,6 +93,7 @@ export function WorkflowDialog({
 							placeholder="Optional description..."
 							rows={3}
 							disabled={saving}
+							className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
 						/>
 					</div>
 
@@ -101,10 +103,11 @@ export function WorkflowDialog({
 							variant="outline"
 							onClick={onCancel}
 							disabled={saving}
+							className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300"
 						>
 							Cancel
 						</Button>
-						<Button type="submit" disabled={!canSave || saving}>
+						<Button type="submit" disabled={!canSave || saving} className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)]">
 							{saving ? 'Saving...' : mode === 'create' ? 'Create' : 'Save'}
 						</Button>
 					</DialogFooter>
