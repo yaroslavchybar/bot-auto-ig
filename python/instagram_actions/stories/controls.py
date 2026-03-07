@@ -3,21 +3,49 @@ from python.instagram_actions.actions import random_delay
 from .utils import click_center
 
 
+CAROUSEL_CONTROL_SIGNATURES = {
+    'Next': "self::button[@aria-label='Next' and ../div[@role='presentation']]",
+    'Go back': "self::button[@aria-label='Go back' and ../div[@role='presentation']]",
+}
+
+STORY_CONTROL_XPATHS = {
+    'Next': (
+        "(//*[local-name()='button' or @role='button']"
+        "[.//*[@aria-label='Next'] or @aria-label='Next']"
+        f"[not({CAROUSEL_CONTROL_SIGNATURES['Next']})])[last()]"
+    ),
+    'Previous': (
+        "(//*[local-name()='button' or @role='button']"
+        "[.//*[@aria-label='Previous'] or @aria-label='Previous'])[last()]"
+    ),
+    'Close': (
+        "(//*[local-name()='button' or @role='button']"
+        "[.//*[@aria-label='Close'] or @aria-label='Close'])[last()]"
+    ),
+}
+
+
+def _story_control_xpath(label: str) -> str:
+    xpath = STORY_CONTROL_XPATHS.get(label)
+    if xpath:
+        return xpath
+    return (
+        "(//*[local-name()='button' or @role='button']"
+        f"[.//*[@aria-label='{label}'] or @aria-label='{label}'])[last()]"
+    )
+
+
 def find_story_nav(page, label: str):
     try:
-        for svg in page.query_selector_all(f'svg[aria-label*="{label}" i]'):
-            btn = svg.query_selector('xpath=ancestor-or-self::*[@role="button"][1]')
-            if btn:
-                return btn
+        return page.query_selector(f'xpath={_story_control_xpath(label)}')
     except Exception:
         return None
-    return None
 
 
 def advance_story(page) -> bool:
     for _ in range(3):
         try:
-            btn = find_story_nav(page, "Next")
+            btn = find_story_nav(page, 'Next')
             if btn:
                 try:
                     btn.click()
@@ -27,7 +55,7 @@ def advance_story(page) -> bool:
                     continue
 
             try:
-                page.keyboard.press("ArrowRight")
+                page.keyboard.press('ArrowRight')
                 return True
             except Exception:
                 random_delay(0.15, 0.35)
@@ -39,32 +67,7 @@ def advance_story(page) -> bool:
 
 
 def _find_story_close(page):
-    svgs = []
-    try:
-        svgs.extend(page.query_selector_all('svg[aria-label="Close" i]'))
-    except Exception:
-        pass
-    try:
-        svgs.extend(page.query_selector_all(
-            'xpath=//svg[.//title[translate(normalize-space(), "CLOSE", "close")="close"]]'
-        ))
-    except Exception:
-        pass
-
-    for svg in svgs:
-        try:
-            btn = svg.query_selector(
-                'xpath=ancestor-or-self::*[@role="button" or self::button or self::a][1]'
-            )
-            if btn:
-                return btn
-            parent = svg.query_selector('xpath=ancestor-or-self::*[self::div or self::span][1]')
-            if parent:
-                return parent
-            return svg
-        except Exception:
-            continue
-    return None
+    return find_story_nav(page, 'Close')
 
 
 def close_stories(page) -> bool:
@@ -77,4 +80,3 @@ def close_stories(page) -> bool:
             pass
         random_delay(0.2, 0.5)
     return False
-
