@@ -80,14 +80,14 @@ function MainLayout() {
   }
 
   return (
-    <SidebarProvider className="h-svh overflow-hidden">
+    <SidebarProvider className="h-svh min-w-0 overflow-hidden">
       <AppSidebar activeId={activeId} onNavigate={setActiveId} />
-      <SidebarInset className="min-h-0 overflow-hidden bg-transparent">
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b border-white/5 bg-white/[0.02] transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12 relative z-10">
-          <div className="flex items-center gap-2 px-4">
+          <div className="flex min-w-0 items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1 text-gray-400 hover:text-gray-200" />
             <Separator orientation="vertical" className="mr-2 h-4 bg-white/10" />
-            <Breadcrumb>
+            <Breadcrumb className="min-w-0">
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
                   <BreadcrumbLink href="#" onClick={(e) => { e.preventDefault(); setActiveId('dashboard'); }} className="text-gray-400 hover:text-gray-200 transition-colors">
@@ -107,8 +107,8 @@ function MainLayout() {
             <UserMenu />
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-hidden min-h-0 relative z-10">
-          <div className="flex-1 min-h-0">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4 pt-0 min-h-0 relative z-10">
+          <div className="min-h-0 min-w-0 flex-1">
             {renderContent()}
           </div>
         </div>

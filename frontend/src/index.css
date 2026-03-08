@@ -76,20 +76,33 @@
 }
 
 @layer base {
+  html {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
   * {
     @apply border-border;
   }
 
   body {
     @apply bg-background text-foreground;
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  #root {
+    width: 100%;
+    max-width: 100%;
+    min-height: 100vh;
+    overflow-x: hidden;
   }
 }
 
 /* Existing Custom Styles */
-
-#root {
-  min-height: 100vh;
-}
 
 .layout {
   display: flex;
