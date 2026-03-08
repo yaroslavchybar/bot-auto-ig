@@ -9,13 +9,16 @@ import { ProfilesList } from './ProfilesList'
 import { LoginDialog } from './LoginDialog'
 import type { LogEntry, Profile } from './types'
 import { Button } from '@/components/ui/button'
-import { Plus, RefreshCw, Terminal } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Plus, RefreshCw, Search, Terminal } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export function ProfilesPage() {
   const { profiles, loading: profilesLoading, refresh: refreshProfiles } = useProfiles()
+  const isMobile = useIsMobile()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   // Local loading state for actions (save, delete, etc)
@@ -32,10 +35,30 @@ export function ProfilesPage() {
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const { logs: wsLogs, clearLogs: clearWsLogs } = useWebSocket()
 
   const selected = useMemo(() => profiles.find((p) => p.id === selectedId) ?? null, [profiles, selectedId])
+  const filteredProfiles = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    if (!query) return profiles
+
+    return profiles.filter((profile) => {
+      const status = profile.using ? 'active' : profile.status ?? 'idle'
+      const fields = [
+        profile.name,
+        profile.id,
+        profile.proxy,
+        profile.proxy_type,
+        profile.fingerprint_os,
+        status,
+      ]
+
+      return fields.some((field) => String(field ?? '').toLowerCase().includes(query))
+    })
+  }, [profiles, searchQuery])
 
   // On page mount, reconcile stale runtime status left after app/container restarts.
   useEffect(() => {
@@ -231,47 +254,64 @@ export function ProfilesPage() {
     <div className="flex flex-col h-full bg-[#050505] text-gray-200 animate-in fade-in duration-300 relative">
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-sm sticky top-0 z-10">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Profiles</h2>
-          <p className="text-sm text-gray-400">Manage your browser profiles, proxies, and scraping capacity.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refreshProfiles()}
-            disabled={loading || saving}
-            className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
-          >
-            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            disabled={loading || saving}
-            className="h-8 border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
-          >
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            New Profile
-          </Button>
+      <div className="border-b border-white/5 bg-white/[0.02] backdrop-blur-sm sticky top-0 z-10">
+        <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+          <div className="min-w-0">
+            <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              Profiles
+            </h2>
+            <p className="text-sm text-gray-400">Manage your browser profiles, proxies, and scraping capacity.</p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              size={isMobile ? 'default' : 'sm'}
+              onClick={handleCreate}
+              disabled={loading || saving}
+              className="w-full sm:w-auto border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
+            >
+              <Plus className={isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5'} />
+              New Profile
+            </Button>
+            <Button
+              variant="outline"
+              size={isMobile ? 'default' : 'sm'}
+              onClick={() => refreshProfiles()}
+              disabled={loading || saving}
+              className="w-full sm:w-auto shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+            >
+              <RefreshCw className={isMobile ? `h-4 w-4 ${loading ? 'animate-spin' : ''}` : `mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
         </div>
       </div>
 
       {error && !showDeleteDialog && !isCreateOpen && !isEditOpen && !isLogsOpen && !isDetailsOpen && (
-        <div className="px-6 py-3 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+        <div className="px-4 py-3 md:px-6 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.2)]">
           <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-2" />
           {error}
         </div>
       )}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-[2000px] mx-auto">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="max-w-[2000px] mx-auto space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative w-full md:max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search profiles..."
+                className="h-11 rounded-xl border-white/10 bg-[#141414] pl-10 text-gray-100 placeholder:text-gray-500 focus-visible:ring-orange-500/60"
+              />
+            </div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+              {filteredProfiles.length} / {profiles.length} profiles
+            </div>
+          </div>
           <ProfilesList
-            profiles={profiles}
+            profiles={filteredProfiles}
             selectedId={selectedId}
             loading={loading}
             onSelect={handleSelect}
@@ -281,6 +321,8 @@ export function ProfilesPage() {
             onLogs={handleLogs}
             onToggleStatus={(p) => toggleUsing(p)}
             onLogin={handleLogin}
+            emptyTitle={searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
+            emptyDescription={searchQuery.trim() ? 'Try a different search term or clear the filter.' : 'Create a new profile to get started.'}
           />
         </div>
       </div>
@@ -338,7 +380,7 @@ export function ProfilesPage() {
       </Dialog>
 
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <SheetContent className="w-[400px] sm:w-[540px] p-0 flex flex-col gap-0 border-l border-white/10 shadow-xl bg-[#0a0a0a] text-gray-200">
+        <SheetContent className="w-full max-w-full sm:w-[540px] p-0 flex flex-col gap-0 border-l border-white/10 shadow-xl bg-[#0a0a0a] text-gray-200">
           <SheetHeader className="p-6 pb-4 border-b border-white/5 bg-white/[0.02]">
             <SheetTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Profile Details</SheetTitle>
           </SheetHeader>

@@ -17,6 +17,7 @@ import {
 import { Plus, RefreshCw, Upload, Wifi, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { apiFetch } from '@/lib/api'
 import { getActivityById } from '@/lib/activities'
 import { WorkflowsList } from './WorkflowsList'
@@ -30,6 +31,7 @@ import { buildWorkflowExportEnvelope, validateWorkflowImport } from './workflowI
 
 export function WorkflowsPage() {
 	const convex = useConvex()
+	const isMobile = useIsMobile()
 	const importInputRef = useRef<HTMLInputElement | null>(null)
 	const [selectedId, setSelectedId] = useState<Id<'workflows'> | null>(null)
 	const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -369,58 +371,71 @@ export function WorkflowsPage() {
 			<div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
 
 			{/* Header */}
-			<div className="flex items-center justify-between p-6 bg-white/[0.02] border-b border-white/5 flex-none relative z-10">
-				<div>
-					<h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Workflows</h2>
-					<p className="text-sm text-gray-500 mt-1">
-						Create and manage automation workflows
-					</p>
-				</div>
-				<div className="flex items-center gap-3">
-					{/* Connection status */}
-					<div className="flex items-center gap-1 text-sm text-gray-500 mr-2">
+			<div className="p-4 md:p-6 bg-white/[0.02] border-b border-white/5 flex-none relative z-10">
+				<div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+					<div className="min-w-0">
+						<h2 className="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+							Workflows
+						</h2>
+						<p className="text-sm text-gray-500 mt-1">
+							Create and manage automation workflows
+						</p>
+					</div>
+					<div className="flex items-center gap-2 text-sm text-gray-500 md:hidden">
 						{connected ? (
 							<Wifi className="h-4 w-4 text-green-500" />
 						) : (
 							<WifiOff className="h-4 w-4 text-gray-600" />
 						)}
+						<span>{connected ? 'Connected' : 'Offline'}</span>
 					</div>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => void handleRefresh()}
-						disabled={workflowsLoading || saving || refreshing}
-						className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
-					>
-						<RefreshCw className={`mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`} />
-						Refresh
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={handleImportClick}
-						disabled={saving}
-						className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
-					>
-						<Upload className="mr-2 h-4 w-4" />
-						Import JSON
-					</Button>
-					<Button
-						size="sm"
-						onClick={handleCreate}
-						disabled={saving}
-						className="bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all font-medium"
-					>
-						<Plus className="mr-2 h-4 w-4" />
-						New Workflow
-					</Button>
-					<input
-						ref={importInputRef}
-						type="file"
-						accept=".json,application/json"
-						className="hidden"
-						onChange={(event) => void handleImportFile(event)}
-					/>
+					<div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+						<div className="hidden md:flex items-center gap-1 text-sm text-gray-500 mr-2">
+							{connected ? (
+								<Wifi className="h-4 w-4 text-green-500" />
+							) : (
+								<WifiOff className="h-4 w-4 text-gray-600" />
+							)}
+						</div>
+						<Button
+							size={isMobile ? 'default' : 'sm'}
+							onClick={handleCreate}
+							disabled={saving}
+							className="w-full md:w-auto bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all font-medium"
+						>
+							<Plus className="h-4 w-4" />
+							New Workflow
+						</Button>
+						<div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+							<Button
+								variant="outline"
+								size={isMobile ? 'default' : 'sm'}
+								onClick={() => void handleRefresh()}
+								disabled={workflowsLoading || saving || refreshing}
+								className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
+							>
+								<RefreshCw className={isMobile ? `h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}` : `mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`} />
+								<span>Refresh</span>
+							</Button>
+							<Button
+								variant="outline"
+								size={isMobile ? 'default' : 'sm'}
+								onClick={handleImportClick}
+								disabled={saving}
+								className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
+							>
+								<Upload className={isMobile ? 'h-4 w-4' : 'mr-2 h-4 w-4'} />
+								<span>Import JSON</span>
+							</Button>
+						</div>
+						<input
+							ref={importInputRef}
+							type="file"
+							accept=".json,application/json"
+							className="hidden"
+							onChange={(event) => void handleImportFile(event)}
+						/>
+					</div>
 				</div>
 			</div>
 
@@ -434,7 +449,7 @@ export function WorkflowsPage() {
 			{/* Main content area */}
 			<div className="flex-1 flex flex-col min-h-0 overflow-hidden relative z-10">
 				{/* Workflows list */}
-				<div className="flex-1 overflow-auto p-6">
+				<div className="flex-1 overflow-auto p-4 md:p-6">
 					<WorkflowsList
 						workflows={workflowsList}
 						selectedId={selectedId}
@@ -478,7 +493,7 @@ export function WorkflowsPage() {
 
 			{/* Details Sheet */}
 			<Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-				<SheetContent className="w-[400px] sm:w-[540px] p-0 bg-[#0a0a0a] border-l border-white/10 text-gray-200">
+				<SheetContent className="w-full max-w-full sm:w-[540px] p-0 bg-[#0a0a0a] border-l border-white/10 text-gray-200">
 					<SheetHeader className="p-6 pb-4 border-b border-white/5 bg-white/[0.02]">
 						<SheetTitle className="text-gray-200">Workflow Details</SheetTitle>
 					</SheetHeader>

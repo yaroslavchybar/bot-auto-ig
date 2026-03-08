@@ -61,6 +61,20 @@ export function ListsPage() {
     setError(null)
   }
 
+  const handleCreateOpenChange = (open: boolean) => {
+    setIsCreateOpen(open)
+    if (!open) {
+      setError(null)
+    }
+  }
+
+  const handleEditOpenChange = (open: boolean) => {
+    setIsEditOpen(open)
+    if (!open) {
+      setError(null)
+    }
+  }
+
   const handleSave = async (name: string, addedIds: string[], removedIds: string[]) => {
     setSaving(true)
     setError(null)
@@ -159,7 +173,7 @@ export function ListsPage() {
         </div>
       </div>
 
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+      <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Create List</DialogTitle>
@@ -174,11 +188,11 @@ export function ListsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
-          <DialogHeader className="flex-shrink-0">
-            <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Edit List</DialogTitle>
-          </DialogHeader>
+      <Dialog open={isEditOpen} onOpenChange={handleEditOpenChange}>
+        <DialogContent
+          hideClose
+          className="sm:max-w-[960px] max-h-[88vh] gap-0 overflow-hidden p-0 bg-[#0a0a0a] border-white/10 text-gray-200"
+        >
           {selected ? (
             <ListsForm
               key={selected.id}
