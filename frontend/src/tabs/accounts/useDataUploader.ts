@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { env as appEnv } from '@/lib/env'
 import type {
     ImportScrapingTaskRequest,
     ImportScrapingTaskResponse,
@@ -13,17 +14,14 @@ import type {
     UploadState,
 } from './types'
 
-// In production, use relative path that nginx proxies. In dev, use localhost.
-const API_BASE = import.meta.env.VITE_DATAUPLOADER_URL || (import.meta.env.DEV ? 'http://localhost:3002' : '/api/datauploader')
-
 export function useDataUploader() {
     const [state, setState] = useState<UploadState>({ step: 'idle' })
 
-    const listScrapingTasks = useCallback(async (env: 'dev' | 'prod', kind?: string) => {
+    const listScrapingTasks = useCallback(async (environment: 'dev' | 'prod', kind?: string) => {
         const params = new URLSearchParams()
-        params.set('env', env)
+        params.set('env', environment)
         if (kind) params.set('kind', kind)
-        const response = await fetch(`${API_BASE}/scraping-tasks?${params.toString()}`, { method: 'GET' })
+        const response = await fetch(`${appEnv.dataUploaderUrl}/scraping-tasks?${params.toString()}`, { method: 'GET' })
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Failed to load scraping tasks' }))
             throw new Error(error.detail || 'Failed to load scraping tasks')
@@ -33,7 +31,7 @@ export function useDataUploader() {
     }, [])
 
     const importScrapingTask = useCallback(async (taskId: string, req: ImportScrapingTaskRequest) => {
-        const response = await fetch(`${API_BASE}/scraping-tasks/${encodeURIComponent(taskId)}/import`, {
+        const response = await fetch(`${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/import`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req),
@@ -46,10 +44,10 @@ export function useDataUploader() {
         return data
     }, [])
 
-    const getScrapingTaskFields = useCallback(async (taskId: string, env: 'dev' | 'prod') => {
+    const getScrapingTaskFields = useCallback(async (taskId: string, environment: 'dev' | 'prod') => {
         const params = new URLSearchParams()
-        params.set('env', env)
-        const response = await fetch(`${API_BASE}/scraping-tasks/${encodeURIComponent(taskId)}/fields?${params.toString()}`, { method: 'GET' })
+        params.set('env', environment)
+        const response = await fetch(`${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/fields?${params.toString()}`, { method: 'GET' })
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Failed to load task fields' }))
             throw new Error(error.detail || 'Failed to load task fields')
@@ -59,7 +57,7 @@ export function useDataUploader() {
     }, [])
 
     const processScrapingTask = useCallback(async (taskId: string, req: ProcessScrapingTaskRequest) => {
-        const response = await fetch(`${API_BASE}/scraping-tasks/${encodeURIComponent(taskId)}/process`, {
+        const response = await fetch(`${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/process`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(req),
@@ -79,7 +77,7 @@ export function useDataUploader() {
             const formData = new FormData()
             formData.append('file', file)
 
-            const response = await fetch(`${API_BASE}/upload`, {
+            const response = await fetch(`${appEnv.dataUploaderUrl}/upload`, {
                 method: 'POST',
                 body: formData,
             })
@@ -123,7 +121,7 @@ export function useDataUploader() {
                 environments,
             }
 
-            const response = await fetch(`${API_BASE}/upload/${jobId}/process`, {
+            const response = await fetch(`${appEnv.dataUploaderUrl}/upload/${jobId}/process`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(request),

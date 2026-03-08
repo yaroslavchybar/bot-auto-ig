@@ -24,7 +24,6 @@
 - `VITE_DATAUPLOADER_URL`
 - `VITE_CONVEX_URL`
 - `VITE_CONVEX_API_KEY`
-- `CONVEX_URL` (fallback env prefix in Vite config)
 
 ### Data Services
 - `CONVEX_URL_DEV`

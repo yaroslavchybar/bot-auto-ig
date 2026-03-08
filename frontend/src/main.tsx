@@ -7,13 +7,8 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx'
 import { clerkAppearance } from './components/clerk-appearance.ts'
 import { AmbientGlow } from './components/ui/ambient-glow.tsx'
 import { usePerformanceMode } from './hooks/use-performance-mode.ts'
+import { env } from './lib/env.ts'
 import { cn } from './lib/utils.ts'
-
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-if (!PUBLISHABLE_KEY) {
-  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY environment variable')
-}
 
 function AppFrame() {
   const performanceMode = usePerformanceMode()
@@ -35,7 +30,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <ClerkProvider
-        publishableKey={PUBLISHABLE_KEY}
+        publishableKey={env.clerkPublishableKey}
         appearance={clerkAppearance}
       >
         <AppFrame />

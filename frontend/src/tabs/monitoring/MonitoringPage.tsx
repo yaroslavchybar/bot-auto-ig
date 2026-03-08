@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { apiFetch } from '@/lib/api'
+import { env } from '@/lib/env'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
@@ -18,7 +19,6 @@ import {
     Wifi,
 } from 'lucide-react'
 
-const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 const POLL_INTERVAL = 5000
 const MOBILE_POLL_INTERVAL = 20000
 
@@ -117,7 +117,7 @@ export function MonitoringPage() {
 
     const fetchData = useCallback(async () => {
         try {
-            const endpoint = API_BASE ? `${API_BASE}/api/monitoring` : '/api/monitoring'
+            const endpoint = env.isDev ? `${env.apiUrl}/api/monitoring` : '/api/monitoring'
             const result = await apiFetch<MonitoringData>(endpoint)
             setData(result)
             setLastUpdate(new Date())

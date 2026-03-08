@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { env } from '@/lib/env'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Download, Eye, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
@@ -74,9 +75,9 @@ export function TasksTable({
 
     try {
       // Get the download URL from Convex
-      const url = await fetch(`https://${import.meta.env.VITE_CONVEX_URL?.replace('.convex.cloud', '.convex.site')}/api/scraping-tasks/storage-url?storageId=${task.storageId}`, {
+      const url = await fetch(`${env.convexSiteUrl}/api/scraping-tasks/storage-url?storageId=${task.storageId}`, {
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_CONVEX_API_KEY || ''}`,
+          'Authorization': `Bearer ${env.convexApiKey}`,
         },
       }).then(r => r.json())
 

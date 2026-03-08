@@ -37,7 +37,7 @@ Default landing tab:
   - prod: `/api/datauploader`
 
 ### Convex Integration
-- Convex client consumes `VITE_CONVEX_URL` (with fallback env prefix support).
+- Convex client consumes `VITE_CONVEX_URL`.
 - Scraping tab may read storage URLs via Convex HTTP domain conversion logic.
 
 ## Workflow JSON Import/Export
