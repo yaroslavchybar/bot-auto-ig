@@ -1,5 +1,5 @@
 import { Monitor } from 'lucide-react'
-import { VncViewer } from '@/components/VncViewer'
+import { buildVncWebSocketUrl, VncViewer } from '@/components/VncViewer'
 
 export type DisplaySession = {
   workflowId: string
@@ -7,11 +7,6 @@ export type DisplaySession = {
   vncPort: number
   displayNum: number
   status: 'active'
-}
-
-function getVncUrl(vncPort: number): string {
-  if (typeof window === 'undefined') return `http://localhost:${vncPort}/vnc.html`
-  return `${window.location.protocol}//${window.location.hostname}:${vncPort}/vnc.html`
 }
 
 type VncTileProps = {
@@ -41,7 +36,7 @@ export function VncTile({ session, onSelect }: VncTileProps) {
       </div>
 
       <div className="relative flex-1 min-h-[200px]">
-        <VncViewer url={getVncUrl(session.vncPort)} interactive={false} className="w-full h-full" />
+        <VncViewer url={buildVncWebSocketUrl(session.vncPort)} interactive={false} className="w-full h-full" />
         <div className="absolute bottom-2 right-2 px-2 py-1 rounded-[3px] bg-black/55 text-[10px] text-white/80 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
           {session.workflowId}
         </div>

@@ -255,14 +255,17 @@ export function ProfilesPage() {
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
       {/* Header */}
       <div className="border-b border-white/5 bg-white/[0.02] backdrop-blur-sm sticky top-0 z-10">
-        <div className="flex flex-col gap-4 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
-          <div className="min-w-0">
-            <h2 className="text-2xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              Profiles
-            </h2>
-            <p className="text-sm text-gray-400">Manage your browser profiles, proxies, and scraping capacity.</p>
+        <div className="flex flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:gap-6">
+          <div className="relative w-full xl:max-w-xl xl:flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search profiles..."
+              className="h-11 rounded-xl border-white/10 bg-[#141414] pl-10 text-gray-100 placeholder:text-gray-500 focus-visible:ring-orange-500/60"
+            />
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between xl:ml-auto xl:justify-end">
             <Button
               size={isMobile ? 'default' : 'sm'}
               onClick={handleCreate}
@@ -296,20 +299,6 @@ export function ProfilesPage() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-4 md:p-6">
         <div className="max-w-[2000px] mx-auto space-y-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="relative w-full md:max-w-md">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search profiles..."
-                className="h-11 rounded-xl border-white/10 bg-[#141414] pl-10 text-gray-100 placeholder:text-gray-500 focus-visible:ring-orange-500/60"
-              />
-            </div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
-              {filteredProfiles.length} / {profiles.length} profiles
-            </div>
-          </div>
           <ProfilesList
             profiles={filteredProfiles}
             selectedId={selectedId}

@@ -4,7 +4,7 @@ import { ArrowLeft, LayoutGrid, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { LogsViewer } from '@/components/LogsViewer'
-import { VncViewer } from '@/components/VncViewer'
+import { buildVncWebSocketUrl, VncViewer } from '@/components/VncViewer'
 import { VncTile, type DisplaySession } from './VncTile'
 import { Button } from '@/components/ui/button'
 
@@ -150,11 +150,6 @@ export function VncPage() {
     }
   }, [focusedSessionKey, focusedSession])
 
-  const getVncUrl = (vncPort: number) => {
-    if (typeof window === 'undefined') return `http://localhost:${vncPort}/vnc.html`
-    return `${window.location.protocol}//${window.location.hostname}:${vncPort}/vnc.html`
-  }
-
   const isInteractive = controlState === 'unlocked'
   const isConfirming = controlState === 'confirm'
 
@@ -220,7 +215,11 @@ export function VncPage() {
                   </div>
                 </div>
 
-                <VncViewer url={getVncUrl(focusedSession.vncPort)} interactive={isInteractive} className="flex-1 w-full h-full object-contain" />
+                <VncViewer
+                  url={buildVncWebSocketUrl(focusedSession.vncPort)}
+                  interactive={isInteractive}
+                  className="flex-1 w-full h-full object-contain"
+                />
 
                 {!isInteractive && (
                   <div
