@@ -1,15 +1,24 @@
-import { Button } from '@/components/ui/button'
 import * as React from 'react'
+import { cn } from '@/lib/utils'
 
-export function DenseButton({ active, className, children, ...props }: React.ComponentProps<typeof Button> & { active?: boolean }) {
+type DenseButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    active?: boolean
+}
+
+export function DenseButton({ active, className, children, type = 'button', ...props }: DenseButtonProps) {
     return (
-        <Button
-            variant="outline"
-            size="sm"
-            className={`h-6 px-2 py-0 text-[11px] rounded-[3px] border-neutral-300 dark:border-neutral-600 font-sans shadow-none transition-none ${active ? 'bg-neutral-200 dark:bg-neutral-700 border-neutral-400 dark:border-neutral-500 font-medium text-neutral-900 dark:text-white' : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700'} ${className}`}
+        <button
+            type={type}
+            className={cn(
+                'inline-flex h-6 items-center justify-center gap-2 rounded-[3px] border px-2 py-0 text-[11px] font-sans shadow-none transition-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+                active
+                    ? 'border-neutral-400 bg-neutral-200 font-medium text-neutral-900 dark:border-neutral-500 dark:bg-neutral-700 dark:text-white'
+                    : 'border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700',
+                className,
+            )}
             {...props}
         >
             {children}
-        </Button>
+        </button>
     )
 }

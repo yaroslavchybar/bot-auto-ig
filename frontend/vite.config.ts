@@ -19,18 +19,6 @@ export default defineConfig({
             return 'vendor'
           }
 
-          if (id.includes('src/components/VncViewer') || id.includes('src/tabs/vnc')) {
-            return 'vnc'
-          }
-
-          if (id.includes('src/tabs/workflows/WorkflowFlowEditor')) {
-            return 'workflow-editor'
-          }
-
-          if (id.includes('src/components/LogsViewer')) {
-            return 'logs-viewer'
-          }
-
           return undefined
         },
       },

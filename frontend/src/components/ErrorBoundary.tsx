@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { Button } from '@/components/ui/button'
 import { AlertTriangle } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface Props {
     children: ReactNode
@@ -10,6 +10,8 @@ interface State {
     hasError: boolean
     error?: Error
 }
+
+const actionButtonClassName = 'inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50'
 
 export class ErrorBoundary extends Component<Props, State> {
     state: State = { hasError: false }
@@ -50,12 +52,26 @@ export class ErrorBoundary extends Component<Props, State> {
                     )}
 
                     <div className="flex gap-3">
-                        <Button variant="outline" onClick={this.handleReset}>
+                        <button
+                            type="button"
+                            className={cn(
+                                actionButtonClassName,
+                                'border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground',
+                            )}
+                            onClick={this.handleReset}
+                        >
                             Try Again
-                        </Button>
-                        <Button onClick={this.handleReload}>
+                        </button>
+                        <button
+                            type="button"
+                            className={cn(
+                                actionButtonClassName,
+                                'bg-primary text-primary-foreground shadow hover:bg-primary/90',
+                            )}
+                            onClick={this.handleReload}
+                        >
                             Reload Page
-                        </Button>
+                        </button>
                     </div>
                 </div>
             )
