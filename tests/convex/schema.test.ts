@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../_generated/api'
+import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 
 test('boots convex-test against the schema and accepts table operations', async () => {

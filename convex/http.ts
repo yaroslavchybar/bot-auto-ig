@@ -28,12 +28,16 @@ function toIso(ms: unknown): string | null {
 	return new Date(ms).toISOString();
 }
 
-function mapProfileToPython(profile: any): any {
+function mapProfileToPython(profile: any, optionsOrIndex?: { includeCookies?: boolean } | number): any {
 	if (!profile) return profile;
+	const options =
+		optionsOrIndex && typeof optionsOrIndex === "object" && !Array.isArray(optionsOrIndex)
+			? optionsOrIndex
+			: undefined;
 	const listIds = Array.isArray(profile.listIds)
 		? profile.listIds.filter((id: unknown) => Boolean(id))
 		: [];
-	return {
+	const mapped: Record<string, unknown> = {
 		profile_id: profile._id,
 		created_at: toIso(profile.createdAt),
 		name: profile.name,
@@ -52,6 +56,10 @@ function mapProfileToPython(profile: any): any {
 		daily_scraping_limit: typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null,
 		daily_scraping_used: typeof profile.dailyScrapingUsed === "number" ? profile.dailyScrapingUsed : 0,
 	};
+	if (options?.includeCookies) {
+		mapped.cookies_json = typeof profile.cookiesJson === "string" ? profile.cookiesJson : null;
+	}
+	return mapped;
 }
 
 function mapAccountToPython(account: any): any {
@@ -166,7 +174,7 @@ http.route({
 			const url = new URL(request.url);
 			const name = url.searchParams.get("name") || "";
 			const profile = await ctx.runQuery(api.profiles.getByName, { name });
-			return jsonResponse(mapProfileToPython(profile));
+			return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}
@@ -183,7 +191,7 @@ http.route({
 			const url = new URL(request.url);
 			const profileId = url.searchParams.get("profileId") || url.searchParams.get("profile_id") || "";
 			const profile = await ctx.runQuery(api.profiles.getById, { profileId: profileId as any });
-			return jsonResponse(mapProfileToPython(profile));
+			return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}
@@ -242,11 +250,12 @@ http.route({
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
+				cookiesJson: body?.cookiesJson ?? body?.cookies_json ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			});
-			return jsonResponse(mapProfileToPython(created));
+			return jsonResponse(mapProfileToPython(created, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}
@@ -268,11 +277,12 @@ http.route({
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
+				cookiesJson: body?.cookiesJson ?? body?.cookies_json ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			} as any);
-			return jsonResponse(mapProfileToPython(updated));
+			return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}
@@ -294,11 +304,12 @@ http.route({
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
 				fingerprintSeed: body?.fingerprintSeed ?? body?.fingerprint_seed ?? undefined,
 				fingerprintOs: body?.fingerprintOs ?? body?.fingerprint_os ?? undefined,
+				cookiesJson: body?.cookiesJson ?? body?.cookies_json ?? undefined,
 				testIp: body?.testIp ?? body?.test_ip ?? undefined,
 				sessionId: body?.sessionId ?? body?.session_id ?? undefined,
 				dailyScrapingLimit: body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
 			});
-			return jsonResponse(mapProfileToPython(updated));
+			return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}

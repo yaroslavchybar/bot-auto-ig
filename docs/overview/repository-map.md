@@ -14,7 +14,6 @@
 ## Frontend Domain Map
 
 Current tabs under `frontend/src/tabs/`:
-- `dashboard`
 - `profiles`
 - `lists`
 - `scraping`
@@ -44,7 +43,6 @@ Primary modules under `convex/`:
 - `profiles.ts`
 - `instagramAccounts.ts`
 - `messageTemplates.ts`
-- `dashboard.ts`
 - `keywords.ts`
 - `scrapingTasks.ts`
 - `workflows.ts`

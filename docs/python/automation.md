@@ -43,6 +43,7 @@ python -m pytest python/tests -q
 - Convex endpoint/key settings come from `python/database_sync/config.py`.
 - Feed debug behavior reads `FEED_DEBUG_MOUSE` in feed scrolling modules.
 - Browser bootstrap seeds the cursor to a randomized viewport-safe start position before the first navigation so sessions do not visibly begin from a fixed viewport edge.
+- Shared browser bootstrap preloads normalized profile cookies from Convex before the first Instagram navigation and writes the latest cookies back on successful session updates and clean shutdown.
 
 ## Verified Against
 

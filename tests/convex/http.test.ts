@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 
-import { api } from '../_generated/api'
+import { api } from '../../convex/_generated/api'
 import { createConvexTest, seedList, seedProfile, seedWorkflow } from './helpers'
 
 function stubEnv(env: Record<string, string>) {
@@ -45,6 +45,7 @@ test('parses snake_case profile payloads and maps the response back to Python fi
     body: JSON.stringify({
       name: 'Profile A',
       session_id: 'session-1',
+      cookies_json: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
       daily_scraping_limit: 25,
       test_ip: true,
       proxy_type: 'http',
@@ -56,10 +57,41 @@ test('parses snake_case profile payloads and maps the response back to Python fi
   expect(body).toMatchObject({
     name: 'Profile A',
     session_id: 'session-1',
+    cookies_json: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
     daily_scraping_limit: 25,
     daily_scraping_used: 0,
     test_ip: true,
     proxy_type: 'http',
+  })
+})
+
+test('omits cookies from list responses but includes them on profile detail responses', async () => {
+  const t = createConvexTest()
+  const profile = await seedProfile(t, {
+    name: 'Profile Cookies',
+    cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
+  })
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const listResponse = await t.fetch('/api/profiles', {
+    method: 'GET',
+    headers: { authorization: 'Bearer secret-token' },
+  })
+  const listBody = await listResponse.json()
+
+  expect(listResponse.status).toBe(200)
+  expect(listBody[0]).not.toHaveProperty('cookies_json')
+
+  const detailResponse = await t.fetch(`/api/profiles/by-id?profileId=${encodeURIComponent(String(profile!._id))}`, {
+    method: 'GET',
+    headers: { authorization: 'Bearer secret-token' },
+  })
+  const detailBody = await detailResponse.json()
+
+  expect(detailResponse.status).toBe(200)
+  expect(detailBody).toMatchObject({
+    profile_id: profile!._id,
+    cookies_json: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
   })
 })
 

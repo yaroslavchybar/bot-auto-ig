@@ -1,6 +1,5 @@
 import * as React from "react"
 import {
-  LayoutDashboard,
   Users,
   Search,
   List,
@@ -25,7 +24,9 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
-export type NavId = 'dashboard' | 'profiles' | 'workflows' | 'scraping' | 'lists' | 'accounts' | 'logs' | 'vnc' | 'monitoring';
+export const NAV_IDS = ['profiles', 'workflows', 'scraping', 'lists', 'accounts', 'logs', 'vnc', 'monitoring'] as const
+
+export type NavId = (typeof NAV_IDS)[number];
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
   activeId: NavId;
@@ -37,11 +38,6 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
     {
       title: "Platform",
       items: [
-        {
-          title: "Dashboard",
-          id: "dashboard",
-          icon: LayoutDashboard,
-        },
         {
           title: "Profiles Manager",
           id: "profiles",
@@ -91,7 +87,7 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" onClick={() => onNavigate('dashboard')} className="hover:bg-white/[0.02]">
+            <SidebarMenuButton size="lg" onClick={() => onNavigate('profiles')} className="hover:bg-white/[0.02]">
               <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)]">
                 <Command className="size-4" />
               </div>

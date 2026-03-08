@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { internal } from '../_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc } from './helpers'
 
 beforeEach(() => {
@@ -9,7 +9,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.doUnmock('convex/server')
-  vi.doUnmock('../_generated/api')
+  vi.doUnmock('../../convex/_generated/api')
   vi.resetModules()
 })
 
@@ -23,8 +23,8 @@ test('registers the expected daily cron jobs', async () => {
       cronJobs: () => ({ daily }),
     }
   })
-  vi.doMock('../_generated/api', async () => {
-    const actual = await vi.importActual<typeof import('../_generated/api')>('../_generated/api')
+  vi.doMock('../../convex/_generated/api', async () => {
+    const actual = await vi.importActual<typeof import('../../convex/_generated/api')>('../../convex/_generated/api')
     return {
       ...actual,
       internal: {
@@ -38,7 +38,7 @@ test('registers the expected daily cron jobs', async () => {
     }
   })
 
-  await import('../crons')
+  await import('../../convex/crons')
 
   expect(daily.mock.calls).toEqual([
     ['reset daily scraping', { hourUTC: 0, minuteUTC: 1 }, 'profiles.resetDailyScrapingUsed'],

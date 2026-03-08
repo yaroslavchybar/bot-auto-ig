@@ -6,8 +6,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
 import { Fingerprint, RefreshCw, Globe, Shield, Target } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { normalizeCookiesJsonForForm } from './cookieJson'
 
 interface ProfileFormProps {
   mode: 'create' | 'edit'
@@ -92,6 +94,12 @@ export function ProfileForm({
 
     // Prepare final data
     const finalData = { ...draft, name }
+    const normalizedCookies = normalizeCookiesJsonForForm(String(finalData.cookies_json ?? ''))
+    if (normalizedCookies.error) {
+      setLocalError(normalizedCookies.error)
+      return
+    }
+    finalData.cookies_json = normalizedCookies.normalized || undefined
 
     if (connection === 'proxy' && finalData.proxy) {
       const pType = finalData.proxy_type || 'http';
@@ -125,6 +133,46 @@ export function ProfileForm({
               placeholder="e.g. Work Account 1"
               className="h-9 font-medium bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
             />
+          </div>
+
+          <Separator className="bg-white/5" />
+
+          <div className="grid gap-4">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
+                <Shield className="h-4 w-4" /> Browser Cookies
+              </Label>
+            </div>
+            <div className="p-4 rounded-md bg-white/[0.02] border-white/5 border space-y-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="cookies_json" className="text-xs text-gray-400">
+                  Cookies JSON
+                </Label>
+                <Textarea
+                  id="cookies_json"
+                  value={String(draft.cookies_json ?? '')}
+                  onChange={(e) => {
+                    setDraft((prev) => ({ ...prev, cookies_json: e.target.value }))
+                    setLocalError(null)
+                  }}
+                  onBlur={() => {
+                    const result = normalizeCookiesJsonForForm(String(draft.cookies_json ?? ''))
+                    if (result.error) {
+                      setLocalError(result.error)
+                      return
+                    }
+                    setLocalError(null)
+                    setDraft((prev) => ({ ...prev, cookies_json: result.normalized || undefined }))
+                  }}
+                  disabled={saving}
+                  placeholder='Paste raw cookie array or AdsPower-style JSON with a "cookies" array'
+                  className="min-h-[180px] resize-y bg-black/50 border-white/10 text-white font-mono text-xs focus-visible:ring-red-500/50 focus-visible:border-red-500"
+                />
+                <p className="text-[10px] text-gray-500 ml-1">
+                  Accepted formats: raw Playwright cookie arrays and AdsPower-style JSON objects with a cookies array.
+                </p>
+              </div>
+            </div>
           </div>
 
           <Separator className="bg-white/5" />

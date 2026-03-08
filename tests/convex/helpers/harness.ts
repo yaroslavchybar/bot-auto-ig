@@ -1,12 +1,12 @@
 import { convexTest } from 'convex-test'
 
-import { api } from '../../_generated/api'
-import schema from '../../schema'
+import { api } from '../../../convex/_generated/api'
+import schema from '../../../convex/schema'
 
 export function createHarness() {
   const modules = {
-    ...import.meta.glob('../../*.ts'),
-    ...import.meta.glob('../../_generated/**/*.{js,ts,d.ts}'),
+    ...import.meta.glob('../../../convex/*.ts'),
+    ...import.meta.glob('../../../convex/_generated/**/*.{js,ts,d.ts}'),
   }
   return convexTest(schema, modules)
 }

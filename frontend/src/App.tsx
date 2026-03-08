@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { UserMenu } from '@/components/user-menu'
 import { ProfilesPage } from './tabs/profiles/ProfilesPage'
 import { ListsPage } from './tabs/lists/ListsPage'
-import { DashboardPage } from './tabs/dashboard/DashboardPage'
 import { LogsPage } from './tabs/logs/LogsPage'
 import { AccountsPage } from './tabs/accounts/AccountsPage'
 import { ScrapingPage } from './tabs/scraping/ScrapingPage'
@@ -11,7 +10,7 @@ import { WorkflowsPage } from './tabs/workflows'
 import { VncPage } from './tabs/vnc'
 import { MonitoringPage } from './tabs/monitoring/MonitoringPage'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
-import { AppSidebar } from '@/components/app-sidebar'
+import { AppSidebar, NAV_IDS } from '@/components/app-sidebar'
 import type { NavId } from '@/components/app-sidebar'
 import { Separator } from '@/components/ui/separator'
 import { AuthGuard } from '@/components/AuthGuard'
@@ -27,10 +26,16 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 
+function getInitialNavId(): NavId {
+  const savedId = localStorage.getItem('anti-active-tab')
+  if (savedId && NAV_IDS.includes(savedId as NavId)) {
+    return savedId as NavId
+  }
+  return 'profiles'
+}
+
 function MainLayout() {
-  const [activeId, setActiveId] = useState<NavId>(() => {
-    return (localStorage.getItem('anti-active-tab') as NavId) || 'dashboard'
-  })
+  const [activeId, setActiveId] = useState<NavId>(() => getInitialNavId())
 
   // Initialize authenticated fetch (sets up token getter for API calls)
   useAuthenticatedFetch()
@@ -41,8 +46,6 @@ function MainLayout() {
 
   const renderContent = () => {
     switch (activeId) {
-      case 'dashboard':
-        return <DashboardPage />
       case 'profiles':
         return <ProfilesPage />
       case 'lists':
@@ -60,13 +63,12 @@ function MainLayout() {
       case 'monitoring':
         return <MonitoringPage />
       default:
-        return <DashboardPage />
+        return <ProfilesPage />
     }
   }
 
   const getBreadcrumbLabel = (id: NavId) => {
     switch (id) {
-      case 'dashboard': return 'Dashboard'
       case 'profiles': return 'Profiles Manager'
       case 'workflows': return 'Workflows'
       case 'scraping': return 'Scraping'
@@ -75,7 +77,7 @@ function MainLayout() {
       case 'logs': return 'Logs'
       case 'vnc': return 'Browser View'
       case 'monitoring': return 'VPS Monitor'
-      default: return 'Dashboard'
+      default: return 'Profiles Manager'
     }
   }
 
@@ -90,7 +92,7 @@ function MainLayout() {
             <Breadcrumb className="min-w-0">
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block">
-                  <BreadcrumbLink href="#" onClick={(e) => { e.preventDefault(); setActiveId('dashboard'); }} className="text-gray-400 hover:text-gray-200 transition-colors">
+                  <BreadcrumbLink href="#" onClick={(e) => { e.preventDefault(); setActiveId('profiles'); }} className="text-gray-400 hover:text-gray-200 transition-colors">
                     Anti
                   </BreadcrumbLink>
                 </BreadcrumbItem>

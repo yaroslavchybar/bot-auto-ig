@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../_generated/api'
+import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 
 test('upserts and reads cleaned message template text arrays', async () => {

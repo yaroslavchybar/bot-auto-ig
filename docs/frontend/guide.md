@@ -2,12 +2,11 @@
 
 ## Purpose
 
-The frontend is a Clerk-protected React + Vite dashboard for operations across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring.
+The frontend is a Clerk-protected React + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring.
 
 ## Feature Surface
 
 Primary tabs in app shell:
-- Dashboard
 - Profiles Manager
 - Lists Manager
 - Scraping
@@ -17,11 +16,15 @@ Primary tabs in app shell:
 - Browser View (VNC)
 - VPS Monitor
 
+Default landing tab:
+- Profiles Manager
+
 ## Runtime Integration
 
 ### API Access
 - Default API base for authenticated fetches: `VITE_API_URL` or `http://localhost:3001`.
 - Most UI calls use backend routes under `/api/*`.
+- Profiles create/edit flows support pasted cookie JSON, while the cached profile list remains sanitized and fetches the sensitive cookie payload only from explicit profile detail reads.
 
 ### WebSocket
 - Default endpoint resolves from window host to `/ws`.

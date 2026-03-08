@@ -20,6 +20,7 @@ export function ProfilesPage() {
   const { profiles, loading: profilesLoading, refresh: refreshProfiles } = useProfiles()
   const isMobile = useIsMobile()
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editProfile, setEditProfile] = useState<Profile | null>(null)
 
   // Local loading state for actions (save, delete, etc)
   const loading = profilesLoading
@@ -113,15 +114,25 @@ export function ProfilesPage() {
   }, [isLogsOpen, selected?.name, loadLogs])
 
   const handleCreate = () => {
+    setEditProfile(null)
     setIsCreateOpen(true)
     setError(null)
   }
 
-  const handleEdit = (profile: Profile) => {
+  const handleEdit = async (profile: Profile) => {
     setSelectedId(profile.id)
     setIsDetailsOpen(false)
-    setIsEditOpen(true)
+    setSaving(true)
     setError(null)
+    try {
+      const fullProfile = await apiFetch<Profile>(`/api/profiles/by-id?profileId=${encodeURIComponent(profile.id)}`)
+      setEditProfile(fullProfile)
+      setIsEditOpen(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDeleteClick = (profile: Profile) => {
@@ -153,6 +164,7 @@ export function ProfilesPage() {
   const handleCloseDialogs = () => {
     setIsCreateOpen(false)
     setIsEditOpen(false)
+    setEditProfile(null)
     setIsLogsOpen(false)
     setIsDetailsOpen(false)
     setShowDeleteDialog(false)
@@ -183,14 +195,15 @@ export function ProfilesPage() {
             proxy_type: typeof data.proxy_type === 'string' ? data.proxy_type.trim() : undefined,
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
+            cookies_json: typeof data.cookies_json === 'string' ? data.cookies_json.trim() : '',
             test_ip: Boolean(data.test_ip),
             daily_scraping_limit: typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
           },
         })
         await refreshProfiles()
         setIsCreateOpen(false)
-      } else if (isEditOpen && selected) {
-        await apiFetch(`/api/profiles/${encodeURIComponent(selected.name)}`, {
+      } else if (isEditOpen && editProfile) {
+        await apiFetch(`/api/profiles/${encodeURIComponent(editProfile.name)}`, {
           method: 'PUT',
           body: {
             name,
@@ -198,12 +211,14 @@ export function ProfilesPage() {
             proxy_type: typeof data.proxy_type === 'string' ? data.proxy_type.trim() : undefined,
             fingerprint_seed: data.fingerprint_seed || undefined,
             fingerprint_os: data.fingerprint_os || undefined,
+            cookies_json: typeof data.cookies_json === 'string' ? data.cookies_json.trim() : '',
             test_ip: Boolean(data.test_ip),
             daily_scraping_limit: typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
           },
         })
         await refreshProfiles()
         setIsEditOpen(false)
+        setEditProfile(null)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -317,8 +332,11 @@ export function ProfilesPage() {
       </div>
 
       {/* Dialogs & Sheets */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
+      <Dialog open={isCreateOpen} onOpenChange={(open) => {
+        setIsCreateOpen(open)
+        if (!open) setError(null)
+      }}>
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Create Profile</DialogTitle>
           </DialogHeader>
@@ -332,15 +350,18 @@ export function ProfilesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="sm:max-w-[425px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
+      <Dialog open={isEditOpen} onOpenChange={(open) => {
+        setIsEditOpen(open)
+        if (!open) setEditProfile(null)
+      }}>
+        <DialogContent className="sm:max-w-[560px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
           <DialogHeader className="flex-shrink-0">
             <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Edit Profile</DialogTitle>
           </DialogHeader>
-          {selected && (
+          {editProfile && (
             <ProfileForm
               mode="edit"
-              initialData={selected}
+              initialData={editProfile}
               existingNames={profiles.map(p => p.name)}
               saving={saving}
               onSave={handleSaveProfile}

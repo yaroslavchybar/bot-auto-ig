@@ -11,7 +11,6 @@
 - `profiles.ts`
 - `instagramAccounts.ts`
 - `messageTemplates.ts`
-- `dashboard.ts`
 - `keywords.ts`
 - `scrapingTasks.ts`
 - `workflows.ts`
@@ -22,7 +21,7 @@
 
 From schema:
 - `lists`
-- `profiles`
+- `profiles` (includes optional `cookiesJson` for canonical browser cookie storage; omitted from list responses and exposed only on explicit profile detail reads)
 - `instagramAccounts`
 - `messageTemplates`
 - `scrapingTasks`
@@ -69,7 +68,6 @@ Treat `convex/_generated/*` as generated artifacts.
 - `convex/profiles.ts`
 - `convex/instagramAccounts.ts`
 - `convex/messageTemplates.ts`
-- `convex/dashboard.ts`
 - `convex/keywords.ts`
 - `convex/scrapingTasks.ts`
 - `convex/workflows.ts`

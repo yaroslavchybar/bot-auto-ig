@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { api, internal } from '../_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedList, seedProfile } from './helpers'
 
 test('creates profiles and selects available profiles by list with cooldown logic', async () => {
@@ -9,6 +9,7 @@ test('creates profiles and selects available profiles by list with cooldown logi
   const profile = await seedProfile(t, {
     name: 'Profile A',
     proxy: 'http://proxy',
+    cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
     sessionId: ' session-1 ',
     dailyScrapingLimit: 10,
   })
@@ -25,6 +26,7 @@ test('creates profiles and selects available profiles by list with cooldown logi
 
   expect(profile).toMatchObject({
     mode: 'proxy',
+    cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
     sessionId: 'session-1',
     dailyScrapingLimit: 10,
     dailyScrapingUsed: 0,
@@ -65,4 +67,30 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
     using: false,
     dailyScrapingUsed: 0,
   })
+})
+
+test('updates profile cookies by id and clears them when empty string is provided', async () => {
+  const t = createConvexTest()
+  const profile = await seedProfile(t, {
+    name: 'Profile C',
+    cookiesJson: '[{"name":"csrftoken","value":"abc","domain":".instagram.com","path":"/"}]',
+  })
+
+  const updated = await t.mutation(api.profiles.updateById, {
+    profileId: profile!._id,
+    name: 'Profile C',
+    cookiesJson: '[{"name":"sessionid","value":"updated","domain":".instagram.com","path":"/"}]',
+    dailyScrapingLimit: null,
+  })
+  expect(updated).toMatchObject({
+    cookiesJson: '[{"name":"sessionid","value":"updated","domain":".instagram.com","path":"/"}]',
+  })
+
+  const cleared = await t.mutation(api.profiles.updateById, {
+    profileId: profile!._id,
+    name: 'Profile C',
+    cookiesJson: '   ',
+    dailyScrapingLimit: null,
+  })
+  expect(cleared?.cookiesJson).toBeUndefined()
 })

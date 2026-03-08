@@ -10,7 +10,7 @@ import hashlib
 import uuid
 import sys
 from contextlib import contextmanager
-from typing import Optional
+from typing import Callable, Optional
 from threading import Thread
 from camoufox import Camoufox
 from camoufox.exceptions import InvalidProxy
@@ -22,6 +22,11 @@ from python.instagram_actions.browsing import scroll_feed, scroll_reels
 from python.internal_systems.error_handling.config import config
 from python.internal_systems.error_handling.traffic_monitor import TrafficMonitor
 from python.internal_systems.logging.snapshot_debugger import save_debug_snapshot
+from python.browser_control.profile_cookies import (
+    canonical_cookies_json,
+    extract_instagram_session_id,
+    normalize_profile_cookies,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -76,34 +81,51 @@ def _safe_get(value, default=None):
     except Exception:
         return default
 
-def _extract_instagram_session_id(context) -> str | None:
-    try:
-        cookies = context.cookies()
-    except Exception:
-        return None
-    for c in cookies or []:
-        try:
-            if c.get("name") != "sessionid":
-                continue
-            domain = str(c.get("domain") or "")
-            if "instagram.com" not in domain:
-                continue
-            value = str(c.get("value") or "").strip()
-            if value:
-                return value
-        except Exception:
-            continue
-    return None
-
-def _try_store_session_id(context, profile_name: str) -> None:
-    session_id = _extract_instagram_session_id(context)
-    if not session_id:
-        return
+def _load_profile_cookies(profile_name: str) -> list[dict]:
     try:
         from python.database_sync.profiles_client import ProfilesClient
-        ProfilesClient().set_profile_session_id(profile_name, session_id)
-    except Exception:
-        return
+
+        profile = ProfilesClient().get_profile_by_name(profile_name) or {}
+        raw = profile.get("cookies_json")
+        if raw is None:
+            raw = profile.get("cookiesJson")
+        return normalize_profile_cookies(raw, drop_invalid=True)
+    except Exception as e:
+        logger.warning("Failed to load profile cookies for %s: %s", profile_name, e)
+        return []
+
+
+def _preload_profile_cookies(context, profile_name: str) -> int:
+    cookies = _load_profile_cookies(profile_name)
+    if not cookies:
+        return 0
+    context.add_cookies(cookies)
+    return len(cookies)
+
+
+def sync_profile_session_state(context, profile_name: str, log: Optional[Callable] = None) -> bool:
+    try:
+        cookies = normalize_profile_cookies(context.cookies(), drop_invalid=True)
+        session_id = extract_instagram_session_id(cookies)
+        from python.database_sync.profiles_client import ProfilesClient
+
+        ProfilesClient().update_profile_by_name(profile_name, {
+            "name": profile_name,
+            "cookiesJson": canonical_cookies_json(cookies) if cookies else "",
+            "sessionId": session_id or "",
+        })
+        if log:
+            if session_id:
+                log("Saved browser cookies and Instagram sessionid to database")
+            else:
+                log("Saved browser cookies to database")
+        return True
+    except Exception as e:
+        if log:
+            log(f"Failed saving browser cookies: {e}")
+        else:
+            logger.warning("Failed saving browser cookies for %s: %s", profile_name, e)
+        return False
 
 def _attach_error_snapshots(page, base_dir: str = "data/debug"):
     state = {"window_start": time.time(), "count": 0, "last_by_key": {}}
@@ -499,6 +521,13 @@ def create_browser_context(
                 raise
 
         # Browser initialized successfully
+        try:
+            loaded_count = _preload_profile_cookies(context, profile_name)
+            if loaded_count:
+                print(f"[*] Preloaded {loaded_count} cookies from database for {profile_name}")
+        except Exception as e:
+            logger.warning("Cookie preload failed for %s: %s", profile_name, e)
+
         page = context.pages[0] if context.pages else context.new_page()
         
         # Attach Traffic Monitor
@@ -541,7 +570,7 @@ def create_browser_context(
             
         try:
             if context:
-                _try_store_session_id(context, profile_name)
+                sync_profile_session_state(context, profile_name)
         except Exception:
             pass
 
@@ -559,6 +588,10 @@ def create_browser_context(
                 # But since we use @contextmanager, the generator handles the exception propagation.
                 # We just need to close the context.
                 if context:
+                    try:
+                        sync_profile_session_state(context, profile_name)
+                    except Exception:
+                        pass
                     try:
                         context.close()
                     except Exception:

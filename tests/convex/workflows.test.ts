@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 
-import { api, internal } from '../_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedList, seedWorkflow } from './helpers'
 
 test('creates workflows, deduplicates list ids, and transitions status', async () => {

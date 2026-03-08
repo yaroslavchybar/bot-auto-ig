@@ -15,7 +15,7 @@ test('registers the crons component in the Convex app definition', async () => {
     default: cronsComponent,
   }))
 
-  const { default: app } = await import('../convex.config')
+  const { default: app } = await import('../../convex/convex.config')
 
   expect(app).toBeDefined()
   expect(use).toHaveBeenCalledWith(cronsComponent)

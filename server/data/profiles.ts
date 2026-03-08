@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { profilesCreate, profilesDeleteByName, profilesList, profilesSyncStatus, profilesUpdateByName } from './convex.js';
+import { profilesCreate, profilesDeleteByName, profilesGetById, profilesList, profilesSyncStatus, profilesUpdateByName } from './convex.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +15,7 @@ export type Profile = {
 	proxy_type?: string;
 	fingerprint_seed?: string;
 	fingerprint_os?: string;
+	cookies_json?: string;
 	test_ip?: boolean;
 	status?: string;
 	using?: boolean;
@@ -35,6 +36,7 @@ export class ProfileManager {
 				proxy_type: p.proxy_type,
 				fingerprint_seed: p.fingerprint_seed,
 				fingerprint_os: p.fingerprint_os,
+				cookies_json: undefined,
 				test_ip: p.test_ip,
 				status: p.status,
 				using: p.Using,
@@ -48,6 +50,34 @@ export class ProfileManager {
 		} catch (e) {
 			console.error('Error fetching profiles:', e);
 			return [];
+		}
+	}
+
+	async getProfileById(profileId: string): Promise<Profile | null> {
+		try {
+			const row = await profilesGetById(profileId);
+			if (!row) return null;
+			return {
+				id: row.profile_id,
+				name: row.name,
+				proxy: row.proxy ?? undefined,
+				proxy_type: row.proxy_type ?? undefined,
+				fingerprint_seed: row.fingerprint_seed ?? undefined,
+				fingerprint_os: row.fingerprint_os ?? undefined,
+				cookies_json: row.cookies_json ?? undefined,
+				test_ip: row.test_ip,
+				status: row.status ?? undefined,
+				using: row.Using,
+				login: row.login,
+				list_ids: Array.isArray(row.list_ids)
+					? row.list_ids.map((id: unknown) => String(id || "")).filter(Boolean)
+					: [],
+				daily_scraping_limit: typeof row.daily_scraping_limit === 'number' ? row.daily_scraping_limit : null,
+				daily_scraping_used: typeof row.daily_scraping_used === 'number' ? row.daily_scraping_used : 0,
+			};
+		} catch (e) {
+			console.error('Error fetching profile by id:', e);
+			return null;
 		}
 	}
 
@@ -114,6 +144,7 @@ export class ProfileManager {
 				proxy_type: profile.proxy_type,
 				fingerprint_seed: profile.fingerprint_seed,
 				fingerprint_os: profile.fingerprint_os,
+				cookies_json: profile.cookies_json,
 				test_ip: profile.test_ip,
 				daily_scraping_limit: profile.daily_scraping_limit,
 			});
@@ -137,6 +168,7 @@ export class ProfileManager {
 				proxy_type: profile.proxy_type,
 				fingerprint_seed: profile.fingerprint_seed,
 				fingerprint_os: profile.fingerprint_os,
+				cookies_json: profile.cookies_json,
 				test_ip: profile.test_ip,
 				daily_scraping_limit: profile.daily_scraping_limit,
 			});

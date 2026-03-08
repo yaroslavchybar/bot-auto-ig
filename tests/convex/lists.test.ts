@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../_generated/api'
+import { api } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedList } from './helpers'
 
 test('creates, updates, and removes lists while clearing profile links', async () => {

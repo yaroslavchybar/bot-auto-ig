@@ -38,6 +38,7 @@ Mounted under `/api/*`:
 
 ### Profiles and Lists
 - Profile CRUD, browser launch/stop, runtime reconciliation, status sync, list assignment.
+- Profile create/update requests normalize pasted cookie JSON before persistence, and `/api/profiles/by-id` returns the sensitive cookie field only for explicit detail fetches.
 - List CRUD and bulk list assignment operations.
 
 ### Scraping

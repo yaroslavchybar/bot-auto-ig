@@ -1,12 +1,11 @@
 import { convexTest } from 'convex-test'
 
-import { api } from '../_generated/api'
-import schema from '../schema'
+import { api } from '../../convex/_generated/api'
+import schema from '../../convex/schema'
 
 export const modules = import.meta.glob([
-  '../**/*.ts',
-  '../_generated/*.js',
-  '!../tests/**',
+  '../../convex/**/*.ts',
+  '../../convex/_generated/*.js',
 ])
 
 export function createConvexTest() {
@@ -44,6 +43,7 @@ export async function seedProfile(
     testIp: overrides.testIp as boolean | undefined,
     fingerprintSeed: overrides.fingerprintSeed as string | undefined,
     fingerprintOs: overrides.fingerprintOs as string | undefined,
+    cookiesJson: overrides.cookiesJson as string | undefined,
     sessionId: overrides.sessionId as string | undefined,
     dailyScrapingLimit: overrides.dailyScrapingLimit as number | null | undefined,
   })

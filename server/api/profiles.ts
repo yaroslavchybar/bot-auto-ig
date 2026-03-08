@@ -18,6 +18,7 @@ import {
 import { activeDisplays, profileProcesses } from '../store.js'
 import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
+import { normalizeProfileCookiesJson } from '../helpers/profile-cookies.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -27,6 +28,14 @@ const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'getting_started', 'la
 const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'browser_control', 'fingerprint_generator.py')
 
 const router = Router()
+
+function normalizeProfileInput(body: Record<string, unknown> = {}): any {
+    const normalizedCookies = normalizeProfileCookiesJson(body.cookies_json ?? body.cookiesJson)
+    return {
+        ...body,
+        cookies_json: normalizedCookies,
+    }
+}
 
 function manualDisplayKey(profileName: string): string {
     return `manual:${profileName}`
@@ -104,10 +113,33 @@ router.get('/', async (_req, res) => {
     }
 })
 
+router.get('/by-id', async (req, res) => {
+    try {
+        const profileId = String(req.query.profileId || req.query.profile_id || '').trim()
+        if (!profileId) {
+            return res.status(400).json({ error: 'profileId is required' })
+        }
+        const profile = await profileManager.getProfileById(profileId)
+        if (!profile) {
+            return res.status(404).json({ error: 'Profile not found' })
+        }
+        res.json(profile)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        res.status(500).json({ error: message })
+    }
+})
+
 // Create a profile
 router.post('/', async (req, res) => {
     try {
-        const profile = req.body
+        let profile
+        try {
+            profile = normalizeProfileInput((req.body || {}) as Record<string, unknown>)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Invalid cookies JSON'
+            return res.status(400).json({ error: message })
+        }
         if (!profile.name) {
             return res.status(400).json({ error: 'name is required' })
         }
@@ -127,7 +159,13 @@ router.post('/', async (req, res) => {
 router.put('/:name', async (req, res) => {
     try {
         const oldName = req.params.name
-        const profile = req.body
+        let profile
+        try {
+            profile = normalizeProfileInput((req.body || {}) as Record<string, unknown>)
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Invalid cookies JSON'
+            return res.status(400).json({ error: message })
+        }
         if (!profile.name) {
             return res.status(400).json({ error: 'name is required' })
         }

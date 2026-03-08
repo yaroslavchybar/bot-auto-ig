@@ -103,6 +103,7 @@ export const create = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
+		cookiesJson: v.optional(v.string()),
 		sessionId: v.optional(v.string()),
 		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
@@ -110,6 +111,7 @@ export const create = mutation({
 		const name = String(args.name || "").trim();
 		if (!name) throw new Error("name is required");
 		const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
+		const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 		const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 		const dailyLimit = typeof args.dailyScrapingLimit === "number" ? args.dailyScrapingLimit : undefined;
 
@@ -121,6 +123,7 @@ export const create = mutation({
 			status: "idle",
 			mode: computeProfileMode(proxy),
 			sessionId: sessionIdRaw ? sessionIdRaw : undefined,
+			cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
 			using: false,
 			testIp: args.testIp ?? false,
 			fingerprintSeed: args.fingerprintSeed,
@@ -144,6 +147,7 @@ export const updateByName = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
+		cookiesJson: v.optional(v.string()),
 		sessionId: v.optional(v.string()),
 		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
@@ -177,6 +181,10 @@ export const updateByName = mutation({
 		if (typeof args.fingerprintOs === "string") {
 			next.fingerprintOs = args.fingerprintOs;
 		}
+		if (typeof args.cookiesJson === "string") {
+			const cleaned = args.cookiesJson.trim();
+			next.cookiesJson = cleaned ? cleaned : undefined;
+		}
 		if (typeof args.sessionId === "string") {
 			const cleaned = args.sessionId.trim();
 			next.sessionId = cleaned ? cleaned : undefined;
@@ -202,6 +210,7 @@ export const updateById = mutation({
 		testIp: v.optional(v.boolean()),
 		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
+		cookiesJson: v.optional(v.string()),
 		sessionId: v.optional(v.string()),
 		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
 	},
@@ -228,6 +237,10 @@ export const updateById = mutation({
 		}
 		if (typeof args.fingerprintOs === "string") {
 			next.fingerprintOs = args.fingerprintOs;
+		}
+		if (typeof args.cookiesJson === "string") {
+			const cleaned = args.cookiesJson.trim();
+			next.cookiesJson = cleaned ? cleaned : undefined;
 		}
 		if (typeof args.sessionId === "string") {
 			const cleaned = args.sessionId.trim();

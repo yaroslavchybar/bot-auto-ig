@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../_generated/api'
+import { api } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc } from './helpers'
 
 test('cleans scraper-auto-only task runtime state and resets running tasks', async () => {

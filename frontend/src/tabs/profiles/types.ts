@@ -5,6 +5,7 @@ export type Profile = {
   proxy_type?: string
   fingerprint_seed?: string
   fingerprint_os?: string
+  cookies_json?: string
   test_ip?: boolean
   status?: string
   using?: boolean

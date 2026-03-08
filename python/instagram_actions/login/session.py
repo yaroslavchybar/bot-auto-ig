@@ -3,7 +3,8 @@ import json
 import sys
 import time
 import traceback
-from python.browser_control.browser_setup import create_browser_context
+from python.browser_control.browser_setup import create_browser_context, sync_profile_session_state
+from python.browser_control.profile_cookies import normalize_profile_cookies
 from python.instagram_actions.actions import random_delay
 from python.internal_systems.data_models.totp import generate_totp_code
 from python.internal_systems.shared_utilities.selectors import LOGIN_BUTTON, HOME_BUTTON, SEARCH_BUTTON
@@ -89,30 +90,10 @@ def _click_login_button(page, selectors, log):
             page.keyboard.press("Enter")
 
 
-def _extract_instagram_session_id(context) -> str | None:
-    try:
-        cookies = context.cookies()
-    except Exception:
-        return None
-    for c in cookies or []:
-        try:
-            if c.get("name") != "sessionid":
-                continue
-            domain = str(c.get("domain") or "")
-            if "instagram.com" not in domain:
-                continue
-            value = str(c.get("value") or "").strip()
-            if value:
-                return value
-        except Exception:
-            continue
-    return None
-
-
 def _has_authenticated_instagram_session(context) -> bool:
     """Heuristic for authenticated session when UI selectors are unreliable."""
     try:
-        cookies = context.cookies()
+        cookies = normalize_profile_cookies(context.cookies(), drop_invalid=True)
     except Exception:
         return False
 
@@ -135,22 +116,6 @@ def _has_authenticated_instagram_session(context) -> bool:
             continue
 
     return has_sessionid and has_ds_user_id
-
-
-def _try_store_session_id(context, profile_name: str, log: callable) -> None:
-    try:
-        session_id = _extract_instagram_session_id(context)
-        if not session_id:
-            log("No Instagram sessionid cookie found")
-            return
-        ok = ProfilesClient().set_profile_session_id(profile_name, session_id)
-        if ok:
-            log("Saved Instagram sessionid to database")
-        else:
-            log("Failed to save Instagram sessionid to database")
-    except Exception as e:
-        log(f"Failed saving Instagram sessionid: {e}")
-
 
 def login_session(
     profile_name: str,
@@ -201,12 +166,12 @@ def login_session(
                     page.locator(PRIMARY_SELECTORS['username']).count() > 0 or
                     page.locator(ALT_SELECTORS['username']).count() > 0
                 )
-                if not username_exists:
-                    if HOME_BUTTON.find(page) or SEARCH_BUTTON.find(page):
-                        log("Already logged in!")
-                        mark_login_success()
-                        _try_store_session_id(context, profile_name, log)
-                        return login_succeeded
+                    if not username_exists:
+                        if HOME_BUTTON.find(page) or SEARCH_BUTTON.find(page):
+                            log("Already logged in!")
+                            mark_login_success()
+                            sync_profile_session_state(context, profile_name, log)
+                            return login_succeeded
             except:
                 pass
 
@@ -260,12 +225,12 @@ def login_session(
                     if HOME_BUTTON.find(page):
                          log("Login successful! (Home icon found)")
                          mark_login_success()
-                         _try_store_session_id(context, profile_name, log)
+                         sync_profile_session_state(context, profile_name, log)
                     else:
                         page.wait_for_selector("svg[aria-label='Home']", timeout=20000)
                         log("Login successful! (Home icon found)")
                         mark_login_success()
-                        _try_store_session_id(context, profile_name, log)
+                        sync_profile_session_state(context, profile_name, log)
                 except:
                     # Maybe stuck on "Save Info" or 2FA
                     if "two_factor" in page.url or page.locator("input[name='verificationCode']").count() > 0:
@@ -317,7 +282,7 @@ def login_session(
                             page.wait_for_selector("svg[aria-label='Home']", timeout=20000)
                             log("Login successful! (Home icon found)")
                             mark_login_success()
-                            _try_store_session_id(context, profile_name, log)
+                            sync_profile_session_state(context, profile_name, log)
                         except:
                             log("Login verification timed out after 2FA.")
                             
@@ -337,7 +302,7 @@ def login_session(
             if not login_succeeded and _has_authenticated_instagram_session(context):
                 log("Login confirmed via authenticated Instagram cookies")
                 mark_login_success()
-                _try_store_session_id(context, profile_name, log)
+                sync_profile_session_state(context, profile_name, log)
 
             return login_succeeded
     except Exception as e:
