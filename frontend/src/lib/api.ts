@@ -7,9 +7,15 @@ export function setTokenGetter(getter: () => Promise<string | null>) {
 
 const DEFAULT_TIMEOUT_MS = 30000
 
-export async function apiFetch<T>(path: string, options: { method?: string; body?: unknown; timeout?: number } = {}): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  options: { method?: string; body?: unknown; timeout?: number } = {},
+): Promise<T> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), options.timeout ?? DEFAULT_TIMEOUT_MS)
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    options.timeout ?? DEFAULT_TIMEOUT_MS,
+  )
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -67,10 +73,7 @@ const MAX_RETRY_DELAY_MS = 10000
  * Retry wrapper with exponential backoff for transient failures.
  * Retries on network errors and specific HTTP status codes.
  */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxRetries = 3
-): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
   let lastError: Error | undefined
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -80,10 +83,12 @@ async function withRetry<T>(
       lastError = e instanceof Error ? e : new Error(String(e))
 
       // Check if error is retryable
-      const isNetworkError = lastError.name === 'AbortError' ||
+      const isNetworkError =
+        lastError.name === 'AbortError' ||
         lastError.message.includes('fetch failed') ||
         lastError.message.includes('network')
-      const isRetryableStatus = lastError instanceof ApiError &&
+      const isRetryableStatus =
+        lastError instanceof ApiError &&
         RETRYABLE_STATUSES.includes(lastError.status)
 
       if (!isNetworkError && !isRetryableStatus) {
@@ -97,7 +102,7 @@ async function withRetry<T>(
       // Exponential backoff: 1s, 2s, 4s...
       const delay = Math.min(1000 * Math.pow(2, attempt), MAX_RETRY_DELAY_MS)
       const jitter = delay * 0.2 * Math.random()
-      await new Promise(r => setTimeout(r, delay + jitter))
+      await new Promise((r) => setTimeout(r, delay + jitter))
     }
   }
 
@@ -110,7 +115,12 @@ async function withRetry<T>(
  */
 export async function apiFetchWithRetry<T>(
   path: string,
-  options: { method?: string; body?: unknown; timeout?: number; maxRetries?: number } = {}
+  options: {
+    method?: string
+    body?: unknown
+    timeout?: number
+    maxRetries?: number
+  } = {},
 ): Promise<T> {
   const { maxRetries = 3, ...fetchOptions } = options
   return withRetry(() => apiFetch<T>(path, fetchOptions), maxRetries)

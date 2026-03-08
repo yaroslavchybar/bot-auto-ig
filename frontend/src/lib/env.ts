@@ -28,7 +28,9 @@ const apiUrl = import.meta.env.VITE_API_URL
 
 const dataUploaderUrl = import.meta.env.VITE_DATAUPLOADER_URL
   ? trimTrailingSlash(import.meta.env.VITE_DATAUPLOADER_URL)
-  : (import.meta.env.DEV ? 'http://localhost:3002' : '/api/datauploader')
+  : import.meta.env.DEV
+    ? 'http://localhost:3002'
+    : '/api/datauploader'
 
 const convexUrl = normalizeHttpsUrl(getRequiredEnv('VITE_CONVEX_URL'))
 

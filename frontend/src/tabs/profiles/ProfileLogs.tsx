@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import type { LogEntry } from './types'
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Button } from "@/components/ui/button"
-import { Check, Copy, RefreshCw, Terminal } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button } from '@/components/ui/button'
+import { Check, Copy, RefreshCw, Terminal } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface ProfileLogsProps {
   logs: LogEntry[]
@@ -16,7 +16,12 @@ export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
 
   const handleCopy = async () => {
     if (logs.length === 0) return
-    const text = logs.map(l => `[${new Date(l.ts).toLocaleTimeString()}] [${l.level.toUpperCase()}] ${l.message}`).join('\n')
+    const text = logs
+      .map(
+        (l) =>
+          `[${new Date(l.ts).toLocaleTimeString()}] [${l.level.toUpperCase()}] ${l.message}`,
+      )
+      .join('\n')
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
@@ -27,27 +32,27 @@ export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
   }
 
   return (
-    <div className="flex flex-col h-full gap-0">
-      <div className="flex justify-between items-center p-4 border-b border-white/5 bg-white/[0.02]">
+    <div className="flex h-full flex-col gap-0">
+      <div className="border-line-soft bg-panel-subtle flex items-center justify-between border-b p-4">
         <div className="flex items-center gap-2">
           {/* Header handled by dialog/sheet usually, but if needed here */}
         </div>
-        <div className="flex items-center gap-2 w-full justify-end">
+        <div className="flex w-full items-center justify-end gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={handleCopy}
             disabled={loading || logs.length === 0}
-            className="h-8 text-xs text-gray-400 hover:text-white hover:bg-white/5"
+            className="text-muted-copy hover:bg-panel-muted h-8 text-xs hover:text-white"
           >
             {copied ? (
               <>
-                <Check className="h-3.5 w-3.5 mr-1.5" />
+                <Check className="mr-1.5 h-3.5 w-3.5" />
                 Copied
               </>
             ) : (
               <>
-                <Copy className="h-3.5 w-3.5 mr-1.5" />
+                <Copy className="mr-1.5 h-3.5 w-3.5" />
                 Copy Output
               </>
             )}
@@ -55,44 +60,61 @@ export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
           <Button
             onClick={onRefresh}
             disabled={loading}
-            className="h-8 text-xs bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+            className="border-line text-copy hover:bg-panel-hover h-8 border bg-transparent text-xs shadow-none transition-all hover:text-white"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", loading && "animate-spin")} />
+            <RefreshCw
+              className={cn('mr-1.5 h-3.5 w-3.5', loading && 'animate-spin')}
+            />
             Refresh
           </Button>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 bg-[#050505] text-gray-300 font-mono text-[11px] leading-relaxed overflow-hidden">
+      <div className="bg-shell text-copy min-h-0 flex-1 overflow-hidden font-mono text-[11px] leading-relaxed">
         <ScrollArea className="h-full">
           <div className="p-4">
             {loading && logs.length === 0 ? (
-              <div className="flex items-center gap-2 text-gray-500 animate-pulse">
+              <div className="text-subtle-copy flex animate-pulse items-center gap-2">
                 <Terminal className="h-3 w-3" />
                 <span>Initializing log stream...</span>
               </div>
             ) : logs.length === 0 ? (
-              <div className="text-gray-500 italic">No activity recorded.</div>
+              <div className="text-subtle-copy italic">
+                No activity recorded.
+              </div>
             ) : (
               <div className="flex flex-col gap-0.5">
-                {logs.slice().reverse().map((entry, idx) => (
-                  <div key={`${entry.ts}-${idx}`} className="break-all whitespace-pre-wrap flex gap-3 opacity-90 hover:opacity-100 hover:bg-white/5 -mx-4 px-4 py-0.5">
-                    <span className="text-gray-500 shrink-0 w-[60px] select-none">
-                      {new Date(entry.ts).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    </span>
-                    <span className={cn(
-                      "font-bold shrink-0 w-[40px] uppercase select-none text-[10px] pt-0.5 tracking-wider",
-                      entry.level === 'error' ? "text-red-400" :
-                        entry.level === 'warn' ? "text-orange-400" :
-                          "text-gray-500"
-                    )}>
-                      {entry.level}
-                    </span>
-                    <span className="text-gray-300">
-                      {entry.message}
-                    </span>
-                  </div>
-                ))}
+                {logs
+                  .slice()
+                  .reverse()
+                  .map((entry, idx) => (
+                    <div
+                      key={`${entry.ts}-${idx}`}
+                      className="hover:bg-panel-muted -mx-4 flex gap-3 px-4 py-0.5 break-all whitespace-pre-wrap opacity-90 hover:opacity-100"
+                    >
+                      <span className="text-subtle-copy w-[60px] shrink-0 select-none">
+                        {new Date(entry.ts).toLocaleTimeString([], {
+                          hour12: false,
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
+                      </span>
+                      <span
+                        className={cn(
+                          'w-[40px] shrink-0 pt-0.5 text-[10px] font-bold tracking-wider uppercase select-none',
+                          entry.level === 'error'
+                            ? 'text-status-danger'
+                            : entry.level === 'warn'
+                              ? 'text-status-warning'
+                              : 'text-subtle-copy',
+                        )}
+                      >
+                        {entry.level}
+                      </span>
+                      <span className="text-copy">{entry.message}</span>
+                    </div>
+                  ))}
               </div>
             )}
           </div>

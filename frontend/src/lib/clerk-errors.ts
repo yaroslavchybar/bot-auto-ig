@@ -14,7 +14,10 @@ function isClerkErrorPayload(value: unknown): value is ClerkErrorPayload {
   return Array.isArray(maybeErrors)
 }
 
-export function getClerkErrorMessage(error: unknown, fallback = 'Authentication request failed.'): string {
+export function getClerkErrorMessage(
+  error: unknown,
+  fallback = 'Authentication request failed.',
+): string {
   if (isClerkErrorPayload(error)) {
     for (const issue of error.errors) {
       if (issue.longMessage) return issue.longMessage

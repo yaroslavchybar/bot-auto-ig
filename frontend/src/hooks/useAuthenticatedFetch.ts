@@ -13,34 +13,39 @@ export function useAuthenticatedFetch() {
     }
   }, [getToken])
 
-  const authFetch = useCallback(async <T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> => {
-    const token = await getToken()
+  const authFetch = useCallback(
+    async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
+      const token = await getToken()
 
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    }
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      }
 
-    if (token) {
-      (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`
-    }
+      if (token) {
+        ;(headers as Record<string, string>)['Authorization'] =
+          `Bearer ${token}`
+      }
 
-    const url = endpoint.startsWith('http') ? endpoint : `${env.apiUrl}${endpoint}`
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    })
+      const url = endpoint.startsWith('http')
+        ? endpoint
+        : `${env.apiUrl}${endpoint}`
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }))
-      throw new Error(error.error || `HTTP ${response.status}`)
-    }
+      if (!response.ok) {
+        const error = await response
+          .json()
+          .catch(() => ({ error: 'Request failed' }))
+        throw new Error(error.error || `HTTP ${response.status}`)
+      }
 
-    return response.json()
-  }, [getToken])
+      return response.json()
+    },
+    [getToken],
+  )
 
   return authFetch
 }

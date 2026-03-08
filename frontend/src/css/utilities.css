@@ -1,0 +1,225 @@
+@utility brand-button {
+  border: none;
+  color: var(--inverse);
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  background-image: linear-gradient(
+    to right,
+    var(--brand-600),
+    var(--brand-500)
+  );
+  box-shadow: var(--shadow-brand);
+
+  &:hover:not(:disabled) {
+    background-image: linear-gradient(
+      to right,
+      var(--brand-500),
+      var(--brand-400)
+    );
+    box-shadow: var(--shadow-brand-strong);
+  }
+}
+
+@utility brand-avatar {
+  color: var(--inverse);
+  background-image: linear-gradient(
+    to bottom right,
+    var(--brand-600),
+    var(--brand-500)
+  );
+  box-shadow: 0 0 15px hsl(142 71% 45% / 0.3);
+}
+
+@utility brand-text-gradient {
+  background-image: linear-gradient(
+    to right,
+    var(--brand-400),
+    var(--brand-300)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility brand-panel-selected {
+  border-color: hsl(142 71% 45% / 0.6);
+  background-color: var(--panel-selected);
+}
+
+@utility brand-surface {
+  background-color: var(--status-success-soft);
+  border-color: var(--status-success-border);
+
+  &:hover {
+    background-color: var(--status-success-strong);
+  }
+}
+
+@utility brand-text {
+  color: var(--brand-400);
+}
+
+@utility brand-text-soft {
+  color: var(--brand-300);
+
+  &:hover {
+    color: var(--brand-400);
+  }
+}
+
+@utility brand-icon-button {
+  color: var(--brand-400);
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
+
+  &:hover {
+    background-color: var(--status-success-soft);
+    color: var(--brand-300);
+  }
+}
+
+@utility brand-focus {
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+
+  &:focus,
+  &:focus-visible {
+    border-color: var(--brand-500);
+    box-shadow:
+      0 0 0 1px var(--brand-500),
+      0 0 0 4px var(--brand-ring-soft);
+    outline: none;
+  }
+}
+
+@utility brand-focus-strong {
+  &:focus,
+  &:focus-visible {
+    box-shadow:
+      0 0 0 1px var(--brand-500),
+      0 0 0 4px var(--brand-ring-strong);
+  }
+}
+
+@utility brand-checkbox {
+  &[data-state='checked'] {
+    border-color: var(--brand-500);
+    background-color: var(--brand-500);
+    color: var(--inverse);
+  }
+}
+
+@utility brand-switch {
+  &[data-state='checked'] {
+    background-color: var(--brand-500);
+  }
+
+  &[data-state='unchecked'] {
+    background-color: var(--subtle-copy);
+  }
+}
+
+@utility brand-link {
+  color: var(--brand-400);
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+@utility brand-icon {
+  color: var(--brand-400);
+}
+
+@utility page-title-gradient {
+  background-image: linear-gradient(
+    to right,
+    var(--title-gradient-start),
+    var(--title-gradient-end)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@utility panel-dropdown {
+  background-color: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+@utility status-banner-danger {
+  background-color: var(--status-danger-soft);
+  border-color: var(--status-danger-border);
+  color: var(--status-danger);
+  box-shadow: var(--shadow-status-danger);
+}
+
+@utility status-glow-info {
+  box-shadow: var(--shadow-status-info);
+}
+
+@utility status-glow-warning {
+  box-shadow: var(--shadow-status-warning);
+}
+
+@utility status-glow-success {
+  box-shadow: var(--shadow-status-success);
+}
+
+@utility status-glow-danger {
+  box-shadow: var(--shadow-status-danger);
+}
+
+@utility status-dot-info {
+  background-color: var(--status-info);
+  box-shadow: var(--shadow-status-info);
+}
+
+@utility status-dot-warning {
+  background-color: var(--status-warning);
+  box-shadow: var(--shadow-status-warning);
+}
+
+@utility status-dot-success {
+  background-color: var(--status-success);
+  box-shadow: var(--shadow-status-success);
+}
+
+@utility status-dot-success-tight {
+  background-color: var(--status-success);
+  box-shadow: var(--shadow-status-success-tight);
+}
+
+@utility status-dot-danger {
+  background-color: var(--status-danger);
+  box-shadow: var(--shadow-status-danger-tight);
+}
+
+@utility workflow-node {
+  box-shadow: var(--shadow-node);
+}
+
+@utility workflow-node-selected {
+  box-shadow: var(--shadow-node-selected);
+}
+
+@utility workflow-handle {
+  background-color: var(--workflow-edge) !important;
+}
+
+@utility ambient-glow-surface {
+  background-color: color-mix(in srgb, var(--brand-500) 12%, transparent);
+  filter: blur(120px);
+}
+
+@utility ambient-glow-surface-reduced {
+  background-image: radial-gradient(
+    circle at center,
+    color-mix(in srgb, var(--brand-400) 20%, transparent),
+    color-mix(in srgb, var(--brand-600) 12%, transparent) 45%,
+    transparent 72%
+  );
+  opacity: 0.8;
+}

@@ -23,4 +23,10 @@ export type LogEntry = {
   ts: number
 }
 
-export type ProfileMode = 'list' | 'create' | 'edit' | 'delete' | 'logs' | 'login'
+export type ProfileMode =
+  | 'list'
+  | 'create'
+  | 'edit'
+  | 'delete'
+  | 'logs'
+  | 'login'

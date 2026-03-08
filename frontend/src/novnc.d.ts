@@ -1,14 +1,18 @@
 declare module '@novnc/novnc/lib/rfb.js' {
   export default class RFB extends EventTarget {
-    constructor(target: Element, url: string, options?: {
-      shared?: boolean
-      repeaterID?: string
-      credentials?: {
-        username?: string
-        password?: string
-        target?: string
-      }
-    })
+    constructor(
+      target: Element,
+      url: string,
+      options?: {
+        shared?: boolean
+        repeaterID?: string
+        credentials?: {
+          username?: string
+          password?: string
+          target?: string
+        }
+      },
+    )
 
     background: string
     focusOnClick: boolean

@@ -35,10 +35,20 @@ function getManualChunk(id: string): string | undefined {
     return 'workflow-editor'
   }
   if (packageName === 'convex') return 'convex'
-  if (packageName.startsWith('@radix-ui/') || packageName.startsWith('@floating-ui/')) return 'radix'
+  if (
+    packageName.startsWith('@radix-ui/') ||
+    packageName.startsWith('@floating-ui/')
+  )
+    return 'radix'
   if (
     packageName.startsWith('@clerk/') ||
-    ['cookie', 'detect-node-es', 'set-cookie-parser', 'swr', 'use-sync-external-store'].includes(packageName)
+    [
+      'cookie',
+      'detect-node-es',
+      'set-cookie-parser',
+      'swr',
+      'use-sync-external-store',
+    ].includes(packageName)
   ) {
     return 'react-core'
   }
@@ -52,11 +62,27 @@ function getManualChunk(id: string): string | undefined {
     return 'codemirror'
   }
   if (packageName === 'lucide-react') return 'icons'
-  if (['react', 'react-dom', 'react-router', 'react-router-dom', 'scheduler'].includes(packageName)) {
+  if (
+    [
+      'react',
+      'react-dom',
+      'react-router',
+      'react-router-dom',
+      'scheduler',
+    ].includes(packageName)
+  ) {
     return 'react-core'
   }
   if (packageName === 'react-resizable-panels') return 'layout'
-  if (['class-variance-authority', 'clsx', 'sonner', 'tailwind-merge', 'tailwindcss-animate'].includes(packageName)) {
+  if (
+    [
+      'class-variance-authority',
+      'clsx',
+      'sonner',
+      'tailwind-merge',
+      'tailwindcss-animate',
+    ].includes(packageName)
+  ) {
     return 'ui-utils'
   }
 

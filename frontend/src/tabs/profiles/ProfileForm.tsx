@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'
 import type { Profile } from './types'
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Textarea } from "@/components/ui/textarea"
-import { Fingerprint, RefreshCw, Globe, Shield, Target } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Separator } from '@/components/ui/separator'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Textarea } from '@/components/ui/textarea'
+import { Fingerprint, RefreshCw, Globe, Shield, Target } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { normalizeCookiesJsonForForm } from './cookieJson'
 
 interface ProfileFormProps {
@@ -38,7 +44,7 @@ export function ProfileForm({
   saving,
   onSave,
   onCancel,
-  className
+  className,
 }: ProfileFormProps) {
   const [draft, setDraft] = useState<Partial<Profile>>({
     name: '',
@@ -53,7 +59,7 @@ export function ProfileForm({
 
   // Connection state: 'direct' or 'proxy'
   const [connection, setConnection] = useState<'direct' | 'proxy'>(
-    initialData?.proxy ? 'proxy' : 'direct'
+    initialData?.proxy ? 'proxy' : 'direct',
   )
 
   const [localError, setLocalError] = useState<string | null>(null)
@@ -94,7 +100,9 @@ export function ProfileForm({
 
     // Prepare final data
     const finalData = { ...draft, name }
-    const normalizedCookies = normalizeCookiesJsonForForm(String(finalData.cookies_json ?? ''))
+    const normalizedCookies = normalizeCookiesJsonForForm(
+      String(finalData.cookies_json ?? ''),
+    )
     if (normalizedCookies.error) {
       setLocalError(normalizedCookies.error)
       return
@@ -102,13 +110,13 @@ export function ProfileForm({
     finalData.cookies_json = normalizedCookies.normalized || undefined
 
     if (connection === 'proxy' && finalData.proxy) {
-      const pType = finalData.proxy_type || 'http';
-      let pVal = finalData.proxy;
-      if (pVal.includes('://')) pVal = pVal.split('://')[1]!;
-      finalData.proxy = `${pType}://${pVal}`;
+      const pType = finalData.proxy_type || 'http'
+      let pVal = finalData.proxy
+      if (pVal.includes('://')) pVal = pVal.split('://')[1]!
+      finalData.proxy = `${pType}://${pVal}`
     } else if (connection === 'direct') {
-      finalData.proxy = '';
-      finalData.proxy_type = '';
+      finalData.proxy = ''
+      finalData.proxy_type = ''
     }
 
     setLocalError(null)
@@ -116,12 +124,17 @@ export function ProfileForm({
   }
 
   return (
-    <div className={cn("flex flex-col h-[calc(90vh-10rem)]", className)}>
+    <div className={cn('flex h-[calc(90vh-10rem)] flex-col', className)}>
       {/* Scrollable form body */}
-      <ScrollArea className="flex-1 min-h-0 pr-4">
+      <ScrollArea className="min-h-0 flex-1 pr-4">
         <div className="grid gap-5 pb-2">
           <div className="grid gap-1.5">
-            <Label htmlFor="name" className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Profile Name</Label>
+            <Label
+              htmlFor="name"
+              className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
+            >
+              Profile Name
+            </Label>
             <Input
               id="name"
               value={String(draft.name ?? '')}
@@ -131,68 +144,95 @@ export function ProfileForm({
               }}
               disabled={saving}
               placeholder="e.g. Work Account 1"
-              className="h-9 font-medium bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
+              className="brand-focus bg-field border-line h-9 font-medium text-white"
             />
           </div>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-panel-muted" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <Label className="text-copy flex items-center gap-2 text-sm font-medium">
                 <Shield className="h-4 w-4" /> Browser Cookies
               </Label>
             </div>
-            <div className="p-4 rounded-md bg-white/[0.02] border-white/5 border space-y-3">
+            <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
               <div className="grid gap-1.5">
-                <Label htmlFor="cookies_json" className="text-xs text-gray-400">
+                <Label
+                  htmlFor="cookies_json"
+                  className="text-muted-copy text-xs"
+                >
                   Cookies JSON
                 </Label>
                 <Textarea
                   id="cookies_json"
                   value={String(draft.cookies_json ?? '')}
                   onChange={(e) => {
-                    setDraft((prev) => ({ ...prev, cookies_json: e.target.value }))
+                    setDraft((prev) => ({
+                      ...prev,
+                      cookies_json: e.target.value,
+                    }))
                     setLocalError(null)
                   }}
                   onBlur={() => {
-                    const result = normalizeCookiesJsonForForm(String(draft.cookies_json ?? ''))
+                    const result = normalizeCookiesJsonForForm(
+                      String(draft.cookies_json ?? ''),
+                    )
                     if (result.error) {
                       setLocalError(result.error)
                       return
                     }
                     setLocalError(null)
-                    setDraft((prev) => ({ ...prev, cookies_json: result.normalized || undefined }))
+                    setDraft((prev) => ({
+                      ...prev,
+                      cookies_json: result.normalized || undefined,
+                    }))
                   }}
                   disabled={saving}
                   placeholder='Paste raw cookie array or AdsPower-style JSON with a "cookies" array'
-                  className="min-h-[180px] resize-y bg-black/50 border-white/10 text-white font-mono text-xs focus-visible:ring-red-500/50 focus-visible:border-red-500"
+                  className="brand-focus bg-field border-line min-h-[180px] resize-y font-mono text-xs text-white"
                 />
-                <p className="text-[10px] text-gray-500 ml-1">
-                  Accepted formats: raw Playwright cookie arrays and AdsPower-style JSON objects with a cookies array.
+                <p className="text-subtle-copy ml-1 text-[10px]">
+                  Accepted formats: raw Playwright cookie arrays and
+                  AdsPower-style JSON objects with a cookies array.
                 </p>
               </div>
             </div>
           </div>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-panel-muted" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <Label className="text-copy flex items-center gap-2 text-sm font-medium">
                 <Globe className="h-4 w-4" /> Network Connection
               </Label>
               <Select
                 value={connection}
-                onValueChange={(value) => setConnection(value as 'direct' | 'proxy')}
+                onValueChange={(value) =>
+                  setConnection(value as 'direct' | 'proxy')
+                }
                 disabled={saving}
               >
-                <SelectTrigger id="connection" className="w-[180px] h-8 text-xs bg-black/50 border-white/10 text-white focus:ring-red-500/50">
+                <SelectTrigger
+                  id="connection"
+                  className="brand-focus bg-field border-line h-8 w-[180px] text-xs text-white"
+                >
                   <SelectValue placeholder="Select connection" />
                 </SelectTrigger>
-                <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
-                  <SelectItem value="direct" className="focus:bg-white/10 focus:text-white cursor-pointer">Direct Connection</SelectItem>
-                  <SelectItem value="proxy" className="focus:bg-white/10 focus:text-white cursor-pointer">Proxy</SelectItem>
+                <SelectContent className="panel-dropdown">
+                  <SelectItem
+                    value="direct"
+                    className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                  >
+                    Direct Connection
+                  </SelectItem>
+                  <SelectItem
+                    value="proxy"
+                    className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                  >
+                    Proxy
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -203,15 +243,30 @@ export function ProfileForm({
                   <div className="relative">
                     <Select
                       value={String(draft.proxy_type ?? 'http')}
-                      onValueChange={(value) => setDraft((prev) => ({ ...prev, proxy_type: value }))}
+                      onValueChange={(value) =>
+                        setDraft((prev) => ({ ...prev, proxy_type: value }))
+                      }
                       disabled={saving}
                     >
-                      <SelectTrigger id="proxy_type" className="h-9 w-[100px] rounded-r-none border-r-0 focus:ring-0 focus:ring-offset-0 bg-white/5 border-white/10 text-white">
+                      <SelectTrigger
+                        id="proxy_type"
+                        className="bg-panel-muted border-line h-9 w-[100px] rounded-r-none border-r-0 text-white focus:ring-0 focus:ring-offset-0"
+                      >
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
-                        <SelectItem value="http" className="focus:bg-white/10 focus:text-white cursor-pointer">HTTP</SelectItem>
-                        <SelectItem value="socks5" className="focus:bg-white/10 focus:text-white cursor-pointer">SOCKS5</SelectItem>
+                      <SelectContent className="panel-dropdown">
+                        <SelectItem
+                          value="http"
+                          className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                        >
+                          HTTP
+                        </SelectItem>
+                        <SelectItem
+                          value="socks5"
+                          className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                        >
+                          SOCKS5
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -219,45 +274,67 @@ export function ProfileForm({
                     <Input
                       id="proxy"
                       value={String(draft.proxy ?? '')}
-                      onChange={(e) => setDraft((prev) => ({ ...prev, proxy: e.target.value }))}
+                      onChange={(e) =>
+                        setDraft((prev) => ({ ...prev, proxy: e.target.value }))
+                      }
                       disabled={saving}
                       placeholder="host:port:user:pass"
-                      className="h-9 rounded-l-none font-mono text-sm focus-visible:ring-1 focus-visible:ring-offset-0 bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
+                      className="brand-focus bg-field border-line h-9 rounded-l-none font-mono text-sm text-white focus-visible:ring-1 focus-visible:ring-offset-0"
                     />
                   </div>
                 </div>
-                <p className="text-[10px] text-gray-500 mt-1.5 ml-1">
-                  Format: <span className="font-mono">host:port:user:pass</span> or <span className="font-mono">host:port</span>
+                <p className="text-subtle-copy mt-1.5 ml-1 text-[10px]">
+                  Format: <span className="font-mono">host:port:user:pass</span>{' '}
+                  or <span className="font-mono">host:port</span>
                 </p>
               </div>
             )}
           </div>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-panel-muted" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <Label className="text-copy flex items-center gap-2 text-sm font-medium">
                 <Fingerprint className="h-4 w-4" /> Browser Fingerprint
               </Label>
             </div>
 
-            <div className="p-4 rounded-md bg-white/[0.02] border-white/5 border space-y-4">
+            <div className="bg-panel-subtle border-line-soft space-y-4 rounded-md border p-4">
               <div className="flex items-end gap-4">
-                <div className="grid gap-1.5 flex-1">
-                  <Label className="text-xs text-gray-400">Operating System</Label>
+                <div className="grid flex-1 gap-1.5">
+                  <Label className="text-muted-copy text-xs">
+                    Operating System
+                  </Label>
                   <Select
                     value={draft.fingerprint_os || 'windows'}
-                    onValueChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
+                    onValueChange={(value) =>
+                      setDraft((prev) => ({ ...prev, fingerprint_os: value }))
+                    }
                     disabled={saving}
                   >
-                    <SelectTrigger className="h-9 bg-black/50 border-white/10 text-white focus:ring-red-500/50">
+                    <SelectTrigger className="brand-focus bg-field border-line h-9 text-white">
                       <SelectValue placeholder="OS" />
                     </SelectTrigger>
-                    <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
-                      <SelectItem value="windows" className="focus:bg-white/10 focus:text-white cursor-pointer">Windows</SelectItem>
-                      <SelectItem value="macos" className="focus:bg-white/10 focus:text-white cursor-pointer">macOS</SelectItem>
-                      <SelectItem value="linux" className="focus:bg-white/10 focus:text-white cursor-pointer">Linux</SelectItem>
+                    <SelectContent className="panel-dropdown">
+                      <SelectItem
+                        value="windows"
+                        className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                      >
+                        Windows
+                      </SelectItem>
+                      <SelectItem
+                        value="macos"
+                        className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                      >
+                        macOS
+                      </SelectItem>
+                      <SelectItem
+                        value="linux"
+                        className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                      >
+                        Linux
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -265,33 +342,38 @@ export function ProfileForm({
                   type="button"
                   onClick={handleRegenerateSeed}
                   disabled={saving}
-                  className="h-9 bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                  className="border-line text-copy hover:bg-panel-hover h-9 border bg-transparent shadow-none transition-all hover:text-white"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
                   New Seed
                 </Button>
               </div>
 
               {draft.fingerprint_seed && (
-                <div className="flex items-center gap-2 text-xs bg-black/30 p-2 rounded-sm border border-white/5">
-                  <Shield className="h-3.5 w-3.5 text-gray-500" />
-                  <span className="font-mono text-gray-400 truncate flex-1">{draft.fingerprint_seed}</span>
+                <div className="bg-panel-muted border-line-soft flex items-center gap-2 rounded-sm border p-2 text-xs">
+                  <Shield className="text-subtle-copy h-3.5 w-3.5" />
+                  <span className="text-muted-copy flex-1 truncate font-mono">
+                    {draft.fingerprint_seed}
+                  </span>
                 </div>
               )}
             </div>
           </div>
 
-          <Separator className="bg-white/5" />
+          <Separator className="bg-panel-muted" />
 
           <div className="grid gap-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium flex items-center gap-2 text-gray-300">
+              <Label className="text-copy flex items-center gap-2 text-sm font-medium">
                 <Target className="h-4 w-4" /> Daily Scraping Limit
               </Label>
             </div>
-            <div className="p-4 rounded-md bg-white/[0.02] border-white/5 border space-y-3">
+            <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
               <div className="grid gap-1.5">
-                <Label htmlFor="daily_scraping_limit" className="text-xs text-gray-400">
+                <Label
+                  htmlFor="daily_scraping_limit"
+                  className="text-muted-copy text-xs"
+                >
                   Maximum items to scrape per day
                 </Label>
                 <Input
@@ -304,42 +386,63 @@ export function ProfileForm({
                     const val = e.target.value.trim()
                     setDraft((prev) => ({
                       ...prev,
-                      daily_scraping_limit: val === '' ? null : Math.max(0, Math.floor(Number(val)))
+                      daily_scraping_limit:
+                        val === ''
+                          ? null
+                          : Math.max(0, Math.floor(Number(val))),
                     }))
                   }}
                   disabled={saving}
                   placeholder="Leave empty for unlimited"
-                  className="h-9 bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
+                  className="brand-focus bg-field border-line h-9 text-white"
                 />
-                <p className="text-[10px] text-gray-500 ml-1">
-                  Controls how much scraping capacity this profile can contribute each day. Leave empty for no limit.
+                <p className="text-subtle-copy ml-1 text-[10px]">
+                  Controls how much scraping capacity this profile can
+                  contribute each day. Leave empty for no limit.
                 </p>
               </div>
-              {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
-                <div className="text-xs bg-black/30 p-2 rounded-sm border border-white/5">
-                  <span className="text-gray-500">Used today: </span>
-                  <span className="font-semibold text-gray-200">{draft.daily_scraping_used}</span>
-                  {typeof draft.daily_scraping_limit === 'number' && (
-                    <span className="text-gray-500"> / {draft.daily_scraping_limit}</span>
-                  )}
-                </div>
-              )}
+              {typeof draft.daily_scraping_used === 'number' &&
+                draft.daily_scraping_used > 0 && (
+                  <div className="bg-panel-muted border-line-soft rounded-sm border p-2 text-xs">
+                    <span className="text-subtle-copy">Used today: </span>
+                    <span className="text-ink font-semibold">
+                      {draft.daily_scraping_used}
+                    </span>
+                    {typeof draft.daily_scraping_limit === 'number' && (
+                      <span className="text-subtle-copy">
+                        {' '}
+                        / {draft.daily_scraping_limit}
+                      </span>
+                    )}
+                  </div>
+                )}
             </div>
           </div>
         </div>
       </ScrollArea>
 
       {/* Fixed footer with error and buttons */}
-      <div className="shrink-0 pt-4 border-t border-white/10 mt-4">
+      <div className="border-line mt-4 shrink-0 border-t pt-4">
         {localError && (
-          <div className="text-sm text-red-500 font-medium bg-red-500/10 p-3 rounded-md mb-4 border border-red-500/20">{localError}</div>
+          <div className="text-status-danger bg-status-danger-soft border-status-danger-border mb-4 rounded-md border p-3 text-sm font-medium">
+            {localError}
+          </div>
         )}
 
         <div className="flex justify-end gap-3">
-          <Button variant="ghost" onClick={onCancel} disabled={saving} className="bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none">
+          <Button
+            variant="ghost"
+            onClick={onCancel}
+            disabled={saving}
+            className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-white"
+          >
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving} className="border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium">
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="brand-button font-medium"
+          >
             {saving ? 'Saving...' : 'Save Profile'}
           </Button>
         </div>

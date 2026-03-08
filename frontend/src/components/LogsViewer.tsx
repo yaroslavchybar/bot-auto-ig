@@ -5,9 +5,28 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { RefreshCw, Trash2, Filter, Clock, ArrowDownToLine, Bug, Terminal, Database, Hash, AlignLeft, History, Type } from 'lucide-react'
+import {
+  RefreshCw,
+  Trash2,
+  Filter,
+  Clock,
+  ArrowDownToLine,
+  Bug,
+  Terminal,
+  Database,
+  Hash,
+  AlignLeft,
+  History,
+  Type,
+} from 'lucide-react'
 
 type LogsMode = 'live' | 'static'
 
@@ -18,14 +37,24 @@ type LogFileItem = {
   value: string
 }
 
-const LevelAppearance: Record<LogLevel | string, { text: string; bg: string }> = {
-  info: { text: 'text-blue-400', bg: 'hover:bg-blue-500/10' },
-  warn: { text: 'text-orange-400 font-medium', bg: 'bg-orange-500/10 hover:bg-orange-500/20' },
-  error: { text: 'text-red-400 font-semibold', bg: 'bg-red-500/10 hover:bg-red-500/20 border-l-2 border-l-red-500/50' },
-  success: { text: 'text-green-400 font-medium', bg: 'bg-green-500/10 hover:bg-green-500/20' },
-  debug: { text: 'text-gray-500', bg: 'hover:bg-white/5' },
-  all: { text: '', bg: '' },
-}
+const LevelAppearance: Record<LogLevel | string, { text: string; bg: string }> =
+  {
+    info: { text: 'text-status-info', bg: 'hover:bg-status-info-soft' },
+    warn: {
+      text: 'text-status-warning font-medium',
+      bg: 'bg-status-warning-soft hover:bg-status-warning-strong',
+    },
+    error: {
+      text: 'text-status-danger font-semibold',
+      bg: 'bg-status-danger-soft hover:bg-status-danger-strong border-l-2 border-l-status-danger-border',
+    },
+    success: {
+      text: 'text-status-success font-medium',
+      bg: 'bg-status-success-soft hover:bg-status-success-strong',
+    },
+    debug: { text: 'text-subtle-copy', bg: 'hover:bg-panel-muted' },
+    all: { text: '', bg: '' },
+  }
 
 const FEED_DEBUG_TAGS = ['[feed-like-debug]', '[feed-scroll-debug]'] as const
 const LOGS_PAGE_SIZE = 30
@@ -35,15 +64,21 @@ const isFeedDebugMessage = (message: string) => {
   return FEED_DEBUG_TAGS.some((tag) => lowered.includes(tag))
 }
 
-function DenseButton({ active, className, children, ...props }: React.ComponentProps<typeof Button> & { active?: boolean }) {
+function DenseButton({
+  active,
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof Button> & { active?: boolean }) {
   return (
     <Button
       variant="outline"
       size="sm"
-      className={`h-6 px-2 py-0 text-[11px] rounded-[3px] border-white/10 font-sans shadow-none transition-all ${active
-        ? 'bg-white/10 border-white/20 font-medium text-white shadow-[0_0_10px_rgba(255,255,255,0.05)]'
-        : 'bg-transparent text-gray-300 hover:bg-white/10 hover:text-white'
-        } ${className}`}
+      className={`border-line h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] shadow-none transition-all ${
+        active
+          ? 'bg-panel-hover border-line-strong text-ink font-medium shadow-xs'
+          : 'text-copy hover:bg-panel-hover hover:text-ink bg-transparent'
+      } ${className}`}
       {...props}
     >
       {children}
@@ -57,7 +92,11 @@ interface LogsViewerProps {
   profileName?: string | null
 }
 
-export function LogsViewer({ className, workflowId = null, profileName = null }: LogsViewerProps) {
+export function LogsViewer({
+  className,
+  workflowId = null,
+  profileName = null,
+}: LogsViewerProps) {
   const isMobile = useIsMobile()
   const liveBufferSize = isMobile ? 250 : 1000
   const [mode, setMode] = useState<LogsMode>('live')
@@ -128,7 +167,9 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       setLoading(true)
       setError(null)
       try {
-        const data = await apiFetch<LogEntry[]>(`/api/logs/file/${encodeURIComponent(filename)}`)
+        const data = await apiFetch<LogEntry[]>(
+          `/api/logs/file/${encodeURIComponent(filename)}`,
+        )
         setLogs(data.slice(-liveBufferSize))
         setMode('static')
       } catch (e) {
@@ -137,7 +178,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         setLoading(false)
       }
     },
-    [liveBufferSize]
+    [liveBufferSize],
   )
 
   const handleClearLive = useCallback(async () => {
@@ -202,7 +243,9 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
 
   const filteredLogs = useMemo(() => {
     const q = filterQuery.trim().toLowerCase()
-    const scopedProfile = String(profileName || '').trim().toLowerCase()
+    const scopedProfile = String(profileName || '')
+      .trim()
+      .toLowerCase()
     return logs.filter((log) => {
       if (workflowId) {
         const logWorkflowId = String(log.workflowId || '').trim()
@@ -211,12 +254,17 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         }
       }
       if (scopedProfile) {
-        const logProfile = String(log.profileName || '').trim().toLowerCase()
+        const logProfile = String(log.profileName || '')
+          .trim()
+          .toLowerCase()
         if (!logProfile || logProfile !== scopedProfile) {
           return false
         }
       }
-      if (levelFilter !== 'all' && String(log.level || '').toLowerCase() !== levelFilter) {
+      if (
+        levelFilter !== 'all' &&
+        String(log.level || '').toLowerCase() !== levelFilter
+      ) {
         return false
       }
       if (feedDebugOnly && !isFeedDebugMessage(String(log.message || ''))) {
@@ -242,7 +290,9 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
 
   useEffect(() => {
     const root = scrollAreaRef.current
-    const viewport = root?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null
+    const viewport = root?.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLDivElement | null
     if (!viewport) return
 
     const onScroll = () => {
@@ -258,7 +308,9 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
   useEffect(() => {
     if (!autoScroll) return
     const root = scrollAreaRef.current
-    const viewport = root?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null
+    const viewport = root?.querySelector(
+      '[data-radix-scroll-area-viewport]',
+    ) as HTMLDivElement | null
     if (!viewport) return
     viewport.scrollTop = viewport.scrollHeight
   }, [filteredLogs.length, autoScroll])
@@ -278,15 +330,15 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
   }
 
   return (
-    <div className={`flex min-h-0 flex-col bg-transparent font-sans text-xs overflow-hidden select-none ${className || 'h-full'}`}>
-
+    <div
+      className={`flex min-h-0 flex-col overflow-hidden bg-transparent font-sans text-xs select-none ${className || 'h-full'}`}
+    >
       {/* Top Application Ribbon */}
-      <div className="flex flex-col bg-transparent border-b border-white/[0.05] shrink-0 shadow-xs relative z-10">
-
+      <div className="border-line-soft relative z-10 flex shrink-0 flex-col border-b bg-transparent shadow-xs">
         {/* Row 1: Main Controls & Connection State */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 py-1.5 border-b border-white/[0.05] gap-2 sm:gap-0">
+        <div className="border-line-soft flex flex-col justify-between gap-2 border-b px-2 py-1.5 sm:flex-row sm:items-center sm:gap-0">
           <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex bg-black/20 p-0.5 rounded-[4px] border border-white/5 shadow-inner">
+            <div className="bg-panel-subtle border-line-soft flex rounded-[4px] border p-0.5 shadow-inner">
               <DenseButton
                 active={mode === 'live'}
                 onClick={() => {
@@ -310,14 +362,27 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
               </DenseButton>
             </div>
 
-            <div className="w-px h-4 bg-white/10 mx-1" />
+            <div className="bg-panel-hover mx-1 h-4 w-px" />
 
-            <DenseButton onClick={mode === 'live' ? () => void loadLiveLogs() : () => void loadFiles()} disabled={loading || filesLoading}>
-              <RefreshCw className={`mr-1.5 h-3 w-3 ${(loading || filesLoading) ? 'animate-spin' : ''}`} />
+            <DenseButton
+              onClick={
+                mode === 'live'
+                  ? () => void loadLiveLogs()
+                  : () => void loadFiles()
+              }
+              disabled={loading || filesLoading}
+            >
+              <RefreshCw
+                className={`mr-1.5 h-3 w-3 ${loading || filesLoading ? 'animate-spin' : ''}`}
+              />
               Refresh
             </DenseButton>
 
-            <DenseButton onClick={() => void handleClearLive()} disabled={loading || mode !== 'live'} className="text-red-400 hover:bg-red-500/10 hover:text-red-300 hover:border-red-500/20">
+            <DenseButton
+              onClick={() => void handleClearLive()}
+              disabled={loading || mode !== 'live'}
+              className="text-status-danger hover:bg-status-danger-soft hover:text-status-danger hover:border-status-danger-border"
+            >
               <Trash2 className="mr-1.5 h-3 w-3" />
               Clear
             </DenseButton>
@@ -325,20 +390,36 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
 
           <div className="flex items-center gap-3">
             {mode === 'live' ? (
-              <div className="flex items-center gap-1.5 text-[11px] font-medium text-gray-400">
-                <div className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
+              <div className="text-muted-copy flex items-center gap-1.5 text-[11px] font-medium">
+                <div
+                  className={`h-2 w-2 rounded-full ${wsConnected ? 'status-dot-success-tight' : 'status-dot-danger'}`}
+                />
                 {wsConnected ? 'Connected (WebSocket)' : 'Disconnected'}
               </div>
             ) : (
               <div className="flex items-center gap-1.5">
-                <History className="h-3 w-3 text-neutral-500" />
-                <Select value={selectedFile ?? undefined} onValueChange={handleFileChange} disabled={files.length === 0}>
-                  <SelectTrigger className="h-6 text-[11px] w-56 rounded-[3px] border-white/10 bg-black/50 text-gray-200 focus:ring-1 focus:ring-red-500/50 focus:border-red-500 px-2 py-0">
-                    <SelectValue placeholder={files.length === 0 ? 'No log archives' : 'Select history log...'} />
+                <History className="text-muted-copy h-3 w-3" />
+                <Select
+                  value={selectedFile ?? undefined}
+                  onValueChange={handleFileChange}
+                  disabled={files.length === 0}
+                >
+                  <SelectTrigger className="brand-focus border-line bg-field text-ink h-6 w-56 rounded-[3px] px-2 py-0 text-[11px] focus:ring-1">
+                    <SelectValue
+                      placeholder={
+                        files.length === 0
+                          ? 'No log archives'
+                          : 'Select history log...'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {files.map((f) => (
-                      <SelectItem key={f.value} value={f.value} className="text-[11px] py-1 cursor-default">
+                      <SelectItem
+                        key={f.value}
+                        value={f.value}
+                        className="cursor-default py-1 text-[11px]"
+                      >
                         {f.label}
                       </SelectItem>
                     ))}
@@ -350,55 +431,110 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         </div>
 
         {/* Row 2: Filters and View Configuration */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between px-2 py-1 bg-transparent gap-2 md:gap-0">
+        <div className="flex flex-col justify-between gap-2 bg-transparent px-2 py-1 md:flex-row md:items-center md:gap-0">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex items-center w-full sm:w-auto">
-              <Filter className="absolute left-1.5 h-3 w-3 text-gray-500" />
+            <div className="relative flex w-full items-center sm:w-auto">
+              <Filter className="text-subtle-copy absolute left-1.5 h-3 w-3" />
               <Input
                 placeholder="Filter output..."
                 value={filterQuery}
                 onChange={(e) => setFilterQuery(e.target.value)}
-                className="w-full sm:w-48 h-6 pl-6 text-[11px] rounded-[3px] border-white/10 bg-black/50 text-gray-200 focus-visible:ring-1 focus-visible:ring-red-500/50 focus-visible:border-red-500 focus-visible:ring-offset-0"
+                className="brand-focus border-line bg-field text-ink h-6 w-full rounded-[3px] pl-6 text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 sm:w-48"
               />
             </div>
 
-            <Select value={levelFilter} onValueChange={(v) => setLevelFilter(v as LogLevel)}>
-              <SelectTrigger className="w-28 h-6 text-[11px] rounded-[3px] border-white/10 bg-black/50 text-gray-200 focus:ring-0 px-2 py-0">
+            <Select
+              value={levelFilter}
+              onValueChange={(v) => setLevelFilter(v as LogLevel)}
+            >
+              <SelectTrigger className="border-line bg-field text-ink h-6 w-28 rounded-[3px] px-2 py-0 text-[11px] focus:ring-0">
                 <SelectValue placeholder="Severity" />
               </SelectTrigger>
-              <SelectContent className="bg-[#0a0a0a] border-white/10 text-gray-200">
-                <SelectItem value="all" className="text-[11px] py-1 hover:bg-white/10 focus:bg-white/10">All Levels</SelectItem>
-                <SelectItem value="info" className="text-[11px] py-1 text-blue-400 hover:bg-white/10 focus:bg-white/10">Info</SelectItem>
-                <SelectItem value="warn" className="text-[11px] py-1 text-orange-400 hover:bg-white/10 focus:bg-white/10">Warning</SelectItem>
-                <SelectItem value="error" className="text-[11px] py-1 text-red-400 hover:bg-white/10 focus:bg-white/10">Error</SelectItem>
-                <SelectItem value="success" className="text-[11px] py-1 text-green-400 hover:bg-white/10 focus:bg-white/10">Success</SelectItem>
-                <SelectItem value="debug" className="text-[11px] py-1 text-gray-500 hover:bg-white/10 focus:bg-white/10">Debug</SelectItem>
+              <SelectContent className="bg-panel border-line text-ink">
+                <SelectItem
+                  value="all"
+                  className="hover:bg-panel-hover focus:bg-panel-hover py-1 text-[11px]"
+                >
+                  All Levels
+                </SelectItem>
+                <SelectItem
+                  value="info"
+                  className="text-status-info hover:bg-panel-hover focus:bg-panel-hover py-1 text-[11px]"
+                >
+                  Info
+                </SelectItem>
+                <SelectItem
+                  value="warn"
+                  className="text-status-warning hover:bg-panel-hover focus:bg-panel-hover py-1 text-[11px]"
+                >
+                  Warning
+                </SelectItem>
+                <SelectItem
+                  value="error"
+                  className="text-status-danger hover:bg-panel-hover focus:bg-panel-hover py-1 text-[11px]"
+                >
+                  Error
+                </SelectItem>
+                <SelectItem
+                  value="success"
+                  className="text-status-success hover:bg-panel-hover focus:bg-panel-hover py-1 text-[11px]"
+                >
+                  Success
+                </SelectItem>
+                <SelectItem
+                  value="debug"
+                  className="text-subtle-copy hover:bg-panel-hover focus:bg-panel-hover py-1 text-[11px]"
+                >
+                  Debug
+                </SelectItem>
               </SelectContent>
             </Select>
 
-            <div className="hidden sm:block w-px h-3.5 bg-white/10 mx-1" />
+            <div className="bg-panel-hover mx-1 hidden h-3.5 w-px sm:block" />
 
-            <div className="hidden sm:flex items-center gap-1">
-              <DenseButton active={showTime} onClick={() => setShowTime((v) => !v)} title="Toggle Time Column">
-                <Clock className="h-3 w-3 mr-1" /> Time
+            <div className="hidden items-center gap-1 sm:flex">
+              <DenseButton
+                active={showTime}
+                onClick={() => setShowTime((v) => !v)}
+                title="Toggle Time Column"
+              >
+                <Clock className="mr-1 h-3 w-3" /> Time
               </DenseButton>
-              <DenseButton active={showSource} onClick={() => setShowSource((v) => !v)} title="Toggle Source Column">
-                <Hash className="h-3 w-3 mr-1" /> Source
+              <DenseButton
+                active={showSource}
+                onClick={() => setShowSource((v) => !v)}
+                title="Toggle Source Column"
+              >
+                <Hash className="mr-1 h-3 w-3" /> Source
               </DenseButton>
-              <DenseButton active={showProfile} onClick={() => setShowProfile((v) => !v)} title="Toggle Profile Column">
-                <Type className="h-3 w-3 mr-1" /> Profile
+              <DenseButton
+                active={showProfile}
+                onClick={() => setShowProfile((v) => !v)}
+                title="Toggle Profile Column"
+              >
+                <Type className="mr-1 h-3 w-3" /> Profile
               </DenseButton>
             </div>
 
-            <div className="hidden sm:block w-px h-3.5 bg-white/10 mx-1" />
+            <div className="bg-panel-hover mx-1 hidden h-3.5 w-px sm:block" />
 
-            <DenseButton active={feedDebugOnly} onClick={() => setFeedDebugOnly((v) => !v)} title="Filter UI feed-specific debug logic">
-              <Bug className={`h-3 w-3 mr-1 ${feedDebugOnly ? 'text-amber-400' : 'text-gray-500'}`} /> Feed Debug
+            <DenseButton
+              active={feedDebugOnly}
+              onClick={() => setFeedDebugOnly((v) => !v)}
+              title="Filter UI feed-specific debug logic"
+            >
+              <Bug
+                className={`mr-1 h-3 w-3 ${feedDebugOnly ? 'text-status-warning' : 'text-subtle-copy'}`}
+              />{' '}
+              Feed Debug
             </DenseButton>
           </div>
 
           <div>
-            <DenseButton active={autoScroll} onClick={() => setAutoScroll((v) => !v)}>
+            <DenseButton
+              active={autoScroll}
+              onClick={() => setAutoScroll((v) => !v)}
+            >
               <ArrowDownToLine className="mr-1 h-3 w-3" />
               Auto-tail
             </DenseButton>
@@ -407,37 +543,36 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       </div>
 
       {error && (
-        <div className="px-3 py-1.5 bg-red-500/10 text-red-400 border-b border-red-500/20 text-[11px] font-medium shrink-0 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-          <div className="w-2 h-2 rounded-full bg-red-500 mr-2" />
+        <div className="status-banner-danger flex shrink-0 items-center border-b px-3 py-1.5 text-[11px] font-medium">
+          <div className="status-dot-danger mr-2 h-2 w-2 rounded-full" />
           {error}
         </div>
       )}
 
       {/* Main Data Grid */}
-      <div className="flex min-h-0 flex-1 overflow-hidden flex-col bg-transparent mx-1 mb-1 rounded-[3px] border border-white/[0.05] shadow-xs relative">
-
+      <div className="border-line-soft relative mx-1 mb-1 flex min-h-0 flex-1 flex-col overflow-hidden rounded-[3px] border bg-transparent shadow-xs">
         {/* Table Header Row */}
-        <div className="flex items-center bg-transparent border-b border-white/[0.05] text-[10px] uppercase font-semibold text-gray-400 shrink-0 select-none hidden md:flex">
+        <div className="border-line-soft text-muted-copy flex hidden shrink-0 items-center border-b bg-transparent text-[10px] font-semibold uppercase select-none md:flex">
           {showTime && (
-            <div className="hidden sm:flex w-[100px] shrink-0 border-r border-transparent px-2 py-1 items-center">
+            <div className="hidden w-[100px] shrink-0 items-center border-r border-transparent px-2 py-1 sm:flex">
               Timestamp
             </div>
           )}
           {showProfile && (
-            <div className="hidden md:flex w-[120px] shrink-0 border-r border-transparent px-2 py-1 items-center">
+            <div className="hidden w-[120px] shrink-0 items-center border-r border-transparent px-2 py-1 md:flex">
               Profile
             </div>
           )}
           {showSource && (
-            <div className="hidden lg:flex w-[110px] shrink-0 border-r border-transparent px-2 py-1 items-center">
+            <div className="hidden w-[110px] shrink-0 items-center border-r border-transparent px-2 py-1 lg:flex">
               Module
             </div>
           )}
-          <div className="w-[70px] shrink-0 border-r border-transparent px-2 py-1 flex items-center">
+          <div className="flex w-[70px] shrink-0 items-center border-r border-transparent px-2 py-1">
             Sev
           </div>
-          <div className="flex-1 px-2 py-1 flex items-center gap-1.5">
-            <AlignLeft className="w-3 h-3 text-gray-500" />
+          <div className="flex flex-1 items-center gap-1.5 px-2 py-1">
+            <AlignLeft className="text-subtle-copy h-3 w-3" />
             Message Payload
           </div>
         </div>
@@ -445,63 +580,87 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         {/* Scaled-down ScrollArea for absolute density */}
         <ScrollArea
           ref={scrollAreaRef}
-          className="flex min-h-0 flex-1 font-mono text-[11px] leading-[1.3] bg-transparent select-text"
+          className="flex min-h-0 flex-1 bg-transparent font-mono text-[11px] leading-[1.3] select-text"
         >
           {loading && visibleLogs.length === 0 ? (
-            <div className="flex items-center justify-center p-4 text-gray-500 font-sans italic">
-              <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> Fetching stream...
+            <div className="text-subtle-copy flex items-center justify-center p-4 font-sans italic">
+              <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> Fetching
+              stream...
             </div>
           ) : visibleLogs.length === 0 ? (
-            <div className="flex items-center justify-center p-4 text-gray-500 font-sans">
+            <div className="text-subtle-copy flex items-center justify-center p-4 font-sans">
               No matching records found.
             </div>
           ) : (
             <div className="flex flex-col pb-4">
               {showLoadMore && hasMoreLogs && (
-                <div className="sticky top-0 z-10 flex justify-center py-1 bg-[#0a0a0a]/95 border-b border-white/[0.05]">
+                <div className="bg-panel/95 border-line-soft sticky top-0 z-10 flex justify-center border-b py-1">
                   <DenseButton
-                    onClick={() => setVisibleCount((prev) => Math.min(prev + LOGS_PAGE_SIZE, filteredLogs.length))}
+                    onClick={() =>
+                      setVisibleCount((prev) =>
+                        Math.min(prev + LOGS_PAGE_SIZE, filteredLogs.length),
+                      )
+                    }
                     className="h-5 px-2 text-[10px]"
                   >
-                    Load {Math.min(LOGS_PAGE_SIZE, filteredLogs.length - visibleLogs.length)} older logs ({filteredLogs.length - visibleLogs.length} left)
+                    Load{' '}
+                    {Math.min(
+                      LOGS_PAGE_SIZE,
+                      filteredLogs.length - visibleLogs.length,
+                    )}{' '}
+                    older logs ({filteredLogs.length - visibleLogs.length} left)
                   </DenseButton>
                 </div>
               )}
               {visibleLogs.map((entry, idx) => {
-                const isFeedDebug = isFeedDebugMessage(String(entry.message || ''))
-                const levelKey = (String(entry.level || '').toLowerCase() || 'info') as LogLevel | string
-                const appearance = LevelAppearance[levelKey] || LevelAppearance.info
+                const isFeedDebug = isFeedDebugMessage(
+                  String(entry.message || ''),
+                )
+                const levelKey = (String(entry.level || '').toLowerCase() ||
+                  'info') as LogLevel | string
+                const appearance =
+                  LevelAppearance[levelKey] || LevelAppearance.info
                 const severityString = (entry.level || 'INFO').toUpperCase()
 
                 return (
                   <div
                     key={`${entry.ts}-${idx}`}
-                    className={`flex items-start border-b border-white/[0.02] ${appearance.bg} ${isFeedDebug ? 'bg-indigo-500/10' : ''}`}
-                    style={appearance.bg.includes('border-l') ? {} : { borderLeft: '2px solid transparent' }}
+                    className={`border-line-soft flex items-start border-b ${appearance.bg} ${isFeedDebug ? 'bg-status-info-soft' : ''}`}
+                    style={
+                      appearance.bg.includes('border-l')
+                        ? {}
+                        : { borderLeft: '2px solid transparent' }
+                    }
                   >
                     {showTime && (
-                      <div className="hidden sm:block w-[100px] shrink-0 px-2 py-0.5 text-[10px] text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent">
+                      <div className="text-subtle-copy hidden w-[100px] shrink-0 overflow-hidden border-r border-transparent px-2 py-0.5 text-[10px] text-ellipsis whitespace-nowrap sm:block">
                         {formatTime(entry.ts)}
                       </div>
                     )}
 
                     {showProfile && (
-                      <div className="hidden md:flex w-[120px] shrink-0 px-2 py-0.5 text-gray-400 whitespace-nowrap overflow-hidden text-ellipsis items-center border-r border-transparent">
-                        <span className="truncate">{entry.profileName || '-'}</span>
+                      <div className="text-muted-copy hidden w-[120px] shrink-0 items-center overflow-hidden border-r border-transparent px-2 py-0.5 text-ellipsis whitespace-nowrap md:flex">
+                        <span className="truncate">
+                          {entry.profileName || '-'}
+                        </span>
                       </div>
                     )}
 
                     {showSource && (
-                      <div className="hidden lg:block w-[110px] shrink-0 px-2 py-0.5 text-blue-400/80 whitespace-nowrap overflow-hidden text-ellipsis border-r border-transparent">
+                      <div className="text-status-info/80 hidden w-[110px] shrink-0 overflow-hidden border-r border-transparent px-2 py-0.5 text-ellipsis whitespace-nowrap lg:block">
                         {entry.source || '-'}
                       </div>
                     )}
 
-                    <div className={`w-[70px] shrink-0 px-2 py-0.5 font-semibold text-[10px] border-r border-transparent ${appearance.text}`}>
+                    <div
+                      className={`w-[70px] shrink-0 border-r border-transparent px-2 py-0.5 text-[10px] font-semibold ${appearance.text}`}
+                    >
                       {severityString}
                     </div>
 
-                    <div className={`flex-1 px-2 py-0.5 break-words whitespace-pre-wrap ${appearance.text} ${isFeedDebug ? 'text-indigo-400 font-medium' : ''}`}>
+                    <div
+                      className={`flex-1 px-2 py-0.5 break-words whitespace-pre-wrap ${appearance.text} ${isFeedDebug ? 'text-status-info font-medium' : ''}`}
+                    >
                       {entry.message}
                     </div>
                   </div>
@@ -513,14 +672,20 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       </div>
 
       {/* Bottom Status Bar */}
-      <div className="h-auto min-h-[20px] shrink-0 bg-transparent border-t border-white/[0.05] px-2 py-1 flex flex-wrap items-center justify-between gap-2 text-[10px] text-gray-500">
+      <div className="border-line-soft text-subtle-copy flex h-auto min-h-[20px] shrink-0 flex-wrap items-center justify-between gap-2 border-t bg-transparent px-2 py-1 text-[10px]">
         <div className="flex flex-wrap items-center gap-3">
-          <span>{visibleLogs.length}/{filteredLogs.length} Records</span>
+          <span>
+            {visibleLogs.length}/{filteredLogs.length} Records
+          </span>
           {filterQuery && <span>Filter active</span>}
-          {levelFilter !== 'all' && <span>Severity: {levelFilter.toUpperCase()}</span>}
+          {levelFilter !== 'all' && (
+            <span>Severity: {levelFilter.toUpperCase()}</span>
+          )}
         </div>
         <div className="flex items-center">
-          <span className="hidden sm:inline">Mode: {mode === 'live' ? 'Live Streaming' : 'Archival Exploration'}</span>
+          <span className="hidden sm:inline">
+            Mode: {mode === 'live' ? 'Live Streaming' : 'Archival Exploration'}
+          </span>
         </div>
       </div>
     </div>

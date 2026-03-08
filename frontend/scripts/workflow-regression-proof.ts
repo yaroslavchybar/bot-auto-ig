@@ -9,7 +9,9 @@ function read(path: string) {
   return fs.readFileSync(path, 'utf8')
 }
 
-const changedFiles = execSync('git diff --name-only origin/main...HEAD', { encoding: 'utf8' })
+const changedFiles = execSync('git diff --name-only origin/main...HEAD', {
+  encoding: 'utf8',
+})
   .split(/\r?\n/)
   .map((line) => line.trim())
   .filter(Boolean)
@@ -20,39 +22,53 @@ const runtimeProtocolFiles = [
   'python/getting_started/run_workflow.py',
 ]
 
-const touchedRuntimeProtocol = runtimeProtocolFiles.filter((file) => changedFiles.includes(file))
-assert(touchedRuntimeProtocol.length === 0, `Runtime protocol files changed unexpectedly: ${touchedRuntimeProtocol.join(', ')}`)
+const touchedRuntimeProtocol = runtimeProtocolFiles.filter((file) =>
+  changedFiles.includes(file),
+)
+assert(
+  touchedRuntimeProtocol.length === 0,
+  `Runtime protocol files changed unexpectedly: ${touchedRuntimeProtocol.join(', ')}`,
+)
 
 const workflowsPage = read('frontend/src/tabs/workflows/WorkflowsPage.tsx')
 const workflowsList = read('frontend/src/tabs/workflows/WorkflowsList.tsx')
 
 assert(
-  workflowsPage.includes('const createWorkflow = useMutation(api.workflows.create)'),
-  'create mutation wiring missing'
+  workflowsPage.includes(
+    'const createWorkflow = useMutation(api.workflows.create)',
+  ),
+  'create mutation wiring missing',
 )
 assert(
-  workflowsPage.includes('const updateWorkflow = useMutation(api.workflows.update)'),
-  'update mutation wiring missing'
+  workflowsPage.includes(
+    'const updateWorkflow = useMutation(api.workflows.update)',
+  ),
+  'update mutation wiring missing',
 )
 assert(
-  workflowsPage.includes('const duplicateWorkflow = useMutation(api.workflows.duplicate)'),
-  'duplicate mutation wiring missing'
+  workflowsPage.includes(
+    'const duplicateWorkflow = useMutation(api.workflows.duplicate)',
+  ),
+  'duplicate mutation wiring missing',
 )
 assert(
   workflowsPage.includes("apiFetch('/api/workflows/stop'"),
-  'run/stop API wiring missing'
+  'run/stop API wiring missing',
 )
 assert(
-  workflowsPage.includes('const created = await createWorkflow(imported.workflow)'),
-  'import must persist via createWorkflow'
+  workflowsPage.includes(
+    'const created = await createWorkflow(imported.workflow)',
+  ),
+  'import must persist via createWorkflow',
 )
 assert(
   !workflowsPage.includes('await updateWorkflow(imported.workflow'),
-  'import must not overwrite via updateWorkflow'
+  'import must not overwrite via updateWorkflow',
 )
 assert(
-  workflowsList.includes('Export JSON') && workflowsList.includes('onExport(workflow)} disabled={isRunning}'),
-  'Export JSON must be disabled when running'
+  workflowsList.includes('Export JSON') &&
+    workflowsList.includes('onExport(workflow)} disabled={isRunning}'),
+  'Export JSON must be disabled when running',
 )
 
 console.log('PASS: create/edit/duplicate/run wiring remains present')

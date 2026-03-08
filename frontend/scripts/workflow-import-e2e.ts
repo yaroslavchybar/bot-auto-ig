@@ -45,7 +45,8 @@ function makeValidEnvelope(activityId = 'start_browser') {
 }
 
 const knownActivities = new Set(['start_browser', 'select_list'])
-const resolveActivityById = (activityId: string) => knownActivities.has(activityId)
+const resolveActivityById = (activityId: string) =>
+  knownActivities.has(activityId)
 
 type Scenario = {
   name: string
@@ -77,7 +78,10 @@ const scenarios: Scenario[] = [
         throw new Error(`unexpected workflow name: ${result.workflow.name}`)
       }
 
-      assert(result.warnings.length === 0, 'expected no warnings for valid import')
+      assert(
+        result.warnings.length === 0,
+        'expected no warnings for valid import',
+      )
     },
   },
   {
@@ -90,14 +94,24 @@ const scenarios: Scenario[] = [
         edges: [{ id: 'edge_1' }],
       })
 
-      assert(envelope.format === WORKFLOW_EXPORT_FORMAT, 'unexpected export format')
-      assert(envelope.version === WORKFLOW_EXPORT_VERSION, 'unexpected export version')
-      assert(typeof envelope.exportedAt === 'string' && envelope.exportedAt.length > 0, 'missing exportedAt')
+      assert(
+        envelope.format === WORKFLOW_EXPORT_FORMAT,
+        'unexpected export format',
+      )
+      assert(
+        envelope.version === WORKFLOW_EXPORT_VERSION,
+        'unexpected export version',
+      )
+      assert(
+        typeof envelope.exportedAt === 'string' &&
+          envelope.exportedAt.length > 0,
+        'missing exportedAt',
+      )
 
       const workflowKeys = Object.keys(envelope.workflow).sort().join(',')
       assert(
         workflowKeys === 'description,edges,name,nodes',
-        `unexpected workflow keys: ${workflowKeys}`
+        `unexpected workflow keys: ${workflowKeys}`,
       )
     },
   },
@@ -116,10 +130,14 @@ const scenarios: Scenario[] = [
       })
 
       assert(
-        result.workflow.name === 'Imported Workflow (imported 2026-03-06 10:45)',
-        `unexpected renamed workflow name: ${result.workflow.name}`
+        result.workflow.name ===
+          'Imported Workflow (imported 2026-03-06 10:45)',
+        `unexpected renamed workflow name: ${result.workflow.name}`,
       )
-      assert(result.warnings.length === 1, `expected one rename warning, got ${result.warnings.length}`)
+      assert(
+        result.warnings.length === 1,
+        `expected one rename warning, got ${result.warnings.length}`,
+      )
     },
   },
   {
@@ -146,11 +164,17 @@ const scenarios: Scenario[] = [
         resolveActivityById,
       })
 
-      assert(result.workflow.name === 'Imported Workflow', `unexpected workflow name: ${result.workflow.name}`)
-      assert(result.warnings.length === 1, `expected one warning, got ${result.warnings.length}`)
+      assert(
+        result.workflow.name === 'Imported Workflow',
+        `unexpected workflow name: ${result.workflow.name}`,
+      )
+      assert(
+        result.warnings.length === 1,
+        `expected one warning, got ${result.warnings.length}`,
+      )
       assert(
         result.warnings[0]?.includes('list-b'),
-        `expected missing list warning to mention list-b, got ${result.warnings[0]}`
+        `expected missing list warning to mention list-b, got ${result.warnings[0]}`,
       )
     },
   },
@@ -206,7 +230,9 @@ const scenarios: Scenario[] = [
     name: 'negative missing edge endpoint fails',
     run: () => {
       const payload = makeValidEnvelope()
-      payload.workflow.edges = [{ id: 'edge_bad', source: 'start_node', target: 'missing_node' }]
+      payload.workflow.edges = [
+        { id: 'edge_bad', source: 'start_node', target: 'missing_node' },
+      ]
       try {
         validateWorkflowImport({
           fileName: 'workflow.json',
@@ -293,27 +319,30 @@ const scenarios: Scenario[] = [
     name: 'negative node cap fails',
     run: () => {
       const payload = makeValidEnvelope()
-      payload.workflow.nodes = Array.from({ length: WORKFLOW_IMPORT_MAX_NODES + 1 }, (_, index) => {
-        if (index === 0) {
-          return {
-            id: 'start_node',
-            type: 'start',
-            position: { x: 100, y: 100 },
-            data: { label: 'Start' },
+      payload.workflow.nodes = Array.from(
+        { length: WORKFLOW_IMPORT_MAX_NODES + 1 },
+        (_, index) => {
+          if (index === 0) {
+            return {
+              id: 'start_node',
+              type: 'start',
+              position: { x: 100, y: 100 },
+              data: { label: 'Start' },
+            }
           }
-        }
 
-        return {
-          id: `node_${index}`,
-          type: 'activity',
-          position: { x: 100 + index, y: 100 },
-          data: {
-            activityId: 'start_browser',
-            label: `Node ${index}`,
-            config: {},
-          },
-        }
-      })
+          return {
+            id: `node_${index}`,
+            type: 'activity',
+            position: { x: 100 + index, y: 100 },
+            data: {
+              activityId: 'start_browser',
+              label: `Node ${index}`,
+              config: {},
+            },
+          }
+        },
+      )
       payload.workflow.edges = []
 
       try {
@@ -327,7 +356,11 @@ const scenarios: Scenario[] = [
         })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        if (!message.includes(`workflow.nodes exceeds cap (${WORKFLOW_IMPORT_MAX_NODES})`)) {
+        if (
+          !message.includes(
+            `workflow.nodes exceeds cap (${WORKFLOW_IMPORT_MAX_NODES})`,
+          )
+        ) {
           throw new Error(`unexpected error: ${message}`)
         }
         return

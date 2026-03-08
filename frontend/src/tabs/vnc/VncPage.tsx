@@ -1,4 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 import { ArrowLeft, FileText, LayoutGrid, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
@@ -10,8 +17,16 @@ import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 
-const LogsViewer = lazy(() => import('@/components/LogsViewer').then((module) => ({ default: module.LogsViewer })))
-const VncViewer = lazy(() => import('@/components/VncViewer').then((module) => ({ default: module.VncViewer })))
+const LogsViewer = lazy(() =>
+  import('@/components/LogsViewer').then((module) => ({
+    default: module.LogsViewer,
+  })),
+)
+const VncViewer = lazy(() =>
+  import('@/components/VncViewer').then((module) => ({
+    default: module.VncViewer,
+  })),
+)
 
 type DisplayEvent = {
   type?: unknown
@@ -51,7 +66,8 @@ function normalizeSessions(input: unknown): DisplaySession[] {
     const profileName = String(item.profileName ?? item.profile ?? '').trim()
     const vncPort = toNumber(item.vncPort ?? item.vnc_port)
     const displayNum = toNumber(item.displayNum ?? item.display_num)
-    if (!workflowId || !profileName || vncPort === null || displayNum === null) continue
+    if (!workflowId || !profileName || vncPort === null || displayNum === null)
+      continue
     const session: DisplaySession = {
       workflowId,
       profileName,
@@ -65,7 +81,8 @@ function normalizeSessions(input: unknown): DisplaySession[] {
     out.push(session)
   }
   out.sort((a, b) => {
-    if (a.workflowId !== b.workflowId) return a.workflowId.localeCompare(b.workflowId)
+    if (a.workflowId !== b.workflowId)
+      return a.workflowId.localeCompare(b.workflowId)
     return a.profileName.localeCompare(b.profileName)
   })
   return out
@@ -77,8 +94,12 @@ export function VncPage() {
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [focusedSessionKey, setFocusedSessionKey] = useState<string | null>(null)
-  const [controlState, setControlState] = useState<'locked' | 'confirm' | 'unlocked'>('locked')
+  const [focusedSessionKey, setFocusedSessionKey] = useState<string | null>(
+    null,
+  )
+  const [controlState, setControlState] = useState<
+    'locked' | 'confirm' | 'unlocked'
+  >('locked')
   const [showMobileLogs, setShowMobileLogs] = useState(false)
 
   const fetchSessions = useCallback(async () => {
@@ -97,12 +118,20 @@ export function VncPage() {
   const handleSocketEvent = useCallback((event: DisplayEvent) => {
     const eventType = String(event?.type || '')
     const workflowId = getEventWorkflowId(event)
-    const profileName = String(event?.profileName ?? event?.profile ?? '').trim()
+    const profileName = String(
+      event?.profileName ?? event?.profile ?? '',
+    ).trim()
 
     if (eventType === 'display_allocated') {
       const vncPort = toNumber(event?.vncPort ?? event?.vnc_port)
       const displayNum = toNumber(event?.displayNum ?? event?.display_num)
-      if (!workflowId || !profileName || vncPort === null || displayNum === null) return
+      if (
+        !workflowId ||
+        !profileName ||
+        vncPort === null ||
+        displayNum === null
+      )
+        return
 
       const nextSession: DisplaySession = {
         workflowId,
@@ -115,7 +144,8 @@ export function VncPage() {
         const key = sessionKey(nextSession)
         const filtered = prev.filter((item) => sessionKey(item) !== key)
         return [...filtered, nextSession].sort((a, b) => {
-          if (a.workflowId !== b.workflowId) return a.workflowId.localeCompare(b.workflowId)
+          if (a.workflowId !== b.workflowId)
+            return a.workflowId.localeCompare(b.workflowId)
           return a.profileName.localeCompare(b.profileName)
         })
       })
@@ -124,14 +154,20 @@ export function VncPage() {
 
     if (eventType === 'display_released' || eventType === 'profile_completed') {
       if (!workflowId || !profileName) return
-      setSessions((prev) => prev.filter((item) => sessionKey(item) !== `${workflowId}:${profileName}`))
+      setSessions((prev) =>
+        prev.filter(
+          (item) => sessionKey(item) !== `${workflowId}:${profileName}`,
+        ),
+      )
       return
     }
 
     if (eventType === 'workflow_status') {
       const status = String(event?.status || '')
       if (workflowId && status === 'idle') {
-        setSessions((prev) => prev.filter((item) => item.workflowId !== workflowId))
+        setSessions((prev) =>
+          prev.filter((item) => item.workflowId !== workflowId),
+        )
       }
     }
   }, [])
@@ -153,16 +189,20 @@ export function VncPage() {
       return
     }
 
-    const interval = setInterval(() => {
-      void fetchSessions()
-    }, isMobile ? 15000 : 5000)
+    const interval = setInterval(
+      () => {
+        void fetchSessions()
+      },
+      isMobile ? 15000 : 5000,
+    )
 
     return () => clearInterval(interval)
   }, [connected, fetchSessions, isMobile, isVisible])
 
   const focusedSession = useMemo(
-    () => sessions.find((item) => sessionKey(item) === focusedSessionKey) ?? null,
-    [sessions, focusedSessionKey]
+    () =>
+      sessions.find((item) => sessionKey(item) === focusedSessionKey) ?? null,
+    [sessions, focusedSessionKey],
   )
 
   useEffect(() => {
@@ -182,10 +222,13 @@ export function VncPage() {
   if (focusedSession) {
     if (isMobile) {
       return (
-        <div className="flex flex-col h-full bg-[#050505] overflow-auto font-sans relative">
-          <AmbientGlow className="w-[700px] h-[360px]" reducedClassName="w-[480px] h-[220px]" />
-          <div className="mobile-effect-blur flex items-center justify-between px-3 py-2 bg-white/[0.02] border-b border-white/5 shrink-0 select-none shadow-xs z-10">
-            <div className="flex items-center gap-3 min-w-0">
+        <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
+          <AmbientGlow
+            className="h-[360px] w-[700px]"
+            reducedClassName="w-[480px] h-[220px]"
+          />
+          <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-2 shadow-xs select-none">
+            <div className="flex min-w-0 items-center gap-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -193,16 +236,16 @@ export function VncPage() {
                   setFocusedSessionKey(null)
                   setControlState('locked')
                 }}
-                className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+                className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
               >
                 <ArrowLeft className="mr-2 h-3.5 w-3.5" />
                 Back
               </Button>
               <div className="min-w-0">
-                <h2 className="truncate text-sm font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                <h2 className="page-title-gradient truncate text-sm font-bold tracking-wider uppercase">
                   {focusedSession.profileName}
                 </h2>
-                <span className="text-[10px] text-gray-500 font-mono">
+                <span className="text-subtle-copy font-mono text-[10px]">
                   {focusedSession.workflowId} / :{focusedSession.displayNum}
                 </span>
               </div>
@@ -211,40 +254,46 @@ export function VncPage() {
               variant="outline"
               size="sm"
               onClick={() => setShowMobileLogs((current) => !current)}
-              className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
             >
               <FileText className="h-3.5 w-3.5" />
               {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
             </Button>
           </div>
 
-          <div className="flex-1 min-h-0 p-2 space-y-2">
-            <div className="h-[50vh] min-h-[320px] rounded-[4px] overflow-hidden border border-white/[0.05] bg-black">
-              <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/60" />}>
+          <div className="min-h-0 flex-1 space-y-2 p-2">
+            <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
+              <Suspense
+                fallback={
+                  <div className="bg-overlay h-full w-full animate-pulse" />
+                }
+              >
                 <VncViewer
                   url={buildVncWebSocketUrl(focusedSession.vncPort)}
                   interactive={isInteractive}
-                  className="flex-1 w-full h-full object-contain"
+                  className="h-full w-full flex-1 object-contain"
                 />
               </Suspense>
             </div>
 
             {!isInteractive ? (
-              <div className="rounded-xl border border-white/10 bg-[#0a0a0a] p-3">
-                <p className="text-xs text-gray-400 mb-3">Taking control will interrupt the agent.</p>
+              <div className="border-line bg-panel rounded-xl border p-3">
+                <p className="text-muted-copy mb-3 text-xs">
+                  Taking control will interrupt the agent.
+                </p>
                 <div className="flex gap-2">
                   {isConfirming ? (
                     <>
                       <Button
                         variant="outline"
                         onClick={() => setControlState('locked')}
-                        className="flex-1 bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                        className="border-line text-copy hover:bg-panel-hover flex-1 border bg-transparent shadow-none transition-all hover:text-white"
                       >
                         Cancel
                       </Button>
                       <Button
                         onClick={() => setControlState('unlocked')}
-                        className="mobile-effect-shadow flex-1 border-none bg-gradient-to-r from-red-600 to-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-500 transition-all font-medium"
+                        className="mobile-effect-shadow brand-button flex-1 font-medium"
                       >
                         Confirm
                       </Button>
@@ -253,7 +302,7 @@ export function VncPage() {
                     <Button
                       variant="outline"
                       onClick={() => setControlState('confirm')}
-                      className="w-full bg-black/50 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                      className="bg-field border-line text-copy hover:bg-panel-hover w-full border shadow-none transition-all hover:text-white"
                     >
                       Take Control
                     </Button>
@@ -264,18 +313,26 @@ export function VncPage() {
               <Button
                 variant="outline"
                 onClick={() => setControlState('locked')}
-                className="bg-black/80 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none transition-all hover:text-white"
               >
                 Return To Agent
               </Button>
             )}
 
             {showMobileLogs ? (
-              <div className="h-[42vh] min-h-[260px] rounded-[4px] overflow-hidden border border-white/[0.05] bg-[#050505]">
-                <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/40" />}>
+              <div className="border-line-soft bg-shell h-[42vh] min-h-[260px] overflow-hidden rounded-[4px] border">
+                <Suspense
+                  fallback={
+                    <div className="bg-field-alt h-full w-full animate-pulse" />
+                  }
+                >
                   <LogsViewer
                     className="h-full border-0"
-                    workflowId={focusedSession.workflowId === 'manual' ? null : focusedSession.workflowId}
+                    workflowId={
+                      focusedSession.workflowId === 'manual'
+                        ? null
+                        : focusedSession.workflowId
+                    }
                     profileName={focusedSession.profileName}
                   />
                 </Suspense>
@@ -287,9 +344,12 @@ export function VncPage() {
     }
 
     return (
-      <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
-        <AmbientGlow className="w-[800px] h-[400px]" reducedClassName="w-[560px] h-[240px]" />
-        <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-xs shrink-0 select-none shadow-xs z-10">
+      <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
+        <AmbientGlow
+          className="h-[400px] w-[800px]"
+          reducedClassName="w-[560px] h-[240px]"
+        />
+        <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -298,16 +358,16 @@ export function VncPage() {
                 setFocusedSessionKey(null)
                 setControlState('locked')
               }}
-              className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
             >
               <ArrowLeft className="mr-2 h-3.5 w-3.5" />
               Back to Grid
             </Button>
             <div className="flex items-baseline gap-2">
-              <h2 className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+              <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">
                 {focusedSession.profileName}
               </h2>
-              <span className="text-[10px] text-gray-500 font-mono">
+              <span className="text-subtle-copy font-mono text-[10px]">
                 {focusedSession.workflowId} / :{focusedSession.displayNum}
               </span>
             </div>
@@ -316,19 +376,24 @@ export function VncPage() {
             variant="outline"
             size="sm"
             onClick={() => void fetchSessions()}
-            className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
           >
-            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+            />
             Refresh
           </Button>
         </div>
 
-        <div className="flex-1 min-h-0 p-1">
+        <div className="min-h-0 flex-1 p-1">
           <Group
             orientation="horizontal"
             id="vnc-focus-layout-group"
             onLayoutChanged={(layout) => {
-              localStorage.setItem('vnc-focus-layout-sizes', JSON.stringify(layout))
+              localStorage.setItem(
+                'vnc-focus-layout-sizes',
+                JSON.stringify(layout),
+              )
             }}
             defaultLayout={(() => {
               try {
@@ -340,52 +405,60 @@ export function VncPage() {
             })()}
           >
             <Panel id="left-vnc" defaultSize={60} minSize={30}>
-              <div className="flex flex-col h-full bg-[#050505] border border-white/[0.05] rounded-[3px] shadow-xs relative overflow-hidden group">
-                <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-black/80 to-transparent z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center px-2 pointer-events-none">
-                  <div className="text-[10px] text-gray-400 font-mono tracking-widest uppercase">
+              <div className="bg-shell border-line-soft group relative flex h-full flex-col overflow-hidden rounded-[3px] border shadow-xs">
+                <div className="pointer-events-none absolute top-0 right-0 left-0 z-10 flex h-6 items-center bg-gradient-to-b from-black/80 to-transparent px-2 opacity-0 transition-opacity group-hover:opacity-100">
+                  <div className="text-muted-copy font-mono text-[10px] tracking-widest uppercase">
                     Display Stream :{focusedSession.displayNum}
                   </div>
                 </div>
 
-                <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/60" />}>
+                <Suspense
+                  fallback={
+                    <div className="bg-overlay h-full w-full animate-pulse" />
+                  }
+                >
                   <VncViewer
                     url={buildVncWebSocketUrl(focusedSession.vncPort)}
                     interactive={isInteractive}
-                    className="flex-1 w-full h-full object-contain"
+                    className="h-full w-full flex-1 object-contain"
                   />
                 </Suspense>
 
                 {!isInteractive && (
                   <div
-                    className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-black/50 backdrop-blur-xs pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'}`}
+                    className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-field pointer-events-auto backdrop-blur-xs' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
                   >
-                    <div className={`${isConfirming ? 'w-full max-w-[360px] mx-4' : ''}`}>
+                    <div
+                      className={`${isConfirming ? 'mx-4 w-full max-w-[360px]' : ''}`}
+                    >
                       <div
-                        className={`bg-[#0a0a0a] border border-white/10 rounded-lg shadow-lg overflow-hidden sm:rounded-lg ${isConfirming ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 pointer-events-auto transition-opacity'}`}
+                        className={`bg-panel border-line overflow-hidden rounded-lg border shadow-lg sm:rounded-lg ${isConfirming ? 'opacity-100' : 'pointer-events-auto opacity-0 transition-opacity group-hover:opacity-100'}`}
                       >
                         {isConfirming && (
-                          <div className="flex flex-col space-y-1.5 text-center sm:text-left px-6 py-4">
-                            <h2 className="text-lg font-semibold leading-none tracking-tight bg-gradient-to-r from-red-500 to-orange-400 bg-clip-text text-transparent">
+                          <div className="flex flex-col space-y-1.5 px-6 py-4 text-center sm:text-left">
+                            <h2 className="brand-text-gradient text-lg leading-none font-semibold tracking-tight">
                               Control Handoff
                             </h2>
-                            <p className="text-sm text-gray-500">
+                            <p className="text-subtle-copy text-sm">
                               Taking control will interrupt the agent.
                             </p>
                           </div>
                         )}
-                        <div className={`flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2 px-6 ${isConfirming ? 'pb-6 pt-2' : 'py-6'}`}>
+                        <div
+                          className={`flex flex-col-reverse px-6 sm:flex-row sm:justify-end sm:space-x-2 ${isConfirming ? 'pt-2 pb-6' : 'py-6'}`}
+                        >
                           {isConfirming ? (
                             <>
                               <Button
                                 variant="outline"
                                 onClick={() => setControlState('locked')}
-                                className="mt-2 sm:mt-0 bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                                className="border-line text-copy hover:bg-panel-hover mt-2 border bg-transparent shadow-none transition-all hover:text-white sm:mt-0"
                               >
                                 Cancel
                               </Button>
                               <Button
                                 onClick={() => setControlState('unlocked')}
-                                className="border-none bg-gradient-to-r from-red-600 to-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-500 transition-all font-medium"
+                                className="brand-button font-medium"
                               >
                                 Confirm
                               </Button>
@@ -394,7 +467,7 @@ export function VncPage() {
                             <Button
                               variant="outline"
                               onClick={() => setControlState('confirm')}
-                              className="bg-black/50 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none backdrop-blur-xs"
+                              className="bg-field border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-xs transition-all hover:text-white"
                             >
                               Take Control
                             </Button>
@@ -406,11 +479,11 @@ export function VncPage() {
                 )}
 
                 {isInteractive && (
-                  <div className="absolute bottom-4 right-4 z-20">
+                  <div className="absolute right-4 bottom-4 z-20">
                     <Button
                       variant="outline"
                       onClick={() => setControlState('locked')}
-                      className="bg-black/80 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none backdrop-blur-md"
+                      className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-md transition-all hover:text-white"
                     >
                       Return To Agent
                     </Button>
@@ -419,16 +492,24 @@ export function VncPage() {
               </div>
             </Panel>
 
-            <Separator className="w-2 relative mx-0.5 flex items-center justify-center transition-colors hover:bg-white/5 rounded-sm group focus:outline-hidden focus:ring-0 active:outline-hidden">
-              <div className="w-1 h-8 bg-white/10 rounded-full group-hover:bg-white/30 transition-colors" />
+            <Separator className="hover:bg-panel-muted group relative mx-0.5 flex w-2 items-center justify-center rounded-sm transition-colors focus:ring-0 focus:outline-hidden active:outline-hidden">
+              <div className="bg-panel-hover h-8 w-1 rounded-full transition-colors group-hover:bg-white/30" />
             </Separator>
 
             <Panel id="right-logs" defaultSize={40} minSize={20}>
-              <div className="flex flex-col h-full rounded-[3px] overflow-hidden shadow-xs">
-                <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/40" />}>
+              <div className="flex h-full flex-col overflow-hidden rounded-[3px] shadow-xs">
+                <Suspense
+                  fallback={
+                    <div className="bg-field-alt h-full w-full animate-pulse" />
+                  }
+                >
                   <LogsViewer
                     className="h-full border-0"
-                    workflowId={focusedSession.workflowId === 'manual' ? null : focusedSession.workflowId}
+                    workflowId={
+                      focusedSession.workflowId === 'manual'
+                        ? null
+                        : focusedSession.workflowId
+                    }
                     profileName={focusedSession.profileName}
                   />
                 </Suspense>
@@ -441,26 +522,32 @@ export function VncPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
-      <AmbientGlow className="w-[800px] h-[400px] bg-red-600/5" reducedClassName="w-[560px] h-[240px]" />
-      <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-xs shrink-0 select-none shadow-xs z-10">
+    <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
+      <AmbientGlow
+        className="h-[400px] w-[800px]"
+        reducedClassName="w-[560px] h-[240px]"
+      />
+      <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
         <div className="flex items-center gap-3">
           <div className="flex items-baseline gap-2">
-            <h2 className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+            <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">
               Active Sessions
             </h2>
-            <span className="text-[10px] text-gray-500 font-mono">
+            <span className="text-subtle-copy font-mono text-[10px]">
               [{sessions.length} live]
             </span>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-mono text-gray-400">
+          <div className="text-muted-copy flex items-center gap-1.5 font-mono text-[10px]">
             <span
-              className={`w-2 h-2 rounded-full ${connected
-                ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.4)]'
-                : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]'
-                }`}
+              className={`h-2 w-2 rounded-full ${
+                connected ? 'status-dot-success' : 'status-dot-danger'
+              }`}
             />
-            <span className={connected ? 'text-green-400' : 'text-red-400'}>
+            <span
+              className={
+                connected ? 'text-status-success' : 'text-status-danger'
+              }
+            >
               {connected ? 'ws connected' : 'ws reconnecting'}
             </span>
           </div>
@@ -469,30 +556,36 @@ export function VncPage() {
               variant="outline"
               size="sm"
               onClick={() => void fetchSessions()}
-              className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
             >
-              <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+              />
               Refresh
             </Button>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 p-2 overflow-auto z-10">
+      <div className="z-10 min-h-0 flex-1 overflow-auto p-2">
         {error ? (
-          <div className="mb-2 rounded-[3px] border border-red-500/20 bg-red-500/10 text-red-400 px-3 py-2 text-xs">
+          <div className="border-status-danger-border bg-status-danger-soft text-status-danger mb-2 rounded-[3px] border px-3 py-2 text-xs">
             Failed to load displays: {error}
           </div>
         ) : null}
 
         {sessions.length === 0 ? (
-          <div className="h-full min-h-[260px] border border-white/10 rounded-[4px] bg-white/[0.02] flex flex-col items-center justify-center gap-2 text-gray-500 backdrop-blur-xs">
+          <div className="border-line bg-panel-subtle text-subtle-copy flex h-full min-h-[260px] flex-col items-center justify-center gap-2 rounded-[4px] border backdrop-blur-xs">
             <LayoutGrid className="h-6 w-6" />
             <p className="text-xs font-medium">No active sessions</p>
-            <p className="text-[11px]">Start a workflow to see browser displays.</p>
+            <p className="text-[11px]">
+              Start a workflow to see browser displays.
+            </p>
           </div>
         ) : (
-          <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(400px,1fr))]'}`}>
+          <div
+            className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(400px,1fr))]'}`}
+          >
             {sessions.map((session) => (
               <VncTile
                 key={sessionKey(session)}

@@ -6,16 +6,23 @@ export function usePerformanceMode() {
   const [enabled, setEnabled] = React.useState(false)
 
   React.useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.matchMedia !== 'function'
+    ) {
       return
     }
 
-    const viewportQuery = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const viewportQuery = window.matchMedia(
+      `(max-width: ${MOBILE_BREAKPOINT - 1}px)`,
+    )
     const pointerQuery = window.matchMedia('(pointer: coarse)')
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
 
     const update = () => {
-      setEnabled(viewportQuery.matches || pointerQuery.matches || motionQuery.matches)
+      setEnabled(
+        viewportQuery.matches || pointerQuery.matches || motionQuery.matches,
+      )
     }
 
     update()

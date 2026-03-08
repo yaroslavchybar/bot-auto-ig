@@ -5,19 +5,25 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Button } from "@/components/ui/button"
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { MoreHorizontal, Pencil, Trash2, RefreshCw, List as ListIcon } from "lucide-react"
+import {
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  List as ListIcon,
+} from 'lucide-react'
 import type { List } from './types'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 interface ListsListProps {
   lists: List[]
@@ -28,19 +34,32 @@ interface ListsListProps {
   onDelete: (list: List) => void
 }
 
-export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDelete }: ListsListProps) {
+export function ListsList({
+  lists,
+  selectedId,
+  loading,
+  onSelect,
+  onEdit,
+  onDelete,
+}: ListsListProps) {
   const isMobile = useIsMobile()
 
   if (loading && lists.length === 0) {
-    return <div className="p-12 text-center text-sm text-muted-foreground animate-pulse flex items-center justify-center gap-2"><RefreshCw className="h-4 w-4 animate-spin shrink-0" /> Loading lists...</div>
+    return (
+      <div className="text-muted-foreground flex animate-pulse items-center justify-center gap-2 p-12 text-center text-sm">
+        <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> Loading lists...
+      </div>
+    )
   }
 
   if (lists.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center border-2 border-dashed border-white/5 rounded-2xl bg-white/[0.01]">
-        <ListIcon className="h-10 w-10 text-gray-500 mb-4" />
-        <h3 className="text-lg font-medium text-gray-200">No lists</h3>
-        <p className="text-sm text-gray-500 mt-1">Create a new list to organize your profiles.</p>
+      <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
+        <ListIcon className="text-subtle-copy mb-4 h-10 w-10" />
+        <h3 className="text-ink text-lg font-medium">No lists</h3>
+        <p className="text-subtle-copy mt-1 text-sm">
+          Create a new list to organize your profiles.
+        </p>
       </div>
     )
   }
@@ -52,30 +71,53 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
           <div
             key={list.id}
             className={cn(
-              'rounded-2xl border bg-[#141414] p-4 shadow-xs transition-colors',
-              selectedId === list.id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'
+              'bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors',
+              selectedId === list.id
+                ? 'brand-panel-selected'
+                : 'border-line hover:border-line-strong',
             )}
             onClick={() => onSelect(list)}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500">List #{idx + 1}</div>
-                <h3 className="mt-1 truncate text-base font-semibold text-gray-100">{list.name}</h3>
-                <p className="mt-2 truncate font-mono text-[11px] text-gray-500">{list.id}</p>
+                <div className="text-subtle-copy text-[11px] tracking-[0.18em] uppercase">
+                  List #{idx + 1}
+                </div>
+                <h3 className="text-inverse mt-1 truncate text-base font-semibold">
+                  {list.name}
+                </h3>
+                <p className="text-subtle-copy mt-2 truncate font-mono text-[11px]">
+                  {list.id}
+                </p>
               </div>
               <div onClick={(event) => event.stopPropagation()}>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-white/5">
+                    <Button
+                      variant="ghost"
+                      className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-white"
+                    >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 bg-[#0f0f0f] border-white/10 text-gray-200" onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenuLabel className="text-gray-400">Actions</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => onEdit(list)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+                  <DropdownMenuContent
+                    align="end"
+                    className="panel-dropdown w-48"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <DropdownMenuLabel className="text-muted-copy">
+                      Actions
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      onClick={() => onEdit(list)}
+                      className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+                    >
                       <Pencil className="mr-2 h-4 w-4" /> Edit List
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onDelete(list)} className="text-red-400 focus:text-red-400 focus:bg-red-500/10 hover:bg-red-500/10 cursor-pointer">
+                    <DropdownMenuItem
+                      onClick={() => onDelete(list)}
+                      className="text-status-danger focus:text-status-danger focus:bg-status-danger-soft hover:bg-status-danger-soft cursor-pointer"
+                    >
                       <Trash2 className="mr-2 h-4 w-4" /> Delete List
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -83,11 +125,11 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
               </div>
             </div>
 
-            <div className="mt-4 border-t border-white/10 pt-3">
+            <div className="border-line mt-4 border-t pt-3">
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-9 rounded-full border border-white/10 px-3 text-gray-200 hover:bg-white/5"
+                className="border-line text-ink hover:bg-panel-muted h-9 rounded-full border px-3"
                 onClick={(event) => {
                   event.stopPropagation()
                   onEdit(list)
@@ -104,14 +146,22 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
   }
 
   return (
-    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-xs shadow-xs overflow-hidden">
+    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
       <Table>
         <TableHeader>
-          <TableRow className="bg-transparent hover:bg-transparent border-b border-white/[0.05]">
-            <TableHead className="w-[80px] pl-4 text-gray-400 font-medium h-12">No.</TableHead>
-            <TableHead className="w-full text-gray-400 font-medium h-12">Name</TableHead>
-            <TableHead className="w-[180px] text-gray-400 font-medium h-12">List ID</TableHead>
-            <TableHead className="w-[140px] text-right pr-4 text-gray-400 font-medium h-12">Actions</TableHead>
+          <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
+            <TableHead className="text-muted-copy h-12 w-[80px] pl-4 font-medium">
+              No.
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 w-full font-medium">
+              Name
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 w-[180px] font-medium">
+              List ID
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 w-[140px] pr-4 text-right font-medium">
+              Actions
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -120,30 +170,34 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
               key={list.id}
               onClick={() => onSelect(list)}
               className={cn(
-                "group cursor-pointer transition-colors h-14 border-b border-white/[0.05]",
-                selectedId === list.id ? "bg-white/[0.04]" : "hover:bg-white/[0.02]"
+                'group border-line-soft h-14 cursor-pointer border-b transition-colors',
+                selectedId === list.id
+                  ? 'bg-panel-selected'
+                  : 'hover:bg-panel-subtle',
               )}
             >
               <TableCell className="pl-4">
-                <span className="text-sm text-gray-500 font-mono">{idx + 1}</span>
+                <span className="text-subtle-copy font-mono text-sm">
+                  {idx + 1}
+                </span>
               </TableCell>
 
               <TableCell className="font-medium">
-                <span className="text-gray-200">{list.name}</span>
+                <span className="text-ink">{list.name}</span>
               </TableCell>
 
               <TableCell>
-                <span className="text-[10px] text-gray-500 font-mono truncate">
+                <span className="text-subtle-copy truncate font-mono text-[10px]">
                   {list.id}
                 </span>
               </TableCell>
 
-              <TableCell className="text-right pr-4">
-                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <TableCell className="pr-4 text-right">
+                <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/5"
+                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-white"
                     onClick={(e) => {
                       e.stopPropagation()
                       onEdit(list)
@@ -155,17 +209,33 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-white/5" onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="ghost"
+                        className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-white"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <span className="sr-only">Open menu</span>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-[#0f0f0f] border-white/10 text-gray-200" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenuLabel className="text-gray-400">Actions</DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => onEdit(list)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+                    <DropdownMenuContent
+                      align="end"
+                      className="panel-dropdown w-48"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <DropdownMenuLabel className="text-muted-copy">
+                        Actions
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem
+                        onClick={() => onEdit(list)}
+                        className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+                      >
                         <Pencil className="mr-2 h-4 w-4" /> Edit List
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => onDelete(list)} className="text-red-400 focus:text-red-400 focus:bg-red-500/10 hover:bg-red-500/10 cursor-pointer">
+                      <DropdownMenuItem
+                        onClick={() => onDelete(list)}
+                        className="text-status-danger focus:text-status-danger focus:bg-status-danger-soft hover:bg-status-danger-soft cursor-pointer"
+                      >
                         <Trash2 className="mr-2 h-4 w-4" /> Delete List
                       </DropdownMenuItem>
                     </DropdownMenuContent>

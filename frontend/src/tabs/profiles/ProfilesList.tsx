@@ -5,7 +5,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,12 +13,24 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Button } from "@/components/ui/button"
+} from '@/components/ui/dropdown-menu'
+import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { MoreHorizontal, Play, Square, Terminal, Pencil, Trash2, LogIn, Info, Monitor, Cpu, Globe } from "lucide-react"
+import {
+  MoreHorizontal,
+  Play,
+  Square,
+  Terminal,
+  Pencil,
+  Trash2,
+  LogIn,
+  Info,
+  Monitor,
+  Cpu,
+  Globe,
+} from 'lucide-react'
 import type { Profile } from './types'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 interface ProfilesListProps {
   profiles: Profile[]
@@ -59,25 +71,27 @@ function getOsLabel(fingerprintOs?: string) {
 }
 
 function getStatusMeta(profile: Profile) {
-  const label = profile.using ? 'ACTIVE' : String(profile.status ?? 'IDLE').toUpperCase()
+  const label = profile.using
+    ? 'ACTIVE'
+    : String(profile.status ?? 'IDLE').toUpperCase()
 
   if (profile.using) {
     return {
       label,
-      className: 'text-green-400 font-bold',
+      className: 'text-status-success font-bold',
     }
   }
 
   if (label === 'ERROR' || label === 'FAILED') {
     return {
       label,
-      className: 'text-red-400 font-bold',
+      className: 'text-status-danger font-bold',
     }
   }
 
   return {
     label,
-    className: 'text-gray-300',
+    className: 'text-copy',
   }
 }
 
@@ -93,14 +107,22 @@ function ProfileActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-white/5">
+        <Button
+          variant="ghost"
+          className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-white"
+        >
           <span className="sr-only">Open menu</span>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48 bg-[#0f0f0f] border-white/10 text-gray-200">
-        <DropdownMenuLabel className="text-gray-400">Actions</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => onToggleStatus(profile)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+      <DropdownMenuContent align="end" className="panel-dropdown w-48">
+        <DropdownMenuLabel className="text-muted-copy">
+          Actions
+        </DropdownMenuLabel>
+        <DropdownMenuItem
+          onClick={() => onToggleStatus(profile)}
+          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+        >
           {profile.using ? (
             <>
               <Square className="mr-2 h-4 w-4" /> Stop Browser
@@ -111,22 +133,37 @@ function ProfileActionsMenu({
             </>
           )}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onDetails(profile)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+        <DropdownMenuItem
+          onClick={() => onDetails(profile)}
+          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+        >
           <Info className="mr-2 h-4 w-4" /> View Details
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onEdit(profile)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+        <DropdownMenuItem
+          onClick={() => onEdit(profile)}
+          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+        >
           <Pencil className="mr-2 h-4 w-4" /> Edit Configuration
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onLogs(profile)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+        <DropdownMenuItem
+          onClick={() => onLogs(profile)}
+          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+        >
           <Terminal className="mr-2 h-4 w-4" /> View Logs
         </DropdownMenuItem>
-        <DropdownMenuSeparator className="bg-white/5" />
+        <DropdownMenuSeparator className="bg-panel-muted" />
         {!profile.login && (
-          <DropdownMenuItem onClick={() => onLogin(profile)} className="hover:bg-white/10 focus:bg-white/10 cursor-pointer">
+          <DropdownMenuItem
+            onClick={() => onLogin(profile)}
+            className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+          >
             <LogIn className="mr-2 h-4 w-4" /> Run Login Script
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => onDelete(profile)} className="text-red-400 focus:text-red-400 focus:bg-red-500/10 hover:bg-red-500/10 cursor-pointer">
+        <DropdownMenuItem
+          onClick={() => onDelete(profile)}
+          className="text-status-danger focus:text-status-danger focus:bg-status-danger-soft hover:bg-status-danger-soft cursor-pointer"
+        >
           <Trash2 className="mr-2 h-4 w-4" /> Delete Profile
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -151,15 +188,19 @@ export function ProfilesList({
   const isMobile = useIsMobile()
 
   if (loading && profiles.length === 0) {
-    return <div className="p-12 text-center text-sm text-muted-foreground animate-pulse">Loading profiles...</div>
+    return (
+      <div className="text-muted-foreground animate-pulse p-12 text-center text-sm">
+        Loading profiles...
+      </div>
+    )
   }
 
   if (profiles.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed rounded-lg bg-muted/5">
-        <Monitor className="h-10 w-10 text-muted-foreground/50 mb-4" />
+      <div className="bg-muted/5 flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
+        <Monitor className="text-muted-foreground/50 mb-4 h-10 w-10" />
         <h3 className="text-lg font-medium">{emptyTitle}</h3>
-        <p className="text-sm text-muted-foreground mt-1">{emptyDescription}</p>
+        <p className="text-muted-foreground mt-1 text-sm">{emptyDescription}</p>
       </div>
     )
   }
@@ -170,23 +211,30 @@ export function ProfilesList({
         {profiles.map((profile) => {
           const osLabel = getOsLabel(profile.fingerprint_os)
           const statusMeta = getStatusMeta(profile)
-          const dailyUsage = typeof profile.daily_scraping_limit === 'number'
-            ? `${profile.daily_scraping_used ?? 0}/${profile.daily_scraping_limit}`
-            : null
+          const dailyUsage =
+            typeof profile.daily_scraping_limit === 'number'
+              ? `${profile.daily_scraping_used ?? 0}/${profile.daily_scraping_limit}`
+              : null
 
           return (
             <div
               key={profile.id}
               className={cn(
-                'rounded-2xl border bg-[#141414] p-4 shadow-xs transition-colors',
-                selectedId === profile.id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'
+                'bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors',
+                selectedId === profile.id
+                  ? 'brand-panel-selected'
+                  : 'border-line hover:border-line-strong',
               )}
               onClick={() => onSelect(profile)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <h3 className="truncate text-base font-semibold text-gray-100">{profile.name}</h3>
-                  <p className="mt-1 truncate font-mono text-[11px] text-gray-500">{profile.id}</p>
+                  <h3 className="text-inverse truncate text-base font-semibold">
+                    {profile.name}
+                  </h3>
+                  <p className="text-subtle-copy mt-1 truncate font-mono text-[11px]">
+                    {profile.id}
+                  </p>
                 </div>
                 <div onClick={(event) => event.stopPropagation()}>
                   <ProfileActionsMenu
@@ -201,36 +249,36 @@ export function ProfilesList({
                 </div>
               </div>
 
-              <div className="mt-4 space-y-3 text-xs text-gray-400">
+              <div className="text-muted-copy mt-4 space-y-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-gray-200">
+                  <div className="border-line bg-panel-muted text-ink flex items-center gap-1 rounded-md border px-2 py-1">
                     <Cpu className="h-3.5 w-3.5" />
                     {osLabel}
                   </div>
                   {profile.login && (
-                    <div className="flex items-center gap-1 rounded-md border border-blue-500/20 bg-blue-500/10 px-2 py-1 text-blue-300">
+                    <div className="brand-surface brand-text-soft flex items-center gap-1 rounded-md border px-2 py-1">
                       <LogIn className="h-3.5 w-3.5" />
                       Auto Login
                     </div>
                   )}
                   {dailyUsage && (
-                    <div className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-gray-300">
+                    <div className="border-line bg-panel-muted text-copy rounded-md border px-2 py-1">
                       Daily {dailyUsage}
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-start gap-2">
-                  <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-500" />
-                  <span className="truncate text-gray-300">
+                  <Globe className="text-subtle-copy mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span className="text-copy truncate">
                     {profile.proxy ? profile.proxy : 'Direct connection'}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+              <div className="border-line mt-4 flex items-center justify-between gap-3 border-t pt-3">
                 <div className="min-w-0">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
                     Status
                   </div>
                   <div className={cn('mt-1 text-xs', statusMeta.className)}>
@@ -238,11 +286,14 @@ export function ProfilesList({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+                <div
+                  className="flex items-center gap-2"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 rounded-full border border-white/10 px-3 text-gray-200 hover:bg-white/5"
+                    className="border-line text-ink hover:bg-panel-muted h-9 rounded-full border px-3"
                     onClick={() => onDetails(profile)}
                   >
                     <Info className="h-4 w-4" />
@@ -253,12 +304,16 @@ export function ProfilesList({
                     className={cn(
                       'h-9 rounded-full px-4 text-xs font-semibold tracking-[0.14em]',
                       profile.using
-                        ? 'border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500 hover:text-white'
-                        : 'border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500 hover:text-white'
+                        ? 'border-status-danger-border bg-status-danger-soft text-status-danger hover:bg-status-danger hover:text-inverse border'
+                        : 'border-status-success-border bg-status-success-soft text-status-success hover:bg-status-success hover:text-inverse border',
                     )}
                     onClick={() => onToggleStatus(profile)}
                   >
-                    {profile.using ? <Square className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}
+                    {profile.using ? (
+                      <Square className="h-4 w-4 fill-current" />
+                    ) : (
+                      <Play className="h-4 w-4 fill-current" />
+                    )}
                     {profile.using ? 'STOP' : 'START'}
                   </Button>
                 </div>
@@ -271,15 +326,25 @@ export function ProfilesList({
   }
 
   return (
-    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-xs shadow-xs overflow-hidden">
+    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
       <Table>
         <TableHeader>
-          <TableRow className="bg-transparent hover:bg-transparent border-b border-white/[0.05]">
-            <TableHead className="w-[300px] pl-4 text-gray-400 font-medium h-12">Name</TableHead>
-            <TableHead className="w-[120px] text-gray-400 font-medium h-12">Status</TableHead>
-            <TableHead className="w-[180px] text-gray-400 font-medium h-12">Config</TableHead>
-            <TableHead className="text-gray-400 font-medium h-12">Proxy</TableHead>
-            <TableHead className="w-[140px] text-right pr-4 text-gray-400 font-medium h-12">Actions</TableHead>
+          <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
+            <TableHead className="text-muted-copy h-12 w-[300px] pl-4 font-medium">
+              Name
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 w-[120px] font-medium">
+              Status
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 w-[180px] font-medium">
+              Config
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 font-medium">
+              Proxy
+            </TableHead>
+            <TableHead className="text-muted-copy h-12 w-[140px] pr-4 text-right font-medium">
+              Actions
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -287,31 +352,37 @@ export function ProfilesList({
             <TableRow
               key={profile.id}
               className={cn(
-                "group cursor-pointer transition-colors h-14 border-b border-white/[0.05]",
-                selectedId === profile.id ? "bg-white/[0.04]" : "hover:bg-white/[0.02]"
+                'group border-line-soft h-14 cursor-pointer border-b transition-colors',
+                selectedId === profile.id
+                  ? 'bg-panel-selected'
+                  : 'hover:bg-panel-subtle',
               )}
               onClick={() => onSelect(profile)}
             >
-              <TableCell className="font-medium pl-4">
+              <TableCell className="pl-4 font-medium">
                 <div className="flex flex-col gap-0.5">
-                  <span className="truncate text-gray-200">{profile.name}</span>
-                  <span className="text-[10px] text-gray-500 font-mono truncate max-w-[200px]">
+                  <span className="text-ink truncate">{profile.name}</span>
+                  <span className="text-subtle-copy max-w-[200px] truncate font-mono text-[10px]">
                     {profile.id}
                   </span>
                 </div>
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <div className={cn(
-                    "flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-xs font-medium",
-                    profile.using
-                      ? "bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.2)]"
-                      : "bg-white/5 text-gray-300 border-white/10"
-                  )}>
+                  <div
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium',
+                      profile.using
+                        ? 'status-glow-success bg-status-success-soft text-status-success border-status-success-border'
+                        : 'bg-panel-muted text-copy border-line',
+                    )}
+                  >
                     <span
                       className={cn(
-                        "flex h-1.5 w-1.5 rounded-full",
-                        profile.using ? "bg-green-400 shadow-[0_0_4px_rgba(34,197,94,0.8)]" : "bg-gray-400"
+                        'flex h-1.5 w-1.5 rounded-full',
+                        profile.using
+                          ? 'status-dot-success-tight'
+                          : 'bg-subtle-copy',
                       )}
                     />
                     {profile.using ? 'Active' : 'Idle'}
@@ -319,13 +390,13 @@ export function ProfilesList({
                 </div>
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded-sm border border-white/10 text-gray-300">
+                <div className="text-subtle-copy flex items-center gap-2 text-xs">
+                  <div className="bg-panel-muted border-line text-copy flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
                     <Cpu className="h-3 w-3" />
                     {profile.fingerprint_os === 'mac' ? 'macOS' : 'Win'}
                   </div>
                   {profile.login && (
-                    <div className="flex items-center gap-1 bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded-sm border border-blue-500/20">
+                    <div className="brand-surface brand-text flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
                       <LogIn className="h-3 w-3" />
                       <span className="hidden sm:inline">Auto-Login</span>
                     </div>
@@ -334,32 +405,39 @@ export function ProfilesList({
               </TableCell>
               <TableCell>
                 {profile.proxy ? (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-400 max-w-[200px]" title={profile.proxy}>
+                  <div
+                    className="text-muted-copy flex max-w-[200px] items-center gap-1.5 text-xs"
+                    title={profile.proxy}
+                  >
                     <Globe className="h-3 w-3 shrink-0" />
                     <span className="truncate font-mono">{profile.proxy}</span>
                   </div>
                 ) : (
-                  <span className="text-xs text-gray-500/50">-</span>
+                  <span className="text-subtle-copy/50 text-xs">-</span>
                 )}
               </TableCell>
-              <TableCell className="text-right pr-4">
-                <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <TableCell className="pr-4 text-right">
+                <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/5"
+                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-white"
                     onClick={(e) => {
                       e.stopPropagation()
                       onToggleStatus(profile)
                     }}
-                    title={profile.using ? "Stop Browser" : "Start Browser"}
+                    title={profile.using ? 'Stop Browser' : 'Start Browser'}
                   >
-                    {profile.using ? <Square className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}
+                    {profile.using ? (
+                      <Square className="h-4 w-4 fill-current" />
+                    ) : (
+                      <Play className="h-4 w-4 fill-current" />
+                    )}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 text-gray-400 hover:text-white hover:bg-white/5"
+                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-white"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDetails(profile)

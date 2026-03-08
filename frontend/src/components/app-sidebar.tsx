@@ -1,4 +1,4 @@
-import * as React from "react"
+import * as React from 'react'
 import {
   Users,
   Search,
@@ -9,7 +9,7 @@ import {
   GitBranch,
   Monitor,
   Activity,
-} from "lucide-react"
+} from 'lucide-react'
 
 import {
   Sidebar,
@@ -22,60 +22,73 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
-} from "@/components/ui/sidebar"
+} from '@/components/ui/sidebar'
 
-export const NAV_IDS = ['profiles', 'workflows', 'scraping', 'lists', 'accounts', 'logs', 'vnc', 'monitoring'] as const
+export const NAV_IDS = [
+  'profiles',
+  'workflows',
+  'scraping',
+  'lists',
+  'accounts',
+  'logs',
+  'vnc',
+  'monitoring',
+] as const
 
-export type NavId = (typeof NAV_IDS)[number];
+export type NavId = (typeof NAV_IDS)[number]
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  activeId: NavId;
-  onNavigate: (id: NavId) => void;
+  activeId: NavId
+  onNavigate: (id: NavId) => void
 }
 
-export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) {
+export function AppSidebar({
+  activeId,
+  onNavigate,
+  ...props
+}: AppSidebarProps) {
   const navMain = [
     {
-      title: "Platform",
+      title: 'Platform',
       items: [
         {
-          title: "Profiles Manager",
-          id: "profiles",
+          title: 'Profiles Manager',
+          id: 'profiles',
           icon: Users,
         },
         {
-          title: "Workflows",
-          id: "workflows",
+          title: 'Workflows',
+          id: 'workflows',
           icon: GitBranch,
         },
         {
-          title: "Scraping",
-          id: "scraping",
+          title: 'Scraping',
+          id: 'scraping',
           icon: Search,
         },
         {
-          title: "Lists Manager",
-          id: "lists",
+          title: 'Lists Manager',
+          id: 'lists',
           icon: List,
         },
         {
-          title: "Upload Accounts",
-          id: "accounts",
+          title: 'Upload Accounts',
+          id: 'accounts',
           icon: Upload,
         },
         {
-          title: "Browser View",
-          id: "vnc",
+          title: 'Browser View',
+          id: 'vnc',
           icon: Monitor,
         },
         {
-          title: "Logs",
-          id: "logs",
+          title: 'Logs',
+          id: 'logs',
           icon: FileText,
         },
         {
-          title: "VPS Monitor",
-          id: "monitoring",
+          title: 'VPS Monitor',
+          id: 'monitoring',
           icon: Activity,
         },
       ],
@@ -83,17 +96,27 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
   ] as const
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-white/5" {...props}>
+    <Sidebar
+      collapsible="icon"
+      className="border-line-soft border-r"
+      {...props}
+    >
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" onClick={() => onNavigate('profiles')} className="hover:bg-white/[0.02]">
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)]">
+            <SidebarMenuButton
+              size="lg"
+              onClick={() => onNavigate('profiles')}
+              className="hover:bg-panel-subtle"
+            >
+              <div className="brand-avatar flex aspect-square size-8 items-center justify-center rounded-lg">
                 <Command className="size-4" />
               </div>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold text-gray-200">Anti</span>
-                <span className="truncate text-xs text-gray-500">Automation Platform</span>
+                <span className="text-ink truncate font-semibold">Anti</span>
+                <span className="text-subtle-copy truncate text-xs">
+                  Automation Platform
+                </span>
               </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -102,7 +125,9 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
       <SidebarContent>
         {navMain.map((group) => (
           <SidebarGroup key={group.title}>
-            <SidebarGroupLabel className="text-gray-400/80 uppercase tracking-widest text-[10px]">{group.title}</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-muted-copy/80 text-[10px] tracking-widest uppercase">
+              {group.title}
+            </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => (
@@ -111,7 +136,7 @@ export function AppSidebar({ activeId, onNavigate, ...props }: AppSidebarProps) 
                       isActive={activeId === item.id}
                       onClick={() => onNavigate(item.id as NavId)}
                       tooltip={item.title}
-                      className="text-gray-400 hover:text-gray-200 hover:bg-white/[0.02] data-[active=true]:bg-white/[0.04] data-[active=true]:text-white transition-colors"
+                      className="text-muted-copy hover:text-ink hover:bg-panel-subtle data-[active=true]:bg-panel-selected transition-colors data-[active=true]:text-white"
                     >
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>

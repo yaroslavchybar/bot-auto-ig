@@ -1,5 +1,20 @@
-import { useCallback, useEffect, useState, type ElementType, type ReactNode } from 'react'
-import { Activity, Clock, Cpu, HardDrive, MemoryStick, RefreshCw, Server, Wifi } from 'lucide-react'
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ElementType,
+  type ReactNode,
+} from 'react'
+import {
+  Activity,
+  Clock,
+  Cpu,
+  HardDrive,
+  MemoryStick,
+  RefreshCw,
+  Server,
+  Wifi,
+} from 'lucide-react'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -66,29 +81,35 @@ type MetricTone = {
 function getMetricTone(percent: number): MetricTone {
   if (percent >= 80) {
     return {
-      badgeClassName: 'bg-red-500/10 text-red-400 border-red-500/20',
-      indicatorClassName: 'bg-red-400',
-      progressClassName: 'bg-white/5 [&>div]:bg-red-500 [&>div]:shadow-[0_0_10px_rgba(239,68,68,0.28)]',
-      valueClassName: 'text-red-400',
+      badgeClassName:
+        'bg-status-danger-soft text-status-danger border-status-danger-border',
+      indicatorClassName: 'status-dot-danger',
+      progressClassName:
+        'bg-panel-muted [&>div]:bg-status-danger [&>div]:status-glow-danger',
+      valueClassName: 'text-status-danger',
       label: 'Critical',
     }
   }
 
   if (percent >= 60) {
     return {
-      badgeClassName: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-      indicatorClassName: 'bg-orange-400',
-      progressClassName: 'bg-white/5 [&>div]:bg-orange-500 [&>div]:shadow-[0_0_10px_rgba(249,115,22,0.24)]',
-      valueClassName: 'text-orange-400',
+      badgeClassName:
+        'bg-status-warning-soft text-status-warning border-status-warning-border',
+      indicatorClassName: 'status-dot-warning',
+      progressClassName:
+        'bg-panel-muted [&>div]:bg-status-warning [&>div]:status-glow-warning',
+      valueClassName: 'text-status-warning',
       label: 'Warning',
     }
   }
 
   return {
-    badgeClassName: 'bg-green-500/10 text-green-400 border-green-500/20',
-    indicatorClassName: 'bg-green-400',
-    progressClassName: 'bg-white/5 [&>div]:bg-green-500 [&>div]:shadow-[0_0_10px_rgba(34,197,94,0.22)]',
-    valueClassName: 'text-green-400',
+    badgeClassName:
+      'bg-status-success-soft text-status-success border-status-success-border',
+    indicatorClassName: 'status-dot-success',
+    progressClassName:
+      'bg-panel-muted [&>div]:bg-status-success [&>div]:status-glow-success',
+    valueClassName: 'text-status-success',
     label: 'Healthy',
   }
 }
@@ -105,15 +126,19 @@ function SectionCard({
   children: ReactNode
 }) {
   return (
-    <Card className="border border-white/[0.05] bg-white/[0.02] rounded-2xl backdrop-blur-xs shadow-xs">
-      <CardHeader className="gap-3 border-b border-white/[0.05] pb-4">
+    <Card className="border-line-soft bg-panel-subtle rounded-2xl border shadow-xs backdrop-blur-xs">
+      <CardHeader className="border-line-soft gap-3 border-b pb-4">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-gray-300">
+          <div className="border-line bg-panel-soft text-copy flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border">
             <Icon className="h-4 w-4" />
           </div>
           <div className="min-w-0">
-            <CardTitle className="text-sm font-medium text-gray-200">{title}</CardTitle>
-            {description ? <p className="mt-1 text-sm text-gray-500">{description}</p> : null}
+            <CardTitle className="text-ink text-sm font-medium">
+              {title}
+            </CardTitle>
+            {description ? (
+              <p className="text-subtle-copy mt-1 text-sm">{description}</p>
+            ) : null}
           </div>
         </div>
       </CardHeader>
@@ -142,19 +167,23 @@ function MetricCard({
   const tone = getMetricTone(percent)
 
   return (
-    <Card className="border border-white/[0.05] bg-white/[0.02] rounded-2xl backdrop-blur-xs shadow-xs">
+    <Card className="border-line-soft bg-panel-subtle rounded-2xl border shadow-xs backdrop-blur-xs">
       <CardHeader className="gap-4 pb-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-gray-300">
+            <div className="border-line bg-panel-soft text-copy flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border">
               <Icon className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <CardTitle className="text-sm font-medium text-gray-200">{title}</CardTitle>
-              <p className="mt-1 text-xs text-gray-500">{detail}</p>
+              <CardTitle className="text-ink text-sm font-medium">
+                {title}
+              </CardTitle>
+              <p className="text-subtle-copy mt-1 text-xs">{detail}</p>
             </div>
           </div>
-          <Badge className={`shrink-0 border text-xs font-medium ${tone.badgeClassName}`}>
+          <Badge
+            className={`shrink-0 border text-xs font-medium ${tone.badgeClassName}`}
+          >
             {tone.label}
           </Badge>
         </div>
@@ -162,22 +191,36 @@ function MetricCard({
       <CardContent className="space-y-4 pt-0">
         <div className="flex items-end justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className={`text-4xl font-semibold tracking-tight tabular-nums ${tone.valueClassName}`}>
+            <span
+              className={`text-4xl font-semibold tracking-tight tabular-nums ${tone.valueClassName}`}
+            >
               {percent}%
             </span>
-            <span className={`h-2.5 w-2.5 rounded-full ${tone.indicatorClassName}`} />
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${tone.indicatorClassName}`}
+            />
           </div>
         </div>
-        <Progress value={percent} className={`h-2.5 rounded-full ${tone.progressClassName}`} />
+        <Progress
+          value={percent}
+          className={`h-2.5 rounded-full ${tone.progressClassName}`}
+        />
         <div className="grid grid-cols-3 gap-3">
           {[
             { label: 'Used', value: used },
             { label: 'Free', value: free },
             { label: 'Total', value: total },
           ].map((item) => (
-            <div key={item.label} className="rounded-xl border border-white/[0.05] bg-black/30 px-3 py-3">
-              <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">{item.label}</div>
-              <div className="mt-2 text-sm font-medium text-gray-200">{item.value}</div>
+            <div
+              key={item.label}
+              className="border-line-soft bg-panel-muted rounded-xl border px-3 py-3"
+            >
+              <div className="text-subtle-copy text-[11px] tracking-[0.16em] uppercase">
+                {item.label}
+              </div>
+              <div className="text-ink mt-2 text-sm font-medium">
+                {item.value}
+              </div>
             </div>
           ))}
         </div>
@@ -188,19 +231,19 @@ function MetricCard({
 
 function MonitoringSkeleton() {
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#050505] text-gray-200 relative">
+    <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur sticky top-0 z-10 border-b border-white/5 bg-white/[0.02] backdrop-blur-xs shrink-0">
+      <div className="mobile-effect-blur border-line-soft bg-panel-subtle sticky top-0 z-10 shrink-0 border-b backdrop-blur-xs">
         <div className="flex flex-col gap-4 px-4 py-4 md:px-6">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
-              <Skeleton className="h-8 w-48 bg-white/10" />
-              <Skeleton className="h-4 w-72 max-w-full bg-white/10" />
+              <Skeleton className="bg-panel-hover h-8 w-48" />
+              <Skeleton className="bg-panel-hover h-4 w-72 max-w-full" />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-7 w-20 rounded-full bg-white/10" />
-              <Skeleton className="h-7 w-32 rounded-full bg-white/10" />
+              <Skeleton className="bg-panel-hover h-7 w-20 rounded-full" />
+              <Skeleton className="bg-panel-hover h-7 w-32 rounded-full" />
             </div>
           </div>
         </div>
@@ -212,26 +255,29 @@ function MonitoringSkeleton() {
             {[1, 2, 3].map((item) => (
               <Card
                 key={item}
-                className="border border-white/[0.05] bg-white/[0.02] rounded-2xl backdrop-blur-xs shadow-xs"
+                className="border-line-soft bg-panel-subtle rounded-2xl border shadow-xs backdrop-blur-xs"
               >
                 <CardHeader className="gap-4 pb-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <Skeleton className="h-11 w-11 rounded-xl bg-white/10" />
+                      <Skeleton className="bg-panel-hover h-11 w-11 rounded-xl" />
                       <div className="space-y-2">
-                        <Skeleton className="h-4 w-24 bg-white/10" />
-                        <Skeleton className="h-3 w-20 bg-white/10" />
+                        <Skeleton className="bg-panel-hover h-4 w-24" />
+                        <Skeleton className="bg-panel-hover h-3 w-20" />
                       </div>
                     </div>
-                    <Skeleton className="h-6 w-20 rounded-full bg-white/10" />
+                    <Skeleton className="bg-panel-hover h-6 w-20 rounded-full" />
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4 pt-0">
-                  <Skeleton className="h-10 w-20 bg-white/10" />
-                  <Skeleton className="h-2.5 w-full rounded-full bg-white/10" />
+                  <Skeleton className="bg-panel-hover h-10 w-20" />
+                  <Skeleton className="bg-panel-hover h-2.5 w-full rounded-full" />
                   <div className="grid grid-cols-3 gap-3">
                     {[1, 2, 3].map((stat) => (
-                      <Skeleton key={stat} className="h-[72px] rounded-xl bg-white/10" />
+                      <Skeleton
+                        key={stat}
+                        className="bg-panel-hover h-[72px] rounded-xl"
+                      />
                     ))}
                   </div>
                 </CardContent>
@@ -243,20 +289,23 @@ function MonitoringSkeleton() {
             {[1, 2].map((item) => (
               <Card
                 key={item}
-                className="border border-white/[0.05] bg-white/[0.02] rounded-2xl backdrop-blur-xs shadow-xs"
+                className="border-line-soft bg-panel-subtle rounded-2xl border shadow-xs backdrop-blur-xs"
               >
-                <CardHeader className="gap-3 border-b border-white/[0.05] pb-4">
+                <CardHeader className="border-line-soft gap-3 border-b pb-4">
                   <div className="flex items-start gap-3">
-                    <Skeleton className="h-10 w-10 rounded-xl bg-white/10" />
+                    <Skeleton className="bg-panel-hover h-10 w-10 rounded-xl" />
                     <div className="space-y-2">
-                      <Skeleton className="h-4 w-32 bg-white/10" />
-                      <Skeleton className="h-4 w-48 bg-white/10" />
+                      <Skeleton className="bg-panel-hover h-4 w-32" />
+                      <Skeleton className="bg-panel-hover h-4 w-48" />
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3 pt-5">
                   {[1, 2, 3, 4].map((row) => (
-                    <Skeleton key={row} className="h-12 rounded-xl bg-white/10" />
+                    <Skeleton
+                      key={row}
+                      className="bg-panel-hover h-12 rounded-xl"
+                    />
                   ))}
                 </CardContent>
               </Card>
@@ -276,23 +325,20 @@ function FatalErrorState({
   onRetry: () => void
 }) {
   return (
-    <div className="flex h-full items-center justify-center bg-[#050505] p-4 md:p-6 relative">
+    <div className="bg-shell relative flex h-full items-center justify-center p-4 md:p-6">
       <AmbientGlow />
-      <Card className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#0a0a0a] backdrop-blur-xl shadow-xl">
+      <Card className="border-line bg-panel relative z-10 w-full max-w-md rounded-2xl border shadow-xl backdrop-blur-xl">
         <CardContent className="space-y-6 p-6 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10">
-            <RefreshCw className="h-5 w-5 text-red-400" />
+          <div className="border-status-danger-border bg-status-danger-soft mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border">
+            <RefreshCw className="text-status-danger h-5 w-5" />
           </div>
           <div className="space-y-2">
-            <h2 className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+            <h2 className="page-title-gradient text-2xl font-bold tracking-tight">
               Monitoring unavailable
             </h2>
-            <p className="text-sm text-gray-400">{error}</p>
+            <p className="text-muted-copy text-sm">{error}</p>
           </div>
-          <Button
-            onClick={onRetry}
-            className="w-full bg-gradient-to-r from-red-600 to-orange-500 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] transition-all hover:from-red-500 hover:to-orange-400 hover:shadow-[0_0_25px_rgba(239,68,68,0.6)]"
-          >
+          <Button onClick={onRetry} className="brand-button w-full">
             <RefreshCw className="h-4 w-4" />
             Retry
           </Button>
@@ -312,13 +358,17 @@ export function MonitoringPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const endpoint = env.isDev ? `${env.apiUrl}/api/monitoring` : '/api/monitoring'
+      const endpoint = env.isDev
+        ? `${env.apiUrl}/api/monitoring`
+        : '/api/monitoring'
       const result = await apiFetch<MonitoringData>(endpoint)
       setData(result)
       setLastUpdate(new Date())
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch monitoring data')
+      setError(
+        err instanceof Error ? err.message : 'Failed to fetch monitoring data',
+      )
     } finally {
       setLoading(false)
     }
@@ -330,7 +380,10 @@ export function MonitoringPage() {
     }
 
     fetchData()
-    const interval = setInterval(fetchData, performanceMode ? MOBILE_POLL_INTERVAL : POLL_INTERVAL)
+    const interval = setInterval(
+      fetchData,
+      performanceMode ? MOBILE_POLL_INTERVAL : POLL_INTERVAL,
+    )
     return () => clearInterval(interval)
   }, [fetchData, isVisible, performanceMode])
 
@@ -346,26 +399,27 @@ export function MonitoringPage() {
     return null
   }
 
-  const externalInterfaces = Object.entries(data.network).flatMap(([name, addresses]) =>
-    addresses
-      .filter((address) => !address.internal && address.family === 'IPv4')
-      .map((address) => ({ name, ...address }))
+  const externalInterfaces = Object.entries(data.network).flatMap(
+    ([name, addresses]) =>
+      addresses
+        .filter((address) => !address.internal && address.family === 'IPv4')
+        .map((address) => ({ name, ...address })),
   )
 
   const staleData = Boolean(error)
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#050505] text-gray-200 relative">
+    <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur sticky top-0 z-10 shrink-0 border-b border-white/5 bg-white/[0.02] backdrop-blur-xs">
+      <div className="mobile-effect-blur border-line-soft bg-panel-subtle sticky top-0 z-10 shrink-0 border-b backdrop-blur-xs">
         <div className="flex flex-col gap-4 px-4 py-4 md:px-6">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="min-w-0">
-              <h2 className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-2xl font-bold tracking-tight text-transparent md:text-3xl">
+              <h2 className="page-title-gradient text-2xl font-bold tracking-tight md:text-3xl">
                 VPS Monitor
               </h2>
-              <p className="mt-1 text-sm text-gray-400">
+              <p className="text-muted-copy mt-1 text-sm">
                 Track live host resource usage and network availability.
               </p>
             </div>
@@ -374,20 +428,22 @@ export function MonitoringPage() {
               <Badge
                 className={`border px-2.5 py-1 font-medium ${
                   staleData
-                    ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                    : 'bg-green-500/10 text-green-400 border-green-500/20'
+                    ? 'bg-status-danger-soft text-status-danger border-status-danger-border'
+                    : 'bg-status-success-soft text-status-success border-status-success-border'
                 }`}
               >
-                <span className={`mr-2 h-2 w-2 rounded-full ${staleData ? 'bg-red-400' : 'bg-green-400'}`} />
+                <span
+                  className={`mr-2 h-2 w-2 rounded-full ${staleData ? 'status-dot-danger' : 'status-dot-success'}`}
+                />
                 {staleData ? 'Cached data' : 'Live'}
               </Badge>
               {lastUpdate ? (
-                <Badge className="border border-white/10 bg-transparent px-2.5 py-1 font-medium text-gray-300">
+                <Badge className="border-line text-copy border bg-transparent px-2.5 py-1 font-medium">
                   Updated {lastUpdate.toLocaleTimeString()}
                 </Badge>
               ) : null}
               {staleData ? (
-                <Badge className="max-w-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 font-medium text-red-300">
+                <Badge className="border-status-danger-border bg-status-danger-soft text-status-danger max-w-full border px-2.5 py-1 font-medium">
                   {error}
                 </Badge>
               ) : null}
@@ -439,20 +495,34 @@ export function MonitoringPage() {
                   { label: 'Hostname', value: data.system.hostname },
                   { label: 'Platform', value: data.system.platform },
                   { label: 'Architecture', value: data.system.arch },
-                  { label: 'Kernel', value: data.system.release, title: data.system.release },
-                  { label: 'CPU Model', value: data.cpu.model, title: data.cpu.model },
-                  { label: 'Uptime', value: data.system.uptimeFormatted, icon: Clock },
+                  {
+                    label: 'Kernel',
+                    value: data.system.release,
+                    title: data.system.release,
+                  },
+                  {
+                    label: 'CPU Model',
+                    value: data.cpu.model,
+                    title: data.cpu.model,
+                  },
+                  {
+                    label: 'Uptime',
+                    value: data.system.uptimeFormatted,
+                    icon: Clock,
+                  },
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="flex flex-col gap-2 rounded-xl border border-white/[0.05] bg-black/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    className="border-line-soft bg-panel-muted flex flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     title={item.title}
                   >
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                      {item.icon ? <item.icon className="h-3.5 w-3.5 text-gray-500" /> : null}
+                    <div className="text-muted-copy flex items-center gap-2 text-sm">
+                      {item.icon ? (
+                        <item.icon className="text-subtle-copy h-3.5 w-3.5" />
+                      ) : null}
                       <span>{item.label}</span>
                     </div>
-                    <span className="max-w-full truncate font-mono text-sm text-gray-200 sm:ml-6">
+                    <span className="text-ink max-w-full truncate font-mono text-sm sm:ml-6">
                       {item.value}
                     </span>
                   </div>
@@ -466,10 +536,13 @@ export function MonitoringPage() {
               description="External IPv4 interfaces currently reported by the host."
             >
               {externalInterfaces.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.01] px-4 py-10 text-center">
-                  <p className="text-sm text-gray-400">No external IPv4 interfaces found.</p>
-                  <p className="mt-2 text-xs text-gray-500">
-                    Internal-only adapters are hidden to keep this view operationally useful.
+                <div className="border-line bg-panel-subtle rounded-2xl border border-dashed px-4 py-10 text-center">
+                  <p className="text-muted-copy text-sm">
+                    No external IPv4 interfaces found.
+                  </p>
+                  <p className="text-subtle-copy mt-2 text-xs">
+                    Internal-only adapters are hidden to keep this view
+                    operationally useful.
                   </p>
                 </div>
               ) : (
@@ -477,17 +550,19 @@ export function MonitoringPage() {
                   {externalInterfaces.map((iface) => (
                     <div
                       key={`${iface.name}-${iface.address}`}
-                      className="rounded-2xl border border-white/[0.05] bg-white/[0.03] p-4 transition-colors hover:bg-white/[0.04]"
+                      className="border-line-soft bg-panel-soft hover:bg-panel-selected rounded-2xl border p-4 transition-colors"
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
-                            <Activity className="h-3.5 w-3.5 text-green-400" />
+                          <div className="text-ink flex items-center gap-2 text-sm font-medium">
+                            <Activity className="text-status-success h-3.5 w-3.5" />
                             <span className="truncate">{iface.name}</span>
                           </div>
-                          <p className="mt-1 text-xs text-gray-500">External address mapping</p>
+                          <p className="text-subtle-copy mt-1 text-xs">
+                            External address mapping
+                          </p>
                         </div>
-                        <Badge className="w-fit border border-white/10 bg-transparent text-gray-300">
+                        <Badge className="border-line text-copy w-fit border bg-transparent">
                           IPv4
                         </Badge>
                       </div>
@@ -496,16 +571,20 @@ export function MonitoringPage() {
                         {[
                           { label: 'IP Address', value: iface.address },
                           { label: 'MAC Address', value: iface.mac },
-                          { label: 'Netmask', value: iface.netmask, span: 'sm:col-span-2' },
+                          {
+                            label: 'Netmask',
+                            value: iface.netmask,
+                            span: 'sm:col-span-2',
+                          },
                         ].map((field) => (
                           <div
                             key={`${iface.name}-${field.label}`}
-                            className={`rounded-xl border border-white/[0.05] bg-black/30 px-3 py-3 ${field.span ?? ''}`}
+                            className={`border-line-soft bg-panel-muted rounded-xl border px-3 py-3 ${field.span ?? ''}`}
                           >
-                            <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">
+                            <div className="text-subtle-copy text-[11px] tracking-[0.16em] uppercase">
                               {field.label}
                             </div>
-                            <div className="mt-2 break-all font-mono text-sm text-gray-200">
+                            <div className="text-ink mt-2 font-mono text-sm break-all">
                               {field.value}
                             </div>
                           </div>

@@ -1,4 +1,9 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
 function outputToText(output: unknown): string {
@@ -23,17 +28,17 @@ export function OutputDialog({ open, onOpenChange, title, output }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[80vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
+      <DialogContent className="bg-panel border-line text-ink flex h-[80vh] max-w-4xl flex-col">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+          <DialogTitle className="page-title-gradient text-xl font-bold">
             Output: {title}
           </DialogTitle>
         </DialogHeader>
-        <div className="flex-1 overflow-auto bg-black/50 border-y border-white/10 py-1">
+        <div className="bg-field border-line flex-1 overflow-auto border-y py-1">
           <Textarea
             value={outputText}
             readOnly
-            className="h-full min-h-[420px] font-mono text-xs bg-transparent border-0 text-gray-300 focus-visible:ring-0 resize-none p-4"
+            className="text-copy h-full min-h-[420px] resize-none border-0 bg-transparent p-4 font-mono text-xs focus-visible:ring-0"
             placeholder="No output yet..."
           />
         </div>
@@ -41,4 +46,3 @@ export function OutputDialog({ open, onOpenChange, title, output }: Props) {
     </Dialog>
   )
 }
-

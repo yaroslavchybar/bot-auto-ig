@@ -31,10 +31,20 @@ import { useIsMobile } from '@/hooks/use-mobile'
 
 export function AccountsPage() {
   const isMobile = useIsMobile()
-  const { state, uploadFile, processFile, reset, listScrapingTasks, getScrapingTaskFields, processScrapingTask } = useDataUploader()
+  const {
+    state,
+    uploadFile,
+    processFile,
+    reset,
+    listScrapingTasks,
+    getScrapingTaskFields,
+    processScrapingTask,
+  } = useDataUploader()
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set())
   const [uploadToConvex, setUploadToConvex] = useState(true)
-  const [environments, setEnvironments] = useState<Set<string>>(new Set(['dev']))
+  const [environments, setEnvironments] = useState<Set<string>>(
+    new Set(['dev']),
+  )
   const [dragActive, setDragActive] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -52,30 +62,38 @@ export function AccountsPage() {
     uploaded: Record<string, number>
     duplicates: Record<string, number>
   } | null>(null)
-  const [importStep, setImportStep] = useState<'idle' | 'selecting' | 'processing'>('idle')
+  const [importStep, setImportStep] = useState<
+    'idle' | 'selecting' | 'processing'
+  >('idle')
   const [importTaskId, setImportTaskId] = useState<string | null>(null)
   const [importTaskName, setImportTaskName] = useState<string>('')
   const [importFields, setImportFields] = useState<string[]>([])
-  const [importSampleRow, setImportSampleRow] = useState<Record<string, string>>({})
+  const [importSampleRow, setImportSampleRow] = useState<
+    Record<string, string>
+  >({})
   const [importRowCount, setImportRowCount] = useState<number>(0)
-  const [importSelectedFields, setImportSelectedFields] = useState<Set<string>>(new Set())
+  const [importSelectedFields, setImportSelectedFields] = useState<Set<string>>(
+    new Set(),
+  )
   const [importSearchQuery, setImportSearchQuery] = useState('')
   const [importUploadToConvex, setImportUploadToConvex] = useState(true)
-  const [importEnvironments, setImportEnvironments] = useState<Set<string>>(new Set(['dev']))
+  const [importEnvironments, setImportEnvironments] = useState<Set<string>>(
+    new Set(['dev']),
+  )
 
   const filteredFields = useMemo(() => {
     if (state.step !== 'selecting') return []
     if (!searchQuery.trim()) return state.fields
-    return state.fields.filter(f =>
-      f.toLowerCase().includes(searchQuery.toLowerCase())
+    return state.fields.filter((f) =>
+      f.toLowerCase().includes(searchQuery.toLowerCase()),
     )
   }, [state, searchQuery])
 
   const filteredImportFields = useMemo(() => {
     if (importStep !== 'selecting') return []
     if (!importSearchQuery.trim()) return importFields
-    return importFields.filter(f =>
-      f.toLowerCase().includes(importSearchQuery.toLowerCase())
+    return importFields.filter((f) =>
+      f.toLowerCase().includes(importSearchQuery.toLowerCase()),
     )
   }, [importFields, importSearchQuery, importStep])
 
@@ -89,26 +107,32 @@ export function AccountsPage() {
     }
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setDragActive(false)
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setDragActive(false)
 
-    const files = e.dataTransfer.files
-    if (files?.[0]?.name.endsWith('.csv')) {
-      void uploadFile(files[0])
-    }
-  }, [uploadFile])
+      const files = e.dataTransfer.files
+      if (files?.[0]?.name.endsWith('.csv')) {
+        void uploadFile(files[0])
+      }
+    },
+    [uploadFile],
+  )
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files?.[0]) {
-      void uploadFile(files[0])
-    }
-  }, [uploadFile])
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (files?.[0]) {
+        void uploadFile(files[0])
+      }
+    },
+    [uploadFile],
+  )
 
   const handleFieldToggle = useCallback((field: string) => {
-    setSelectedFields(prev => {
+    setSelectedFields((prev) => {
       const next = new Set(prev)
       if (next.has(field)) {
         next.delete(field)
@@ -130,7 +154,7 @@ export function AccountsPage() {
   }, [])
 
   const handleEnvToggle = useCallback((env: string) => {
-    setEnvironments(prev => {
+    setEnvironments((prev) => {
       const next = new Set(prev)
       if (next.has(env)) {
         next.delete(env)
@@ -147,13 +171,13 @@ export function AccountsPage() {
         state.jobId,
         Array.from(selectedFields),
         uploadToConvex,
-        Array.from(environments)
+        Array.from(environments),
       )
     }
   }, [state, selectedFields, uploadToConvex, environments, processFile])
 
   const handleImportFieldToggle = useCallback((field: string) => {
-    setImportSelectedFields(prev => {
+    setImportSelectedFields((prev) => {
       const next = new Set(prev)
       if (next.has(field)) {
         next.delete(field)
@@ -175,7 +199,7 @@ export function AccountsPage() {
   }, [])
 
   const handleImportEnvToggle = useCallback((env: string) => {
-    setImportEnvironments(prev => {
+    setImportEnvironments((prev) => {
       const next = new Set(prev)
       if (next.has(env)) {
         next.delete(env)
@@ -225,16 +249,29 @@ export function AccountsPage() {
       setImportResult(null)
       setScrapingError(null)
       try {
-        const found = scrapingTasks.find(t => String(t._id || '') === taskId)
+        const found = scrapingTasks.find((t) => String(t._id || '') === taskId)
         const fieldsRes = await getScrapingTaskFields(taskId, tasksEnv)
         setImportTaskId(taskId)
         setImportTaskName(String(found?.name || ''))
         setImportFields(fieldsRes.fields || [])
         setImportSampleRow(fieldsRes.sampleRow || {})
-        setImportRowCount(typeof fieldsRes.rowCount === 'number' ? fieldsRes.rowCount : 0)
+        setImportRowCount(
+          typeof fieldsRes.rowCount === 'number' ? fieldsRes.rowCount : 0,
+        )
 
-        const prefer = ['userName', 'username', 'user_name', 'login', 'User Name', 'fullName', 'full_name', 'name']
-        const preferredFields = prefer.filter(f => (fieldsRes.fields || []).includes(f))
+        const prefer = [
+          'userName',
+          'username',
+          'user_name',
+          'login',
+          'User Name',
+          'fullName',
+          'full_name',
+          'name',
+        ]
+        const preferredFields = prefer.filter((f) =>
+          (fieldsRes.fields || []).includes(f),
+        )
         setImportSelectedFields(new Set(preferredFields))
         setImportStep('selecting')
       } catch (e) {
@@ -243,7 +280,7 @@ export function AccountsPage() {
         setImportingId(null)
       }
     },
-    [getScrapingTaskFields, importingId, scrapingTasks, tasksEnv]
+    [getScrapingTaskFields, importingId, scrapingTasks, tasksEnv],
   )
 
   const handleImportProcess = useCallback(async () => {
@@ -276,7 +313,16 @@ export function AccountsPage() {
       setScrapingError(e instanceof Error ? e.message : String(e))
       setImportStep('selecting')
     }
-  }, [importEnvironments, importSelectedFields, importStep, importTaskId, importUploadToConvex, processScrapingTask, refreshScrapingTasks, tasksEnv])
+  }, [
+    importEnvironments,
+    importSelectedFields,
+    importStep,
+    importTaskId,
+    importUploadToConvex,
+    processScrapingTask,
+    refreshScrapingTasks,
+    tasksEnv,
+  ])
 
   const handleReset = useCallback(() => {
     reset()
@@ -290,11 +336,13 @@ export function AccountsPage() {
   }, [reset, resetImportFlow])
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="bg-background flex h-full flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-3 p-4 border-b sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold tracking-tight">Upload Accounts</h2>
-        {(state.step !== 'idle' && state.step !== 'uploading') || importStep !== 'idle' || Boolean(importResult) ? (
+        {(state.step !== 'idle' && state.step !== 'uploading') ||
+        importStep !== 'idle' ||
+        Boolean(importResult) ? (
           <Button variant="outline" size="sm" onClick={handleReset}>
             <RotateCcw className="mr-2 h-4 w-4" />
             Start Over
@@ -304,29 +352,38 @@ export function AccountsPage() {
 
       {/* Error display */}
       {state.step === 'error' && (
-        <div className="p-3 bg-destructive/10 text-destructive text-sm border-b border-destructive/20">
+        <div className="bg-destructive/10 text-destructive border-destructive/20 border-b p-3 text-sm">
           {state.message}
         </div>
       )}
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto p-4 bg-muted/10">
-        <div className="max-w-4xl mx-auto space-y-3">
-
+      <div className="bg-muted/10 flex-1 overflow-auto p-4">
+        <div className="mx-auto max-w-4xl space-y-3">
           <Card>
             <CardHeader className="p-3 pb-2">
               <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">Import From Scraping Tasks</CardTitle>
-                <Button variant="outline" size="sm" className="h-8" onClick={() => void refreshScrapingTasks()} disabled={scrapingLoading || Boolean(importingId)}>
-                  <RefreshCw className={`mr-2 h-4 w-4 ${scrapingLoading ? 'animate-spin' : ''}`} />
+                <CardTitle className="text-base">
+                  Import From Scraping Tasks
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => void refreshScrapingTasks()}
+                  disabled={scrapingLoading || Boolean(importingId)}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${scrapingLoading ? 'animate-spin' : ''}`}
+                  />
                   Refresh
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="p-3 pt-0 space-y-2">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
+            <CardContent className="space-y-2 p-3 pt-0">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Env</span>
+                  <span className="text-muted-foreground text-sm">Env</span>
                   <Button
                     variant={tasksEnv === 'dev' ? 'default' : 'outline'}
                     size="sm"
@@ -348,7 +405,7 @@ export function AccountsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Kind</span>
+                  <span className="text-muted-foreground text-sm">Kind</span>
                   <Button
                     variant={tasksKind === '' ? 'default' : 'outline'}
                     size="sm"
@@ -380,7 +437,7 @@ export function AccountsPage() {
               </div>
 
               {scrapingError && (
-                <div className="p-2 rounded-sm border bg-destructive/10 text-destructive text-sm">
+                <div className="bg-destructive/10 text-destructive rounded-sm border p-2 text-sm">
                   {scrapingError}
                 </div>
               )}
@@ -388,9 +445,13 @@ export function AccountsPage() {
               {importResult && (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <Badge variant="secondary" className="text-xs">
-                    {importResult.stats.totalProcessed.toLocaleString()} processed
+                    {importResult.stats.totalProcessed.toLocaleString()}{' '}
+                    processed
                   </Badge>
-                  <Badge variant="outline" className="text-xs text-amber-600 border-amber-600/30">
+                  <Badge
+                    variant="outline"
+                    className="text-status-warning border-status-warning-border text-xs"
+                  >
                     {importResult.stats.removed.toLocaleString()} filtered
                   </Badge>
                   <Badge variant="secondary" className="text-xs">
@@ -401,7 +462,8 @@ export function AccountsPage() {
                     const dupes = importResult.duplicates[env] || 0
                     return (
                       <Badge key={env} variant="secondary" className="text-xs">
-                        {env}: {inserted.toLocaleString()} inserted{dupes > 0 ? `, ${dupes.toLocaleString()} dupes` : ''}
+                        {env}: {inserted.toLocaleString()} inserted
+                        {dupes > 0 ? `, ${dupes.toLocaleString()} dupes` : ''}
                       </Badge>
                     )
                   })}
@@ -411,19 +473,30 @@ export function AccountsPage() {
               {isMobile ? (
                 <div className="space-y-2">
                   {scrapingLoading ? (
-                    <div className="rounded-sm border p-3 text-sm text-muted-foreground">Loading...</div>
+                    <div className="text-muted-foreground rounded-sm border p-3 text-sm">
+                      Loading...
+                    </div>
                   ) : scrapingTasks.length === 0 ? (
-                    <div className="rounded-sm border p-3 text-sm text-muted-foreground">No unimported completed tasks found.</div>
+                    <div className="text-muted-foreground rounded-sm border p-3 text-sm">
+                      No unimported completed tasks found.
+                    </div>
                   ) : (
                     scrapingTasks.map((t) => {
                       const id = String(t._id || '')
-                      const createdAt = typeof t.createdAt === 'number' ? new Date(t.createdAt).toLocaleString() : '—'
+                      const createdAt =
+                        typeof t.createdAt === 'number'
+                          ? new Date(t.createdAt).toLocaleString()
+                          : '—'
                       return (
-                        <div key={id} className="rounded-xl border bg-card p-3">
+                        <div key={id} className="bg-card rounded-xl border p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
-                              <div className="truncate font-medium">{String(t.name || '—')}</div>
-                              <div className="mt-1 text-xs text-muted-foreground">{createdAt}</div>
+                              <div className="truncate font-medium">
+                                {String(t.name || '—')}
+                              </div>
+                              <div className="text-muted-foreground mt-1 text-xs">
+                                {createdAt}
+                              </div>
                             </div>
                             <Badge variant="outline" className="text-xs">
                               {String(t.kind || '—')}
@@ -433,7 +506,11 @@ export function AccountsPage() {
                             size="sm"
                             className="mt-3 w-full"
                             onClick={() => void handleImportTask(id)}
-                            disabled={!id || Boolean(importingId) || importStep === 'processing'}
+                            disabled={
+                              !id ||
+                              Boolean(importingId) ||
+                              importStep === 'processing'
+                            }
                           >
                             {importingId === id ? (
                               <>
@@ -453,47 +530,66 @@ export function AccountsPage() {
                   )}
                 </div>
               ) : (
-                <div className="rounded-sm border overflow-x-auto">
+                <div className="overflow-x-auto rounded-sm border">
                   <Table>
                     <TableHeader>
                       <TableRow className="h-8">
                         <TableHead className="text-xs">Name</TableHead>
                         <TableHead className="text-xs">Kind</TableHead>
                         <TableHead className="text-xs">Created</TableHead>
-                        <TableHead className="text-xs text-right">Action</TableHead>
+                        <TableHead className="text-right text-xs">
+                          Action
+                        </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {scrapingLoading ? (
                         <TableRow className="h-10">
-                          <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                          <TableCell
+                            colSpan={4}
+                            className="text-muted-foreground text-sm"
+                          >
                             Loading...
                           </TableCell>
                         </TableRow>
                       ) : scrapingTasks.length === 0 ? (
                         <TableRow className="h-10">
-                          <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                          <TableCell
+                            colSpan={4}
+                            className="text-muted-foreground text-sm"
+                          >
                             No unimported completed tasks found.
                           </TableCell>
                         </TableRow>
                       ) : (
                         scrapingTasks.map((t) => {
                           const id = String(t._id || '')
-                          const createdAt = typeof t.createdAt === 'number' ? new Date(t.createdAt).toLocaleString() : '—'
+                          const createdAt =
+                            typeof t.createdAt === 'number'
+                              ? new Date(t.createdAt).toLocaleString()
+                              : '—'
                           return (
                             <TableRow key={id} className="h-10">
-                              <TableCell className="text-sm font-medium">{String(t.name || '—')}</TableCell>
+                              <TableCell className="text-sm font-medium">
+                                {String(t.name || '—')}
+                              </TableCell>
                               <TableCell className="text-sm">
                                 <Badge variant="outline" className="text-xs">
                                   {String(t.kind || '—')}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="text-sm text-muted-foreground">{createdAt}</TableCell>
+                              <TableCell className="text-muted-foreground text-sm">
+                                {createdAt}
+                              </TableCell>
                               <TableCell className="text-right">
                                 <Button
                                   size="sm"
                                   onClick={() => void handleImportTask(id)}
-                                  disabled={!id || Boolean(importingId) || importStep === 'processing'}
+                                  disabled={
+                                    !id ||
+                                    Boolean(importingId) ||
+                                    importStep === 'processing'
+                                  }
                                 >
                                   {importingId === id ? (
                                     <>
@@ -520,15 +616,20 @@ export function AccountsPage() {
               {importStep !== 'idle' && importTaskId && (
                 <>
                   <Card className="mt-2">
-                    <CardContent className="p-3 flex items-center justify-between">
+                    <CardContent className="flex items-center justify-between p-3">
                       <div className="flex items-center gap-2">
-                        <Download className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{importTaskName || importTaskId}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {importRowCount.toLocaleString()} rows • {importFields.length} fields
+                        <Download className="text-muted-foreground h-4 w-4" />
+                        <span className="font-medium">
+                          {importTaskName || importTaskId}
+                        </span>
+                        <span className="text-muted-foreground text-sm">
+                          {importRowCount.toLocaleString()} rows •{' '}
+                          {importFields.length} fields
                         </span>
                       </div>
-                      <Badge variant="outline" className="text-xs">Ready</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Ready
+                      </Badge>
                     </CardContent>
                   </Card>
 
@@ -536,31 +637,46 @@ export function AccountsPage() {
                     <CardHeader className="p-3 pb-2">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <Filter className="h-4 w-4 text-muted-foreground" />
-                          <CardTitle className="text-base">Choose Fields</CardTitle>
+                          <Filter className="text-muted-foreground h-4 w-4" />
+                          <CardTitle className="text-base">
+                            Choose Fields
+                          </CardTitle>
                           <Badge variant="secondary" className="text-xs">
-                            {importSelectedFields.size} / {importFields.length} selected
+                            {importSelectedFields.size} / {importFields.length}{' '}
+                            selected
                           </Badge>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" size="sm" className="h-8" onClick={handleImportSelectAll}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={handleImportSelectAll}
+                          >
                             Select all
                           </Button>
-                          <Button variant="outline" size="sm" className="h-8" onClick={handleImportSelectNone}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={handleImportSelectNone}
+                          >
                             Select none
                           </Button>
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="p-3 pt-0 space-y-2">
+                    <CardContent className="space-y-2 p-3 pt-0">
                       <div className="flex items-center gap-2">
                         <div className="relative flex-1">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
                           <Input
                             value={importSearchQuery}
-                            onChange={(e) => setImportSearchQuery(e.target.value)}
+                            onChange={(e) =>
+                              setImportSearchQuery(e.target.value)
+                            }
                             placeholder="Search fields..."
-                            className="pl-9 h-9"
+                            className="h-9 pl-9"
                             disabled={importStep === 'processing'}
                           />
                         </div>
@@ -569,16 +685,21 @@ export function AccountsPage() {
                         </Badge>
                       </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-auto rounded-sm border p-2 bg-background">
+                      <div className="bg-background grid max-h-52 grid-cols-1 gap-2 overflow-auto rounded-sm border p-2 sm:grid-cols-2 md:grid-cols-3">
                         {filteredImportFields.map((field) => (
                           <div key={field} className="flex items-center gap-2">
                             <Checkbox
                               id={`import-field-${field}`}
                               checked={importSelectedFields.has(field)}
-                              onCheckedChange={() => handleImportFieldToggle(field)}
+                              onCheckedChange={() =>
+                                handleImportFieldToggle(field)
+                              }
                               disabled={importStep === 'processing'}
                             />
-                            <Label htmlFor={`import-field-${field}`} className="text-sm cursor-pointer truncate">
+                            <Label
+                              htmlFor={`import-field-${field}`}
+                              className="cursor-pointer truncate text-sm"
+                            >
                               {field}
                             </Label>
                           </div>
@@ -586,24 +707,38 @@ export function AccountsPage() {
                       </div>
 
                       {importSelectedFields.size > 0 && (
-                        <div className="rounded-sm border overflow-x-auto">
+                        <div className="overflow-x-auto rounded-sm border">
                           <Table>
                             <TableHeader>
                               <TableRow className="h-8">
-                                {Array.from(importSelectedFields).map(field => (
-                                  <TableHead key={field} className="text-xs whitespace-nowrap py-1.5">
-                                    {field}
-                                  </TableHead>
-                                ))}
+                                {Array.from(importSelectedFields).map(
+                                  (field) => (
+                                    <TableHead
+                                      key={field}
+                                      className="py-1.5 text-xs whitespace-nowrap"
+                                    >
+                                      {field}
+                                    </TableHead>
+                                  ),
+                                )}
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               <TableRow className="h-8">
-                                {Array.from(importSelectedFields).map(field => (
-                                  <TableCell key={field} className="font-mono text-xs py-1.5">
-                                    {importSampleRow[field] || <span className="text-muted-foreground">—</span>}
-                                  </TableCell>
-                                ))}
+                                {Array.from(importSelectedFields).map(
+                                  (field) => (
+                                    <TableCell
+                                      key={field}
+                                      className="py-1.5 font-mono text-xs"
+                                    >
+                                      {importSampleRow[field] || (
+                                        <span className="text-muted-foreground">
+                                          —
+                                        </span>
+                                      )}
+                                    </TableCell>
+                                  ),
+                                )}
                               </TableRow>
                             </TableBody>
                           </Table>
@@ -613,17 +748,22 @@ export function AccountsPage() {
                   </Card>
 
                   <Card>
-                    <CardContent className="p-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <CardContent className="flex flex-col gap-4 p-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                         <div className="flex items-center gap-2">
-                          <Database className="h-4 w-4 text-muted-foreground" />
+                          <Database className="text-muted-foreground h-4 w-4" />
                           <Checkbox
                             id="importUploadToConvex"
                             checked={importUploadToConvex}
-                            onCheckedChange={(checked) => setImportUploadToConvex(checked === true)}
+                            onCheckedChange={(checked) =>
+                              setImportUploadToConvex(checked === true)
+                            }
                             disabled={importStep === 'processing'}
                           />
-                          <Label htmlFor="importUploadToConvex" className="text-sm cursor-pointer">
+                          <Label
+                            htmlFor="importUploadToConvex"
+                            className="cursor-pointer text-sm"
+                          >
                             Upload to Convex
                           </Label>
                         </div>
@@ -634,19 +774,33 @@ export function AccountsPage() {
                               <Checkbox
                                 id="import-env-dev"
                                 checked={importEnvironments.has('dev')}
-                                onCheckedChange={() => handleImportEnvToggle('dev')}
+                                onCheckedChange={() =>
+                                  handleImportEnvToggle('dev')
+                                }
                                 disabled={importStep === 'processing'}
                               />
-                              <Label htmlFor="import-env-dev" className="text-sm cursor-pointer">Dev</Label>
+                              <Label
+                                htmlFor="import-env-dev"
+                                className="cursor-pointer text-sm"
+                              >
+                                Dev
+                              </Label>
                             </div>
                             <div className="flex items-center gap-1.5">
                               <Checkbox
                                 id="import-env-prod"
                                 checked={importEnvironments.has('prod')}
-                                onCheckedChange={() => handleImportEnvToggle('prod')}
+                                onCheckedChange={() =>
+                                  handleImportEnvToggle('prod')
+                                }
                                 disabled={importStep === 'processing'}
                               />
-                              <Label htmlFor="import-env-prod" className="text-sm cursor-pointer">Prod</Label>
+                              <Label
+                                htmlFor="import-env-prod"
+                                className="cursor-pointer text-sm"
+                              >
+                                Prod
+                              </Label>
                             </div>
                           </div>
                         )}
@@ -655,7 +809,12 @@ export function AccountsPage() {
                       <Button
                         size="sm"
                         onClick={() => void handleImportProcess()}
-                        disabled={importSelectedFields.size === 0 || (importUploadToConvex && importEnvironments.size === 0) || importStep === 'processing'}
+                        disabled={
+                          importSelectedFields.size === 0 ||
+                          (importUploadToConvex &&
+                            importEnvironments.size === 0) ||
+                          importStep === 'processing'
+                        }
                       >
                         {importStep === 'processing' ? (
                           <>
@@ -677,15 +836,13 @@ export function AccountsPage() {
           </Card>
 
           {/* Upload Zone */}
-          {(state.step === 'idle' || state.step === 'uploading' || state.step === 'error') && (
+          {(state.step === 'idle' ||
+            state.step === 'uploading' ||
+            state.step === 'error') && (
             <Card>
               <CardContent className="p-4">
                 <div
-                  className={`
-                    border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                    ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}
-                    ${state.step === 'uploading' ? 'pointer-events-none opacity-50' : ''}
-                  `}
+                  className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'} ${state.step === 'uploading' ? 'pointer-events-none opacity-50' : ''} `}
                   onDragEnter={handleDrag}
                   onDragLeave={handleDrag}
                   onDragOver={handleDrag}
@@ -701,14 +858,16 @@ export function AccountsPage() {
                   />
                   {state.step === 'uploading' ? (
                     <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <Loader2 className="text-primary h-8 w-8 animate-spin" />
                       <p className="font-medium">Uploading...</p>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center gap-1">
-                      <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
+                      <FileSpreadsheet className="text-muted-foreground h-8 w-8" />
                       <p className="font-medium">Drop your CSV file here</p>
-                      <p className="text-sm text-muted-foreground">or click to browse</p>
+                      <p className="text-muted-foreground text-sm">
+                        or click to browse
+                      </p>
                     </div>
                   )}
                 </div>
@@ -721,15 +880,18 @@ export function AccountsPage() {
             <>
               {/* File Info */}
               <Card>
-                <CardContent className="p-3 flex items-center justify-between">
+                <CardContent className="flex items-center justify-between p-3">
                   <div className="flex items-center gap-2">
-                    <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+                    <FileSpreadsheet className="text-muted-foreground h-4 w-4" />
                     <span className="font-medium">{state.fileName}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {state.rowCount.toLocaleString()} rows • {state.fields.length} columns
+                    <span className="text-muted-foreground text-sm">
+                      {state.rowCount.toLocaleString()} rows •{' '}
+                      {state.fields.length} columns
                     </span>
                   </div>
-                  <Badge variant="outline" className="text-xs">Ready</Badge>
+                  <Badge variant="outline" className="text-xs">
+                    Ready
+                  </Badge>
                 </CardContent>
               </Card>
 
@@ -737,7 +899,7 @@ export function AccountsPage() {
               <Card>
                 <CardHeader className="p-3 pb-2">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
                       <Filter className="h-4 w-4" />
                       Select Fields
                     </CardTitle>
@@ -746,56 +908,68 @@ export function AccountsPage() {
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="p-3 pt-0 space-y-2">
+                <CardContent className="space-y-2 p-3 pt-0">
                   {/* Search and bulk actions */}
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <div className="relative flex-1">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
                       <Input
                         placeholder="Search fields..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="pl-8 h-8 text-sm"
+                        className="h-8 pl-8 text-sm"
                       />
                     </div>
-                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleSelectAll}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={handleSelectAll}
+                    >
                       Select All
                     </Button>
-                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleSelectNone}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={handleSelectNone}
+                    >
                       Clear
                     </Button>
                   </div>
 
                   {/* Fields grid */}
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1.5">
-                    {filteredFields.map(field => (
+                  <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 lg:grid-cols-4">
+                    {filteredFields.map((field) => (
                       <div
                         key={field}
                         onClick={() => handleFieldToggle(field)}
-                        className={`
-                          flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors text-sm
-                          ${selectedFields.has(field)
-                            ? 'bg-primary/10 border border-primary/30'
+                        className={`flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors ${
+                          selectedFields.has(field)
+                            ? 'bg-primary/10 border-primary/30 border'
                             : 'bg-muted/50 hover:bg-muted border border-transparent'
-                          }
-                        `}
+                        } `}
                       >
-                        <div className={`
-                          w-3.5 h-3.5 rounded-sm flex items-center justify-center shrink-0
-                          ${selectedFields.has(field)
-                            ? 'bg-primary text-primary-foreground'
-                            : 'border border-muted-foreground/30'
-                          }
-                        `}>
-                          {selectedFields.has(field) && <Check className="h-2.5 w-2.5" />}
+                        <div
+                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm ${
+                            selectedFields.has(field)
+                              ? 'bg-primary text-primary-foreground'
+                              : 'border-muted-foreground/30 border'
+                          } `}
+                        >
+                          {selectedFields.has(field) && (
+                            <Check className="h-2.5 w-2.5" />
+                          )}
                         </div>
-                        <span className="truncate" title={field}>{field}</span>
+                        <span className="truncate" title={field}>
+                          {field}
+                        </span>
                       </div>
                     ))}
                   </div>
 
                   {searchQuery && filteredFields.length === 0 && (
-                    <p className="text-center text-sm text-muted-foreground py-2">
+                    <p className="text-muted-foreground py-2 text-center text-sm">
                       No fields match "{searchQuery}"
                     </p>
                   )}
@@ -809,12 +983,15 @@ export function AccountsPage() {
                     <CardTitle className="text-sm">Sample Preview</CardTitle>
                   </CardHeader>
                   <CardContent className="p-3 pt-0">
-                    <div className="rounded-sm border overflow-x-auto">
+                    <div className="overflow-x-auto rounded-sm border">
                       <Table>
                         <TableHeader>
                           <TableRow className="h-8">
-                            {Array.from(selectedFields).map(field => (
-                              <TableHead key={field} className="text-xs whitespace-nowrap py-1.5">
+                            {Array.from(selectedFields).map((field) => (
+                              <TableHead
+                                key={field}
+                                className="py-1.5 text-xs whitespace-nowrap"
+                              >
                                 {field}
                               </TableHead>
                             ))}
@@ -822,9 +999,16 @@ export function AccountsPage() {
                         </TableHeader>
                         <TableBody>
                           <TableRow className="h-8">
-                            {Array.from(selectedFields).map(field => (
-                              <TableCell key={field} className="font-mono text-xs py-1.5">
-                                {state.sampleRow[field] || <span className="text-muted-foreground">—</span>}
+                            {Array.from(selectedFields).map((field) => (
+                              <TableCell
+                                key={field}
+                                className="py-1.5 font-mono text-xs"
+                              >
+                                {state.sampleRow[field] || (
+                                  <span className="text-muted-foreground">
+                                    —
+                                  </span>
+                                )}
                               </TableCell>
                             ))}
                           </TableRow>
@@ -837,16 +1021,21 @@ export function AccountsPage() {
 
               {/* Upload Options + Process Button in same row */}
               <Card>
-                <CardContent className="p-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <CardContent className="flex flex-col gap-4 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <div className="flex items-center gap-2">
-                      <Database className="h-4 w-4 text-muted-foreground" />
+                      <Database className="text-muted-foreground h-4 w-4" />
                       <Checkbox
                         id="uploadToConvex"
                         checked={uploadToConvex}
-                        onCheckedChange={(checked) => setUploadToConvex(checked === true)}
+                        onCheckedChange={(checked) =>
+                          setUploadToConvex(checked === true)
+                        }
                       />
-                      <Label htmlFor="uploadToConvex" className="text-sm cursor-pointer">
+                      <Label
+                        htmlFor="uploadToConvex"
+                        className="cursor-pointer text-sm"
+                      >
                         Upload to Convex
                       </Label>
                     </div>
@@ -859,7 +1048,12 @@ export function AccountsPage() {
                             checked={environments.has('dev')}
                             onCheckedChange={() => handleEnvToggle('dev')}
                           />
-                          <Label htmlFor="env-dev" className="text-sm cursor-pointer">Dev</Label>
+                          <Label
+                            htmlFor="env-dev"
+                            className="cursor-pointer text-sm"
+                          >
+                            Dev
+                          </Label>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Checkbox
@@ -867,7 +1061,12 @@ export function AccountsPage() {
                             checked={environments.has('prod')}
                             onCheckedChange={() => handleEnvToggle('prod')}
                           />
-                          <Label htmlFor="env-prod" className="text-sm cursor-pointer">Prod</Label>
+                          <Label
+                            htmlFor="env-prod"
+                            className="cursor-pointer text-sm"
+                          >
+                            Prod
+                          </Label>
                         </div>
                       </div>
                     )}
@@ -876,7 +1075,10 @@ export function AccountsPage() {
                   <Button
                     size="sm"
                     onClick={handleProcess}
-                    disabled={selectedFields.size === 0 || (uploadToConvex && environments.size === 0)}
+                    disabled={
+                      selectedFields.size === 0 ||
+                      (uploadToConvex && environments.size === 0)
+                    }
                   >
                     <Filter className="mr-2 h-4 w-4" />
                     Process & Upload
@@ -891,10 +1093,10 @@ export function AccountsPage() {
             <Card>
               <CardContent className="py-8">
                 <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <Loader2 className="text-primary h-8 w-8 animate-spin" />
                   <div className="text-center">
                     <p className="font-medium">Processing...</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-muted-foreground text-sm">
                       Filtering and uploading accounts
                     </p>
                   </div>
@@ -906,25 +1108,31 @@ export function AccountsPage() {
           {/* Completed State */}
           {state.step === 'completed' && (
             <Card>
-              <CardContent className="p-4 space-y-4">
-                <div className="flex items-center gap-2 text-green-600 dark:text-green-500">
+              <CardContent className="space-y-4 p-4">
+                <div className="text-status-success flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5" />
                   <span className="font-semibold">Processing Complete</span>
                 </div>
 
                 {/* Stats */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="text-center p-3 bg-muted/50 rounded-sm">
-                    <p className="text-xl font-bold">{state.stats.totalProcessed.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Processed</p>
+                  <div className="bg-muted/50 rounded-sm p-3 text-center">
+                    <p className="text-xl font-bold">
+                      {state.stats.totalProcessed.toLocaleString()}
+                    </p>
+                    <p className="text-muted-foreground text-xs">Processed</p>
                   </div>
-                  <div className="text-center p-3 bg-destructive/10 rounded-sm">
-                    <p className="text-xl font-bold text-destructive">{state.stats.removed.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Filtered</p>
+                  <div className="bg-destructive/10 rounded-sm p-3 text-center">
+                    <p className="text-destructive text-xl font-bold">
+                      {state.stats.removed.toLocaleString()}
+                    </p>
+                    <p className="text-muted-foreground text-xs">Filtered</p>
                   </div>
-                  <div className="text-center p-3 bg-green-500/10 rounded-sm">
-                    <p className="text-xl font-bold text-green-600 dark:text-green-500">{state.stats.remaining.toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">Kept</p>
+                  <div className="bg-status-success-soft rounded-sm p-3 text-center">
+                    <p className="text-status-success text-xl font-bold">
+                      {state.stats.remaining.toLocaleString()}
+                    </p>
+                    <p className="text-muted-foreground text-xs">Kept</p>
                   </div>
                 </div>
 
@@ -934,13 +1142,21 @@ export function AccountsPage() {
                     {Object.entries(state.uploaded).map(([env, count]) => {
                       const dupes = state.duplicates[env] || 0
                       return (
-                        <div key={env} className="flex items-center gap-2 text-sm">
-                          <span className="text-muted-foreground capitalize">{env}:</span>
+                        <div
+                          key={env}
+                          className="flex items-center gap-2 text-sm"
+                        >
+                          <span className="text-muted-foreground capitalize">
+                            {env}:
+                          </span>
                           <Badge variant="secondary" className="text-xs">
                             {count.toLocaleString()} new
                           </Badge>
                           {dupes > 0 && (
-                            <Badge variant="outline" className="text-xs text-amber-600 border-amber-600/30">
+                            <Badge
+                              variant="outline"
+                              className="text-status-warning border-status-warning-border text-xs"
+                            >
                               {dupes.toLocaleString()} duplicates
                             </Badge>
                           )}

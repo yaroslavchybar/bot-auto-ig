@@ -15,7 +15,10 @@ export async function createList(name: string): Promise<List | null> {
   })
 }
 
-export async function updateList(id: string, name: string): Promise<List | null> {
+export async function updateList(
+  id: string,
+  name: string,
+): Promise<List | null> {
   const cleaned = name.trim()
   if (!id || !cleaned) throw new Error('ID and name are required')
   return apiFetch<List | null>('/api/lists/update', {
@@ -32,14 +35,18 @@ export async function deleteList(id: string): Promise<void> {
   })
 }
 
-export async function fetchProfilesForEdit(listId: string): Promise<ProfileRow[]> {
-  const allProfiles = await apiFetch<Array<{
-    id?: string
-    profile_id?: string
-    name: string
-    login?: boolean
-    list_ids?: string[] | null
-  }>>('/api/profiles')
+export async function fetchProfilesForEdit(
+  listId: string,
+): Promise<ProfileRow[]> {
+  const allProfiles = await apiFetch<
+    Array<{
+      id?: string
+      profile_id?: string
+      name: string
+      login?: boolean
+      list_ids?: string[] | null
+    }>
+  >('/api/profiles')
 
   const rows: ProfileRow[] = (allProfiles || [])
     .filter((profile) => Boolean(profile?.login))
@@ -64,7 +71,10 @@ export async function fetchProfilesForEdit(listId: string): Promise<ProfileRow[]
   return rows
 }
 
-export async function bulkAddToList(profileIds: string[], listId: string): Promise<void> {
+export async function bulkAddToList(
+  profileIds: string[],
+  listId: string,
+): Promise<void> {
   if (!profileIds.length) return
   if (!listId) throw new Error('listId is required')
   await apiFetch('/api/profiles/bulk-add-to-list', {
@@ -73,7 +83,10 @@ export async function bulkAddToList(profileIds: string[], listId: string): Promi
   })
 }
 
-export async function bulkRemoveFromList(profileIds: string[], listId: string): Promise<void> {
+export async function bulkRemoveFromList(
+  profileIds: string[],
+  listId: string,
+): Promise<void> {
   if (!profileIds.length) return
   if (!listId) throw new Error('listId is required')
   await apiFetch('/api/profiles/bulk-remove-from-list', {

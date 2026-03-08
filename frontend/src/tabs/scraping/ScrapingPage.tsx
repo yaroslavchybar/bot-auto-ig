@@ -19,7 +19,11 @@ function parseTargets(raw: string): string[] {
   const parts = text
     .split(/\r?\n/)
     .flatMap((line) => line.split(','))
-    .map((v) => String(v || '').trim().replace(/^@+/, ''))
+    .map((v) =>
+      String(v || '')
+        .trim()
+        .replace(/^@+/, ''),
+    )
     .filter(Boolean)
   const seen = new Set<string>()
   const unique: string[] = []
@@ -47,7 +51,9 @@ export function ScrapingPage() {
   const [deleteId, setDeleteId] = useState<Id<'scrapingTasks'> | null>(null)
   const [runningId, setRunningId] = useState<Id<'scrapingTasks'> | null>(null)
 
-  const [eligibleProfiles, setEligibleProfiles] = useState<EligibleProfile[]>([])
+  const [eligibleProfiles, setEligibleProfiles] = useState<EligibleProfile[]>(
+    [],
+  )
   const [eligibleLoading, setEligibleLoading] = useState(false)
   const [eligibleError, setEligibleError] = useState<string | null>(null)
 
@@ -55,7 +61,9 @@ export function ScrapingPage() {
     setEligibleLoading(true)
     setEligibleError(null)
     try {
-      const data = await apiFetch<{ profiles: EligibleProfile[] }>('/api/scraping/eligible-profiles')
+      const data = await apiFetch<{ profiles: EligibleProfile[] }>(
+        '/api/scraping/eligible-profiles',
+      )
       setEligibleProfiles(Array.isArray(data.profiles) ? data.profiles : [])
     } catch (e) {
       setEligibleError(e instanceof Error ? e.message : String(e))
@@ -69,7 +77,9 @@ export function ScrapingPage() {
     void refreshEligibleProfiles()
   }, [refreshEligibleProfiles])
 
-  const tasks = useQuery(api.scrapingTasks.list, {}) as Doc<'scrapingTasks'>[] | undefined
+  const tasks = useQuery(api.scrapingTasks.list, {}) as
+    | Doc<'scrapingTasks'>[]
+    | undefined
   const createTaskMutation = useMutation(api.scrapingTasks.create)
   const updateTaskMutation = useMutation(api.scrapingTasks.update)
   const removeTaskMutation = useMutation(api.scrapingTasks.remove)
@@ -83,7 +93,9 @@ export function ScrapingPage() {
     return true
   }, [targetUsername])
 
-  const [editKind, setEditKind] = useState<'followers' | 'following'>('followers')
+  const [editKind, setEditKind] = useState<'followers' | 'following'>(
+    'followers',
+  )
   const [editTargetUsername, setEditTargetUsername] = useState('')
   const [editTaskName, setEditTaskName] = useState('')
 
@@ -100,19 +112,16 @@ export function ScrapingPage() {
     setError(null)
   }, [])
 
-  const handleOpenEdit = useCallback(
-    (task: Doc<'scrapingTasks'>) => {
-      setSelectedId(task._id)
-      setIsEditOpen(true)
-      setError(null)
+  const handleOpenEdit = useCallback((task: Doc<'scrapingTasks'>) => {
+    setSelectedId(task._id)
+    setIsEditOpen(true)
+    setError(null)
 
-      const taskKind = task.kind === 'following' ? 'following' : 'followers'
-      setEditKind(taskKind)
-      setEditTargetUsername(String(task.targetUsername || ''))
-      setEditTaskName(String(task.name || ''))
-    },
-    []
-  )
+    const taskKind = task.kind === 'following' ? 'following' : 'followers'
+    setEditKind(taskKind)
+    setEditTargetUsername(String(task.targetUsername || ''))
+    setEditTaskName(String(task.name || ''))
+  }, [])
 
   const handleCloseEdit = useCallback(() => {
     setIsEditOpen(false)
@@ -169,10 +178,14 @@ export function ScrapingPage() {
       })
 
       const taskKind = task.kind === 'following' ? 'following' : 'followers'
-      const apiEndpoint = taskKind === 'following' ? '/api/scraping/following-chunk' : '/api/scraping/followers-chunk'
+      const apiEndpoint =
+        taskKind === 'following'
+          ? '/api/scraping/following-chunk'
+          : '/api/scraping/followers-chunk'
       const resume = Boolean(opts?.resume)
       const existingResumeState = (() => {
-        if (!task.lastOutput || typeof task.lastOutput !== 'object') return undefined
+        if (!task.lastOutput || typeof task.lastOutput !== 'object')
+          return undefined
         const r = task.lastOutput as Record<string, unknown>
         return r.resumeState
       })()
@@ -205,7 +218,9 @@ export function ScrapingPage() {
           return r.storageId
         }
 
-        const getCapacityExhaustedMessage = (res: unknown): string | undefined => {
+        const getCapacityExhaustedMessage = (
+          res: unknown,
+        ): string | undefined => {
           if (!res || typeof res !== 'object') return undefined
           const r = res as Record<string, unknown>
           if (r.capacityExhausted !== true) return undefined
@@ -226,7 +241,9 @@ export function ScrapingPage() {
                 targetUsernames: taskTargets,
                 taskId: task._id,
                 resume: resume || i > 0,
-                ...((resume || i > 0) ? { resumeState, storageId: lastStorageId } : {}),
+                ...(resume || i > 0
+                  ? { resumeState, storageId: lastStorageId }
+                  : {}),
                 chunkLimit,
                 maxPages,
               },
@@ -236,7 +253,10 @@ export function ScrapingPage() {
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e)
             const lower = msg.toLowerCase()
-            const looksLike504 = lower.includes('504') || lower.includes('gateway time-out') || lower.includes('gateway timeout')
+            const looksLike504 =
+              lower.includes('504') ||
+              lower.includes('gateway time-out') ||
+              lower.includes('gateway timeout')
             if (looksLike504 && (chunkLimit > 25 || maxPages > 1)) {
               chunkLimit = Math.max(25, Math.min(chunkLimit, 50))
               maxPages = 1
@@ -246,7 +266,9 @@ export function ScrapingPage() {
                   targetUsernames: taskTargets,
                   taskId: task._id,
                   resume: resume || i > 0,
-                  ...((resume || i > 0) ? { resumeState, storageId: lastStorageId } : {}),
+                  ...(resume || i > 0
+                    ? { resumeState, storageId: lastStorageId }
+                    : {}),
                   chunkLimit,
                   maxPages,
                 },
@@ -282,8 +304,17 @@ export function ScrapingPage() {
         const getLastScraped = (res: unknown): number | undefined => {
           if (!res || typeof res !== 'object') return undefined
           const r = res as Record<string, unknown>
-          const v = typeof r.totalStored === 'number' ? r.totalStored : typeof r.totalScraped === 'number' ? r.totalScraped : typeof r.scraped === 'number' ? r.scraped : undefined
-          return typeof v === 'number' && Number.isFinite(Number(v)) ? Number(v) : undefined
+          const v =
+            typeof r.totalStored === 'number'
+              ? r.totalStored
+              : typeof r.totalScraped === 'number'
+                ? r.totalScraped
+                : typeof r.scraped === 'number'
+                  ? r.scraped
+                  : undefined
+          return typeof v === 'number' && Number.isFinite(Number(v))
+            ? Number(v)
+            : undefined
         }
 
         const lastScraped = getLastScraped(lastOutput)
@@ -309,24 +340,24 @@ export function ScrapingPage() {
         setRunningId(null)
       }
     },
-    [runningId, setTaskStatusMutation]
+    [runningId, setTaskStatusMutation],
   )
 
-  const handleViewOutput = useCallback(
-    (task: Doc<'scrapingTasks'>) => {
-      const output = task.lastOutput ?? task.lastError
-      setOutputTitle(task.name)
-      setOutputPayload(output)
-      setIsOutputOpen(true)
-    },
-    []
-  )
+  const handleViewOutput = useCallback((task: Doc<'scrapingTasks'>) => {
+    const output = task.lastOutput ?? task.lastError
+    setOutputTitle(task.name)
+    setOutputPayload(output)
+    setIsOutputOpen(true)
+  }, [])
 
   const refreshAll = useCallback(async () => {
     await refreshEligibleProfiles()
   }, [refreshEligibleProfiles])
 
-  const selected = useMemo(() => tasksList.find((t) => t._id === selectedId) ?? null, [selectedId, tasksList])
+  const selected = useMemo(
+    () => tasksList.find((t) => t._id === selectedId) ?? null,
+    [selectedId, tasksList],
+  )
 
   const handleConfirmDelete = useCallback(async () => {
     const id = deleteId
@@ -360,28 +391,39 @@ export function ScrapingPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [canSaveEdit, editKind, editTargetUsername, editTaskName, selectedId, updateTaskMutation])
+  }, [
+    canSaveEdit,
+    editKind,
+    editTargetUsername,
+    editTaskName,
+    selectedId,
+    updateTaskMutation,
+  ])
 
   return (
-    <div className="flex flex-col h-full bg-[#050505] text-gray-200 min-h-screen relative overflow-hidden">
+    <div className="bg-shell text-ink relative flex h-full min-h-screen flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
+      <div className="mobile-effect-blur border-line-soft bg-panel-subtle relative z-10 flex flex-col items-start justify-between border-b p-6 md:flex-row md:items-center">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+          <h2 className="page-title-gradient text-3xl font-extrabold tracking-tight">
             Scraping Tasks
           </h2>
-          <p className="text-sm text-gray-500 mt-1">Manage and monitor your data extraction jobs</p>
+          <p className="text-subtle-copy mt-1 text-sm">
+            Manage and monitor your data extraction jobs
+          </p>
         </div>
-        <div className="flex items-center gap-3 mt-4 md:mt-0">
+        <div className="mt-4 flex items-center gap-3 md:mt-0">
           <Button
             variant="outline"
             size="sm"
             onClick={() => void refreshAll()}
             disabled={eligibleLoading || Boolean(runningId)}
-            className="bg-white/5 border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+            className="bg-panel-muted border-line text-copy hover:bg-panel-hover transition-all hover:text-white"
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${eligibleLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${eligibleLoading ? 'animate-spin' : ''}`}
+            />
             Refresh
           </Button>
 
@@ -389,7 +431,7 @@ export function ScrapingPage() {
             size="sm"
             onClick={handleOpenCreate}
             disabled={eligibleLoading || Boolean(runningId)}
-            className="mobile-effect-shadow bg-gradient-to-r from-red-600 to-orange-500 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all"
+            className="mobile-effect-shadow brand-button"
           >
             <Plus className="mr-2 h-4 w-4" />
             Create task
@@ -398,30 +440,32 @@ export function ScrapingPage() {
       </div>
 
       {error && (
-        <div className="mx-6 mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm backdrop-blur-md">
+        <div className="bg-status-danger-soft border-status-danger-border text-status-danger mx-6 mt-6 rounded-xl border p-4 text-sm backdrop-blur-md">
           {error}
         </div>
       )}
 
-      <div className="flex-1 overflow-auto p-6 relative z-10">
-
-
+      <div className="relative z-10 flex-1 overflow-auto p-6">
         {eligibleError && (
-          <div className="mb-6 p-4 rounded-xl border border-red-500/20 bg-red-500/10 text-red-400 text-sm backdrop-blur-md">
+          <div className="border-status-danger-border bg-status-danger-soft text-status-danger mb-6 rounded-xl border p-4 text-sm backdrop-blur-md">
             {eligibleError}
           </div>
         )}
 
-        <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden backdrop-blur-xs">
+        <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border backdrop-blur-xs">
           {tasksLoading ? (
-            <div className="p-12 text-center text-gray-500">Loading tasks...</div>
+            <div className="text-subtle-copy p-12 text-center">
+              Loading tasks...
+            </div>
           ) : tasksList.length === 0 ? (
-            <div className="p-12 text-center flex flex-col items-center justify-center">
-              <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
-                <RefreshCw className="h-6 w-6 text-gray-500" />
+            <div className="flex flex-col items-center justify-center p-12 text-center">
+              <div className="bg-panel-muted border-line mb-4 flex h-16 w-16 items-center justify-center rounded-full border">
+                <RefreshCw className="text-subtle-copy h-6 w-6" />
               </div>
-              <p className="text-gray-400 font-medium">No tasks found</p>
-              <p className="text-gray-600 text-sm mt-1">Create a new task to get started.</p>
+              <p className="text-muted-copy font-medium">No tasks found</p>
+              <p className="text-dim-copy mt-1 text-sm">
+                Create a new task to get started.
+              </p>
             </div>
           ) : (
             <TasksTable
@@ -488,7 +532,12 @@ export function ScrapingPage() {
         onSubmit={() => void handleSaveEdit()}
       />
 
-      <OutputDialog open={isOutputOpen} onOpenChange={setIsOutputOpen} title={outputTitle} output={outputPayload} />
+      <OutputDialog
+        open={isOutputOpen}
+        onOpenChange={setIsOutputOpen}
+        title={outputTitle}
+        output={outputPayload}
+      />
 
       <DeleteTaskDialog
         open={Boolean(deleteId)}

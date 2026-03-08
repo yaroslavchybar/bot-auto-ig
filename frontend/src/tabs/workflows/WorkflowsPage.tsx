@@ -1,18 +1,32 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Plus, RefreshCw, Upload } from 'lucide-react'
 import { toast } from 'sonner'
@@ -25,525 +39,568 @@ import { WorkflowDetails } from './WorkflowDetails'
 import { ScheduleDialog } from './ScheduleDialog'
 import type { Workflow } from './types'
 import type { Node, Edge } from 'reactflow'
-import { buildWorkflowExportEnvelope, validateWorkflowImport } from './workflowImportExport'
+import {
+  buildWorkflowExportEnvelope,
+  validateWorkflowImport,
+} from './workflowImportExport'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 
-const WorkflowFlowEditor = lazy(() => import('./WorkflowFlowEditor').then((module) => ({ default: module.WorkflowFlowEditor })))
+const WorkflowFlowEditor = lazy(() =>
+  import('./WorkflowFlowEditor').then((module) => ({
+    default: module.WorkflowFlowEditor,
+  })),
+)
 
 export function WorkflowsPage() {
-	const convex = useConvex()
-	const isMobile = useIsMobile()
-	const importInputRef = useRef<HTMLInputElement | null>(null)
-	const [selectedId, setSelectedId] = useState<Id<'workflows'> | null>(null)
-	const [isCreateOpen, setIsCreateOpen] = useState(false)
-	const [isEditOpen, setIsEditOpen] = useState(false)
-	const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-	const [isFlowEditorOpen, setIsFlowEditorOpen] = useState(false)
-	const [isScheduleOpen, setIsScheduleOpen] = useState(false)
-	const [deleteId, setDeleteId] = useState<Id<'workflows'> | null>(null)
-	const [saving, setSaving] = useState(false)
-	const [refreshing, setRefreshing] = useState(false)
-	const [error, setError] = useState<string | null>(null)
-	const [workflowsData, setWorkflowsData] = useState<Workflow[] | null>(null)
+  const convex = useConvex()
+  const isMobile = useIsMobile()
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+  const [selectedId, setSelectedId] = useState<Id<'workflows'> | null>(null)
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
+  const [isFlowEditorOpen, setIsFlowEditorOpen] = useState(false)
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [deleteId, setDeleteId] = useState<Id<'workflows'> | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [workflowsData, setWorkflowsData] = useState<Workflow[] | null>(null)
 
-	// Queries
-	const workflows = useQuery(api.workflows.list, {})
-	const lists = useQuery(api.lists.list, {})
-	const workflowsLoading = workflows === undefined && workflowsData === null
-	const workflowsList = useMemo(() => workflowsData ?? [], [workflowsData])
+  // Queries
+  const workflows = useQuery(api.workflows.list, {})
+  const lists = useQuery(api.lists.list, {})
+  const workflowsLoading = workflows === undefined && workflowsData === null
+  const workflowsList = useMemo(() => workflowsData ?? [], [workflowsData])
 
-	// Keep local workflows state in sync with Convex subscription updates.
-	useEffect(() => {
-		if (workflows !== undefined) {
-			setWorkflowsData(workflows)
-		}
-	}, [workflows])
+  // Keep local workflows state in sync with Convex subscription updates.
+  useEffect(() => {
+    if (workflows !== undefined) {
+      setWorkflowsData(workflows)
+    }
+  }, [workflows])
 
-	// Mutations
-	const createWorkflow = useMutation(api.workflows.create)
-	const updateWorkflow = useMutation(api.workflows.update)
-	const removeWorkflow = useMutation(api.workflows.remove)
-	const duplicateWorkflow = useMutation(api.workflows.duplicate)
-	const toggleActiveWorkflow = useMutation(api.workflows.toggleActive)
-	const updateSchedule = useMutation(api.workflows.updateSchedule)
-	const resetWorkflow = useMutation(api.workflows.reset)
+  // Mutations
+  const createWorkflow = useMutation(api.workflows.create)
+  const updateWorkflow = useMutation(api.workflows.update)
+  const removeWorkflow = useMutation(api.workflows.remove)
+  const duplicateWorkflow = useMutation(api.workflows.duplicate)
+  const toggleActiveWorkflow = useMutation(api.workflows.toggleActive)
+  const updateSchedule = useMutation(api.workflows.updateSchedule)
+  const resetWorkflow = useMutation(api.workflows.reset)
 
-	const selected = useMemo(
-		() => workflowsList.find((w) => w._id === selectedId) ?? null,
-		[workflowsList, selectedId]
-	)
+  const selected = useMemo(
+    () => workflowsList.find((w) => w._id === selectedId) ?? null,
+    [workflowsList, selectedId],
+  )
 
-	// Handlers
-	const handleSelect = useCallback((workflow: Workflow) => {
-		setSelectedId(workflow._id)
-		setError(null)
-	}, [])
+  // Handlers
+  const handleSelect = useCallback((workflow: Workflow) => {
+    setSelectedId(workflow._id)
+    setError(null)
+  }, [])
 
-	const handleCreate = useCallback(() => {
-		setIsCreateOpen(true)
-		setError(null)
-	}, [])
+  const handleCreate = useCallback(() => {
+    setIsCreateOpen(true)
+    setError(null)
+  }, [])
 
-	const handleRefresh = useCallback(async () => {
-		setRefreshing(true)
-		setError(null)
-		try {
-			const [latest] = await Promise.all([
-				convex.query(api.workflows.list, {}),
-				new Promise((r) => setTimeout(r, 400)),
-			])
-			setWorkflowsData(latest as Workflow[])
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e))
-		} finally {
-			setRefreshing(false)
-		}
-	}, [convex])
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    setError(null)
+    try {
+      const [latest] = await Promise.all([
+        convex.query(api.workflows.list, {}),
+        new Promise((r) => setTimeout(r, 400)),
+      ])
+      setWorkflowsData(latest as Workflow[])
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setRefreshing(false)
+    }
+  }, [convex])
 
-	const handleEdit = useCallback((workflow: Workflow) => {
-		setSelectedId(workflow._id)
-		setIsEditOpen(true)
-		setError(null)
-	}, [])
+  const handleEdit = useCallback((workflow: Workflow) => {
+    setSelectedId(workflow._id)
+    setIsEditOpen(true)
+    setError(null)
+  }, [])
 
-	const handleViewDetails = useCallback((workflow: Workflow) => {
-		setSelectedId(workflow._id)
-		setIsDetailsOpen(true)
-		setError(null)
-	}, [])
+  const handleViewDetails = useCallback((workflow: Workflow) => {
+    setSelectedId(workflow._id)
+    setIsDetailsOpen(true)
+    setError(null)
+  }, [])
 
-	const handleEditFlow = useCallback((workflow: Workflow) => {
-		setSelectedId(workflow._id)
-		setIsFlowEditorOpen(true)
-		setError(null)
-	}, [])
+  const handleEditFlow = useCallback((workflow: Workflow) => {
+    setSelectedId(workflow._id)
+    setIsFlowEditorOpen(true)
+    setError(null)
+  }, [])
 
-	const handleSaveCreate = useCallback(
-		async (data: { name: string; description?: string }) => {
-			setSaving(true)
-			setError(null)
-			try {
-				const created = await createWorkflow({
-					name: data.name,
-					description: data.description,
-					nodes: [],
-					edges: [],
-				})
-				if (created?._id) setSelectedId(created._id)
-				setIsCreateOpen(false)
-			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e))
-			} finally {
-				setSaving(false)
-			}
-		},
-		[createWorkflow]
-	)
+  const handleSaveCreate = useCallback(
+    async (data: { name: string; description?: string }) => {
+      setSaving(true)
+      setError(null)
+      try {
+        const created = await createWorkflow({
+          name: data.name,
+          description: data.description,
+          nodes: [],
+          edges: [],
+        })
+        if (created?._id) setSelectedId(created._id)
+        setIsCreateOpen(false)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [createWorkflow],
+  )
 
-	const handleSaveEdit = useCallback(
-		async (data: { name: string; description?: string }) => {
-			if (!selectedId) return
-			setSaving(true)
-			setError(null)
-			try {
-				await updateWorkflow({
-					id: selectedId,
-					name: data.name,
-					description: data.description,
-				})
-				setIsEditOpen(false)
-			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e))
-			} finally {
-				setSaving(false)
-			}
-		},
-		[selectedId, updateWorkflow]
-	)
+  const handleSaveEdit = useCallback(
+    async (data: { name: string; description?: string }) => {
+      if (!selectedId) return
+      setSaving(true)
+      setError(null)
+      try {
+        await updateWorkflow({
+          id: selectedId,
+          name: data.name,
+          description: data.description,
+        })
+        setIsEditOpen(false)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [selectedId, updateWorkflow],
+  )
 
-	const handleDelete = useCallback((workflow: Workflow) => {
-		setDeleteId(workflow._id)
-	}, [])
+  const handleDelete = useCallback((workflow: Workflow) => {
+    setDeleteId(workflow._id)
+  }, [])
 
-	const handleConfirmDelete = useCallback(async () => {
-		if (!deleteId) return
-		setSaving(true)
-		setError(null)
-		try {
-			await removeWorkflow({ id: deleteId })
-			if (selectedId === deleteId) setSelectedId(null)
-			setDeleteId(null)
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e))
-		} finally {
-			setSaving(false)
-		}
-	}, [deleteId, removeWorkflow, selectedId])
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deleteId) return
+    setSaving(true)
+    setError(null)
+    try {
+      await removeWorkflow({ id: deleteId })
+      if (selectedId === deleteId) setSelectedId(null)
+      setDeleteId(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setSaving(false)
+    }
+  }, [deleteId, removeWorkflow, selectedId])
 
-	const handleDuplicate = useCallback(
-		async (workflow: Workflow) => {
-			setSaving(true)
-			setError(null)
-			try {
-				const duplicated = await duplicateWorkflow({ id: workflow._id })
-				if (duplicated?._id) setSelectedId(duplicated._id)
-			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e))
-			} finally {
-				setSaving(false)
-			}
-		},
-		[duplicateWorkflow]
-	)
+  const handleDuplicate = useCallback(
+    async (workflow: Workflow) => {
+      setSaving(true)
+      setError(null)
+      try {
+        const duplicated = await duplicateWorkflow({ id: workflow._id })
+        if (duplicated?._id) setSelectedId(duplicated._id)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [duplicateWorkflow],
+  )
 
-	const handleExport = useCallback((workflow: Workflow) => {
-		try {
-			const payload = buildWorkflowExportEnvelope({
-				name: workflow.name,
-				description: workflow.description,
-				nodes: workflow.nodes,
-				edges: workflow.edges,
-			})
-			const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-			const url = URL.createObjectURL(blob)
-			const link = document.createElement('a')
-			const safeName = workflow.name.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '') || 'workflow'
-			link.href = url
-			link.download = `${safeName}.workflow.json`
-			document.body.appendChild(link)
-			link.click()
-			document.body.removeChild(link)
-			URL.revokeObjectURL(url)
-			toast.success(`Exported "${workflow.name}"`)
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e))
-		}
-	}, [])
+  const handleExport = useCallback((workflow: Workflow) => {
+    try {
+      const payload = buildWorkflowExportEnvelope({
+        name: workflow.name,
+        description: workflow.description,
+        nodes: workflow.nodes,
+        edges: workflow.edges,
+      })
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const safeName =
+        workflow.name
+          .replace(/[^a-zA-Z0-9-_]+/g, '_')
+          .replace(/^_+|_+$/g, '') || 'workflow'
+      link.href = url
+      link.download = `${safeName}.workflow.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      toast.success(`Exported "${workflow.name}"`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
 
-	const handleImportClick = useCallback(() => {
-		importInputRef.current?.click()
-	}, [])
+  const handleImportClick = useCallback(() => {
+    importInputRef.current?.click()
+  }, [])
 
-	const handleImportFile = useCallback(
-		async (event: ChangeEvent<HTMLInputElement>) => {
-			const file = event.target.files?.[0]
-			event.target.value = ''
-			if (!file) return
+  const handleImportFile = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
 
-			setSaving(true)
-			setError(null)
-			try {
-				const rawText = await file.text()
-				const imported = validateWorkflowImport({
-					fileName: file.name,
-					fileSizeBytes: file.size,
-					rawText,
-					existingWorkflowNames: workflowsList.map((workflow) => workflow.name),
-					existingListIds: (lists ?? []).map((list) => String(list._id)),
-					resolveActivityById: getActivityById,
-				})
+      setSaving(true)
+      setError(null)
+      try {
+        const rawText = await file.text()
+        const imported = validateWorkflowImport({
+          fileName: file.name,
+          fileSizeBytes: file.size,
+          rawText,
+          existingWorkflowNames: workflowsList.map((workflow) => workflow.name),
+          existingListIds: (lists ?? []).map((list) => String(list._id)),
+          resolveActivityById: getActivityById,
+        })
 
-				const created = await createWorkflow(imported.workflow)
-				if (created?._id) {
-					setSelectedId(created._id)
-				}
+        const created = await createWorkflow(imported.workflow)
+        if (created?._id) {
+          setSelectedId(created._id)
+        }
 
-				imported.warnings.forEach((warning) => toast.warning(warning))
-				toast.success(`Imported "${imported.workflow.name}"`)
-			} catch (e) {
-				const message = e instanceof Error ? e.message : String(e)
-				setError(message)
-				toast.error(message)
-			} finally {
-				setSaving(false)
-			}
-		},
-		[createWorkflow, lists, workflowsList]
-	)
+        imported.warnings.forEach((warning) => toast.warning(warning))
+        toast.success(`Imported "${imported.workflow.name}"`)
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        setError(message)
+        toast.error(message)
+      } finally {
+        setSaving(false)
+      }
+    },
+    [createWorkflow, lists, workflowsList],
+  )
 
-	const handleToggleActive = useCallback(
-		async (workflow: Workflow) => {
-			setError(null)
-			try {
-				if (workflow.isActive && workflow.status === 'running') {
-					try {
-						await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
-					} catch (e) {
-						void e
-					}
-				}
-				await toggleActiveWorkflow({ id: workflow._id })
-			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e))
-			}
-		},
-		[toggleActiveWorkflow]
-	)
+  const handleToggleActive = useCallback(
+    async (workflow: Workflow) => {
+      setError(null)
+      try {
+        if (workflow.isActive && workflow.status === 'running') {
+          try {
+            await apiFetch('/api/workflows/stop', {
+              method: 'POST',
+              body: { workflowId: workflow._id },
+            })
+          } catch (e) {
+            void e
+          }
+        }
+        await toggleActiveWorkflow({ id: workflow._id })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [toggleActiveWorkflow],
+  )
 
-	const handleStopRun = useCallback(async (workflow: Workflow) => {
-		setError(null)
-		try {
-			await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e))
-		}
-	}, [])
+  const handleStopRun = useCallback(async (workflow: Workflow) => {
+    setError(null)
+    try {
+      await apiFetch('/api/workflows/stop', {
+        method: 'POST',
+        body: { workflowId: workflow._id },
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
 
-	const handleEditSchedule = useCallback((workflow: Workflow) => {
-		setSelectedId(workflow._id)
-		setIsScheduleOpen(true)
-		setError(null)
-	}, [])
+  const handleEditSchedule = useCallback((workflow: Workflow) => {
+    setSelectedId(workflow._id)
+    setIsScheduleOpen(true)
+    setError(null)
+  }, [])
 
-	const handleSaveSchedule = useCallback(
-		async (data: {
-			scheduleType: 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron' | 'instant'
-			scheduleConfig: {
-				intervalMs?: number
-				hourUTC?: number
-				minuteUTC?: number
-				daysOfWeek?: number[]
-				dayOfMonth?: number
-				cronspec?: string
-			}
-			maxRunsPerDay?: number
-			timezone?: string
-		}) => {
-			if (!selectedId) return
-			setSaving(true)
-			setError(null)
-			try {
-				await updateSchedule({
-					id: selectedId,
-					scheduleType: data.scheduleType,
-					scheduleConfig: data.scheduleConfig,
-					maxRunsPerDay: data.maxRunsPerDay,
-					timezone: data.timezone,
-				})
-				setIsScheduleOpen(false)
-			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e))
-			} finally {
-				setSaving(false)
-			}
-		},
-		[selectedId, updateSchedule]
-	)
+  const handleSaveSchedule = useCallback(
+    async (data: {
+      scheduleType:
+        | 'interval'
+        | 'daily'
+        | 'weekly'
+        | 'monthly'
+        | 'cron'
+        | 'instant'
+      scheduleConfig: {
+        intervalMs?: number
+        hourUTC?: number
+        minuteUTC?: number
+        daysOfWeek?: number[]
+        dayOfMonth?: number
+        cronspec?: string
+      }
+      maxRunsPerDay?: number
+      timezone?: string
+    }) => {
+      if (!selectedId) return
+      setSaving(true)
+      setError(null)
+      try {
+        await updateSchedule({
+          id: selectedId,
+          scheduleType: data.scheduleType,
+          scheduleConfig: data.scheduleConfig,
+          maxRunsPerDay: data.maxRunsPerDay,
+          timezone: data.timezone,
+        })
+        setIsScheduleOpen(false)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [selectedId, updateSchedule],
+  )
 
-	const handleReset = useCallback(async () => {
-		if (!selectedId) return
-		setError(null)
-		try {
-			await resetWorkflow({ id: selectedId })
-		} catch (e) {
-			setError(e instanceof Error ? e.message : String(e))
-		}
-	}, [selectedId, resetWorkflow])
+  const handleReset = useCallback(async () => {
+    if (!selectedId) return
+    setError(null)
+    try {
+      await resetWorkflow({ id: selectedId })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [selectedId, resetWorkflow])
 
-	const handleSaveFlow = useCallback(
-		async (nodes: Node[], edges: Edge[]) => {
-			if (!selectedId) return
-			setSaving(true)
-			setError(null)
-			try {
-				const serializableNodes = nodes as unknown as Array<Record<string, unknown>>
-				const serializableEdges = edges as unknown as Array<Record<string, unknown>>
-				await updateWorkflow({
-					id: selectedId,
-					nodes: serializableNodes,
-					edges: serializableEdges,
-				})
-				setIsFlowEditorOpen(false)
-			} catch (e) {
-				setError(e instanceof Error ? e.message : String(e))
-			} finally {
-				setSaving(false)
-			}
-		},
-		[selectedId, updateWorkflow]
-	)
+  const handleSaveFlow = useCallback(
+    async (nodes: Node[], edges: Edge[]) => {
+      if (!selectedId) return
+      setSaving(true)
+      setError(null)
+      try {
+        const serializableNodes = nodes as unknown as Array<
+          Record<string, unknown>
+        >
+        const serializableEdges = edges as unknown as Array<
+          Record<string, unknown>
+        >
+        await updateWorkflow({
+          id: selectedId,
+          nodes: serializableNodes,
+          edges: serializableEdges,
+        })
+        setIsFlowEditorOpen(false)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      } finally {
+        setSaving(false)
+      }
+    },
+    [selectedId, updateWorkflow],
+  )
 
-	return (
-		<div className="flex flex-col h-full bg-[#050505] text-gray-200 relative overflow-hidden">
-			<AmbientGlow />
+  return (
+    <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
+      <AmbientGlow />
 
-			{/* Header */}
-			<div className="mobile-effect-blur p-4 md:p-6 bg-white/[0.02] border-b border-white/5 flex-none relative z-10">
-				<div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-					<div className="min-w-0">
-						<h2 className="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-							Workflows
-						</h2>
-						<p className="text-sm text-gray-500 mt-1">
-							Create and manage automation workflows
-						</p>
-					</div>
-					<div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-						<Button
-							size={isMobile ? 'default' : 'sm'}
-							onClick={handleCreate}
-							disabled={saving}
-							className="mobile-effect-shadow w-full md:w-auto bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all font-medium"
-						>
-							<Plus className="h-4 w-4" />
-							New Workflow
-						</Button>
-						<div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
-							<Button
-								variant="outline"
-								size={isMobile ? 'default' : 'sm'}
-								onClick={() => void handleRefresh()}
-								disabled={workflowsLoading || saving || refreshing}
-								className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
-							>
-								<RefreshCw className={isMobile ? `h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}` : `mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`} />
-								<span>Refresh</span>
-							</Button>
-							<Button
-								variant="outline"
-								size={isMobile ? 'default' : 'sm'}
-								onClick={handleImportClick}
-								disabled={saving}
-								className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300 transition-all font-medium"
-							>
-								<Upload className={isMobile ? 'h-4 w-4' : 'mr-2 h-4 w-4'} />
-								<span>Import JSON</span>
-							</Button>
-						</div>
-						<input
-							ref={importInputRef}
-							type="file"
-							accept=".json,application/json"
-							className="hidden"
-							onChange={(event) => void handleImportFile(event)}
-						/>
-					</div>
-				</div>
-			</div>
+      {/* Header */}
+      <div className="mobile-effect-blur bg-panel-subtle border-line-soft relative z-10 flex-none border-b p-4 md:p-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h2 className="page-title-gradient text-2xl font-bold tracking-tight md:text-3xl">
+              Workflows
+            </h2>
+            <p className="text-subtle-copy mt-1 text-sm">
+              Create and manage automation workflows
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <Button
+              size={isMobile ? 'default' : 'sm'}
+              onClick={handleCreate}
+              disabled={saving}
+              className="mobile-effect-shadow brand-button w-full font-medium md:w-auto"
+            >
+              <Plus className="h-4 w-4" />
+              New Workflow
+            </Button>
+            <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+              <Button
+                variant="outline"
+                size={isMobile ? 'default' : 'sm'}
+                onClick={() => void handleRefresh()}
+                disabled={workflowsLoading || saving || refreshing}
+                className="border-line hover:bg-panel-hover text-copy bg-transparent font-medium transition-all"
+              >
+                <RefreshCw
+                  className={
+                    isMobile
+                      ? `h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`
+                      : `mr-2 h-4 w-4 ${workflowsLoading || refreshing ? 'animate-spin' : ''}`
+                  }
+                />
+                <span>Refresh</span>
+              </Button>
+              <Button
+                variant="outline"
+                size={isMobile ? 'default' : 'sm'}
+                onClick={handleImportClick}
+                disabled={saving}
+                className="border-line hover:bg-panel-hover text-copy bg-transparent font-medium transition-all"
+              >
+                <Upload className={isMobile ? 'h-4 w-4' : 'mr-2 h-4 w-4'} />
+                <span>Import JSON</span>
+              </Button>
+            </div>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => void handleImportFile(event)}
+            />
+          </div>
+        </div>
+      </div>
 
-			{/* Error */}
-			{error && (
-				<div className="p-4 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex-none relative z-10">
-					{error}
-				</div>
-			)}
+      {/* Error */}
+      {error && (
+        <div className="bg-status-danger-soft text-status-danger border-status-danger-border relative z-10 flex-none border-b p-4 text-sm">
+          {error}
+        </div>
+      )}
 
-			{/* Main content area */}
-			<div className="flex-1 flex flex-col min-h-0 overflow-hidden relative z-10">
-				{/* Workflows list */}
-				<div className="flex-1 overflow-auto p-4 md:p-6">
-					<WorkflowsList
-						workflows={workflowsList}
-						selectedId={selectedId}
-						loading={workflowsLoading}
-						onSelect={handleSelect}
-						onToggleActive={handleToggleActive}
-						onStopRun={handleStopRun}
-						onEdit={handleEdit}
-						onEditFlow={handleEditFlow}
-						onEditSchedule={handleEditSchedule}
-						onDuplicate={handleDuplicate}
-						onExport={handleExport}
-						onDelete={handleDelete}
-						onViewDetails={handleViewDetails}
-					/>
-				</div>
+      {/* Main content area */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Workflows list */}
+        <div className="flex-1 overflow-auto p-4 md:p-6">
+          <WorkflowsList
+            workflows={workflowsList}
+            selectedId={selectedId}
+            loading={workflowsLoading}
+            onSelect={handleSelect}
+            onToggleActive={handleToggleActive}
+            onStopRun={handleStopRun}
+            onEdit={handleEdit}
+            onEditFlow={handleEditFlow}
+            onEditSchedule={handleEditSchedule}
+            onDuplicate={handleDuplicate}
+            onExport={handleExport}
+            onDelete={handleDelete}
+            onViewDetails={handleViewDetails}
+          />
+        </div>
+      </div>
 
+      {/* Create Dialog */}
+      <WorkflowDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        mode="create"
+        saving={saving}
+        onSave={handleSaveCreate}
+        onCancel={() => setIsCreateOpen(false)}
+      />
 
-			</div>
+      {/* Edit Dialog */}
+      <WorkflowDialog
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        mode="edit"
+        workflow={selected}
+        saving={saving}
+        onSave={handleSaveEdit}
+        onCancel={() => setIsEditOpen(false)}
+      />
 
-			{/* Create Dialog */}
-			<WorkflowDialog
-				open={isCreateOpen}
-				onOpenChange={setIsCreateOpen}
-				mode="create"
-				saving={saving}
-				onSave={handleSaveCreate}
-				onCancel={() => setIsCreateOpen(false)}
-			/>
+      {/* Details Sheet */}
+      <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <SheetContent className="bg-panel border-line text-ink w-full max-w-full border-l p-0 sm:w-[540px]">
+          <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
+            <SheetTitle className="text-ink">Workflow Details</SheetTitle>
+          </SheetHeader>
+          {selected ? (
+            <WorkflowDetails
+              workflow={selected}
+              onToggleActive={() => handleToggleActive(selected)}
+              onEditSchedule={() => handleEditSchedule(selected)}
+              onReset={handleReset}
+              onStopRun={() => handleStopRun(selected)}
+            />
+          ) : (
+            <div className="text-muted-foreground p-8 text-center">
+              No workflow selected
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
 
-			{/* Edit Dialog */}
-			<WorkflowDialog
-				open={isEditOpen}
-				onOpenChange={setIsEditOpen}
-				mode="edit"
-				workflow={selected}
-				saving={saving}
-				onSave={handleSaveEdit}
-				onCancel={() => setIsEditOpen(false)}
-			/>
+      {/* Delete Confirmation */}
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(open) => !open && setDeleteId(null)}
+      >
+        <AlertDialogContent className="bg-panel border-line border shadow-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-ink">
+              Delete Workflow
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-muted-copy">
+              Are you sure you want to delete this workflow? This action cannot
+              be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={saving}
+              className="border-line hover:bg-panel-hover text-copy bg-transparent"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              disabled={saving}
+              className="bg-status-danger-soft text-status-danger hover:bg-status-danger-strong border-status-danger-border border"
+            >
+              {saving ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-			{/* Details Sheet */}
-			<Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-				<SheetContent className="w-full max-w-full sm:w-[540px] p-0 bg-[#0a0a0a] border-l border-white/10 text-gray-200">
-					<SheetHeader className="p-6 pb-4 border-b border-white/5 bg-white/[0.02]">
-						<SheetTitle className="text-gray-200">Workflow Details</SheetTitle>
-					</SheetHeader>
-					{selected ? (
-						<WorkflowDetails
-							workflow={selected}
-							onToggleActive={() => handleToggleActive(selected)}
-							onEditSchedule={() => handleEditSchedule(selected)}
-							onReset={handleReset}
-							onStopRun={() => handleStopRun(selected)}
-						/>
-					) : (
-						<div className="p-8 text-center text-muted-foreground">
-							No workflow selected
-						</div>
-					)}
-				</SheetContent>
-			</Sheet>
+      {/* Flow Editor */}
+      {isFlowEditorOpen ? (
+        <Suspense
+          fallback={
+            <div className="bg-overlay text-muted-copy fixed inset-0 z-50 flex items-center justify-center text-sm">
+              Loading workflow editor...
+            </div>
+          }
+        >
+          <WorkflowFlowEditor
+            open={isFlowEditorOpen}
+            workflow={selected}
+            saving={saving}
+            onSave={handleSaveFlow}
+            onClose={() => setIsFlowEditorOpen(false)}
+          />
+        </Suspense>
+      ) : null}
 
-			{/* Delete Confirmation */}
-			<AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-				<AlertDialogContent className="bg-[#0a0a0a] border border-white/10 shadow-xl">
-					<AlertDialogHeader>
-						<AlertDialogTitle className="text-gray-200">Delete Workflow</AlertDialogTitle>
-						<AlertDialogDescription className="text-gray-400">
-							Are you sure you want to delete this workflow? This action cannot be undone.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={saving} className="bg-transparent border-white/10 hover:bg-white/10 text-gray-300">Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleConfirmDelete}
-							disabled={saving}
-							className="bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20"
-						>
-							{saving ? 'Deleting...' : 'Delete'}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-
-			{/* Flow Editor */}
-			{isFlowEditorOpen ? (
-				<Suspense
-					fallback={
-						<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 text-sm text-gray-400">
-							Loading workflow editor...
-						</div>
-					}
-				>
-					<WorkflowFlowEditor
-						open={isFlowEditorOpen}
-						workflow={selected}
-						saving={saving}
-						onSave={handleSaveFlow}
-						onClose={() => setIsFlowEditorOpen(false)}
-					/>
-				</Suspense>
-			) : null}
-
-			{/* Schedule Dialog */}
-			<ScheduleDialog
-				open={isScheduleOpen}
-				onOpenChange={setIsScheduleOpen}
-				workflow={selected}
-				saving={saving}
-				onSave={handleSaveSchedule}
-			/>
-		</div>
-	)
+      {/* Schedule Dialog */}
+      <ScheduleDialog
+        open={isScheduleOpen}
+        onOpenChange={setIsScheduleOpen}
+        workflow={selected}
+        saving={saving}
+        onSave={handleSaveSchedule}
+      />
+    </div>
+  )
 }

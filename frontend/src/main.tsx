@@ -16,11 +16,14 @@ function AppFrame() {
   return (
     <div
       className={cn(
-        'relative min-h-screen bg-[#050505] text-gray-200 font-sans selection:bg-red-500/30',
-        performanceMode && 'performance-mode'
+        'bg-shell text-ink relative min-h-screen font-sans',
+        performanceMode && 'performance-mode',
       )}
     >
-      <AmbientGlow className="w-[1000px] h-[500px]" reducedClassName="w-[640px] h-[280px]" />
+      <AmbientGlow
+        className="h-[500px] w-[1000px]"
+        reducedClassName="w-[640px] h-[280px]"
+      />
       <App />
     </div>
   )
@@ -38,4 +41,3 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
-

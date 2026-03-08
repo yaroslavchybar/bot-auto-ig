@@ -31,7 +31,11 @@ const RECONNECT_DELAY_MS = 1500
 
 const DEFAULT_VNC_URL = buildVncWebSocketUrl(6080)
 
-export function VncViewer({ url = DEFAULT_VNC_URL, className, interactive = true }: VncViewerProps) {
+export function VncViewer({
+  url = DEFAULT_VNC_URL,
+  className,
+  interactive = true,
+}: VncViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const screenRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
@@ -61,8 +65,10 @@ export function VncViewer({ url = DEFAULT_VNC_URL, className, interactive = true
 
       if (e.key.toLowerCase() === 'f') {
         if (!document.fullscreenElement) {
-          containerRef.current?.requestFullscreen().catch(err => {
-            console.error(`Error attempting to enable fullscreen: ${err.message}`)
+          containerRef.current?.requestFullscreen().catch((err) => {
+            console.error(
+              `Error attempting to enable fullscreen: ${err.message}`,
+            )
           })
         } else {
           document.exitFullscreen()
@@ -110,25 +116,32 @@ export function VncViewer({ url = DEFAULT_VNC_URL, className, interactive = true
       reconnectAttemptRef.current += 1
       setConnectionOverlay({
         tone: 'info',
-        text: reconnectAttemptRef.current > 1
-          ? `Connection lost. Retrying (${reconnectAttemptRef.current})...`
-          : 'Connection lost. Reconnecting...',
+        text:
+          reconnectAttemptRef.current > 1
+            ? `Connection lost. Retrying (${reconnectAttemptRef.current})...`
+            : 'Connection lost. Reconnecting...',
       })
       reconnectTimerRef.current = window.setTimeout(() => {
         reconnectTimerRef.current = null
-        setReconnectKey(current => current + 1)
+        setReconnectKey((current) => current + 1)
       }, RECONNECT_DELAY_MS)
     }
 
     screen.replaceChildren()
     setConnectionOverlay({
       tone: 'info',
-      text: reconnectAttemptRef.current > 0 ? 'Reconnecting to display...' : 'Connecting to display...',
+      text:
+        reconnectAttemptRef.current > 0
+          ? 'Reconnecting to display...'
+          : 'Connecting to display...',
     })
 
     const rfb = new RFB(screen, url)
     rfbRef.current = rfb
-    rfb.background = 'rgb(0, 0, 0)'
+    const computedStyle = getComputedStyle(document.documentElement)
+    rfb.background =
+      computedStyle.getPropertyValue('--overlay-strong').trim() ||
+      computedStyle.getPropertyValue('--background').trim()
     rfb.scaleViewport = true
     rfb.resizeSession = false
     rfb.focusOnClick = interactiveRef.current
@@ -211,10 +224,19 @@ export function VncViewer({ url = DEFAULT_VNC_URL, className, interactive = true
   }, [reconnectKey, url])
 
   return (
-    <div ref={containerRef} className={cn('relative w-full h-full bg-black overflow-hidden', className)}>
+    <div
+      ref={containerRef}
+      className={cn(
+        'bg-overlay-strong relative h-full w-full overflow-hidden',
+        className,
+      )}
+    >
       <div
         ref={screenRef}
-        className={cn('absolute inset-0 h-full w-full', !interactive && 'pointer-events-none')}
+        className={cn(
+          'absolute inset-0 h-full w-full',
+          !interactive && 'pointer-events-none',
+        )}
       />
 
       {connectionOverlay ? (
@@ -223,8 +245,8 @@ export function VncViewer({ url = DEFAULT_VNC_URL, className, interactive = true
             className={cn(
               'max-w-full rounded-md border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur-md',
               connectionOverlay.tone === 'error'
-                ? 'border-red-500/30 bg-red-950/70 text-red-200'
-                : 'border-white/10 bg-black/65 text-gray-200'
+                ? 'status-banner-danger'
+                : 'border-line bg-overlay text-ink',
             )}
           >
             {connectionOverlay.text}

@@ -16,10 +16,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function extractCookieList(input: unknown): unknown[] {
   if (Array.isArray(input)) return input
-  if (!isRecord(input)) throw new Error('Cookies JSON must be an array or an object with cookies')
+  if (!isRecord(input))
+    throw new Error('Cookies JSON must be an array or an object with cookies')
   if (Array.isArray(input.cookies)) return input.cookies
   if (Array.isArray(input.cookie)) return input.cookie
-  if (isRecord(input.data) && Array.isArray(input.data.cookies)) return input.data.cookies
+  if (isRecord(input.data) && Array.isArray(input.data.cookies))
+    return input.data.cookies
   throw new Error('Cookies JSON must be an array or include a cookies array')
 }
 
@@ -51,23 +53,40 @@ function normalizeCookie(cookie: unknown, index: number): CookieShape {
     normalized.path = String(cookie.path ?? '/').trim() || '/'
   }
 
-  const expiresRaw = cookie.expires ?? cookie.expirationDate ?? cookie.expire_time
+  const expiresRaw =
+    cookie.expires ?? cookie.expirationDate ?? cookie.expire_time
   const expiresText = String(expiresRaw ?? '').trim()
-  const expires = typeof expiresRaw === 'number' ? expiresRaw : expiresText ? Number(expiresText) : NaN
+  const expires =
+    typeof expiresRaw === 'number'
+      ? expiresRaw
+      : expiresText
+        ? Number(expiresText)
+        : NaN
   if (Number.isFinite(expires)) normalized.expires = expires
 
-  if (typeof cookie.httpOnly === 'boolean') normalized.httpOnly = cookie.httpOnly
+  if (typeof cookie.httpOnly === 'boolean')
+    normalized.httpOnly = cookie.httpOnly
   if (typeof cookie.secure === 'boolean') normalized.secure = cookie.secure
 
-  const sameSite = String(cookie.sameSite ?? cookie.same_site ?? '').trim().toLowerCase()
+  const sameSite = String(cookie.sameSite ?? cookie.same_site ?? '')
+    .trim()
+    .toLowerCase()
   if (sameSite === 'strict') normalized.sameSite = 'Strict'
   if (sameSite === 'lax') normalized.sameSite = 'Lax'
-  if (sameSite === 'none' || sameSite === 'no_restriction' || sameSite === 'unspecified') normalized.sameSite = 'None'
+  if (
+    sameSite === 'none' ||
+    sameSite === 'no_restriction' ||
+    sameSite === 'unspecified'
+  )
+    normalized.sameSite = 'None'
 
   return normalized
 }
 
-export function normalizeCookiesJsonForForm(raw: string): { normalized?: string; error?: string } {
+export function normalizeCookiesJsonForForm(raw: string): {
+  normalized?: string
+  error?: string
+} {
   const trimmed = raw.trim()
   if (!trimmed) return { normalized: '' }
 
@@ -80,7 +99,9 @@ export function normalizeCookiesJsonForForm(raw: string): { normalized?: string;
   }
 
   try {
-    const normalized = extractCookieList(parsed).map((cookie, index) => normalizeCookie(cookie, index))
+    const normalized = extractCookieList(parsed).map((cookie, index) =>
+      normalizeCookie(cookie, index),
+    )
     if (normalized.length === 0) {
       return { error: 'Cookies JSON must include at least one cookie' }
     }

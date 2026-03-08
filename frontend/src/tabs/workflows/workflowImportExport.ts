@@ -55,7 +55,11 @@ function toDisplayImportTimestamp(now: Date): string {
   return `${yyyy}-${mm}-${dd} ${hh}:${min}`
 }
 
-export function getImportedWorkflowName(name: string, existingNames: string[], now = new Date()): string {
+export function getImportedWorkflowName(
+  name: string,
+  existingNames: string[],
+  now = new Date(),
+): string {
   const cleaned = name.trim()
   const usedNames = new Set(existingNames.map(normalizeName))
   if (!usedNames.has(normalizeName(cleaned))) {
@@ -90,13 +94,19 @@ export function buildWorkflowExportEnvelope(workflow: {
     workflow: {
       name: workflow.name,
       description: workflow.description,
-      nodes: Array.isArray(workflow.nodes) ? (workflow.nodes as JsonRecord[]) : [],
-      edges: Array.isArray(workflow.edges) ? (workflow.edges as JsonRecord[]) : [],
+      nodes: Array.isArray(workflow.nodes)
+        ? (workflow.nodes as JsonRecord[])
+        : [],
+      edges: Array.isArray(workflow.edges)
+        ? (workflow.edges as JsonRecord[])
+        : [],
     },
   }
 }
 
-export function validateWorkflowImport(input: ValidateWorkflowImportInput): ValidateWorkflowImportResult {
+export function validateWorkflowImport(
+  input: ValidateWorkflowImportInput,
+): ValidateWorkflowImportResult {
   const {
     fileName,
     fileSizeBytes,
@@ -112,7 +122,9 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
   }
 
   if (fileSizeBytes > WORKFLOW_IMPORT_MAX_FILE_BYTES) {
-    throw new Error(`File is too large. Maximum size is ${WORKFLOW_IMPORT_MAX_FILE_BYTES} bytes (2MB)`)
+    throw new Error(
+      `File is too large. Maximum size is ${WORKFLOW_IMPORT_MAX_FILE_BYTES} bytes (2MB)`,
+    )
   }
 
   let parsed: unknown
@@ -131,7 +143,9 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
   }
 
   if (parsed.version !== WORKFLOW_EXPORT_VERSION) {
-    throw new Error(`Unsupported version. Expected "${WORKFLOW_EXPORT_VERSION}"`)
+    throw new Error(
+      `Unsupported version. Expected "${WORKFLOW_EXPORT_VERSION}"`,
+    )
   }
 
   if (typeof parsed.exportedAt !== 'string' || !parsed.exportedAt.trim()) {
@@ -143,12 +157,16 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
     throw new Error('Invalid import envelope: missing workflow object')
   }
 
-  const rawName = typeof workflowRaw.name === 'string' ? workflowRaw.name.trim() : ''
+  const rawName =
+    typeof workflowRaw.name === 'string' ? workflowRaw.name.trim() : ''
   if (!rawName) {
     throw new Error('workflow.name is required')
   }
 
-  if (workflowRaw.description !== undefined && typeof workflowRaw.description !== 'string') {
+  if (
+    workflowRaw.description !== undefined &&
+    typeof workflowRaw.description !== 'string'
+  ) {
     throw new Error('workflow.description must be a string when provided')
   }
 
@@ -174,7 +192,9 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
   const nodeIds = new Set<string>()
   const unknownActivityIds = new Set<string>()
   const missingListIds = new Set<string>()
-  const availableListIds = new Set(existingListIds.map((id) => String(id).trim()).filter(Boolean))
+  const availableListIds = new Set(
+    existingListIds.map((id) => String(id).trim()).filter(Boolean),
+  )
   let hasStartNode = false
 
   nodes.forEach((node, index) => {
@@ -198,10 +218,15 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
     }
 
     const nodeData = isRecord(node.data) ? node.data : null
-    const activityId = nodeData && typeof nodeData.activityId === 'string' ? nodeData.activityId.trim() : ''
+    const activityId =
+      nodeData && typeof nodeData.activityId === 'string'
+        ? nodeData.activityId.trim()
+        : ''
 
     if (nodeType === 'activity' && !activityId) {
-      throw new Error(`workflow.nodes[${index}] is an activity node without data.activityId`)
+      throw new Error(
+        `workflow.nodes[${index}] is an activity node without data.activityId`,
+      )
     }
 
     if (activityId) {
@@ -211,7 +236,9 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
 
       if (activityId === 'select_list') {
         const config = isRecord(nodeData?.config) ? nodeData.config : null
-        const sourceLists = Array.isArray(config?.sourceLists) ? config.sourceLists : []
+        const sourceLists = Array.isArray(config?.sourceLists)
+          ? config.sourceLists
+          : []
 
         sourceLists.forEach((listId) => {
           if (typeof listId !== 'string') return
@@ -226,7 +253,9 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
   })
 
   if (!hasStartNode) {
-    throw new Error('workflow must include at least one start node (type "start" or id "start_node")')
+    throw new Error(
+      'workflow must include at least one start node (type "start" or id "start_node")',
+    )
   }
 
   const missingEdgeEndpoints = new Set<string>()
@@ -239,7 +268,9 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
     const target = typeof edge.target === 'string' ? edge.target.trim() : ''
 
     if (!source || !target) {
-      throw new Error(`workflow.edges[${index}] must include non-empty source and target`)
+      throw new Error(
+        `workflow.edges[${index}] must include non-empty source and target`,
+      )
     }
 
     if (!nodeIds.has(source)) missingEdgeEndpoints.add(source)
@@ -247,28 +278,43 @@ export function validateWorkflowImport(input: ValidateWorkflowImportInput): Vali
   })
 
   if (missingEdgeEndpoints.size > 0) {
-    throw new Error(`Edge endpoints reference missing node IDs: ${Array.from(missingEdgeEndpoints).sort().join(', ')}`)
+    throw new Error(
+      `Edge endpoints reference missing node IDs: ${Array.from(missingEdgeEndpoints).sort().join(', ')}`,
+    )
   }
 
   if (unknownActivityIds.size > 0) {
-    throw new Error(`Unknown activity IDs: ${Array.from(unknownActivityIds).sort().join(', ')}`)
+    throw new Error(
+      `Unknown activity IDs: ${Array.from(unknownActivityIds).sort().join(', ')}`,
+    )
   }
 
-  const workflowName = getImportedWorkflowName(rawName, existingWorkflowNames, now)
+  const workflowName = getImportedWorkflowName(
+    rawName,
+    existingWorkflowNames,
+    now,
+  )
   const warnings: string[] = []
 
   if (workflowName !== rawName) {
-    warnings.push(`Workflow name already exists. Imported as "${workflowName}".`)
+    warnings.push(
+      `Workflow name already exists. Imported as "${workflowName}".`,
+    )
   }
 
   if (missingListIds.size > 0) {
-    warnings.push(`Select List node references missing list IDs: ${Array.from(missingListIds).sort().join(', ')}`)
+    warnings.push(
+      `Select List node references missing list IDs: ${Array.from(missingListIds).sort().join(', ')}`,
+    )
   }
 
   return {
     workflow: {
       name: workflowName,
-      description: typeof workflowRaw.description === 'string' ? workflowRaw.description : undefined,
+      description:
+        typeof workflowRaw.description === 'string'
+          ? workflowRaw.description
+          : undefined,
       nodes: nodes as JsonRecord[],
       edges: edges as JsonRecord[],
     },

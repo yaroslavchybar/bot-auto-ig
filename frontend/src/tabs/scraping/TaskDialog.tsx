@@ -1,8 +1,19 @@
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 
 type EligibleProfile = { id: string; name: string }
@@ -48,79 +59,113 @@ export function TaskDialog({
 }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-[#0a0a0a] border-white/10 text-gray-200">
+      <DialogContent className="bg-panel border-line text-ink max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+          <DialogTitle className="page-title-gradient text-xl font-bold">
             {title}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="grid gap-2">
-            <Label htmlFor={`${idPrefix}_task_name`} className="text-gray-400">Task name</Label>
+            <Label
+              htmlFor={`${idPrefix}_task_name`}
+              className="text-muted-copy"
+            >
+              Task name
+            </Label>
             <Input
               id={`${idPrefix}_task_name`}
               placeholder="Followers scrape"
               value={taskName}
               onChange={(e) => onTaskNameChange(e.target.value)}
-              className="bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500"
+              className="brand-focus bg-field border-line text-white"
             />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor={`${idPrefix}_kind`} className="text-gray-400">Scraping type</Label>
-            <Select value={kind} onValueChange={(v) => onKindChange(v as 'followers' | 'following')}>
-              <SelectTrigger id={`${idPrefix}_kind`} className="bg-black/50 border-white/10 text-white focus:ring-red-500/50">
+            <Label htmlFor={`${idPrefix}_kind`} className="text-muted-copy">
+              Scraping type
+            </Label>
+            <Select
+              value={kind}
+              onValueChange={(v) =>
+                onKindChange(v as 'followers' | 'following')
+              }
+            >
+              <SelectTrigger
+                id={`${idPrefix}_kind`}
+                className="brand-focus bg-field border-line text-white"
+              >
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#0f0f0f] border-white/10 text-gray-200">
-                <SelectItem value="followers" className="focus:bg-white/10 focus:text-white">Followers</SelectItem>
-                <SelectItem value="following" className="focus:bg-white/10 focus:text-white">Following</SelectItem>
+              <SelectContent className="panel-dropdown">
+                <SelectItem
+                  value="followers"
+                  className="focus:bg-panel-hover focus:text-white"
+                >
+                  Followers
+                </SelectItem>
+                <SelectItem
+                  value="following"
+                  className="focus:bg-panel-hover focus:text-white"
+                >
+                  Following
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-gray-400">Assignment</Label>
-              <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-400">
+              <Label className="text-muted-copy">Assignment</Label>
+              <div className="border-line bg-panel-muted text-muted-copy rounded-md border px-3 py-2 text-sm">
                 Tasks are distributed automatically across eligible profiles.
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-gray-400">Eligibility</Label>
-              <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm text-gray-400">
-                {eligibleLoading ? 'Loading...' : `${eligibleProfiles.length} eligible profile(s)`}
+              <Label className="text-muted-copy">Eligibility</Label>
+              <div className="border-line bg-panel-muted text-muted-copy rounded-md border px-3 py-2 text-sm">
+                {eligibleLoading
+                  ? 'Loading...'
+                  : `${eligibleProfiles.length} eligible profile(s)`}
               </div>
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor={`${idPrefix}_target_usernames`} className="text-gray-400">Target usernames</Label>
+              <Label
+                htmlFor={`${idPrefix}_target_usernames`}
+                className="text-muted-copy"
+              >
+                Target usernames
+              </Label>
               <Textarea
                 id={`${idPrefix}_target_usernames`}
                 placeholder={'instagram\nnatgeo\nnasa'}
                 value={targetUsername}
                 onChange={(e) => onTargetUsernameChange(e.target.value)}
-                className="min-h-[140px] bg-black/50 border-white/10 text-white focus-visible:ring-red-500/50 focus-visible:border-red-500 font-mono text-sm"
+                className="brand-focus bg-field border-line min-h-[140px] font-mono text-sm text-white"
               />
-              <div className="text-xs text-gray-500">One username per line. Task runs each one.</div>
+              <div className="text-subtle-copy text-xs">
+                One username per line. Task runs each one.
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 mt-6">
+          <div className="mt-6 flex items-center gap-4">
             <Button
               variant="outline"
               onClick={onCancel}
               disabled={disabled}
-              className="flex-1 bg-transparent border-white/10 text-gray-300 hover:bg-white/5 hover:text-white"
+              className="border-line text-copy hover:bg-panel-muted flex-1 bg-transparent hover:text-white"
             >
               Cancel
             </Button>
             <Button
               onClick={onSubmit}
               disabled={submitDisabled || disabled}
-              className="flex-1 bg-gradient-to-r from-red-600 to-orange-500 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] disabled:opacity-50 disabled:shadow-none"
+              className="brand-button flex-1 disabled:shadow-none"
             >
               {submitLabel}
             </Button>

@@ -1,7 +1,15 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
-const SignInPage = lazy(() => import('./pages/SignInPage').then((module) => ({ default: module.SignInPage })))
-const SignUpPage = lazy(() => import('./pages/SignUpPage').then((module) => ({ default: module.SignUpPage })))
+const SignInPage = lazy(() =>
+  import('./pages/SignInPage').then((module) => ({
+    default: module.SignInPage,
+  })),
+)
+const SignUpPage = lazy(() =>
+  import('./pages/SignUpPage').then((module) => ({
+    default: module.SignUpPage,
+  })),
+)
 const ProtectedApp = lazy(() => import('./ProtectedApp'))
 
 function App() {
@@ -9,7 +17,7 @@ function App() {
     <BrowserRouter>
       <Suspense
         fallback={
-          <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">
+          <div className="text-subtle-copy flex min-h-screen items-center justify-center text-sm">
             Loading...
           </div>
         }

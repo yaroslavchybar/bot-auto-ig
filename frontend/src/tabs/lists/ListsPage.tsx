@@ -3,15 +3,32 @@ import { DeleteConfirmation } from './DeleteConfirmation'
 import { ListsForm } from './ListsForm'
 import { ListsList } from './ListsList'
 import type { List } from './types'
-import { createList, updateList, deleteList, bulkAddToList, bulkRemoveFromList } from './api'
+import {
+  createList,
+  updateList,
+  deleteList,
+  bulkAddToList,
+  bulkRemoveFromList,
+} from './api'
 import { useLists } from '@/hooks/useLists'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 
 export function ListsPage() {
-  const { lists, loading: listsLoading, error: listsError, refresh, backgroundRefresh } = useLists()
+  const {
+    lists,
+    loading: listsLoading,
+    error: listsError,
+    refresh,
+    backgroundRefresh,
+  } = useLists()
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const loading = listsLoading
@@ -21,14 +38,21 @@ export function ListsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const selected = useMemo(() => lists.find((l) => l.id === selectedId) ?? null, [lists, selectedId])
+  const selected = useMemo(
+    () => lists.find((l) => l.id === selectedId) ?? null,
+    [lists, selectedId],
+  )
   const surfacedError = error ?? listsError
 
   // Ensure we have a selection if possible
   useEffect(() => {
     if (!selectedId && lists.length > 0) {
       setSelectedId(lists[0].id)
-    } else if (selectedId && !lists.find(l => l.id === selectedId) && lists.length > 0) {
+    } else if (
+      selectedId &&
+      !lists.find((l) => l.id === selectedId) &&
+      lists.length > 0
+    ) {
       setSelectedId(lists[0].id)
     }
   }, [lists, selectedId])
@@ -76,7 +100,11 @@ export function ListsPage() {
     }
   }
 
-  const handleSave = async (name: string, addedIds: string[], removedIds: string[]) => {
+  const handleSave = async (
+    name: string,
+    addedIds: string[],
+    removedIds: string[],
+  ) => {
     setSaving(true)
     setError(null)
     try {
@@ -120,14 +148,18 @@ export function ListsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[#050505] text-gray-200 animate-in fade-in duration-300 relative">
+    <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
       <AmbientGlow />
 
       {/* Header */}
-      <div className="mobile-effect-blur mobile-effect-sticky flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-xs sticky top-0 z-10">
+      <div className="mobile-effect-blur mobile-effect-sticky bg-panel-subtle border-line-soft sticky top-0 z-10 flex items-center justify-between border-b px-6 py-4 backdrop-blur-xs">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Lists Manager</h2>
-          <p className="text-sm text-gray-400">Manage profile collections and mapping state.</p>
+          <h2 className="page-title-gradient text-xl font-semibold tracking-tight">
+            Lists Manager
+          </h2>
+          <p className="text-muted-copy text-sm">
+            Manage profile collections and mapping state.
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -135,9 +167,11 @@ export function ListsPage() {
             size="sm"
             onClick={() => void refresh()}
             disabled={loading || saving}
-            className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
           >
-            <RefreshCw className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
+            />
             Refresh
           </Button>
 
@@ -145,7 +179,7 @@ export function ListsPage() {
             size="sm"
             onClick={handleCreate}
             disabled={loading || saving}
-            className="mobile-effect-shadow h-8 border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
+            className="mobile-effect-shadow brand-button h-8 font-medium"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create List
@@ -154,15 +188,15 @@ export function ListsPage() {
       </div>
 
       {surfacedError && !showDeleteDialog && !isCreateOpen && !isEditOpen && (
-        <div className="px-6 py-3 bg-red-500/10 text-red-400 text-sm border-b border-red-500/20 flex items-center shadow-[0_0_10px_rgba(239,68,68,0.2)] relative z-10">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-2" />
+        <div className="status-banner-danger relative z-10 flex items-center border-b px-6 py-3 text-sm">
+          <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />
           {surfacedError}
         </div>
       )}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6 relative z-10">
-        <div className="max-w-[2000px] mx-auto">
+      <div className="relative z-10 flex-1 overflow-auto p-6">
+        <div className="mx-auto max-w-[2000px]">
           <ListsList
             lists={lists}
             selectedId={selectedId}
@@ -175,9 +209,11 @@ export function ListsPage() {
       </div>
 
       <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
-        <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
+        <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[800px]">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Create List</DialogTitle>
+            <DialogTitle className="page-title-gradient">
+              Create List
+            </DialogTitle>
           </DialogHeader>
           <ListsForm
             mode="create"
@@ -192,7 +228,7 @@ export function ListsPage() {
       <Dialog open={isEditOpen} onOpenChange={handleEditOpenChange}>
         <DialogContent
           hideClose
-          className="sm:max-w-[960px] max-h-[88vh] gap-0 overflow-hidden p-0 bg-[#0a0a0a] border-white/10 text-gray-200"
+          className="bg-panel border-line text-ink max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-[960px]"
         >
           {selected ? (
             <ListsForm
@@ -205,7 +241,9 @@ export function ListsPage() {
               onCancel={handleCloseDialogs}
             />
           ) : (
-            <div className="p-4 text-sm text-gray-500">Select a list first</div>
+            <div className="text-subtle-copy p-4 text-sm">
+              Select a list first
+            </div>
           )}
         </DialogContent>
       </Dialog>
