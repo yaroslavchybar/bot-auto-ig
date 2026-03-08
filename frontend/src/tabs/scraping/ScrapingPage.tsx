@@ -412,7 +412,7 @@ export function ScrapingPage() {
           </div>
         )}
 
-        <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden backdrop-blur-sm">
+        <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl overflow-hidden backdrop-blur-xs">
           {tasksLoading ? (
             <div className="p-12 text-center text-gray-500">Loading tasks...</div>
           ) : tasksList.length === 0 ? (

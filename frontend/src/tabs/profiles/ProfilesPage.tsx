@@ -274,7 +274,7 @@ export function ProfilesPage() {
     <div className="flex flex-col h-full bg-[#050505] text-gray-200 animate-in fade-in duration-300 relative">
       <AmbientGlow />
       {/* Header */}
-      <div className="mobile-effect-blur mobile-effect-sticky border-b border-white/5 bg-white/[0.02] backdrop-blur-sm sticky top-0 z-10">
+      <div className="mobile-effect-blur mobile-effect-sticky border-b border-white/5 bg-white/[0.02] backdrop-blur-xs sticky top-0 z-10">
         <div className="flex flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:gap-6">
           <div className="relative w-full xl:max-w-xl xl:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
@@ -342,7 +342,7 @@ export function ProfilesPage() {
         if (!open) setError(null)
       }}>
         <DialogContent className="sm:max-w-[560px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
-          <DialogHeader className="flex-shrink-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Create Profile</DialogTitle>
           </DialogHeader>
           <ProfileForm
@@ -360,7 +360,7 @@ export function ProfilesPage() {
         if (!open) setEditProfile(null)
       }}>
         <DialogContent className="sm:max-w-[560px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
-          <DialogHeader className="flex-shrink-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Edit Profile</DialogTitle>
           </DialogHeader>
           {editProfile && (

@@ -11,7 +11,7 @@ interface State {
     error?: Error
 }
 
-const actionButtonClassName = 'inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50'
+const actionButtonClassName = 'inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50'
 
 export class ErrorBoundary extends Component<Props, State> {
     state: State = { hasError: false }
@@ -56,7 +56,7 @@ export class ErrorBoundary extends Component<Props, State> {
                             type="button"
                             className={cn(
                                 actionButtonClassName,
-                                'border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground',
+                                'border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground',
                             )}
                             onClick={this.handleReset}
                         >
@@ -66,7 +66,7 @@ export class ErrorBoundary extends Component<Props, State> {
                             type="button"
                             className={cn(
                                 actionButtonClassName,
-                                'bg-primary text-primary-foreground shadow hover:bg-primary/90',
+                                'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90',
                             )}
                             onClick={this.handleReload}
                         >

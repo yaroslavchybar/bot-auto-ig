@@ -182,7 +182,7 @@ export function WorkflowsList({
 					return (
 						<div
 							key={workflow._id}
-							className={`rounded-2xl border bg-[#141414] p-4 shadow-sm transition-colors ${
+							className={`rounded-2xl border bg-[#141414] p-4 shadow-xs transition-colors ${
 								selectedId === workflow._id
 									? 'border-orange-500/60 bg-white/[0.04]'
 									: 'border-white/10 hover:border-white/20'
@@ -295,7 +295,7 @@ export function WorkflowsList({
 	}
 
 	return (
-		<div className="bg-white/[0.02] rounded-2xl backdrop-blur-sm border border-white/[0.05] overflow-hidden">
+		<div className="bg-white/[0.02] rounded-2xl backdrop-blur-xs border border-white/[0.05] overflow-hidden">
 			<Table>
 				<TableHeader>
 					<TableRow className="border-b border-white/[0.05] hover:bg-transparent">

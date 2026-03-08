@@ -114,7 +114,7 @@ export function TasksTable({
           return (
             <div
               key={String(task._id)}
-              className={`rounded-2xl border bg-[#141414] p-4 shadow-sm transition-colors ${selectedId === task._id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'}`}
+              className={`rounded-2xl border bg-[#141414] p-4 shadow-xs transition-colors ${selectedId === task._id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'}`}
               onClick={() => onSelect(task._id)}
             >
               <div className="flex items-start justify-between gap-3">

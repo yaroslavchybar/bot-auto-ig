@@ -281,7 +281,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
     <div className={`flex min-h-0 flex-col bg-transparent font-sans text-xs overflow-hidden select-none ${className || 'h-full'}`}>
 
       {/* Top Application Ribbon */}
-      <div className="flex flex-col bg-transparent border-b border-white/[0.05] shrink-0 shadow-sm relative z-10">
+      <div className="flex flex-col bg-transparent border-b border-white/[0.05] shrink-0 shadow-xs relative z-10">
 
         {/* Row 1: Main Controls & Connection State */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 py-1.5 border-b border-white/[0.05] gap-2 sm:gap-0">
@@ -414,7 +414,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       )}
 
       {/* Main Data Grid */}
-      <div className="flex min-h-0 flex-1 overflow-hidden flex-col bg-transparent mx-1 mb-1 rounded-[3px] border border-white/[0.05] shadow-sm relative">
+      <div className="flex min-h-0 flex-1 overflow-hidden flex-col bg-transparent mx-1 mb-1 rounded-[3px] border border-white/[0.05] shadow-xs relative">
 
         {/* Table Header Row */}
         <div className="flex items-center bg-transparent border-b border-white/[0.05] text-[10px] uppercase font-semibold text-gray-400 shrink-0 select-none hidden md:flex">

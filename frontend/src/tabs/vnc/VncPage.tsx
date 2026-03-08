@@ -184,7 +184,7 @@ export function VncPage() {
       return (
         <div className="flex flex-col h-full bg-[#050505] overflow-auto font-sans relative">
           <AmbientGlow className="w-[700px] h-[360px]" reducedClassName="w-[480px] h-[220px]" />
-          <div className="mobile-effect-blur flex items-center justify-between px-3 py-2 bg-white/[0.02] border-b border-white/5 shrink-0 select-none shadow-sm z-10">
+          <div className="mobile-effect-blur flex items-center justify-between px-3 py-2 bg-white/[0.02] border-b border-white/5 shrink-0 select-none shadow-xs z-10">
             <div className="flex items-center gap-3 min-w-0">
               <Button
                 variant="outline"
@@ -289,7 +289,7 @@ export function VncPage() {
     return (
       <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
         <AmbientGlow className="w-[800px] h-[400px]" reducedClassName="w-[560px] h-[240px]" />
-        <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
+        <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-xs shrink-0 select-none shadow-xs z-10">
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -340,7 +340,7 @@ export function VncPage() {
             })()}
           >
             <Panel id="left-vnc" defaultSize={60} minSize={30}>
-              <div className="flex flex-col h-full bg-[#050505] border border-white/[0.05] rounded-[3px] shadow-sm relative overflow-hidden group">
+              <div className="flex flex-col h-full bg-[#050505] border border-white/[0.05] rounded-[3px] shadow-xs relative overflow-hidden group">
                 <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-black/80 to-transparent z-10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center px-2 pointer-events-none">
                   <div className="text-[10px] text-gray-400 font-mono tracking-widest uppercase">
                     Display Stream :{focusedSession.displayNum}
@@ -357,7 +357,7 @@ export function VncPage() {
 
                 {!isInteractive && (
                   <div
-                    className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-black/50 backdrop-blur-sm pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'}`}
+                    className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-black/50 backdrop-blur-xs pointer-events-auto' : 'bg-black/0 group-hover:bg-black/25 pointer-events-none'}`}
                   >
                     <div className={`${isConfirming ? 'w-full max-w-[360px] mx-4' : ''}`}>
                       <div
@@ -394,7 +394,7 @@ export function VncPage() {
                             <Button
                               variant="outline"
                               onClick={() => setControlState('confirm')}
-                              className="bg-black/50 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none backdrop-blur-sm"
+                              className="bg-black/50 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none backdrop-blur-xs"
                             >
                               Take Control
                             </Button>
@@ -419,12 +419,12 @@ export function VncPage() {
               </div>
             </Panel>
 
-            <Separator className="w-2 relative mx-0.5 flex items-center justify-center transition-colors hover:bg-white/5 rounded group focus:outline-none focus:ring-0 active:outline-none">
+            <Separator className="w-2 relative mx-0.5 flex items-center justify-center transition-colors hover:bg-white/5 rounded-sm group focus:outline-hidden focus:ring-0 active:outline-hidden">
               <div className="w-1 h-8 bg-white/10 rounded-full group-hover:bg-white/30 transition-colors" />
             </Separator>
 
             <Panel id="right-logs" defaultSize={40} minSize={20}>
-              <div className="flex flex-col h-full rounded-[3px] overflow-hidden shadow-sm">
+              <div className="flex flex-col h-full rounded-[3px] overflow-hidden shadow-xs">
                 <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/40" />}>
                   <LogsViewer
                     className="h-full border-0"
@@ -443,7 +443,7 @@ export function VncPage() {
   return (
     <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
       <AmbientGlow className="w-[800px] h-[400px] bg-red-600/5" reducedClassName="w-[560px] h-[240px]" />
-      <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
+      <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-xs shrink-0 select-none shadow-xs z-10">
         <div className="flex items-center gap-3">
           <div className="flex items-baseline gap-2">
             <h2 className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
@@ -486,7 +486,7 @@ export function VncPage() {
         ) : null}
 
         {sessions.length === 0 ? (
-          <div className="h-full min-h-[260px] border border-white/10 rounded-[4px] bg-white/[0.02] flex flex-col items-center justify-center gap-2 text-gray-500 backdrop-blur-sm">
+          <div className="h-full min-h-[260px] border border-white/10 rounded-[4px] bg-white/[0.02] flex flex-col items-center justify-center gap-2 text-gray-500 backdrop-blur-xs">
             <LayoutGrid className="h-6 w-6" />
             <p className="text-xs font-medium">No active sessions</p>
             <p className="text-[11px]">Start a workflow to see browser displays.</p>

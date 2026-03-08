@@ -142,7 +142,7 @@ export function ListsForm({ mode, initialData, saving, error: externalError, onS
           </div>
         </div>
 
-        <div className="flex-shrink-0 pt-4 border-t border-white/10 mt-4">
+        <div className="shrink-0 pt-4 border-t border-white/10 mt-4">
           {error && (
             <div className="text-sm text-red-500 font-medium bg-red-500/10 p-3 rounded-md mb-4 border border-red-500/20">{error}</div>
           )}

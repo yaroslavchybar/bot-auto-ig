@@ -107,7 +107,7 @@ function ActivityNodeComponent({ data, selected }: NodeProps<ActivityNodeData>) 
 										type="source"
 										position={Position.Right}
 										id={output}
-										className="!bg-[#94a3b8] !w-2.5 !h-2.5 !border-0 !rounded-full !absolute !right-[-5px] !top-1/2 !-translate-y-1/2 !transform-none"
+										className="!bg-[#94a3b8] !w-2.5 !h-2.5 !border-0 !rounded-full !absolute !right-[-5px] !top-1/2 !translate-x-0 !-translate-y-1/2"
 									/>
 								</div>
 							))}

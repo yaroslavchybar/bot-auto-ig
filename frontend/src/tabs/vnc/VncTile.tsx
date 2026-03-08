@@ -25,7 +25,7 @@ export function VncTile({ session, onSelect }: VncTileProps) {
     <button
       type="button"
       onClick={onSelect}
-      className="group text-left flex flex-col min-h-[220px] bg-white/[0.02] border border-white/5 rounded-[4px] overflow-hidden shadow-sm hover:bg-white/[0.04] hover:border-white/10 transition-colors"
+      className="group text-left flex flex-col min-h-[220px] bg-white/[0.02] border border-white/5 rounded-[4px] overflow-hidden shadow-xs hover:bg-white/[0.04] hover:border-white/10 transition-colors"
     >
       <div className="h-8 px-2.5 flex items-center justify-between bg-transparent border-b border-white/[0.05]">
         <div className="flex items-center gap-2 min-w-0">

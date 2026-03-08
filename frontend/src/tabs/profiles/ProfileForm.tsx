@@ -198,8 +198,8 @@ export function ProfileForm({
             </div>
 
             {connection === 'proxy' && (
-              <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                <div className="flex rounded-md shadow-sm">
+              <div>
+                <div className="flex rounded-md shadow-xs">
                   <div className="relative">
                     <Select
                       value={String(draft.proxy_type ?? 'http')}
@@ -273,7 +273,7 @@ export function ProfileForm({
               </div>
 
               {draft.fingerprint_seed && (
-                <div className="flex items-center gap-2 text-xs bg-black/30 p-2 rounded border border-white/5">
+                <div className="flex items-center gap-2 text-xs bg-black/30 p-2 rounded-sm border border-white/5">
                   <Shield className="h-3.5 w-3.5 text-gray-500" />
                   <span className="font-mono text-gray-400 truncate flex-1">{draft.fingerprint_seed}</span>
                 </div>
@@ -316,7 +316,7 @@ export function ProfileForm({
                 </p>
               </div>
               {typeof draft.daily_scraping_used === 'number' && draft.daily_scraping_used > 0 && (
-                <div className="text-xs bg-black/30 p-2 rounded border border-white/5">
+                <div className="text-xs bg-black/30 p-2 rounded-sm border border-white/5">
                   <span className="text-gray-500">Used today: </span>
                   <span className="font-semibold text-gray-200">{draft.daily_scraping_used}</span>
                   {typeof draft.daily_scraping_limit === 'number' && (
@@ -330,7 +330,7 @@ export function ProfileForm({
       </ScrollArea>
 
       {/* Fixed footer with error and buttons */}
-      <div className="flex-shrink-0 pt-4 border-t border-white/10 mt-4">
+      <div className="shrink-0 pt-4 border-t border-white/10 mt-4">
         {localError && (
           <div className="text-sm text-red-500 font-medium bg-red-500/10 p-3 rounded-md mb-4 border border-red-500/20">{localError}</div>
         )}

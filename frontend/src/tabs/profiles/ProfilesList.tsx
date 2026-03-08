@@ -178,7 +178,7 @@ export function ProfilesList({
             <div
               key={profile.id}
               className={cn(
-                'rounded-2xl border bg-[#141414] p-4 shadow-sm transition-colors',
+                'rounded-2xl border bg-[#141414] p-4 shadow-xs transition-colors',
                 selectedId === profile.id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'
               )}
               onClick={() => onSelect(profile)}
@@ -271,7 +271,7 @@ export function ProfilesList({
   }
 
   return (
-    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-sm shadow-sm overflow-hidden">
+    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-xs shadow-xs overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-transparent hover:bg-transparent border-b border-white/[0.05]">
@@ -320,12 +320,12 @@ export function ProfilesList({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
-                  <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded border border-white/10 text-gray-300">
+                  <div className="flex items-center gap-1 bg-white/5 px-1.5 py-0.5 rounded-sm border border-white/10 text-gray-300">
                     <Cpu className="h-3 w-3" />
                     {profile.fingerprint_os === 'mac' ? 'macOS' : 'Win'}
                   </div>
                   {profile.login && (
-                    <div className="flex items-center gap-1 bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">
+                    <div className="flex items-center gap-1 bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded-sm border border-blue-500/20">
                       <LogIn className="h-3 w-3" />
                       <span className="hidden sm:inline">Auto-Login</span>
                     </div>

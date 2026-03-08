@@ -124,7 +124,7 @@ export function ListsPage() {
       <AmbientGlow />
 
       {/* Header */}
-      <div className="mobile-effect-blur mobile-effect-sticky flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-sm sticky top-0 z-10">
+      <div className="mobile-effect-blur mobile-effect-sticky flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-xs sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Lists Manager</h2>
           <p className="text-sm text-gray-400">Manage profile collections and mapping state.</p>
@@ -176,7 +176,7 @@ export function ListsPage() {
 
       <Dialog open={isCreateOpen} onOpenChange={handleCreateOpenChange}>
         <DialogContent className="sm:max-w-[800px] max-h-[90vh] flex flex-col bg-[#0a0a0a] border-white/10 text-gray-200">
-          <DialogHeader className="flex-shrink-0">
+          <DialogHeader className="shrink-0">
             <DialogTitle className="bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Create List</DialogTitle>
           </DialogHeader>
           <ListsForm

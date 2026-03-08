@@ -52,7 +52,7 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
           <div
             key={list.id}
             className={cn(
-              'rounded-2xl border bg-[#141414] p-4 shadow-sm transition-colors',
+              'rounded-2xl border bg-[#141414] p-4 shadow-xs transition-colors',
               selectedId === list.id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'
             )}
             onClick={() => onSelect(list)}
@@ -104,7 +104,7 @@ export function ListsList({ lists, selectedId, loading, onSelect, onEdit, onDele
   }
 
   return (
-    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-sm shadow-sm overflow-hidden">
+    <div className="bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-xs shadow-xs overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow className="bg-transparent hover:bg-transparent border-b border-white/[0.05]">

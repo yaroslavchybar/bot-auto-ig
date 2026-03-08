@@ -40,6 +40,11 @@ Default landing tab:
 - Convex client consumes `VITE_CONVEX_URL`.
 - Scraping tab may read storage URLs via Convex HTTP domain conversion logic.
 
+### Styling
+- Tailwind CSS is configured in CSS-first mode from `frontend/src/index.css`.
+- Frontend builds use the official Tailwind Vite plugin (`@tailwindcss/vite`) with Tailwind CSS 4.2.
+- Semantic theme utilities (`bg-background`, `text-foreground`, `bg-sidebar`, etc.) are mapped from the app's runtime CSS variables and keep class-based dark mode via `.dark`.
+
 ## Workflow JSON Import/Export
 
 Workflows tab supports:
@@ -89,6 +94,7 @@ npm --prefix frontend run preview
 ## Verified Against
 
 - `frontend/src/App.tsx`
+- `frontend/src/index.css`
 - `frontend/src/main.tsx`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/hooks/useWebSocket.ts`

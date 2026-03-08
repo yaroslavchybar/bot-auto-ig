@@ -301,7 +301,7 @@ function WorkflowFlowEditorInner({
 	return (
 		<Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
 			<DialogContent className="max-w-none w-screen h-screen p-0 flex flex-col gap-0 rounded-none border-white/10 bg-[#050505] text-gray-200 font-sans text-xs overflow-hidden">
-				<DialogHeader className="p-0 border-b border-white/10 bg-[#0a0a0a] flex-none shadow-sm">
+				<DialogHeader className="p-0 border-b border-white/10 bg-[#0a0a0a] flex-none shadow-xs">
 					<div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 py-3 border-b border-white/5 gap-2 md:gap-0">
 						<div className="flex items-center gap-2 min-w-0">
 							<DialogTitle className="text-sm font-bold uppercase tracking-wider text-gray-200 shrink-0">
@@ -401,7 +401,7 @@ function WorkflowFlowEditorInner({
 					{/* Flow Canvas */}
 					<div className="flex-1 min-h-0 relative">
 						<div className="absolute inset-0 bg-[#050505] overflow-hidden">
-							<div className="absolute top-2 left-2 z-10 px-3 py-1.5 rounded-md border border-white/5 bg-white/[0.02] text-[10px] uppercase font-semibold tracking-wider text-gray-500 flex items-center shadow-md backdrop-blur-sm pointer-events-none">
+							<div className="absolute top-2 left-2 z-10 px-3 py-1.5 rounded-md border border-white/5 bg-white/[0.02] text-[10px] uppercase font-semibold tracking-wider text-gray-500 flex items-center shadow-md backdrop-blur-xs pointer-events-none">
 								Flow Canvas
 							</div>
 							<div

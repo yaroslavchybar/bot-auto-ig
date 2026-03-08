@@ -146,7 +146,7 @@ export function LoginDialog({ open, profile, logs, onClose, onSuccess }: LoginDi
                         <div className="grid gap-2">
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="login-2fa" className="text-xs text-gray-500">2FA Secret (TOTP)</Label>
-                                <span className="text-[10px] text-gray-500 bg-white/5 py-0.5 px-1.5 rounded border border-white/5">Optional</span>
+                                <span className="text-[10px] text-gray-500 bg-white/5 py-0.5 px-1.5 rounded-sm border border-white/5">Optional</span>
                             </div>
                             <Input
                                 id="login-2fa"

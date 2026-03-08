@@ -70,7 +70,7 @@ function GaugeCard({
     used: string; total: string; free: string
 }) {
     return (
-        <Card className="relative overflow-hidden bg-white/[0.02] border-white/5 backdrop-blur-sm rounded-2xl">
+        <Card className="relative overflow-hidden bg-white/[0.02] border-white/5 backdrop-blur-xs rounded-2xl">
             <div className={`absolute top-0 left-0 w-1 h-full ${percent >= 80 ? 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]' : percent >= 60 ? 'bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]' : 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.8)]'}`} />
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
@@ -148,7 +148,7 @@ export function MonitoringPage() {
                 </div>
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 relative z-10">
                     {[1, 2, 3].map(i => (
-                        <Card key={i} className="bg-white/[0.02] border border-white/5 backdrop-blur-sm rounded-2xl">
+                        <Card key={i} className="bg-white/[0.02] border border-white/5 backdrop-blur-xs rounded-2xl">
                             <CardHeader><Skeleton className="h-4 w-24 bg-white/10" /></CardHeader>
                             <CardContent className="space-y-3">
                                 <Skeleton className="h-8 w-16 bg-white/10" />
@@ -251,7 +251,7 @@ export function MonitoringPage() {
             {/* System Info & Network */}
             <div className="grid gap-4 md:grid-cols-2 relative z-10">
                 {/* System Information */}
-                <Card className="bg-white/[0.02] border-white/5 backdrop-blur-sm rounded-2xl">
+                <Card className="bg-white/[0.02] border-white/5 backdrop-blur-xs rounded-2xl">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
                             <Server className="h-4 w-4 text-gray-500" />
@@ -291,7 +291,7 @@ export function MonitoringPage() {
                 </Card>
 
                 {/* Network */}
-                <Card className="bg-white/[0.02] border-white/5 backdrop-blur-sm rounded-2xl">
+                <Card className="bg-white/[0.02] border-white/5 backdrop-blur-xs rounded-2xl">
                     <CardHeader className="pb-3">
                         <CardTitle className="text-sm font-medium flex items-center gap-2 text-gray-200">
                             <Wifi className="h-4 w-4 text-gray-500" />

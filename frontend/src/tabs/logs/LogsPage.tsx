@@ -10,7 +10,7 @@ export function LogsPage() {
       <AmbientGlow />
 
       {/* Header */}
-      <div className="mobile-effect-blur mobile-effect-sticky flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-sm sticky top-0 z-10 shrink-0">
+      <div className="mobile-effect-blur mobile-effect-sticky flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-xs sticky top-0 z-10 shrink-0">
         <div>
           <h2 className="text-xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent flex items-center gap-2">
             <Terminal className="h-5 w-5 text-gray-300" />
@@ -22,7 +22,7 @@ export function LogsPage() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-6 flex flex-col min-h-0">
-        <div className="flex-1 bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-sm shadow-sm overflow-hidden flex flex-col">
+        <div className="flex-1 bg-white/[0.02] border border-white/[0.05] rounded-2xl backdrop-blur-xs shadow-xs overflow-hidden flex flex-col">
           <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-gray-500">Loading logs...</div>}>
             <LogsViewer className="h-full bg-transparent border-none rounded-none" />
           </Suspense>

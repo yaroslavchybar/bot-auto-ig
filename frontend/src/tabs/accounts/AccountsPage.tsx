@@ -380,7 +380,7 @@ export function AccountsPage() {
               </div>
 
               {scrapingError && (
-                <div className="p-2 rounded border bg-destructive/10 text-destructive text-sm">
+                <div className="p-2 rounded-sm border bg-destructive/10 text-destructive text-sm">
                   {scrapingError}
                 </div>
               )}
@@ -411,9 +411,9 @@ export function AccountsPage() {
               {isMobile ? (
                 <div className="space-y-2">
                   {scrapingLoading ? (
-                    <div className="rounded border p-3 text-sm text-muted-foreground">Loading...</div>
+                    <div className="rounded-sm border p-3 text-sm text-muted-foreground">Loading...</div>
                   ) : scrapingTasks.length === 0 ? (
-                    <div className="rounded border p-3 text-sm text-muted-foreground">No unimported completed tasks found.</div>
+                    <div className="rounded-sm border p-3 text-sm text-muted-foreground">No unimported completed tasks found.</div>
                   ) : (
                     scrapingTasks.map((t) => {
                       const id = String(t._id || '')
@@ -453,7 +453,7 @@ export function AccountsPage() {
                   )}
                 </div>
               ) : (
-                <div className="rounded border overflow-x-auto">
+                <div className="rounded-sm border overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="h-8">
@@ -569,7 +569,7 @@ export function AccountsPage() {
                         </Badge>
                       </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-auto rounded border p-2 bg-background">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-auto rounded-sm border p-2 bg-background">
                         {filteredImportFields.map((field) => (
                           <div key={field} className="flex items-center gap-2">
                             <Checkbox
@@ -586,7 +586,7 @@ export function AccountsPage() {
                       </div>
 
                       {importSelectedFields.size > 0 && (
-                        <div className="rounded border overflow-x-auto">
+                        <div className="rounded-sm border overflow-x-auto">
                           <Table>
                             <TableHeader>
                               <TableRow className="h-8">
@@ -773,7 +773,7 @@ export function AccountsPage() {
                         key={field}
                         onClick={() => handleFieldToggle(field)}
                         className={`
-                          flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors text-sm
+                          flex items-center gap-2 px-2 py-1.5 rounded-sm cursor-pointer transition-colors text-sm
                           ${selectedFields.has(field)
                             ? 'bg-primary/10 border border-primary/30'
                             : 'bg-muted/50 hover:bg-muted border border-transparent'
@@ -781,7 +781,7 @@ export function AccountsPage() {
                         `}
                       >
                         <div className={`
-                          w-3.5 h-3.5 rounded flex items-center justify-center flex-shrink-0
+                          w-3.5 h-3.5 rounded-sm flex items-center justify-center shrink-0
                           ${selectedFields.has(field)
                             ? 'bg-primary text-primary-foreground'
                             : 'border border-muted-foreground/30'
@@ -809,7 +809,7 @@ export function AccountsPage() {
                     <CardTitle className="text-sm">Sample Preview</CardTitle>
                   </CardHeader>
                   <CardContent className="p-3 pt-0">
-                    <div className="rounded border overflow-x-auto">
+                    <div className="rounded-sm border overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow className="h-8">
@@ -914,15 +914,15 @@ export function AccountsPage() {
 
                 {/* Stats */}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="text-center p-3 bg-muted/50 rounded">
+                  <div className="text-center p-3 bg-muted/50 rounded-sm">
                     <p className="text-xl font-bold">{state.stats.totalProcessed.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Processed</p>
                   </div>
-                  <div className="text-center p-3 bg-destructive/10 rounded">
+                  <div className="text-center p-3 bg-destructive/10 rounded-sm">
                     <p className="text-xl font-bold text-destructive">{state.stats.removed.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Filtered</p>
                   </div>
-                  <div className="text-center p-3 bg-green-500/10 rounded">
+                  <div className="text-center p-3 bg-green-500/10 rounded-sm">
                     <p className="text-xl font-bold text-green-600 dark:text-green-500">{state.stats.remaining.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Kept</p>
                   </div>
