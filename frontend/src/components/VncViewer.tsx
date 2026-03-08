@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc/lib/rfb.js'
 import { cn } from '@/lib/utils'
+import { buildVncWebSocketUrl } from './vnc-url'
 
 interface VncViewerProps {
   url?: string
@@ -27,15 +28,6 @@ type OverlayState = {
 } | null
 
 const RECONNECT_DELAY_MS = 1500
-
-export function buildVncWebSocketUrl(vncPort: number): string {
-  if (typeof window === 'undefined') {
-    return `ws://localhost:${vncPort}/websockify`
-  }
-
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${window.location.hostname}:${vncPort}/websockify`
-}
 
 const DEFAULT_VNC_URL = buildVncWebSocketUrl(6080)
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import type { LogEntry } from '@/tabs/profiles/types'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -57,6 +58,8 @@ interface LogsViewerProps {
 }
 
 export function LogsViewer({ className, workflowId = null, profileName = null }: LogsViewerProps) {
+  const isMobile = useIsMobile()
+  const liveBufferSize = isMobile ? 250 : 1000
   const [mode, setMode] = useState<LogsMode>('live')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -77,23 +80,30 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
   const [error, setError] = useState<string | null>(null)
 
   // WebSocket for real-time log streaming
-  const { logs: wsLogs, connected: wsConnected } = useWebSocket({ workflowId })
+  const { logs: wsLogs, connected: wsConnected } = useWebSocket({
+    workflowId,
+    enabled: mode === 'live',
+    pauseWhenHidden: true,
+    maxBuffer: liveBufferSize,
+  })
 
   const scrollAreaRef = useRef<HTMLDivElement | null>(null)
+  const processedWsLogsRef = useRef(0)
 
   const loadLiveLogs = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
       const data = await apiFetch<LogEntry[]>('/api/logs')
-      setLogs(data.slice(-1000))
+      setLogs(data.slice(-liveBufferSize))
+      processedWsLogsRef.current = 0
       setMode('live')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [liveBufferSize])
 
   const loadFiles = useCallback(async () => {
     setFilesLoading(true)
@@ -119,7 +129,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
       setError(null)
       try {
         const data = await apiFetch<LogEntry[]>(`/api/logs/file/${encodeURIComponent(filename)}`)
-        setLogs(data.slice(-1000))
+        setLogs(data.slice(-liveBufferSize))
         setMode('static')
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
@@ -127,7 +137,7 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
         setLoading(false)
       }
     },
-    []
+    [liveBufferSize]
   )
 
   const handleClearLive = useCallback(async () => {
@@ -145,50 +155,44 @@ export function LogsViewer({ className, workflowId = null, profileName = null }:
 
   useEffect(() => {
     void loadLiveLogs()
-    void loadFiles()
-  }, [loadLiveLogs, loadFiles])
+  }, [loadLiveLogs])
 
   // Update logs from WebSocket in live mode
   useEffect(() => {
     if (mode !== 'live') return
-    // Merge WebSocket logs with existing logs, keeping only latest 1000
+    if (wsLogs.length < processedWsLogsRef.current) {
+      processedWsLogsRef.current = 0
+    }
+
+    const newEntries = wsLogs.slice(processedWsLogsRef.current)
+    if (newEntries.length === 0) return
+
+    processedWsLogsRef.current = wsLogs.length
+
     setLogs((prev) => {
-      // Use a Set based on timestamp + message to deduplicate
-      const seen = new Set<string>()
-      const combined: LogEntry[] = []
+      const seen = new Set(prev.map((entry) => `${entry.ts}-${entry.message}`))
+      const appended = [...prev]
 
-      // Add previous logs first
-      for (const p of prev) {
-        const key = `${p.ts}-${p.message}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          combined.push(p)
-        }
-      }
-
-      // Add new incoming WebSocket logs
-      for (const w of wsLogs) {
+      for (const w of newEntries) {
         const key = `${w.ts}-${w.message}`
         if (!seen.has(key)) {
           seen.add(key)
-          combined.push({
+          appended.push({
             ...w,
             profileName: w.profileName || undefined,
           })
-        } else {
-          if (w.profileName) {
-            const existing = combined.find((p) => p.ts === w.ts && p.message === w.message)
-            if (existing && !existing.profileName) {
-              existing.profileName = w.profileName
-            }
-          }
         }
       }
 
-      combined.sort((a, b) => a.ts - b.ts)
-      return combined.slice(-1000)
+      return appended.slice(-liveBufferSize)
     })
-  }, [mode, wsLogs])
+  }, [liveBufferSize, mode, wsLogs])
+
+  useEffect(() => {
+    if (mode === 'static' && files.length === 0 && !filesLoading) {
+      void loadFiles()
+    }
+  }, [files.length, filesLoading, loadFiles, mode])
 
   useEffect(() => {
     if (mode === 'static' && selectedFile) {

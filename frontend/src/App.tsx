@@ -1,21 +1,11 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { UserMenu } from '@/components/user-menu'
-import { ProfilesPage } from './tabs/profiles/ProfilesPage'
-import { ListsPage } from './tabs/lists/ListsPage'
-import { LogsPage } from './tabs/logs/LogsPage'
-import { AccountsPage } from './tabs/accounts/AccountsPage'
-import { ScrapingPage } from './tabs/scraping/ScrapingPage'
-import { WorkflowsPage } from './tabs/workflows'
-import { VncPage } from './tabs/vnc'
-import { MonitoringPage } from './tabs/monitoring/MonitoringPage'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar, NAV_IDS } from '@/components/app-sidebar'
 import type { NavId } from '@/components/app-sidebar'
 import { Separator } from '@/components/ui/separator'
 import { AuthGuard } from '@/components/AuthGuard'
-import { SignInPage } from '@/pages/SignInPage'
-import { SignUpPage } from '@/pages/SignUpPage'
 import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch'
 import {
   Breadcrumb,
@@ -25,6 +15,28 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
+
+const ProfilesPage = lazy(() => import('./tabs/profiles/ProfilesPage').then((module) => ({ default: module.ProfilesPage })))
+const ListsPage = lazy(() => import('./tabs/lists/ListsPage').then((module) => ({ default: module.ListsPage })))
+const LogsPage = lazy(() => import('./tabs/logs/LogsPage').then((module) => ({ default: module.LogsPage })))
+const AccountsPage = lazy(() => import('./tabs/accounts/AccountsPage').then((module) => ({ default: module.AccountsPage })))
+const ScrapingPage = lazy(() => import('./tabs/scraping/ScrapingPage').then((module) => ({ default: module.ScrapingPage })))
+const WorkflowsPage = lazy(() => import('./tabs/workflows').then((module) => ({ default: module.WorkflowsPage })))
+const VncPage = lazy(() => import('./tabs/vnc').then((module) => ({ default: module.VncPage })))
+const MonitoringPage = lazy(() => import('./tabs/monitoring/MonitoringPage').then((module) => ({ default: module.MonitoringPage })))
+const SignInPage = lazy(() => import('./pages/SignInPage').then((module) => ({ default: module.SignInPage })))
+const SignUpPage = lazy(() => import('./pages/SignUpPage').then((module) => ({ default: module.SignUpPage })))
+
+const NAV_COMPONENTS: Record<NavId, LazyExoticComponent<ComponentType>> = {
+  profiles: ProfilesPage,
+  lists: ListsPage,
+  workflows: WorkflowsPage,
+  scraping: ScrapingPage,
+  accounts: AccountsPage,
+  logs: LogsPage,
+  vnc: VncPage,
+  monitoring: MonitoringPage,
+}
 
 function getInitialNavId(): NavId {
   const savedId = localStorage.getItem('anti-active-tab')
@@ -44,29 +56,6 @@ function MainLayout() {
     localStorage.setItem('anti-active-tab', activeId)
   }, [activeId])
 
-  const renderContent = () => {
-    switch (activeId) {
-      case 'profiles':
-        return <ProfilesPage />
-      case 'lists':
-        return <ListsPage />
-      case 'workflows':
-        return <WorkflowsPage />
-      case 'scraping':
-        return <ScrapingPage />
-      case 'accounts':
-        return <AccountsPage />
-      case 'logs':
-        return <LogsPage />
-      case 'vnc':
-        return <VncPage />
-      case 'monitoring':
-        return <MonitoringPage />
-      default:
-        return <ProfilesPage />
-    }
-  }
-
   const getBreadcrumbLabel = (id: NavId) => {
     switch (id) {
       case 'profiles': return 'Profiles Manager'
@@ -80,6 +69,8 @@ function MainLayout() {
       default: return 'Profiles Manager'
     }
   }
+
+  const ActivePage = NAV_COMPONENTS[activeId] ?? ProfilesPage
 
   return (
     <SidebarProvider className="h-svh min-w-0 overflow-hidden">
@@ -111,7 +102,15 @@ function MainLayout() {
         </header>
         <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4 pt-0 min-h-0 relative z-10">
           <div className="min-h-0 min-w-0 flex-1">
-            {renderContent()}
+            <Suspense
+              fallback={
+                <div className="flex h-full min-h-[240px] items-center justify-center rounded-2xl border border-white/5 bg-white/[0.02] text-sm text-gray-500">
+                  Loading {getBreadcrumbLabel(activeId)}...
+                </div>
+              }
+            >
+              <ActivePage />
+            </Suspense>
           </div>
         </div>
       </SidebarInset>
@@ -122,18 +121,26 @@ function MainLayout() {
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/sign-in/*" element={<SignInPage />} />
-        <Route path="/sign-up/*" element={<SignUpPage />} />
-        <Route
-          path="/*"
-          element={
-            <AuthGuard>
-              <MainLayout />
-            </AuthGuard>
-          }
-        />
-      </Routes>
+      <Suspense
+        fallback={
+          <div className="flex min-h-screen items-center justify-center text-sm text-gray-500">
+            Loading...
+          </div>
+        }
+      >
+        <Routes>
+          <Route path="/sign-in/*" element={<SignInPage />} />
+          <Route path="/sign-up/*" element={<SignUpPage />} />
+          <Route
+            path="/*"
+            element={
+              <AuthGuard>
+                <MainLayout />
+              </AuthGuard>
+            }
+          />
+        </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }

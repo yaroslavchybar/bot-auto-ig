@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Panel, Group, Separator } from 'react-resizable-panels'
-import { ArrowLeft, LayoutGrid, RefreshCw } from 'lucide-react'
+import { ArrowLeft, FileText, LayoutGrid, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { LogsViewer } from '@/components/LogsViewer'
-import { buildVncWebSocketUrl, VncViewer } from '@/components/VncViewer'
 import { VncTile, type DisplaySession } from './VncTile'
 import { Button } from '@/components/ui/button'
+import { buildVncWebSocketUrl } from '@/components/vnc-url'
+import { useDocumentVisibility } from '@/hooks/use-document-visibility'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
+
+const LogsViewer = lazy(() => import('@/components/LogsViewer').then((module) => ({ default: module.LogsViewer })))
+const VncViewer = lazy(() => import('@/components/VncViewer').then((module) => ({ default: module.VncViewer })))
 
 type DisplayEvent = {
   type?: unknown
@@ -67,11 +72,14 @@ function normalizeSessions(input: unknown): DisplaySession[] {
 }
 
 export function VncPage() {
+  const isMobile = useIsMobile()
+  const isVisible = useDocumentVisibility()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [focusedSessionKey, setFocusedSessionKey] = useState<string | null>(null)
   const [controlState, setControlState] = useState<'locked' | 'confirm' | 'unlocked'>('locked')
+  const [showMobileLogs, setShowMobileLogs] = useState(false)
 
   const fetchSessions = useCallback(async () => {
     setLoading(true)
@@ -128,15 +136,29 @@ export function VncPage() {
     }
   }, [])
 
-  const { connected } = useWebSocket({ onEvent: handleSocketEvent })
+  const { connected } = useWebSocket({
+    onEvent: handleSocketEvent,
+    enabled: isVisible,
+    pauseWhenHidden: true,
+  })
 
   useEffect(() => {
+    if (!isVisible) {
+      return
+    }
+
     void fetchSessions()
+
+    if (connected) {
+      return
+    }
+
     const interval = setInterval(() => {
       void fetchSessions()
-    }, 5000)
+    }, isMobile ? 15000 : 5000)
+
     return () => clearInterval(interval)
-  }, [fetchSessions])
+  }, [connected, fetchSessions, isMobile, isVisible])
 
   const focusedSession = useMemo(
     () => sessions.find((item) => sessionKey(item) === focusedSessionKey) ?? null,
@@ -150,14 +172,124 @@ export function VncPage() {
     }
   }, [focusedSessionKey, focusedSession])
 
+  useEffect(() => {
+    setShowMobileLogs(false)
+  }, [focusedSessionKey])
+
   const isInteractive = controlState === 'unlocked'
   const isConfirming = controlState === 'confirm'
 
   if (focusedSession) {
+    if (isMobile) {
+      return (
+        <div className="flex flex-col h-full bg-[#050505] overflow-auto font-sans relative">
+          <AmbientGlow className="w-[700px] h-[360px]" reducedClassName="w-[480px] h-[220px]" />
+          <div className="mobile-effect-blur flex items-center justify-between px-3 py-2 bg-white/[0.02] border-b border-white/5 shrink-0 select-none shadow-sm z-10">
+            <div className="flex items-center gap-3 min-w-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFocusedSessionKey(null)
+                  setControlState('locked')
+                }}
+                className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+              >
+                <ArrowLeft className="mr-2 h-3.5 w-3.5" />
+                Back
+              </Button>
+              <div className="min-w-0">
+                <h2 className="truncate text-sm font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
+                  {focusedSession.profileName}
+                </h2>
+                <span className="text-[10px] text-gray-500 font-mono">
+                  {focusedSession.workflowId} / :{focusedSession.displayNum}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowMobileLogs((current) => !current)}
+              className="h-8 shadow-none bg-transparent border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all"
+            >
+              <FileText className="h-3.5 w-3.5" />
+              {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
+            </Button>
+          </div>
+
+          <div className="flex-1 min-h-0 p-2 space-y-2">
+            <div className="h-[50vh] min-h-[320px] rounded-[4px] overflow-hidden border border-white/[0.05] bg-black">
+              <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/60" />}>
+                <VncViewer
+                  url={buildVncWebSocketUrl(focusedSession.vncPort)}
+                  interactive={isInteractive}
+                  className="flex-1 w-full h-full object-contain"
+                />
+              </Suspense>
+            </div>
+
+            {!isInteractive ? (
+              <div className="rounded-xl border border-white/10 bg-[#0a0a0a] p-3">
+                <p className="text-xs text-gray-400 mb-3">Taking control will interrupt the agent.</p>
+                <div className="flex gap-2">
+                  {isConfirming ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => setControlState('locked')}
+                        className="flex-1 bg-transparent border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => setControlState('unlocked')}
+                        className="mobile-effect-shadow flex-1 border-none bg-gradient-to-r from-red-600 to-red-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-500 transition-all font-medium"
+                      >
+                        Confirm
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => setControlState('confirm')}
+                      className="w-full bg-black/50 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+                    >
+                      Take Control
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setControlState('locked')}
+                className="bg-black/80 border border-white/10 text-gray-300 hover:bg-white/10 hover:text-white transition-all shadow-none"
+              >
+                Return To Agent
+              </Button>
+            )}
+
+            {showMobileLogs ? (
+              <div className="h-[42vh] min-h-[260px] rounded-[4px] overflow-hidden border border-white/[0.05] bg-[#050505]">
+                <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/40" />}>
+                  <LogsViewer
+                    className="h-full border-0"
+                    workflowId={focusedSession.workflowId === 'manual' ? null : focusedSession.workflowId}
+                    profileName={focusedSession.profileName}
+                  />
+                </Suspense>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      )
+    }
+
     return (
       <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
-        <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
+        <AmbientGlow className="w-[800px] h-[400px]" reducedClassName="w-[560px] h-[240px]" />
+        <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -215,11 +347,13 @@ export function VncPage() {
                   </div>
                 </div>
 
-                <VncViewer
-                  url={buildVncWebSocketUrl(focusedSession.vncPort)}
-                  interactive={isInteractive}
-                  className="flex-1 w-full h-full object-contain"
-                />
+                <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/60" />}>
+                  <VncViewer
+                    url={buildVncWebSocketUrl(focusedSession.vncPort)}
+                    interactive={isInteractive}
+                    className="flex-1 w-full h-full object-contain"
+                  />
+                </Suspense>
 
                 {!isInteractive && (
                   <div
@@ -291,11 +425,13 @@ export function VncPage() {
 
             <Panel id="right-logs" defaultSize={40} minSize={20}>
               <div className="flex flex-col h-full rounded-[3px] overflow-hidden shadow-sm">
-                <LogsViewer
-                  className="h-full border-0"
-                  workflowId={focusedSession.workflowId === 'manual' ? null : focusedSession.workflowId}
-                  profileName={focusedSession.profileName}
-                />
+                <Suspense fallback={<div className="h-full w-full animate-pulse bg-black/40" />}>
+                  <LogsViewer
+                    className="h-full border-0"
+                    workflowId={focusedSession.workflowId === 'manual' ? null : focusedSession.workflowId}
+                    profileName={focusedSession.profileName}
+                  />
+                </Suspense>
               </div>
             </Panel>
           </Group>
@@ -306,8 +442,8 @@ export function VncPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#050505] overflow-hidden font-sans relative">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/5 blur-[120px] rounded-full pointer-events-none" />
-      <div className="flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
+      <AmbientGlow className="w-[800px] h-[400px] bg-red-600/5" reducedClassName="w-[560px] h-[240px]" />
+      <div className="mobile-effect-blur flex items-center justify-between px-3 py-1.5 bg-white/[0.02] border-b border-white/5 backdrop-blur-sm shrink-0 select-none shadow-sm z-10">
         <div className="flex items-center gap-3">
           <div className="flex items-baseline gap-2">
             <h2 className="text-xs font-bold uppercase tracking-wider bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
@@ -356,7 +492,7 @@ export function VncPage() {
             <p className="text-[11px]">Start a workflow to see browser displays.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(400px,1fr))] gap-2">
+          <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fill,minmax(400px,1fr))]'}`}>
             {sessions.map((session) => (
               <VncTile
                 key={sessionKey(session)}

@@ -38,6 +38,9 @@ interface WebSocketMessage {
 interface UseWebSocketOptions {
     url?: string
     autoConnect?: boolean
+    enabled?: boolean
+    pauseWhenHidden?: boolean
+    maxBuffer?: number
     workflowId?: string | null
     onEvent?: (message: WebSocketMessage) => void
 }
@@ -59,7 +62,15 @@ function getReconnectDelay(attempt: number): number {
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
-    const { url, autoConnect = true, workflowId, onEvent } = options
+    const {
+        url,
+        autoConnect = true,
+        enabled = true,
+        pauseWhenHidden = false,
+        maxBuffer = 500,
+        workflowId,
+        onEvent,
+    } = options
     const wsUrl = url ?? getDefaultWebSocketUrl()
     const { getToken } = useAuth()
 
@@ -72,6 +83,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     })
     const [connected, setConnected] = useState(false)
     const [reconnectCounter, setReconnectCounter] = useState(0)
+    const [isVisible, setIsVisible] = useState(() => {
+        if (typeof document === 'undefined') return true
+        return document.visibilityState !== 'hidden'
+    })
     const wsRef = useRef<WebSocket | null>(null)
     const workflowIdRef = useRef<string | null>(workflowId ?? null)
     const onEventRef = useRef<((message: WebSocketMessage) => void) | null>(onEvent ?? null)
@@ -86,6 +101,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     useEffect(() => {
         onEventRef.current = onEvent ?? null
     }, [onEvent])
+
+    useEffect(() => {
+        if (typeof document === 'undefined') return
+
+        const onVisibilityChange = () => {
+            setIsVisible(document.visibilityState !== 'hidden')
+        }
+
+        onVisibilityChange()
+        document.addEventListener('visibilitychange', onVisibilityChange)
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+    }, [])
 
     const clearLogs = useCallback(() => {
         setLogs([])
@@ -103,6 +130,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
     // Connect effect - triggered by reconnectCounter for auto-reconnect
     useEffect(() => {
+        if (!enabled) {
+            return
+        }
+        if (pauseWhenHidden && !isVisible) {
+            return
+        }
         if (!autoConnect && reconnectCounter === 0) return
         if (wsRef.current?.readyState === WebSocket.OPEN) return
 
@@ -159,7 +192,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                                     profileName: data.profileName || currentProfileRef.current || undefined,
                                     ts: Date.now(),
                                 }
-                                setLogs((prev) => [...prev.slice(-499), entry])
+                                setLogs((prev) => {
+                                    const next = prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
+                                    return [...next, entry]
+                                })
                             } else if (data.type === 'status' && data.status) {
                                 if (activeWorkflowId) return
                                 if (msgWorkflowId) return
@@ -202,7 +238,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                         wsRef.current = null
 
                         // Auto-reconnect with exponential backoff
-                        if (autoConnect) {
+                        if (autoConnect && enabled && (!pauseWhenHidden || isVisible)) {
                             const delay = getReconnectDelay(reconnectAttemptRef.current++)
                             reconnectTimeoutRef.current = setTimeout(() => {
                                 if (!cancelled) {
@@ -219,7 +255,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
                     wsRef.current = ws
                 } catch {
                     // connection failed, schedule retry with exponential backoff
-                    if (autoConnect && !cancelled) {
+                    if (autoConnect && enabled && (!pauseWhenHidden || isVisible) && !cancelled) {
                         const delay = getReconnectDelay(reconnectAttemptRef.current++)
                         reconnectTimeoutRef.current = setTimeout(() => {
                             if (!cancelled) {
@@ -239,7 +275,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
             wsRef.current?.close()
             wsRef.current = null
         }
-    }, [wsUrl, autoConnect, reconnectCounter, getToken])
+    }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible, maxBuffer])
 
     const connect = useCallback(() => {
         setReconnectCounter((c) => c + 1)

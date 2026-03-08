@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { Download, Eye, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
 
@@ -66,6 +67,8 @@ export function TasksTable({
   onViewOutput,
   onDelete,
 }: Props) {
+  const isMobile = useIsMobile()
+
   const handleDownload = async (task: Doc<'scrapingTasks'>) => {
     if (!task.storageId) return
 
@@ -90,6 +93,108 @@ export function TasksTable({
       console.error('Failed to download file:', error)
     }
   }
+
+  if (isMobile) {
+    return (
+      <div className="space-y-3 p-3">
+        {tasks.map((task) => {
+          const taskStatus =
+            task.status === 'running' || task.status === 'paused' || task.status === 'completed' || task.status === 'failed' ? task.status : 'idle'
+          const canViewOutput = task.lastOutput !== undefined || (typeof task.lastError === 'string' && task.lastError.trim())
+          const canResume = (() => {
+            if (taskStatus === 'paused') return true
+            if (!task.lastOutput || typeof task.lastOutput !== 'object') return false
+            const r = task.lastOutput as Record<string, unknown>
+            const state = r.resumeState
+            if (!state || typeof state !== 'object') return false
+            return (state as Record<string, unknown>).done === false
+          })()
+
+          return (
+            <div
+              key={String(task._id)}
+              className={`rounded-2xl border bg-[#141414] p-4 shadow-sm transition-colors ${selectedId === task._id ? 'border-orange-500/60 bg-white/[0.04]' : 'border-white/10 hover:border-white/20'}`}
+              onClick={() => onSelect(task._id)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-base font-semibold text-gray-100">{task.name}</h3>
+                  <p className="mt-1 text-[11px] text-gray-500">{task.kind === 'following' ? 'Following' : 'Followers'}</p>
+                  <p className="mt-2 truncate text-sm text-gray-300">
+                    {(() => {
+                      const targets = parseTargets(String(task.targetUsername || ''))
+                      const first = targets[0] || String(task.targetUsername || '')
+                      const extra = targets.length > 1 ? targets.length - 1 : 0
+                      return extra > 0 ? `${first} (+${extra})` : first
+                    })()}
+                  </p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-white hover:bg-white/10"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="bg-[#0f0f0f] border-white/10 text-gray-200" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => onRun(task)} disabled={running}>
+                      <Play className="mr-2 h-4 w-4" /> Run
+                    </DropdownMenuItem>
+                    {canResume ? (
+                      <DropdownMenuItem onClick={() => onResume(task)} disabled={running}>
+                        <Play className="mr-2 h-4 w-4" /> Resume
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuItem onClick={() => onEdit(task)} disabled={running || task.status === 'running'}>
+                      <Pencil className="mr-2 h-4 w-4" /> Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onViewOutput(task)} disabled={!canViewOutput}>
+                      <Eye className="mr-2 h-4 w-4" /> View output
+                    </DropdownMenuItem>
+                    {task.storageId ? (
+                      <DropdownMenuItem onClick={() => void handleDownload(task)}>
+                        <Download className="mr-2 h-4 w-4" /> Download JSON
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuSeparator className="bg-white/10" />
+                    <DropdownMenuItem onClick={() => onDelete(task)} className="text-red-400 focus:text-red-300 focus:bg-red-500/10 hover:bg-red-500/10 cursor-pointer">
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3 text-xs text-gray-400">
+                <span>{formatWhen(task.lastRunAt)}</span>
+                <div className="flex items-center gap-2">
+                  {task.storageId ? (
+                    <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs hover:bg-blue-500/20 transition-colors">
+                      <Download className="mr-1 h-3 w-3" /> File
+                    </Badge>
+                  ) : null}
+                  <Badge className={taskStatus === 'running'
+                    ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                    : taskStatus === 'paused'
+                      ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
+                      : taskStatus === 'failed'
+                        ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        : 'bg-transparent text-gray-500 border border-white/5'}
+                  >
+                    {taskStatus}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
     <div className="w-full">
       <Table>

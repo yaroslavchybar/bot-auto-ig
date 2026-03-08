@@ -9,6 +9,7 @@ import { TasksTable } from './TasksTable'
 import { TaskDialog } from './TaskDialog'
 import { OutputDialog } from './OutputDialog'
 import { DeleteTaskDialog } from './DeleteTaskDialog'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
 
 type EligibleProfile = { id: string; name: string }
 
@@ -363,10 +364,9 @@ export function ScrapingPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#050505] text-gray-200 min-h-screen relative overflow-hidden">
-      {/* Background ambient glow */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+      <AmbientGlow />
 
-      <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
+      <div className="mobile-effect-blur relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between p-6 border-b border-white/5 bg-white/[0.02]">
         <div>
           <h2 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
             Scraping Tasks
@@ -389,7 +389,7 @@ export function ScrapingPage() {
             size="sm"
             onClick={handleOpenCreate}
             disabled={eligibleLoading || Boolean(runningId)}
-            className="bg-gradient-to-r from-red-600 to-orange-500 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all"
+            className="mobile-effect-shadow bg-gradient-to-r from-red-600 to-orange-500 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all"
           >
             <Plus className="mr-2 h-4 w-4" />
             Create task

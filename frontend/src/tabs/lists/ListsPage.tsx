@@ -8,6 +8,7 @@ import { useLists } from '@/hooks/useLists'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
 
 export function ListsPage() {
   const { lists, loading: listsLoading, error: listsError, refresh, backgroundRefresh } = useLists()
@@ -120,10 +121,10 @@ export function ListsPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#050505] text-gray-200 animate-in fade-in duration-300 relative">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+      <AmbientGlow />
 
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-sm sticky top-0 z-10">
+      <div className="mobile-effect-blur mobile-effect-sticky flex items-center justify-between px-6 py-4 border-b bg-white/[0.02] border-white/5 backdrop-blur-sm sticky top-0 z-10">
         <div>
           <h2 className="text-xl font-semibold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">Lists Manager</h2>
           <p className="text-sm text-gray-400">Manage profile collections and mapping state.</p>
@@ -144,7 +145,7 @@ export function ListsPage() {
             size="sm"
             onClick={handleCreate}
             disabled={loading || saving}
-            className="h-8 border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
+            className="mobile-effect-shadow h-8 border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
           >
             <Plus className="mr-2 h-3.5 w-3.5" />
             Create List

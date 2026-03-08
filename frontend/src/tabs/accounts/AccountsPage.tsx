@@ -27,8 +27,10 @@ import {
   RefreshCw,
   Download,
 } from 'lucide-react'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 export function AccountsPage() {
+  const isMobile = useIsMobile()
   const { state, uploadFile, processFile, reset, listScrapingTasks, getScrapingTaskFields, processScrapingTask } = useDataUploader()
   const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set())
   const [uploadToConvex, setUploadToConvex] = useState(true)
@@ -290,7 +292,7 @@ export function AccountsPage() {
   return (
     <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex flex-col gap-3 p-4 border-b sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-2xl font-bold tracking-tight">Upload Accounts</h2>
         {(state.step !== 'idle' && state.step !== 'uploading') || importStep !== 'idle' || Boolean(importResult) ? (
           <Button variant="outline" size="sm" onClick={handleReset}>
@@ -406,68 +408,114 @@ export function AccountsPage() {
                 </div>
               )}
 
-              <div className="rounded border overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="h-8">
-                      <TableHead className="text-xs">Name</TableHead>
-                      <TableHead className="text-xs">Kind</TableHead>
-                      <TableHead className="text-xs">Created</TableHead>
-                      <TableHead className="text-xs text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scrapingLoading ? (
-                      <TableRow className="h-10">
-                        <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                          Loading...
-                        </TableCell>
+              {isMobile ? (
+                <div className="space-y-2">
+                  {scrapingLoading ? (
+                    <div className="rounded border p-3 text-sm text-muted-foreground">Loading...</div>
+                  ) : scrapingTasks.length === 0 ? (
+                    <div className="rounded border p-3 text-sm text-muted-foreground">No unimported completed tasks found.</div>
+                  ) : (
+                    scrapingTasks.map((t) => {
+                      const id = String(t._id || '')
+                      const createdAt = typeof t.createdAt === 'number' ? new Date(t.createdAt).toLocaleString() : '—'
+                      return (
+                        <div key={id} className="rounded-xl border bg-card p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate font-medium">{String(t.name || '—')}</div>
+                              <div className="mt-1 text-xs text-muted-foreground">{createdAt}</div>
+                            </div>
+                            <Badge variant="outline" className="text-xs">
+                              {String(t.kind || '—')}
+                            </Badge>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="mt-3 w-full"
+                            onClick={() => void handleImportTask(id)}
+                            disabled={!id || Boolean(importingId) || importStep === 'processing'}
+                          >
+                            {importingId === id ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Loading
+                              </>
+                            ) : (
+                              <>
+                                <Download className="mr-2 h-4 w-4" />
+                                Import
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              ) : (
+                <div className="rounded border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="h-8">
+                        <TableHead className="text-xs">Name</TableHead>
+                        <TableHead className="text-xs">Kind</TableHead>
+                        <TableHead className="text-xs">Created</TableHead>
+                        <TableHead className="text-xs text-right">Action</TableHead>
                       </TableRow>
-                    ) : scrapingTasks.length === 0 ? (
-                      <TableRow className="h-10">
-                        <TableCell colSpan={4} className="text-sm text-muted-foreground">
-                          No unimported completed tasks found.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      scrapingTasks.map((t) => {
-                        const id = String(t._id || '')
-                        const createdAt = typeof t.createdAt === 'number' ? new Date(t.createdAt).toLocaleString() : '—'
-                        return (
-                          <TableRow key={id} className="h-10">
-                            <TableCell className="text-sm font-medium">{String(t.name || '—')}</TableCell>
-                            <TableCell className="text-sm">
-                              <Badge variant="outline" className="text-xs">
-                                {String(t.kind || '—')}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">{createdAt}</TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                onClick={() => void handleImportTask(id)}
-                                disabled={!id || Boolean(importingId) || importStep === 'processing'}
-                              >
-                                {importingId === id ? (
-                                  <>
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Loading
-                                  </>
-                                ) : (
-                                  <>
-                                    <Download className="mr-2 h-4 w-4" />
-                                    Import
-                                  </>
-                                )}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {scrapingLoading ? (
+                        <TableRow className="h-10">
+                          <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                            Loading...
+                          </TableCell>
+                        </TableRow>
+                      ) : scrapingTasks.length === 0 ? (
+                        <TableRow className="h-10">
+                          <TableCell colSpan={4} className="text-sm text-muted-foreground">
+                            No unimported completed tasks found.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        scrapingTasks.map((t) => {
+                          const id = String(t._id || '')
+                          const createdAt = typeof t.createdAt === 'number' ? new Date(t.createdAt).toLocaleString() : '—'
+                          return (
+                            <TableRow key={id} className="h-10">
+                              <TableCell className="text-sm font-medium">{String(t.name || '—')}</TableCell>
+                              <TableCell className="text-sm">
+                                <Badge variant="outline" className="text-xs">
+                                  {String(t.kind || '—')}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{createdAt}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleImportTask(id)}
+                                  disabled={!id || Boolean(importingId) || importStep === 'processing'}
+                                >
+                                  {importingId === id ? (
+                                    <>
+                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                      Loading
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Download className="mr-2 h-4 w-4" />
+                                      Import
+                                    </>
+                                  )}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
 
               {importStep !== 'idle' && importTaskId && (
                 <>
@@ -521,7 +569,7 @@ export function AccountsPage() {
                         </Badge>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-auto rounded border p-2 bg-background">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-auto rounded border p-2 bg-background">
                         {filteredImportFields.map((field) => (
                           <div key={field} className="flex items-center gap-2">
                             <Checkbox
@@ -565,8 +613,8 @@ export function AccountsPage() {
                   </Card>
 
                   <Card>
-                    <CardContent className="p-3 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4">
+                    <CardContent className="p-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                         <div className="flex items-center gap-2">
                           <Database className="h-4 w-4 text-muted-foreground" />
                           <Checkbox
@@ -581,7 +629,7 @@ export function AccountsPage() {
                         </div>
 
                         {importUploadToConvex && (
-                          <div className="flex items-center gap-3 text-sm">
+                          <div className="flex flex-wrap items-center gap-3 text-sm">
                             <div className="flex items-center gap-1.5">
                               <Checkbox
                                 id="import-env-dev"
@@ -700,7 +748,7 @@ export function AccountsPage() {
                 </CardHeader>
                 <CardContent className="p-3 pt-0 space-y-2">
                   {/* Search and bulk actions */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <div className="relative flex-1">
                       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
@@ -789,8 +837,8 @@ export function AccountsPage() {
 
               {/* Upload Options + Process Button in same row */}
               <Card>
-                <CardContent className="p-3 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
+                <CardContent className="p-3 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                     <div className="flex items-center gap-2">
                       <Database className="h-4 w-4 text-muted-foreground" />
                       <Checkbox
@@ -804,7 +852,7 @@ export function AccountsPage() {
                     </div>
 
                     {uploadToConvex && (
-                      <div className="flex items-center gap-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
                         <div className="flex items-center gap-1.5">
                           <Checkbox
                             id="env-dev"
@@ -865,7 +913,7 @@ export function AccountsPage() {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="text-center p-3 bg-muted/50 rounded">
                     <p className="text-xl font-bold">{state.stats.totalProcessed.toLocaleString()}</p>
                     <p className="text-xs text-muted-foreground">Processed</p>

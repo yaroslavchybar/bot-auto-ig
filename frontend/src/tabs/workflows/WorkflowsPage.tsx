@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -14,20 +14,21 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Plus, RefreshCw, Upload, Wifi, WifiOff } from 'lucide-react'
+import { Plus, RefreshCw, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { apiFetch } from '@/lib/api'
 import { getActivityById } from '@/lib/activities'
 import { WorkflowsList } from './WorkflowsList'
 import { WorkflowDialog } from './WorkflowDialog'
 import { WorkflowDetails } from './WorkflowDetails'
-import { WorkflowFlowEditor } from './WorkflowFlowEditor'
 import { ScheduleDialog } from './ScheduleDialog'
 import type { Workflow } from './types'
 import type { Node, Edge } from 'reactflow'
 import { buildWorkflowExportEnvelope, validateWorkflowImport } from './workflowImportExport'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
+
+const WorkflowFlowEditor = lazy(() => import('./WorkflowFlowEditor').then((module) => ({ default: module.WorkflowFlowEditor })))
 
 export function WorkflowsPage() {
 	const convex = useConvex()
@@ -44,9 +45,6 @@ export function WorkflowsPage() {
 	const [refreshing, setRefreshing] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const [workflowsData, setWorkflowsData] = useState<Workflow[] | null>(null)
-
-	// WebSocket for connection status
-	const { connected } = useWebSocket()
 
 	// Queries
 	const workflows = useQuery(api.workflows.list, {})
@@ -367,11 +365,10 @@ export function WorkflowsPage() {
 
 	return (
 		<div className="flex flex-col h-full bg-[#050505] text-gray-200 relative overflow-hidden">
-			{/* Ambient Background Glow */}
-			<div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+			<AmbientGlow />
 
 			{/* Header */}
-			<div className="p-4 md:p-6 bg-white/[0.02] border-b border-white/5 flex-none relative z-10">
+			<div className="mobile-effect-blur p-4 md:p-6 bg-white/[0.02] border-b border-white/5 flex-none relative z-10">
 				<div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 					<div className="min-w-0">
 						<h2 className="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
@@ -381,27 +378,12 @@ export function WorkflowsPage() {
 							Create and manage automation workflows
 						</p>
 					</div>
-					<div className="flex items-center gap-2 text-sm text-gray-500 md:hidden">
-						{connected ? (
-							<Wifi className="h-4 w-4 text-green-500" />
-						) : (
-							<WifiOff className="h-4 w-4 text-gray-600" />
-						)}
-						<span>{connected ? 'Connected' : 'Offline'}</span>
-					</div>
 					<div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-						<div className="hidden md:flex items-center gap-1 text-sm text-gray-500 mr-2">
-							{connected ? (
-								<Wifi className="h-4 w-4 text-green-500" />
-							) : (
-								<WifiOff className="h-4 w-4 text-gray-600" />
-							)}
-						</div>
 						<Button
 							size={isMobile ? 'default' : 'sm'}
 							onClick={handleCreate}
 							disabled={saving}
-							className="w-full md:w-auto bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all font-medium"
+							className="mobile-effect-shadow w-full md:w-auto bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white border-0 shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] transition-all font-medium"
 						>
 							<Plus className="h-4 w-4" />
 							New Workflow
@@ -536,13 +518,23 @@ export function WorkflowsPage() {
 			</AlertDialog>
 
 			{/* Flow Editor */}
-			<WorkflowFlowEditor
-				open={isFlowEditorOpen}
-				workflow={selected}
-				saving={saving}
-				onSave={handleSaveFlow}
-				onClose={() => setIsFlowEditorOpen(false)}
-			/>
+			{isFlowEditorOpen ? (
+				<Suspense
+					fallback={
+						<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 text-sm text-gray-400">
+							Loading workflow editor...
+						</div>
+					}
+				>
+					<WorkflowFlowEditor
+						open={isFlowEditorOpen}
+						workflow={selected}
+						saving={saving}
+						onSave={handleSaveFlow}
+						onClose={() => setIsFlowEditorOpen(false)}
+					/>
+				</Suspense>
+			) : null}
 
 			{/* Schedule Dialog */}
 			<ScheduleDialog

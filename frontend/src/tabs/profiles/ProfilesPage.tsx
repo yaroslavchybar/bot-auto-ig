@@ -15,6 +15,7 @@ import { Plus, RefreshCw, Search, Terminal } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useWebSocket } from '@/hooks/useWebSocket'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
 
 export function ProfilesPage() {
   const { profiles, loading: profilesLoading, refresh: refreshProfiles } = useProfiles()
@@ -38,7 +39,11 @@ export function ProfilesPage() {
   const [logsLoading, setLogsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
-  const { logs: wsLogs, clearLogs: clearWsLogs } = useWebSocket()
+  const { logs: wsLogs, clearLogs: clearWsLogs } = useWebSocket({
+    enabled: isLoginOpen,
+    pauseWhenHidden: true,
+    maxBuffer: isMobile ? 250 : 500,
+  })
 
   const selected = useMemo(() => profiles.find((p) => p.id === selectedId) ?? null, [profiles, selectedId])
   const filteredProfiles = useMemo(() => {
@@ -267,9 +272,9 @@ export function ProfilesPage() {
 
   return (
     <div className="flex flex-col h-full bg-[#050505] text-gray-200 animate-in fade-in duration-300 relative">
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+      <AmbientGlow />
       {/* Header */}
-      <div className="border-b border-white/5 bg-white/[0.02] backdrop-blur-sm sticky top-0 z-10">
+      <div className="mobile-effect-blur mobile-effect-sticky border-b border-white/5 bg-white/[0.02] backdrop-blur-sm sticky top-0 z-10">
         <div className="flex flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:gap-6">
           <div className="relative w-full xl:max-w-xl xl:flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
@@ -285,7 +290,7 @@ export function ProfilesPage() {
               size={isMobile ? 'default' : 'sm'}
               onClick={handleCreate}
               disabled={loading || saving}
-              className="w-full sm:w-auto border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
+              className="mobile-effect-shadow w-full sm:w-auto border-none bg-gradient-to-r from-red-600 to-orange-500 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] hover:shadow-[0_0_25px_rgba(239,68,68,0.6)] hover:from-red-500 hover:to-orange-400 transition-all font-medium"
             >
               <Plus className={isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5'} />
               New Profile

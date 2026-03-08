@@ -4,6 +4,9 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { apiFetch } from '@/lib/api'
+import { usePerformanceMode } from '@/hooks/use-performance-mode'
+import { useDocumentVisibility } from '@/hooks/use-document-visibility'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
 import {
     Cpu,
     MemoryStick,
@@ -17,6 +20,7 @@ import {
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 const POLL_INTERVAL = 5000
+const MOBILE_POLL_INTERVAL = 20000
 
 interface MonitoringData {
     cpu: { percent: number; cores: number; model: string }
@@ -104,6 +108,8 @@ function GaugeCard({
 // ─── Main Page ──────────────────────────────────────────────
 
 export function MonitoringPage() {
+    const performanceMode = usePerformanceMode()
+    const isVisible = useDocumentVisibility()
     const [data, setData] = useState<MonitoringData | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -124,15 +130,19 @@ export function MonitoringPage() {
     }, [])
 
     useEffect(() => {
+        if (!isVisible) {
+            return
+        }
+
         fetchData()
-        const interval = setInterval(fetchData, POLL_INTERVAL)
+        const interval = setInterval(fetchData, performanceMode ? MOBILE_POLL_INTERVAL : POLL_INTERVAL)
         return () => clearInterval(interval)
-    }, [fetchData])
+    }, [fetchData, isVisible, performanceMode])
 
     if (loading) {
         return (
             <div className="flex-1 space-y-4 p-6 pt-4 overflow-auto h-full relative bg-[#050505] text-gray-200">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+                <AmbientGlow />
                 <div className="flex items-center justify-between relative z-10 border-b border-white/5 pb-4">
                     <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">VPS Monitor</h2>
                 </div>
@@ -159,7 +169,7 @@ export function MonitoringPage() {
     if (error && !data) {
         return (
             <div className="flex-1 flex items-center justify-center p-6 relative bg-[#050505]">
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+                <AmbientGlow />
                 <Card className="max-w-md w-full bg-[#0a0a0a] border border-white/10 relative z-10 rounded-2xl">
                     <CardContent className="pt-6 text-center space-y-4">
                         <div className="text-red-400 text-lg font-medium">Connection Error</div>
@@ -186,7 +196,7 @@ export function MonitoringPage() {
 
     return (
         <div className="flex-1 space-y-4 p-6 pt-4 overflow-auto h-full relative bg-[#050505] text-gray-200">
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-red-600/10 blur-[120px] rounded-full pointer-events-none" />
+            <AmbientGlow />
 
             {/* Header */}
             <div className="flex items-center justify-between relative z-10 border-b border-white/5 pb-4">
@@ -196,10 +206,10 @@ export function MonitoringPage() {
                         <Badge className="text-xs bg-red-500/10 text-red-400 border-red-500/20">Connection lost — using cached data</Badge>
                     )}
                 </div>
-                <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <div className="flex items-center gap-1.5">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <div className="flex items-center gap-1.5">
+                            <span className="relative flex h-2 w-2">
+                            <span className="mobile-effect-animate animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                         </span>
                         Live
