@@ -183,10 +183,10 @@ export function MessageSettingsDialog({
             <ScrollArea className="h-full rounded-[3px] border border-neutral-300 bg-white dark:border-neutral-700 dark:bg-[#121212]">
               <div className="space-y-2 p-2 pb-3">
                 {isCreating && (
-                  <Card className="rounded-[3px] border-blue-500/50 shadow-none">
+                  <Card className="border-line-strong rounded-[3px] shadow-none">
                     <CardContent className="space-y-2.5 p-2.5">
                       <div className="flex items-center justify-between">
-                        <span className="dark:text-status-info text-[10px] font-bold tracking-wider text-blue-600 uppercase">
+                        <span className="text-copy text-[10px] font-bold tracking-wider uppercase">
                           New Template
                         </span>
                       </div>
@@ -228,7 +228,7 @@ export function MessageSettingsDialog({
                       return (
                         <Card
                           key={index}
-                          className="rounded-[3px] border-blue-500/50 shadow-none"
+                          className="border-line-strong rounded-[3px] shadow-none"
                         >
                           <CardContent className="space-y-2.5 p-2.5">
                             <Textarea
@@ -262,7 +262,7 @@ export function MessageSettingsDialog({
                     return (
                       <Card
                         key={index}
-                        className="group rounded-[3px] border-neutral-300 shadow-none transition-colors hover:border-blue-400/70 dark:border-neutral-700 dark:hover:border-blue-500/60"
+                        className="border-line hover:border-line-strong group rounded-[3px] shadow-none transition-colors"
                       >
                         <CardContent className="p-2.5">
                           <div className="flex items-start gap-3">

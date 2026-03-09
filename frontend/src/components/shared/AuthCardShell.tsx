@@ -24,16 +24,6 @@ export function AuthCardShell({
 }: AuthCardShellProps) {
   return (
     <div className="bg-shell relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-8 font-sans sm:px-6">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,theme(colors.brand.500/.14),transparent_38%),radial-gradient(circle_at_bottom,theme(colors.panel.subtle),transparent_34%)]"
-      />
-
-      <div
-        aria-hidden="true"
-        className="ambient-glow-surface-reduced pointer-events-none absolute top-[12%] left-1/2 h-[240px] w-[min(92vw,560px)] -translate-x-1/2 rounded-full opacity-70"
-      />
-
       <div className="border-line-soft bg-panel/90 relative z-10 mx-auto w-full max-w-[28rem] overflow-hidden rounded-2xl border shadow-xl backdrop-blur-xl">
         <div className="border-line-soft bg-panel-subtle flex flex-col gap-3 border-b px-5 py-5 sm:px-6 sm:py-6">
           <div className="border-line bg-panel-muted flex h-11 w-11 items-center justify-center rounded-2xl border">

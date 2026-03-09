@@ -159,7 +159,7 @@ export function TemplateInput({ input }: TemplateInputProps) {
         <Button
           variant="outline"
           size="sm"
-          className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 text-[10px] text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+          className="border-line bg-panel text-copy hover:bg-panel-hover h-6 rounded-[3px] px-2 text-[10px]"
           onClick={startCreateTemplate}
           disabled={isCreating || editingIndex !== null}
         >
@@ -170,8 +170,8 @@ export function TemplateInput({ input }: TemplateInputProps) {
 
       {/* New template form */}
       {isCreating && (
-        <div className="relative space-y-2 rounded-[3px] border border-blue-500/50 bg-blue-50/40 p-2 dark:bg-blue-950/20">
-          <span className="dark:text-status-info text-[10px] font-bold tracking-wider text-blue-600 uppercase">
+        <div className="bg-panel-subtle border-line-strong relative space-y-2 rounded-[3px] border p-2">
+          <span className="text-copy text-[10px] font-bold tracking-wider uppercase">
             NEW TEMPLATE
           </span>
 
@@ -183,29 +183,29 @@ export function TemplateInput({ input }: TemplateInputProps) {
                   value={editValue}
                   onChange={handleTextareaChange}
                   placeholder="Enter message... (type / for macros)"
-                  className="min-h-[50px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-[#121212]"
+                  className="border-line bg-field min-h-[50px] rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0"
                 />
               </div>
             </PopoverTrigger>
             <PopoverContent
-              className="w-48 rounded-[2px] border border-neutral-300 p-0 shadow-md dark:border-neutral-700"
+              className="border-line bg-panel w-48 rounded-[2px] p-0 shadow-md"
               align="start"
               sideOffset={4}
               onOpenAutoFocus={(e: Event) => e.preventDefault()}
             >
-              <div className="max-h-60 overflow-y-auto bg-white dark:bg-[#121212]">
+              <div className="bg-panel max-h-60 overflow-y-auto">
                 {MACROS.map((macro) => (
                   <Button
                     key={macro.id}
                     variant="ghost"
-                    className="h-auto w-full justify-start rounded-none px-2 py-1.5 text-[11px] font-normal hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    className="hover:bg-panel-hover h-auto w-full justify-start rounded-none px-2 py-1.5 text-[11px] font-normal"
                     onClick={() => insertMacro(macro.label)}
                   >
                     <div className="flex flex-col items-start gap-0.5">
-                      <span className="dark:text-status-info rounded-[2px] border border-neutral-200 bg-neutral-100 px-1 font-mono text-[10px] text-blue-600 dark:border-neutral-700 dark:bg-neutral-800">
+                      <span className="border-line bg-panel-muted text-copy rounded-[2px] border px-1 font-mono text-[10px]">
                         {macro.label}
                       </span>
-                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                      <span className="text-subtle-copy text-[10px]">
                         {macro.desc}
                       </span>
                     </div>
@@ -215,18 +215,18 @@ export function TemplateInput({ input }: TemplateInputProps) {
             </PopoverContent>
           </Popover>
 
-          <div className="flex justify-end gap-1.5 border-t border-blue-200 pt-1 dark:border-blue-900/50">
+          <div className="border-line-soft flex justify-end gap-1.5 border-t pt-1">
             <Button
               variant="outline"
               size="sm"
-              className="h-6 rounded-[3px] border-neutral-300 bg-white px-2.5 text-[10px] text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              className="border-line bg-panel text-copy hover:bg-panel-hover h-6 rounded-[3px] px-2.5 text-[10px]"
               onClick={cancelEditTemplate}
             >
               Cancel
             </Button>
             <Button
               size="sm"
-              className="h-6 rounded-[3px] bg-blue-600 px-2.5 text-[10px] text-white hover:bg-blue-700"
+              className="brand-button h-6 rounded-[3px] px-2.5 text-[10px]"
               onClick={handleSaveTemplate}
             >
               Save
@@ -236,13 +236,13 @@ export function TemplateInput({ input }: TemplateInputProps) {
       )}
 
       {templates === undefined ? (
-        <div className="py-2 text-[10px] text-neutral-400">
+        <div className="text-subtle-copy py-2 text-[10px]">
           Loading templates...
         </div>
       ) : templates.length === 0 && !isCreating ? (
-        <div className="rounded-[3px] border border-dashed border-neutral-300 bg-neutral-50 p-3 text-center dark:border-neutral-700 dark:bg-neutral-900/30">
-          <MessageSquare className="mx-auto mb-1 h-4 w-4 text-neutral-400 opacity-20" />
-          <p className="text-[10px] text-neutral-400">No templates</p>
+        <div className="border-line bg-panel-subtle rounded-[3px] border border-dashed p-3 text-center">
+          <MessageSquare className="text-subtle-copy mx-auto mb-1 h-4 w-4 opacity-20" />
+          <p className="text-subtle-copy text-[10px]">No templates</p>
         </div>
       ) : (
         <div className="space-y-1.5">
@@ -251,7 +251,7 @@ export function TemplateInput({ input }: TemplateInputProps) {
               return (
                 <div
                   key={index}
-                  className="relative space-y-1.5 rounded-[3px] border border-neutral-400/50 bg-neutral-50 p-1.5 dark:border-neutral-600 dark:bg-neutral-900/50"
+                  className="border-line-strong bg-panel-subtle relative space-y-1.5 rounded-[3px] border p-1.5"
                 >
                   <Popover
                     open={macroDropdownOpen}
@@ -263,30 +263,30 @@ export function TemplateInput({ input }: TemplateInputProps) {
                           ref={textareaRef}
                           value={editValue}
                           onChange={handleTextareaChange}
-                          className="min-h-[50px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-[#121212]"
+                          className="border-line bg-field min-h-[50px] rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0"
                           placeholder="Enter message... (type / for macros)"
                         />
                       </div>
                     </PopoverTrigger>
                     <PopoverContent
-                      className="w-48 rounded-[2px] border border-neutral-300 p-0 shadow-md dark:border-neutral-700"
+                      className="border-line bg-panel w-48 rounded-[2px] p-0 shadow-md"
                       align="start"
                       sideOffset={4}
                       onOpenAutoFocus={(e: Event) => e.preventDefault()}
                     >
-                      <div className="max-h-60 overflow-y-auto bg-white dark:bg-[#121212]">
+                      <div className="bg-panel max-h-60 overflow-y-auto">
                         {MACROS.map((macro) => (
                           <Button
                             key={macro.id}
                             variant="ghost"
-                            className="h-auto w-full justify-start rounded-none px-2 py-1.5 text-[11px] font-normal hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            className="hover:bg-panel-hover h-auto w-full justify-start rounded-none px-2 py-1.5 text-[11px] font-normal"
                             onClick={() => insertMacro(macro.label)}
                           >
                             <div className="flex flex-col items-start gap-0.5">
-                              <span className="dark:text-status-info rounded-[2px] border border-neutral-200 bg-neutral-100 px-1 font-mono text-[10px] text-blue-600 dark:border-neutral-700 dark:bg-neutral-800">
+                              <span className="border-line bg-panel-muted text-copy rounded-[2px] border px-1 font-mono text-[10px]">
                                 {macro.label}
                               </span>
-                              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                              <span className="text-subtle-copy text-[10px]">
                                 {macro.desc}
                               </span>
                             </div>
@@ -315,11 +315,11 @@ export function TemplateInput({ input }: TemplateInputProps) {
                 </div>
               )
             }
-            return (
-              <div
-                key={index}
-                className="group rounded-[3px] border border-neutral-300 bg-neutral-50 p-1.5 transition-colors hover:border-blue-400 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-blue-500/50"
-              >
+              return (
+                <div
+                  key={index}
+                  className="border-line bg-panel-subtle hover:border-line-strong group rounded-[3px] border p-1.5 transition-colors"
+                >
                 <div className="flex items-start gap-1.5">
                   <p className="flex-1 text-[11px] font-medium break-words whitespace-pre-wrap text-neutral-600 dark:text-neutral-300">
                     {template.length > 80

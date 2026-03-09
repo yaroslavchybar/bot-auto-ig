@@ -5,15 +5,16 @@ export function getClerkAppearance(theme: ThemePreference) {
   return {
     baseTheme: theme === 'dark' ? dark : shadcn,
     variables: {
-      colorPrimary: 'var(--brand-500)',
+      colorPrimary: 'var(--primary)',
       colorBackground: 'var(--panel)',
       colorInputBackground: 'var(--field)',
       colorInputText: 'var(--ink)',
       colorText: 'var(--copy)',
       colorTextSecondary: 'var(--muted-copy)',
       colorDanger: 'var(--status-danger)',
-      borderRadius: '0.5rem',
-      fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+      borderRadius: '0.75rem',
+      fontFamily:
+        'geistNumbers, "Suisse Intl", Suisse, Inter, "Segoe UI", system-ui, sans-serif',
     },
     layout: {
       socialButtonsVariant: 'blockButton' as const,
@@ -60,7 +61,7 @@ export function getClerkAppearance(theme: ThemePreference) {
         'bg-panel-muted border-line text-copy text-[9px] uppercase tracking-wider rounded-lg',
       navbar: 'bg-panel border-r border-line',
       navbarButton:
-        'text-muted-copy text-[11px] hover:bg-panel-muted hover:text-ink rounded-lg transition-all data-[active=true]:bg-panel-hover data-[active=true]:text-ink data-[active=true]:border-l-2 data-[active=true]:border-brand-500',
+        'text-muted-copy text-[11px] hover:bg-panel-muted hover:text-ink rounded-lg transition-all data-[active=true]:bg-panel-hover data-[active=true]:text-ink data-[active=true]:border-l-2 data-[active=true]:border-line-strong',
       navbarMobileMenuButton: 'text-muted-copy hover:text-ink',
       activeDeviceIcon: 'text-status-danger',
       menuButton: 'text-muted-copy hover:text-ink',
