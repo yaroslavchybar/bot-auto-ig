@@ -17,11 +17,16 @@ Mounted under `/api/*`:
 - `/api/displays`
 - `/api/health` (public)
 
-## Auth Model
+## Startup, CORS, and Auth Model
 
-- Clerk auth is applied globally.
+- Initializes the WebSocket server before listening.
+- Cleans up orphaned Python processes left by previous runs.
+- Reconciles stale profile runtime flags against the in-memory process registry before opening the HTTP listener.
+- Clerk auth middleware is applied globally before protected route mounting.
+- In development, CORS reflects the request origin or `*`.
+- In production, CORS only allows origins listed in `ALLOWED_ORIGINS`.
 - Most route groups require Clerk auth.
-- `/api/workflows` allows Clerk auth OR `INTERNAL_API_KEY` bearer.
+- `/api/workflows` allows Clerk auth or `INTERNAL_API_KEY` bearer.
 
 ## Rate Limits
 
@@ -42,9 +47,9 @@ Mounted under `/api/*`:
 - List CRUD and bulk list assignment operations.
 
 ### Scraping
-- Eligible profile discovery.
-- Followers/following scraping (single/batch).
-- Chunked scraping endpoints for resumable pagination.
+- `server/api/scraping.ts` is a compatibility re-export; the live router is `server/api/scraping/index.ts`.
+- Exposes eligible profile discovery at `/api/scraping/eligible-profiles`.
+- Mounts followers, following, and chunked pagination subrouters from `server/api/scraping/*`.
 - Scraping lifecycle events are emitted into the shared log stream with `source: scraper`, so they appear on the Logs page and in archived session logs.
 
 ### Workflows
@@ -90,12 +95,17 @@ npm --prefix server run start
 - `server/api/profiles.ts`
 - `server/api/lists.ts`
 - `server/api/logs.ts`
+- `server/api/scraping.ts`
 - `server/api/scraping/index.ts`
 - `server/api/scraping/followers.ts`
 - `server/api/scraping/following.ts`
+- `server/api/scraping/followers-chunk.ts`
+- `server/api/scraping/following-chunk.ts`
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`
 - `server/api/displays.ts`
+- `server/automation/process-manager.ts`
+- `server/data/profiles.ts`
 - `server/security/auth.ts`
 - `server/security/rate-limit.ts`
 - `server/websocket.ts`

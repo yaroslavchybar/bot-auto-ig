@@ -23,7 +23,7 @@ Module-level:
 
 - TypeScript/TSX: 2-space indentation, single quotes, semicolon-light style.
 - React components: `PascalCase` filenames.
-- Hooks: `useX.ts`.
+- Hooks: `useX.ts` or `useX.tsx`.
 - Python: PEP 8, snake_case naming.
 
 ## Testing Expectations

@@ -2,10 +2,11 @@
 
 ## Purpose
 
-`convex/` defines persistent data models, app-level query/mutation modules, HTTP action routes for server/python interop, and scheduled jobs.
+`convex/` defines persistent data models, app-level query/mutation modules, HTTP action routes for server/python interop, scheduled jobs, and one-off migration helpers.
 
 ## Current Modules
 
+- `convex.config.ts`
 - `schema.ts`
 - `lists.ts`
 - `profiles.ts`
@@ -16,6 +17,10 @@
 - `workflows.ts`
 - `http.ts`
 - `crons.ts`
+- `migrations.ts`
+
+Generated artifacts:
+- `_generated/*`
 
 ## Data Tables
 
@@ -34,6 +39,11 @@ From schema:
 - Supports profile/list/account/template/scraping-task/workflow operations.
 - Auth gate uses `INTERNAL_API_KEY` if configured.
 
+## Migration Helpers
+
+- `migrations.ts` contains cleanup and rollback mutations for the scraper-auto-only migration path.
+- Treat migration helpers as operator tools, not as always-on runtime flows.
+
 ## Cron Jobs
 
 Current daily jobs:
@@ -51,6 +61,7 @@ npm run test:convex
 ```
 
 Treat `convex/_generated/*` as generated artifacts.
+Keep `convex.config.ts` aligned with the owned module set and codegen expectations.
 
 ## Local Verification
 
@@ -61,9 +72,11 @@ Treat `convex/_generated/*` as generated artifacts.
 
 ## Verified Against
 
+- `convex/convex.config.ts`
 - `convex/schema.ts`
 - `convex/http.ts`
 - `convex/crons.ts`
+- `convex/migrations.ts`
 - `convex/lists.ts`
 - `convex/profiles.ts`
 - `convex/instagramAccounts.ts`

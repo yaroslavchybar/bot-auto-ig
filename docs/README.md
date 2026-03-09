@@ -21,6 +21,7 @@ Conflict resolution order:
 
 ### Core Subsystems
 - [Frontend Guide](./frontend/guide.md)
+- [Frontend Component Audit](./frontend/component-audit.md)
 - [Server Guide](./server/guide.md)
 - [Python Automation Guide](./python/automation.md)
 - [Python Components Reference](./python/components.md)

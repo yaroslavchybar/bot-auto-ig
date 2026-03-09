@@ -54,20 +54,21 @@
 ## Docs Integrity Checks
 
 ```bash
-git grep -n "file:///" -- "*.md"
+git grep -n "file:///" -- "*.md" ":!docs/operations/troubleshooting.md" ":!docs/operations/verification-log.md"
 ```
 
-Expected: no matches.
+Expected: no matches outside the docs pages that document this check.
 
 ## Verified Against
 
-- `frontend/src/main.tsx`
+- `frontend/src/root.tsx`
+- `frontend/src/lib/env.ts`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
 - `frontend/src/features/workflows/utils/workflowImportExport.ts`
 - `frontend/src/features/monitoring/containers/MonitoringPageContainer.tsx`
-- `server/api/scraping/*`
+- `server/api/scraping/index.ts`
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`
 - `server/api/displays.ts`

@@ -2,17 +2,23 @@
 
 ## Purpose
 
-The frontend is a Clerk-protected React + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring.
+The frontend is a Clerk-protected React Router 7 + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring.
 
-## Structure
+## Application Shape
 
-Frontend source now follows a two-level organization:
-- `frontend/src/components/ui`: design-system primitives only
-- `frontend/src/components/shared`: cross-feature composites such as auth shell, confirm-delete dialog, logs viewer, and error boundary
-- `frontend/src/components/layout`: authenticated app shell pieces such as sidebar, theme toggle, user menu, auth guard, and Convex provider
-- `frontend/src/features/*`: feature-owned UI, containers, hooks, types, api modules, and utils
-- `frontend/src/pages/*`: route entry wrappers only
-- `frontend/src/lib/*`: runtime/framework helpers and shared non-UI contracts
+Core app entrypoints:
+- `frontend/src/root.tsx`: document shell, provider wiring, theme bootstrap, and top-level error handling.
+- `frontend/src/entry.client.tsx`: hydrates the router on the client.
+- `frontend/src/entry.server.tsx`: server-render entrypoint used by the React Router build.
+- `frontend/src/routes.ts`: canonical route tree.
+
+Route and UI structure:
+- `frontend/src/routes/*`: route modules for auth, protected layout, and each feature path.
+- `frontend/src/components/ui`: design-system primitives only.
+- `frontend/src/components/shared`: cross-feature composites such as auth shell, confirm-delete dialog, logs viewer, and error views.
+- `frontend/src/components/layout`: authenticated app shell pieces such as sidebar, theme toggle, user menu, auth guard, and Convex provider.
+- `frontend/src/features/*`: feature-owned UI, containers, hooks, types, api modules, activities, and utils.
+- `frontend/src/lib/*` and `frontend/src/hooks/*`: runtime/framework helpers and shared non-UI contracts.
 
 Feature folders:
 - `auth`
@@ -25,20 +31,22 @@ Feature folders:
 - `vnc`
 - `monitoring`
 
-## Feature Surface
+## Route Surface
 
-Primary tabs in app shell:
-- Profiles Manager
-- Lists Manager
-- Scraping
-- Workflows
-- Upload Accounts
-- Logs
-- Browser View (VNC)
-- VPS Monitor
+Protected routes under the authenticated shell:
+- `/profiles`
+- `/lists`
+- `/scraping`
+- `/workflows`
+- `/accounts`
+- `/logs`
+- `/vnc`
+- `/monitoring`
 
-Default landing tab:
-- Profiles Manager
+Other route behavior:
+- `/` redirects to `/profiles`.
+- `/sign-in/*` and `/sign-up/*` run through the auth layout.
+- The protected shell keeps selected heavy routes mounted (`/workflows`, `/accounts`, `/logs`, `/vnc`) to avoid resetting long-lived client state on navigation.
 
 ## Runtime Integration
 
@@ -48,9 +56,9 @@ Default landing tab:
 - Profiles create/edit flows support pasted cookie JSON, while the cached profile list remains sanitized and fetches the sensitive cookie payload only from explicit profile detail reads.
 
 ### WebSocket
-- Default endpoint resolves from window host to `/ws`.
-- Token appended as query parameter when available from Clerk.
-- Handles event streams for logs, statuses, workflow progression, and display allocation.
+- Default endpoint resolves from the current browser host to `/ws`.
+- Clerk token is appended as a query parameter when available.
+- The client reconnects with exponential backoff and handles logs, status, workflow progression, and display-allocation events.
 
 ### Data Uploader Integration
 - Data uploader base: `VITE_DATAUPLOADER_URL` or:
@@ -58,24 +66,23 @@ Default landing tab:
   - prod: `/api/datauploader`
 
 ### Convex Integration
-- Convex client consumes `VITE_CONVEX_URL`.
-- Scraping tab may read storage URLs via Convex HTTP domain conversion logic.
+- `VITE_CONVEX_URL` is required and normalized to HTTPS.
+- `VITE_CONVEX_API_KEY` is used by the scraping task artifact flow.
+- Scraping views may convert `.convex.cloud` origins to `.convex.site` storage URLs.
 
 ### Styling
 - Tailwind CSS is configured in CSS-first mode from `frontend/src/index.css`.
 - Frontend builds use the official Tailwind Vite plugin (`@tailwindcss/vite`) with Tailwind CSS 4.2.
-- Semantic theme utilities (`bg-background`, `text-foreground`, `bg-sidebar`, etc.) are mapped from the app's runtime CSS variables and use the root `.dark` class for dark mode.
-- `frontend/src/index.css` is the Tailwind entrypoint only; it imports the modular CSS files under `frontend/src/css/`.
-- Design tokens and semantic Tailwind mappings live in `frontend/src/css/theme.css`. Add or change palette values there first, then consume them from semantic utilities or `var(--token)` references in components.
+- Semantic theme utilities (`bg-background`, `text-foreground`, `bg-sidebar`, etc.) are mapped from runtime CSS variables and use the root `.dark` class for dark mode.
+- `frontend/src/index.css` imports the modular CSS files under `frontend/src/css/`.
+- Design tokens and semantic Tailwind mappings live in `frontend/src/css/theme.css`.
 - Global resets and runtime-only selectors live in `frontend/src/css/base.css`.
-- Shared emerald brand-accent utilities and other app-specific reusable helpers live in `frontend/src/css/utilities.css`; use those for CTA gradients, glow, focus, status, and workflow treatments instead of ad hoc color literals.
+- Shared emerald brand-accent utilities live in `frontend/src/css/utilities.css`.
 - Runtime theme state lives in `frontend/src/hooks/use-theme.tsx`, persists to `localStorage` under `anti-theme`, defaults to dark, and drives the HTML root class before React mounts.
-- The authenticated app exposes the light/dark toggle in the header; Clerk and Sonner should read from the same runtime theme instead of hard-coding their own mode.
-- Warning/paused/cancelled UI remains orange and destructive/error UI remains red; those semantic states are intentionally separate from the brand accent.
 
 ## Workflow JSON Import/Export
 
-Workflows tab supports:
+Workflows supports:
 - `Import JSON` from header actions.
 - `Export JSON` from each workflow row action menu.
 
@@ -85,7 +92,7 @@ Export contract:
   - `version: '1.0'`
   - `exportedAt` (ISO timestamp)
   - `workflow` with allowed fields only: `name`, `description`, `nodes`, `edges`
-- Export never includes runtime metadata (`_id`, status, schedule, timestamps, etc).
+- Export never includes runtime metadata (`_id`, status, schedule, timestamps, etc.).
 
 Import contract and validation:
 - Accepts `.json` files only.
@@ -98,17 +105,16 @@ Import contract and validation:
   - at least one start node (`type === 'start'` or `id === 'start_node'`)
 - Unknown activity IDs (`getActivityById`) hard-fail and list offending IDs.
 - `select_list.config.sourceLists` IDs missing from current lists are warning-only.
-- Persistence is create-only (`api.workflows.create`), never overwrite existing workflows.
-- Name collision auto-rename:
-  - `"<name> (imported YYYY-MM-DD HH:mm)"`
+- Persistence is create-only (`api.workflows.create`), never overwrites existing workflows.
+- Name collisions auto-rename to `"<name> (imported YYYY-MM-DD HH:mm)"`.
 
 ## Environment Variables
 
 - `VITE_CLERK_PUBLISHABLE_KEY` (required)
 - `VITE_API_URL` (optional override)
 - `VITE_DATAUPLOADER_URL` (optional override)
-- `VITE_CONVEX_URL`
-- `VITE_CONVEX_API_KEY` (used by scraping task artifact flow)
+- `VITE_CONVEX_URL` (required)
+- `VITE_CONVEX_API_KEY` (optional, used by scraping task artifact flow)
 
 ## Dev and Build
 
@@ -121,8 +127,11 @@ npm --prefix frontend run preview
 
 ## Verified Against
 
-- `frontend/src/App.tsx`
-- `frontend/src/ProtectedApp.tsx`
+- `frontend/src/root.tsx`
+- `frontend/src/routes.ts`
+- `frontend/src/routes/index.tsx`
+- `frontend/src/routes/protected-layout.tsx`
+- `frontend/src/components/layout/ProtectedLayoutShell.tsx`
 - `frontend/src/components/layout/app-sidebar.tsx`
 - `frontend/src/components/shared/AuthCardShell.tsx`
 - `frontend/src/components/shared/ConfirmDeleteDialog.tsx`
@@ -131,13 +140,13 @@ npm --prefix frontend run preview
 - `frontend/src/css/theme.css`
 - `frontend/src/css/utilities.css`
 - `frontend/src/index.css`
-- `frontend/src/main.tsx`
+- `frontend/src/lib/env.ts`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/hooks/useWebSocket.ts`
 - `frontend/src/features/accounts/hooks/useDataUploader.ts`
 - `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
-- `frontend/src/features/workflows/components/WorkflowsList.tsx`
 - `frontend/src/features/workflows/utils/workflowImportExport.ts`
 - `frontend/src/features/monitoring/containers/MonitoringPageContainer.tsx`
-- `frontend/vite.config.ts`
+- `frontend/src/entry.client.tsx`
+- `frontend/src/entry.server.tsx`

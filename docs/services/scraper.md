@@ -13,9 +13,9 @@
 Both scrape endpoints support:
 - auth username + session ID,
 - target username,
-- overall limit,
-- cursor/chunk pagination,
-- max pages,
+- cursor-based chunk pagination,
+- `chunk_limit` (`1..5000`),
+- `max_pages` (`1..100`),
 - optional proxy normalization.
 
 ## CLI Runtime
@@ -25,8 +25,9 @@ Both scrape endpoints support:
 ## Behavior Notes
 
 - Session verification occurs before scraping.
+- If session verification fails only because the probe could not fetch a test user ID, the scrape continues and logs the degraded verification state.
 - Proxy input normalization supports multiple formats.
-- Responses include paging metadata and user payloads.
+- Responses include `targetUsername`, `scraped`, `chunkLimit`, `cursor`, `nextCursor`, `hasMore`, `total`, and `users`.
 
 ## Deployment
 

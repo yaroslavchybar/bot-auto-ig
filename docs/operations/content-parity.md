@@ -24,4 +24,5 @@ This file tracks where legacy README knowledge now lives in canonical docs.
 
 - Legacy content migration: complete.
 - High-risk drift topics (server/frontend/convex surface mismatch): closed in canonical docs refresh.
+- Docs index and pointer-stub alignment: closed in canonical docs refresh.
 - Pointer/readme realignment: complete.

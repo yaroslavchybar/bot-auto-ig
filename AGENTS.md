@@ -15,6 +15,7 @@ Rule of precedence:
 
 Domain guides:
 - Frontend: [docs/frontend/guide.md](docs/frontend/guide.md)
+- Frontend component audit: [docs/frontend/component-audit.md](docs/frontend/component-audit.md)
 - Server: [docs/server/guide.md](docs/server/guide.md)
 - Python automation: [docs/python/automation.md](docs/python/automation.md)
 - Python components: [docs/python/components.md](docs/python/components.md)
@@ -34,10 +35,10 @@ Operations:
 
 ## Quick Repo Map
 
-- `frontend/`: UI tabs (`dashboard`, `profiles`, `lists`, `scraping`, `workflows`, `accounts`, `logs`, `vnc`, `monitoring`).
-- `server/`: API domains (`automation`, `profiles`, `lists`, `logs`, `scraping`, `workflows`, `monitoring`, `displays`) + WebSocket.
+- `frontend/`: React Router app (`root.tsx`, `routes.ts`, route modules, feature-owned UI for `profiles`, `lists`, `scraping`, `workflows`, `accounts`, `logs`, `vnc`, `monitoring`).
+- `server/`: Express API route files (`automation`, `profiles`, `lists`, `logs`, `scraping`, `workflows`, `monitoring`, `displays`) + WebSocket.
 - `python/`: automation runtime entrypoints and internal systems.
-- `convex/`: schema/modules/http/crons including `keywords`, `scrapingTasks`, `workflows`.
+- `convex/`: schema/modules/http/crons/migrations including `keywords`, `scrapingTasks`, `workflows`.
 - `datauploader/`: CSV + scraping-task ingest service.
 - `scraper/`: follower/following scraping service.
 - `data/`: runtime logs/uploads.
@@ -59,7 +60,7 @@ Operations:
 
 - TypeScript/TSX: 2-space indentation, single quotes, semicolon-light style.
 - React components: `PascalCase` filenames.
-- Hooks: `useX.ts` naming.
+- Hooks: `useX.ts` or `useX.tsx` naming.
 - Python: PEP 8 and snake_case naming.
 - For Convex changes, run `npm run test:convex` and add or update relevant tests in `convex/tests/`.
 - For frontend/server changes without dedicated tests, run lint + build.

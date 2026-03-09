@@ -1,6 +1,6 @@
 # Python Components Reference
 
-## Getting Started Layer
+## Getting Started Components
 
 - `python/getting_started/launcher.py`: primary session launcher with action/proxy/timing controls.
 - `python/getting_started/run_multiple_accounts.py`: multi-account runner.
@@ -47,6 +47,10 @@ Core infrastructure under `python/internal_systems/`:
 
 - Directory listings for `python/*`
 - `python/getting_started/launcher.py`
+- `python/getting_started/run_multiple_accounts.py`
 - `python/getting_started/run_workflow.py`
-- `python/database_sync/*.py`
-- `python/internal_systems/*`
+- `python/database_sync/config.py`
+- `python/database_sync/client.py`
+- `python/database_sync/shared_session.py`
+- `python/internal_systems/process_management`
+- `python/internal_systems/logging`

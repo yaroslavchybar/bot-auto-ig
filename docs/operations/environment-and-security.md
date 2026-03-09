@@ -33,7 +33,9 @@
 
 ### Python Runtime
 - `FEED_DEBUG_MOUSE`
-- Convex values loaded through `python/database_sync/config.py`
+- `CONVEX_URL`
+- `INTERNAL_API_KEY`
+- additional Convex values loaded through `python/database_sync/config.py`
 
 ## Security Controls
 
@@ -59,7 +61,7 @@
 - `server/security/auth.ts`
 - `server/security/rate-limit.ts`
 - `server/websocket.ts`
-- `frontend/src/main.tsx`
+- `frontend/src/lib/env.ts`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/features/accounts/hooks/useDataUploader.ts`
 - `datauploader/convex_client.py`
