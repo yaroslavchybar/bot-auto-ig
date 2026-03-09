@@ -4,9 +4,7 @@
  */
 import express from 'express'
 import { createServer } from 'http'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import dotenv from 'dotenv'
+import './env.js'
 
 import { initWebSocket } from './websocket.js'
 import { clerkAuth, requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
@@ -23,14 +21,6 @@ import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { profileManager } from './data/profiles.js'
 import { profileProcesses } from './store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
-
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, '..')
-
-// Load environment
-dotenv.config({ path: path.join(PROJECT_ROOT, '.env') })
 
 const app = express()
 const server = createServer(app)

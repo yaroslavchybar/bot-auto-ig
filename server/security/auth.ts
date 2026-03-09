@@ -1,3 +1,4 @@
+import '../env.js'
 import { clerkMiddleware, requireAuth, getAuth } from '@clerk/express'
 import type { Request, Response, NextFunction } from 'express'
 

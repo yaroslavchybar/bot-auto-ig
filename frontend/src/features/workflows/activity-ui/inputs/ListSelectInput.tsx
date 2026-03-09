@@ -66,7 +66,7 @@ export function ListSelectInput({
                 id={`list-${list._id}`}
                 checked={selectedLists.includes(list._id)}
                 onCheckedChange={() => toggleList(list._id)}
-                className="h-3.5 w-3.5 rounded-[2px]"
+                className="h-3.5 w-3.5"
               />
               <Label
                 htmlFor={`list-${list._id}`}

@@ -4,6 +4,9 @@
 
 - `frontend` fails at startup with publishable key error:
   - verify `VITE_CLERK_PUBLISHABLE_KEY` is present.
+- API/server returns Clerk publishable key errors during local `npm run dev`:
+  - verify `.env` or `.env.local` contains `VITE_CLERK_PUBLISHABLE_KEY` or `CLERK_PUBLISHABLE_KEY`.
+  - verify `CLERK_SECRET_KEY` is present for authenticated routes and WebSocket verification.
 - API calls fail from frontend:
   - verify backend at `http://localhost:3001`.
   - verify `VITE_API_URL` overrides are intentional.

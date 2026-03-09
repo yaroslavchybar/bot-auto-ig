@@ -5,7 +5,7 @@
  * Supports standard and alternative message templates.
  */
 
-import { useState, useEffect, type ComponentProps } from 'react'
+import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -34,20 +34,6 @@ import {
 interface MessageSettingsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-}
-
-function DenseButton({
-  className = '',
-  ...props
-}: ComponentProps<typeof Button>) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className={`h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700 ${className}`}
-      {...props}
-    />
-  )
 }
 
 export function MessageSettingsDialog({
@@ -155,13 +141,16 @@ export function MessageSettingsDialog({
                 Alternative
               </TabsTrigger>
             </TabsList>
-            <DenseButton
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
               onClick={startCreate}
               disabled={isCreating || editingIndex !== null || loading}
             >
               <Plus className="mr-1.5 h-3 w-3" />
               Add Template
-            </DenseButton>
+            </Button>
           </div>
 
           {error && (
@@ -197,13 +186,14 @@ export function MessageSettingsDialog({
                         className="min-h-[88px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-neutral-900"
                       />
                       <div className="flex justify-end gap-2">
-                        <DenseButton
-                          variant="ghost"
+                        <Button
+                          variant="outline"
                           size="sm"
+                          className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
                           onClick={cancelEdit}
                         >
                           Cancel
-                        </DenseButton>
+                        </Button>
                         <Button
                           size="sm"
                           className="h-6 rounded-[3px] px-2.5 text-[11px]"
@@ -237,14 +227,15 @@ export function MessageSettingsDialog({
                               className="min-h-[88px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-neutral-900"
                             />
                             <div className="flex justify-end gap-2">
-                              <DenseButton
-                                variant="ghost"
+                              <Button
+                                variant="outline"
                                 size="sm"
+                                className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
                                 onClick={cancelEdit}
                               >
                                 <X className="mr-1 h-3 w-3" />
                                 Cancel
-                              </DenseButton>
+                              </Button>
                               <Button
                                 size="sm"
                                 className="h-6 rounded-[3px] px-2.5 text-[11px]"

@@ -162,7 +162,7 @@ function ProtectedLayout() {
             <UserMenu />
           </div>
         </header>
-        <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden p-4 pt-0">
+        <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-0">
           <div className="min-h-0 min-w-0 flex-1">
             <Suspense
               fallback={

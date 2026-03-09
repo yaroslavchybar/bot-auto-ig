@@ -7,7 +7,7 @@ import {
   AuthCardShell,
   AuthField,
 } from '@/components/shared/AuthCardShell'
-import { DenseButton } from '@/components/ui/dense-button'
+import { Button } from '@/components/ui/button'
 import { getClerkErrorMessage } from '@/lib/clerk-errors'
 
 type SignUpStep = 'credentials' | 'emailVerification'
@@ -132,9 +132,9 @@ export function SignUpPageContainer() {
 
           <div id="clerk-captcha" />
 
-          <DenseButton
+          <Button
             type="submit"
-            className="brand-button h-11 w-full justify-center rounded-xl text-sm font-medium shadow-lg"
+            className="h-11 w-full justify-center rounded-xl text-sm font-medium shadow-lg"
             disabled={disabled}
           >
             {submitting ? (
@@ -143,7 +143,7 @@ export function SignUpPageContainer() {
               <KeyRound className="h-4 w-4" />
             )}
             Create account
-          </DenseButton>
+          </Button>
         </form>
       ) : (
         <form className="space-y-5" onSubmit={submitVerificationCode}>
@@ -158,9 +158,9 @@ export function SignUpPageContainer() {
           />
 
           <div className="flex gap-3">
-            <DenseButton
+            <Button
               type="submit"
-              className="brand-button h-11 flex-1 justify-center rounded-xl text-sm font-medium shadow-lg"
+              className="h-11 flex-1 justify-center rounded-xl text-sm font-medium shadow-lg"
               disabled={disabled}
             >
               {submitting ? (
@@ -169,8 +169,9 @@ export function SignUpPageContainer() {
                 <ShieldCheck className="h-4 w-4" />
               )}
               Verify
-            </DenseButton>
-            <DenseButton
+            </Button>
+            <Button
+              variant="outline"
               type="button"
               className="border-line bg-field text-copy hover:bg-panel-hover h-11 rounded-xl px-4 text-sm"
               disabled={disabled}
@@ -181,7 +182,7 @@ export function SignUpPageContainer() {
               }}
             >
               Back
-            </DenseButton>
+            </Button>
           </div>
         </form>
       )}

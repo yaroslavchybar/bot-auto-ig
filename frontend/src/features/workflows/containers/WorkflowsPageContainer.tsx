@@ -456,16 +456,8 @@ export function WorkflowsPageContainer() {
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur bg-panel-subtle border-line-soft relative z-10 flex-none border-b p-4 md:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <h2 className="page-title-gradient text-2xl font-bold tracking-tight md:text-3xl">
-              Workflows
-            </h2>
-            <p className="text-subtle-copy mt-1 text-sm">
-              Create and manage automation workflows
-            </p>
-          </div>
+      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
             <Button
               size={isMobile ? 'default' : 'sm'}
@@ -522,7 +514,7 @@ export function WorkflowsPageContainer() {
       )}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
           <WorkflowsList
             workflows={workflowsList}
             loading={workflowsLoading}

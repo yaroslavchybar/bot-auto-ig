@@ -279,7 +279,7 @@ export function ListsForm({
                     disabled={
                       loadingProfiles || saving || filteredProfiles.length === 0
                     }
-                    className="brand-checkbox border-line-strong bg-field-alt h-4.5 w-4.5 rounded-md"
+                    className="brand-checkbox border-line-strong bg-field-alt h-4.5 w-4.5"
                   />
                   <span>Select All</span>
                 </label>
@@ -335,7 +335,7 @@ export function ListsForm({
                           <Checkbox
                             checked={profile.selected}
                             onCheckedChange={() => undefined}
-                            className="brand-checkbox border-line-strong bg-field-alt pointer-events-none mt-0.5 h-4.5 w-4.5 rounded-md"
+                            className="brand-checkbox border-line-strong bg-field-alt pointer-events-none mt-0.5 h-4.5 w-4.5"
                           />
 
                           <div className="min-w-0 flex-1">

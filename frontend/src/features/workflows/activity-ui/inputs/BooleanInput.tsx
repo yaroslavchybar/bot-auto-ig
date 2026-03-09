@@ -18,7 +18,7 @@ export function BooleanInput({ input, value, onChange }: BooleanInputProps) {
           id={input.name}
           checked={!!displayValue}
           onCheckedChange={(checked) => onChange(!!checked)}
-          className="h-3.5 w-3.5 rounded-[2px]"
+          className="h-3.5 w-3.5"
         />
         <Label
           htmlFor={input.name}

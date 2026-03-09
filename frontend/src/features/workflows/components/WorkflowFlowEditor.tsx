@@ -4,7 +4,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
 } from 'react'
 import ReactFlow, {
   Background,
@@ -85,24 +84,6 @@ const iconMap: Record<string, React.ElementType> = {
 const nodeTypes: NodeTypes = {
   activity: ActivityNode,
   start: StartNode,
-}
-
-function DenseButton({
-  active,
-  className,
-  children,
-  ...props
-}: ComponentProps<typeof Button> & { active?: boolean }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className={`border-line bg-field h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] shadow-none transition-none ${active ? 'border-line-strong bg-panel-hover text-ink font-medium' : 'text-copy hover:bg-panel-hover hover:text-ink'} ${className || ''}`}
-      {...props}
-    >
-      {children}
-    </Button>
-  )
 }
 
 interface WorkflowFlowEditorProps {
@@ -341,20 +322,24 @@ function WorkflowFlowEditorInner({
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <DenseButton
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={handleClear}
-                className="border-line hover:bg-panel-hover text-copy bg-transparent"
+                className="border-line bg-field hover:bg-panel-hover h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] text-copy shadow-none transition-none"
               >
                 Clear
-              </DenseButton>
-              <DenseButton
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={onClose}
                 disabled={saving}
-                className="border-line hover:bg-panel-hover text-copy bg-transparent"
+                className="border-line bg-field hover:bg-panel-hover h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] text-copy shadow-none transition-none"
               >
                 <X className="mr-1.5 h-3 w-3" />
                 Cancel
-              </DenseButton>
+              </Button>
               <Button
                 size="sm"
                 onClick={handleSave}

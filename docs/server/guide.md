@@ -71,6 +71,7 @@ Mounted under `/api/*`:
 - `SCRAPER_URL`
 - `WORKFLOW_MAX_CONCURRENCY`
 - `CONVEX_URL`
+- `CLERK_PUBLISHABLE_KEY` (server runtime; falls back to `VITE_CLERK_PUBLISHABLE_KEY` in local dev bootstrap)
 - `CLERK_SECRET_KEY`
 - `INTERNAL_API_KEY`
 

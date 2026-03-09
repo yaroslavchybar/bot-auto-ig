@@ -140,16 +140,9 @@ export function ListsPageContainer() {
       <AmbientGlow />
 
       {/* Header */}
-      <div className="mobile-effect-blur mobile-effect-sticky bg-panel-subtle border-line-soft sticky top-0 z-10 flex items-center justify-between border-b px-6 py-4 backdrop-blur-xs">
-        <div>
-          <h2 className="page-title-gradient text-xl font-semibold tracking-tight">
-            Lists Manager
-          </h2>
-          <p className="text-muted-copy text-sm">
-            Manage profile collections and mapping state.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
+          <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
@@ -174,6 +167,7 @@ export function ListsPageContainer() {
           </Button>
         </div>
       </div>
+      </div>
 
       {surfacedError && !deleteListTarget && !isCreateOpen && !editList && (
         <div className="status-banner-danger relative z-10 flex items-center border-b px-6 py-3 text-sm">
@@ -183,7 +177,7 @@ export function ListsPageContainer() {
       )}
 
       {/* Main Content */}
-      <div className="relative z-10 flex-1 overflow-auto p-6">
+      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="mx-auto max-w-[2000px]">
           <ListsList
             lists={lists}

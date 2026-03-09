@@ -234,8 +234,8 @@ function MonitoringSkeleton() {
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur border-line-soft bg-panel-subtle sticky top-0 z-10 shrink-0 border-b backdrop-blur-xs">
-        <div className="flex flex-col gap-4 px-4 py-4 md:px-6">
+      <div className="mobile-effect-blur border-line-soft bg-panel-subtle sticky top-0 z-10 shrink-0 border-b px-4 pt-2 pb-2 backdrop-blur-xs md:px-6 md:pt-3 md:pb-3">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-2">
               <Skeleton className="bg-panel-hover h-8 w-48" />
@@ -249,7 +249,7 @@ function MonitoringSkeleton() {
         </div>
       </div>
 
-      <div className="relative z-10 flex-1 overflow-auto p-4 md:p-6">
+      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="space-y-6">
           <div className="grid gap-4 xl:grid-cols-3">
             {[1, 2, 3].map((item) => (
@@ -412,18 +412,8 @@ export function MonitoringPageContainer() {
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur border-line-soft bg-panel-subtle sticky top-0 z-10 shrink-0 border-b backdrop-blur-xs">
-        <div className="flex flex-col gap-4 px-4 py-4 md:px-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-0">
-              <h2 className="page-title-gradient text-2xl font-bold tracking-tight md:text-3xl">
-                VPS Monitor
-              </h2>
-              <p className="text-muted-copy mt-1 text-sm">
-                Track live host resource usage and network availability.
-              </p>
-            </div>
-
+      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Badge
                 className={`border px-2.5 py-1 font-medium ${
@@ -450,9 +440,8 @@ export function MonitoringPageContainer() {
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="relative z-10 flex-1 overflow-auto p-4 md:p-6">
+      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="space-y-6">
           <div className="grid gap-4 xl:grid-cols-3">
             <MetricCard

@@ -7,7 +7,7 @@ import {
   AuthCardShell,
   AuthField,
 } from '@/components/shared/AuthCardShell'
-import { DenseButton } from '@/components/ui/dense-button'
+import { Button } from '@/components/ui/button'
 import { getClerkErrorMessage } from '@/lib/clerk-errors'
 
 type SignInStep = 'credentials' | 'secondFactorEmailCode'
@@ -157,9 +157,9 @@ export function SignInPageContainer() {
             disabled={disabled}
             onChange={setPassword}
           />
-          <DenseButton
+          <Button
             type="submit"
-            className="brand-button h-11 w-full justify-center rounded-xl text-sm font-medium shadow-lg"
+            className="h-11 w-full justify-center rounded-xl text-sm font-medium shadow-lg"
             disabled={disabled}
           >
             {submitting ? (
@@ -168,7 +168,7 @@ export function SignInPageContainer() {
               <KeyRound className="h-4 w-4" />
             )}
             Sign in
-          </DenseButton>
+          </Button>
         </form>
       ) : (
         <form className="space-y-5" onSubmit={submitSecondFactor}>
@@ -183,9 +183,9 @@ export function SignInPageContainer() {
           />
 
           <div className="flex gap-3">
-            <DenseButton
+            <Button
               type="submit"
-              className="brand-button h-11 flex-1 justify-center rounded-xl text-sm font-medium shadow-lg"
+              className="h-11 flex-1 justify-center rounded-xl text-sm font-medium shadow-lg"
               disabled={disabled}
             >
               {submitting ? (
@@ -194,8 +194,9 @@ export function SignInPageContainer() {
                 <ShieldCheck className="h-4 w-4" />
               )}
               Verify
-            </DenseButton>
-            <DenseButton
+            </Button>
+            <Button
+              variant="outline"
               type="button"
               className="border-line bg-field text-copy hover:bg-panel-hover h-11 rounded-xl px-4 text-sm"
               disabled={disabled}
@@ -206,7 +207,7 @@ export function SignInPageContainer() {
               }}
             >
               Back
-            </DenseButton>
+            </Button>
           </div>
         </form>
       )}

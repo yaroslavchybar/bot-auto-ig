@@ -82,6 +82,23 @@
   --title-gradient-end: var(--muted-copy);
   --workflow-edge: rgb(94 95 110);
   --workflow-grid: rgb(217 217 222);
+  --button-brand-surface: linear-gradient(
+    180deg,
+    rgb(32 118 61) 0%,
+    rgb(22 94 47) 100%
+  );
+  --button-brand-surface-hover: linear-gradient(
+    180deg,
+    rgb(38 132 68) 0%,
+    rgb(25 106 53) 100%
+  );
+  --button-brand-border: rgb(27 108 54);
+  --button-brand-border-hover: rgb(35 126 64);
+  --button-brand-shadow: 0 1px 2px rgb(0 0 0 / 0.2),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --button-brand-shadow-hover: 0 1px 2px rgb(0 0 0 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --button-brand-shadow-pressed: inset 0 1px 1px rgb(0 0 0 / 0.22);
   --shadow-brand: 0 10px 30px rgb(17 17 19 / 0.12);
   --shadow-brand-strong: 0 14px 36px rgb(17 17 19 / 0.18);
   --shadow-node: 0 12px 30px rgb(17 17 19 / 0.1);
@@ -187,6 +204,23 @@
   --title-gradient-end: var(--muted-copy);
   --workflow-edge: rgb(147 148 161);
   --workflow-grid: rgb(51 51 56);
+  --button-brand-surface: linear-gradient(
+    180deg,
+    rgb(31 122 61) 0%,
+    rgb(22 96 48) 100%
+  );
+  --button-brand-surface-hover: linear-gradient(
+    180deg,
+    rgb(37 136 69) 0%,
+    rgb(25 108 54) 100%
+  );
+  --button-brand-border: rgb(28 112 56);
+  --button-brand-border-hover: rgb(36 130 65);
+  --button-brand-shadow: 0 1px 2px rgb(0 0 0 / 0.28),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+  --button-brand-shadow-hover: 0 1px 2px rgb(0 0 0 / 0.14),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+  --button-brand-shadow-pressed: inset 0 1px 1px rgb(0 0 0 / 0.28);
   --shadow-brand: 0 14px 36px rgb(0 0 0 / 0.28);
   --shadow-brand-strong: 0 18px 42px rgb(0 0 0 / 0.36);
   --shadow-node: 0 16px 36px rgb(0 0 0 / 0.42);

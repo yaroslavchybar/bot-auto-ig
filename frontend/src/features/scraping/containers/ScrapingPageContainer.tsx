@@ -437,16 +437,9 @@ export function ScrapingPageContainer() {
     <div className="bg-shell text-ink relative flex h-full min-h-screen flex-col overflow-hidden">
       <AmbientGlow />
 
-      <div className="mobile-effect-blur border-line-soft bg-panel-subtle relative z-10 flex flex-col items-start justify-between border-b p-6 md:flex-row md:items-center">
-        <div>
-          <h2 className="page-title-gradient text-3xl font-extrabold tracking-tight">
-            Scraping Tasks
-          </h2>
-          <p className="text-subtle-copy mt-1 text-sm">
-            Manage and monitor your data extraction jobs
-          </p>
-        </div>
-        <div className="mt-4 flex items-center gap-3 md:mt-0">
+      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
+          <div className="flex items-center gap-3">
           <Button
             variant="outline"
             size="sm"
@@ -471,6 +464,7 @@ export function ScrapingPageContainer() {
           </Button>
         </div>
       </div>
+      </div>
 
       {error && (
         <div className="bg-status-danger-soft border-status-danger-border text-status-danger mx-6 mt-6 rounded-xl border p-4 text-sm backdrop-blur-md">
@@ -478,7 +472,7 @@ export function ScrapingPageContainer() {
         </div>
       )}
 
-      <div className="relative z-10 flex-1 overflow-auto p-6">
+      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         {eligibleError && (
           <div className="border-status-danger-border bg-status-danger-soft text-status-danger mb-6 rounded-xl border p-4 text-sm backdrop-blur-md">
             {eligibleError}

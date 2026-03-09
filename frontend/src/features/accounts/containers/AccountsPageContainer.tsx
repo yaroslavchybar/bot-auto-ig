@@ -569,19 +569,9 @@ export function AccountsPageContainer() {
         onValueChange={(value) => setActiveMode(value as AccountsMode)}
         className="flex h-full flex-col"
       >
-        <div className="mobile-effect-blur mobile-effect-sticky border-line-soft bg-panel-subtle sticky top-0 z-10 border-b backdrop-blur-xs">
-          <div className="flex flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
-            <div className="min-w-0">
-              <h2 className="page-title-gradient text-3xl font-extrabold tracking-tight">
-                Upload Accounts
-              </h2>
-              <p className="text-subtle-copy mt-1 text-sm">
-                Import cleaned Instagram account sources without leaving the
-                operations workspace.
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 xl:items-end">
+        <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
+            <div className="flex flex-col gap-2 md:items-end">
               <TabsList className="bg-panel-muted border-line h-11 rounded-xl border p-1">
                 <TabsTrigger
                   value="csv"
@@ -640,7 +630,7 @@ export function AccountsPageContainer() {
           <StatusBanner tone="danger">{state.message}</StatusBanner>
         ) : null}
 
-        <div className="flex-1 overflow-auto p-4 md:p-6">
+        <div className="flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
           <div className="mx-auto max-w-[2000px]">
             <TabsContent value="csv" className="mt-0 outline-none">
               <div className="space-y-4">

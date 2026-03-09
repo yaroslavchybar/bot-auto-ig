@@ -341,42 +341,40 @@ export function ProfilesPageContainer() {
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
       <AmbientGlow />
       {/* Header */}
-      <div className="mobile-effect-blur mobile-effect-sticky border-line-soft bg-panel-subtle sticky top-0 z-10 border-b backdrop-blur-xs">
-        <div className="flex flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:gap-6">
-          <div className="relative w-full xl:max-w-xl xl:flex-1">
-            <Search className="text-subtle-copy pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search profiles..."
-              className="brand-focus brand-focus-strong border-line bg-panel-strong text-inverse placeholder:text-subtle-copy h-11 rounded-xl pl-10"
-            />
+      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+          <div className="flex flex-grow items-center gap-2">
+            <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[rgb(163,163,177)]" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search..."
+                className="border-transparent bg-[rgb(51,51,62)] text-[rgb(246,246,247)] placeholder:text-[rgb(147,148,161)] brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-[inset_0_0_0_1px_rgba(61,61,74,0.88),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)] focus-visible:border-transparent focus-visible:ring-0 focus-visible:shadow-[inset_0_0_0_1px_rgba(130,130,148,0.92),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)]"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => refreshProfiles()}
+              disabled={loading || saving}
+              aria-label="Refresh profiles"
+              title="Refresh profiles"
+              className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
+            >
+              <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+              <span className="sr-only">Refresh</span>
+            </Button>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between xl:ml-auto xl:justify-end">
+          <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
             <Button
               size={isMobile ? 'default' : 'sm'}
               onClick={handleCreate}
               disabled={loading || saving}
-              className="mobile-effect-shadow brand-button w-full font-medium sm:w-auto"
+              className="h-8 w-auto shrink-0 rounded-md border-transparent bg-[#6c47ff] px-3.5 text-sm font-normal text-white shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.16),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.12)] transition-[background-color,box-shadow] hover:bg-[#7a59ff] hover:shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.2),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.12)] focus-visible:ring-0"
             >
-              <Plus className={isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5'} />
+              <Plus className="h-4 w-4" />
               New Profile
-            </Button>
-            <Button
-              variant="outline"
-              size={isMobile ? 'default' : 'sm'}
-              onClick={() => refreshProfiles()}
-              disabled={loading || saving}
-              className="border-line text-copy hover:bg-panel-hover w-full bg-transparent shadow-none transition-all hover:text-ink sm:w-auto"
-            >
-              <RefreshCw
-                className={
-                  isMobile
-                    ? `h-4 w-4 ${loading ? 'animate-spin' : ''}`
-                    : `mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`
-                }
-              />
-              Refresh
             </Button>
           </div>
         </div>
@@ -395,7 +393,7 @@ export function ProfilesPageContainer() {
         )}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-4 md:p-6">
+      <div className="flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="mx-auto max-w-[2000px] space-y-4">
           <ProfilesList
             profiles={filteredProfiles}

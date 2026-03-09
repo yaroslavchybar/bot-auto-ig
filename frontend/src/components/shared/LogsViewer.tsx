@@ -3,7 +3,7 @@ import { apiFetch } from '@/lib/api'
 import type { LogEntry } from '@/lib/logs'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { DenseButton } from '@/components/ui/dense-button'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -317,53 +317,68 @@ export function LogsViewer({
         <div className="border-line-soft flex flex-col justify-between gap-2 border-b px-2 py-1.5 sm:flex-row sm:items-center sm:gap-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <div className="bg-panel-subtle border-line-soft flex rounded-[4px] border p-0.5 shadow-inner">
-              <DenseButton
-                active={mode === 'live'}
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setMode('live')
                   void loadLiveLogs()
                 }}
-                className="w-20"
+                className={`border-line bg-field h-6 w-20 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                  mode === 'live'
+                    ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                    : 'text-copy hover:bg-panel-hover hover:text-ink'
+                }`}
                 disabled={loading}
               >
                 <Terminal className="mr-1.5 h-3 w-3" />
                 Live
-              </DenseButton>
-              <DenseButton
-                active={mode === 'static'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setMode('static')}
                 disabled={files.length === 0}
-                className="w-20"
+                className={`border-line bg-field h-6 w-20 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                  mode === 'static'
+                    ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                    : 'text-copy hover:bg-panel-hover hover:text-ink'
+                }`}
               >
                 <Database className="mr-1.5 h-3 w-3" />
                 Archive
-              </DenseButton>
+              </Button>
             </div>
 
             <div className="bg-panel-hover mx-1 h-4 w-px" />
 
-            <DenseButton
+            <Button
+              variant="outline"
+              size="sm"
               onClick={
                 mode === 'live'
                   ? () => void loadLiveLogs()
                   : () => void loadFiles()
               }
+              className="border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] text-copy shadow-none transition-none hover:bg-panel-hover hover:text-ink"
               disabled={loading || filesLoading}
             >
               <RefreshCw
                 className={`mr-1.5 h-3 w-3 ${loading || filesLoading ? 'animate-spin' : ''}`}
               />
               Refresh
-            </DenseButton>
+            </Button>
 
-            <DenseButton
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => void handleClearLive()}
               disabled={loading || mode !== 'live'}
-              className="text-status-danger hover:bg-status-danger-soft hover:text-status-danger hover:border-status-danger-border"
+              className="border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] text-status-danger shadow-none transition-none hover:border-status-danger-border hover:bg-status-danger-soft hover:text-status-danger"
             >
               <Trash2 className="mr-1.5 h-3 w-3" />
               Clear
-            </DenseButton>
+            </Button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -471,51 +486,81 @@ export function LogsViewer({
             <div className="bg-panel-hover mx-1 hidden h-3.5 w-px sm:block" />
 
             <div className="hidden items-center gap-1 sm:flex">
-              <DenseButton
-                active={showTime}
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setShowTime((v) => !v)}
                 title="Toggle Time Column"
+                className={`border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                  showTime
+                    ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                    : 'text-copy hover:bg-panel-hover hover:text-ink'
+                }`}
               >
                 <Clock className="mr-1 h-3 w-3" /> Time
-              </DenseButton>
-              <DenseButton
-                active={showSource}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setShowSource((v) => !v)}
                 title="Toggle Source Column"
+                className={`border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                  showSource
+                    ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                    : 'text-copy hover:bg-panel-hover hover:text-ink'
+                }`}
               >
                 <Hash className="mr-1 h-3 w-3" /> Source
-              </DenseButton>
-              <DenseButton
-                active={showProfile}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setShowProfile((v) => !v)}
                 title="Toggle Profile Column"
+                className={`border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                  showProfile
+                    ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                    : 'text-copy hover:bg-panel-hover hover:text-ink'
+                }`}
               >
                 <Type className="mr-1 h-3 w-3" /> Profile
-              </DenseButton>
+              </Button>
             </div>
 
             <div className="bg-panel-hover mx-1 hidden h-3.5 w-px sm:block" />
 
-            <DenseButton
-              active={feedDebugOnly}
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setFeedDebugOnly((v) => !v)}
               title="Filter UI feed-specific debug logic"
+              className={`border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                feedDebugOnly
+                  ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                  : 'text-copy hover:bg-panel-hover hover:text-ink'
+              }`}
             >
               <Bug
                 className={`mr-1 h-3 w-3 ${feedDebugOnly ? 'text-status-warning' : 'text-subtle-copy'}`}
               />{' '}
               Feed Debug
-            </DenseButton>
+            </Button>
           </div>
 
           <div>
-            <DenseButton
-              active={autoScroll}
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setAutoScroll((v) => !v)}
+              className={`border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] shadow-none transition-none ${
+                autoScroll
+                  ? 'border-line-strong bg-panel-hover text-ink font-medium'
+                  : 'text-copy hover:bg-panel-hover hover:text-ink'
+              }`}
             >
               <ArrowDownToLine className="mr-1 h-3 w-3" />
               Auto-tail
-            </DenseButton>
+            </Button>
           </div>
         </div>
       </div>
@@ -573,13 +618,15 @@ export function LogsViewer({
             <div className="flex flex-col pb-4">
               {showLoadMore && hasMoreLogs && (
                 <div className="bg-panel/95 border-line-soft sticky top-0 z-10 flex justify-center border-b py-1">
-                  <DenseButton
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() =>
                       setVisibleCount((prev) =>
                         Math.min(prev + LOGS_PAGE_SIZE, filteredLogs.length),
                       )
                     }
-                    className="h-5 px-2 text-[10px]"
+                    className="border-line bg-field hover:bg-panel-hover h-5 rounded-[3px] px-2 py-0 text-[10px] text-copy shadow-none transition-none hover:text-ink"
                   >
                     Load{' '}
                     {Math.min(
@@ -587,7 +634,7 @@ export function LogsViewer({
                       filteredLogs.length - visibleLogs.length,
                     )}{' '}
                     older logs ({filteredLogs.length - visibleLogs.length} left)
-                  </DenseButton>
+                  </Button>
                 </div>
               )}
               {visibleLogs.map((entry, idx) => {
