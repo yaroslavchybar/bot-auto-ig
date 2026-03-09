@@ -135,7 +135,6 @@ export function AppSidebar({
                     <SidebarMenuButton
                       isActive={activeId === item.id}
                       onClick={() => onNavigate(item.id as NavId)}
-                      tooltip={item.title}
                       className="text-muted-copy hover:text-ink hover:bg-panel-subtle data-[active=true]:bg-panel-selected transition-colors data-[active=true]:text-white"
                     >
                       {item.icon && <item.icon />}

@@ -38,7 +38,7 @@ import { WorkflowDialog } from './WorkflowDialog'
 import { WorkflowDetails } from './WorkflowDetails'
 import { ScheduleDialog } from './ScheduleDialog'
 import type { Workflow } from './types'
-import type { Node, Edge } from 'reactflow'
+import type { Edge, Node } from 'reactflow'
 import {
   buildWorkflowExportEnvelope,
   validateWorkflowImport,
@@ -55,32 +55,38 @@ export function WorkflowsPage() {
   const convex = useConvex()
   const isMobile = useIsMobile()
   const importInputRef = useRef<HTMLInputElement | null>(null)
-  const [selectedId, setSelectedId] = useState<Id<'workflows'> | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-  const [isFlowEditorOpen, setIsFlowEditorOpen] = useState(false)
-  const [isScheduleOpen, setIsScheduleOpen] = useState(false)
-  const [deleteId, setDeleteId] = useState<Id<'workflows'> | null>(null)
+  const [editWorkflowId, setEditWorkflowId] = useState<Id<'workflows'> | null>(
+    null,
+  )
+  const [detailsWorkflowId, setDetailsWorkflowId] = useState<
+    Id<'workflows'> | null
+  >(null)
+  const [flowWorkflowId, setFlowWorkflowId] = useState<Id<'workflows'> | null>(
+    null,
+  )
+  const [scheduleWorkflowId, setScheduleWorkflowId] = useState<
+    Id<'workflows'> | null
+  >(null)
+  const [deleteWorkflowId, setDeleteWorkflowId] = useState<
+    Id<'workflows'> | null
+  >(null)
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [workflowsData, setWorkflowsData] = useState<Workflow[] | null>(null)
 
-  // Queries
   const workflows = useQuery(api.workflows.list, {})
   const lists = useQuery(api.lists.list, {})
   const workflowsLoading = workflows === undefined && workflowsData === null
   const workflowsList = useMemo(() => workflowsData ?? [], [workflowsData])
 
-  // Keep local workflows state in sync with Convex subscription updates.
   useEffect(() => {
     if (workflows !== undefined) {
       setWorkflowsData(workflows)
     }
   }, [workflows])
 
-  // Mutations
   const createWorkflow = useMutation(api.workflows.create)
   const updateWorkflow = useMutation(api.workflows.update)
   const removeWorkflow = useMutation(api.workflows.remove)
@@ -89,16 +95,46 @@ export function WorkflowsPage() {
   const updateSchedule = useMutation(api.workflows.updateSchedule)
   const resetWorkflow = useMutation(api.workflows.reset)
 
-  const selected = useMemo(
-    () => workflowsList.find((w) => w._id === selectedId) ?? null,
-    [workflowsList, selectedId],
-  )
+  const editWorkflow =
+    workflowsList.find((workflow) => workflow._id === editWorkflowId) ?? null
+  const detailsWorkflow =
+    workflowsList.find((workflow) => workflow._id === detailsWorkflowId) ?? null
+  const flowWorkflow =
+    workflowsList.find((workflow) => workflow._id === flowWorkflowId) ?? null
+  const scheduleWorkflow =
+    workflowsList.find((workflow) => workflow._id === scheduleWorkflowId) ??
+    null
+  const deleteWorkflow =
+    workflowsList.find((workflow) => workflow._id === deleteWorkflowId) ?? null
 
-  // Handlers
-  const handleSelect = useCallback((workflow: Workflow) => {
-    setSelectedId(workflow._id)
-    setError(null)
-  }, [])
+  useEffect(() => {
+    if (editWorkflowId && !editWorkflow) {
+      setEditWorkflowId(null)
+    }
+    if (detailsWorkflowId && !detailsWorkflow) {
+      setDetailsWorkflowId(null)
+    }
+    if (flowWorkflowId && !flowWorkflow) {
+      setFlowWorkflowId(null)
+    }
+    if (scheduleWorkflowId && !scheduleWorkflow) {
+      setScheduleWorkflowId(null)
+    }
+    if (deleteWorkflowId && !deleteWorkflow) {
+      setDeleteWorkflowId(null)
+    }
+  }, [
+    deleteWorkflow,
+    deleteWorkflowId,
+    detailsWorkflow,
+    detailsWorkflowId,
+    editWorkflow,
+    editWorkflowId,
+    flowWorkflow,
+    flowWorkflowId,
+    scheduleWorkflow,
+    scheduleWorkflowId,
+  ])
 
   const handleCreate = useCallback(() => {
     setIsCreateOpen(true)
@@ -111,7 +147,7 @@ export function WorkflowsPage() {
     try {
       const [latest] = await Promise.all([
         convex.query(api.workflows.list, {}),
-        new Promise((r) => setTimeout(r, 400)),
+        new Promise((resolve) => setTimeout(resolve, 400)),
       ])
       setWorkflowsData(latest as Workflow[])
     } catch (e) {
@@ -122,20 +158,17 @@ export function WorkflowsPage() {
   }, [convex])
 
   const handleEdit = useCallback((workflow: Workflow) => {
-    setSelectedId(workflow._id)
-    setIsEditOpen(true)
+    setEditWorkflowId(workflow._id)
     setError(null)
   }, [])
 
   const handleViewDetails = useCallback((workflow: Workflow) => {
-    setSelectedId(workflow._id)
-    setIsDetailsOpen(true)
+    setDetailsWorkflowId(workflow._id)
     setError(null)
   }, [])
 
   const handleEditFlow = useCallback((workflow: Workflow) => {
-    setSelectedId(workflow._id)
-    setIsFlowEditorOpen(true)
+    setFlowWorkflowId(workflow._id)
     setError(null)
   }, [])
 
@@ -144,13 +177,12 @@ export function WorkflowsPage() {
       setSaving(true)
       setError(null)
       try {
-        const created = await createWorkflow({
+        await createWorkflow({
           name: data.name,
           description: data.description,
           nodes: [],
           edges: [],
         })
-        if (created?._id) setSelectedId(created._id)
         setIsCreateOpen(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
@@ -163,51 +195,68 @@ export function WorkflowsPage() {
 
   const handleSaveEdit = useCallback(
     async (data: { name: string; description?: string }) => {
-      if (!selectedId) return
+      if (!editWorkflowId) return
       setSaving(true)
       setError(null)
       try {
         await updateWorkflow({
-          id: selectedId,
+          id: editWorkflowId,
           name: data.name,
           description: data.description,
         })
-        setIsEditOpen(false)
+        setEditWorkflowId(null)
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       } finally {
         setSaving(false)
       }
     },
-    [selectedId, updateWorkflow],
+    [editWorkflowId, updateWorkflow],
   )
 
   const handleDelete = useCallback((workflow: Workflow) => {
-    setDeleteId(workflow._id)
+    setDeleteWorkflowId(workflow._id)
   }, [])
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!deleteId) return
+    if (!deleteWorkflowId) return
     setSaving(true)
     setError(null)
     try {
-      await removeWorkflow({ id: deleteId })
-      if (selectedId === deleteId) setSelectedId(null)
-      setDeleteId(null)
+      await removeWorkflow({ id: deleteWorkflowId })
+      if (editWorkflowId === deleteWorkflowId) {
+        setEditWorkflowId(null)
+      }
+      if (detailsWorkflowId === deleteWorkflowId) {
+        setDetailsWorkflowId(null)
+      }
+      if (flowWorkflowId === deleteWorkflowId) {
+        setFlowWorkflowId(null)
+      }
+      if (scheduleWorkflowId === deleteWorkflowId) {
+        setScheduleWorkflowId(null)
+      }
+      setDeleteWorkflowId(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setSaving(false)
     }
-  }, [deleteId, removeWorkflow, selectedId])
+  }, [
+    deleteWorkflowId,
+    detailsWorkflowId,
+    editWorkflowId,
+    flowWorkflowId,
+    removeWorkflow,
+    scheduleWorkflowId,
+  ])
 
   const handleDuplicate = useCallback(
     async (workflow: Workflow) => {
       setSaving(true)
       setError(null)
       try {
-        const duplicated = await duplicateWorkflow({ id: workflow._id })
-        if (duplicated?._id) setSelectedId(duplicated._id)
+        await duplicateWorkflow({ id: workflow._id })
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       } finally {
@@ -269,10 +318,7 @@ export function WorkflowsPage() {
           resolveActivityById: getActivityById,
         })
 
-        const created = await createWorkflow(imported.workflow)
-        if (created?._id) {
-          setSelectedId(created._id)
-        }
+        await createWorkflow(imported.workflow)
 
         imported.warnings.forEach((warning) => toast.warning(warning))
         toast.success(`Imported "${imported.workflow.name}"`)
@@ -322,8 +368,7 @@ export function WorkflowsPage() {
   }, [])
 
   const handleEditSchedule = useCallback((workflow: Workflow) => {
-    setSelectedId(workflow._id)
-    setIsScheduleOpen(true)
+    setScheduleWorkflowId(workflow._id)
     setError(null)
   }, [])
 
@@ -347,40 +392,42 @@ export function WorkflowsPage() {
       maxRunsPerDay?: number
       timezone?: string
     }) => {
-      if (!selectedId) return
+      if (!scheduleWorkflowId) return
       setSaving(true)
       setError(null)
       try {
         await updateSchedule({
-          id: selectedId,
+          id: scheduleWorkflowId,
           scheduleType: data.scheduleType,
           scheduleConfig: data.scheduleConfig,
           maxRunsPerDay: data.maxRunsPerDay,
           timezone: data.timezone,
         })
-        setIsScheduleOpen(false)
+        setScheduleWorkflowId(null)
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       } finally {
         setSaving(false)
       }
     },
-    [selectedId, updateSchedule],
+    [scheduleWorkflowId, updateSchedule],
   )
 
-  const handleReset = useCallback(async () => {
-    if (!selectedId) return
-    setError(null)
-    try {
-      await resetWorkflow({ id: selectedId })
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [selectedId, resetWorkflow])
+  const handleReset = useCallback(
+    async (workflow: Workflow) => {
+      setError(null)
+      try {
+        await resetWorkflow({ id: workflow._id })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e))
+      }
+    },
+    [resetWorkflow],
+  )
 
   const handleSaveFlow = useCallback(
     async (nodes: Node[], edges: Edge[]) => {
-      if (!selectedId) return
+      if (!flowWorkflowId) return
       setSaving(true)
       setError(null)
       try {
@@ -391,25 +438,24 @@ export function WorkflowsPage() {
           Record<string, unknown>
         >
         await updateWorkflow({
-          id: selectedId,
+          id: flowWorkflowId,
           nodes: serializableNodes,
           edges: serializableEdges,
         })
-        setIsFlowEditorOpen(false)
+        setFlowWorkflowId(null)
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e))
       } finally {
         setSaving(false)
       }
     },
-    [selectedId, updateWorkflow],
+    [flowWorkflowId, updateWorkflow],
   )
 
   return (
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
 
-      {/* Header */}
       <div className="mobile-effect-blur bg-panel-subtle border-line-soft relative z-10 flex-none border-b p-4 md:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
@@ -469,22 +515,17 @@ export function WorkflowsPage() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-status-danger-soft text-status-danger border-status-danger-border relative z-10 flex-none border-b p-4 text-sm">
           {error}
         </div>
       )}
 
-      {/* Main content area */}
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
-        {/* Workflows list */}
         <div className="flex-1 overflow-auto p-4 md:p-6">
           <WorkflowsList
             workflows={workflowsList}
-            selectedId={selectedId}
             loading={workflowsLoading}
-            onSelect={handleSelect}
             onToggleActive={handleToggleActive}
             onStopRun={handleStopRun}
             onEdit={handleEdit}
@@ -498,7 +539,6 @@ export function WorkflowsPage() {
         </div>
       </div>
 
-      {/* Create Dialog */}
       <WorkflowDialog
         open={isCreateOpen}
         onOpenChange={setIsCreateOpen}
@@ -508,43 +548,49 @@ export function WorkflowsPage() {
         onCancel={() => setIsCreateOpen(false)}
       />
 
-      {/* Edit Dialog */}
       <WorkflowDialog
-        open={isEditOpen}
-        onOpenChange={setIsEditOpen}
+        open={Boolean(editWorkflow)}
+        onOpenChange={(open) => {
+          if (!open) setEditWorkflowId(null)
+        }}
         mode="edit"
-        workflow={selected}
+        workflow={editWorkflow}
         saving={saving}
         onSave={handleSaveEdit}
-        onCancel={() => setIsEditOpen(false)}
+        onCancel={() => setEditWorkflowId(null)}
       />
 
-      {/* Details Sheet */}
-      <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+      <Sheet
+        open={Boolean(detailsWorkflow)}
+        onOpenChange={(open) => {
+          if (!open) setDetailsWorkflowId(null)
+        }}
+      >
         <SheetContent className="bg-panel border-line text-ink w-full max-w-full border-l p-0 sm:w-[540px]">
           <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
             <SheetTitle className="text-ink">Workflow Details</SheetTitle>
           </SheetHeader>
-          {selected ? (
+          {detailsWorkflow ? (
             <WorkflowDetails
-              workflow={selected}
-              onToggleActive={() => handleToggleActive(selected)}
-              onEditSchedule={() => handleEditSchedule(selected)}
-              onReset={handleReset}
-              onStopRun={() => handleStopRun(selected)}
+              workflow={detailsWorkflow}
+              onToggleActive={() => handleToggleActive(detailsWorkflow)}
+              onEditSchedule={() => handleEditSchedule(detailsWorkflow)}
+              onReset={() => handleReset(detailsWorkflow)}
+              onStopRun={() => handleStopRun(detailsWorkflow)}
             />
           ) : (
             <div className="text-muted-foreground p-8 text-center">
-              No workflow selected
+              Workflow unavailable.
             </div>
           )}
         </SheetContent>
       </Sheet>
 
-      {/* Delete Confirmation */}
       <AlertDialog
-        open={!!deleteId}
-        onOpenChange={(open) => !open && setDeleteId(null)}
+        open={Boolean(deleteWorkflowId)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteWorkflowId(null)
+        }}
       >
         <AlertDialogContent className="bg-panel border-line border shadow-xl">
           <AlertDialogHeader>
@@ -574,8 +620,7 @@ export function WorkflowsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Flow Editor */}
-      {isFlowEditorOpen ? (
+      {flowWorkflow ? (
         <Suspense
           fallback={
             <div className="bg-overlay text-muted-copy fixed inset-0 z-50 flex items-center justify-center text-sm">
@@ -584,20 +629,21 @@ export function WorkflowsPage() {
           }
         >
           <WorkflowFlowEditor
-            open={isFlowEditorOpen}
-            workflow={selected}
+            open={Boolean(flowWorkflow)}
+            workflow={flowWorkflow}
             saving={saving}
             onSave={handleSaveFlow}
-            onClose={() => setIsFlowEditorOpen(false)}
+            onClose={() => setFlowWorkflowId(null)}
           />
         </Suspense>
       ) : null}
 
-      {/* Schedule Dialog */}
       <ScheduleDialog
-        open={isScheduleOpen}
-        onOpenChange={setIsScheduleOpen}
-        workflow={selected}
+        open={Boolean(scheduleWorkflow)}
+        onOpenChange={(open) => {
+          if (!open) setScheduleWorkflowId(null)
+        }}
+        workflow={scheduleWorkflow}
         saving={saving}
         onSave={handleSaveSchedule}
       />

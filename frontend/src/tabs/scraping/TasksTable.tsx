@@ -26,7 +26,7 @@ import {
   Play,
   Trash2,
 } from 'lucide-react'
-import type { Doc, Id } from '../../../../convex/_generated/dataModel'
+import type { Doc } from '../../../../convex/_generated/dataModel'
 
 function parseTargets(raw: string): string[] {
   const text = String(raw || '')
@@ -58,8 +58,6 @@ function formatWhen(ts?: number): string {
 
 type Props = {
   tasks: Doc<'scrapingTasks'>[]
-  selectedId: Id<'scrapingTasks'> | null
-  onSelect: (id: Id<'scrapingTasks'>) => void
   running: boolean
   onRun: (task: Doc<'scrapingTasks'>) => void
   onResume: (task: Doc<'scrapingTasks'>) => void
@@ -70,8 +68,6 @@ type Props = {
 
 export function TasksTable({
   tasks,
-  selectedId,
-  onSelect,
   running,
   onRun,
   onResume,
@@ -136,8 +132,7 @@ export function TasksTable({
           return (
             <div
               key={String(task._id)}
-              className={`bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors ${selectedId === task._id ? 'brand-panel-selected' : 'border-line hover:border-line-strong'}`}
-              onClick={() => onSelect(task._id)}
+              className="bg-panel-strong border-line hover:border-line-strong rounded-2xl border p-4 shadow-xs transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -163,7 +158,7 @@ export function TasksTable({
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="text-muted-copy hover:bg-panel-hover h-8 w-8 p-0 hover:text-white"
+                      className="text-muted-copy hover:bg-panel-hover h-8 w-8 p-0 hover:text-ink"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreHorizontal className="h-4 w-4" />
@@ -312,12 +307,7 @@ export function TasksTable({
             return (
               <TableRow
                 key={String(task._id)}
-                className={`border-line-soft cursor-pointer border-b transition-colors ${
-                  selectedId === task._id
-                    ? 'bg-panel-selected'
-                    : 'hover:bg-panel-subtle'
-                }`}
-                onClick={() => onSelect(task._id)}
+                className="border-line-soft border-b transition-colors hover:bg-panel-subtle"
               >
                 <TableCell className="font-medium">
                   <div className="flex flex-col">
@@ -372,7 +362,7 @@ export function TasksTable({
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="text-muted-copy hover:bg-panel-hover h-8 w-8 p-0 hover:text-white"
+                        className="text-muted-copy hover:bg-panel-hover h-8 w-8 p-0 hover:text-ink"
                         onClick={(e) => {
                           e.stopPropagation()
                         }}

@@ -55,7 +55,7 @@ export function DeleteConfirmation({
           <AlertDialogCancel
             disabled={saving}
             onClick={onCancel}
-            className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-white"
+            className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
           >
             Cancel
           </AlertDialogCancel>

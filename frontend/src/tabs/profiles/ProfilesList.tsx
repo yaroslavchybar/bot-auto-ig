@@ -34,9 +34,7 @@ import { cn } from '@/lib/utils'
 
 interface ProfilesListProps {
   profiles: Profile[]
-  selectedId: string | null
   loading: boolean
-  onSelect: (profile: Profile) => void
   onDetails: (profile: Profile) => void
   onEdit: (profile: Profile) => void
   onDelete: (profile: Profile) => void
@@ -109,7 +107,7 @@ function ProfileActionsMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-white"
+          className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-ink"
         >
           <span className="sr-only">Open menu</span>
           <MoreHorizontal className="h-4 w-4" />
@@ -173,9 +171,7 @@ function ProfileActionsMenu({
 
 export function ProfilesList({
   profiles,
-  selectedId,
   loading,
-  onSelect,
   onDetails,
   onEdit,
   onDelete,
@@ -221,11 +217,8 @@ export function ProfilesList({
               key={profile.id}
               className={cn(
                 'bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors',
-                selectedId === profile.id
-                  ? 'brand-panel-selected'
-                  : 'border-line hover:border-line-strong',
+                'border-line hover:border-line-strong',
               )}
-              onClick={() => onSelect(profile)}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -352,12 +345,8 @@ export function ProfilesList({
             <TableRow
               key={profile.id}
               className={cn(
-                'group border-line-soft h-14 cursor-pointer border-b transition-colors',
-                selectedId === profile.id
-                  ? 'bg-panel-selected'
-                  : 'hover:bg-panel-subtle',
+                'group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle',
               )}
-              onClick={() => onSelect(profile)}
             >
               <TableCell className="pl-4 font-medium">
                 <div className="flex flex-col gap-0.5">
@@ -421,7 +410,7 @@ export function ProfilesList({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-white"
+                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
                     onClick={(e) => {
                       e.stopPropagation()
                       onToggleStatus(profile)
@@ -437,7 +426,7 @@ export function ProfilesList({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-white"
+                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
                     onClick={(e) => {
                       e.stopPropagation()
                       onDetails(profile)

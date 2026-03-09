@@ -1,9 +1,29 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>anti</title>
+    <script>
+      ;(() => {
+        const storageKey = 'anti-theme'
+        const defaultTheme = 'dark'
+
+        try {
+          const storedTheme = window.localStorage.getItem(storageKey)
+          const theme = storedTheme === 'light' ? 'light' : defaultTheme
+          const root = document.documentElement
+
+          root.classList.toggle('dark', theme === 'dark')
+          root.dataset.theme = theme
+          root.style.colorScheme = theme
+        } catch {
+          document.documentElement.classList.add('dark')
+          document.documentElement.dataset.theme = defaultTheme
+          document.documentElement.style.colorScheme = defaultTheme
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

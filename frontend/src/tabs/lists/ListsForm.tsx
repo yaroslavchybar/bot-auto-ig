@@ -163,7 +163,7 @@ export function ListsForm({
                 disabled={saving}
                 placeholder="Enter list name..."
                 autoFocus
-                className="brand-focus bg-field border-line h-10 font-medium text-white"
+                className="brand-focus bg-field border-line h-10 font-medium text-ink"
               />
             </div>
           </div>
@@ -181,7 +181,7 @@ export function ListsForm({
               variant="ghost"
               onClick={onCancel}
               disabled={saving}
-              className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-white"
+              className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
             >
               Cancel
             </Button>
@@ -211,7 +211,7 @@ export function ListsForm({
           <button
             type="button"
             aria-label="Close modal"
-            className="border-line bg-panel-subtle text-subtle-copy hover:border-line-strong inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors hover:text-white"
+            className="border-line bg-panel-subtle text-subtle-copy hover:border-line-strong inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors hover:text-ink"
           >
             <X className="h-4 w-4" />
           </button>
@@ -270,7 +270,7 @@ export function ListsForm({
               </div>
 
               <div className="border-line bg-panel-soft flex items-center justify-between rounded-t-[18px] border border-b-0 px-3.5 py-2.5">
-                <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-white">
+                <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-ink">
                   <Checkbox
                     checked={filteredSelectionState}
                     onCheckedChange={(checked) =>
@@ -425,7 +425,7 @@ export function ListsForm({
               variant="ghost"
               onClick={onCancel}
               disabled={saving}
-              className="border-line bg-panel-soft text-ink hover:bg-panel-hover h-8 border px-3 text-xs hover:text-white"
+              className="border-line bg-panel-soft text-ink hover:bg-panel-hover h-8 border px-3 text-xs hover:text-ink"
             >
               Cancel
             </Button>

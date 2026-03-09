@@ -43,7 +43,7 @@ export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
             size="sm"
             onClick={handleCopy}
             disabled={loading || logs.length === 0}
-            className="text-muted-copy hover:bg-panel-muted h-8 text-xs hover:text-white"
+            className="text-muted-copy hover:bg-panel-muted h-8 text-xs hover:text-ink"
           >
             {copied ? (
               <>
@@ -60,7 +60,7 @@ export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
           <Button
             onClick={onRefresh}
             disabled={loading}
-            className="border-line text-copy hover:bg-panel-hover h-8 border bg-transparent text-xs shadow-none transition-all hover:text-white"
+            className="border-line text-copy hover:bg-panel-hover h-8 border bg-transparent text-xs shadow-none transition-all hover:text-ink"
           >
             <RefreshCw
               className={cn('mr-1.5 h-3.5 w-3.5', loading && 'animate-spin')}

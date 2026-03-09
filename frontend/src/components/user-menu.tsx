@@ -59,14 +59,14 @@ export function UserMenu() {
         <DropdownMenuSeparator className="bg-panel-hover mx-1" />
         <div className="p-1">
           <DropdownMenuItem
-            className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-white"
+            className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
             onClick={() => clerk.openUserProfile()}
           >
             <Settings className="text-muted-copy h-4 w-4" />
             <span>Manage account</span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-white"
+            className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
             onClick={() => clerk.signOut({ redirectUrl: '/sign-in' })}
           >
             <LogOut className="text-muted-copy h-4 w-4" />

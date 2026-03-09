@@ -31,13 +31,10 @@ import {
 } from 'lucide-react'
 import type { Workflow } from './types'
 import { formatTimestamp, formatSchedule, getStatusLabel } from './types'
-import type { Id } from '../../../../convex/_generated/dataModel'
 
 interface WorkflowsListProps {
   workflows: Workflow[]
-  selectedId: Id<'workflows'> | null
   loading?: boolean
-  onSelect: (workflow: Workflow) => void
   onToggleActive: (workflow: Workflow) => void
   onStopRun: (workflow: Workflow) => void
   onEdit: (workflow: Workflow) => void
@@ -145,9 +142,7 @@ function WorkflowActionsMenu({
 
 export function WorkflowsList({
   workflows,
-  selectedId,
   loading,
-  onSelect,
   onToggleActive,
   onStopRun,
   onEdit,
@@ -194,12 +189,7 @@ export function WorkflowsList({
           return (
             <div
               key={workflow._id}
-              className={`bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors ${
-                selectedId === workflow._id
-                  ? 'brand-panel-selected'
-                  : 'border-line hover:border-line-strong'
-              }`}
-              onClick={() => onSelect(workflow)}
+              className="bg-panel-strong border-line hover:border-line-strong rounded-2xl border p-4 shadow-xs transition-colors"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -344,8 +334,7 @@ export function WorkflowsList({
             return (
               <TableRow
                 key={workflow._id}
-                className={`border-line-soft cursor-pointer border-b transition-colors ${selectedId === workflow._id ? 'bg-panel-selected' : 'hover:bg-panel-subtle'}`}
-                onClick={() => onSelect(workflow)}
+                className="border-line-soft border-b transition-colors hover:bg-panel-subtle"
               >
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <Switch

@@ -7,6 +7,7 @@ import {
   type LazyExoticComponent,
 } from 'react'
 import { UserMenu } from '@/components/user-menu'
+import { ThemeToggle } from '@/components/theme-toggle'
 import {
   SidebarInset,
   SidebarProvider,
@@ -155,6 +156,7 @@ function ProtectedLayout() {
             </Breadcrumb>
           </div>
           <div className="ml-auto flex items-center gap-2 px-4">
+            <ThemeToggle />
             <UserMenu />
           </div>
         </header>

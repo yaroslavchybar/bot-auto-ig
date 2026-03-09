@@ -138,7 +138,7 @@ export function LoginDialog({
                 placeholder="username"
                 disabled={loading}
                 autoComplete="off"
-                className="brand-focus bg-field border-line h-9 text-white"
+                className="brand-focus bg-field border-line h-9 text-ink"
               />
             </div>
 
@@ -154,7 +154,7 @@ export function LoginDialog({
                 placeholder="••••••••"
                 disabled={loading}
                 autoComplete="off"
-                className="brand-focus bg-field border-line h-9 text-white"
+                className="brand-focus bg-field border-line h-9 text-ink"
               />
             </div>
 
@@ -174,7 +174,7 @@ export function LoginDialog({
                 placeholder="JBSX..."
                 disabled={loading}
                 autoComplete="off"
-                className="brand-focus bg-field border-line h-9 font-mono text-sm text-white"
+                className="brand-focus bg-field border-line h-9 font-mono text-sm text-ink"
               />
             </div>
 
@@ -184,7 +184,7 @@ export function LoginDialog({
                 checked={headless}
                 onCheckedChange={(checked) => setHeadless(checked === true)}
                 disabled={loading}
-                className="brand-checkbox border-line text-white"
+                className="brand-checkbox border-line"
               />
               <Label
                 htmlFor="login-headless"
@@ -206,7 +206,7 @@ export function LoginDialog({
                 onClick={onClose}
                 disabled={loading}
                 size="sm"
-                className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-white"
+                className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
               >
                 Cancel
               </Button>
@@ -270,7 +270,7 @@ export function LoginDialog({
               <Button
                 onClick={handleClose}
                 size="sm"
-                className="border-line text-copy hover:bg-panel-hover w-full border bg-transparent shadow-none transition-all hover:text-white"
+                className="border-line text-copy hover:bg-panel-hover w-full border bg-transparent shadow-none transition-all hover:text-ink"
               >
                 Close & Refresh
               </Button>

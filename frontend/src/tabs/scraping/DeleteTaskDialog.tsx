@@ -28,7 +28,7 @@ export function DeleteTaskDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="bg-panel border-line text-ink">
         <AlertDialogHeader>
-          <AlertDialogTitle className="text-xl font-bold text-white">
+          <AlertDialogTitle className="text-xl font-bold text-ink">
             Delete task
           </AlertDialogTitle>
           <AlertDialogDescription className="text-muted-copy">
@@ -40,7 +40,7 @@ export function DeleteTaskDialog({
         <AlertDialogFooter className="mt-4">
           <AlertDialogCancel
             disabled={disabled}
-            className="border-line text-copy hover:bg-panel-muted bg-transparent hover:text-white"
+            className="border-line text-copy hover:bg-panel-muted bg-transparent hover:text-ink"
           >
             Cancel
           </AlertDialogCancel>

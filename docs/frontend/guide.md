@@ -43,11 +43,13 @@ Default landing tab:
 ### Styling
 - Tailwind CSS is configured in CSS-first mode from `frontend/src/index.css`.
 - Frontend builds use the official Tailwind Vite plugin (`@tailwindcss/vite`) with Tailwind CSS 4.2.
-- Semantic theme utilities (`bg-background`, `text-foreground`, `bg-sidebar`, etc.) are mapped from the app's runtime CSS variables and keep class-based dark mode via `.dark`.
+- Semantic theme utilities (`bg-background`, `text-foreground`, `bg-sidebar`, etc.) are mapped from the app's runtime CSS variables and use the root `.dark` class for dark mode.
 - `frontend/src/index.css` is the Tailwind entrypoint only; it imports the modular CSS files under `frontend/src/css/`.
 - Design tokens and semantic Tailwind mappings live in `frontend/src/css/theme.css`. Add or change palette values there first, then consume them from semantic utilities or `var(--token)` references in components.
 - Global resets and runtime-only selectors live in `frontend/src/css/base.css`.
 - Shared emerald brand-accent utilities and other app-specific reusable helpers live in `frontend/src/css/utilities.css`; use those for CTA gradients, glow, focus, status, and workflow treatments instead of ad hoc color literals.
+- Runtime theme state lives in `frontend/src/hooks/use-theme.tsx`, persists to `localStorage` under `anti-theme`, defaults to dark, and drives the HTML root class before React mounts.
+- The authenticated app exposes the light/dark toggle in the header; Clerk and Sonner should read from the same runtime theme instead of hard-coding their own mode.
 - Warning/paused/cancelled UI remains orange and destructive/error UI remains red; those semantic states are intentionally separate from the brand accent.
 
 ## Workflow JSON Import/Export

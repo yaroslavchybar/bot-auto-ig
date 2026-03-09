@@ -79,7 +79,7 @@ export function WorkflowDialog({
               onChange={(e) => setName(e.target.value)}
               placeholder="My workflow"
               disabled={saving}
-              className="brand-focus bg-field border-line text-white"
+              className="brand-focus bg-field border-line text-ink"
             />
           </div>
 
@@ -94,7 +94,7 @@ export function WorkflowDialog({
               placeholder="Optional description..."
               rows={3}
               disabled={saving}
-              className="brand-focus bg-field border-line text-white"
+              className="brand-focus bg-field border-line text-ink"
             />
           </div>
 

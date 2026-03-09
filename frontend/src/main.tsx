@@ -1,10 +1,11 @@
-import { StrictMode } from 'react'
+import { StrictMode, useMemo, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
-import { clerkAppearance } from './components/clerk-appearance.ts'
+import { getClerkAppearance } from './components/clerk-appearance.ts'
+import { ThemeProvider, useTheme } from './hooks/use-theme.tsx'
 import { AmbientGlow } from './components/ui/ambient-glow.tsx'
 import { usePerformanceMode } from './hooks/use-performance-mode.ts'
 import { env } from './lib/env.ts'
@@ -29,15 +30,28 @@ function AppFrame() {
   )
 }
 
+function ClerkThemeProvider({ children }: { children: ReactNode }) {
+  const { theme } = useTheme()
+  const clerkAppearance = useMemo(() => getClerkAppearance(theme), [theme])
+
+  return (
+    <ClerkProvider
+      publishableKey={env.clerkPublishableKey}
+      appearance={clerkAppearance}
+    >
+      {children}
+    </ClerkProvider>
+  )
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <ClerkProvider
-        publishableKey={env.clerkPublishableKey}
-        appearance={clerkAppearance}
-      >
-        <AppFrame />
-      </ClerkProvider>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary>
+        <ClerkThemeProvider>
+          <AppFrame />
+        </ClerkThemeProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   </StrictMode>,
 )

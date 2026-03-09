@@ -216,7 +216,7 @@ export function ScheduleDialog({
               value={scheduleType}
               onValueChange={(v) => setScheduleType(v as ScheduleType)}
             >
-              <SelectTrigger className="brand-focus bg-field border-line text-white">
+              <SelectTrigger className="brand-focus bg-field border-line text-ink">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="panel-dropdown">
@@ -241,7 +241,7 @@ export function ScheduleDialog({
                 max={1440}
                 value={intervalMinutes}
                 onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                className="brand-focus bg-field border-line text-white"
+                className="brand-focus bg-field border-line text-ink"
               />
               <p className="text-subtle-copy text-xs">
                 {intervalMinutes >= 60
@@ -258,7 +258,7 @@ export function ScheduleDialog({
               <div className="space-y-2">
                 <Label className="text-muted-copy">Timezone</Label>
                 <Select value={timezone} onValueChange={setTimezone}>
-                  <SelectTrigger className="brand-focus bg-field border-line text-white">
+                  <SelectTrigger className="brand-focus bg-field border-line text-ink">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="panel-dropdown">
@@ -280,7 +280,7 @@ export function ScheduleDialog({
                     max={23}
                     value={hourUTC}
                     onChange={(e) => setHourUTC(Number(e.target.value))}
-                    className="brand-focus bg-field border-line text-white"
+                    className="brand-focus bg-field border-line text-ink"
                   />
                 </div>
                 <div className="space-y-2">
@@ -291,7 +291,7 @@ export function ScheduleDialog({
                     max={59}
                     value={minuteUTC}
                     onChange={(e) => setMinuteUTC(Number(e.target.value))}
-                    className="brand-focus bg-field border-line text-white"
+                    className="brand-focus bg-field border-line text-ink"
                   />
                 </div>
               </div>
@@ -330,7 +330,7 @@ export function ScheduleDialog({
                 max={31}
                 value={dayOfMonth}
                 onChange={(e) => setDayOfMonth(Number(e.target.value))}
-                className="brand-focus bg-field border-line text-white"
+                className="brand-focus bg-field border-line text-ink"
               />
             </div>
           )}
@@ -342,7 +342,7 @@ export function ScheduleDialog({
                 value={cronspec}
                 onChange={(e) => setCronspec(e.target.value)}
                 placeholder="0 9 * * *"
-                className="brand-focus bg-field border-line text-white"
+                className="brand-focus bg-field border-line text-ink"
               />
               <p className="text-subtle-copy text-xs">
                 Format: minute hour day-of-month month day-of-week
@@ -364,7 +364,7 @@ export function ScheduleDialog({
                 )
               }
               placeholder="Unlimited"
-              className="brand-focus bg-field border-line text-white"
+              className="brand-focus bg-field border-line text-ink"
             />
             <p className="text-subtle-copy text-xs">
               Leave empty for unlimited runs

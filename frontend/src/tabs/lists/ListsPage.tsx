@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DeleteConfirmation } from './DeleteConfirmation'
 import { ListsForm } from './ListsForm'
 import { ListsList } from './ListsList'
@@ -29,33 +29,25 @@ export function ListsPage() {
     refresh,
     backgroundRefresh,
   } = useLists()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-
   const loading = listsLoading
   const [saving, setSaving] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [editList, setEditList] = useState<List | null>(null)
+  const [deleteListTarget, setDeleteListTarget] = useState<List | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const selected = useMemo(
-    () => lists.find((l) => l.id === selectedId) ?? null,
-    [lists, selectedId],
-  )
   const surfacedError = error ?? listsError
 
-  // Ensure we have a selection if possible
   useEffect(() => {
-    if (!selectedId && lists.length > 0) {
-      setSelectedId(lists[0].id)
-    } else if (
-      selectedId &&
-      !lists.find((l) => l.id === selectedId) &&
-      lists.length > 0
-    ) {
-      setSelectedId(lists[0].id)
+    if (editList && !lists.find((list) => list.id === editList.id)) {
+      setEditList(null)
     }
-  }, [lists, selectedId])
+    if (
+      deleteListTarget &&
+      !lists.find((list) => list.id === deleteListTarget.id)
+    ) {
+      setDeleteListTarget(null)
+    }
+  }, [deleteListTarget, editList, lists])
 
   const handleCreate = () => {
     setIsCreateOpen(true)
@@ -63,26 +55,22 @@ export function ListsPage() {
   }
 
   const handleEdit = (list: List) => {
-    setSelectedId(list.id)
-    setIsEditOpen(true)
+    setEditList(list)
     setError(null)
   }
 
   const handleDeleteClick = (list: List) => {
-    setSelectedId(list.id)
-    setShowDeleteDialog(true)
+    setDeleteListTarget(list)
     setError(null)
   }
 
-  const handleSelect = (list: List) => {
-    setSelectedId(list.id)
-    setError(null)
-  }
-
-  const handleCloseDialogs = () => {
+  const handleCloseCreate = () => {
     setIsCreateOpen(false)
-    setIsEditOpen(false)
-    setShowDeleteDialog(false)
+    setError(null)
+  }
+
+  const handleCloseEdit = () => {
+    setEditList(null)
     setError(null)
   }
 
@@ -94,8 +82,8 @@ export function ListsPage() {
   }
 
   const handleEditOpenChange = (open: boolean) => {
-    setIsEditOpen(open)
     if (!open) {
+      setEditList(null)
       setError(null)
     }
   }
@@ -112,18 +100,18 @@ export function ListsPage() {
         await createList(name)
         await backgroundRefresh()
         setIsCreateOpen(false)
-      } else if (isEditOpen && selected) {
-        if (selected.name !== name) {
-          await updateList(selected.id, name)
+      } else if (editList) {
+        if (editList.name !== name) {
+          await updateList(editList.id, name)
         }
         if (addedIds.length > 0) {
-          await bulkAddToList(addedIds, selected.id)
+          await bulkAddToList(addedIds, editList.id)
         }
         if (removedIds.length > 0) {
-          await bulkRemoveFromList(removedIds, selected.id)
+          await bulkRemoveFromList(removedIds, editList.id)
         }
         await backgroundRefresh()
-        setIsEditOpen(false)
+        setEditList(null)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -133,13 +121,13 @@ export function ListsPage() {
   }
 
   const handleDelete = async () => {
-    if (!selected) return
+    if (!deleteListTarget) return
     setSaving(true)
     setError(null)
     try {
-      await deleteList(selected.id)
+      await deleteList(deleteListTarget.id)
       await backgroundRefresh()
-      setShowDeleteDialog(false)
+      setDeleteListTarget(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -167,7 +155,7 @@ export function ListsPage() {
             size="sm"
             onClick={() => void refresh()}
             disabled={loading || saving}
-            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
+            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
           >
             <RefreshCw
               className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
@@ -187,7 +175,7 @@ export function ListsPage() {
         </div>
       </div>
 
-      {surfacedError && !showDeleteDialog && !isCreateOpen && !isEditOpen && (
+      {surfacedError && !deleteListTarget && !isCreateOpen && !editList && (
         <div className="status-banner-danger relative z-10 flex items-center border-b px-6 py-3 text-sm">
           <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />
           {surfacedError}
@@ -199,9 +187,7 @@ export function ListsPage() {
         <div className="mx-auto max-w-[2000px]">
           <ListsList
             lists={lists}
-            selectedId={selectedId}
             loading={loading}
-            onSelect={handleSelect}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
           />
@@ -220,42 +206,42 @@ export function ListsPage() {
             saving={saving}
             error={error}
             onSave={(name) => handleSave(name, [], [])}
-            onCancel={handleCloseDialogs}
+            onCancel={handleCloseCreate}
           />
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isEditOpen} onOpenChange={handleEditOpenChange}>
+      <Dialog open={Boolean(editList)} onOpenChange={handleEditOpenChange}>
         <DialogContent
           hideClose
           className="bg-panel border-line text-ink max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-[960px]"
         >
-          {selected ? (
+          {editList ? (
             <ListsForm
-              key={selected.id}
+              key={editList.id}
               mode="edit"
-              initialData={selected}
+              initialData={editList}
               saving={saving}
               error={error}
               onSave={handleSave}
-              onCancel={handleCloseDialogs}
+              onCancel={handleCloseEdit}
             />
           ) : (
             <div className="text-subtle-copy p-4 text-sm">
-              Select a list first
+              List unavailable.
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {selected && (
+      {deleteListTarget && (
         <DeleteConfirmation
-          open={showDeleteDialog}
-          listName={selected.name}
+          open={Boolean(deleteListTarget)}
+          listName={deleteListTarget.name}
           saving={saving}
           error={error}
           onConfirm={handleDelete}
-          onCancel={() => setShowDeleteDialog(false)}
+          onCancel={() => setDeleteListTarget(null)}
         />
       )}
     </div>

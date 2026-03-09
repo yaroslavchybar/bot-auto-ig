@@ -43,12 +43,18 @@ export function ScrapingPage() {
 
   const [error, setError] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
   const [isOutputOpen, setIsOutputOpen] = useState(false)
   const [outputTitle, setOutputTitle] = useState('')
   const [outputPayload, setOutputPayload] = useState<unknown>(null)
-  const [selectedId, setSelectedId] = useState<Id<'scrapingTasks'> | null>(null)
-  const [deleteId, setDeleteId] = useState<Id<'scrapingTasks'> | null>(null)
+  const [editTaskId, setEditTaskId] = useState<Id<'scrapingTasks'> | null>(
+    null,
+  )
+  const [outputTaskId, setOutputTaskId] = useState<Id<'scrapingTasks'> | null>(
+    null,
+  )
+  const [deleteTaskId, setDeleteTaskId] = useState<Id<'scrapingTasks'> | null>(
+    null,
+  )
   const [runningId, setRunningId] = useState<Id<'scrapingTasks'> | null>(null)
 
   const [eligibleProfiles, setEligibleProfiles] = useState<EligibleProfile[]>(
@@ -113,8 +119,7 @@ export function ScrapingPage() {
   }, [])
 
   const handleOpenEdit = useCallback((task: Doc<'scrapingTasks'>) => {
-    setSelectedId(task._id)
-    setIsEditOpen(true)
+    setEditTaskId(task._id)
     setError(null)
 
     const taskKind = task.kind === 'following' ? 'following' : 'followers'
@@ -124,16 +129,16 @@ export function ScrapingPage() {
   }, [])
 
   const handleCloseEdit = useCallback(() => {
-    setIsEditOpen(false)
+    setEditTaskId(null)
     setError(null)
   }, [])
 
   const canSaveEdit = useMemo(() => {
-    if (!isEditOpen) return false
+    if (!editTaskId) return false
     if (!editTaskName.trim()) return false
     if (parseTargets(editTargetUsername).length === 0) return false
     return true
-  }, [editTargetUsername, editTaskName, isEditOpen])
+  }, [editTargetUsername, editTaskId, editTaskName])
 
   const handleCreateTask = useCallback(async () => {
     if (!canCreate) return
@@ -152,7 +157,7 @@ export function ScrapingPage() {
         targetUsername: packedTargets,
       })
       setIsCreateOpen(false)
-      if (created?._id) setSelectedId(created._id)
+      void created
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -344,6 +349,7 @@ export function ScrapingPage() {
   )
 
   const handleViewOutput = useCallback((task: Doc<'scrapingTasks'>) => {
+    setOutputTaskId(task._id)
     const output = task.lastOutput ?? task.lastError
     setOutputTitle(task.name)
     setOutputPayload(output)
@@ -354,25 +360,52 @@ export function ScrapingPage() {
     await refreshEligibleProfiles()
   }, [refreshEligibleProfiles])
 
-  const selected = useMemo(
-    () => tasksList.find((t) => t._id === selectedId) ?? null,
-    [selectedId, tasksList],
+  const editTask = useMemo(
+    () => tasksList.find((task) => task._id === editTaskId) ?? null,
+    [editTaskId, tasksList],
+  )
+  const deleteTask = useMemo(
+    () => tasksList.find((task) => task._id === deleteTaskId) ?? null,
+    [deleteTaskId, tasksList],
   )
 
+  useEffect(() => {
+    if (editTaskId && !editTask) {
+      setEditTaskId(null)
+    }
+    if (deleteTaskId && !deleteTask) {
+      setDeleteTaskId(null)
+    }
+    if (outputTaskId && !tasksList.find((task) => task._id === outputTaskId)) {
+      setOutputTaskId(null)
+      setIsOutputOpen(false)
+      setOutputPayload(null)
+      setOutputTitle('')
+    }
+  }, [deleteTask, deleteTaskId, editTask, editTaskId, outputTaskId, tasksList])
+
   const handleConfirmDelete = useCallback(async () => {
-    const id = deleteId
+    const id = deleteTaskId
     if (!id) return
     try {
       await removeTaskMutation({ id })
-      setDeleteId(null)
-      if (selectedId === id) setSelectedId(null)
+      setDeleteTaskId(null)
+      if (editTaskId === id) {
+        setEditTaskId(null)
+      }
+      if (outputTaskId === id) {
+        setOutputTaskId(null)
+        setIsOutputOpen(false)
+        setOutputPayload(null)
+        setOutputTitle('')
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [deleteId, removeTaskMutation, selectedId])
+  }, [deleteTaskId, editTaskId, outputTaskId, removeTaskMutation])
 
   const handleSaveEdit = useCallback(async () => {
-    if (!selectedId) return
+    if (!editTaskId) return
     if (!canSaveEdit) return
 
     const cleanedName = editTaskName.trim()
@@ -382,21 +415,21 @@ export function ScrapingPage() {
 
     try {
       await updateTaskMutation({
-        id: selectedId,
+        id: editTaskId,
         name: cleanedName,
         kind: editKind,
         targetUsername: packedTargets,
       })
-      setIsEditOpen(false)
+      setEditTaskId(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
   }, [
     canSaveEdit,
+    editTaskId,
     editKind,
     editTargetUsername,
     editTaskName,
-    selectedId,
     updateTaskMutation,
   ])
 
@@ -419,7 +452,7 @@ export function ScrapingPage() {
             size="sm"
             onClick={() => void refreshAll()}
             disabled={eligibleLoading || Boolean(runningId)}
-            className="bg-panel-muted border-line text-copy hover:bg-panel-hover transition-all hover:text-white"
+            className="bg-panel-muted border-line text-copy hover:bg-panel-hover transition-all hover:text-ink"
           >
             <RefreshCw
               className={`mr-2 h-4 w-4 ${eligibleLoading ? 'animate-spin' : ''}`}
@@ -470,16 +503,13 @@ export function ScrapingPage() {
           ) : (
             <TasksTable
               tasks={tasksList}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
               running={Boolean(runningId)}
               onRun={(task) => void handleRunTask(task, { resume: false })}
               onResume={(task) => void handleRunTask(task, { resume: true })}
               onEdit={handleOpenEdit}
               onViewOutput={handleViewOutput}
               onDelete={(task) => {
-                setDeleteId(task._id)
-                setSelectedId(task._id)
+                setDeleteTaskId(task._id)
               }}
             />
           )}
@@ -510,10 +540,10 @@ export function ScrapingPage() {
       />
 
       <TaskDialog
-        open={isEditOpen}
+        open={Boolean(editTaskId)}
         onOpenChange={(open) => {
           if (!open) handleCloseEdit()
-          else setIsEditOpen(true)
+          else if (editTask) setEditTaskId(editTask._id)
         }}
         title="Edit scraping task"
         idPrefix="edit_scraping_task"
@@ -534,18 +564,25 @@ export function ScrapingPage() {
 
       <OutputDialog
         open={isOutputOpen}
-        onOpenChange={setIsOutputOpen}
+        onOpenChange={(open) => {
+          setIsOutputOpen(open)
+          if (!open) {
+            setOutputTaskId(null)
+            setOutputPayload(null)
+            setOutputTitle('')
+          }
+        }}
         title={outputTitle}
         output={outputPayload}
       />
 
       <DeleteTaskDialog
-        open={Boolean(deleteId)}
+        open={Boolean(deleteTaskId)}
         onOpenChange={(open) => {
-          if (!open) setDeleteId(null)
+          if (!open) setDeleteTaskId(null)
         }}
-        taskName={selected?.name ?? 'this task'}
-        disabled={Boolean(runningId) || !deleteId}
+        taskName={deleteTask?.name ?? 'this task'}
+        disabled={Boolean(runningId) || !deleteTaskId}
         onConfirm={() => void handleConfirmDelete()}
       />
     </div>

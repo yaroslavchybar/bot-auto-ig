@@ -79,7 +79,7 @@ export function TaskDialog({
               placeholder="Followers scrape"
               value={taskName}
               onChange={(e) => onTaskNameChange(e.target.value)}
-              className="brand-focus bg-field border-line text-white"
+              className="brand-focus bg-field border-line text-ink"
             />
           </div>
 
@@ -95,20 +95,20 @@ export function TaskDialog({
             >
               <SelectTrigger
                 id={`${idPrefix}_kind`}
-                className="brand-focus bg-field border-line text-white"
+                className="brand-focus bg-field border-line text-ink"
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="panel-dropdown">
                 <SelectItem
                   value="followers"
-                  className="focus:bg-panel-hover focus:text-white"
+                  className="focus:bg-panel-hover focus:text-ink"
                 >
                   Followers
                 </SelectItem>
                 <SelectItem
                   value="following"
-                  className="focus:bg-panel-hover focus:text-white"
+                  className="focus:bg-panel-hover focus:text-ink"
                 >
                   Following
                 </SelectItem>
@@ -145,7 +145,7 @@ export function TaskDialog({
                 placeholder={'instagram\nnatgeo\nnasa'}
                 value={targetUsername}
                 onChange={(e) => onTargetUsernameChange(e.target.value)}
-                className="brand-focus bg-field border-line min-h-[140px] font-mono text-sm text-white"
+                className="brand-focus bg-field border-line min-h-[140px] font-mono text-sm text-ink"
               />
               <div className="text-subtle-copy text-xs">
                 One username per line. Task runs each one.
@@ -158,7 +158,7 @@ export function TaskDialog({
               variant="outline"
               onClick={onCancel}
               disabled={disabled}
-              className="border-line text-copy hover:bg-panel-muted flex-1 bg-transparent hover:text-white"
+              className="border-line text-copy hover:bg-panel-muted flex-1 bg-transparent hover:text-ink"
             >
               Cancel
             </Button>

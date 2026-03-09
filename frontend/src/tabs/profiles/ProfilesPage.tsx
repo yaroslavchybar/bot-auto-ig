@@ -34,35 +34,28 @@ export function ProfilesPage() {
     refresh: refreshProfiles,
   } = useProfiles()
   const isMobile = useIsMobile()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editProfile, setEditProfile] = useState<Profile | null>(null)
+  const [detailsProfileId, setDetailsProfileId] = useState<string | null>(null)
+  const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
+  const [logsProfileId, setLogsProfileId] = useState<string | null>(null)
+  const [loginProfileId, setLoginProfileId] = useState<string | null>(null)
 
   // Local loading state for actions (save, delete, etc)
   const loading = profilesLoading
   const [saving, setSaving] = useState(false)
 
   const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const [isEditOpen, setIsEditOpen] = useState(false)
-  const [isLogsOpen, setIsLogsOpen] = useState(false)
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false)
-
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
-  const [isLoginOpen, setIsLoginOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const { logs: wsLogs, clearLogs: clearWsLogs } = useWebSocket({
-    enabled: isLoginOpen,
+    enabled: loginProfileId !== null,
     pauseWhenHidden: true,
     maxBuffer: isMobile ? 250 : 500,
   })
 
-  const selected = useMemo(
-    () => profiles.find((p) => p.id === selectedId) ?? null,
-    [profiles, selectedId],
-  )
   const filteredProfiles = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
 
@@ -86,6 +79,14 @@ export function ProfilesPage() {
       )
     })
   }, [profiles, searchQuery])
+  const detailsProfile =
+    profiles.find((profile) => profile.id === detailsProfileId) ?? null
+  const deleteProfile =
+    profiles.find((profile) => profile.id === deleteProfileId) ?? null
+  const logsProfile =
+    profiles.find((profile) => profile.id === logsProfileId) ?? null
+  const loginProfile =
+    profiles.find((profile) => profile.id === loginProfileId) ?? null
 
   // On page mount, reconcile stale runtime status left after app/container restarts.
   useEffect(() => {
@@ -113,18 +114,36 @@ export function ProfilesPage() {
       active = false
     }
   }, [refreshProfiles])
-  // Ensure we have a selection if possible
+
   useEffect(() => {
-    if (!selectedId && profiles.length > 0) {
-      setSelectedId(profiles[0].id)
-    } else if (
-      selectedId &&
-      !profiles.find((p) => p.id === selectedId) &&
-      profiles.length > 0
-    ) {
-      setSelectedId(profiles[0].id)
+    if (detailsProfileId && !detailsProfile) {
+      setDetailsProfileId(null)
     }
-  }, [profiles, selectedId])
+    if (deleteProfileId && !deleteProfile) {
+      setDeleteProfileId(null)
+    }
+    if (logsProfileId && !logsProfile) {
+      setLogsProfileId(null)
+      setLogs([])
+    }
+    if (loginProfileId && !loginProfile) {
+      setLoginProfileId(null)
+    }
+    if (editProfile && !profiles.find((profile) => profile.id === editProfile.id)) {
+      setEditProfile(null)
+    }
+  }, [
+    deleteProfile,
+    deleteProfileId,
+    detailsProfile,
+    detailsProfileId,
+    editProfile,
+    loginProfile,
+    loginProfileId,
+    logsProfile,
+    logsProfileId,
+    profiles,
+  ])
 
   const loadLogs = useCallback(async (profileName?: string) => {
     setLogsLoading(true)
@@ -143,10 +162,10 @@ export function ProfilesPage() {
   }, [])
 
   useEffect(() => {
-    if (isLogsOpen && selected?.name) {
-      void loadLogs(selected.name)
+    if (logsProfile?.name) {
+      void loadLogs(logsProfile.name)
     }
-  }, [isLogsOpen, selected?.name, loadLogs])
+  }, [logsProfile?.name, loadLogs])
 
   const handleCreate = () => {
     setEditProfile(null)
@@ -155,8 +174,7 @@ export function ProfilesPage() {
   }
 
   const handleEdit = async (profile: Profile) => {
-    setSelectedId(profile.id)
-    setIsDetailsOpen(false)
+    setDetailsProfileId(null)
     setSaving(true)
     setError(null)
     try {
@@ -164,7 +182,6 @@ export function ProfilesPage() {
         `/api/profiles/by-id?profileId=${encodeURIComponent(profile.id)}`,
       )
       setEditProfile(fullProfile)
-      setIsEditOpen(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -173,47 +190,36 @@ export function ProfilesPage() {
   }
 
   const handleDeleteClick = (profile: Profile) => {
-    setSelectedId(profile.id)
-    setIsDetailsOpen(false)
-    setShowDeleteDialog(true)
+    setDeleteProfileId(profile.id)
+    setDetailsProfileId(null)
     setError(null)
   }
 
   const handleLogs = (profile: Profile) => {
-    setSelectedId(profile.id)
-    setIsDetailsOpen(false)
-    setIsLogsOpen(true)
+    setLogsProfileId(profile.id)
+    setDetailsProfileId(null)
     setError(null)
   }
 
-  const handleDetails = (profile?: Profile) => {
-    if (profile) setSelectedId(profile.id)
-    setIsDetailsOpen(true)
+  const handleDetails = (profile: Profile) => {
+    setDetailsProfileId(profile.id)
     setError(null)
   }
 
-  const handleSelect = (profile: Profile) => {
-    setSelectedId(profile.id)
-    setError(null)
-    // Optional: Auto open details on selection if desired, but maybe keep it explicit
-  }
-
-  const handleCloseDialogs = () => {
+  const handleCloseCreate = () => {
     setIsCreateOpen(false)
-    setIsEditOpen(false)
+    setError(null)
+  }
+
+  const handleCloseEdit = () => {
     setEditProfile(null)
-    setIsLogsOpen(false)
-    setIsDetailsOpen(false)
-    setShowDeleteDialog(false)
-    setIsLoginOpen(false)
     setError(null)
   }
 
   const handleLogin = (profile: Profile) => {
-    setSelectedId(profile.id)
-    setIsDetailsOpen(false)
+    setLoginProfileId(profile.id)
+    setDetailsProfileId(null)
     clearWsLogs()
-    setIsLoginOpen(true)
     setError(null)
   }
 
@@ -249,7 +255,7 @@ export function ProfilesPage() {
         })
         await refreshProfiles()
         setIsCreateOpen(false)
-      } else if (isEditOpen && editProfile) {
+      } else if (editProfile) {
         await apiFetch(
           `/api/profiles/${encodeURIComponent(editProfile.name)}`,
           {
@@ -277,7 +283,6 @@ export function ProfilesPage() {
           },
         )
         await refreshProfiles()
-        setIsEditOpen(false)
         setEditProfile(null)
       }
     } catch (e) {
@@ -288,15 +293,15 @@ export function ProfilesPage() {
   }
 
   const handleDeleteConfirm = async () => {
-    if (!selected) return
+    if (!deleteProfile) return
     setSaving(true)
     setError(null)
     try {
-      await apiFetch(`/api/profiles/${encodeURIComponent(selected.name)}`, {
+      await apiFetch(`/api/profiles/${encodeURIComponent(deleteProfile.name)}`, {
         method: 'DELETE',
       })
       await refreshProfiles()
-      setShowDeleteDialog(false)
+      setDeleteProfileId(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -304,16 +309,14 @@ export function ProfilesPage() {
     }
   }
 
-  const toggleUsing = async (profile?: Profile) => {
-    const target = profile || selected
-    if (!target) return
+  const toggleUsing = async (profile: Profile) => {
     setSaving(true)
     setError(null)
     try {
-      if (target.using) {
+      if (profile.using) {
         try {
           await apiFetch(
-            `/api/profiles/${encodeURIComponent(target.name)}/stop`,
+            `/api/profiles/${encodeURIComponent(profile.name)}/stop`,
             { method: 'POST' },
           )
         } catch {
@@ -321,7 +324,7 @@ export function ProfilesPage() {
         }
       } else {
         await apiFetch(
-          `/api/profiles/${encodeURIComponent(target.name)}/start`,
+          `/api/profiles/${encodeURIComponent(profile.name)}/start`,
           { method: 'POST' },
         )
       }
@@ -363,7 +366,7 @@ export function ProfilesPage() {
               size={isMobile ? 'default' : 'sm'}
               onClick={() => refreshProfiles()}
               disabled={loading || saving}
-              className="border-line text-copy hover:bg-panel-hover w-full bg-transparent shadow-none transition-all hover:text-white sm:w-auto"
+              className="border-line text-copy hover:bg-panel-hover w-full bg-transparent shadow-none transition-all hover:text-ink sm:w-auto"
             >
               <RefreshCw
                 className={
@@ -379,11 +382,11 @@ export function ProfilesPage() {
       </div>
 
       {error &&
-        !showDeleteDialog &&
+        !deleteProfile &&
         !isCreateOpen &&
-        !isEditOpen &&
-        !isLogsOpen &&
-        !isDetailsOpen && (
+        !editProfile &&
+        !logsProfile &&
+        !detailsProfile && (
           <div className="status-banner-danger flex items-center border-b px-4 py-3 text-sm md:px-6">
             <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />
             {error}
@@ -395,9 +398,7 @@ export function ProfilesPage() {
         <div className="mx-auto max-w-[2000px] space-y-4">
           <ProfilesList
             profiles={filteredProfiles}
-            selectedId={selectedId}
             loading={loading}
-            onSelect={handleSelect}
             onDetails={handleDetails}
             onEdit={handleEdit}
             onDelete={handleDeleteClick}
@@ -435,16 +436,15 @@ export function ProfilesPage() {
             existingNames={profiles.map((p) => p.name)}
             saving={saving}
             onSave={handleSaveProfile}
-            onCancel={handleCloseDialogs}
+            onCancel={handleCloseCreate}
           />
         </DialogContent>
       </Dialog>
 
       <Dialog
-        open={isEditOpen}
+        open={Boolean(editProfile)}
         onOpenChange={(open) => {
-          setIsEditOpen(open)
-          if (!open) setEditProfile(null)
+          if (!open) handleCloseEdit()
         }}
       >
         <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
@@ -460,34 +460,44 @@ export function ProfilesPage() {
               existingNames={profiles.map((p) => p.name)}
               saving={saving}
               onSave={handleSaveProfile}
-              onCancel={handleCloseDialogs}
+              onCancel={handleCloseEdit}
             />
           )}
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isLogsOpen} onOpenChange={setIsLogsOpen}>
+      <Dialog
+        open={Boolean(logsProfile)}
+        onOpenChange={(open) => {
+          if (!open) setLogsProfileId(null)
+        }}
+      >
         <DialogContent className="bg-panel border-line text-ink flex h-[80vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
           <DialogHeader className="border-line-soft border-b p-6 pb-2">
             <DialogTitle className="page-title-gradient flex items-center gap-2">
               <Terminal className="text-copy h-5 w-5" />
               Logs:{' '}
               <span className="text-muted-copy font-mono">
-                {selected?.name}
+                {logsProfile?.name}
               </span>
             </DialogTitle>
           </DialogHeader>
-          {selected && (
+          {logsProfile && (
             <ProfileLogs
               logs={logs}
               loading={logsLoading}
-              onRefresh={() => loadLogs(selected.name)}
+              onRefresh={() => loadLogs(logsProfile.name)}
             />
           )}
         </DialogContent>
       </Dialog>
 
-      <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+      <Sheet
+        open={Boolean(detailsProfile)}
+        onOpenChange={(open) => {
+          if (!open) setDetailsProfileId(null)
+        }}
+      >
         <SheetContent className="border-line bg-panel text-ink flex w-full max-w-full flex-col gap-0 border-l p-0 shadow-xl sm:w-[540px]">
           <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
             <SheetTitle className="page-title-gradient">
@@ -495,33 +505,33 @@ export function ProfilesPage() {
             </SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto">
-            {selected ? (
-              <ProfileDetails profile={selected} />
+            {detailsProfile ? (
+              <ProfileDetails profile={detailsProfile} />
             ) : (
               <div className="text-muted-foreground p-8 text-center text-sm">
-                Select a profile first
+                Profile unavailable.
               </div>
             )}
           </div>
         </SheetContent>
       </Sheet>
 
-      {selected && (
+      {deleteProfile && (
         <DeleteConfirmation
-          open={showDeleteDialog}
-          profileName={selected.name}
+          open={Boolean(deleteProfile)}
+          profileName={deleteProfile.name}
           saving={saving}
           error={error}
           onConfirm={handleDeleteConfirm}
-          onCancel={() => setShowDeleteDialog(false)}
+          onCancel={() => setDeleteProfileId(null)}
         />
       )}
 
       <LoginDialog
-        open={isLoginOpen}
-        profile={selected}
+        open={Boolean(loginProfile)}
+        profile={loginProfile}
         logs={wsLogs}
-        onClose={() => setIsLoginOpen(false)}
+        onClose={() => setLoginProfileId(null)}
         onSuccess={refreshProfiles}
       />
     </div>

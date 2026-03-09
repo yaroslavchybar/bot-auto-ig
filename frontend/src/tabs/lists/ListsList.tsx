@@ -27,18 +27,14 @@ import { cn } from '@/lib/utils'
 
 interface ListsListProps {
   lists: List[]
-  selectedId: string | null
   loading: boolean
-  onSelect: (list: List) => void
   onEdit: (list: List) => void
   onDelete: (list: List) => void
 }
 
 export function ListsList({
   lists,
-  selectedId,
   loading,
-  onSelect,
   onEdit,
   onDelete,
 }: ListsListProps) {
@@ -72,11 +68,8 @@ export function ListsList({
             key={list.id}
             className={cn(
               'bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors',
-              selectedId === list.id
-                ? 'brand-panel-selected'
-                : 'border-line hover:border-line-strong',
+              'border-line hover:border-line-strong',
             )}
-            onClick={() => onSelect(list)}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -95,7 +88,7 @@ export function ListsList({
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-white"
+                      className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-ink"
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
@@ -168,12 +161,8 @@ export function ListsList({
           {lists.map((list, idx) => (
             <TableRow
               key={list.id}
-              onClick={() => onSelect(list)}
               className={cn(
-                'group border-line-soft h-14 cursor-pointer border-b transition-colors',
-                selectedId === list.id
-                  ? 'bg-panel-selected'
-                  : 'hover:bg-panel-subtle',
+                'group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle',
               )}
             >
               <TableCell className="pl-4">
@@ -197,7 +186,7 @@ export function ListsList({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-white"
+                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
                     onClick={(e) => {
                       e.stopPropagation()
                       onEdit(list)
@@ -211,7 +200,7 @@ export function ListsList({
                     <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-white"
+                        className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-ink"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <span className="sr-only">Open menu</span>

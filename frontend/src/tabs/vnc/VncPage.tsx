@@ -236,7 +236,7 @@ export function VncPage() {
                   setFocusedSessionKey(null)
                   setControlState('locked')
                 }}
-                className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
+                className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
               >
                 <ArrowLeft className="mr-2 h-3.5 w-3.5" />
                 Back
@@ -254,7 +254,7 @@ export function VncPage() {
               variant="outline"
               size="sm"
               onClick={() => setShowMobileLogs((current) => !current)}
-              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
+              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
             >
               <FileText className="h-3.5 w-3.5" />
               {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
@@ -287,7 +287,7 @@ export function VncPage() {
                       <Button
                         variant="outline"
                         onClick={() => setControlState('locked')}
-                        className="border-line text-copy hover:bg-panel-hover flex-1 border bg-transparent shadow-none transition-all hover:text-white"
+                        className="border-line text-copy hover:bg-panel-hover flex-1 border bg-transparent shadow-none transition-all hover:text-ink"
                       >
                         Cancel
                       </Button>
@@ -302,7 +302,7 @@ export function VncPage() {
                     <Button
                       variant="outline"
                       onClick={() => setControlState('confirm')}
-                      className="bg-field border-line text-copy hover:bg-panel-hover w-full border shadow-none transition-all hover:text-white"
+                      className="bg-field border-line text-copy hover:bg-panel-hover w-full border shadow-none transition-all hover:text-ink"
                     >
                       Take Control
                     </Button>
@@ -313,7 +313,7 @@ export function VncPage() {
               <Button
                 variant="outline"
                 onClick={() => setControlState('locked')}
-                className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none transition-all hover:text-white"
+                className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none transition-all hover:text-ink"
               >
                 Return To Agent
               </Button>
@@ -358,7 +358,7 @@ export function VncPage() {
                 setFocusedSessionKey(null)
                 setControlState('locked')
               }}
-              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
+              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
             >
               <ArrowLeft className="mr-2 h-3.5 w-3.5" />
               Back to Grid
@@ -376,7 +376,7 @@ export function VncPage() {
             variant="outline"
             size="sm"
             onClick={() => void fetchSessions()}
-            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
+            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
           >
             <RefreshCw
               className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}
@@ -452,7 +452,7 @@ export function VncPage() {
                               <Button
                                 variant="outline"
                                 onClick={() => setControlState('locked')}
-                                className="border-line text-copy hover:bg-panel-hover mt-2 border bg-transparent shadow-none transition-all hover:text-white sm:mt-0"
+                                className="border-line text-copy hover:bg-panel-hover mt-2 border bg-transparent shadow-none transition-all hover:text-ink sm:mt-0"
                               >
                                 Cancel
                               </Button>
@@ -467,7 +467,7 @@ export function VncPage() {
                             <Button
                               variant="outline"
                               onClick={() => setControlState('confirm')}
-                              className="bg-field border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-xs transition-all hover:text-white"
+                              className="bg-field border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-xs transition-all hover:text-ink"
                             >
                               Take Control
                             </Button>
@@ -483,7 +483,7 @@ export function VncPage() {
                     <Button
                       variant="outline"
                       onClick={() => setControlState('locked')}
-                      className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-md transition-all hover:text-white"
+                      className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-md transition-all hover:text-ink"
                     >
                       Return To Agent
                     </Button>
@@ -556,7 +556,7 @@ export function VncPage() {
               variant="outline"
               size="sm"
               onClick={() => void fetchSessions()}
-              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-white"
+              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
             >
               <RefreshCw
                 className={`mr-2 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`}

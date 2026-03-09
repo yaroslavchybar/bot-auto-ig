@@ -144,7 +144,7 @@ export function ProfileForm({
               }}
               disabled={saving}
               placeholder="e.g. Work Account 1"
-              className="brand-focus bg-field border-line h-9 font-medium text-white"
+              className="brand-focus bg-field border-line h-9 font-medium text-ink"
             />
           </div>
 
@@ -190,7 +190,7 @@ export function ProfileForm({
                   }}
                   disabled={saving}
                   placeholder='Paste raw cookie array or AdsPower-style JSON with a "cookies" array'
-                  className="brand-focus bg-field border-line min-h-[180px] resize-y font-mono text-xs text-white"
+                  className="brand-focus bg-field border-line min-h-[180px] resize-y font-mono text-xs text-ink"
                 />
                 <p className="text-subtle-copy ml-1 text-[10px]">
                   Accepted formats: raw Playwright cookie arrays and
@@ -216,20 +216,20 @@ export function ProfileForm({
               >
                 <SelectTrigger
                   id="connection"
-                  className="brand-focus bg-field border-line h-8 w-[180px] text-xs text-white"
+                  className="brand-focus bg-field border-line h-8 w-[180px] text-xs text-ink"
                 >
                   <SelectValue placeholder="Select connection" />
                 </SelectTrigger>
                 <SelectContent className="panel-dropdown">
                   <SelectItem
                     value="direct"
-                    className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                    className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                   >
                     Direct Connection
                   </SelectItem>
                   <SelectItem
                     value="proxy"
-                    className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                    className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                   >
                     Proxy
                   </SelectItem>
@@ -250,20 +250,20 @@ export function ProfileForm({
                     >
                       <SelectTrigger
                         id="proxy_type"
-                        className="bg-panel-muted border-line h-9 w-[100px] rounded-r-none border-r-0 text-white focus:ring-0 focus:ring-offset-0"
+                        className="bg-panel-muted border-line h-9 w-[100px] rounded-r-none border-r-0 text-ink focus:ring-0 focus:ring-offset-0"
                       >
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="panel-dropdown">
                         <SelectItem
                           value="http"
-                          className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                          className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                         >
                           HTTP
                         </SelectItem>
                         <SelectItem
                           value="socks5"
-                          className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                          className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                         >
                           SOCKS5
                         </SelectItem>
@@ -279,7 +279,7 @@ export function ProfileForm({
                       }
                       disabled={saving}
                       placeholder="host:port:user:pass"
-                      className="brand-focus bg-field border-line h-9 rounded-l-none font-mono text-sm text-white focus-visible:ring-1 focus-visible:ring-offset-0"
+                      className="brand-focus bg-field border-line h-9 rounded-l-none font-mono text-sm text-ink focus-visible:ring-1 focus-visible:ring-offset-0"
                     />
                   </div>
                 </div>
@@ -313,25 +313,25 @@ export function ProfileForm({
                     }
                     disabled={saving}
                   >
-                    <SelectTrigger className="brand-focus bg-field border-line h-9 text-white">
+                    <SelectTrigger className="brand-focus bg-field border-line h-9 text-ink">
                       <SelectValue placeholder="OS" />
                     </SelectTrigger>
                     <SelectContent className="panel-dropdown">
                       <SelectItem
                         value="windows"
-                        className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                        className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                       >
                         Windows
                       </SelectItem>
                       <SelectItem
                         value="macos"
-                        className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                        className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                       >
                         macOS
                       </SelectItem>
                       <SelectItem
                         value="linux"
-                        className="focus:bg-panel-hover cursor-pointer focus:text-white"
+                        className="focus:bg-panel-hover cursor-pointer focus:text-ink"
                       >
                         Linux
                       </SelectItem>
@@ -342,7 +342,7 @@ export function ProfileForm({
                   type="button"
                   onClick={handleRegenerateSeed}
                   disabled={saving}
-                  className="border-line text-copy hover:bg-panel-hover h-9 border bg-transparent shadow-none transition-all hover:text-white"
+                  className="border-line text-copy hover:bg-panel-hover h-9 border bg-transparent shadow-none transition-all hover:text-ink"
                 >
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
                   New Seed
@@ -394,7 +394,7 @@ export function ProfileForm({
                   }}
                   disabled={saving}
                   placeholder="Leave empty for unlimited"
-                  className="brand-focus bg-field border-line h-9 text-white"
+                  className="brand-focus bg-field border-line h-9 text-ink"
                 />
                 <p className="text-subtle-copy ml-1 text-[10px]">
                   Controls how much scraping capacity this profile can
@@ -434,7 +434,7 @@ export function ProfileForm({
             variant="ghost"
             onClick={onCancel}
             disabled={saving}
-            className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-white"
+            className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
           >
             Cancel
           </Button>
