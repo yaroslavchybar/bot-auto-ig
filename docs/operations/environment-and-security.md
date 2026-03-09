@@ -60,6 +60,6 @@
 - `server/websocket.ts`
 - `frontend/src/main.tsx`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
-- `frontend/src/tabs/accounts/useDataUploader.ts`
+- `frontend/src/features/accounts/hooks/useDataUploader.ts`
 - `datauploader/convex_client.py`
 - `python/database_sync/config.py`

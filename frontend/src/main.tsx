@@ -3,8 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/clerk-react'
 import './index.css'
 import App from './App.tsx'
-import { ErrorBoundary } from './components/ErrorBoundary.tsx'
-import { getClerkAppearance } from './components/clerk-appearance.ts'
+import { ErrorBoundary } from './components/shared/ErrorBoundary.tsx'
+import { getClerkAppearance } from './components/shared/clerk-appearance.ts'
 import { ThemeProvider, useTheme } from './hooks/use-theme.tsx'
 import { AmbientGlow } from './components/ui/ambient-glow.tsx'
 import { usePerformanceMode } from './hooks/use-performance-mode.ts'
@@ -55,3 +55,5 @@ createRoot(document.getElementById('root')!).render(
     </ThemeProvider>
   </StrictMode>,
 )
+
+

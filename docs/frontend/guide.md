@@ -4,6 +4,27 @@
 
 The frontend is a Clerk-protected React + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring.
 
+## Structure
+
+Frontend source now follows a two-level organization:
+- `frontend/src/components/ui`: design-system primitives only
+- `frontend/src/components/shared`: cross-feature composites such as auth shell, confirm-delete dialog, logs viewer, and error boundary
+- `frontend/src/components/layout`: authenticated app shell pieces such as sidebar, theme toggle, user menu, auth guard, and Convex provider
+- `frontend/src/features/*`: feature-owned UI, containers, hooks, types, api modules, and utils
+- `frontend/src/pages/*`: route entry wrappers only
+- `frontend/src/lib/*`: runtime/framework helpers and shared non-UI contracts
+
+Feature folders:
+- `auth`
+- `profiles`
+- `lists`
+- `scraping`
+- `workflows`
+- `accounts`
+- `logs`
+- `vnc`
+- `monitoring`
+
 ## Feature Surface
 
 Primary tabs in app shell:
@@ -101,6 +122,11 @@ npm --prefix frontend run preview
 ## Verified Against
 
 - `frontend/src/App.tsx`
+- `frontend/src/ProtectedApp.tsx`
+- `frontend/src/components/layout/app-sidebar.tsx`
+- `frontend/src/components/shared/AuthCardShell.tsx`
+- `frontend/src/components/shared/ConfirmDeleteDialog.tsx`
+- `frontend/src/components/shared/LogsViewer.tsx`
 - `frontend/src/css/base.css`
 - `frontend/src/css/theme.css`
 - `frontend/src/css/utilities.css`
@@ -108,10 +134,10 @@ npm --prefix frontend run preview
 - `frontend/src/main.tsx`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/hooks/useWebSocket.ts`
-- `frontend/src/tabs/accounts/useDataUploader.ts`
-- `frontend/src/tabs/scraping/ScrapingPage.tsx`
-- `frontend/src/tabs/workflows/WorkflowsPage.tsx`
-- `frontend/src/tabs/workflows/WorkflowsList.tsx`
-- `frontend/src/tabs/workflows/workflowImportExport.ts`
-- `frontend/src/tabs/monitoring/MonitoringPage.tsx`
+- `frontend/src/features/accounts/hooks/useDataUploader.ts`
+- `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
+- `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
+- `frontend/src/features/workflows/components/WorkflowsList.tsx`
+- `frontend/src/features/workflows/utils/workflowImportExport.ts`
+- `frontend/src/features/monitoring/containers/MonitoringPageContainer.tsx`
 - `frontend/vite.config.ts`

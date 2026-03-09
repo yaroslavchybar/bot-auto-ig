@@ -31,3 +31,5 @@ declare module '@novnc/novnc/lib/rfb.js' {
     }): void
   }
 }
+
+

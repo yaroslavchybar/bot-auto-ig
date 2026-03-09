@@ -60,10 +60,10 @@ Expected: no matches.
 
 - `frontend/src/main.tsx`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
-- `frontend/src/tabs/scraping/ScrapingPage.tsx`
-- `frontend/src/tabs/workflows/WorkflowsPage.tsx`
-- `frontend/src/tabs/workflows/workflowImportExport.ts`
-- `frontend/src/tabs/monitoring/MonitoringPage.tsx`
+- `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
+- `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
+- `frontend/src/features/workflows/utils/workflowImportExport.ts`
+- `frontend/src/features/monitoring/containers/MonitoringPageContainer.tsx`
 - `server/api/scraping/*`
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`

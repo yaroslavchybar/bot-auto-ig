@@ -40,3 +40,5 @@ export function usePerformanceMode() {
 
   return enabled
 }
+
+

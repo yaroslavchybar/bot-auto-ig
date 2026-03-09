@@ -6,19 +6,19 @@ import {
   type ComponentType,
   type LazyExoticComponent,
 } from 'react'
-import { UserMenu } from '@/components/user-menu'
-import { ThemeToggle } from '@/components/theme-toggle'
+import { UserMenu } from '@/components/layout/user-menu'
+import { ThemeToggle } from '@/components/layout/theme-toggle'
 import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
-import { AppSidebar, NAV_IDS } from '@/components/app-sidebar'
-import type { NavId } from '@/components/app-sidebar'
+import { AppSidebar, NAV_IDS } from '@/components/layout/app-sidebar'
+import type { NavId } from '@/components/layout/app-sidebar'
 import { Separator } from '@/components/ui/separator'
-import { AuthGuard } from '@/components/AuthGuard'
+import { AuthGuard } from '@/components/layout/AuthGuard'
 import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch'
-import { ConvexClientProvider } from '@/components/ConvexClientProvider'
+import { ConvexClientProvider } from '@/components/layout/ConvexClientProvider'
 import { Toaster } from '@/components/ui/toaster'
 import {
   Breadcrumb,
@@ -30,40 +30,42 @@ import {
 } from '@/components/ui/breadcrumb'
 
 const ProfilesPage = lazy(() =>
-  import('./tabs/profiles/ProfilesPage').then((module) => ({
+  import('./features/profiles/ProfilesPage').then((module) => ({
     default: module.ProfilesPage,
   })),
 )
 const ListsPage = lazy(() =>
-  import('./tabs/lists/ListsPage').then((module) => ({
+  import('./features/lists/ListsPage').then((module) => ({
     default: module.ListsPage,
   })),
 )
 const LogsPage = lazy(() =>
-  import('./tabs/logs/LogsPage').then((module) => ({
+  import('./features/logs/LogsPage').then((module) => ({
     default: module.LogsPage,
   })),
 )
 const AccountsPage = lazy(() =>
-  import('./tabs/accounts/AccountsPage').then((module) => ({
+  import('./features/accounts/AccountsPage').then((module) => ({
     default: module.AccountsPage,
   })),
 )
 const ScrapingPage = lazy(() =>
-  import('./tabs/scraping/ScrapingPage').then((module) => ({
+  import('./features/scraping/ScrapingPage').then((module) => ({
     default: module.ScrapingPage,
   })),
 )
 const WorkflowsPage = lazy(() =>
-  import('./tabs/workflows/WorkflowsPage').then((module) => ({
+  import('./features/workflows/WorkflowsPage').then((module) => ({
     default: module.WorkflowsPage,
   })),
 )
 const VncPage = lazy(() =>
-  import('./tabs/vnc/VncPage').then((module) => ({ default: module.VncPage })),
+  import('./features/vnc/VncPage').then((module) => ({
+    default: module.VncPage,
+  })),
 )
 const MonitoringPage = lazy(() =>
-  import('./tabs/monitoring/MonitoringPage').then((module) => ({
+  import('./features/monitoring/MonitoringPage').then((module) => ({
     default: module.MonitoringPage,
   })),
 )
@@ -188,3 +190,5 @@ export default function ProtectedApp() {
     </AuthGuard>
   )
 }
+
+

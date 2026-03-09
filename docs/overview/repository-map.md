@@ -13,7 +13,8 @@
 
 ## Frontend Domain Map
 
-Current tabs under `frontend/src/tabs/`:
+Current features under `frontend/src/features/`:
+- `auth`
 - `profiles`
 - `lists`
 - `scraping`
@@ -52,6 +53,7 @@ Primary modules under `convex/`:
 ## Verified Against
 
 - `frontend/src/App.tsx`
+- `frontend/src/ProtectedApp.tsx`
 - `server/index.ts`
 - `convex/schema.ts`
-- Directory listings for `server/api`, `frontend/src/tabs`, `convex/*.ts`
+- Directory listings for `server/api`, `frontend/src/features`, `convex/*.ts`

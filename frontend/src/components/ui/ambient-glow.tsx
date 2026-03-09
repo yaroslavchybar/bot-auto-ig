@@ -22,3 +22,5 @@ export function AmbientGlow({ className, reducedClassName }: AmbientGlowProps) {
     />
   )
 }
+
+
