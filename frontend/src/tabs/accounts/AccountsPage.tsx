@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDataUploader } from './useDataUploader'
-import type { ScrapingTaskRow } from './types'
+import type { ScrapingTaskFieldsResponse, ScrapingTaskRow } from './types'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
@@ -15,19 +12,281 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  FileSpreadsheet,
-  CheckCircle2,
-  Loader2,
-  RotateCcw,
-  Database,
-  Filter,
-  Search,
-  Check,
-  RefreshCw,
-  Download,
-} from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { cn } from '@/lib/utils'
+import {
+  CheckCircle2,
+  FileSpreadsheet,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Upload,
+} from 'lucide-react'
+
+const DEFAULT_ACCOUNTS_ENV = 'dev' as const
+const DEFAULT_PROCESS_ENVIRONMENTS = ['dev']
+const USERNAME_ALIASES = [
+  'user_name',
+  'userName',
+  'username',
+  'login',
+  'User Name',
+]
+const FULLNAME_ALIASES = ['full_name', 'fullName', 'name']
+
+type AccountsMode = 'csv' | 'scraping'
+
+interface ProcessingSummary {
+  stats: {
+    totalProcessed: number
+    removed: number
+    remaining: number
+  }
+  uploaded: Record<string, number>
+  duplicates: Record<string, number>
+}
+
+function findAlias(fields: string[], aliases: string[]) {
+  return aliases.find((alias) => fields.includes(alias)) ?? null
+}
+
+function formatDate(value?: number) {
+  if (typeof value !== 'number') return '-'
+  return new Date(value).toLocaleString()
+}
+
+function sumRecordValues(value: Record<string, number>) {
+  return Object.values(value).reduce((sum, count) => sum + count, 0)
+}
+
+function buildPreviewFields(
+  fields: string[],
+  sampleRow: Record<string, string>,
+  detectedUsernameField: string | null,
+  detectedFullNameField: string | null,
+) {
+  const ordered = [
+    detectedUsernameField,
+    detectedFullNameField,
+    ...fields,
+    ...Object.keys(sampleRow),
+  ].filter(Boolean) as string[]
+
+  const unique: string[] = []
+  for (const field of ordered) {
+    if (!unique.includes(field)) unique.push(field)
+  }
+
+  return unique.slice(0, 6)
+}
+
+function StatusBanner({
+  tone,
+  children,
+}: {
+  tone: 'danger' | 'warning' | 'success'
+  children: React.ReactNode
+}) {
+  const className =
+    tone === 'danger'
+      ? 'status-banner-danger'
+      : tone === 'warning'
+        ? 'border-status-warning-border bg-status-warning-soft text-status-warning'
+        : 'border-status-success-border bg-status-success-soft text-status-success'
+
+  const dotClassName =
+    tone === 'danger'
+      ? 'status-dot-danger'
+      : tone === 'warning'
+        ? 'bg-status-warning'
+        : 'status-dot-success-tight'
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2 border px-4 py-3 text-sm',
+        tone === 'danger' && 'border-y border-x-0',
+        tone !== 'danger' && 'rounded-xl',
+        className,
+      )}
+    >
+      <span className={cn('h-1.5 w-1.5 rounded-full', dotClassName)} />
+      <span>{children}</span>
+    </div>
+  )
+}
+
+function MetricCard({
+  label,
+  value,
+  accent = 'default',
+}: {
+  label: string
+  value: string
+  accent?: 'default' | 'danger' | 'success'
+}) {
+  const accentClassName =
+    accent === 'danger'
+      ? 'text-status-danger'
+      : accent === 'success'
+        ? 'text-status-success'
+        : 'text-ink'
+
+  return (
+    <div className="bg-panel-strong border-line rounded-2xl border p-4">
+      <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+        {label}
+      </div>
+      <div className={cn('mt-2 text-2xl font-semibold', accentClassName)}>
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function SamplePreview({
+  fields,
+  sampleRow,
+  detectedUsernameField,
+  detectedFullNameField,
+  emptyMessage,
+}: {
+  fields: string[]
+  sampleRow: Record<string, string>
+  detectedUsernameField: string | null
+  detectedFullNameField: string | null
+  emptyMessage: string
+}) {
+  if (fields.length === 0) {
+    return (
+      <div className="text-subtle-copy rounded-xl border border-dashed px-4 py-6 text-sm">
+        {emptyMessage}
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border">
+      <Table>
+        <TableHeader>
+          <TableRow className="border-line-soft bg-transparent hover:bg-transparent">
+            {fields.map((field) => {
+              const isDetected =
+                field === detectedUsernameField || field === detectedFullNameField
+
+              return (
+                <TableHead
+                  key={field}
+                  className={cn(
+                    'text-muted-copy h-11 font-medium',
+                    isDetected && 'text-ink',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{field}</span>
+                    {field === detectedUsernameField ? (
+                      <Badge className="brand-surface brand-text-soft border px-2 py-0 text-[10px]">
+                        Username
+                      </Badge>
+                    ) : null}
+                    {field === detectedFullNameField ? (
+                      <Badge
+                        variant="outline"
+                        className="border-line bg-panel-muted text-copy px-2 py-0 text-[10px]"
+                      >
+                        Full name
+                      </Badge>
+                    ) : null}
+                  </div>
+                </TableHead>
+              )
+            })}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow className="border-line-soft hover:bg-transparent">
+            {fields.map((field) => (
+              <TableCell
+                key={field}
+                className="text-copy max-w-[180px] truncate font-mono text-xs"
+                title={sampleRow[field] || '-'}
+              >
+                {sampleRow[field] || (
+                  <span className="text-subtle-copy">-</span>
+                )}
+              </TableCell>
+            ))}
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
+function ProcessingResultPanel({
+  title,
+  summary,
+  actionLabel,
+  onReset,
+}: {
+  title: string
+  summary: ProcessingSummary
+  actionLabel: string
+  onReset: () => void
+}) {
+  return (
+    <div className="bg-panel-subtle border-line-soft rounded-3xl border p-5 shadow-xs backdrop-blur-xs">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-status-success flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5" />
+            <h3 className="text-lg font-semibold">{title}</h3>
+          </div>
+          <p className="text-subtle-copy mt-1 text-sm">
+            Review the result and continue with the next import.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onReset}
+          className="border-line text-copy hover:bg-panel-hover bg-transparent"
+        >
+          <RotateCcw className="mr-2 h-4 w-4" />
+          {actionLabel}
+        </Button>
+      </div>
+
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-5">
+        <MetricCard
+          label="Processed"
+          value={summary.stats.totalProcessed.toLocaleString()}
+        />
+        <MetricCard
+          label="Filtered"
+          value={summary.stats.removed.toLocaleString()}
+          accent="danger"
+        />
+        <MetricCard
+          label="Kept"
+          value={summary.stats.remaining.toLocaleString()}
+          accent="success"
+        />
+        <MetricCard
+          label="Inserted"
+          value={sumRecordValues(summary.uploaded).toLocaleString()}
+        />
+        <MetricCard
+          label="Duplicates"
+          value={sumRecordValues(summary.duplicates).toLocaleString()}
+        />
+      </div>
+    </div>
+  )
+}
 
 export function AccountsPage() {
   const isMobile = useIsMobile()
@@ -40,1141 +299,864 @@ export function AccountsPage() {
     getScrapingTaskFields,
     processScrapingTask,
   } = useDataUploader()
-  const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set())
-  const [uploadToConvex, setUploadToConvex] = useState(true)
-  const [environments, setEnvironments] = useState<Set<string>>(
-    new Set(['dev']),
-  )
-  const [dragActive, setDragActive] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
+
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [tasksEnv, setTasksEnv] = useState<'dev' | 'prod'>('dev')
+  const [activeMode, setActiveMode] = useState<AccountsMode>('csv')
+  const [dragActive, setDragActive] = useState(false)
+  const [taskSearchQuery, setTaskSearchQuery] = useState('')
   const [tasksKind, setTasksKind] = useState<'followers' | 'following' | ''>('')
   const [scrapingTasks, setScrapingTasks] = useState<ScrapingTaskRow[]>([])
   const [scrapingLoading, setScrapingLoading] = useState(false)
   const [scrapingError, setScrapingError] = useState<string | null>(null)
-  const [importingId, setImportingId] = useState<string | null>(null)
-  const [importResult, setImportResult] = useState<{
-    taskId: string
-    env: string
-    usernamesExtracted: number
-    stats: { totalProcessed: number; removed: number; remaining: number }
-    uploaded: Record<string, number>
-    duplicates: Record<string, number>
-  } | null>(null)
-  const [importStep, setImportStep] = useState<
-    'idle' | 'selecting' | 'processing'
-  >('idle')
-  const [importTaskId, setImportTaskId] = useState<string | null>(null)
-  const [importTaskName, setImportTaskName] = useState<string>('')
-  const [importFields, setImportFields] = useState<string[]>([])
-  const [importSampleRow, setImportSampleRow] = useState<
-    Record<string, string>
-  >({})
-  const [importRowCount, setImportRowCount] = useState<number>(0)
-  const [importSelectedFields, setImportSelectedFields] = useState<Set<string>>(
-    new Set(),
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [selectedTaskPreview, setSelectedTaskPreview] =
+    useState<ScrapingTaskFieldsResponse | null>(null)
+  const [selectedTaskLoading, setSelectedTaskLoading] = useState(false)
+  const [selectedTaskError, setSelectedTaskError] = useState<string | null>(null)
+  const [processingTaskId, setProcessingTaskId] = useState<string | null>(null)
+  const [scrapingResult, setScrapingResult] = useState<ProcessingSummary | null>(
+    null,
   )
-  const [importSearchQuery, setImportSearchQuery] = useState('')
-  const [importUploadToConvex, setImportUploadToConvex] = useState(true)
-  const [importEnvironments, setImportEnvironments] = useState<Set<string>>(
-    new Set(['dev']),
-  )
-
-  const filteredFields = useMemo(() => {
-    if (state.step !== 'selecting') return []
-    if (!searchQuery.trim()) return state.fields
-    return state.fields.filter((f) =>
-      f.toLowerCase().includes(searchQuery.toLowerCase()),
-    )
-  }, [state, searchQuery])
-
-  const filteredImportFields = useMemo(() => {
-    if (importStep !== 'selecting') return []
-    if (!importSearchQuery.trim()) return importFields
-    return importFields.filter((f) =>
-      f.toLowerCase().includes(importSearchQuery.toLowerCase()),
-    )
-  }, [importFields, importSearchQuery, importStep])
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true)
-    } else if (e.type === 'dragleave') {
-      setDragActive(false)
-    }
-  }, [])
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault()
-      e.stopPropagation()
-      setDragActive(false)
-
-      const files = e.dataTransfer.files
-      if (files?.[0]?.name.endsWith('.csv')) {
-        void uploadFile(files[0])
-      }
-    },
-    [uploadFile],
-  )
-
-  const handleFileSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files
-      if (files?.[0]) {
-        void uploadFile(files[0])
-      }
-    },
-    [uploadFile],
-  )
-
-  const handleFieldToggle = useCallback((field: string) => {
-    setSelectedFields((prev) => {
-      const next = new Set(prev)
-      if (next.has(field)) {
-        next.delete(field)
-      } else {
-        next.add(field)
-      }
-      return next
-    })
-  }, [])
-
-  const handleSelectAll = useCallback(() => {
-    if (state.step === 'selecting') {
-      setSelectedFields(new Set(state.fields))
-    }
-  }, [state])
-
-  const handleSelectNone = useCallback(() => {
-    setSelectedFields(new Set())
-  }, [])
-
-  const handleEnvToggle = useCallback((env: string) => {
-    setEnvironments((prev) => {
-      const next = new Set(prev)
-      if (next.has(env)) {
-        next.delete(env)
-      } else {
-        next.add(env)
-      }
-      return next
-    })
-  }, [])
-
-  const handleProcess = useCallback(() => {
-    if (state.step === 'selecting' && selectedFields.size > 0) {
-      void processFile(
-        state.jobId,
-        Array.from(selectedFields),
-        uploadToConvex,
-        Array.from(environments),
-      )
-    }
-  }, [state, selectedFields, uploadToConvex, environments, processFile])
-
-  const handleImportFieldToggle = useCallback((field: string) => {
-    setImportSelectedFields((prev) => {
-      const next = new Set(prev)
-      if (next.has(field)) {
-        next.delete(field)
-      } else {
-        next.add(field)
-      }
-      return next
-    })
-  }, [])
-
-  const handleImportSelectAll = useCallback(() => {
-    if (importStep === 'selecting') {
-      setImportSelectedFields(new Set(importFields))
-    }
-  }, [importFields, importStep])
-
-  const handleImportSelectNone = useCallback(() => {
-    setImportSelectedFields(new Set())
-  }, [])
-
-  const handleImportEnvToggle = useCallback((env: string) => {
-    setImportEnvironments((prev) => {
-      const next = new Set(prev)
-      if (next.has(env)) {
-        next.delete(env)
-      } else {
-        next.add(env)
-      }
-      return next
-    })
-  }, [])
-
-  const resetImportFlow = useCallback(() => {
-    setImportStep('idle')
-    setImportTaskId(null)
-    setImportTaskName('')
-    setImportFields([])
-    setImportSampleRow({})
-    setImportRowCount(0)
-    setImportSelectedFields(new Set())
-    setImportSearchQuery('')
-    setImportUploadToConvex(true)
-    setImportEnvironments(new Set(['dev']))
-    setImportResult(null)
-  }, [])
 
   const refreshScrapingTasks = useCallback(async () => {
     setScrapingLoading(true)
     setScrapingError(null)
     try {
-      const tasks = await listScrapingTasks(tasksEnv, tasksKind || undefined)
+      const tasks = await listScrapingTasks(
+        DEFAULT_ACCOUNTS_ENV,
+        tasksKind || undefined,
+      )
       setScrapingTasks(tasks)
-    } catch (e) {
+    } catch (error) {
       setScrapingTasks([])
-      setScrapingError(e instanceof Error ? e.message : String(e))
+      setScrapingError(error instanceof Error ? error.message : String(error))
     } finally {
       setScrapingLoading(false)
     }
-  }, [listScrapingTasks, tasksEnv, tasksKind])
+  }, [listScrapingTasks, tasksKind])
 
   useEffect(() => {
     void refreshScrapingTasks()
   }, [refreshScrapingTasks])
 
-  const handleImportTask = useCallback(
-    async (taskId: string) => {
-      if (importingId) return
-      setImportingId(taskId)
-      setImportResult(null)
-      setScrapingError(null)
-      try {
-        const found = scrapingTasks.find((t) => String(t._id || '') === taskId)
-        const fieldsRes = await getScrapingTaskFields(taskId, tasksEnv)
-        setImportTaskId(taskId)
-        setImportTaskName(String(found?.name || ''))
-        setImportFields(fieldsRes.fields || [])
-        setImportSampleRow(fieldsRes.sampleRow || {})
-        setImportRowCount(
-          typeof fieldsRes.rowCount === 'number' ? fieldsRes.rowCount : 0,
-        )
+  useEffect(() => {
+    if (!selectedTaskId) return
 
-        const prefer = [
-          'userName',
-          'username',
-          'user_name',
-          'login',
-          'User Name',
-          'fullName',
-          'full_name',
-          'name',
-        ]
-        const preferredFields = prefer.filter((f) =>
-          (fieldsRes.fields || []).includes(f),
-        )
-        setImportSelectedFields(new Set(preferredFields))
-        setImportStep('selecting')
-      } catch (e) {
-        setScrapingError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setImportingId(null)
-      }
-    },
-    [getScrapingTaskFields, importingId, scrapingTasks, tasksEnv],
+    const stillExists = scrapingTasks.some(
+      (task) => String(task._id || '') === selectedTaskId,
+    )
+
+    if (!stillExists) {
+      setSelectedTaskId(null)
+      setSelectedTaskPreview(null)
+      setSelectedTaskError(null)
+    }
+  }, [scrapingTasks, selectedTaskId])
+
+  const filteredScrapingTasks = useMemo(() => {
+    const query = taskSearchQuery.trim().toLowerCase()
+    if (!query) return scrapingTasks
+
+    return scrapingTasks.filter((task) => {
+      const fields = [
+        task.name,
+        task.kind,
+        task.targetUsername,
+        task.status,
+        formatDate(task.createdAt),
+      ]
+
+      return fields.some((field) =>
+        String(field ?? '')
+          .toLowerCase()
+          .includes(query),
+      )
+    })
+  }, [scrapingTasks, taskSearchQuery])
+
+  const selectedTask = useMemo(
+    () =>
+      scrapingTasks.find((task) => String(task._id || '') === selectedTaskId) ??
+      null,
+    [scrapingTasks, selectedTaskId],
   )
 
-  const handleImportProcess = useCallback(async () => {
-    if (importStep !== 'selecting') return
-    if (!importTaskId) return
-    if (importSelectedFields.size === 0) return
+  const csvDetectedUsernameField =
+    state.step === 'selecting' ? findAlias(state.fields, USERNAME_ALIASES) : null
+  const csvDetectedFullNameField =
+    state.step === 'selecting' ? findAlias(state.fields, FULLNAME_ALIASES) : null
+  const csvPreviewFields =
+    state.step === 'selecting'
+      ? buildPreviewFields(
+          state.fields,
+          state.sampleRow,
+          csvDetectedUsernameField,
+          csvDetectedFullNameField,
+        )
+      : []
+  const csvMissingUsername =
+    state.step === 'selecting' && !csvDetectedUsernameField
 
-    setImportStep('processing')
-    setImportResult(null)
-    setScrapingError(null)
-    try {
-      const res = await processScrapingTask(importTaskId, {
-        env: tasksEnv,
-        keepFields: Array.from(importSelectedFields),
-        uploadToConvex: importUploadToConvex,
-        environments: Array.from(importEnvironments),
-        accountStatus: 'available',
-      })
-      setImportResult({
-        taskId: res.taskId,
-        env: res.env,
-        usernamesExtracted: res.usernamesExtracted,
-        stats: res.stats,
-        uploaded: res.uploaded,
-        duplicates: res.duplicates,
-      })
-      setImportStep('idle')
-      await refreshScrapingTasks()
-    } catch (e) {
-      setScrapingError(e instanceof Error ? e.message : String(e))
-      setImportStep('selecting')
-    }
-  }, [
-    importEnvironments,
-    importSelectedFields,
-    importStep,
-    importTaskId,
-    importUploadToConvex,
-    processScrapingTask,
-    refreshScrapingTasks,
-    tasksEnv,
-  ])
+  const selectedTaskDetectedUsernameField = selectedTaskPreview
+    ? findAlias(selectedTaskPreview.fields, USERNAME_ALIASES)
+    : null
+  const selectedTaskDetectedFullNameField = selectedTaskPreview
+    ? findAlias(selectedTaskPreview.fields, FULLNAME_ALIASES)
+    : null
+  const selectedTaskPreviewFields = selectedTaskPreview
+    ? buildPreviewFields(
+        selectedTaskPreview.fields,
+        selectedTaskPreview.sampleRow,
+        selectedTaskDetectedUsernameField,
+        selectedTaskDetectedFullNameField,
+      )
+    : []
+  const selectedTaskMissingUsername =
+    selectedTaskPreview !== null && !selectedTaskDetectedUsernameField
 
-  const handleReset = useCallback(() => {
+  const isCsvBusy = state.step === 'uploading' || state.step === 'processing'
+  const isScrapingBusy =
+    scrapingLoading || selectedTaskLoading || Boolean(processingTaskId)
+
+  const csvDirty = state.step !== 'idle'
+  const scrapingDirty =
+    Boolean(selectedTaskId) ||
+    Boolean(scrapingResult) ||
+    taskSearchQuery.trim().length > 0 ||
+    tasksKind !== ''
+
+  const handleCsvReset = useCallback(() => {
     reset()
-    setSelectedFields(new Set())
-    setEnvironments(new Set(['dev']))
-    setSearchQuery('')
-    resetImportFlow()
+    setDragActive(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [reset, resetImportFlow])
+  }, [reset])
+
+  const handleScrapingReset = useCallback(() => {
+    setTaskSearchQuery('')
+    setTasksKind('')
+    setSelectedTaskId(null)
+    setSelectedTaskPreview(null)
+    setSelectedTaskError(null)
+    setScrapingResult(null)
+  }, [])
+
+  const handleResetActiveMode = useCallback(() => {
+    if (activeMode === 'csv') {
+      handleCsvReset()
+      return
+    }
+
+    handleScrapingReset()
+  }, [activeMode, handleCsvReset, handleScrapingReset])
+
+  const handleDrag = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.type === 'dragenter' || event.type === 'dragover') {
+      setDragActive(true)
+    } else if (event.type === 'dragleave') {
+      setDragActive(false)
+    }
+  }, [])
+
+  const handleUploadFile = useCallback(
+    async (file: File) => {
+      setDragActive(false)
+      await uploadFile(file)
+    },
+    [uploadFile],
+  )
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      setDragActive(false)
+
+      const file = event.dataTransfer.files?.[0]
+      if (file?.name.toLowerCase().endsWith('.csv')) {
+        void handleUploadFile(file)
+      }
+    },
+    [handleUploadFile],
+  )
+
+  const handleFileSelect = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      if (file) {
+        void handleUploadFile(file)
+      }
+    },
+    [handleUploadFile],
+  )
+
+  const handleProcessCsv = useCallback(() => {
+    if (state.step !== 'selecting' || csvMissingUsername) return
+
+    void processFile(
+      state.jobId,
+      state.fields,
+      true,
+      DEFAULT_PROCESS_ENVIRONMENTS,
+    )
+  }, [csvMissingUsername, processFile, state])
+
+  const handleSelectTask = useCallback(
+    async (taskId: string) => {
+      if (!taskId || selectedTaskLoading) return
+
+      setSelectedTaskId(taskId)
+      setSelectedTaskError(null)
+      setScrapingResult(null)
+      setSelectedTaskLoading(true)
+
+      try {
+        const preview = await getScrapingTaskFields(taskId, DEFAULT_ACCOUNTS_ENV)
+        setSelectedTaskPreview(preview)
+      } catch (error) {
+        setSelectedTaskPreview(null)
+        setSelectedTaskError(error instanceof Error ? error.message : String(error))
+      } finally {
+        setSelectedTaskLoading(false)
+      }
+    },
+    [getScrapingTaskFields, selectedTaskLoading],
+  )
+
+  const handleProcessTask = useCallback(async () => {
+    if (!selectedTaskId || !selectedTaskPreview || selectedTaskMissingUsername) {
+      return
+    }
+
+    setProcessingTaskId(selectedTaskId)
+    setSelectedTaskError(null)
+    try {
+      const result = await processScrapingTask(selectedTaskId, {
+        env: DEFAULT_ACCOUNTS_ENV,
+        keepFields: selectedTaskPreview.fields,
+        uploadToConvex: true,
+        environments: DEFAULT_PROCESS_ENVIRONMENTS,
+        accountStatus: 'available',
+      })
+      setScrapingResult({
+        stats: result.stats,
+        uploaded: result.uploaded,
+        duplicates: result.duplicates,
+      })
+      await refreshScrapingTasks()
+    } catch (error) {
+      setSelectedTaskError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setProcessingTaskId(null)
+    }
+  }, [
+    processScrapingTask,
+    refreshScrapingTasks,
+    selectedTaskId,
+    selectedTaskMissingUsername,
+    selectedTaskPreview,
+  ])
 
   return (
-    <div className="bg-background flex h-full flex-col">
-      {/* Header */}
-      <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">Upload Accounts</h2>
-        {(state.step !== 'idle' && state.step !== 'uploading') ||
-        importStep !== 'idle' ||
-        Boolean(importResult) ? (
-          <Button variant="outline" size="sm" onClick={handleReset}>
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Start Over
-          </Button>
-        ) : null}
-      </div>
+    <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
+      <AmbientGlow />
 
-      {/* Error display */}
-      {state.step === 'error' && (
-        <div className="bg-destructive/10 text-destructive border-destructive/20 border-b p-3 text-sm">
-          {state.message}
-        </div>
-      )}
+      <Tabs
+        value={activeMode}
+        onValueChange={(value) => setActiveMode(value as AccountsMode)}
+        className="flex h-full flex-col"
+      >
+        <div className="mobile-effect-blur mobile-effect-sticky border-line-soft bg-panel-subtle sticky top-0 z-10 border-b backdrop-blur-xs">
+          <div className="flex flex-col gap-4 px-4 py-4 md:px-6 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
+            <div className="min-w-0">
+              <h2 className="page-title-gradient text-3xl font-extrabold tracking-tight">
+                Upload Accounts
+              </h2>
+              <p className="text-subtle-copy mt-1 text-sm">
+                Import cleaned Instagram account sources without leaving the
+                operations workspace.
+              </p>
+            </div>
 
-      {/* Main content */}
-      <div className="bg-muted/10 flex-1 overflow-auto p-4">
-        <div className="mx-auto max-w-4xl space-y-3">
-          <Card>
-            <CardHeader className="p-3 pb-2">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-base">
-                  Import From Scraping Tasks
-                </CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  onClick={() => void refreshScrapingTasks()}
-                  disabled={scrapingLoading || Boolean(importingId)}
+            <div className="flex flex-col gap-2 xl:items-end">
+              <TabsList className="bg-panel-muted border-line h-11 rounded-xl border p-1">
+                <TabsTrigger
+                  value="csv"
+                  className="data-[state=active]:bg-panel-strong data-[state=active]:text-ink rounded-lg px-4"
                 >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${scrapingLoading ? 'animate-spin' : ''}`}
-                  />
-                  Refresh
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2 p-3 pt-0">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-sm">Env</span>
-                  <Button
-                    variant={tasksEnv === 'dev' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8"
-                    onClick={() => setTasksEnv('dev')}
-                    disabled={scrapingLoading || Boolean(importingId)}
-                  >
-                    Dev
-                  </Button>
-                  <Button
-                    variant={tasksEnv === 'prod' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8"
-                    onClick={() => setTasksEnv('prod')}
-                    disabled={scrapingLoading || Boolean(importingId)}
-                  >
-                    Prod
-                  </Button>
-                </div>
+                  CSV Upload
+                </TabsTrigger>
+                <TabsTrigger
+                  value="scraping"
+                  className="data-[state=active]:bg-panel-strong data-[state=active]:text-ink rounded-lg px-4"
+                >
+                  Scraping Import
+                </TabsTrigger>
+              </TabsList>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-sm">Kind</span>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                {activeMode === 'scraping' ? (
                   <Button
-                    variant={tasksKind === '' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8"
-                    onClick={() => setTasksKind('')}
-                    disabled={scrapingLoading || Boolean(importingId)}
-                  >
-                    All
-                  </Button>
-                  <Button
-                    variant={tasksKind === 'followers' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8"
-                    onClick={() => setTasksKind('followers')}
-                    disabled={scrapingLoading || Boolean(importingId)}
-                  >
-                    Followers
-                  </Button>
-                  <Button
-                    variant={tasksKind === 'following' ? 'default' : 'outline'}
-                    size="sm"
-                    className="h-8"
-                    onClick={() => setTasksKind('following')}
-                    disabled={scrapingLoading || Boolean(importingId)}
-                  >
-                    Following
-                  </Button>
-                </div>
-              </div>
-
-              {scrapingError && (
-                <div className="bg-destructive/10 text-destructive rounded-sm border p-2 text-sm">
-                  {scrapingError}
-                </div>
-              )}
-
-              {importResult && (
-                <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <Badge variant="secondary" className="text-xs">
-                    {importResult.stats.totalProcessed.toLocaleString()}{' '}
-                    processed
-                  </Badge>
-                  <Badge
                     variant="outline"
-                    className="text-status-warning border-status-warning-border text-xs"
+                    size={isMobile ? 'default' : 'sm'}
+                    onClick={() => void refreshScrapingTasks()}
+                    disabled={isScrapingBusy}
+                    className="border-line text-copy hover:bg-panel-hover bg-transparent"
                   >
-                    {importResult.stats.removed.toLocaleString()} filtered
-                  </Badge>
-                  <Badge variant="secondary" className="text-xs">
-                    {importResult.usernamesExtracted.toLocaleString()} usernames
-                  </Badge>
-                  {Object.keys(importResult.uploaded).map((env) => {
-                    const inserted = importResult.uploaded[env] || 0
-                    const dupes = importResult.duplicates[env] || 0
-                    return (
-                      <Badge key={env} variant="secondary" className="text-xs">
-                        {env}: {inserted.toLocaleString()} inserted
-                        {dupes > 0 ? `, ${dupes.toLocaleString()} dupes` : ''}
-                      </Badge>
-                    )
-                  })}
-                </div>
-              )}
-
-              {isMobile ? (
-                <div className="space-y-2">
-                  {scrapingLoading ? (
-                    <div className="text-muted-foreground rounded-sm border p-3 text-sm">
-                      Loading...
-                    </div>
-                  ) : scrapingTasks.length === 0 ? (
-                    <div className="text-muted-foreground rounded-sm border p-3 text-sm">
-                      No unimported completed tasks found.
-                    </div>
-                  ) : (
-                    scrapingTasks.map((t) => {
-                      const id = String(t._id || '')
-                      const createdAt =
-                        typeof t.createdAt === 'number'
-                          ? new Date(t.createdAt).toLocaleString()
-                          : '—'
-                      return (
-                        <div key={id} className="bg-card rounded-xl border p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate font-medium">
-                                {String(t.name || '—')}
-                              </div>
-                              <div className="text-muted-foreground mt-1 text-xs">
-                                {createdAt}
-                              </div>
-                            </div>
-                            <Badge variant="outline" className="text-xs">
-                              {String(t.kind || '—')}
-                            </Badge>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="mt-3 w-full"
-                            onClick={() => void handleImportTask(id)}
-                            disabled={
-                              !id ||
-                              Boolean(importingId) ||
-                              importStep === 'processing'
-                            }
-                          >
-                            {importingId === id ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Loading
-                              </>
-                            ) : (
-                              <>
-                                <Download className="mr-2 h-4 w-4" />
-                                Import
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
-              ) : (
-                <div className="overflow-x-auto rounded-sm border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="h-8">
-                        <TableHead className="text-xs">Name</TableHead>
-                        <TableHead className="text-xs">Kind</TableHead>
-                        <TableHead className="text-xs">Created</TableHead>
-                        <TableHead className="text-right text-xs">
-                          Action
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {scrapingLoading ? (
-                        <TableRow className="h-10">
-                          <TableCell
-                            colSpan={4}
-                            className="text-muted-foreground text-sm"
-                          >
-                            Loading...
-                          </TableCell>
-                        </TableRow>
-                      ) : scrapingTasks.length === 0 ? (
-                        <TableRow className="h-10">
-                          <TableCell
-                            colSpan={4}
-                            className="text-muted-foreground text-sm"
-                          >
-                            No unimported completed tasks found.
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        scrapingTasks.map((t) => {
-                          const id = String(t._id || '')
-                          const createdAt =
-                            typeof t.createdAt === 'number'
-                              ? new Date(t.createdAt).toLocaleString()
-                              : '—'
-                          return (
-                            <TableRow key={id} className="h-10">
-                              <TableCell className="text-sm font-medium">
-                                {String(t.name || '—')}
-                              </TableCell>
-                              <TableCell className="text-sm">
-                                <Badge variant="outline" className="text-xs">
-                                  {String(t.kind || '—')}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-muted-foreground text-sm">
-                                {createdAt}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  size="sm"
-                                  onClick={() => void handleImportTask(id)}
-                                  disabled={
-                                    !id ||
-                                    Boolean(importingId) ||
-                                    importStep === 'processing'
-                                  }
-                                >
-                                  {importingId === id ? (
-                                    <>
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                      Loading
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Download className="mr-2 h-4 w-4" />
-                                      Import
-                                    </>
-                                  )}
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          )
-                        })
+                    <RefreshCw
+                      className={cn(
+                        isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5',
+                        scrapingLoading && 'animate-spin',
                       )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                    />
+                    <span>Refresh</span>
+                  </Button>
+                ) : null}
 
-              {importStep !== 'idle' && importTaskId && (
-                <>
-                  <Card className="mt-2">
-                    <CardContent className="flex items-center justify-between p-3">
-                      <div className="flex items-center gap-2">
-                        <Download className="text-muted-foreground h-4 w-4" />
-                        <span className="font-medium">
-                          {importTaskName || importTaskId}
-                        </span>
-                        <span className="text-muted-foreground text-sm">
-                          {importRowCount.toLocaleString()} rows •{' '}
-                          {importFields.length} fields
-                        </span>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        Ready
-                      </Badge>
-                    </CardContent>
-                  </Card>
+                {((activeMode === 'csv' && csvDirty) ||
+                  (activeMode === 'scraping' && scrapingDirty)) && (
+                  <Button
+                    variant="outline"
+                    size={isMobile ? 'default' : 'sm'}
+                    onClick={handleResetActiveMode}
+                    disabled={activeMode === 'csv' ? isCsvBusy : isScrapingBusy}
+                    className="border-line text-copy hover:bg-panel-hover bg-transparent"
+                  >
+                    <RotateCcw
+                      className={isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5'}
+                    />
+                    <span>Start over</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
-                  <Card>
-                    <CardHeader className="p-3 pb-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Filter className="text-muted-foreground h-4 w-4" />
-                          <CardTitle className="text-base">
-                            Choose Fields
-                          </CardTitle>
-                          <Badge variant="secondary" className="text-xs">
-                            {importSelectedFields.size} / {importFields.length}{' '}
-                            selected
+        {activeMode === 'csv' && state.step === 'error' ? (
+          <StatusBanner tone="danger">{state.message}</StatusBanner>
+        ) : null}
+
+        <div className="flex-1 overflow-auto p-4 md:p-6">
+          <div className="mx-auto max-w-[2000px]">
+            <TabsContent value="csv" className="mt-0 outline-none">
+              <div className="space-y-4">
+                {(state.step === 'idle' ||
+                  state.step === 'uploading' ||
+                  state.step === 'error') && (
+                  <div className="bg-panel-subtle border-line-soft rounded-3xl border p-5 shadow-xs backdrop-blur-xs">
+                    <div
+                      className={cn(
+                        'flex min-h-[280px] cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed px-6 py-10 text-center transition-colors',
+                        dragActive
+                          ? 'border-brand bg-brand/8'
+                          : 'border-line hover:border-line-strong bg-panel-strong',
+                        state.step === 'uploading' && 'pointer-events-none opacity-60',
+                      )}
+                      onDragEnter={handleDrag}
+                      onDragLeave={handleDrag}
+                      onDragOver={handleDrag}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                      />
+                      {state.step === 'uploading' ? (
+                        <>
+                          <Loader2 className="text-brand h-10 w-10 animate-spin" />
+                          <h3 className="mt-4 text-xl font-semibold">
+                            Uploading file
+                          </h3>
+                          <p className="text-subtle-copy mt-2 text-sm">
+                            Parsing headers and preparing the account preview.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="brand-surface brand-text flex h-16 w-16 items-center justify-center rounded-2xl border">
+                            <Upload className="h-8 w-8" />
+                          </div>
+                          <h3 className="mt-4 text-2xl font-semibold">
+                            Drop a CSV file to import accounts
+                          </h3>
+                          <p className="text-subtle-copy mt-2 max-w-xl text-sm">
+                            The uploader will detect the username and optional
+                            full-name columns automatically, then send the
+                            cleaned results into the account pipeline.
+                          </p>
+                          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+                            <Button className="brand-button">
+                              <FileSpreadsheet className="mr-2 h-4 w-4" />
+                              Browse CSV
+                            </Button>
+                            <span className="text-subtle-copy text-xs tracking-[0.18em] uppercase">
+                              CSV only
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {state.step === 'selecting' && (
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
+                    <div className="space-y-4">
+                      {csvMissingUsername ? (
+                        <StatusBanner tone="warning">
+                          No supported username column was detected. Add one of:{' '}
+                          {USERNAME_ALIASES.join(', ')}.
+                        </StatusBanner>
+                      ) : (
+                        <StatusBanner tone="success">
+                          Username column detected automatically. Review the
+                          preview and process the upload.
+                        </StatusBanner>
+                      )}
+
+                      <div className="bg-panel-subtle border-line-soft rounded-3xl border p-5 shadow-xs backdrop-blur-xs">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <h3 className="text-xl font-semibold">Detected Data</h3>
+                            <p className="text-subtle-copy mt-1 text-sm">
+                              The uploader is using backend alias rules to infer
+                              the account fields before processing.
+                            </p>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-line bg-panel-muted text-copy w-fit"
+                          >
+                            {state.fileName}
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={handleImportSelectAll}
-                          >
-                            Select all
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={handleImportSelectNone}
-                          >
-                            Select none
-                          </Button>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2 p-3 pt-0">
-                      <div className="flex items-center gap-2">
-                        <div className="relative flex-1">
-                          <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
-                          <Input
-                            value={importSearchQuery}
-                            onChange={(e) =>
-                              setImportSearchQuery(e.target.value)
-                            }
-                            placeholder="Search fields..."
-                            className="h-9 pl-9"
-                            disabled={importStep === 'processing'}
+
+                        <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <MetricCard
+                            label="Rows"
+                            value={state.rowCount.toLocaleString()}
+                          />
+                          <MetricCard
+                            label="Username Source"
+                            value={csvDetectedUsernameField ?? 'Missing'}
+                            accent={csvDetectedUsernameField ? 'success' : 'danger'}
+                          />
+                          <MetricCard
+                            label="Full Name Source"
+                            value={csvDetectedFullNameField ?? 'Not detected'}
                           />
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {filteredImportFields.length} shown
-                        </Badge>
-                      </div>
 
-                      <div className="bg-background grid max-h-52 grid-cols-1 gap-2 overflow-auto rounded-sm border p-2 sm:grid-cols-2 md:grid-cols-3">
-                        {filteredImportFields.map((field) => (
-                          <div key={field} className="flex items-center gap-2">
-                            <Checkbox
-                              id={`import-field-${field}`}
-                              checked={importSelectedFields.has(field)}
-                              onCheckedChange={() =>
-                                handleImportFieldToggle(field)
-                              }
-                              disabled={importStep === 'processing'}
-                            />
-                            <Label
-                              htmlFor={`import-field-${field}`}
-                              className="cursor-pointer truncate text-sm"
+                        <div className="mt-5">
+                          <div className="mb-2 flex items-center gap-2">
+                            <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+                              Sample Preview
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="border-line bg-panel-muted text-copy"
                             >
-                              {field}
-                            </Label>
+                              Auto-mapped
+                            </Badge>
                           </div>
-                        ))}
+                          <SamplePreview
+                            fields={csvPreviewFields}
+                            sampleRow={state.sampleRow}
+                            detectedUsernameField={csvDetectedUsernameField}
+                            detectedFullNameField={csvDetectedFullNameField}
+                            emptyMessage="No sample row is available for this file."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-panel-subtle border-line-soft h-fit rounded-3xl border p-5 shadow-xs backdrop-blur-xs xl:sticky xl:top-28">
+                      <div className="flex items-center gap-2">
+                        <div className="brand-surface brand-text flex h-10 w-10 items-center justify-center rounded-xl border">
+                          <FileSpreadsheet className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold">Ready to Process</h3>
+                          <p className="text-subtle-copy text-sm">
+                            Upload will run with the fixed account destination.
+                          </p>
+                        </div>
                       </div>
 
-                      {importSelectedFields.size > 0 && (
-                        <div className="overflow-x-auto rounded-sm border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="h-8">
-                                {Array.from(importSelectedFields).map(
-                                  (field) => (
-                                    <TableHead
-                                      key={field}
-                                      className="py-1.5 text-xs whitespace-nowrap"
-                                    >
-                                      {field}
-                                    </TableHead>
-                                  ),
-                                )}
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              <TableRow className="h-8">
-                                {Array.from(importSelectedFields).map(
-                                  (field) => (
-                                    <TableCell
-                                      key={field}
-                                      className="py-1.5 font-mono text-xs"
-                                    >
-                                      {importSampleRow[field] || (
-                                        <span className="text-muted-foreground">
-                                          —
-                                        </span>
-                                      )}
-                                    </TableCell>
-                                  ),
-                                )}
-                              </TableRow>
-                            </TableBody>
-                          </Table>
+                      <div className="bg-panel-strong border-line mt-5 rounded-2xl border p-4">
+                        <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+                          Processing notes
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="flex flex-col gap-4 p-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                        <div className="flex items-center gap-2">
-                          <Database className="text-muted-foreground h-4 w-4" />
-                          <Checkbox
-                            id="importUploadToConvex"
-                            checked={importUploadToConvex}
-                            onCheckedChange={(checked) =>
-                              setImportUploadToConvex(checked === true)
-                            }
-                            disabled={importStep === 'processing'}
-                          />
-                          <Label
-                            htmlFor="importUploadToConvex"
-                            className="cursor-pointer text-sm"
-                          >
-                            Upload to Convex
-                          </Label>
-                        </div>
-
-                        {importUploadToConvex && (
-                          <div className="flex flex-wrap items-center gap-3 text-sm">
-                            <div className="flex items-center gap-1.5">
-                              <Checkbox
-                                id="import-env-dev"
-                                checked={importEnvironments.has('dev')}
-                                onCheckedChange={() =>
-                                  handleImportEnvToggle('dev')
-                                }
-                                disabled={importStep === 'processing'}
-                              />
-                              <Label
-                                htmlFor="import-env-dev"
-                                className="cursor-pointer text-sm"
-                              >
-                                Dev
-                              </Label>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <Checkbox
-                                id="import-env-prod"
-                                checked={importEnvironments.has('prod')}
-                                onCheckedChange={() =>
-                                  handleImportEnvToggle('prod')
-                                }
-                                disabled={importStep === 'processing'}
-                              />
-                              <Label
-                                htmlFor="import-env-prod"
-                                className="cursor-pointer text-sm"
-                              >
-                                Prod
-                              </Label>
-                            </div>
-                          </div>
-                        )}
+                        <ul className="text-copy mt-3 space-y-2 text-sm">
+                          <li>Keyword filtering and deduplication run automatically.</li>
+                          <li>Only valid usernames continue into the upload.</li>
+                          <li>Full name and matched keyword metadata are preserved.</li>
+                        </ul>
                       </div>
 
                       <Button
-                        size="sm"
-                        onClick={() => void handleImportProcess()}
-                        disabled={
-                          importSelectedFields.size === 0 ||
-                          (importUploadToConvex &&
-                            importEnvironments.size === 0) ||
-                          importStep === 'processing'
-                        }
+                        onClick={handleProcessCsv}
+                        disabled={csvMissingUsername}
+                        className="brand-button mt-5 h-11 w-full"
                       >
-                        {importStep === 'processing' ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Processing
-                          </>
-                        ) : (
-                          <>
-                            <Filter className="mr-2 h-4 w-4" />
-                            Process & Upload
-                          </>
-                        )}
+                        Process & Upload
                       </Button>
-                    </CardContent>
-                  </Card>
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Upload Zone */}
-          {(state.step === 'idle' ||
-            state.step === 'uploading' ||
-            state.step === 'error') && (
-            <Card>
-              <CardContent className="p-4">
-                <div
-                  className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition-colors ${dragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'} ${state.step === 'uploading' ? 'pointer-events-none opacity-50' : ''} `}
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".csv"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  {state.step === 'uploading' ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="text-primary h-8 w-8 animate-spin" />
-                      <p className="font-medium">Uploading...</p>
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <FileSpreadsheet className="text-muted-foreground h-8 w-8" />
-                      <p className="font-medium">Drop your CSV file here</p>
-                      <p className="text-muted-foreground text-sm">
-                        or click to browse
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Field Selection */}
-          {state.step === 'selecting' && (
-            <>
-              {/* File Info */}
-              <Card>
-                <CardContent className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-2">
-                    <FileSpreadsheet className="text-muted-foreground h-4 w-4" />
-                    <span className="font-medium">{state.fileName}</span>
-                    <span className="text-muted-foreground text-sm">
-                      {state.rowCount.toLocaleString()} rows •{' '}
-                      {state.fields.length} columns
-                    </span>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    Ready
-                  </Badge>
-                </CardContent>
-              </Card>
-
-              {/* Field Selection */}
-              <Card>
-                <CardHeader className="p-3 pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Filter className="h-4 w-4" />
-                      Select Fields
-                    </CardTitle>
-                    <Badge variant="secondary" className="text-xs">
-                      {selectedFields.size} / {state.fields.length} selected
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-2 p-3 pt-0">
-                  {/* Search and bulk actions */}
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <div className="relative flex-1">
-                      <Search className="text-muted-foreground absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
-                      <Input
-                        placeholder="Search fields..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="h-8 pl-8 text-sm"
-                      />
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={handleSelectAll}
-                    >
-                      Select All
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={handleSelectNone}
-                    >
-                      Clear
-                    </Button>
-                  </div>
-
-                  {/* Fields grid */}
-                  <div className="grid grid-cols-2 gap-1.5 md:grid-cols-3 lg:grid-cols-4">
-                    {filteredFields.map((field) => (
-                      <div
-                        key={field}
-                        onClick={() => handleFieldToggle(field)}
-                        className={`flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors ${
-                          selectedFields.has(field)
-                            ? 'bg-primary/10 border-primary/30 border'
-                            : 'bg-muted/50 hover:bg-muted border border-transparent'
-                        } `}
-                      >
-                        <div
-                          className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-sm ${
-                            selectedFields.has(field)
-                              ? 'bg-primary text-primary-foreground'
-                              : 'border-muted-foreground/30 border'
-                          } `}
-                        >
-                          {selectedFields.has(field) && (
-                            <Check className="h-2.5 w-2.5" />
-                          )}
-                        </div>
-                        <span className="truncate" title={field}>
-                          {field}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {searchQuery && filteredFields.length === 0 && (
-                    <p className="text-muted-foreground py-2 text-center text-sm">
-                      No fields match "{searchQuery}"
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Sample Preview - only show if fields selected */}
-              {selectedFields.size > 0 && (
-                <Card>
-                  <CardHeader className="p-3 pb-2">
-                    <CardTitle className="text-sm">Sample Preview</CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-3 pt-0">
-                    <div className="overflow-x-auto rounded-sm border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="h-8">
-                            {Array.from(selectedFields).map((field) => (
-                              <TableHead
-                                key={field}
-                                className="py-1.5 text-xs whitespace-nowrap"
-                              >
-                                {field}
-                              </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          <TableRow className="h-8">
-                            {Array.from(selectedFields).map((field) => (
-                              <TableCell
-                                key={field}
-                                className="py-1.5 font-mono text-xs"
-                              >
-                                {state.sampleRow[field] || (
-                                  <span className="text-muted-foreground">
-                                    —
-                                  </span>
-                                )}
-                              </TableCell>
-                            ))}
-                          </TableRow>
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Upload Options + Process Button in same row */}
-              <Card>
-                <CardContent className="flex flex-col gap-4 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                    <div className="flex items-center gap-2">
-                      <Database className="text-muted-foreground h-4 w-4" />
-                      <Checkbox
-                        id="uploadToConvex"
-                        checked={uploadToConvex}
-                        onCheckedChange={(checked) =>
-                          setUploadToConvex(checked === true)
-                        }
-                      />
-                      <Label
-                        htmlFor="uploadToConvex"
-                        className="cursor-pointer text-sm"
-                      >
-                        Upload to Convex
-                      </Label>
-                    </div>
-
-                    {uploadToConvex && (
-                      <div className="flex flex-wrap items-center gap-3 text-sm">
-                        <div className="flex items-center gap-1.5">
-                          <Checkbox
-                            id="env-dev"
-                            checked={environments.has('dev')}
-                            onCheckedChange={() => handleEnvToggle('dev')}
-                          />
-                          <Label
-                            htmlFor="env-dev"
-                            className="cursor-pointer text-sm"
-                          >
-                            Dev
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Checkbox
-                            id="env-prod"
-                            checked={environments.has('prod')}
-                            onCheckedChange={() => handleEnvToggle('prod')}
-                          />
-                          <Label
-                            htmlFor="env-prod"
-                            className="cursor-pointer text-sm"
-                          >
-                            Prod
-                          </Label>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <Button
-                    size="sm"
-                    onClick={handleProcess}
-                    disabled={
-                      selectedFields.size === 0 ||
-                      (uploadToConvex && environments.size === 0)
-                    }
-                  >
-                    <Filter className="mr-2 h-4 w-4" />
-                    Process & Upload
-                  </Button>
-                </CardContent>
-              </Card>
-            </>
-          )}
-
-          {/* Processing State */}
-          {state.step === 'processing' && (
-            <Card>
-              <CardContent className="py-8">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="text-primary h-8 w-8 animate-spin" />
-                  <div className="text-center">
-                    <p className="font-medium">Processing...</p>
-                    <p className="text-muted-foreground text-sm">
-                      Filtering and uploading accounts
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Completed State */}
-          {state.step === 'completed' && (
-            <Card>
-              <CardContent className="space-y-4 p-4">
-                <div className="text-status-success flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="font-semibold">Processing Complete</span>
-                </div>
-
-                {/* Stats */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="bg-muted/50 rounded-sm p-3 text-center">
-                    <p className="text-xl font-bold">
-                      {state.stats.totalProcessed.toLocaleString()}
-                    </p>
-                    <p className="text-muted-foreground text-xs">Processed</p>
-                  </div>
-                  <div className="bg-destructive/10 rounded-sm p-3 text-center">
-                    <p className="text-destructive text-xl font-bold">
-                      {state.stats.removed.toLocaleString()}
-                    </p>
-                    <p className="text-muted-foreground text-xs">Filtered</p>
-                  </div>
-                  <div className="bg-status-success-soft rounded-sm p-3 text-center">
-                    <p className="text-status-success text-xl font-bold">
-                      {state.stats.remaining.toLocaleString()}
-                    </p>
-                    <p className="text-muted-foreground text-xs">Kept</p>
-                  </div>
-                </div>
-
-                {/* Upload results */}
-                {Object.keys(state.uploaded).length > 0 && (
-                  <div className="space-y-1.5">
-                    {Object.entries(state.uploaded).map(([env, count]) => {
-                      const dupes = state.duplicates[env] || 0
-                      return (
-                        <div
-                          key={env}
-                          className="flex items-center gap-2 text-sm"
-                        >
-                          <span className="text-muted-foreground capitalize">
-                            {env}:
-                          </span>
-                          <Badge variant="secondary" className="text-xs">
-                            {count.toLocaleString()} new
-                          </Badge>
-                          {dupes > 0 && (
-                            <Badge
-                              variant="outline"
-                              className="text-status-warning border-status-warning-border text-xs"
-                            >
-                              {dupes.toLocaleString()} duplicates
-                            </Badge>
-                          )}
-                        </div>
-                      )
-                    })}
                   </div>
                 )}
 
-                <Button variant="outline" size="sm" onClick={handleReset}>
-                  <RotateCcw className="mr-2 h-4 w-4" />
-                  Upload Another
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+                {state.step === 'processing' && (
+                  <div className="bg-panel-subtle border-line-soft rounded-3xl border p-8 shadow-xs backdrop-blur-xs">
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <Loader2 className="text-brand h-10 w-10 animate-spin" />
+                      <h3 className="mt-4 text-xl font-semibold">Processing upload</h3>
+                      <p className="text-subtle-copy mt-2 text-sm">
+                        Filtering accounts, removing duplicates, and uploading
+                        the cleaned result.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {state.step === 'completed' && (
+                  <ProcessingResultPanel
+                    title="CSV upload complete"
+                    summary={{
+                      stats: state.stats,
+                      uploaded: state.uploaded,
+                      duplicates: state.duplicates,
+                    }}
+                    actionLabel="Upload another file"
+                    onReset={handleCsvReset}
+                  />
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="scraping" className="mt-0 outline-none">
+              <div className="space-y-4">
+                {scrapingError ? (
+                  <StatusBanner tone="danger">{scrapingError}</StatusBanner>
+                ) : null}
+
+                <div className="bg-panel-subtle border-line-soft rounded-3xl border p-4 shadow-xs backdrop-blur-xs">
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="relative w-full xl:max-w-xl xl:flex-1">
+                      <Search className="text-subtle-copy pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                      <Input
+                        value={taskSearchQuery}
+                        onChange={(event) => setTaskSearchQuery(event.target.value)}
+                        placeholder="Search scraping tasks..."
+                        className="brand-focus brand-focus-strong border-line bg-panel-strong text-inverse placeholder:text-subtle-copy h-11 rounded-xl pl-10"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant={tasksKind === '' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setTasksKind('')}
+                        className={cn(
+                          tasksKind === ''
+                            ? 'brand-button'
+                            : 'border-line text-copy hover:bg-panel-hover bg-transparent',
+                        )}
+                      >
+                        All
+                      </Button>
+                      <Button
+                        variant={tasksKind === 'followers' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setTasksKind('followers')}
+                        className={cn(
+                          tasksKind === 'followers'
+                            ? 'brand-button'
+                            : 'border-line text-copy hover:bg-panel-hover bg-transparent',
+                        )}
+                      >
+                        Followers
+                      </Button>
+                      <Button
+                        variant={tasksKind === 'following' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setTasksKind('following')}
+                        className={cn(
+                          tasksKind === 'following'
+                            ? 'brand-button'
+                            : 'border-line text-copy hover:bg-panel-hover bg-transparent',
+                        )}
+                      >
+                        Following
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(360px,0.95fr)]">
+                  <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-3xl border shadow-xs backdrop-blur-xs">
+                    {scrapingLoading ? (
+                      <div className="flex items-center justify-center px-6 py-12 text-sm">
+                        <Loader2 className="text-brand mr-2 h-4 w-4 animate-spin" />
+                        Loading tasks...
+                      </div>
+                    ) : filteredScrapingTasks.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center p-12 text-center">
+                        <FileSpreadsheet className="text-subtle-copy mb-4 h-10 w-10" />
+                        <h3 className="text-lg font-medium">
+                          {taskSearchQuery.trim()
+                            ? 'No matching tasks'
+                            : 'No scraping tasks ready'}
+                        </h3>
+                        <p className="text-subtle-copy mt-1 text-sm">
+                          {taskSearchQuery.trim()
+                            ? 'Try a different query or clear the filter.'
+                            : 'Completed unimported tasks will appear here.'}
+                        </p>
+                      </div>
+                    ) : isMobile ? (
+                      <div className="space-y-3 p-3">
+                        {filteredScrapingTasks.map((task) => {
+                          const taskId = String(task._id || '')
+                          const isSelected = taskId === selectedTaskId
+                          return (
+                            <button
+                              key={taskId}
+                              type="button"
+                              onClick={() => void handleSelectTask(taskId)}
+                              className={cn(
+                                'bg-panel-strong border-line hover:border-line-strong w-full rounded-2xl border p-4 text-left transition-colors',
+                                isSelected && 'border-brand',
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-ink truncate font-semibold">
+                                    {task.name || 'Untitled task'}
+                                  </div>
+                                  <div className="text-subtle-copy mt-1 text-xs">
+                                    {formatDate(task.createdAt)}
+                                  </div>
+                                </div>
+                                <Badge
+                                  variant="outline"
+                                  className="border-line bg-panel-muted text-copy"
+                                >
+                                  {task.kind || '-'}
+                                </Badge>
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
+                            <TableHead className="text-muted-copy h-12 pl-4 font-medium">
+                              Task
+                            </TableHead>
+                            <TableHead className="text-muted-copy h-12 font-medium">
+                              Kind
+                            </TableHead>
+                            <TableHead className="text-muted-copy h-12 font-medium">
+                              Status
+                            </TableHead>
+                            <TableHead className="text-muted-copy h-12 pr-4 font-medium">
+                              Created
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredScrapingTasks.map((task) => {
+                            const taskId = String(task._id || '')
+                            const isSelected = taskId === selectedTaskId
+                            return (
+                              <TableRow
+                                key={taskId}
+                                onClick={() => void handleSelectTask(taskId)}
+                                className={cn(
+                                  'group border-line-soft cursor-pointer border-b transition-colors hover:bg-panel-subtle',
+                                  isSelected && 'bg-panel-subtle',
+                                )}
+                              >
+                                <TableCell className="pl-4">
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-ink truncate font-medium">
+                                      {task.name || 'Untitled task'}
+                                    </span>
+                                    <span className="text-subtle-copy max-w-[320px] truncate text-[11px]">
+                                      {task.targetUsername || '-'}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant="outline"
+                                    className="border-line bg-panel-muted text-copy"
+                                  >
+                                    {task.kind || '-'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <span className="text-copy text-sm">
+                                    {task.status || 'completed'}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="pr-4 text-sm text-muted-foreground">
+                                  {formatDate(task.createdAt)}
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+
+                  <div className="bg-panel-subtle border-line-soft h-fit rounded-3xl border p-5 shadow-xs backdrop-blur-xs xl:sticky xl:top-28">
+                    <div className="flex items-center gap-2">
+                      <div className="brand-surface brand-text flex h-10 w-10 items-center justify-center rounded-xl border">
+                        <FileSpreadsheet className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold">Task details</h3>
+                        <p className="text-subtle-copy text-sm">
+                          Select a completed scraping task to review and import.
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedTaskError ? (
+                      <div className="mt-5">
+                        <StatusBanner tone="danger">{selectedTaskError}</StatusBanner>
+                      </div>
+                    ) : null}
+
+                    {selectedTaskLoading ? (
+                      <div className="flex items-center justify-center px-4 py-10 text-sm">
+                        <Loader2 className="text-brand mr-2 h-4 w-4 animate-spin" />
+                        Loading task preview...
+                      </div>
+                    ) : !selectedTask || !selectedTaskPreview ? (
+                      <div className="text-subtle-copy border-line mt-5 rounded-2xl border border-dashed px-4 py-10 text-center text-sm">
+                        Pick a task from the list to inspect the detected account
+                        data before importing.
+                      </div>
+                    ) : (
+                      <div className="mt-5 space-y-5">
+                        {scrapingResult ? (
+                          <ProcessingResultPanel
+                            title="Scraping import complete"
+                            summary={scrapingResult}
+                            actionLabel="Import another task"
+                            onReset={handleScrapingReset}
+                          />
+                        ) : null}
+
+                        {selectedTaskMissingUsername ? (
+                          <StatusBanner tone="warning">
+                            This task does not expose a supported username field.
+                            Expected one of: {USERNAME_ALIASES.join(', ')}.
+                          </StatusBanner>
+                        ) : null}
+
+                        <div className="bg-panel-strong border-line rounded-2xl border p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-ink truncate text-lg font-semibold">
+                                {selectedTask.name || 'Untitled task'}
+                              </div>
+                              <div className="text-subtle-copy mt-1 text-sm">
+                                Created {formatDate(selectedTask.createdAt)}
+                              </div>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="border-line bg-panel-muted text-copy"
+                            >
+                              {selectedTask.kind || '-'}
+                            </Badge>
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <MetricCard
+                              label="Rows"
+                              value={selectedTaskPreview.rowCount.toLocaleString()}
+                            />
+                            <MetricCard
+                              label="Username Source"
+                              value={
+                                selectedTaskDetectedUsernameField ?? 'Missing'
+                              }
+                              accent={
+                                selectedTaskDetectedUsernameField
+                                  ? 'success'
+                                  : 'danger'
+                              }
+                            />
+                            <MetricCard
+                              label="Full Name Source"
+                              value={
+                                selectedTaskDetectedFullNameField ?? 'Not detected'
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="mb-2 flex items-center gap-2">
+                            <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+                              Sample Preview
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="border-line bg-panel-muted text-copy"
+                            >
+                              Auto-mapped
+                            </Badge>
+                          </div>
+                          <SamplePreview
+                            fields={selectedTaskPreviewFields}
+                            sampleRow={selectedTaskPreview.sampleRow}
+                            detectedUsernameField={selectedTaskDetectedUsernameField}
+                            detectedFullNameField={selectedTaskDetectedFullNameField}
+                            emptyMessage="No sample data is available for this task."
+                          />
+                        </div>
+
+                        <Button
+                          onClick={() => void handleProcessTask()}
+                          disabled={
+                            selectedTaskMissingUsername ||
+                            processingTaskId === selectedTaskId
+                          }
+                          className="brand-button h-11 w-full"
+                        >
+                          {processingTaskId === selectedTaskId ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Processing
+                            </>
+                          ) : (
+                            'Process & Upload'
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </div>
         </div>
-      </div>
+      </Tabs>
     </div>
   )
 }
