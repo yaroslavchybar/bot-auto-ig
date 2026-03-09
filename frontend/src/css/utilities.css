@@ -156,7 +156,20 @@
 
 @utility brand-switch {
   &[data-state='checked'] {
+    border-color: var(--button-brand-border);
     background-color: var(--primary);
+    background-image: var(--button-brand-surface);
+    box-shadow:
+      var(--button-brand-shadow),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
+  }
+
+  &[data-state='checked']:hover:not(:disabled) {
+    border-color: var(--button-brand-border-hover);
+    background-image: var(--button-brand-surface-hover);
+    box-shadow:
+      var(--button-brand-shadow-hover),
+      inset 0 1px 0 rgb(255 255 255 / 0.05);
   }
 
   &[data-state='unchecked'] {

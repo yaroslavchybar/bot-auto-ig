@@ -591,18 +591,17 @@ export function AccountsPageContainer() {
                 {activeMode === 'scraping' ? (
                   <Button
                     variant="outline"
-                    size={isMobile ? 'default' : 'sm'}
+                    size="icon"
                     onClick={() => void refreshScrapingTasks()}
                     disabled={isScrapingBusy}
-                    className="border-line text-copy hover:bg-panel-hover bg-transparent"
+                    aria-label="Refresh scraping tasks"
+                    title="Refresh scraping tasks"
+                    className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
                   >
                     <RefreshCw
-                      className={cn(
-                        isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5',
-                        scrapingLoading && 'animate-spin',
-                      )}
+                      className={scrapingLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
                     />
-                    <span>Refresh</span>
+                    <span className="sr-only">Refresh</span>
                   </Button>
                 ) : null}
 

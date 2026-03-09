@@ -9,7 +9,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import type { Workflow } from '../types'
 
 interface WorkflowDialogProps {
@@ -18,7 +17,7 @@ interface WorkflowDialogProps {
   mode: 'create' | 'edit'
   workflow?: Workflow | null
   saving?: boolean
-  onSave: (data: { name: string; description?: string }) => void
+  onSave: (data: { name: string }) => void
   onCancel: () => void
 }
 
@@ -32,17 +31,14 @@ export function WorkflowDialog({
   onCancel,
 }: WorkflowDialogProps) {
   const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
 
   // Reset form when dialog opens or workflow changes
   useEffect(() => {
     if (open) {
       if (mode === 'edit' && workflow) {
         setName(workflow.name || '')
-        setDescription(workflow.description || '')
       } else {
         setName('')
-        setDescription('')
       }
     }
   }, [open, mode, workflow])
@@ -55,7 +51,6 @@ export function WorkflowDialog({
 
     onSave({
       name: name.trim(),
-      description: description.trim() || undefined,
     })
   }
 
@@ -78,21 +73,6 @@ export function WorkflowDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My workflow"
-              disabled={saving}
-              className="brand-focus bg-field border-line text-ink"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="workflow-description" className="text-muted-copy">
-              Description
-            </Label>
-            <Textarea
-              id="workflow-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description..."
-              rows={3}
               disabled={saving}
               className="brand-focus bg-field border-line text-ink"
             />

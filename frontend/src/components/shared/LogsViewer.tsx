@@ -354,19 +354,21 @@ export function LogsViewer({
 
             <Button
               variant="outline"
-              size="sm"
+              size="icon"
               onClick={
                 mode === 'live'
                   ? () => void loadLiveLogs()
                   : () => void loadFiles()
               }
-              className="border-line bg-field h-6 rounded-[3px] px-2 py-0 text-[11px] text-copy shadow-none transition-none hover:bg-panel-hover hover:text-ink"
+              aria-label="Refresh logs"
+              title="Refresh logs"
+              className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
               disabled={loading || filesLoading}
             >
               <RefreshCw
-                className={`mr-1.5 h-3 w-3 ${loading || filesLoading ? 'animate-spin' : ''}`}
+                className={loading || filesLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
               />
-              Refresh
+              <span className="sr-only">Refresh</span>
             </Button>
 
             <Button

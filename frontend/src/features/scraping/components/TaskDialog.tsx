@@ -60,10 +60,15 @@ export function TaskDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-panel border-line text-ink max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+        <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-6">
           <DialogTitle className="page-title-gradient text-xl font-bold">
             {title}
           </DialogTitle>
+          <div className="text-muted-copy text-sm">
+            {eligibleLoading
+              ? 'Loading...'
+              : `${eligibleProfiles.length} eligible profile(s)`}
+          </div>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -116,40 +121,22 @@ export function TaskDialog({
             </Select>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label className="text-muted-copy">Assignment</Label>
-              <div className="border-line bg-panel-muted text-muted-copy rounded-md border px-3 py-2 text-sm">
-                Tasks are distributed automatically across eligible profiles.
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-muted-copy">Eligibility</Label>
-              <div className="border-line bg-panel-muted text-muted-copy rounded-md border px-3 py-2 text-sm">
-                {eligibleLoading
-                  ? 'Loading...'
-                  : `${eligibleProfiles.length} eligible profile(s)`}
-              </div>
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <Label
-                htmlFor={`${idPrefix}_target_usernames`}
-                className="text-muted-copy"
-              >
-                Target usernames
-              </Label>
-              <Textarea
-                id={`${idPrefix}_target_usernames`}
-                placeholder={'instagram\nnatgeo\nnasa'}
-                value={targetUsername}
-                onChange={(e) => onTargetUsernameChange(e.target.value)}
-                className="brand-focus bg-field border-line min-h-[140px] font-mono text-sm text-ink"
-              />
-              <div className="text-subtle-copy text-xs">
-                One username per line. Task runs each one.
-              </div>
+          <div className="grid gap-2">
+            <Label
+              htmlFor={`${idPrefix}_target_usernames`}
+              className="text-muted-copy"
+            >
+              Target usernames
+            </Label>
+            <Textarea
+              id={`${idPrefix}_target_usernames`}
+              placeholder={'instagram\nnatgeo\nnasa'}
+              value={targetUsername}
+              onChange={(e) => onTargetUsernameChange(e.target.value)}
+              className="brand-focus bg-field border-line min-h-[140px] font-mono text-sm text-ink"
+            />
+            <div className="text-subtle-copy text-xs">
+              One username per line. Task runs each one.
             </div>
           </div>
 

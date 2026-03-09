@@ -98,10 +98,6 @@ export function ListsForm({
     [profiles, searchQuery],
   )
 
-  const selectedCount = useMemo(
-    () => profiles.filter((p) => p.selected).length,
-    [profiles],
-  )
   const selectedProfiles = useMemo(
     () => profiles.filter((p) => p.selected),
     [profiles],
@@ -146,30 +142,28 @@ export function ListsForm({
 
   if (mode === 'create') {
     return (
-      <div className={cn('flex h-[calc(90vh-10rem)] flex-col p-6', className)}>
-        <div className="min-h-0 flex-1 overflow-auto pr-4">
-          <div className="grid gap-5 pb-2">
-            <div className="grid gap-1.5">
-              <Label
-                htmlFor="name"
-                className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
-              >
-                List Name
-              </Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                disabled={saving}
-                placeholder="Enter list name..."
-                autoFocus
-                className="brand-focus bg-field border-line h-10 font-medium text-ink"
-              />
-            </div>
+      <div className={cn('flex flex-col p-6', className)}>
+        <div className="grid gap-5 pb-6">
+          <div className="grid gap-1.5">
+            <Label
+              htmlFor="name"
+              className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
+            >
+              List Name
+            </Label>
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={saving}
+              placeholder="Enter list name..."
+              autoFocus
+              className="brand-focus bg-field border-line h-10 font-medium text-ink"
+            />
           </div>
         </div>
 
-        <div className="border-line mt-4 shrink-0 border-t pt-4">
+        <div className="border-line shrink-0 border-t pt-4">
           {error && (
             <div className="text-status-danger bg-status-danger-soft border-status-danger-border mb-4 rounded-md border p-3 text-sm font-medium">
               {error}
@@ -200,11 +194,28 @@ export function ListsForm({
 
   return (
     <div className={cn('flex h-[min(82vh,720px)] flex-col', className)}>
-      <div className="border-line-soft flex items-start justify-between gap-3 border-b px-6 py-3">
-        <div>
-          <DialogTitle className="text-inverse text-xl font-semibold tracking-tight">
+      <div className="border-line-soft flex items-center justify-between gap-4 border-b px-6 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-6">
+          <DialogTitle className="text-inverse shrink-0 text-xl font-semibold tracking-tight">
             Edit List
           </DialogTitle>
+          
+          <div className="flex min-w-0 flex-1 items-center gap-3 sm:max-w-md">
+            <Input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={saving}
+              placeholder="List name..."
+              autoFocus
+              className="brand-focus border-line bg-panel-subtle text-ink h-9 w-full rounded-lg border px-3 text-sm font-medium"
+            />
+            {changedCount > 0 && (
+              <span className="brand-surface brand-text-soft shrink-0 rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-[0.14em] uppercase">
+                {changedCount} pending change{changedCount === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
         </div>
 
         <DialogClose asChild>
@@ -218,59 +229,27 @@ export function ListsForm({
         </DialogClose>
       </div>
 
-      <div className="flex-1 overflow-hidden px-6 pt-2 pb-4">
+      <div className="flex-1 overflow-hidden px-6 pt-4 pb-4">
         <div className="flex h-full flex-col gap-4">
-          <section className="grid gap-1.5">
-            <div className="flex items-center justify-between gap-3">
-              <Label
-                htmlFor="name"
-                className="text-muted-copy text-[11px] font-semibold tracking-[0.18em] uppercase"
-              >
-                List Name
-              </Label>
-              {changedCount > 0 && (
-                <span className="brand-surface brand-text-soft rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-[0.14em] uppercase">
-                  {changedCount} pending change{changedCount === 1 ? '' : 's'}
-                </span>
-              )}
-            </div>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={saving}
-              placeholder="Enter list name..."
-              autoFocus
-              className="brand-focus border-line bg-panel-subtle text-ink h-10 rounded-xl border px-3.5 text-sm font-medium"
-            />
-          </section>
-
           <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
             <section className="flex min-h-0 flex-col">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h2 className="text-ink text-base font-medium">
-                  Available Profiles
-                </h2>
-                <span className="border-line bg-panel-soft text-subtle-copy rounded-full border px-2.5 py-0.5 text-[11px]">
-                  {filteredProfiles.length} shown
-                </span>
-              </div>
 
-              <div className="border-line bg-panel-subtle mb-2 rounded-2xl border p-2.5">
+
+              <div className="mb-3">
                 <div className="relative">
-                  <Search className="text-subtle-copy pointer-events-none absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2" />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[rgb(163,163,177)]" />
                   <Input
                     placeholder="Search profiles..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="brand-focus border-line bg-field-alt text-ink placeholder:text-dim-copy h-9 rounded-xl pl-9 text-xs"
+                    className="border-transparent bg-[rgb(51,51,62)] text-[rgb(246,246,247)] placeholder:text-[rgb(147,148,161)] brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-[inset_0_0_0_1px_rgba(61,61,74,0.88),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)] focus-visible:border-transparent focus-visible:ring-0 focus-visible:shadow-[inset_0_0_0_1px_rgba(130,130,148,0.92),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)]"
                     disabled={loadingProfiles || saving}
                   />
                 </div>
               </div>
 
-              <div className="border-line bg-panel-soft flex items-center justify-between rounded-t-[18px] border border-b-0 px-3.5 py-2.5">
-                <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-ink">
+              <div className="border-line bg-panel-soft flex items-center rounded-t-[18px] border border-b-0 px-3.5 py-2.5">
+                <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-ink hover:text-ink/80 transition-colors">
                   <Checkbox
                     checked={filteredSelectionState}
                     onCheckedChange={(checked) =>
@@ -281,23 +260,10 @@ export function ListsForm({
                     }
                     className="brand-checkbox border-line-strong bg-field-alt h-4.5 w-4.5"
                   />
-                  <span>Select All</span>
+                  <span>
+                    {filteredSelectionState === true ? 'Deselect All' : 'Select All'}
+                  </span>
                 </label>
-
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setFilteredSelection(false)}
-                  disabled={
-                    loadingProfiles ||
-                    saving ||
-                    filteredProfiles.every((profile) => !profile.selected)
-                  }
-                  className="border-line text-subtle-copy hover:bg-panel-soft hover:text-ink h-7 rounded-lg border bg-transparent px-2.5 text-[11px]"
-                >
-                  Deselect All
-                </Button>
               </div>
 
               <div className="border-line bg-panel-subtle min-h-0 flex-1 overflow-hidden rounded-b-[18px] border">
@@ -342,9 +308,6 @@ export function ListsForm({
                             <p className="text-ink truncate text-xs font-medium">
                               {profile.name}
                             </p>
-                            <p className="text-subtle-copy mt-0.5 truncate font-mono text-[10px]">
-                              {profile.profile_id}
-                            </p>
                           </div>
                         </button>
                       ))}
@@ -355,20 +318,16 @@ export function ListsForm({
             </section>
 
             <section className="flex min-h-0 flex-col">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <h2 className="text-ink text-lg font-medium">
-                  Selected Profiles{' '}
-                  <span className="text-subtle-copy ml-1">
-                    ({selectedCount})
-                  </span>
-                </h2>
-              </div>
+
 
               <div className="border-line bg-panel-subtle min-h-0 flex-1 rounded-[18px] border p-1">
                 {selectedProfiles.length === 0 ? (
-                  <div className="text-subtle-copy flex h-full min-h-[180px] flex-col items-center justify-center px-6 text-center text-xs">
-                    <Users className="text-dim-copy mb-2 h-5 w-5" />
-                    No profiles selected yet.
+                  <div className="text-subtle-copy flex h-full min-h-[180px] flex-col items-center justify-center px-6 text-center text-sm">
+                    <Users className="text-dim-copy mb-3 h-8 w-8" />
+                    No profiles selected.
+                    <p className="text-dim-copy mt-1 max-w-[200px] text-xs">
+                      Select profiles from the list on the left to add them here.
+                    </p>
                   </div>
                 ) : (
                   <ScrollArea className="h-full">
@@ -376,14 +335,11 @@ export function ListsForm({
                       {selectedProfiles.map((profile) => (
                         <div
                           key={profile.profile_id}
-                          className="border-line bg-panel-muted flex items-start justify-between gap-2.5 rounded-2xl border p-3"
+                          className="border-line bg-panel-muted flex items-center justify-between gap-2 rounded-xl border px-3 py-2"
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="text-ink truncate text-xs font-medium">
+                            <p className="text-ink truncate text-[13px] font-medium leading-tight">
                               {profile.name}
-                            </p>
-                            <p className="text-subtle-copy mt-0.5 font-mono text-[10px] leading-relaxed break-all">
-                              {profile.profile_id}
                             </p>
                           </div>
 
@@ -391,7 +347,7 @@ export function ListsForm({
                             type="button"
                             onClick={() => handleToggle(profile.profile_id)}
                             disabled={saving}
-                            className="brand-icon-button inline-flex h-7 w-7 items-center justify-center rounded-full"
+                            className="text-subtle-copy hover:bg-panel-hover hover:text-ink -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors"
                             aria-label={`Remove ${profile.name}`}
                           >
                             <X className="h-3.5 w-3.5" />
@@ -414,11 +370,7 @@ export function ListsForm({
           </div>
         )}
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-muted-copy text-xs">
-            {profiles.length} available profiles
-          </div>
-
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
           <div className="flex items-center gap-3">
             <Button
               type="button"

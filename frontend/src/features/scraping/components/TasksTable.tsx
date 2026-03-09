@@ -16,7 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { env } from '@/lib/env'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Download,
@@ -26,6 +25,8 @@ import {
   Play,
   Trash2,
 } from 'lucide-react'
+import { useConvex } from 'convex/react'
+import { api } from '../../../../../convex/_generated/api'
 import type { Doc } from '../../../../../convex/_generated/dataModel'
 
 function parseTargets(raw: string): string[] {
@@ -77,28 +78,29 @@ export function TasksTable({
 }: Props) {
   const isMobile = useIsMobile()
 
+  const convex = useConvex()
+
   const handleDownload = async (task: Doc<'scrapingTasks'>) => {
     if (!task.storageId) return
 
     try {
-      // Get the download URL from Convex
-      const url = await fetch(
-        `${env.convexSiteUrl}/api/scraping-tasks/storage-url?storageId=${task.storageId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${env.convexApiKey}`,
-          },
-        },
-      ).then((r) => r.json())
+      // Get the download URL from Convex securely over WebSocket
+      const url = await convex.query(api.scrapingTasks.getStorageUrl, {
+        storageId: task.storageId,
+      })
 
       if (url) {
         // Download the file
+        const fileContent = await fetch(url).then((r) => r.blob())
+        const objectUrl = URL.createObjectURL(fileContent)
+        
         const link = document.createElement('a')
-        link.href = url
+        link.href = objectUrl
         link.download = `${task.name}_${task.kind}_${new Date(task.lastRunAt || task.createdAt).toISOString().split('T')[0]}.json`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
+        URL.revokeObjectURL(objectUrl)
       }
     } catch (error) {
       console.error('Failed to download file:', error)
@@ -218,7 +220,13 @@ export function TasksTable({
                 <span>{formatWhen(task.lastRunAt)}</span>
                 <div className="flex items-center gap-2">
                   {task.storageId ? (
-                    <Badge className="bg-status-info-soft text-status-info border-status-info-border hover:bg-status-info-strong border text-xs transition-colors">
+                    <Badge
+                      className="bg-status-info-soft text-status-info border-status-info-border hover:bg-status-info-strong cursor-pointer border text-xs transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void handleDownload(task)
+                      }}
+                    >
                       <Download className="mr-1 h-3 w-3" /> File
                     </Badge>
                   ) : null}
@@ -351,7 +359,13 @@ export function TasksTable({
                       </span>
                     )}
                     {task.storageId && (
-                      <Badge className="bg-status-info-soft text-status-info border-status-info-border hover:bg-status-info-strong border text-xs transition-colors">
+                      <Badge
+                        className="bg-status-info-soft text-status-info border-status-info-border hover:bg-status-info-strong cursor-pointer border text-xs transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void handleDownload(task)
+                        }}
+                      >
                         <Download className="mr-1 h-3 w-3" /> File
                       </Badge>
                     )}
