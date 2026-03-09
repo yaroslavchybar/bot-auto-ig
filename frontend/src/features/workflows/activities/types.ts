@@ -73,6 +73,9 @@ export interface ActivityDefinition {
   inputs: ActivityInput[] // Configuration inputs
   outputs: ActivityOutput[] // Output handles for connections
   pythonHandler: string // Python module that runs this
+  quickAdd?: boolean // Whether to feature this activity in quick-add menus
+  keywords?: string[] // Search helpers for the block library
+  pickerGroup?: string // Optional grouping hint for picker presentation
 }
 
 

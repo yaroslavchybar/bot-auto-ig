@@ -39,11 +39,94 @@ import { pythonActivities } from './pythonnode'
 
 import type { ActivityCategory, ActivityDefinition } from './types'
 
+export type ActivityCategoryFilter = ActivityCategory | 'all'
+
+const ACTIVITY_METADATA: Record<
+  string,
+  Pick<ActivityDefinition, 'keywords' | 'pickerGroup' | 'quickAdd'>
+> = {
+  start_browser: {
+    quickAdd: true,
+    pickerGroup: 'setup',
+    keywords: ['browser', 'launch', 'open browser'],
+  },
+  select_list: {
+    quickAdd: true,
+    pickerGroup: 'setup',
+    keywords: ['profiles', 'list', 'source list', 'audience'],
+  },
+  send_dm: {
+    quickAdd: true,
+    pickerGroup: 'messaging',
+    keywords: ['message', 'dm', 'direct message', 'chat'],
+  },
+  delay: {
+    quickAdd: true,
+    pickerGroup: 'control',
+    keywords: ['wait', 'sleep', 'pause'],
+  },
+  condition: {
+    quickAdd: true,
+    pickerGroup: 'control',
+    keywords: ['if', 'branch', 'true false'],
+  },
+  loop: {
+    quickAdd: true,
+    pickerGroup: 'control',
+    keywords: ['repeat', 'iterate'],
+  },
+  browse_feed: {
+    quickAdd: true,
+    pickerGroup: 'browsing',
+    keywords: ['feed', 'scroll'],
+  },
+  browse_reels: {
+    keywords: ['reels', 'video'],
+    pickerGroup: 'browsing',
+    quickAdd: false,
+  },
+  random_branch: {
+    keywords: ['split', 'weighted', 'path'],
+    pickerGroup: 'control',
+    quickAdd: false,
+  },
+  close_browser: {
+    keywords: ['stop browser', 'close'],
+    pickerGroup: 'setup',
+    quickAdd: false,
+  },
+  approve_requests: {
+    keywords: ['follow requests', 'approve'],
+    pickerGroup: 'engagement',
+    quickAdd: false,
+  },
+  follow_user: {
+    keywords: ['follow', 'engagement'],
+    pickerGroup: 'engagement',
+    quickAdd: false,
+  },
+  unfollow_user: {
+    keywords: ['unfollow', 'engagement'],
+    pickerGroup: 'engagement',
+    quickAdd: false,
+  },
+  watch_stories: {
+    keywords: ['stories', 'watch'],
+    pickerGroup: 'stories',
+    quickAdd: false,
+  },
+  python_script: {
+    keywords: ['python', 'script', 'custom code'],
+    pickerGroup: 'advanced',
+    quickAdd: false,
+  },
+}
+
 // ============================================================================
 // REGISTRY - All activities combined
 // ============================================================================
 
-export const ACTIVITY_REGISTRY: ActivityDefinition[] = [
+const BASE_ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...browsingActivities,
   ...engagementActivities,
   ...messagingActivities,
@@ -51,6 +134,13 @@ export const ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...controlActivities,
   ...pythonActivities,
 ]
+
+export const ACTIVITY_REGISTRY: ActivityDefinition[] = BASE_ACTIVITY_REGISTRY.map(
+  (activity) => ({
+    ...activity,
+    ...ACTIVITY_METADATA[activity.id],
+  }),
+)
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -107,6 +197,43 @@ export function getCategoryIcon(category: ActivityCategory): string {
     python: 'TerminalSquare',
   }
   return icons[category]
+}
+
+export function getQuickPickActivities(limit = 6): ActivityDefinition[] {
+  return ACTIVITY_REGISTRY.filter((activity) => activity.quickAdd).slice(0, limit)
+}
+
+export function searchActivities(
+  query: string,
+  category: ActivityCategoryFilter = 'all',
+): ActivityDefinition[] {
+  const normalizedQuery = query.trim().toLowerCase()
+
+  return ACTIVITY_REGISTRY.filter((activity) => {
+    if (category !== 'all' && activity.category !== category) {
+      return false
+    }
+
+    if (!normalizedQuery) {
+      return true
+    }
+
+    const searchable = [
+      activity.name,
+      activity.description,
+      activity.category,
+      ...(activity.keywords ?? []),
+    ]
+      .join(' ')
+      .toLowerCase()
+
+    return searchable.includes(normalizedQuery)
+  }).sort((left, right) => {
+    if (left.quickAdd !== right.quickAdd) {
+      return left.quickAdd ? -1 : 1
+    }
+    return left.name.localeCompare(right.name)
+  })
 }
 
 /**

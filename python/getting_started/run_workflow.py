@@ -123,7 +123,20 @@ def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
             timeout=30,
         )
         data = r.json() if r.status_code < 400 else []
-        return data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+
+        unique: List[Dict[str, Any]] = []
+        seen: set[str] = set()
+        for profile in data:
+            if not isinstance(profile, dict):
+                continue
+            key = str(profile.get("profile_id") or profile.get("name") or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unique.append(profile)
+        return unique
     except Exception:
         return []
 
@@ -231,6 +244,7 @@ class WorkflowRunner:
             emit_event("session_ended", status="failed", workflow_id=self.workflow_id)
             return 2
 
+        had_failures = False
         try:
             futures = []
             for account in self.accounts:
@@ -242,8 +256,10 @@ class WorkflowRunner:
                 if not self.running:
                     break
                 try:
-                    fut.result()
+                    if not fut.result():
+                        had_failures = True
                 except Exception as e:
+                    had_failures = True
                     log(f"Ошибка профиля: {e}")
         finally:
             try:
@@ -255,8 +271,18 @@ class WorkflowRunner:
             except Exception:
                 pass
 
-        emit_event("session_ended", status="completed" if self.running else "cancelled", workflow_id=self.workflow_id)
-        return 0
+        if not self.running:
+            status = "cancelled"
+            exit_code = 1
+        elif had_failures:
+            status = "failed"
+            exit_code = 1
+        else:
+            status = "completed"
+            exit_code = 0
+
+        emit_event("session_ended", status=status, workflow_id=self.workflow_id)
+        return exit_code
 
     def process_account(self, account: ThreadsAccount) -> bool:
         profile_name = account.username

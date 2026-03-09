@@ -166,12 +166,12 @@ def login_session(
                     page.locator(PRIMARY_SELECTORS['username']).count() > 0 or
                     page.locator(ALT_SELECTORS['username']).count() > 0
                 )
-                    if not username_exists:
-                        if HOME_BUTTON.find(page) or SEARCH_BUTTON.find(page):
-                            log("Already logged in!")
-                            mark_login_success()
-                            sync_profile_session_state(context, profile_name, log)
-                            return login_succeeded
+                if not username_exists:
+                    if HOME_BUTTON.find(page) or SEARCH_BUTTON.find(page):
+                        log("Already logged in!")
+                        mark_login_success()
+                        sync_profile_session_state(context, profile_name, log)
+                        return login_succeeded
             except:
                 pass
 

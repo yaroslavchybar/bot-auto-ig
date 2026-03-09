@@ -178,14 +178,7 @@ class InstagramAutomationRunner:
     def stop(self) -> None:
         self.running = False
         log("Остановка автоматизации...")
-        
-        # Reset all profile statuses to idle when stopping
-        for account in self.accounts:
-            try:
-                self.profiles_client.sync_profile_status(account.username, "idle", False)
-            except Exception:
-                pass
-        
+
         try:
             self._executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:
@@ -241,8 +234,9 @@ class InstagramAutomationRunner:
                 pass
 
         log("Автоматизация остановлена.")
-        emit_event("session_ended", status="completed")
-        return 0
+        status = "completed" if self.running else "cancelled"
+        emit_event("session_ended", status=status)
+        return 0 if self.running else 1
 
     def process_account(self, account: ThreadsAccount) -> bool:
         profile_name = account.username
