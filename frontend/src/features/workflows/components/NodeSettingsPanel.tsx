@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Node } from 'reactflow'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -30,6 +30,7 @@ export function NodeSettingsPanel({
 
   return (
     <ActivityNodeSettings
+      key={selectedNode.id}
       node={selectedNode}
       onUpdate={onUpdateNode}
       onClose={onClose}
@@ -108,11 +109,6 @@ function ActivityNodeSettings({
   const initialConfig = (node.data?.config as Record<string, unknown>) || {}
 
   const [config, setConfig] = useState<Record<string, unknown>>(initialConfig)
-
-  // Sync when node changes
-  useEffect(() => {
-    setConfig((node.data?.config as Record<string, unknown>) || {})
-  }, [node.id, node.data?.config])
 
   const handleChange = useCallback((name: string, value: unknown) => {
     setConfig((prev) => ({ ...prev, [name]: value }))

@@ -31,25 +31,38 @@ export function ListsForm({
 }: ListsFormProps) {
   const [name, setName] = useState(initialData?.name || '')
   const [profiles, setProfiles] = useState<ProfileRow[]>([])
-  const [loadingProfiles, setLoadingProfiles] = useState(false)
+  const [loadingProfiles, setLoadingProfiles] = useState(
+    mode === 'edit' && Boolean(initialData),
+  )
   const [localError, setLocalError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => {
-    setName(initialData?.name || '')
-    setLocalError(null)
-    setSearchQuery('')
-  }, [initialData?.id, initialData?.name, mode])
+    if (mode !== 'edit' || !initialData) {
+      return
+    }
 
-  useEffect(() => {
-    if (mode === 'edit' && initialData) {
-      setLoadingProfiles(true)
-      fetchProfilesForEdit(initialData.id)
-        .then(setProfiles)
-        .catch((e) => setLocalError(e instanceof Error ? e.message : String(e)))
-        .finally(() => setLoadingProfiles(false))
-    } else {
-      setProfiles([])
+    let active = true
+
+    fetchProfilesForEdit(initialData.id)
+      .then((rows) => {
+        if (active) {
+          setProfiles(rows)
+        }
+      })
+      .catch((e) => {
+        if (active) {
+          setLocalError(e instanceof Error ? e.message : String(e))
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingProfiles(false)
+        }
+      })
+
+    return () => {
+      active = false
     }
   }, [mode, initialData])
 

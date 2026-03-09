@@ -431,6 +431,7 @@ export function ProfilesPageContainer() {
             </DialogTitle>
           </DialogHeader>
           <ProfileForm
+            key={isCreateOpen ? 'profile-create-open' : 'profile-create-closed'}
             mode="create"
             existingNames={profiles.map((p) => p.name)}
             saving={saving}
@@ -454,6 +455,7 @@ export function ProfilesPageContainer() {
           </DialogHeader>
           {editProfile && (
             <ProfileForm
+              key={editProfile.id}
               mode="edit"
               initialData={editProfile}
               existingNames={profiles.map((p) => p.name)}

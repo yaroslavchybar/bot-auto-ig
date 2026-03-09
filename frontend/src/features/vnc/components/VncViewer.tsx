@@ -128,13 +128,6 @@ export function VncViewer({
     }
 
     screen.replaceChildren()
-    setConnectionOverlay({
-      tone: 'info',
-      text:
-        reconnectAttemptRef.current > 0
-          ? 'Reconnecting to display...'
-          : 'Connecting to display...',
-    })
 
     const rfb = new RFB(screen, url)
     rfbRef.current = rfb

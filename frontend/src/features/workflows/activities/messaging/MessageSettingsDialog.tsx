@@ -5,7 +5,7 @@
  * Supports standard and alternative message templates.
  */
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { toast } from 'sonner'
 import {
   Dialog,
@@ -43,16 +43,45 @@ export function MessageSettingsDialog({
   const [kind, setKind] = useState<MessageTemplateKind>('message')
   const { templates, loading, error, saveTemplates } = useMessageTemplates(kind)
 
+  return (
+    <MessageSettingsDialogBody
+      key={`${open ? 'open' : 'closed'}-${kind}`}
+      open={open}
+      onOpenChange={onOpenChange}
+      kind={kind}
+      onKindChange={setKind}
+      templates={templates}
+      loading={loading}
+      error={error}
+      saveTemplates={saveTemplates}
+    />
+  )
+}
+
+interface MessageSettingsDialogBodyProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  kind: MessageTemplateKind
+  onKindChange: (kind: MessageTemplateKind) => void
+  templates: string[]
+  loading: boolean
+  error: string | null
+  saveTemplates: (kind: MessageTemplateKind, templates: string[]) => Promise<void>
+}
+
+function MessageSettingsDialogBody({
+  open,
+  onOpenChange,
+  kind,
+  onKindChange,
+  templates,
+  loading,
+  error,
+  saveTemplates,
+}: MessageSettingsDialogBodyProps) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editValue, setEditValue] = useState('')
   const [isCreating, setIsCreating] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      setEditingIndex(null)
-      setIsCreating(false)
-    }
-  }, [open, kind])
 
   const handleSave = async () => {
     const trimmed = editValue.trim()
@@ -123,7 +152,7 @@ export function MessageSettingsDialog({
 
         <Tabs
           value={kind}
-          onValueChange={(v) => setKind(v as MessageTemplateKind)}
+          onValueChange={(v) => onKindChange(v as MessageTemplateKind)}
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="bg-panel-muted0 flex items-center justify-between border-b border-neutral-300 px-2 py-1.5 dark:border-neutral-700 dark:bg-neutral-900/20">

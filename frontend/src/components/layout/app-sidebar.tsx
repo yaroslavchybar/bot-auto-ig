@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { NavLink, useLocation } from 'react-router'
 import {
   Users,
   Search,
@@ -37,61 +38,79 @@ export const NAV_IDS = [
 
 export type NavId = (typeof NAV_IDS)[number]
 
-interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
-  activeId: NavId
-  onNavigate: (id: NavId) => void
-}
+export const NAV_ITEMS = [
+  {
+    title: 'Profiles Manager',
+    id: 'profiles',
+    to: '/profiles',
+    icon: Users,
+    breadcrumb: 'Profiles Manager',
+  },
+  {
+    title: 'Workflows',
+    id: 'workflows',
+    to: '/workflows',
+    icon: GitBranch,
+    breadcrumb: 'Workflows',
+  },
+  {
+    title: 'Scraping',
+    id: 'scraping',
+    to: '/scraping',
+    icon: Search,
+    breadcrumb: 'Scraping',
+  },
+  {
+    title: 'Lists Manager',
+    id: 'lists',
+    to: '/lists',
+    icon: List,
+    breadcrumb: 'Lists Manager',
+  },
+  {
+    title: 'Upload Accounts',
+    id: 'accounts',
+    to: '/accounts',
+    icon: Upload,
+    breadcrumb: 'Upload Accounts',
+  },
+  {
+    title: 'Browser View',
+    id: 'vnc',
+    to: '/vnc',
+    icon: Monitor,
+    breadcrumb: 'Browser View',
+  },
+  {
+    title: 'Logs',
+    id: 'logs',
+    to: '/logs',
+    icon: FileText,
+    breadcrumb: 'Logs',
+  },
+  {
+    title: 'VPS Monitor',
+    id: 'monitoring',
+    to: '/monitoring',
+    icon: Activity,
+    breadcrumb: 'VPS Monitor',
+  },
+] as const satisfies ReadonlyArray<{
+  title: string
+  id: NavId
+  to: string
+  icon: React.ComponentType<{ className?: string }>
+  breadcrumb: string
+}>
 
-export function AppSidebar({
-  activeId,
-  onNavigate,
-  ...props
-}: AppSidebarProps) {
+type AppSidebarProps = React.ComponentProps<typeof Sidebar>
+
+export function AppSidebar(props: AppSidebarProps) {
+  const { pathname } = useLocation()
   const navMain = [
     {
       title: 'Platform',
-      items: [
-        {
-          title: 'Profiles Manager',
-          id: 'profiles',
-          icon: Users,
-        },
-        {
-          title: 'Workflows',
-          id: 'workflows',
-          icon: GitBranch,
-        },
-        {
-          title: 'Scraping',
-          id: 'scraping',
-          icon: Search,
-        },
-        {
-          title: 'Lists Manager',
-          id: 'lists',
-          icon: List,
-        },
-        {
-          title: 'Upload Accounts',
-          id: 'accounts',
-          icon: Upload,
-        },
-        {
-          title: 'Browser View',
-          id: 'vnc',
-          icon: Monitor,
-        },
-        {
-          title: 'Logs',
-          id: 'logs',
-          icon: FileText,
-        },
-        {
-          title: 'VPS Monitor',
-          id: 'monitoring',
-          icon: Activity,
-        },
-      ],
+      items: NAV_ITEMS,
     },
   ] as const
 
@@ -104,20 +123,18 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              onClick={() => onNavigate('profiles')}
-              className="hover:bg-panel-subtle"
-            >
-              <div className="brand-avatar flex aspect-square size-8 items-center justify-center rounded-lg">
-                <Command className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="text-ink truncate font-semibold">Anti</span>
-                <span className="text-subtle-copy truncate text-xs">
-                  Automation Platform
-                </span>
-              </div>
+            <SidebarMenuButton asChild size="lg" className="hover:bg-panel-subtle">
+              <NavLink to="/profiles">
+                <div className="brand-avatar flex aspect-square size-8 items-center justify-center rounded-lg">
+                  <Command className="size-4" />
+                </div>
+                <div className="grid flex-1 text-left text-sm leading-tight">
+                  <span className="text-ink truncate font-semibold">Anti</span>
+                  <span className="text-subtle-copy truncate text-xs">
+                    Automation Platform
+                  </span>
+                </div>
+              </NavLink>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -133,12 +150,16 @@ export function AppSidebar({
                 {group.items.map((item) => (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
-                      isActive={activeId === item.id}
-                      onClick={() => onNavigate(item.id as NavId)}
+                      asChild
+                      isActive={
+                        pathname === item.to || pathname.startsWith(`${item.to}/`)
+                      }
                       className="text-muted-copy hover:text-ink hover:bg-panel-subtle data-[active=true]:bg-panel-selected transition-colors data-[active=true]:text-ink"
                     >
-                      {item.icon && <item.icon />}
-                      <span>{item.title}</span>
+                      <NavLink to={item.to}>
+                        {item.icon && <item.icon />}
+                        <span>{item.title}</span>
+                      </NavLink>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

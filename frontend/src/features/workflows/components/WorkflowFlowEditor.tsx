@@ -120,7 +120,10 @@ function saveViewport(workflowId: string, viewport: Viewport) {
 export function WorkflowFlowEditor(props: WorkflowFlowEditorProps) {
   return (
     <ReactFlowProvider>
-      <WorkflowFlowEditorInner {...props} />
+      <WorkflowFlowEditorInner
+        key={`${props.workflow?._id ?? 'workflow'}-${props.open ? 'open' : 'closed'}`}
+        {...props}
+      />
     </ReactFlowProvider>
   )
 }
@@ -159,27 +162,6 @@ function WorkflowFlowEditorInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-
-  // Reset when workflow changes
-  useEffect(() => {
-    if (open) {
-      if (workflow?.nodes && (workflow.nodes as Node[]).length > 0) {
-        setNodes(workflow.nodes as Node[])
-      } else {
-        setNodes([
-          {
-            id: 'start_node',
-            type: 'start',
-            position: { x: 250, y: 50 },
-            data: { ...DEFAULT_START_DATA },
-          },
-        ])
-      }
-      setEdges((workflow?.edges as Edge[]) || [])
-      setSelectedNode(null)
-      viewportRestored.current = false
-    }
-  }, [open, workflow, setNodes, setEdges])
 
   // Restore viewport from localStorage after nodes are set
   useEffect(() => {

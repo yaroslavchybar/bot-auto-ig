@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 
 export interface LogEntry {
@@ -102,21 +102,87 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     return document.visibilityState !== 'hidden'
   })
   const wsRef = useRef<WebSocket | null>(null)
-  const workflowIdRef = useRef<string | null>(workflowId ?? null)
-  const onEventRef = useRef<((message: WebSocketMessage) => void) | null>(
-    onEvent ?? null,
-  )
   const currentProfileRef = useRef<string | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptRef = useRef(0)
 
-  useEffect(() => {
-    workflowIdRef.current = workflowId ?? null
-  }, [workflowId])
+  const handleSocketMessage = useEffectEvent((rawMessage: string) => {
+    try {
+      const data: WebSocketMessage = JSON.parse(rawMessage)
+      try {
+        onEvent?.(data)
+      } catch {
+        // ignore callback errors
+      }
+      const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
+      const activeWorkflowId = workflowId ?? null
+      const matchesWorkflow = !activeWorkflowId
+        ? true
+        : msgWorkflowId === activeWorkflowId
 
-  useEffect(() => {
-    onEventRef.current = onEvent ?? null
-  }, [onEvent])
+      if (data.type === 'log' && data.message) {
+        if (!matchesWorkflow) return
+        if (activeWorkflowId && !msgWorkflowId) return
+        const entry: LogEntry = {
+          message: data.message,
+          level: data.level || 'info',
+          source: data.source || 'unknown',
+          workflowId: msgWorkflowId ?? undefined,
+          profileName:
+            data.profileName || currentProfileRef.current || undefined,
+          ts: Date.now(),
+        }
+        setLogs((prev) => {
+          const next =
+            prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
+          return [...next, entry]
+        })
+      } else if (data.type === 'status' && data.status) {
+        if (activeWorkflowId) return
+        if (msgWorkflowId) return
+        setStatus(data.status as 'idle' | 'running' | 'stopping')
+      } else if (data.type === 'workflow_status' && data.status) {
+        if (!matchesWorkflow) return
+        if (activeWorkflowId && !msgWorkflowId) return
+        setStatus(data.status as 'idle' | 'running' | 'stopping')
+      } else if (data.type === 'session_started') {
+        if (!matchesWorkflow) return
+        if (activeWorkflowId && !msgWorkflowId) return
+        setProgress({
+          totalAccounts: data.total_accounts || 0,
+          currentProfile: null,
+          currentTask: null,
+        })
+      } else if (data.type === 'profile_started') {
+        if (!matchesWorkflow) return
+        if (activeWorkflowId && !msgWorkflowId) return
+        currentProfileRef.current = data.profile || null
+        setProgress((prev) => ({
+          ...prev,
+          currentProfile: data.profile || null,
+          currentTask: null,
+        }))
+      } else if (data.type === 'task_started') {
+        if (!matchesWorkflow) return
+        if (activeWorkflowId && !msgWorkflowId) return
+        setProgress((prev) => ({
+          ...prev,
+          currentTask: data.task || null,
+        }))
+      } else if (data.type === 'profile_completed') {
+        if (!matchesWorkflow) return
+        if (activeWorkflowId && !msgWorkflowId) return
+        currentProfileRef.current = null
+        setProgress((prev) => ({
+          ...prev,
+          currentProfile: null,
+          currentTask: null,
+        }))
+      }
+    } catch {
+      // ignore parse errors
+    }
+  })
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -186,81 +252,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
         ws.onmessage = (event) => {
           if (cancelled) return
-          try {
-            const data: WebSocketMessage = JSON.parse(event.data)
-            try {
-              onEventRef.current?.(data)
-            } catch {
-              // ignore callback errors
-            }
-            const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
-            const activeWorkflowId = workflowIdRef.current
-            const matchesWorkflow = !activeWorkflowId
-              ? true
-              : msgWorkflowId === activeWorkflowId
-
-            if (data.type === 'log' && data.message) {
-              if (!matchesWorkflow) return
-              if (activeWorkflowId && !msgWorkflowId) return
-              const entry: LogEntry = {
-                message: data.message,
-                level: data.level || 'info',
-                source: data.source || 'unknown',
-                workflowId: msgWorkflowId ?? undefined,
-                profileName:
-                  data.profileName || currentProfileRef.current || undefined,
-                ts: Date.now(),
-              }
-              setLogs((prev) => {
-                const next =
-                  prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
-                return [...next, entry]
-              })
-            } else if (data.type === 'status' && data.status) {
-              if (activeWorkflowId) return
-              if (msgWorkflowId) return
-              setStatus(data.status as 'idle' | 'running' | 'stopping')
-            } else if (data.type === 'workflow_status' && data.status) {
-              if (!matchesWorkflow) return
-              if (activeWorkflowId && !msgWorkflowId) return
-              setStatus(data.status as 'idle' | 'running' | 'stopping')
-            } else if (data.type === 'session_started') {
-              if (!matchesWorkflow) return
-              if (activeWorkflowId && !msgWorkflowId) return
-              setProgress({
-                totalAccounts: data.total_accounts || 0,
-                currentProfile: null,
-                currentTask: null,
-              })
-            } else if (data.type === 'profile_started') {
-              if (!matchesWorkflow) return
-              if (activeWorkflowId && !msgWorkflowId) return
-              currentProfileRef.current = data.profile || null
-              setProgress((prev) => ({
-                ...prev,
-                currentProfile: data.profile || null,
-                currentTask: null,
-              }))
-            } else if (data.type === 'task_started') {
-              if (!matchesWorkflow) return
-              if (activeWorkflowId && !msgWorkflowId) return
-              setProgress((prev) => ({
-                ...prev,
-                currentTask: data.task || null,
-              }))
-            } else if (data.type === 'profile_completed') {
-              if (!matchesWorkflow) return
-              if (activeWorkflowId && !msgWorkflowId) return
-              currentProfileRef.current = null
-              setProgress((prev) => ({
-                ...prev,
-                currentProfile: null,
-                currentTask: null,
-              }))
-            }
-          } catch {
-            // ignore parse errors
-          }
+          handleSocketMessage(event.data)
         }
 
         ws.onclose = () => {

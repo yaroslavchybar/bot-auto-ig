@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -116,40 +116,53 @@ const TIMEZONE_OPTIONS = [
 
 export function ScheduleDialog({
   open,
+  workflow,
+  ...props
+}: ScheduleDialogProps) {
+  const resetKey = `${workflow?._id ?? 'schedule'}-${open ? 'open' : 'closed'}`
+
+  return (
+    <ScheduleDialogInner
+      key={resetKey}
+      open={open}
+      workflow={workflow}
+      {...props}
+    />
+  )
+}
+
+function ScheduleDialogInner({
+  open,
   onOpenChange,
   workflow,
   saving,
   onSave,
 }: ScheduleDialogProps) {
-  const [scheduleType, setScheduleType] = useState<ScheduleType>('daily')
-  const [intervalMinutes, setIntervalMinutes] = useState(60)
-  const [hourUTC, setHourUTC] = useState(9)
-  const [minuteUTC, setMinuteUTC] = useState(0)
-  const [daysOfWeek, setDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5])
-  const [dayOfMonth, setDayOfMonth] = useState(1)
-  const [cronspec, setCronspec] = useState('0 9 * * *')
-  const [maxRunsPerDay, setMaxRunsPerDay] = useState<number | undefined>(
-    undefined,
+  const config = (workflow?.scheduleConfig || {}) as ScheduleConfig
+  const initialTimezone = workflow?.timezone ?? 'UTC'
+  const initialLocal = utcToLocal(
+    config.hourUTC ?? 9,
+    config.minuteUTC ?? 0,
+    initialTimezone,
   )
-  const [timezone, setTimezone] = useState('UTC')
 
-  useEffect(() => {
-    if (workflow && open) {
-      const config = (workflow.scheduleConfig || {}) as ScheduleConfig
-      const tz = workflow.timezone ?? 'UTC'
-      setScheduleType((workflow.scheduleType as ScheduleType) || 'daily')
-      setIntervalMinutes(Math.round((config.intervalMs || 3600000) / 60000))
-      // Convert stored UTC time to local timezone for display
-      const local = utcToLocal(config.hourUTC ?? 9, config.minuteUTC ?? 0, tz)
-      setHourUTC(local.hour)
-      setMinuteUTC(local.minute)
-      setDaysOfWeek(config.daysOfWeek ?? [1, 2, 3, 4, 5])
-      setDayOfMonth(config.dayOfMonth ?? 1)
-      setCronspec(config.cronspec ?? '0 9 * * *')
-      setMaxRunsPerDay(workflow.maxRunsPerDay)
-      setTimezone(tz)
-    }
-  }, [workflow, open])
+  const [scheduleType, setScheduleType] = useState<ScheduleType>(
+    (workflow?.scheduleType as ScheduleType) || 'daily',
+  )
+  const [intervalMinutes, setIntervalMinutes] = useState(
+    Math.round((config.intervalMs || 3600000) / 60000),
+  )
+  const [hourUTC, setHourUTC] = useState(initialLocal.hour)
+  const [minuteUTC, setMinuteUTC] = useState(initialLocal.minute)
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(
+    config.daysOfWeek ?? [1, 2, 3, 4, 5],
+  )
+  const [dayOfMonth, setDayOfMonth] = useState(config.dayOfMonth ?? 1)
+  const [cronspec, setCronspec] = useState(config.cronspec ?? '0 9 * * *')
+  const [maxRunsPerDay, setMaxRunsPerDay] = useState<number | undefined>(
+    workflow?.maxRunsPerDay,
+  )
+  const [timezone, setTimezone] = useState(initialTimezone)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

@@ -2,7 +2,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useState,
   type ReactNode,
 } from 'react'
@@ -21,6 +20,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 function applyTheme(theme: ThemePreference) {
+  if (typeof document === 'undefined') return
   const root = document.documentElement
   root.classList.toggle('dark', theme === 'dark')
   root.dataset.theme = theme
@@ -28,17 +28,25 @@ function applyTheme(theme: ThemePreference) {
 }
 
 function readStoredTheme(): ThemePreference {
+  if (typeof window === 'undefined') {
+    return DEFAULT_THEME
+  }
+
   try {
     const stored = window.localStorage.getItem(THEME_STORAGE_KEY)
     return stored === 'light' ? 'light' : DEFAULT_THEME
   } catch {
-    return document.documentElement.classList.contains('dark')
-      ? 'dark'
-      : DEFAULT_THEME
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark')
+        ? 'dark'
+        : DEFAULT_THEME
+    }
+    return DEFAULT_THEME
   }
 }
 
 function persistTheme(theme: ThemePreference) {
+  if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, theme)
   } catch {
@@ -54,13 +62,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     persistTheme(theme)
   }, [theme])
 
-  const value = useMemo(
-    () => ({
-      theme,
-      setTheme,
-    }),
-    [theme],
-  )
+  const value = {
+    theme,
+    setTheme,
+  }
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }

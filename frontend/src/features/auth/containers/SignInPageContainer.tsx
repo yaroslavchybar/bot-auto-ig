@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { useAuth, useSignIn } from '@clerk/clerk-react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router'
 import { KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import {
   AuthCardShell,

@@ -198,6 +198,7 @@ export function ListsPageContainer() {
             </DialogTitle>
           </DialogHeader>
           <ListsForm
+            key={isCreateOpen ? 'list-create-open' : 'list-create-closed'}
             mode="create"
             saving={saving}
             error={error}

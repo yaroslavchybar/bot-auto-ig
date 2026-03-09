@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,25 @@ interface WorkflowDialogProps {
 
 export function WorkflowDialog({
   open,
+  mode,
+  workflow,
+  ...props
+}: WorkflowDialogProps) {
+  const resetKey = `${mode}-${open ? workflow?._id ?? 'create' : 'closed'}`
+
+  return (
+    <WorkflowDialogInner
+      key={resetKey}
+      open={open}
+      mode={mode}
+      workflow={workflow}
+      {...props}
+    />
+  )
+}
+
+function WorkflowDialogInner({
+  open,
   onOpenChange,
   mode,
   workflow,
@@ -30,18 +49,9 @@ export function WorkflowDialog({
   onSave,
   onCancel,
 }: WorkflowDialogProps) {
-  const [name, setName] = useState('')
-
-  // Reset form when dialog opens or workflow changes
-  useEffect(() => {
-    if (open) {
-      if (mode === 'edit' && workflow) {
-        setName(workflow.name || '')
-      } else {
-        setName('')
-      }
-    }
-  }, [open, mode, workflow])
+  const [name, setName] = useState(
+    mode === 'edit' && workflow ? workflow.name || '' : '',
+  )
 
   const canSave = name.trim().length > 0
 

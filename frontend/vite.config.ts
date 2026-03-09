@@ -2,7 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
+import { reactRouter } from '@react-router/dev/vite'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -92,7 +92,7 @@ function getManualChunk(id: string): string | undefined {
 export default defineConfig({
   envDir: path.resolve(rootDir, '..'),
   envPrefix: ['VITE_'],
-  plugins: [tailwindcss(), react()],
+  plugins: [tailwindcss(), reactRouter()],
   build: {
     rollupOptions: {
       output: {

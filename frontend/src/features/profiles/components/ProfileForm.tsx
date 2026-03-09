@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { Profile } from '../types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,7 +46,7 @@ export function ProfileForm({
   onCancel,
   className,
 }: ProfileFormProps) {
-  const [draft, setDraft] = useState<Partial<Profile>>({
+  const [draft, setDraft] = useState<Partial<Profile>>(() => ({
     name: '',
     test_ip: false,
     login: false,
@@ -55,7 +55,7 @@ export function ProfileForm({
     proxy_type: 'http',
     fingerprint_os: 'windows',
     ...initialData,
-  })
+  }))
 
   // Connection state: 'direct' or 'proxy'
   const [connection, setConnection] = useState<'direct' | 'proxy'>(
@@ -63,21 +63,6 @@ export function ProfileForm({
   )
 
   const [localError, setLocalError] = useState<string | null>(null)
-
-  // Update draft when initialData changes
-  useEffect(() => {
-    if (initialData) {
-      setDraft((prev) => ({ ...prev, ...initialData }))
-      setConnection(initialData.proxy ? 'proxy' : 'direct')
-    }
-  }, [initialData])
-
-  // Generate seed on create mode if not present
-  useEffect(() => {
-    if (mode === 'create' && !draft.fingerprint_seed) {
-      setDraft((prev) => ({ ...prev, fingerprint_seed: generateSeed() }))
-    }
-  }, [mode, draft.fingerprint_seed])
 
   const handleRegenerateSeed = () => {
     setDraft((prev) => ({ ...prev, fingerprint_seed: generateSeed() }))
@@ -99,7 +84,13 @@ export function ProfileForm({
     }
 
     // Prepare final data
-    const finalData = { ...draft, name }
+    const finalData = {
+      ...draft,
+      name,
+      fingerprint_seed:
+        draft.fingerprint_seed ||
+        (mode === 'create' ? generateSeed() : draft.fingerprint_seed),
+    }
     const normalizedCookies = normalizeCookiesJsonForForm(
       String(finalData.cookies_json ?? ''),
     )
