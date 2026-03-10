@@ -17,6 +17,9 @@
 
 - `401` on API routes:
   - verify Clerk token propagation and `CLERK_SECRET_KEY`.
+- Convex query error `Unauthorized called by client`:
+  - verify Clerk JWT template `convex` exists.
+  - verify Convex auth issuer domain (`CLERK_JWT_ISSUER_DOMAIN`) matches the active Clerk Frontend API / issuer domain.
 - Internal workflow calls rejected:
   - verify `INTERNAL_API_KEY` in both caller and server.
 

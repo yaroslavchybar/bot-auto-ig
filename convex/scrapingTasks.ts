@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { mutation, query } from "./auth";
 
 function cleanString(val: unknown): string {
@@ -13,18 +13,41 @@ function cleanStatus(val: unknown): "idle" | "running" | "paused" | "completed" 
 	return "idle";
 }
 
+async function listTasksByKind(ctx: any, kindRaw: unknown) {
+	const cleanedKind = cleanString(kindRaw);
+	const rows = cleanedKind
+		? await ctx.db
+				.query("scrapingTasks")
+				.withIndex("by_kind", (q: any) => q.eq("kind", cleanedKind))
+				.collect()
+		: await ctx.db.query("scrapingTasks").collect();
+	rows.sort((a: any, b: any) => b.createdAt - a.createdAt);
+	return rows;
+}
+
+async function listUnimportedTasksByKind(ctx: any, kindRaw: unknown) {
+	const rows = await listTasksByKind(ctx, kindRaw);
+	return rows.filter((t: any) => t.imported !== true && Boolean(t.storageId) && t.status === "completed");
+}
+
 export const list = query({
 	args: { kind: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const cleanedKind = cleanString(args.kind);
-		const rows = cleanedKind
-			? await ctx.db
-					.query("scrapingTasks")
-					.withIndex("by_kind", (q) => q.eq("kind", cleanedKind))
-					.collect()
-			: await ctx.db.query("scrapingTasks").collect();
-		rows.sort((a, b) => b.createdAt - a.createdAt);
-		return rows;
+		return await listTasksByKind(ctx, args.kind);
+	},
+});
+
+export const listInternal = internalQuery({
+	args: { kind: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		return await listTasksByKind(ctx, args.kind);
+	},
+});
+
+export const getByIdInternal = internalQuery({
+	args: { id: v.id("scrapingTasks") },
+	handler: async (ctx, args) => {
+		return (await ctx.db.get(args.id)) ?? null;
 	},
 });
 
@@ -68,21 +91,28 @@ export const create = mutation({
 export const listUnimported = query({
 	args: { kind: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const cleanedKind = cleanString(args.kind);
-		const rows = cleanedKind
-			? await ctx.db
-					.query("scrapingTasks")
-					.withIndex("by_kind", (q) => q.eq("kind", cleanedKind))
-					.collect()
-			: await ctx.db.query("scrapingTasks").collect();
+		return await listUnimportedTasksByKind(ctx, args.kind);
+	},
+});
 
-		const filtered = rows.filter((t) => t.imported !== true && Boolean(t.storageId) && t.status === "completed");
-		filtered.sort((a, b) => b.createdAt - a.createdAt);
-		return filtered;
+export const listUnimportedInternal = internalQuery({
+	args: { kind: v.optional(v.string()) },
+	handler: async (ctx, args) => {
+		return await listUnimportedTasksByKind(ctx, args.kind);
 	},
 });
 
 export const setImported = mutation({
+	args: { id: v.id("scrapingTasks"), imported: v.boolean() },
+	handler: async (ctx, args) => {
+		const existing = await ctx.db.get(args.id);
+		if (!existing) throw new Error("Task not found");
+		await ctx.db.patch(args.id, { imported: Boolean(args.imported), updatedAt: Date.now() });
+		return await ctx.db.get(args.id);
+	},
+});
+
+export const setImportedInternal = internalMutation({
 	args: { id: v.id("scrapingTasks"), imported: v.boolean() },
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.get(args.id);
@@ -168,7 +198,7 @@ export const storeScrapedData = internalAction({
 
 		// Try to delete old file if it exists (ignore errors)
 		try {
-			const existingTask = await ctx.runQuery(api.scrapingTasks.getById, { id: taskId });
+			const existingTask = await ctx.runQuery(internal.scrapingTasks.getByIdInternal, { id: taskId });
 			if (existingTask?.storageId) {
 				await ctx.storage.delete(existingTask.storageId);
 			}
@@ -216,6 +246,13 @@ export const updateStorageId = internalMutation({
 });
 
 export const getStorageUrl = query({
+	args: { storageId: v.id("_storage") },
+	handler: async (ctx, args) => {
+		return await ctx.storage.getUrl(args.storageId);
+	},
+});
+
+export const getStorageUrlInternal = internalQuery({
 	args: { storageId: v.id("_storage") },
 	handler: async (ctx, args) => {
 		return await ctx.storage.getUrl(args.storageId);

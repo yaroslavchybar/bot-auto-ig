@@ -19,6 +19,11 @@
 - `CLERK_SECRET_KEY`
 - `INTERNAL_API_KEY`
 
+### Convex Runtime
+- `CLERK_JWT_ISSUER_DOMAIN` (preferred explicit Clerk issuer domain for Convex auth)
+- `CLERK_PUBLISHABLE_KEY` (fallback source for deriving Clerk issuer domain)
+- `VITE_CLERK_PUBLISHABLE_KEY` (local-dev fallback for issuer derivation only)
+
 ### Frontend Runtime / Build
 - `VITE_CLERK_PUBLISHABLE_KEY`
 - `VITE_API_URL` (required for production frontend builds)

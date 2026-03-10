@@ -1,5 +1,19 @@
 import type { AuthConfig } from 'convex/server'
 
+function normalizeDomain(value: string) {
+  const trimmed = value.trim().replace(/\/$/, '')
+  if (!trimmed) {
+    throw new Error('CLERK_JWT_ISSUER_DOMAIN is empty.')
+  }
+
+  return /^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`
+}
+
+function getConfiguredIssuerDomain() {
+  const issuerDomain = (globalThis as any)?.process?.env?.CLERK_JWT_ISSUER_DOMAIN
+  return issuerDomain ? normalizeDomain(String(issuerDomain)) : null
+}
+
 function getRequiredPublishableKey() {
   const publishableKey =
     (globalThis as any)?.process?.env?.CLERK_PUBLISHABLE_KEY ||
@@ -38,21 +52,16 @@ function getClerkDomainFromPublishableKey(publishableKey: string) {
   }
 
   const decoded = decodeBase64Url(encodedFrontendApi)
-
-  if (!decoded.endsWith('$')) {
-    throw new Error('Invalid Clerk publishable key payload.')
-  }
-
-  const frontendApi = decoded.slice(0, -1)
-  return frontendApi.startsWith('http') ? frontendApi : `https://${frontendApi}`
+  const frontendApi = decoded.endsWith('$') ? decoded.slice(0, -1) : decoded
+  return normalizeDomain(frontendApi)
 }
 
-const publishableKey = getRequiredPublishableKey()
+const clerkDomain = getConfiguredIssuerDomain() ?? getClerkDomainFromPublishableKey(getRequiredPublishableKey())
 
 export default {
   providers: [
     {
-      domain: getClerkDomainFromPublishableKey(publishableKey),
+      domain: clerkDomain,
       applicationID: 'convex',
     },
   ],

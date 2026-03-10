@@ -176,7 +176,7 @@ http.route({
 		const authError = await requireAuth(request);
 		if (authError) return authError;
 		try {
-			const profiles = await ctx.runQuery(api.profiles.list, {});
+			const profiles = await ctx.runQuery(internal.profiles.listInternal, {});
 			return jsonResponse(profiles.map(mapProfileToPython));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -210,7 +210,9 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const profileId = url.searchParams.get("profileId") || url.searchParams.get("profile_id") || "";
-			const profile = await ctx.runQuery(api.profiles.getById, { profileId: profileId as any });
+			const profile = profileId
+				? await ctx.runQuery(internal.profiles.getByIdInternal, { profileId: profileId as any })
+				: null;
 			return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -442,7 +444,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.incrementDailyScrapingUsed, body as any);
+			const ok = await ctx.runMutation(internal.profiles.incrementDailyScrapingUsedInternal, body as any);
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -957,7 +959,7 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const kind = url.searchParams.get("kind") || undefined;
-			const tasks = await ctx.runQuery(api.scrapingTasks.list, { kind: kind as any });
+			const tasks = await ctx.runQuery(internal.scrapingTasks.listInternal, { kind: kind as any });
 			return jsonResponse(tasks);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -975,7 +977,7 @@ http.route({
 			const url = new URL(request.url);
 			const id = url.searchParams.get("id") || url.searchParams.get("taskId") || "";
 			if (!id) return jsonResponse({ error: "id is required" }, 400);
-			const task = await ctx.runQuery(api.scrapingTasks.getById, { id: id as any });
+			const task = await ctx.runQuery(internal.scrapingTasks.getByIdInternal, { id: id as any });
 			return jsonResponse(task);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -992,7 +994,7 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const kind = url.searchParams.get("kind") || undefined;
-			const tasks = await ctx.runQuery(api.scrapingTasks.listUnimported, {
+			const tasks = await ctx.runQuery(internal.scrapingTasks.listUnimportedInternal, {
 				kind: kind as any,
 			});
 			return jsonResponse(tasks);
@@ -1010,7 +1012,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const task = await ctx.runMutation(api.scrapingTasks.setImported, {
+			const task = await ctx.runMutation(internal.scrapingTasks.setImportedInternal, {
 				id: body?.id ?? body?.taskId,
 				imported: body?.imported,
 			});
@@ -1061,8 +1063,7 @@ http.route({
 				return jsonResponse({ error: "storageId is required" }, 400);
 			}
 
-			// Run the query to get storage URL
-			const fileUrl = await ctx.runQuery(api.scrapingTasks.getStorageUrl, {
+			const fileUrl = await ctx.runQuery(internal.scrapingTasks.getStorageUrlInternal, {
 				storageId: storageId as any,
 			});
 

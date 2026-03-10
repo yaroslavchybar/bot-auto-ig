@@ -86,6 +86,7 @@ Other route behavior:
 - `VITE_CONVEX_URL` is required and normalized to HTTPS.
 - Browser data access for profiles, lists, workflows, scraping tasks, and message templates goes directly through the Convex React client.
 - `ConvexProviderWithClerk` uses Clerk auth tokens so every browser-facing Convex query and mutation runs with a Clerk identity.
+- Protected layout rendering is gated with Convex auth state (`AuthLoading` / `Authenticated` / `Unauthenticated`) so feature query hooks mount only after Convex validates Clerk tokens.
 - Browser code should not call `.convex.site/api/*` directly.
 - Scraping artifact download still resolves storage URLs through authenticated Convex queries.
 

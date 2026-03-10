@@ -47,6 +47,7 @@ From schema:
 - Browser-accessed modules such as `lists`, `profiles`, `messageTemplates`, `scrapingTasks`, and `workflows` should use those wrappers for public functions.
 - Server-only helpers should use `internalQuery`, `internalMutation`, or `internalAction`.
 - Browser code should use the Convex React client with Clerk auth; it should not call Convex HTTP action routes directly.
+- `convex/auth.config.ts` resolves Clerk issuer domain from `CLERK_JWT_ISSUER_DOMAIN` first, then falls back to publishable-key decoding for local/dev compatibility.
 
 ## Migration Helpers
 

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { mutation, query } from "./auth";
 
 function computeProfileMode(proxy: unknown): "proxy" | "direct" {
@@ -26,12 +26,44 @@ function buildListPatch(listIds: any[]): { listIds: any[] } {
 	};
 }
 
+async function listProfileRows(ctx: any) {
+	const rows = await ctx.db.query("profiles").collect();
+	rows.sort((a: any, b: any) => a.createdAt - b.createdAt);
+	return rows;
+}
+
+async function incrementDailyScrapingUsedByName(ctx: any, name: string, amountRaw: number) {
+	const cleanedName = String(name || "").trim();
+	if (!cleanedName) throw new Error("name is required");
+	const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
+	if (amount === 0) return true;
+	const existing = await ctx.db
+		.query("profiles")
+		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
+		.first();
+	if (!existing) return true;
+	await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
+	return true;
+}
+
+export const listInternal = internalQuery({
+	args: {},
+	handler: async (ctx) => {
+		return await listProfileRows(ctx);
+	},
+});
+
+export const getByIdInternal = internalQuery({
+	args: { profileId: v.id("profiles") },
+	handler: async (ctx, args) => {
+		return (await ctx.db.get(args.profileId)) ?? null;
+	},
+});
+
 export const list = query({
 	args: {},
 	handler: async (ctx) => {
-		const rows = await ctx.db.query("profiles").collect();
-		rows.sort((a, b) => a.createdAt - b.createdAt);
-		return rows;
+		return await listProfileRows(ctx);
 	},
 });
 
@@ -417,17 +449,14 @@ export const clearBusyForLists = mutation({
 export const incrementDailyScrapingUsed = mutation({
 	args: { name: v.string(), amount: v.number() },
 	handler: async (ctx, args) => {
-		const cleanedName = String(args.name || "").trim();
-		if (!cleanedName) throw new Error("name is required");
-		const amount = Number.isFinite(args.amount) ? Math.max(0, Math.floor(args.amount)) : 0;
-		if (amount === 0) return true;
-		const existing = await ctx.db
-			.query("profiles")
-			.withIndex("by_name", (q) => q.eq("name", cleanedName))
-			.first();
-		if (!existing) return true;
-		await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
-		return true;
+		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount);
+	},
+});
+
+export const incrementDailyScrapingUsedInternal = internalMutation({
+	args: { name: v.string(), amount: v.number() },
+	handler: async (ctx, args) => {
+		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount);
 	},
 });
 
