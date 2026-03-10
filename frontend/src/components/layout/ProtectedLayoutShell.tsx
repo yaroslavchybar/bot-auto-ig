@@ -34,6 +34,10 @@ import {
 const KEEP_ALIVE_PATHS = new Set(['/workflows', '/accounts', '/logs', '/vnc'])
 const keepAliveCache = new Map<string, ReactNode>()
 
+type ProtectedLayoutShellProps = {
+  sidebarDefaultOpen?: boolean
+}
+
 type RouteHandle = {
   breadcrumb?: string
   navId?: NavId
@@ -76,7 +80,9 @@ function KeepAliveViewport({
   )
 }
 
-export function ProtectedLayoutShell() {
+export function ProtectedLayoutShell({
+  sidebarDefaultOpen = true,
+}: ProtectedLayoutShellProps) {
   const location = useLocation()
   const matches = useMatches()
   const navigation = useNavigation()
@@ -110,7 +116,10 @@ export function ProtectedLayoutShell() {
 
   return (
     <ConvexClientProvider>
-      <SidebarProvider className="h-svh min-w-0 overflow-hidden">
+      <SidebarProvider
+        defaultOpen={sidebarDefaultOpen}
+        className="h-svh min-w-0 overflow-hidden"
+      >
         <AppSidebar />
         <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent">
           <header className="border-line-soft bg-panel-subtle relative z-10 flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
