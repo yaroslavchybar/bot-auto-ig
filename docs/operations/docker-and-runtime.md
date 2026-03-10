@@ -23,14 +23,25 @@ docker compose up --build
 
 ## Frontend Build Args
 
+- `VITE_API_URL`
 - `VITE_CONVEX_URL`
 - `VITE_CLERK_PUBLISHABLE_KEY`
+- `VITE_DATAUPLOADER_URL`
 
 ## Runtime Notes
 
-- Frontend container serves static SPA through Nginx.
+- Frontend runtime should serve the React Router server build through `react-router-serve` so Clerk middleware/loaders and protected-route redirects execute server-side.
+- Frontend still builds client and server bundles from the React Router SSR build output.
 - Backend routes and WebSocket remain on server service.
 - Datauploader and scraper run as separate FastAPI services.
+- Non-local deployments must provide `VITE_API_URL` and `VITE_DATAUPLOADER_URL` at image build time so browser requests do not fall back to localhost.
+
+## Frontend Runtime Requirements
+
+- Frontend runtime needs Clerk server-side auth variables in addition to build-time `VITE_*` values.
+- `CLERK_SECRET_KEY` must be available to the frontend server runtime for Clerk React Router middleware/loader execution.
+- `CLERK_PUBLISHABLE_KEY` or `VITE_CLERK_PUBLISHABLE_KEY` must be available consistently across build and runtime.
+- Do not rely on a static-only frontend container if protected-route auth and redirect behavior must run on the server.
 
 ## Useful Commands
 

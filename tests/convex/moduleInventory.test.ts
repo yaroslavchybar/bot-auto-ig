@@ -3,6 +3,8 @@ import { readdirSync } from 'node:fs'
 import { expect, test } from 'vitest'
 
 const expectedModules = [
+  'auth.config.ts',
+  'auth.ts',
   'convex.config.ts',
   'crons.ts',
   'http.ts',

@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useAuth, useSignIn } from '@clerk/clerk-react'
-import { Navigate, useNavigate } from 'react-router'
+import { useAuth } from '@clerk/react-router'
+import { useSignIn } from '@clerk/react-router/legacy'
+import { Navigate, useNavigate, useSearchParams } from 'react-router'
 import { KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import {
   AuthCardShell,
   AuthField,
 } from '@/components/shared/AuthCardShell'
 import { Button } from '@/components/ui/button'
+import {
+  getSafeRedirectTarget,
+  REDIRECT_URL_PARAM,
+} from '@/lib/auth-routing'
 import { getClerkErrorMessage } from '@/lib/clerk-errors'
 
 type SignInStep = 'credentials' | 'secondFactorEmailCode'
@@ -16,6 +21,7 @@ export function SignInPageContainer() {
   const { isLoaded: isAuthLoaded, isSignedIn } = useAuth()
   const { isLoaded: isSignInLoaded, signIn, setActive } = useSignIn()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [step, setStep] = useState<SignInStep>('credentials')
   const [identifier, setIdentifier] = useState('')
@@ -23,6 +29,10 @@ export function SignInPageContainer() {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const redirectTarget = getSafeRedirectTarget(
+    searchParams.get(REDIRECT_URL_PARAM),
+    typeof window === 'undefined' ? undefined : window.location.origin,
+  )
 
   const disabled = submitting || !isAuthLoaded || !isSignInLoaded
 
@@ -41,7 +51,7 @@ export function SignInPageContainer() {
 
       if (signInAttempt.status === 'complete') {
         await setActive({ session: signInAttempt.createdSessionId })
-        navigate('/', { replace: true })
+        navigate(redirectTarget, { replace: true })
         return
       }
 
@@ -99,7 +109,7 @@ export function SignInPageContainer() {
 
       if (signInAttempt.status === 'complete') {
         await setActive({ session: signInAttempt.createdSessionId })
-        navigate('/', { replace: true })
+        navigate(redirectTarget, { replace: true })
         return
       }
 

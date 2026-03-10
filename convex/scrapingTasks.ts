@@ -1,6 +1,7 @@
 import { v } from "convex/values";
-import { action, internalMutation, mutation, query } from "./_generated/server";
+import { internalAction, internalMutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
+import { mutation, query } from "./auth";
 
 function cleanString(val: unknown): string {
 	return String(val ?? "").trim();
@@ -156,7 +157,7 @@ export const setStatus = mutation({
 	},
 });
 
-export const storeScrapedData = action({
+export const storeScrapedData = internalAction({
 	args: {
 		taskId: v.id("scrapingTasks"),
 		users: v.any(),

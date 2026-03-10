@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from 'convex/react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { DialogClose, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { api } from '../../../../../convex/_generated/api'
 import { cn } from '@/lib/utils'
 import { RefreshCw, Search, Users, X } from 'lucide-react'
-import { fetchProfilesForEdit } from '../api'
 import type { List, ProfileRow } from '../types'
 
 interface ListsFormProps {
@@ -30,52 +31,52 @@ export function ListsForm({
   className,
 }: ListsFormProps) {
   const [name, setName] = useState(initialData?.name || '')
-  const [profiles, setProfiles] = useState<ProfileRow[]>([])
-  const [loadingProfiles, setLoadingProfiles] = useState(
-    mode === 'edit' && Boolean(initialData),
-  )
+  const [selectionOverrides, setSelectionOverrides] = useState<
+    Record<string, boolean>
+  >({})
   const [localError, setLocalError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const liveProfiles = useQuery(api.profiles.list, {})
+  const loadingProfiles =
+    mode === 'edit' && Boolean(initialData) && liveProfiles === undefined
 
-  useEffect(() => {
-    if (mode !== 'edit' || !initialData) {
-      return
-    }
+  const profiles = useMemo<ProfileRow[]>(
+    () => {
+      if (mode !== 'edit' || !initialData || !liveProfiles) {
+        return []
+      }
 
-    let active = true
-
-    fetchProfilesForEdit(initialData.id)
-      .then((rows) => {
-        if (active) {
-          setProfiles(rows)
+      return liveProfiles
+      .filter((profile) => Boolean(profile?.login))
+      .map((profile) => {
+        const profileId = String(profile._id ?? '')
+        const listIds = Array.isArray(profile.listIds)
+          ? profile.listIds.map((id) => String(id || '')).filter(Boolean)
+          : []
+        const selected = listIds.includes(initialData.id)
+        return {
+          profile_id: profileId,
+          name: String(profile.name || ''),
+          selected: selectionOverrides[profileId] ?? selected,
+          initialSelected: selected,
         }
       })
-      .catch((e) => {
-        if (active) {
-          setLocalError(e instanceof Error ? e.message : String(e))
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoadingProfiles(false)
-        }
-      })
-
-    return () => {
-      active = false
-    }
-  }, [mode, initialData])
+      .filter((row) => Boolean(row.profile_id))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    },
+    [initialData, liveProfiles, mode, selectionOverrides],
+  )
 
   const handleToggle = (profileId: string) => {
     if (saving) return
 
-    setProfiles((prev) => {
-      return prev.map((profile) =>
-        profile.profile_id === profileId
-          ? { ...profile, selected: !profile.selected }
-          : profile,
-      )
-    })
+    const current = profiles.find((profile) => profile.profile_id === profileId)
+    if (!current) return
+
+    setSelectionOverrides((prev) => ({
+      ...prev,
+      [profileId]: !current.selected,
+    }))
   }
 
   const handleSubmit = () => {
@@ -124,15 +125,21 @@ export function ListsForm({
     if (saving || loadingProfiles) return
     const query = searchQuery.trim().toLowerCase()
 
-    setProfiles((prev) =>
-      prev.map((p) => {
+    setSelectionOverrides((prev) => {
+      const next = { ...prev }
+
+      profiles.forEach((p) => {
         const matches =
           !query ||
           p.name.toLowerCase().includes(query) ||
           p.profile_id.toLowerCase().includes(query)
-        return matches ? { ...p, selected: nextSelected } : p
-      }),
-    )
+        if (matches) {
+          next[p.profile_id] = nextSelected
+        }
+      })
+
+      return next
+    })
   }
 
   const filteredSelectionState: boolean | 'indeterminate' = useMemo(() => {
@@ -399,5 +406,3 @@ export function ListsForm({
     </div>
   )
 }
-
-

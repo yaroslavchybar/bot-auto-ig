@@ -1,4 +1,8 @@
-import { ClerkProvider } from '@clerk/clerk-react'
+import { ClerkProvider } from '@clerk/react-router'
+import {
+  clerkMiddleware,
+  rootAuthLoader,
+} from '@clerk/react-router/server'
 import {
   Links,
   Meta,
@@ -7,6 +11,7 @@ import {
   ScrollRestoration,
 } from 'react-router'
 import type { ReactNode } from 'react'
+import type { Route } from './+types/root'
 import './index.css'
 import { getClerkAppearance } from '@/components/shared/clerk-appearance'
 import { ErrorBoundary as AppErrorBoundary } from '@/components/shared/ErrorBoundary'
@@ -14,6 +19,7 @@ import { RouteErrorView } from '@/components/shared/RouteErrorView'
 import { ThemeProvider, useTheme } from '@/hooks/use-theme'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
+import { AUTH_ROUTES } from '@/lib/auth-routing'
 import { env } from '@/lib/env'
 import { cn } from '@/lib/utils'
 
@@ -57,12 +63,33 @@ function AppFrame({ children }: { children: ReactNode }) {
   )
 }
 
-function ClerkThemeProvider({ children }: { children: ReactNode }) {
+export const middleware: Route.MiddlewareFunction[] = [
+  clerkMiddleware({
+    signInUrl: AUTH_ROUTES.signIn,
+    signUpUrl: AUTH_ROUTES.signUp,
+  }),
+]
+
+export function loader(args: Route.LoaderArgs) {
+  return rootAuthLoader(args, {
+    signInUrl: AUTH_ROUTES.signIn,
+    signUpUrl: AUTH_ROUTES.signUp,
+  })
+}
+
+function RootProviders({
+  children,
+  loaderData,
+}: {
+  children: ReactNode
+  loaderData: Route.ComponentProps['loaderData']
+}) {
   const { theme } = useTheme()
   const clerkAppearance = getClerkAppearance(theme)
 
   return (
     <ClerkProvider
+      loaderData={loaderData}
       publishableKey={env.clerkPublishableKey}
       appearance={clerkAppearance}
     >
@@ -98,15 +125,15 @@ export function HydrateFallback() {
   )
 }
 
-export default function Root() {
+export default function Root({ loaderData }: Route.ComponentProps) {
   return (
     <ThemeProvider>
       <AppErrorBoundary>
-        <ClerkThemeProvider>
+        <RootProviders loaderData={loaderData}>
           <AppFrame>
             <Outlet />
           </AppFrame>
-        </ClerkThemeProvider>
+        </RootProviders>
       </AppErrorBoundary>
     </ThemeProvider>
   )

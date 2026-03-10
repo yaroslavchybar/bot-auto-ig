@@ -1,15 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useMutation } from 'convex/react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ListsForm } from '../components/ListsForm'
 import { ListsList } from '../components/ListsList'
 import type { List } from '../types'
-import {
-  createList,
-  updateList,
-  deleteList,
-  bulkAddToList,
-  bulkRemoveFromList,
-} from '../api'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useLists } from '@/features/lists/hooks/useLists'
 import {
   Dialog,
@@ -22,6 +18,11 @@ import { Button } from '@/components/ui/button'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 
 export function ListsPageContainer() {
+  const createList = useMutation(api.lists.create)
+  const updateList = useMutation(api.lists.update)
+  const deleteList = useMutation(api.lists.remove)
+  const bulkAddToList = useMutation(api.profiles.bulkAddToList)
+  const bulkRemoveFromList = useMutation(api.profiles.bulkRemoveFromList)
   const {
     lists,
     loading: listsLoading,
@@ -97,18 +98,24 @@ export function ListsPageContainer() {
     setError(null)
     try {
       if (isCreateOpen) {
-        await createList(name)
+        await createList({ name })
         await backgroundRefresh()
         setIsCreateOpen(false)
       } else if (editList) {
         if (editList.name !== name) {
-          await updateList(editList.id, name)
+          await updateList({ id: editList.id as Id<'lists'>, name })
         }
         if (addedIds.length > 0) {
-          await bulkAddToList(addedIds, editList.id)
+          await bulkAddToList({
+            profileIds: addedIds as Id<'profiles'>[],
+            listId: editList.id as Id<'lists'>,
+          })
         }
         if (removedIds.length > 0) {
-          await bulkRemoveFromList(removedIds, editList.id)
+          await bulkRemoveFromList({
+            profileIds: removedIds as Id<'profiles'>[],
+            listId: editList.id as Id<'lists'>,
+          })
         }
         await backgroundRefresh()
         setEditList(null)
@@ -125,7 +132,7 @@ export function ListsPageContainer() {
     setSaving(true)
     setError(null)
     try {
-      await deleteList(deleteListTarget.id)
+      await deleteList({ id: deleteListTarget.id as Id<'lists'> })
       await backgroundRefresh()
       setDeleteListTarget(null)
     } catch (e) {

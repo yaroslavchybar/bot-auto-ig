@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../../convex/_generated/api'
-import { createConvexTest } from './helpers'
+import { api, internal } from '../../convex/_generated/api'
+import { createConvexTest, createUnauthenticatedConvexTest } from './helpers'
 
 test('creates tasks, stores scraped data, and exposes storage urls', async () => {
   const t = createConvexTest()
@@ -11,7 +11,7 @@ test('creates tasks, stores scraped data, and exposes storage urls', async () =>
     targetUsername: 'target-a',
   })
 
-  const stored = await t.action(api.scrapingTasks.storeScrapedData, {
+  const stored = await t.action(internal.scrapingTasks.storeScrapedData, {
     taskId: task!._id,
     users: [{ userName: 'user-a' }],
     metadata: { source: 'test' },
@@ -55,4 +55,12 @@ test('normalizes task status updates', async () => {
     status: 'running',
     lastError: 'failed',
   })
+})
+
+test('rejects unauthenticated scraping task queries', async () => {
+  const t = createUnauthenticatedConvexTest()
+
+  await expect(t.query(api.scrapingTasks.list, {})).rejects.toThrow(
+    'Unauthorized',
+  )
 })

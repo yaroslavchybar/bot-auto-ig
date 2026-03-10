@@ -98,6 +98,18 @@ function getConvexUrl(): string {
   return url
 }
 
+function getConvexSiteUrl(): string {
+  return getConvexUrl().replace('.convex.cloud', '.convex.site')
+}
+
+function getInternalApiKey(): string {
+  const token = process.env.INTERNAL_API_KEY?.trim()
+  if (!token) {
+    throw new Error('INTERNAL_API_KEY is required')
+  }
+  return token
+}
+
 async function convexHttp<T>(kind: 'query' | 'mutation', pathName: string, args: Record<string, unknown>): Promise<T> {
   const response = await fetch(`${getConvexUrl()}/api/${kind}`, {
     method: 'POST',
@@ -129,20 +141,69 @@ async function convexHttp<T>(kind: 'query' | 'mutation', pathName: string, args:
   return payload.value as T
 }
 
+async function convexInternalHttp<T>(
+  endpoint: string,
+  options: {
+    method?: 'GET' | 'POST'
+    body?: Record<string, unknown>
+  } = {},
+): Promise<T> {
+  const response = await fetch(`${getConvexSiteUrl()}${endpoint}`, {
+    method: options.method ?? 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getInternalApiKey()}`,
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    throw new Error(`Convex internal route ${endpoint} failed with ${response.status}: ${text}`)
+  }
+
+  return response.json() as Promise<T>
+}
+
 export async function convexQuery<T>(pathName: string, args: Record<string, unknown> = {}): Promise<T> {
   return convexHttp<T>('query', pathName, args)
 }
 
 export async function convexMutation<T>(pathName: string, args: Record<string, unknown> = {}): Promise<T> {
+  switch (pathName) {
+    case 'migrations:scraperAutoOnlyApplyProfileCleanup':
+      return convexInternalHttp<T>('/api/migrations/scraper-auto-only/apply-profile-cleanup', {
+        method: 'POST',
+        body: args,
+      })
+    case 'migrations:scraperAutoOnlyApplyTaskCleanup':
+      return convexInternalHttp<T>('/api/migrations/scraper-auto-only/apply-task-cleanup', {
+        method: 'POST',
+        body: args,
+      })
+    case 'migrations:scraperAutoOnlyRollbackProfile':
+      return convexInternalHttp<T>('/api/migrations/scraper-auto-only/rollback-profile', {
+        method: 'POST',
+        body: args,
+      })
+    case 'migrations:scraperAutoOnlyRollbackTask':
+      return convexInternalHttp<T>('/api/migrations/scraper-auto-only/rollback-task', {
+        method: 'POST',
+        body: args,
+      })
+    default:
+      break
+  }
+
   return convexHttp<T>('mutation', pathName, args)
 }
 
 export async function fetchProfiles(): Promise<LegacyProfileRow[]> {
-  return convexQuery<LegacyProfileRow[]>('profiles:list', {})
+  return convexInternalHttp<LegacyProfileRow[]>('/api/profiles')
 }
 
 export async function fetchTasks(): Promise<LegacyTaskRow[]> {
-  return convexQuery<LegacyTaskRow[]>('scrapingTasks:list', {})
+  return convexInternalHttp<LegacyTaskRow[]>('/api/scraping-tasks')
 }
 
 function hasLegacyRuntimeState(lastOutput: unknown): { legacy: boolean; unknownShape: boolean } {

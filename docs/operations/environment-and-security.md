@@ -21,10 +21,9 @@
 
 ### Frontend Runtime / Build
 - `VITE_CLERK_PUBLISHABLE_KEY`
-- `VITE_API_URL`
-- `VITE_DATAUPLOADER_URL`
+- `VITE_API_URL` (required for production frontend builds)
+- `VITE_DATAUPLOADER_URL` (required for production frontend builds)
 - `VITE_CONVEX_URL`
-- `VITE_CONVEX_API_KEY`
 
 ### Data Services
 - `CONVEX_URL_DEV`
@@ -40,7 +39,10 @@
 ## Security Controls
 
 - Clerk-authenticated API routes in server.
-- Internal-key fallback only for selected routes (`workflows`) using `INTERNAL_API_KEY`.
+- Clerk React Router middleware + loaders enforce frontend route auth on the server render path.
+- Browser-facing Convex functions require a Clerk identity through Convex auth integration.
+- Convex HTTP action routes require `INTERNAL_API_KEY` and fail closed when the key is missing or invalid.
+- Internal-key fallback only for selected server routes (`workflows`) using `INTERNAL_API_KEY`.
 - API rate limits:
   - general API: 100/min
   - automation routes: 10/min
@@ -54,6 +56,7 @@
 - `server/index.ts` CORS + auth route mounting
 - `server/websocket.ts`
 - `convex/http.ts` auth gate for HTTP actions
+- `convex/auth.ts` browser-facing auth wrapper
 
 ## Verified Against
 
@@ -62,6 +65,7 @@
 - `server/security/rate-limit.ts`
 - `server/websocket.ts`
 - `frontend/src/lib/env.ts`
+- `frontend/src/root.tsx`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/features/accounts/hooks/useDataUploader.ts`
 - `datauploader/convex_client.py`

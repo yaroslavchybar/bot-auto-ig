@@ -1,5 +1,5 @@
 import { httpRouter } from "convex/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
 const corsHeaders = {
@@ -15,9 +15,17 @@ function jsonResponse(body: unknown, status: number = 200): Response {
 	});
 }
 
-async function requireAuth(request: Request): Promise<Response | null> {
+function getInternalApiKey(): string | null {
 	const token = (globalThis as any)?.process?.env?.INTERNAL_API_KEY as string | undefined;
-	if (!token) return null;
+	const cleaned = typeof token === "string" ? token.trim() : "";
+	return cleaned || null;
+}
+
+async function requireAuth(request: Request): Promise<Response | null> {
+	const token = getInternalApiKey();
+	if (!token) {
+		return jsonResponse({ error: "Internal API key is not configured" }, 500);
+	}
 	const auth = request.headers.get("authorization") || "";
 	if (auth !== `Bearer ${token}`) return jsonResponse({ error: "Unauthorized" }, 401);
 	return null;
@@ -130,15 +138,27 @@ const apiPaths = [
 	"/api/lists/remove",
 	"/api/lists/delete",
 	"/api/instagram-settings",
+	"/api/keywords",
+	"/api/keywords/delete",
+	"/api/migrations/scraper-auto-only/apply-profile-cleanup",
+	"/api/migrations/scraper-auto-only/apply-task-cleanup",
+	"/api/migrations/scraper-auto-only/rollback-profile",
+	"/api/migrations/scraper-auto-only/rollback-task",
 	"/api/message-templates",
+	"/api/instagram-accounts",
+	"/api/instagram-accounts/batch",
 	"/api/instagram-accounts/for-profile",
 	"/api/instagram-accounts/to-message",
 	"/api/instagram-accounts/update-status",
 	"/api/instagram-accounts/update-message",
 	"/api/instagram-accounts/usernames",
 	"/api/instagram-accounts/profiles-with-assigned",
+	"/api/scraping-tasks",
+	"/api/scraping-tasks/by-id",
 	"/api/scraping-tasks/store-data",
 	"/api/scraping-tasks/storage-url",
+	"/api/scraping-tasks/unimported",
+	"/api/scraping-tasks/set-imported",
 	"/api/workflows",
 	"/api/workflows/by-id",
 	"/api/workflows/start",
@@ -607,6 +627,139 @@ http.route({
 });
 
 http.route({
+	path: "/api/keywords",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const filename = (url.searchParams.get("filename") || "").trim();
+			if (filename) {
+				const content = await ctx.runQuery(internal.keywords.get, { filename });
+				return jsonResponse(content);
+			}
+			const keywords = await ctx.runQuery(internal.keywords.list, {});
+			return jsonResponse(keywords);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/keywords",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.keywords.upsert, {
+				filename: body?.filename,
+				content: body?.content,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/keywords/delete",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.keywords.remove, {
+				filename: body?.filename,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/migrations/scraper-auto-only/apply-profile-cleanup",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyApplyProfileCleanup, {
+				profileId: body?.profileId,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/migrations/scraper-auto-only/apply-task-cleanup",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyApplyTaskCleanup, {
+				taskId: body?.taskId,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/migrations/scraper-auto-only/rollback-profile",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyRollbackProfile, {
+				profileId: body?.profileId,
+				hadAutomation: body?.hadAutomation,
+				automation: body?.automation,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/migrations/scraper-auto-only/rollback-task",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyRollbackTask, {
+				taskId: body?.taskId,
+				snapshot: body?.snapshot,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
 	path: "/api/message-templates",
 	method: "GET",
 	handler: httpAction(async (ctx, request) => {
@@ -640,6 +793,47 @@ http.route({
 });
 
 http.route({
+	path: "/api/instagram-accounts",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const created = await ctx.runMutation(internal.instagramAccounts.insert, {
+				userName: body?.userName ?? body?.user_name,
+				fullName: body?.fullName ?? body?.full_name,
+				matchedName: body?.matchedName ?? body?.matched_name,
+				status: body?.status,
+				message: body?.message,
+				createdAt: body?.createdAt ?? body?.created_at,
+			});
+			return jsonResponse(created);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/instagram-accounts/batch",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.instagramAccounts.insertBatch, {
+				accounts: Array.isArray(body?.accounts) ? body.accounts : [],
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
 	path: "/api/instagram-accounts/for-profile",
 	method: "GET",
 	handler: httpAction(async (ctx, request) => {
@@ -649,7 +843,7 @@ http.route({
 			const url = new URL(request.url);
 			const profileId = url.searchParams.get("profileId") || "";
 			const status = url.searchParams.get("status") || undefined;
-			const accounts = await ctx.runQuery(api.instagramAccounts.getForProfile, {
+			const accounts = await ctx.runQuery(internal.instagramAccounts.getForProfile, {
 				profileId: profileId as any,
 				status,
 			});
@@ -664,12 +858,12 @@ http.route({
 	path: "/api/instagram-accounts/to-message",
 	method: "GET",
 	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
+			const authError = await requireAuth(request);
 		if (authError) return authError;
 		try {
 			const url = new URL(request.url);
 			const profileId = url.searchParams.get("profileId") || "";
-			const accounts = await ctx.runQuery(api.instagramAccounts.getToMessage, { profileId: profileId as any });
+			const accounts = await ctx.runQuery(internal.instagramAccounts.getToMessage, { profileId: profileId as any });
 			return jsonResponse(accounts.map(mapAccountToPython));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -685,7 +879,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.instagramAccounts.updateStatus, {
+			const updated = await ctx.runMutation(internal.instagramAccounts.updateStatus, {
 				accountId: (body?.accountId ?? body?.account_id ?? body?.id) as any,
 				status: body?.status,
 				assignedTo: typeof body?.assigned_to !== "undefined" ? body.assigned_to : body?.assignedTo,
@@ -705,7 +899,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.instagramAccounts.updateMessage, {
+			const updated = await ctx.runMutation(internal.instagramAccounts.updateMessage, {
 				userName: body?.userName ?? body?.user_name,
 				message: body?.message,
 			});
@@ -726,7 +920,7 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const limit = Number(url.searchParams.get("limit") || 200);
-			const usernames = await ctx.runQuery(api.instagramAccounts.listUserNames, { limit });
+			const usernames = await ctx.runQuery(internal.instagramAccounts.listUserNames, { limit });
 			return jsonResponse(usernames);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -744,7 +938,7 @@ http.route({
 			const url = new URL(request.url);
 			const statusParam = url.searchParams.get("status");
 			const status = statusParam === null ? undefined : statusParam;
-			const profiles = await ctx.runQuery(api.instagramAccounts.getProfilesWithAssignedAccounts, { status });
+			const profiles = await ctx.runQuery(internal.instagramAccounts.getProfilesWithAssignedAccounts, { status });
 			return jsonResponse(profiles.map(mapProfileToPython));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -753,6 +947,79 @@ http.route({
 });
 
 // ==================== SCRAPING TASKS ====================
+
+http.route({
+	path: "/api/scraping-tasks",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const kind = url.searchParams.get("kind") || undefined;
+			const tasks = await ctx.runQuery(api.scrapingTasks.list, { kind: kind as any });
+			return jsonResponse(tasks);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/by-id",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const id = url.searchParams.get("id") || url.searchParams.get("taskId") || "";
+			if (!id) return jsonResponse({ error: "id is required" }, 400);
+			const task = await ctx.runQuery(api.scrapingTasks.getById, { id: id as any });
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/unimported",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const kind = url.searchParams.get("kind") || undefined;
+			const tasks = await ctx.runQuery(api.scrapingTasks.listUnimported, {
+				kind: kind as any,
+			});
+			return jsonResponse(tasks);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/set-imported",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(api.scrapingTasks.setImported, {
+				id: body?.id ?? body?.taskId,
+				imported: body?.imported,
+			});
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
 
 http.route({
 	path: "/api/scraping-tasks/store-data",
@@ -767,7 +1034,7 @@ http.route({
 			const metadata = body?.metadata ?? {};
 
 			// Run the action to store scraped data
-			const result = await ctx.runAction(api.scrapingTasks.storeScrapedData, {
+			const result = await ctx.runAction(internal.scrapingTasks.storeScrapedData, {
 				taskId: taskId as any,
 				users,
 				metadata,

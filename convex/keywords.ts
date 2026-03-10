@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
 
-export const get = query({
+export const get = internalQuery({
     args: { filename: v.string() },
     handler: async (ctx, args) => {
         const doc = await ctx.db
@@ -13,7 +13,7 @@ export const get = query({
     },
 });
 
-export const list = query({
+export const list = internalQuery({
     args: {},
     handler: async (ctx) => {
         const docs = await ctx.db.query("keywords").collect();
@@ -25,7 +25,7 @@ export const list = query({
     },
 });
 
-export const upsert = mutation({
+export const upsert = internalMutation({
     args: {
         filename: v.string(),
         content: v.string(),
@@ -49,7 +49,7 @@ export const upsert = mutation({
     },
 });
 
-export const remove = mutation({
+export const remove = internalMutation({
     args: { filename: v.string() },
     handler: async (ctx, args) => {
         const doc = await ctx.db

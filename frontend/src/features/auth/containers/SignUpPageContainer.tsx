@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { useAuth, useSignUp } from '@clerk/clerk-react'
-import { Navigate, useNavigate } from 'react-router'
+import { useAuth } from '@clerk/react-router'
+import { useSignUp } from '@clerk/react-router/legacy'
+import { Navigate, useNavigate, useSearchParams } from 'react-router'
 import { KeyRound, Loader2, ShieldCheck } from 'lucide-react'
 import {
   AuthCardShell,
   AuthField,
 } from '@/components/shared/AuthCardShell'
 import { Button } from '@/components/ui/button'
+import {
+  getSafeRedirectTarget,
+  REDIRECT_URL_PARAM,
+} from '@/lib/auth-routing'
 import { getClerkErrorMessage } from '@/lib/clerk-errors'
 
 type SignUpStep = 'credentials' | 'emailVerification'
@@ -16,6 +21,7 @@ export function SignUpPageContainer() {
   const { isLoaded: isAuthLoaded, isSignedIn } = useAuth()
   const { isLoaded: isSignUpLoaded, signUp, setActive } = useSignUp()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [step, setStep] = useState<SignUpStep>('credentials')
   const [emailAddress, setEmailAddress] = useState('')
@@ -23,6 +29,10 @@ export function SignUpPageContainer() {
   const [code, setCode] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const redirectTarget = getSafeRedirectTarget(
+    searchParams.get(REDIRECT_URL_PARAM),
+    typeof window === 'undefined' ? undefined : window.location.origin,
+  )
 
   const disabled = submitting || !isAuthLoaded || !isSignUpLoaded
 
@@ -41,7 +51,7 @@ export function SignUpPageContainer() {
 
       if (signUpAttempt.status === 'complete') {
         await setActive({ session: signUpAttempt.createdSessionId })
-        navigate('/', { replace: true })
+        navigate(redirectTarget, { replace: true })
         return
       }
 
@@ -73,7 +83,7 @@ export function SignUpPageContainer() {
 
       if (verificationAttempt.status === 'complete') {
         await setActive({ session: verificationAttempt.createdSessionId })
-        navigate('/', { replace: true })
+        navigate(redirectTarget, { replace: true })
         return
       }
 

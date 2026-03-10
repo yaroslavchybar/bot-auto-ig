@@ -14,10 +14,14 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
 const convexCloudUrl = process.env.CONVEX_URL;
 // Use INTERNAL_API_KEY to call Convex HTTP endpoints (same key as CONVEX_API_KEY in Convex Dashboard)
-const convexApiKey = process.env.INTERNAL_API_KEY || '';
+const convexApiKey = process.env.INTERNAL_API_KEY?.trim() || '';
 
 if (!convexCloudUrl) {
     throw new Error('Convex config missing. Set CONVEX_URL in environment.');
+}
+
+if (!convexApiKey) {
+    throw new Error('Convex HTTP auth missing. Set INTERNAL_API_KEY in environment.');
 }
 
 // HTTP Actions are served at .convex.site, not .convex.cloud
@@ -66,9 +70,7 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
         'Content-Type': 'application/json',
         Accept: 'application/json',
     };
-    if (convexApiKey) {
-        headers['Authorization'] = `Bearer ${convexApiKey}`;
-    }
+    headers['Authorization'] = `Bearer ${convexApiKey}`;
     const resp = await fetch(url, {
         method: options.method || 'GET',
         headers,

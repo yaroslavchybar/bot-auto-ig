@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "react-router dev",
     "build": "react-router build",
+    "start": "react-router-serve build/server/index.js",
     "typecheck": "react-router typegen && tsc -b",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "preview": "vite preview"
+    "preview": "react-router-serve build/server/index.js"
   },
   "dependencies": {
     "@clerk/react-router": "^3.0.2",

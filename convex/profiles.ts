@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
+import { mutation, query } from "./auth";
 
 function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	const s = typeof proxy === "string" ? proxy.trim() : "";

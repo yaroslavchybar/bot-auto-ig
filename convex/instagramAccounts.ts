@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 
 function normalizeUserName(userName: string): string {
 	let normalized = String(userName || "").trim();
@@ -9,7 +9,7 @@ function normalizeUserName(userName: string): string {
 	return normalized.trim().toLowerCase();
 }
 
-export const insert = mutation({
+export const insert = internalMutation({
 	args: {
 		userName: v.string(),
 		fullName: v.optional(v.string()),
@@ -40,7 +40,7 @@ export const insert = mutation({
 	},
 });
 
-export const insertBatch = mutation({
+export const insertBatch = internalMutation({
 	args: {
 		accounts: v.array(
 			v.object({
@@ -87,7 +87,7 @@ export const insertBatch = mutation({
 	},
 });
 
-export const getForProfile = query({
+export const getForProfile = internalQuery({
 	args: { profileId: v.id("profiles"), status: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const status = String(args.status || "assigned").trim() || "assigned";
@@ -100,7 +100,7 @@ export const getForProfile = query({
 	},
 });
 
-export const getToMessage = query({
+export const getToMessage = internalQuery({
 	args: { profileId: v.id("profiles") },
 	handler: async (ctx, args) => {
 		const rows = await ctx.db
@@ -113,7 +113,7 @@ export const getToMessage = query({
 	},
 });
 
-export const updateStatus = mutation({
+export const updateStatus = internalMutation({
 	args: {
 		accountId: v.id("instagramAccounts"),
 		status: v.string(),
@@ -136,7 +136,7 @@ export const updateStatus = mutation({
 	},
 });
 
-export const updateMessage = mutation({
+export const updateMessage = internalMutation({
 	args: { userName: v.string(), message: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		const normalized = normalizeUserName(args.userName);
@@ -153,7 +153,7 @@ export const updateMessage = mutation({
 
 
 
-export const listUserNames = query({
+export const listUserNames = internalQuery({
 	args: { limit: v.number() },
 	handler: async (ctx, args) => {
 		const limit = Math.max(0, Math.min(10000, Math.floor(args.limit || 0)));
@@ -169,7 +169,7 @@ export const listUserNames = query({
 	},
 });
 
-export const getProfilesWithAssignedAccounts = query({
+export const getProfilesWithAssignedAccounts = internalQuery({
 	args: { status: v.optional(v.union(v.null(), v.string())) },
 	handler: async (ctx, args) => {
 		const status = typeof args.status === "string" ? args.status : null;

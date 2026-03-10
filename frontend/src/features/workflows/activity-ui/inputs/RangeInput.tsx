@@ -5,6 +5,7 @@ interface RangeInputProps {
   input: ActivityInput
   value: unknown
   onChange: (value: unknown) => void
+  compact?: boolean
 }
 
 export function RangeInput({ input, value, onChange }: RangeInputProps) {

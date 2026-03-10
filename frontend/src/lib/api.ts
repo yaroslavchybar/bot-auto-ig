@@ -1,3 +1,5 @@
+import { env } from '@/lib/env'
+
 // Token getter function - set by useAuthenticatedFetch hook
 let tokenGetter: (() => Promise<string | null>) | null = null
 
@@ -6,6 +8,14 @@ export function setTokenGetter(getter: () => Promise<string | null>) {
 }
 
 const DEFAULT_TIMEOUT_MS = 30000
+
+function resolveApiUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) {
+    return path
+  }
+
+  return new URL(path, `${env.apiUrl}/`).toString()
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -36,7 +46,7 @@ export async function apiFetch<T>(
 
   let resp: Response
   try {
-    resp = await fetch(path, {
+    resp = await fetch(resolveApiUrl(path), {
       method: options.method ?? 'GET',
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,

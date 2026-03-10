@@ -29,7 +29,6 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Plus, RefreshCw, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { apiFetch } from '@/lib/api'
 import { getActivityById } from '@/features/workflows/activities'
 import { WorkflowsList } from '../components/WorkflowsList'
@@ -46,7 +45,6 @@ import { AmbientGlow } from '@/components/ui/ambient-glow'
 export function WorkflowsPageContainer() {
   const convex = useConvex()
   const navigate = useNavigate()
-  const isMobile = useIsMobile()
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editWorkflowId, setEditWorkflowId] = useState<Id<'workflows'> | null>(
@@ -571,7 +569,6 @@ export function WorkflowsPageContainer() {
     </div>
   )
 }
-
 
 
 

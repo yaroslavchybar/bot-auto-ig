@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { apiFetch } from '@/lib/api'
+import { useConvex, useQuery } from 'convex/react'
+import { api } from '../../../../../convex/_generated/api'
 import type { Profile } from '../types'
+import { mapProfileRecord } from '../lib/mapProfile'
 
 const STORAGE_KEY = 'cached_profiles'
 const CACHE_VERSION = 1
@@ -13,6 +15,10 @@ interface CacheEntry<T> {
 }
 
 function getCache<T>(key: string): T | null {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return null
+  }
+
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return null
@@ -26,6 +32,10 @@ function getCache<T>(key: string): T | null {
 }
 
 function setCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return
+  }
+
   const entry: CacheEntry<T> = {
     version: CACHE_VERSION,
     timestamp: Date.now(),
@@ -35,6 +45,8 @@ function setCache<T>(key: string, data: T): void {
 }
 
 export function useProfiles() {
+  const convex = useConvex()
+  const liveProfiles = useQuery(api.profiles.list, {})
   const [profiles, setProfiles] = useState<Profile[]>(() => {
     return getCache<Profile[]>(STORAGE_KEY) ?? []
   })
@@ -45,15 +57,24 @@ export function useProfiles() {
     if (!background) setLoading(true)
     setError(null)
     try {
-      const data = await apiFetch<Profile[]>('/api/profiles')
-      setProfiles(data)
-      setCache(STORAGE_KEY, data)
+      const data = await convex.query(api.profiles.list, {})
+      const mapped = data.map(mapProfileRecord)
+      setProfiles(mapped)
+      setCache(STORAGE_KEY, mapped)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       if (!background) setLoading(false)
     }
-  }, [])
+  }, [convex])
+
+  useEffect(() => {
+    if (!liveProfiles) return
+
+    const mapped = liveProfiles.map(mapProfileRecord)
+    setProfiles(mapped)
+    setCache(STORAGE_KEY, mapped)
+  }, [liveProfiles])
 
   const refresh = useCallback(() => fetchProfiles(false), [fetchProfiles])
   const backgroundRefresh = useCallback(
@@ -62,6 +83,7 @@ export function useProfiles() {
   )
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
     // Initial fetch (background update while showing cached data)
     void backgroundRefresh()
   }, [backgroundRefresh])

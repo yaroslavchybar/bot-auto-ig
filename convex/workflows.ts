@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalAction } from "./_generated/server";
+import { internalMutation, internalAction } from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import { Crons } from "@convex-dev/crons";
+import { mutation, query } from "./auth";
 
 const crons = new Crons(components.crons);
 

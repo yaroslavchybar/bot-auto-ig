@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchLists } from '../api'
+import { useConvex, useQuery } from 'convex/react'
+import { api } from '../../../../../convex/_generated/api'
 import type { List } from '../types'
 
 const STORAGE_KEY = 'cached_lists'
@@ -13,6 +14,10 @@ interface CacheEntry<T> {
 }
 
 function getCache<T>(key: string): T | null {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return null
+  }
+
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return null
@@ -26,6 +31,10 @@ function getCache<T>(key: string): T | null {
 }
 
 function setCache<T>(key: string, data: T): void {
+  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') {
+    return
+  }
+
   const entry: CacheEntry<T> = {
     version: CACHE_VERSION,
     timestamp: Date.now(),
@@ -35,6 +44,8 @@ function setCache<T>(key: string, data: T): void {
 }
 
 export function useLists() {
+  const convex = useConvex()
+  const liveLists = useQuery(api.lists.list, {})
   const [lists, setLists] = useState<List[]>(() => {
     return getCache<List[]>(STORAGE_KEY) ?? []
   })
@@ -45,19 +56,35 @@ export function useLists() {
     if (!background) setLoading(true)
     setError(null)
     try {
-      const data = await fetchLists()
-      setLists(data)
-      setCache(STORAGE_KEY, data)
-      return data
+      const data = await convex.query(api.lists.list, {})
+      const mapped = data.map((list) => ({
+        id: String(list._id),
+        name: String(list.name),
+      }))
+      setLists(mapped)
+      setCache(STORAGE_KEY, mapped)
+      return mapped
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       throw e
     } finally {
       if (!background) setLoading(false)
     }
-  }, [])
+  }, [convex])
 
   useEffect(() => {
+    if (!liveLists) return
+
+    const mapped = liveLists.map((list) => ({
+      id: String(list._id),
+      name: String(list.name),
+    }))
+    setLists(mapped)
+    setCache(STORAGE_KEY, mapped)
+  }, [liveLists])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
     // Initial fetch (background update)
     void refreshLists(true)
   }, [refreshLists])

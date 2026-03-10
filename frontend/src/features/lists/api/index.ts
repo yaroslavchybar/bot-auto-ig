@@ -1,6 +1,7 @@
 import { apiFetch } from '@/lib/api'
 import type { List, ProfileRow } from '../types'
 
+// Legacy Express helpers retained for non-Convex callers.
 export async function fetchLists(): Promise<List[]> {
   const data = await apiFetch<List[]>('/api/lists')
   return data || []

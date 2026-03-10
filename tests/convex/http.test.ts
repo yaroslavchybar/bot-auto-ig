@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 
 import { api } from '../../convex/_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { createConvexTest, seedList, seedProfile, seedWorkflow } from './helpers'
 
 function stubEnv(env: Record<string, string>) {
@@ -15,6 +16,18 @@ test('rejects unauthorized requests when INTERNAL_API_KEY is configured', async 
 
   expect(response.status).toBe(401)
   await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' })
+})
+
+test('fails closed when INTERNAL_API_KEY is missing', async () => {
+  const t = createConvexTest()
+  stubEnv({})
+
+  const response = await t.fetch('/api/lists', { method: 'GET' })
+
+  expect(response.status).toBe(500)
+  await expect(response.json()).resolves.toEqual({
+    error: 'Internal API key is not configured',
+  })
 })
 
 test('maps list responses for authorized requests', async () => {
@@ -126,4 +139,90 @@ test('maps workflow rows through the http router', async () => {
   expect(response.status).toBe(200)
   expect(body).toHaveLength(1)
   expect(body[0]).toMatchObject({ name: 'Workflow B', status: 'running' })
+})
+
+test('serves internal keyword routes behind INTERNAL_API_KEY auth', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  await t.mutation(internal.keywords.upsert, {
+    filename: 'names.txt',
+    content: 'Alice\nBob',
+  })
+
+  const response = await t.fetch('/api/keywords?filename=names.txt', {
+    method: 'GET',
+    headers: { authorization: 'Bearer secret-token' },
+  })
+
+  expect(response.status).toBe(200)
+  await expect(response.json()).resolves.toBe('Alice\nBob')
+})
+
+test('inserts instagram accounts through the internal HTTP surface', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const response = await t.fetch('/api/instagram-accounts/batch', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      accounts: [
+        {
+          userName: '@User-A',
+          status: 'available',
+          message: false,
+          createdAt: Date.now(),
+        },
+      ],
+    }),
+  })
+  const body = await response.json()
+
+  expect(response.status).toBe(200)
+  expect(body).toMatchObject({ inserted: 1, skipped: 0 })
+})
+
+test('lists and updates scraping tasks through internal-key routes', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const task = await t.mutation(api.scrapingTasks.create, {
+    name: 'Task A',
+    kind: 'followers',
+    targetUsername: 'target-a',
+  })
+
+  const listResponse = await t.fetch('/api/scraping-tasks', {
+    method: 'GET',
+    headers: { authorization: 'Bearer secret-token' },
+  })
+  const byIdResponse = await t.fetch(`/api/scraping-tasks/by-id?id=${encodeURIComponent(String(task!._id))}`, {
+    method: 'GET',
+    headers: { authorization: 'Bearer secret-token' },
+  })
+  const setImportedResponse = await t.fetch('/api/scraping-tasks/set-imported', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      id: task!._id,
+      imported: true,
+    }),
+  })
+
+  expect(listResponse.status).toBe(200)
+  await expect(listResponse.json()).resolves.toHaveLength(1)
+  expect(byIdResponse.status).toBe(200)
+  await expect(byIdResponse.json()).resolves.toMatchObject({ _id: task!._id })
+  expect(setImportedResponse.status).toBe(200)
+  await expect(setImportedResponse.json()).resolves.toMatchObject({
+    _id: task!._id,
+    imported: true,
+  })
 })

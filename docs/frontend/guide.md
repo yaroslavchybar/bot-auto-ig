@@ -2,12 +2,12 @@
 
 ## Purpose
 
-The frontend is a Clerk-protected React Router 7 + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring.
+The frontend is a Clerk-protected React Router 7 + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring. It now uses Clerk's React Router integration with SSR enabled so route auth and redirect behavior run on the server, not only after client render.
 
 ## Application Shape
 
 Core app entrypoints:
-- `frontend/src/root.tsx`: document shell, provider wiring, theme bootstrap, and top-level error handling.
+- `frontend/src/root.tsx`: document shell, Clerk React Router middleware/loader wiring, provider bootstrap, and top-level error handling.
 - `frontend/src/entry.client.tsx`: hydrates the router on the client.
 - `frontend/src/entry.server.tsx`: server-render entrypoint used by the React Router build.
 - `frontend/src/routes.ts`: canonical route tree.
@@ -16,7 +16,7 @@ Route and UI structure:
 - `frontend/src/routes/*`: route modules for auth, protected layout, and each feature path.
 - `frontend/src/components/ui`: design-system primitives only.
 - `frontend/src/components/shared`: cross-feature composites such as auth shell, confirm-delete dialog, logs viewer, and error views.
-- `frontend/src/components/layout`: authenticated app shell pieces such as sidebar, theme toggle, user menu, auth guard, and Convex provider.
+- `frontend/src/components/layout`: authenticated app shell pieces such as sidebar, theme toggle, user menu, and Convex provider.
 - `frontend/src/features/*`: feature-owned UI, containers, hooks, types, api modules, activities, and utils.
 - `frontend/src/lib/*` and `frontend/src/hooks/*`: runtime/framework helpers and shared non-UI contracts.
 
@@ -45,16 +45,25 @@ Protected routes under the authenticated shell:
 - `/monitoring`
 
 Other route behavior:
-- `/` redirects to `/profiles`.
-- `/sign-in/*` and `/sign-up/*` run through the auth layout.
+- `/` redirects server-side to `/profiles` when signed in and `/sign-in` when signed out.
+- `/sign-in/*` and `/sign-up/*` run through the auth layout and redirect signed-in users back to `/profiles` from route loaders.
+- The protected layout loader enforces signed-in access before rendering nested routes and preserves the original request URL through Clerk redirect params.
 - The protected shell keeps selected heavy routes mounted (`/workflows`, `/accounts`, `/logs`, `/vnc`) to avoid resetting long-lived client state on navigation.
 - The workflow editor route opts into immersive app chrome, so auth/providers stay mounted while the global sidebar and breadcrumb header are skipped.
 
 ## Runtime Integration
 
+### Authentication
+- Frontend auth uses `@clerk/react-router`, not `@clerk/clerk-react`.
+- `frontend/src/root.tsx` registers `clerkMiddleware()` and `rootAuthLoader()`.
+- The root route passes loader data into `ClerkProvider`, which makes session state available on both the server render and the client.
+- Client-side `SignedIn` / `SignedOut` remain available for view branching, but access control is enforced by route loaders.
+
 ### API Access
-- Default API base for authenticated fetches: `VITE_API_URL` or `http://localhost:3001`.
-- Most UI calls use backend routes under `/api/*`.
+- Default API base for authenticated fetches:
+  - dev fallback: `http://localhost:3001`
+  - prod: `VITE_API_URL` is required at build time
+- Express remains the control plane for orchestration surfaces such as runtime reconciliation, browser launch/stop, logs, monitoring, VNC, and workflow execution.
 - Profiles create/edit flows support pasted cookie JSON, while the cached profile list remains sanitized and fetches the sensitive cookie payload only from explicit profile detail reads.
 
 ### WebSocket
@@ -63,14 +72,17 @@ Other route behavior:
 - The client reconnects with exponential backoff and handles logs, status, workflow progression, and display-allocation events.
 
 ### Data Uploader Integration
-- Data uploader base: `VITE_DATAUPLOADER_URL` or:
-  - dev: `http://localhost:3002`
-  - prod: `/api/datauploader`
+- Data uploader base:
+  - dev fallback: `http://localhost:3002`
+  - prod: `VITE_DATAUPLOADER_URL` is required at build time
+- The React Router frontend no longer provides an `/api/datauploader` reverse proxy.
 
 ### Convex Integration
 - `VITE_CONVEX_URL` is required and normalized to HTTPS.
-- `VITE_CONVEX_API_KEY` is used by the scraping task artifact flow.
-- Scraping views may convert `.convex.cloud` origins to `.convex.site` storage URLs.
+- Browser data access for profiles, lists, workflows, scraping tasks, and message templates goes directly through the Convex React client.
+- `ConvexProviderWithClerk` uses Clerk auth tokens so every browser-facing Convex query and mutation runs with a Clerk identity.
+- Browser code should not call `.convex.site/api/*` directly.
+- Scraping artifact download still resolves storage URLs through authenticated Convex queries.
 
 ### Styling
 - Tailwind CSS is configured in CSS-first mode from `frontend/src/index.css`.
@@ -113,16 +125,16 @@ Import contract and validation:
 ## Environment Variables
 
 - `VITE_CLERK_PUBLISHABLE_KEY` (required)
-- `VITE_API_URL` (optional override)
-- `VITE_DATAUPLOADER_URL` (optional override)
+- `VITE_API_URL` (required for production builds; optional in local dev)
+- `VITE_DATAUPLOADER_URL` (required for production builds; optional in local dev)
 - `VITE_CONVEX_URL` (required)
-- `VITE_CONVEX_API_KEY` (optional, used by scraping task artifact flow)
 
 ## Dev and Build
 
 ```bash
 npm --prefix frontend run dev
 npm --prefix frontend run build
+npm --prefix frontend run start
 npm --prefix frontend run lint
 npm --prefix frontend run preview
 ```
@@ -133,7 +145,10 @@ npm --prefix frontend run preview
 - `frontend/src/routes.ts`
 - `frontend/src/routes/index.tsx`
 - `frontend/src/routes/protected-layout.tsx`
+- `frontend/src/routes/sign-in.tsx`
+- `frontend/src/routes/sign-up.tsx`
 - `frontend/src/components/layout/ProtectedLayoutShell.tsx`
+- `frontend/src/components/layout/ConvexClientProvider.tsx`
 - `frontend/src/components/layout/app-sidebar.tsx`
 - `frontend/src/components/shared/AuthCardShell.tsx`
 - `frontend/src/components/shared/ConfirmDeleteDialog.tsx`
@@ -143,8 +158,12 @@ npm --prefix frontend run preview
 - `frontend/src/css/utilities.css`
 - `frontend/src/index.css`
 - `frontend/src/lib/env.ts`
+- `frontend/src/lib/auth-routing.ts`
+- `frontend/src/lib/auth.server.ts`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
 - `frontend/src/hooks/useWebSocket.ts`
+- `frontend/src/features/profiles/hooks/useProfiles.ts`
+- `frontend/src/features/lists/hooks/useLists.ts`
 - `frontend/src/features/accounts/hooks/useDataUploader.ts`
 - `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`

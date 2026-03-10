@@ -19,7 +19,6 @@ import {
   type NavId,
 } from '@/components/layout/app-sidebar'
 import { Separator } from '@/components/ui/separator'
-import { AuthGuard } from '@/components/layout/AuthGuard'
 import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch'
 import { ConvexClientProvider } from '@/components/layout/ConvexClientProvider'
 import { Toaster } from '@/components/ui/toaster'
@@ -98,72 +97,68 @@ export function ProtectedLayoutShell() {
 
   if (appChrome === 'immersive') {
     return (
-      <AuthGuard>
-        <ConvexClientProvider>
-          <div className="bg-shell flex h-svh min-w-0 flex-col overflow-hidden">
-            <div className="min-h-0 min-w-0 flex-1">
-              <KeepAliveViewport pathname={currentPath} outlet={outlet} />
-            </div>
+      <ConvexClientProvider>
+        <div className="bg-shell flex h-svh min-w-0 flex-col overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1">
+            <KeepAliveViewport pathname={currentPath} outlet={outlet} />
           </div>
-          <Toaster />
-        </ConvexClientProvider>
-      </AuthGuard>
+        </div>
+        <Toaster />
+      </ConvexClientProvider>
     )
   }
 
   return (
-    <AuthGuard>
-      <ConvexClientProvider>
-        <SidebarProvider className="h-svh min-w-0 overflow-hidden">
-          <AppSidebar />
-          <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent">
-            <header className="border-line-soft bg-panel-subtle relative z-10 flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
-              <div className="flex min-w-0 items-center gap-2 px-4">
-                <SidebarTrigger className="text-muted-copy hover:text-ink -ml-1" />
-                <Separator
-                  orientation="vertical"
-                  className="bg-panel-hover mr-2 h-4"
-                />
-                <Breadcrumb className="min-w-0">
-                  <BreadcrumbList>
-                    <BreadcrumbItem className="hidden md:block">
-                      <BreadcrumbLink asChild>
-                        <Link
-                          to={currentNav.to}
-                          className="text-muted-copy hover:text-ink transition-colors"
-                        >
-                          Anti
-                        </Link>
-                      </BreadcrumbLink>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator className="text-subtle-copy hidden md:block" />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage className="page-title-gradient text-lg font-medium">
-                        {breadcrumb}
-                      </BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
-              </div>
-              <div className="ml-auto flex items-center gap-2 px-4">
-                {navigation.state !== 'idle' ? (
-                  <div className="bg-brand/15 text-brand rounded-full px-3 py-1 text-xs font-medium">
-                    {navigation.state === 'loading' ? 'Loading...' : 'Saving...'}
-                  </div>
-                ) : null}
-                <ThemeToggle />
-                <UserMenu />
-              </div>
-            </header>
-            <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-0">
-              <div className="min-h-0 min-w-0 flex-1">
-                <KeepAliveViewport pathname={currentPath} outlet={outlet} />
-              </div>
+    <ConvexClientProvider>
+      <SidebarProvider className="h-svh min-w-0 overflow-hidden">
+        <AppSidebar />
+        <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent">
+          <header className="border-line-soft bg-panel-subtle relative z-10 flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+            <div className="flex min-w-0 items-center gap-2 px-4">
+              <SidebarTrigger className="text-muted-copy hover:text-ink -ml-1" />
+              <Separator
+                orientation="vertical"
+                className="bg-panel-hover mr-2 h-4"
+              />
+              <Breadcrumb className="min-w-0">
+                <BreadcrumbList>
+                  <BreadcrumbItem className="hidden md:block">
+                    <BreadcrumbLink asChild>
+                      <Link
+                        to={currentNav.to}
+                        className="text-muted-copy hover:text-ink transition-colors"
+                      >
+                        Anti
+                      </Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator className="text-subtle-copy hidden md:block" />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage className="page-title-gradient text-lg font-medium">
+                      {breadcrumb}
+                    </BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
             </div>
-          </SidebarInset>
-        </SidebarProvider>
-        <Toaster />
-      </ConvexClientProvider>
-    </AuthGuard>
+            <div className="ml-auto flex items-center gap-2 px-4">
+              {navigation.state !== 'idle' ? (
+                <div className="bg-brand/15 text-brand rounded-full px-3 py-1 text-xs font-medium">
+                  {navigation.state === 'loading' ? 'Loading...' : 'Saving...'}
+                </div>
+              ) : null}
+              <ThemeToggle />
+              <UserMenu />
+            </div>
+          </header>
+          <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-0">
+            <div className="min-h-0 min-w-0 flex-1">
+              <KeepAliveViewport pathname={currentPath} outlet={outlet} />
+            </div>
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
+      <Toaster />
+    </ConvexClientProvider>
   )
 }

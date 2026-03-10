@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useConvex, useMutation } from 'convex/react'
 import { apiFetch } from '@/lib/api'
 import type { LogEntry } from '@/lib/logs'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { useProfiles } from '@/features/profiles/hooks/useProfiles'
 import { ProfileDetails } from '../components/ProfileDetails'
@@ -27,8 +30,13 @@ import {
 } from '@/components/ui/sheet'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
+import { mapProfileRecord } from '../lib/mapProfile'
 
 export function ProfilesPageContainer() {
+  const convex = useConvex()
+  const createProfile = useMutation(api.profiles.create)
+  const updateProfile = useMutation(api.profiles.updateById)
+  const removeProfile = useMutation(api.profiles.removeById)
   const {
     profiles,
     loading: profilesLoading,
@@ -179,10 +187,10 @@ export function ProfilesPageContainer() {
     setSaving(true)
     setError(null)
     try {
-      const fullProfile = await apiFetch<Profile>(
-        `/api/profiles/by-id?profileId=${encodeURIComponent(profile.id)}`,
-      )
-      setEditProfile(fullProfile)
+      const fullProfile = await convex.query(api.profiles.getById, {
+        profileId: profile.id as Id<'profiles'>,
+      })
+      setEditProfile(fullProfile ? mapProfileRecord(fullProfile) : null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -231,58 +239,40 @@ export function ProfilesPageContainer() {
     setError(null)
     try {
       if (isCreateOpen) {
-        await apiFetch('/api/profiles', {
-          method: 'POST',
-          body: {
-            name,
-            proxy:
-              typeof data.proxy === 'string' ? data.proxy.trim() : undefined,
-            proxy_type:
-              typeof data.proxy_type === 'string'
-                ? data.proxy_type.trim()
-                : undefined,
-            fingerprint_seed: data.fingerprint_seed || undefined,
-            fingerprint_os: data.fingerprint_os || undefined,
-            cookies_json:
-              typeof data.cookies_json === 'string'
-                ? data.cookies_json.trim()
-                : '',
-            test_ip: Boolean(data.test_ip),
-            daily_scraping_limit:
-              typeof data.daily_scraping_limit === 'number'
-                ? data.daily_scraping_limit
-                : null,
-          },
+        await createProfile({
+          name,
+          proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
+          proxyType:
+            typeof data.proxy_type === 'string' ? data.proxy_type.trim() : '',
+          fingerprintSeed: data.fingerprint_seed || undefined,
+          fingerprintOs: data.fingerprint_os || undefined,
+          cookiesJson:
+            typeof data.cookies_json === 'string' ? data.cookies_json.trim() : '',
+          testIp: Boolean(data.test_ip),
+          dailyScrapingLimit:
+            typeof data.daily_scraping_limit === 'number'
+              ? data.daily_scraping_limit
+              : null,
         })
         await refreshProfiles()
         setIsCreateOpen(false)
       } else if (editProfile) {
-        await apiFetch(
-          `/api/profiles/${encodeURIComponent(editProfile.name)}`,
-          {
-            method: 'PUT',
-            body: {
-              name,
-              proxy:
-                typeof data.proxy === 'string' ? data.proxy.trim() : undefined,
-              proxy_type:
-                typeof data.proxy_type === 'string'
-                  ? data.proxy_type.trim()
-                  : undefined,
-              fingerprint_seed: data.fingerprint_seed || undefined,
-              fingerprint_os: data.fingerprint_os || undefined,
-              cookies_json:
-                typeof data.cookies_json === 'string'
-                  ? data.cookies_json.trim()
-                  : '',
-              test_ip: Boolean(data.test_ip),
-              daily_scraping_limit:
-                typeof data.daily_scraping_limit === 'number'
-                  ? data.daily_scraping_limit
-                  : null,
-            },
-          },
-        )
+        await updateProfile({
+          profileId: editProfile.id as Id<'profiles'>,
+          name,
+          proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
+          proxyType:
+            typeof data.proxy_type === 'string' ? data.proxy_type.trim() : '',
+          fingerprintSeed: data.fingerprint_seed || undefined,
+          fingerprintOs: data.fingerprint_os || undefined,
+          cookiesJson:
+            typeof data.cookies_json === 'string' ? data.cookies_json.trim() : '',
+          testIp: Boolean(data.test_ip),
+          dailyScrapingLimit:
+            typeof data.daily_scraping_limit === 'number'
+              ? data.daily_scraping_limit
+              : null,
+        })
         await refreshProfiles()
         setEditProfile(null)
       }
@@ -298,8 +288,8 @@ export function ProfilesPageContainer() {
     setSaving(true)
     setError(null)
     try {
-      await apiFetch(`/api/profiles/${encodeURIComponent(deleteProfile.name)}`, {
-        method: 'DELETE',
+      await removeProfile({
+        profileId: deleteProfile.id as Id<'profiles'>,
       })
       await refreshProfiles()
       setDeleteProfileId(null)

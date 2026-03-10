@@ -8,6 +8,8 @@ test('tracks the full owned convex module cohort', () => {
     .sort()
 
   expect(ownedModules).toEqual([
+    '../../convex/auth.config.ts',
+    '../../convex/auth.ts',
     '../../convex/convex.config.ts',
     '../../convex/crons.ts',
     '../../convex/http.ts',

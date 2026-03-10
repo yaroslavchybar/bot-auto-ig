@@ -1,4 +1,5 @@
 import { convexTest } from 'convex-test'
+import type { UserIdentity } from 'convex/server'
 
 import { api } from '../../convex/_generated/api'
 import schema from '../../convex/schema'
@@ -8,7 +9,18 @@ export const modules = import.meta.glob([
   '../../convex/_generated/*.js',
 ])
 
+const TEST_IDENTITY: Partial<UserIdentity> = {
+  subject: 'user_test_123',
+  tokenIdentifier: 'https://clerk.test|user_test_123',
+  issuer: 'https://clerk.test',
+  email: 'auth-test@example.com',
+}
+
 export function createConvexTest() {
+  return convexTest(schema, modules).withIdentity(TEST_IDENTITY)
+}
+
+export function createUnauthenticatedConvexTest() {
   return convexTest(schema, modules)
 }
 

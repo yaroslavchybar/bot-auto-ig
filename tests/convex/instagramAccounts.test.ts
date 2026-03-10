@@ -1,18 +1,18 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../../convex/_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { createConvexTest, seedProfile } from './helpers'
 
 test('normalizes usernames and skips duplicates', async () => {
   const t = createConvexTest()
 
-  const first = await t.mutation(api.instagramAccounts.insert, {
+  const first = await t.mutation(internal.instagramAccounts.insert, {
     userName: '@User-A//',
     status: 'available',
     message: false,
     createdAt: Date.now(),
   })
-  const second = await t.mutation(api.instagramAccounts.insert, {
+  const second = await t.mutation(internal.instagramAccounts.insert, {
     userName: 'user-a',
     status: 'available',
     message: false,
@@ -26,23 +26,23 @@ test('normalizes usernames and skips duplicates', async () => {
 test('updates assignment state and message flags', async () => {
   const t = createConvexTest()
   const profile = await seedProfile(t, { name: 'Profile A' })
-  const created = await t.mutation(api.instagramAccounts.insert, {
+  const created = await t.mutation(internal.instagramAccounts.insert, {
     userName: 'user-b',
     status: 'available',
     message: false,
     createdAt: Date.now(),
   })
 
-  const assigned = await t.mutation(api.instagramAccounts.updateStatus, {
+  const assigned = await t.mutation(internal.instagramAccounts.updateStatus, {
     accountId: created.id,
     status: 'assigned',
     assignedTo: profile!._id,
   })
-  const messaged = await t.mutation(api.instagramAccounts.updateMessage, {
+  const messaged = await t.mutation(internal.instagramAccounts.updateMessage, {
     userName: 'USER-B',
     message: true,
   })
-  const profiles = await t.query(api.instagramAccounts.getProfilesWithAssignedAccounts, {
+  const profiles = await t.query(internal.instagramAccounts.getProfilesWithAssignedAccounts, {
     status: 'assigned',
   })
 

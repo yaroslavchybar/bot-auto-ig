@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation } from './_generated/server'
+import { internalMutation } from './_generated/server'
 
 const LEGACY_LAST_OUTPUT_KEYS = ['mode', 'distribution', 'profileId', 'limit'] as const
 const LEGACY_RESUME_KEYS = ['mode', 'distribution', 'profileId', 'limit'] as const
@@ -58,7 +58,7 @@ function cleanLegacyLastOutput(lastOutput: unknown): {
   return { cleaned: next, legacyRuntimeDetected, unknownShape: false }
 }
 
-export const scraperAutoOnlyApplyProfileCleanup = mutation({
+export const scraperAutoOnlyApplyProfileCleanup = internalMutation({
   args: {
     profileId: v.id('profiles'),
   },
@@ -82,7 +82,7 @@ export const scraperAutoOnlyApplyProfileCleanup = mutation({
   },
 })
 
-export const scraperAutoOnlyApplyTaskCleanup = mutation({
+export const scraperAutoOnlyApplyTaskCleanup = internalMutation({
   args: {
     taskId: v.id('scrapingTasks'),
   },
@@ -144,7 +144,7 @@ export const scraperAutoOnlyApplyTaskCleanup = mutation({
   },
 })
 
-export const scraperAutoOnlyRollbackProfile = mutation({
+export const scraperAutoOnlyRollbackProfile = internalMutation({
   args: {
     profileId: v.id('profiles'),
     hadAutomation: v.boolean(),
@@ -168,7 +168,7 @@ export const scraperAutoOnlyRollbackProfile = mutation({
   },
 })
 
-export const scraperAutoOnlyRollbackTask = mutation({
+export const scraperAutoOnlyRollbackTask = internalMutation({
   args: {
     taskId: v.id('scrapingTasks'),
     snapshot: v.any(),

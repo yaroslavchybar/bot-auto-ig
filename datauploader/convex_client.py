@@ -30,9 +30,67 @@ def get_convex_url(env: str = "dev") -> str:
     return url
 
 
+def get_convex_site_url(env: str = "dev") -> str:
+    return get_convex_url(env).replace(".convex.cloud", ".convex.site")
+
+
+def get_internal_api_key() -> str:
+    token = os.getenv("INTERNAL_API_KEY", "").strip()
+    if not token:
+        raise RuntimeError("Missing INTERNAL_API_KEY in environment")
+    return token
+
+
+def convex_internal_fetch(
+    endpoint: str,
+    *,
+    method: str = "GET",
+    body: dict[str, Any] | None = None,
+    env: str = "dev",
+) -> Any:
+    url = f"{get_convex_site_url(env)}{endpoint}"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {get_internal_api_key()}",
+    }
+    response = requests.request(method, url, headers=headers, json=body)
+    response.raise_for_status()
+    if response.status_code == 204:
+        return None
+    return response.json()
+
+
 def convex_query(path: str, args: dict[str, Any] | None = None, env: str = "dev") -> Any:
+    args = args or {}
+    if path == "scrapingTasks:listUnimported":
+        kind = args.get("kind")
+        endpoint = "/api/scraping-tasks/unimported"
+        if kind:
+            endpoint = f"{endpoint}?kind={kind}"
+        return convex_internal_fetch(endpoint, env=env)
+    if path == "scrapingTasks:getById":
+        task_id = args.get("id")
+        return convex_internal_fetch(
+            f"/api/scraping-tasks/by-id?id={task_id}",
+            env=env,
+        )
+    if path == "scrapingTasks:getStorageUrl":
+        storage_id = args.get("storageId")
+        return convex_internal_fetch(
+            f"/api/scraping-tasks/storage-url?storageId={storage_id}",
+            env=env,
+        )
+    if path == "keywords:get":
+        filename = args.get("filename")
+        return convex_internal_fetch(
+            f"/api/keywords?filename={filename}",
+            env=env,
+        )
+    if path == "keywords:list":
+        return convex_internal_fetch("/api/keywords", env=env)
+
     url = f"{get_convex_url(env)}/api/query"
-    body = {"path": path, "args": args or {}, "format": "json"}
+    body = {"path": path, "args": args, "format": "json"}
     headers = {"Content-Type": "application/json"}
     response = requests.post(url, headers=headers, json=body)
     response.raise_for_status()
@@ -45,8 +103,45 @@ def convex_query(path: str, args: dict[str, Any] | None = None, env: str = "dev"
 
 
 def convex_mutation(path: str, args: dict[str, Any] | None = None, env: str = "dev") -> Any:
+    args = args or {}
+    if path == "instagramAccounts:insert":
+        return convex_internal_fetch(
+            "/api/instagram-accounts",
+            method="POST",
+            body=args,
+            env=env,
+        )
+    if path == "instagramAccounts:insertBatch":
+        return convex_internal_fetch(
+            "/api/instagram-accounts/batch",
+            method="POST",
+            body=args,
+            env=env,
+        )
+    if path == "keywords:upsert":
+        return convex_internal_fetch(
+            "/api/keywords",
+            method="POST",
+            body=args,
+            env=env,
+        )
+    if path == "keywords:remove":
+        return convex_internal_fetch(
+            "/api/keywords/delete",
+            method="POST",
+            body=args,
+            env=env,
+        )
+    if path == "scrapingTasks:setImported":
+        return convex_internal_fetch(
+            "/api/scraping-tasks/set-imported",
+            method="POST",
+            body=args,
+            env=env,
+        )
+
     url = f"{get_convex_url(env)}/api/mutation"
-    body = {"path": path, "args": args or {}, "format": "json"}
+    body = {"path": path, "args": args, "format": "json"}
     headers = {"Content-Type": "application/json"}
     response = requests.post(url, headers=headers, json=body)
     response.raise_for_status()

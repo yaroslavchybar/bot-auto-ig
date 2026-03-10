@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The server exposes authenticated REST + WebSocket surfaces, orchestrates Python automation/scraping/workflow processes, and persists application state through Convex HTTP actions.
+The server exposes authenticated REST + WebSocket surfaces, orchestrates Python automation/scraping/workflow processes, and uses Convex as the shared data layer. Browser application data now reads and writes Convex directly with Clerk-authenticated tokens, while the server stays focused on orchestration, runtime control, monitoring, logs, and WebSocket delivery.
 
 ## Mounted Route Domains
 
@@ -27,6 +27,7 @@ Mounted under `/api/*`:
 - In production, CORS only allows origins listed in `ALLOWED_ORIGINS`.
 - Most route groups require Clerk auth.
 - `/api/workflows` allows Clerk auth or `INTERNAL_API_KEY` bearer.
+- Internal server-to-Convex HTTP calls fail fast when `INTERNAL_API_KEY` is missing.
 
 ## Rate Limits
 
@@ -42,9 +43,9 @@ Mounted under `/api/*`:
 - Exposes automation status.
 
 ### Profiles and Lists
-- Profile CRUD, browser launch/stop, runtime reconciliation, status sync, list assignment.
-- Profile create/update requests normalize pasted cookie JSON before persistence, and `/api/profiles/by-id` returns the sensitive cookie field only for explicit detail fetches.
-- List CRUD and bulk list assignment operations.
+- Runtime-only profile endpoints remain here: browser launch/stop, runtime reconciliation, status sync, and related operational control paths.
+- Browser CRUD for profiles and lists now uses authenticated Convex client functions instead of Express list/detail CRUD routes.
+- Profile detail reads that require the sensitive cookie field still remain explicit and do not surface through the cached list flow.
 
 ### Scraping
 - `server/api/scraping.ts` is a compatibility re-export; the live router is `server/api/scraping/index.ts`.
@@ -56,6 +57,7 @@ Mounted under `/api/*`:
 - Run/stop workflow execution.
 - Reports workflow status.
 - Spawns `python/getting_started/run_workflow.py` and broadcasts workflow events.
+- Workflow definitions and editor data are read and written from the browser through authenticated Convex functions; Express handles execution and lifecycle control.
 
 ### Monitoring and Displays
 - System metrics endpoint for CPU/memory/disk/network/uptime.
@@ -78,7 +80,7 @@ Mounted under `/api/*`:
 - `CONVEX_URL`
 - `CLERK_PUBLISHABLE_KEY` (server runtime; falls back to `VITE_CLERK_PUBLISHABLE_KEY` in local dev bootstrap)
 - `CLERK_SECRET_KEY`
-- `INTERNAL_API_KEY`
+- `INTERNAL_API_KEY` (required anywhere the server calls Convex HTTP action routes)
 
 ## Commands
 
@@ -106,6 +108,7 @@ npm --prefix server run start
 - `server/api/displays.ts`
 - `server/automation/process-manager.ts`
 - `server/data/profiles.ts`
+- `server/data/convex.ts`
 - `server/security/auth.ts`
 - `server/security/rate-limit.ts`
 - `server/websocket.ts`

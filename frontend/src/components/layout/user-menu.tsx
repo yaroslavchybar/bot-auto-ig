@@ -1,4 +1,4 @@
-import { useUser, useClerk } from '@clerk/clerk-react'
+import { useUser, useClerk } from '@clerk/react-router'
 import { Settings, LogOut } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'

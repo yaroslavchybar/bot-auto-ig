@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../../convex/_generated/api'
+import { internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc } from './helpers'
 
 test('cleans scraper-auto-only task runtime state and resets running tasks', async () => {
@@ -20,7 +20,7 @@ test('cleans scraper-auto-only task runtime state and resets running tasks', asy
     },
   })
 
-  const taskCleanup = await t.mutation(api.migrations.scraperAutoOnlyApplyTaskCleanup, {
+  const taskCleanup = await t.mutation(internal.migrations.scraperAutoOnlyApplyTaskCleanup, {
     taskId: task!._id,
   })
   const cleanedTask = await t.run(async (ctx) => ctx.db.get(task!._id))

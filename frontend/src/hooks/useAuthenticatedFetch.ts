@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth } from '@clerk/react-router'
 import { useCallback, useEffect } from 'react'
 import { setTokenGetter } from '@/lib/api'
 import { env } from '@/lib/env'

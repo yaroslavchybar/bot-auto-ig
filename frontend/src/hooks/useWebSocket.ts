@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth } from '@clerk/react-router'
+import { env } from '@/lib/env'
 
 export interface LogEntry {
   message: string
@@ -62,8 +63,14 @@ const MAX_RECONNECT_DELAY = 30000
 
 function getDefaultWebSocketUrl() {
   if (typeof window === 'undefined') return 'ws://localhost:3001/ws'
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws`
+  try {
+    const apiUrl = new URL(env.apiUrl, window.location.origin)
+    const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${apiUrl.host}/ws`
+  } catch {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}/ws`
+  }
 }
 
 function getReconnectDelay(attempt: number): number {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`convex/` defines persistent data models, app-level query/mutation modules, HTTP action routes for server/python interop, scheduled jobs, and one-off migration helpers.
+`convex/` defines persistent data models, Clerk-authenticated browser-facing query/mutation modules, HTTP action routes for server/python interop, scheduled jobs, and one-off migration helpers.
 
 ## Current Modules
 
@@ -21,6 +21,7 @@
 
 Generated artifacts:
 - `_generated/*`
+- `auth.config.ts`
 
 ## Data Tables
 
@@ -36,8 +37,16 @@ From schema:
 ## HTTP Actions
 
 - Exposed under `/api/*` on `.convex.site` deployment host.
-- Supports profile/list/account/template/scraping-task/workflow operations.
-- Auth gate uses `INTERNAL_API_KEY` if configured.
+- Supports server/python interoperability for profile/list/account/template/scraping-task/workflow operations.
+- Every HTTP action route requires `INTERNAL_API_KEY`.
+- Missing `INTERNAL_API_KEY` is a configuration error and the HTTP surface fails closed rather than becoming public.
+
+## Clerk Auth Model
+
+- `convex/auth.ts` wraps browser-facing `query`, `mutation`, and `action` exports and requires a Clerk identity through `ctx.auth.getUserIdentity()`.
+- Browser-accessed modules such as `lists`, `profiles`, `messageTemplates`, `scrapingTasks`, and `workflows` should use those wrappers for public functions.
+- Server-only helpers should use `internalQuery`, `internalMutation`, or `internalAction`.
+- Browser code should use the Convex React client with Clerk auth; it should not call Convex HTTP action routes directly.
 
 ## Migration Helpers
 
@@ -62,6 +71,7 @@ npm run test:convex
 
 Treat `convex/_generated/*` as generated artifacts.
 Keep `convex.config.ts` aligned with the owned module set and codegen expectations.
+Keep `auth.config.ts` aligned with the active Clerk deployment domain so Convex and Clerk trust the same issuer.
 
 ## Local Verification
 
@@ -75,6 +85,8 @@ Keep `convex.config.ts` aligned with the owned module set and codegen expectatio
 - `convex/convex.config.ts`
 - `convex/schema.ts`
 - `convex/http.ts`
+- `convex/auth.ts`
+- `convex/auth.config.ts`
 - `convex/crons.ts`
 - `convex/migrations.ts`
 - `convex/lists.ts`

@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth } from '@clerk/react-router'
 import { Navigate } from 'react-router'
 import { RefreshCw } from 'lucide-react'
 
