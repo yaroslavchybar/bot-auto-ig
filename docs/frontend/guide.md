@@ -62,7 +62,8 @@ Other route behavior:
 ### API Access
 - Default API base for authenticated fetches:
   - dev fallback: `http://localhost:3001`
-  - prod: `VITE_API_URL` is required at build time
+  - prod default behind bundled proxy: same-origin `/api/*`
+  - set `VITE_API_URL` only when the browser must call a different public origin directly
 - Express remains the control plane for orchestration surfaces such as runtime reconciliation, browser launch/stop, logs, monitoring, VNC, and workflow execution.
 - Profiles create/edit flows support pasted cookie JSON, while the cached profile list remains sanitized and fetches the sensitive cookie payload only from explicit profile detail reads.
 
@@ -74,8 +75,8 @@ Other route behavior:
 ### Data Uploader Integration
 - Data uploader base:
   - dev fallback: `http://localhost:3002`
-  - prod: `VITE_DATAUPLOADER_URL` is required at build time
-- The React Router frontend no longer provides an `/api/datauploader` reverse proxy.
+  - prod default behind bundled proxy: `/api/datauploader`
+- The bundled nginx config proxies `/api/datauploader/` to the data uploader service.
 
 ### Convex Integration
 - `VITE_CONVEX_URL` is required and normalized to HTTPS.
@@ -125,8 +126,8 @@ Import contract and validation:
 ## Environment Variables
 
 - `VITE_CLERK_PUBLISHABLE_KEY` (required)
-- `VITE_API_URL` (required for production builds; optional in local dev)
-- `VITE_DATAUPLOADER_URL` (required for production builds; optional in local dev)
+- `VITE_API_URL` (optional; same-origin proxy is the production default)
+- `VITE_DATAUPLOADER_URL` (optional; defaults to `/api/datauploader` in proxied production)
 - `VITE_CONVEX_URL` (required)
 
 ## Dev and Build
