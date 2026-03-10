@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useState } from 'react'
 import {
   Table,
   TableBody,
@@ -71,8 +72,15 @@ function WorkflowActionsMenu({
   onExport,
   onDelete,
 }: WorkflowActionsMenuProps) {
+  const [open, setOpen] = useState(false)
+
+  const handleEditFlowClick = () => {
+    setOpen(false)
+    window.requestAnimationFrame(() => onEditFlow(workflow))
+  }
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -105,7 +113,7 @@ function WorkflowActionsMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => onEditFlow(workflow)}
+          onClick={handleEditFlowClick}
           disabled={isRunning}
         >
           <GitBranch className="mr-2 h-4 w-4" />

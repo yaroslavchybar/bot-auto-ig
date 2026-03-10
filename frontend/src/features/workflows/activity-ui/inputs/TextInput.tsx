@@ -12,10 +12,10 @@ export function TextInput({ input, value, onChange }: TextInputProps) {
   const displayValue = value ?? input.default ?? ''
 
   return (
-    <div className="flex flex-col space-y-1">
+    <div className="flex flex-col space-y-1.5">
       <Label
         htmlFor={input.name}
-        className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300"
+        className="text-copy text-[11px] font-medium"
       >
         {input.label}
         {input.required && <span className="text-status-danger ml-1">*</span>}
@@ -26,10 +26,10 @@ export function TextInput({ input, value, onChange }: TextInputProps) {
         value={displayValue as string}
         onChange={(e) => onChange(e.target.value)}
         placeholder={input.placeholder}
-        className="h-6 rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-neutral-900"
+        className="border-line-soft bg-field-alt h-9 rounded-lg px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
       />
       {input.helpText && (
-        <p className="text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
+        <p className="text-subtle-copy text-[10px] leading-tight">
           {input.helpText}
         </p>
       )}

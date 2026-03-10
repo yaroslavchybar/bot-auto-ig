@@ -2,20 +2,13 @@ import { lazy, Suspense } from 'react'
 import { Monitor } from 'lucide-react'
 import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
+import type { DisplaySession } from '../utils/liveSessions'
 
 const VncViewer = lazy(() =>
   import('@/features/vnc/components/VncViewer').then((module) => ({
     default: module.VncViewer,
   })),
 )
-
-export type DisplaySession = {
-  workflowId: string
-  profileName: string
-  vncPort: number
-  displayNum: number
-  status: 'active'
-}
 
 type VncTileProps = {
   session: DisplaySession

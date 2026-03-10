@@ -38,6 +38,7 @@ Protected routes under the authenticated shell:
 - `/lists`
 - `/scraping`
 - `/workflows`
+- `/workflows/:workflowId/editor` (immersive editor route without the global sidebar/top header; uses local editor controls)
 - `/accounts`
 - `/logs`
 - `/vnc`
@@ -47,6 +48,7 @@ Other route behavior:
 - `/` redirects to `/profiles`.
 - `/sign-in/*` and `/sign-up/*` run through the auth layout.
 - The protected shell keeps selected heavy routes mounted (`/workflows`, `/accounts`, `/logs`, `/vnc`) to avoid resetting long-lived client state on navigation.
+- The workflow editor route opts into immersive app chrome, so auth/providers stay mounted while the global sidebar and breadcrumb header are skipped.
 
 ## Runtime Integration
 
@@ -146,6 +148,7 @@ npm --prefix frontend run preview
 - `frontend/src/features/accounts/hooks/useDataUploader.ts`
 - `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
+- `frontend/src/features/workflows/containers/WorkflowEditorPageContainer.tsx`
 - `frontend/src/features/workflows/utils/workflowImportExport.ts`
 - `frontend/src/features/monitoring/containers/MonitoringPageContainer.tsx`
 - `frontend/src/entry.client.tsx`

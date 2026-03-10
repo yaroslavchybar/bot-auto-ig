@@ -24,7 +24,7 @@ function ActivityNodeComponent({
 
   return (
     <div
-      className={`group bg-panel workflow-node relative flex min-w-[174px] flex-col overflow-visible rounded-[3px] border ${selected ? 'workflow-node-selected border-line-strong' : 'border-line'} `}
+      className={`group bg-panel workflow-node relative flex min-w-[100px] max-w-[180px] flex-col overflow-visible rounded-[6px] border ${selected ? 'workflow-node-selected border-line-strong' : 'border-line'} `}
     >
       <NodeActionToolbar
         nodeId={id}
@@ -41,25 +41,25 @@ function ActivityNodeComponent({
 
       <div className="relative flex h-full w-full">
         <div
-          className="absolute top-0 bottom-0 left-0 w-1 shrink-0 rounded-l-[3px]"
+          className="absolute top-0 bottom-0 left-0 w-1 shrink-0 rounded-l-[6px]"
           style={{ backgroundColor: color }}
         />
 
         <div className="flex w-full flex-col pl-1">
-          <div className="border-line-soft bg-panel-subtle flex items-center gap-2 border-b px-2 py-1.5 pr-24">
+          <div className="border-line-soft bg-panel-subtle flex items-center gap-1 border-b px-1 py-1 pr-12">
             <div
-              className="border-line flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-[2px] border"
+              className="border-line flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border"
               style={{ backgroundColor: `${color}18` }}
             >
               <ActivityIcon
                 iconName={activity?.icon ?? ''}
-                className="h-2.5 w-2.5"
+                className="h-2 w-2"
                 style={{ color }}
                 strokeWidth={2}
               />
             </div>
             <div className="flex flex-col gap-0.5">
-              <span className="text-ink text-[9.5px] leading-none font-bold tracking-wider uppercase">
+              <span className="text-ink text-[10px] leading-none font-bold tracking-wider uppercase">
                 {data.label || activity?.name || 'Unknown'}
               </span>
               {activity && (
@@ -71,8 +71,8 @@ function ActivityNodeComponent({
           </div>
 
           {outputs.length <= 1 ? (
-            <div className="group/output border-line-soft relative flex min-h-[24px] items-center justify-between border-t px-2 py-1">
-              <span className="text-subtle-copy font-mono text-[8px] tracking-[0.22em] uppercase">
+            <div className="group/output border-line-soft relative flex min-h-[16px] items-center justify-between px-1.5 py-0.5">
+              <span className="text-subtle-copy truncate font-mono text-[9px] tracking-[0.22em] uppercase">
                 Next
               </span>
               <QuickAddMenu
@@ -88,16 +88,16 @@ function ActivityNodeComponent({
               />
             </div>
           ) : (
-            <div className="flex flex-col bg-transparent">
+            <div className="flex flex-col gap-px bg-transparent p-1">
               {outputs.map((output) => (
                 <div
                   key={output}
-                  className="group/output border-line-soft relative flex items-center justify-between border-b px-2 py-1 last:border-b-0"
+                  className="group/output border-line-soft bg-panel-subtle relative flex items-center justify-between rounded px-1.5 py-0.5"
                 >
-                  <span className="text-subtle-copy font-mono text-[8px] tracking-[0.22em] uppercase">
+                  <span className="text-subtle-copy truncate font-mono text-[9px] tracking-[0.22em] uppercase">
                     {output}
                   </span>
-                  <div className="relative flex items-center justify-end pr-5">
+                  <div className="relative flex items-center justify-end pr-2">
                     <QuickAddMenu
                       insertionContext={{ sourceNodeId: id, sourceHandle: output }}
                       className="absolute top-1/2 right-[-11px] z-10 -translate-y-1/2 opacity-0 pointer-events-none group-hover/output:opacity-100 group-hover/output:pointer-events-auto group-focus-within/output:opacity-100 group-focus-within/output:pointer-events-auto"

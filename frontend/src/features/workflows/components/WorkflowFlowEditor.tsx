@@ -8,7 +8,6 @@ import {
 import ReactFlow, {
   Background,
   Controls,
-  MarkerType,
   ReactFlowProvider,
   addEdge,
   useEdgesState,
@@ -17,24 +16,31 @@ import ReactFlow, {
   type Connection,
   type Edge,
   type Node,
+  type EdgeTypes,
   type NodeTypes,
   type OnSelectionChangeParams,
   type Viewport,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { Grid3X3, Plus, Save, Sparkles, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ArrowLeft, Plus, Save, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Button } from '@/components/ui/button'
 import type { Workflow } from '../types'
 import { ActivityNode } from './ActivityNode'
 import { BlockLibraryDialog } from './BlockLibraryDialog'
 import { NodeSettingsPanel } from './NodeSettingsPanel'
 import { StartNode, DEFAULT_START_DATA } from './StartNode'
+import { WorkflowEdge, WORKFLOW_EDGE_DEFAULTS } from './WorkflowEdge'
 import {
   WorkflowEditorProvider,
   type WorkflowEditorContextValue,
@@ -49,14 +55,18 @@ import {
   selectOnlyNode,
   type BlockInsertionContext,
 } from './workflowEditorUtils'
+import { rememberRecentActivity } from '../utils/recentActivities'
 
 const nodeTypes: NodeTypes = {
   activity: ActivityNode,
   start: StartNode,
 }
 
+const edgeTypes: EdgeTypes = {
+  workflow: WorkflowEdge,
+}
+
 interface WorkflowFlowEditorProps {
-  open: boolean
   workflow: Workflow | null
   saving?: boolean
   onSave: (nodes: Node[], edges: Edge[]) => void
@@ -64,6 +74,21 @@ interface WorkflowFlowEditorProps {
 }
 
 const VIEWPORT_STORAGE_KEY = 'workflow-editor-viewport'
+const DELETE_UNDO_DURATION_MS = 5000
+
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return (
+    target.isContentEditable ||
+    target.closest('[contenteditable="true"]') !== null ||
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLSelectElement
+  )
+}
 
 function getStoredViewport(workflowId: string): Viewport | null {
   try {
@@ -99,7 +124,7 @@ export function WorkflowFlowEditor(props: WorkflowFlowEditorProps) {
   return (
     <ReactFlowProvider>
       <WorkflowFlowEditorInner
-        key={`${props.workflow?._id ?? 'workflow'}-${props.open ? 'open' : 'closed'}`}
+        key={props.workflow?._id ?? 'workflow'}
         {...props}
       />
     </ReactFlowProvider>
@@ -107,7 +132,6 @@ export function WorkflowFlowEditor(props: WorkflowFlowEditorProps) {
 }
 
 function WorkflowFlowEditorInner({
-  open,
   workflow,
   saving,
   onSave,
@@ -116,6 +140,9 @@ function WorkflowFlowEditorInner({
   const { getViewport, setViewport } = useReactFlow()
   const viewportRestored = useRef(false)
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const nodesRef = useRef<Node[]>([])
+  const edgesRef = useRef<Edge[]>([])
+  const deleteToastIdRef = useRef<string | number | null>(null)
 
   const initialNodes = useMemo(() => {
     if (workflow?.nodes && (workflow.nodes as Node[]).length > 0) {
@@ -130,7 +157,16 @@ function WorkflowFlowEditorInner({
 
   const initialEdges = useMemo(() => {
     if (!workflow?.edges) return []
-    return (workflow.edges as Edge[]) || []
+    return ((workflow.edges as Edge[]) || []).map((edge) => ({
+      ...WORKFLOW_EDGE_DEFAULTS,
+      ...edge,
+      style: {
+        ...WORKFLOW_EDGE_DEFAULTS.style,
+        ...edge.style,
+      },
+      markerEnd: edge.markerEnd ?? WORKFLOW_EDGE_DEFAULTS.markerEnd,
+      type: 'workflow',
+    }))
   }, [workflow])
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -139,16 +175,25 @@ function WorkflowFlowEditorInner({
   const [blockLibraryOpen, setBlockLibraryOpen] = useState(false)
   const [blockLibraryContext, setBlockLibraryContext] =
     useState<BlockInsertionContext | null>(null)
+  const [quickAddMenuOpen, setQuickAddMenuOpen] = useState(false)
+  const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(
+    null,
+  )
 
   useEffect(() => {
-    if (open && workflow?._id && !viewportRestored.current) {
+    nodesRef.current = nodes
+    edgesRef.current = edges
+  }, [edges, nodes])
+
+  useEffect(() => {
+    if (workflow?._id && !viewportRestored.current) {
       const stored = getStoredViewport(workflow._id)
       if (stored) {
         window.setTimeout(() => setViewport(stored, { duration: 0 }), 50)
       }
       viewportRestored.current = true
     }
-  }, [open, setViewport, workflow?._id])
+  }, [setViewport, workflow?._id])
 
   const onMoveEnd = useCallback(() => {
     if (workflow?._id) {
@@ -217,6 +262,7 @@ function WorkflowFlowEditorInner({
           : getConnectedInsertPosition(sourceNode, insertionContext.sourceHandle)
 
       const newNode = createActivityNode(activityId, nextPosition)
+      rememberRecentActivity(activityId)
       setNodes((prev) => selectOnlyNode([...prev, newNode], newNode.id))
       setSelectedNode({ ...newNode, selected: true })
 
@@ -228,6 +274,7 @@ function WorkflowFlowEditorInner({
               id: createEdgeId(sourceNode.id, newNode.id, edgeSourceHandle),
               source: sourceNode.id,
               target: newNode.id,
+              ...WORKFLOW_EDGE_DEFAULTS,
               ...(edgeSourceHandle ? { sourceHandle: edgeSourceHandle } : {}),
             },
             prev,
@@ -246,15 +293,85 @@ function WorkflowFlowEditorInner({
     setBlockLibraryOpen(true)
   }, [])
 
-  const deleteNode = useCallback(
+  const restoreDeletedNode = useCallback(
+    (deletedNode: Node, deletedEdges: Edge[]) => {
+      const currentNodes = nodesRef.current
+
+      if (currentNodes.some((node) => node.id === deletedNode.id)) {
+        return
+      }
+
+      const restoredNode = { ...deletedNode, selected: true }
+      const restoredNodes = selectOnlyNode([...currentNodes, restoredNode], deletedNode.id)
+      const restoredNodeIds = new Set(restoredNodes.map((node) => node.id))
+      const currentEdges = edgesRef.current
+      const currentEdgeIds = new Set(currentEdges.map((edge) => edge.id))
+      const restoredEdges = deletedEdges.filter(
+        (edge) =>
+          !currentEdgeIds.has(edge.id) &&
+          restoredNodeIds.has(edge.source) &&
+          restoredNodeIds.has(edge.target),
+      )
+
+      setNodes(restoredNodes)
+      setEdges([...currentEdges, ...restoredEdges])
+      setSelectedNode(restoredNode)
+    },
+    [setEdges, setNodes],
+  )
+
+  const performDeleteNode = useCallback(
     (nodeId: string) => {
       if (nodeId === 'start_node') return
 
-      setNodes((prev) => prev.filter((node) => node.id !== nodeId))
-      setEdges((prev) => removeNodeEdges(prev, nodeId))
+      const currentNodes = nodesRef.current
+      const currentEdges = edgesRef.current
+      const nodeToDelete = currentNodes.find((node) => node.id === nodeId)
+
+      if (!nodeToDelete) {
+        return
+      }
+
+      const deletedEdges = currentEdges.filter(
+        (edge) => edge.source === nodeId || edge.target === nodeId,
+      )
+
+      if (deleteToastIdRef.current != null) {
+        toast.dismiss(deleteToastIdRef.current)
+      }
+
+      setNodes(currentNodes.filter((node) => node.id !== nodeId))
+      setEdges(removeNodeEdges(currentEdges, nodeId))
       setSelectedNode((prev) => (prev?.id === nodeId ? null : prev))
+
+      deleteToastIdRef.current = toast('Node deleted', {
+        description: 'You can undo this deletion for the next 5 seconds.',
+        duration: DELETE_UNDO_DURATION_MS,
+        position: 'bottom-left',
+        action: {
+          label: 'Undo',
+          onClick: () => restoreDeletedNode(nodeToDelete, deletedEdges),
+        },
+        onDismiss: () => {
+          deleteToastIdRef.current = null
+        },
+        onAutoClose: () => {
+          deleteToastIdRef.current = null
+        },
+      })
     },
-    [setEdges, setNodes],
+    [restoreDeletedNode, setEdges, setNodes],
+  )
+
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      if (nodeId === 'start_node') {
+        return
+      }
+
+      setPendingDeleteNodeId(nodeId)
+    },
+    [],
   )
 
   const duplicateNode = useCallback(
@@ -271,7 +388,15 @@ function WorkflowFlowEditorInner({
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      setEdges((prev) => addEdge(connection, prev))
+      setEdges((prev) =>
+        addEdge(
+          {
+            ...WORKFLOW_EDGE_DEFAULTS,
+            ...connection,
+          },
+          prev,
+        ),
+      )
     },
     [setEdges],
   )
@@ -298,6 +423,21 @@ function WorkflowFlowEditorInner({
     setSelectedNode(null)
   }, [setNodes])
 
+  const handleDeleteDialogOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      setPendingDeleteNodeId(null)
+    }
+  }, [])
+
+  const handleConfirmDeleteNode = useCallback(() => {
+    if (!pendingDeleteNodeId) {
+      return
+    }
+
+    performDeleteNode(pendingDeleteNodeId)
+    setPendingDeleteNodeId(null)
+  }, [pendingDeleteNodeId, performDeleteNode])
+
   const handleBlockLibraryOpenChange = useCallback((nextOpen: boolean) => {
     setBlockLibraryOpen(nextOpen)
     if (!nextOpen) {
@@ -308,159 +448,197 @@ function WorkflowFlowEditorInner({
   const editorContextValue = useMemo<WorkflowEditorContextValue>(
     () => ({
       insertActivity,
+      setQuickAddMenuOpen,
       openBlockLibrary,
       duplicateNode,
       deleteNode,
       focusNode,
     }),
-    [deleteNode, duplicateNode, focusNode, insertActivity, openBlockLibrary],
+    [
+      deleteNode,
+      duplicateNode,
+      focusNode,
+      insertActivity,
+      openBlockLibrary,
+      setQuickAddMenuOpen,
+    ],
   )
 
   const hasStoredViewport = Boolean(getStoredViewport(workflow?._id || ''))
   const isEmptyCanvas =
     nodes.length === 1 && nodes[0]?.id === 'start_node' && edges.length === 0
+  const pendingDeleteNode =
+    pendingDeleteNodeId == null
+      ? null
+      : nodes.find((node) => node.id === pendingDeleteNodeId) ?? null
+
+  useEffect(() => {
+    if (!selectedNode || blockLibraryOpen || pendingDeleteNodeId) {
+      return
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        isEditableTarget(event.target) ||
+        selectedNode.id === 'start_node' ||
+        (event.key !== 'Delete' && event.key !== 'Backspace')
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      setPendingDeleteNodeId(selectedNode.id)
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [blockLibraryOpen, pendingDeleteNodeId, selectedNode])
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent
-        className="border-line bg-shell text-ink flex h-screen w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 font-sans text-xs"
-        hideClose
-      >
-        <DialogHeader className="border-line bg-panel flex-none border-b p-0 shadow-xs">
-          <div className="border-line-soft flex flex-col gap-3 border-b px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-4">
-            <div className="flex min-w-0 items-center gap-2">
-              <DialogTitle className="text-ink shrink-0 text-sm font-bold tracking-wider uppercase">
-                Workflow Editor
-              </DialogTitle>
-              <span className="text-subtle-copy min-w-0 truncate font-mono text-xs">
-                {workflow?.name || 'Workflow'}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleOpenDisconnectedLibrary}
-                disabled={saving}
-                className="border-line bg-field hover:bg-panel-hover h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] text-copy shadow-none transition-none"
-              >
-                <Plus className="mr-1.5 h-3 w-3" />
-                Add Block
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleClear}
-                className="border-line bg-field hover:bg-panel-hover h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] text-copy shadow-none transition-none"
-              >
-                Clear
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onClose}
-                disabled={saving}
-                className="border-line bg-field hover:bg-panel-hover h-6 rounded-[3px] px-2 py-0 font-sans text-[11px] text-copy shadow-none transition-none"
-              >
-                <X className="mr-1.5 h-3 w-3" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={saving}
-                className="brand-button h-6 rounded-[3px] px-2.5 text-[11px]"
-              >
-                <Save className="mr-1.5 h-3 w-3" />
-                {saving ? 'Saving...' : 'Save Flow'}
-              </Button>
-            </div>
+    <div className="bg-shell text-ink flex h-full w-full flex-col overflow-hidden p-2 font-sans text-xs md:p-3">
+      <div className="border-line-soft bg-panel/95 flex-none rounded-2xl border shadow-xs backdrop-blur-xs">
+        <div className="flex flex-col gap-2 px-3 py-2.5 md:flex-row md:items-center md:justify-between md:gap-3 md:px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              disabled={saving}
+              className="border-line-soft bg-field-alt hover:bg-panel-hover h-8 rounded-lg px-3 text-xs text-copy shadow-none"
+            >
+              <ArrowLeft className="mr-2 h-3.5 w-3.5" />
+              Back to Workflows
+            </Button>
+            <h1 className="page-title-gradient min-w-0 truncate text-lg font-semibold md:text-xl">
+              {workflow?.name || 'Workflow'}
+            </h1>
           </div>
-          <div className="text-subtle-copy bg-field flex flex-wrap items-center justify-between gap-2 px-4 py-1.5 text-[10px]">
-            <div className="flex items-center gap-3">
-              <span>{nodes.length} Nodes</span>
-              <span>{edges.length} Edges</span>
-            </div>
-            <div className="flex items-center gap-3 font-mono">
-              <span>Click +: Insert next block</span>
-              <span>Drag handles: Reconnect paths</span>
-              <span>Del: Remove selection</span>
-            </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenDisconnectedLibrary}
+              disabled={saving}
+              className="border-line-soft bg-field-alt hover:bg-panel-hover h-8 rounded-lg px-3 text-xs text-copy shadow-none"
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add Block
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleClear}
+              className="border-line-soft bg-field-alt hover:bg-panel-hover h-8 rounded-lg px-3 text-xs text-copy shadow-none"
+            >
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={saving}
+              className="brand-button h-8 rounded-lg px-3 text-xs"
+            >
+              <Save className="mr-1.5 h-3.5 w-3.5" />
+              {saving ? 'Saving...' : 'Save Flow'}
+            </Button>
           </div>
-        </DialogHeader>
+        </div>
+      </div>
 
-        <WorkflowEditorProvider value={editorContextValue}>
-          <div className="bg-shell flex min-h-0 flex-1">
-            <div className="relative min-h-0 flex-1">
-              <div
-                ref={canvasRef}
-                className="bg-shell absolute inset-0 overflow-hidden"
-              >
-                <div className="border-line-soft bg-panel-subtle text-subtle-copy pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[10px] font-semibold tracking-wider uppercase shadow-md backdrop-blur-xs">
-                  <Grid3X3 className="h-3.5 w-3.5" />
-                  Flow Canvas
-                </div>
-
-                {isEmptyCanvas ? (
-                  <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-                    <div className="bg-panel/92 border-line max-w-sm rounded-2xl border p-5 text-center shadow-xl backdrop-blur-sm">
-                      <div className="bg-panel-subtle mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl">
-                        <Sparkles className="text-ink h-5 w-5" />
-                      </div>
-                      <h3 className="text-ink text-sm font-semibold">
-                        Start building from the entry node
-                      </h3>
-                      <p className="text-subtle-copy mt-2 text-xs leading-relaxed">
-                        Click the <strong>+</strong> button on the start node to
-                        add the first block, or use the header action to place a
-                        disconnected block.
-                      </p>
+      <WorkflowEditorProvider value={editorContextValue}>
+        <div className="flex min-h-0 flex-1 gap-2 pt-2 md:gap-3 md:pt-3">
+          <div className="border-line-soft bg-panel/40 relative min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-xs">
+            <div
+              ref={canvasRef}
+              className="bg-shell absolute inset-0 overflow-hidden"
+            >
+              {isEmptyCanvas ? (
+                <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+                  <div className="bg-panel/92 border-line-soft max-w-sm rounded-2xl border p-5 text-center shadow-xl backdrop-blur-sm">
+                    <div className="bg-panel-subtle mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl">
+                      <Sparkles className="text-ink h-5 w-5" />
                     </div>
+                    <h3 className="text-ink text-sm font-semibold">
+                      Start building from the entry node
+                    </h3>
+                    <p className="text-subtle-copy mt-2 text-xs leading-relaxed">
+                      Click the <strong>+</strong> button on the start node to
+                      add the first block, or use the header action to place a
+                      disconnected block.
+                    </p>
                   </div>
-                ) : null}
+                </div>
+              ) : null}
 
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
-                  onConnect={onConnect}
-                  onSelectionChange={onSelectionChange}
-                  onMoveEnd={onMoveEnd}
-                  nodeTypes={nodeTypes}
-                  fitView={!hasStoredViewport}
-                  deleteKeyCode={['Backspace', 'Delete']}
-                  className="bg-transparent"
-                  selectNodesOnDrag={false}
-                  defaultEdgeOptions={{
-                    type: 'bezier',
-                    style: { strokeWidth: 1.5, stroke: 'var(--workflow-edge)' },
-                    markerEnd: {
-                      type: MarkerType.ArrowClosed,
-                      color: 'var(--workflow-edge)',
-                    },
-                  }}
-                >
-                  <Controls className="bg-panel-muted border-line" />
-                  <Background gap={16} size={1} color="var(--workflow-grid)" />
-                </ReactFlow>
-              </div>
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onSelectionChange={onSelectionChange}
+                onMoveEnd={onMoveEnd}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                fitView={!hasStoredViewport}
+                deleteKeyCode={null}
+                className="bg-transparent"
+                selectNodesOnDrag={false}
+                defaultEdgeOptions={WORKFLOW_EDGE_DEFAULTS}
+              >
+                <Controls className="bg-panel-muted border-line" />
+                <Background gap={16} size={1} color="var(--workflow-grid)" />
+              </ReactFlow>
             </div>
-
-            <NodeSettingsPanel
-              selectedNode={selectedNode}
-              onUpdateNode={handleUpdateNode}
-              onClose={handleCloseSettings}
-            />
           </div>
 
-          <BlockLibraryDialog
-            open={blockLibraryOpen}
-            insertionContext={blockLibraryContext}
-            onOpenChange={handleBlockLibraryOpenChange}
+          <NodeSettingsPanel
+            selectedNode={selectedNode}
+            onUpdateNode={handleUpdateNode}
+            onClose={handleCloseSettings}
+            suppressed={quickAddMenuOpen}
           />
-        </WorkflowEditorProvider>
-      </DialogContent>
-    </Dialog>
+        </div>
+
+        <BlockLibraryDialog
+          open={blockLibraryOpen}
+          insertionContext={blockLibraryContext}
+          onOpenChange={handleBlockLibraryOpenChange}
+        />
+
+        <AlertDialog
+          open={pendingDeleteNode != null}
+          onOpenChange={handleDeleteDialogOpenChange}
+        >
+          <AlertDialogContent className="bg-panel border-line border shadow-xl">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-ink">
+                Delete node?
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-muted-copy">
+                {pendingDeleteNode
+                  ? `Remove "${String(pendingDeleteNode.data?.label ?? pendingDeleteNode.id)}" from this workflow?`
+                  : 'Remove this node from the workflow?'}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-line hover:bg-panel-hover text-copy bg-transparent">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmDeleteNode}
+                className="border-status-danger-border bg-status-danger hover:bg-status-danger-strong text-white border"
+              >
+                Delete node
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </WorkflowEditorProvider>
+    </div>
   )
 }

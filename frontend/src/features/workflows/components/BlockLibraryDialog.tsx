@@ -9,6 +9,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  getActivityById,
   getAllCategories,
   getCategoryLabel,
   searchActivities,
@@ -18,6 +19,7 @@ import { ActivityIcon } from './activityIcons'
 import { useWorkflowEditor } from './WorkflowEditorContext'
 import type { BlockInsertionContext } from './workflowEditorUtils'
 import { cn } from '@/lib/utils'
+import { getRecentActivityIds } from '../utils/recentActivities'
 
 interface BlockLibraryDialogProps {
   open: boolean
@@ -36,10 +38,35 @@ export function BlockLibraryDialog({
     useState<ActivityCategoryFilter>('all')
 
   const categories = useMemo(() => ['all', ...getAllCategories()] as const, [])
+  const recentActivities = useMemo(
+    () => {
+      if (!open) {
+        return []
+      }
+
+      return getRecentActivityIds()
+        .map((activityId) => getActivityById(activityId))
+        .filter((activity) => activity !== undefined)
+    },
+    [open],
+  )
   const results = useMemo(
     () => searchActivities(query, selectedCategory),
     [query, selectedCategory],
   )
+  const showRecentActivities =
+    selectedCategory === 'all' && query.trim().length === 0 && recentActivities.length > 0
+  const recentActivityIds = useMemo(
+    () => new Set(recentActivities.map((activity) => activity.id)),
+    [recentActivities],
+  )
+  const displayResults = useMemo(() => {
+    if (!showRecentActivities) {
+      return results
+    }
+
+    return results.filter((activity) => !recentActivityIds.has(activity.id))
+  }, [recentActivityIds, results, showRecentActivities])
 
   const isDisconnected = insertionContext?.disconnected ?? false
   const handleOpenChange = useCallback(
@@ -105,12 +132,56 @@ export function BlockLibraryDialog({
 
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-2 p-3">
-              {results.length === 0 ? (
+              {showRecentActivities ? (
+                <div className="space-y-2 pb-2">
+                  <div className="text-muted-copy px-1 text-[11px] font-semibold tracking-[0.18em] uppercase">
+                    Recent Blocks
+                  </div>
+                  {recentActivities.map((activity) => (
+                    <button
+                      key={`recent-${activity.id}`}
+                      type="button"
+                      className="border-line hover:border-line-strong hover:bg-panel-subtle flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors"
+                      onClick={() => {
+                        if (!insertionContext) return
+                        insertActivity(activity.id, insertionContext)
+                        onOpenChange(false)
+                      }}
+                    >
+                      <div
+                        className="rounded-lg p-2"
+                        style={{ backgroundColor: `${activity.color}18` }}
+                      >
+                        <ActivityIcon
+                          iconName={activity.icon}
+                          className="h-4 w-4"
+                          style={{ color: activity.color }}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-ink text-[15px] font-semibold">
+                            {activity.name}
+                          </span>
+                          <span className="text-subtle-copy text-[10px] font-semibold tracking-[0.18em] uppercase">
+                            Recent
+                          </span>
+                        </div>
+                        <p className="text-muted-copy mt-1 text-[13px] leading-relaxed">
+                          {activity.description}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                  <div className="border-line-soft mx-1 border-t" />
+                </div>
+              ) : null}
+              {displayResults.length === 0 ? (
                 <div className="text-subtle-copy rounded-xl border border-dashed p-8 text-center text-sm">
                   No blocks match this search.
                 </div>
               ) : (
-                results.map((activity) => {
+                displayResults.map((activity) => {
                   return (
                     <button
                       key={activity.id}

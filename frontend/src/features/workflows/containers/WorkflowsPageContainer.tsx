@@ -1,6 +1,4 @@
 import {
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -9,6 +7,7 @@ import {
   type ChangeEvent,
 } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
+import { useNavigate } from 'react-router'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
@@ -38,21 +37,15 @@ import { WorkflowDialog } from '../components/WorkflowDialog'
 import { WorkflowDetails } from '../components/WorkflowDetails'
 import { ScheduleDialog } from '../components/ScheduleDialog'
 import type { Workflow } from '../types'
-import type { Edge, Node } from 'reactflow'
 import {
   buildWorkflowExportEnvelope,
   validateWorkflowImport,
 } from '../utils/workflowImportExport'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 
-const WorkflowFlowEditor = lazy(() =>
-  import('../components/WorkflowFlowEditor').then((module) => ({
-    default: module.WorkflowFlowEditor,
-  })),
-)
-
 export function WorkflowsPageContainer() {
   const convex = useConvex()
+  const navigate = useNavigate()
   const isMobile = useIsMobile()
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -62,9 +55,6 @@ export function WorkflowsPageContainer() {
   const [detailsWorkflowId, setDetailsWorkflowId] = useState<
     Id<'workflows'> | null
   >(null)
-  const [flowWorkflowId, setFlowWorkflowId] = useState<Id<'workflows'> | null>(
-    null,
-  )
   const [scheduleWorkflowId, setScheduleWorkflowId] = useState<
     Id<'workflows'> | null
   >(null)
@@ -99,8 +89,6 @@ export function WorkflowsPageContainer() {
     workflowsList.find((workflow) => workflow._id === editWorkflowId) ?? null
   const detailsWorkflow =
     workflowsList.find((workflow) => workflow._id === detailsWorkflowId) ?? null
-  const flowWorkflow =
-    workflowsList.find((workflow) => workflow._id === flowWorkflowId) ?? null
   const scheduleWorkflow =
     workflowsList.find((workflow) => workflow._id === scheduleWorkflowId) ??
     null
@@ -113,9 +101,6 @@ export function WorkflowsPageContainer() {
     }
     if (detailsWorkflowId && !detailsWorkflow) {
       setDetailsWorkflowId(null)
-    }
-    if (flowWorkflowId && !flowWorkflow) {
-      setFlowWorkflowId(null)
     }
     if (scheduleWorkflowId && !scheduleWorkflow) {
       setScheduleWorkflowId(null)
@@ -130,8 +115,6 @@ export function WorkflowsPageContainer() {
     detailsWorkflowId,
     editWorkflow,
     editWorkflowId,
-    flowWorkflow,
-    flowWorkflowId,
     scheduleWorkflow,
     scheduleWorkflowId,
   ])
@@ -168,9 +151,9 @@ export function WorkflowsPageContainer() {
   }, [])
 
   const handleEditFlow = useCallback((workflow: Workflow) => {
-    setFlowWorkflowId(workflow._id)
+    navigate(`/workflows/${workflow._id}/editor`)
     setError(null)
-  }, [])
+  }, [navigate])
 
   const handleSaveCreate = useCallback(
     async (data: { name: string }) => {
@@ -228,9 +211,6 @@ export function WorkflowsPageContainer() {
       if (detailsWorkflowId === deleteWorkflowId) {
         setDetailsWorkflowId(null)
       }
-      if (flowWorkflowId === deleteWorkflowId) {
-        setFlowWorkflowId(null)
-      }
       if (scheduleWorkflowId === deleteWorkflowId) {
         setScheduleWorkflowId(null)
       }
@@ -244,7 +224,6 @@ export function WorkflowsPageContainer() {
     deleteWorkflowId,
     detailsWorkflowId,
     editWorkflowId,
-    flowWorkflowId,
     removeWorkflow,
     scheduleWorkflowId,
   ])
@@ -423,33 +402,6 @@ export function WorkflowsPageContainer() {
     [resetWorkflow],
   )
 
-  const handleSaveFlow = useCallback(
-    async (nodes: Node[], edges: Edge[]) => {
-      if (!flowWorkflowId) return
-      setSaving(true)
-      setError(null)
-      try {
-        const serializableNodes = nodes as unknown as Array<
-          Record<string, unknown>
-        >
-        const serializableEdges = edges as unknown as Array<
-          Record<string, unknown>
-        >
-        await updateWorkflow({
-          id: flowWorkflowId,
-          nodes: serializableNodes,
-          edges: serializableEdges,
-        })
-        setFlowWorkflowId(null)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      } finally {
-        setSaving(false)
-      }
-    },
-    [flowWorkflowId, updateWorkflow],
-  )
-
   return (
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
@@ -609,24 +561,6 @@ export function WorkflowsPageContainer() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {flowWorkflow ? (
-        <Suspense
-          fallback={
-            <div className="bg-overlay text-muted-copy fixed inset-0 z-50 flex items-center justify-center text-sm">
-              Loading workflow editor...
-            </div>
-          }
-        >
-          <WorkflowFlowEditor
-            open={Boolean(flowWorkflow)}
-            workflow={flowWorkflow}
-            saving={saving}
-            onSave={handleSaveFlow}
-            onClose={() => setFlowWorkflowId(null)}
-          />
-        </Suspense>
-      ) : null}
 
       <ScheduleDialog
         open={Boolean(scheduleWorkflow)}

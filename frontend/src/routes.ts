@@ -9,11 +9,13 @@ export default [
   layout('./routes/protected-layout.tsx', [
     route('profiles', './routes/profiles.tsx'),
     route('workflows', './routes/workflows.tsx'),
+    route('workflows/:workflowId/editor', './routes/workflow-editor.tsx'),
     route('scraping', './routes/scraping.tsx'),
     route('lists', './routes/lists.tsx'),
     route('accounts', './routes/accounts.tsx'),
     route('logs', './routes/logs.tsx'),
     route('vnc', './routes/vnc.tsx'),
+    route('vnc/session/:workflowId/:profileName', './routes/vnc-session.tsx'),
     route('monitoring', './routes/monitoring.tsx'),
   ]),
 ] satisfies RouteConfig

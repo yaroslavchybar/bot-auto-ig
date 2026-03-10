@@ -43,9 +43,9 @@ export function GroupedInputs({
       {Object.entries(groups).map(([groupName, groupInputs]) => (
         <div
           key={groupName}
-          className="mt-2 rounded-[3px] border border-neutral-300 bg-neutral-50/70 p-2 dark:border-neutral-700 dark:bg-neutral-900/40"
+          className="border-line-soft bg-panel-subtle/80 mt-3 rounded-xl border p-3"
         >
-          <Label className="mb-2 block font-mono text-[9px] font-bold tracking-widest text-neutral-500 uppercase dark:text-neutral-400">
+          <Label className="text-muted-copy mb-3 block font-mono text-[10px] font-semibold tracking-[0.18em] uppercase">
             {groupName}
           </Label>
           <div className="grid grid-cols-2 gap-2">

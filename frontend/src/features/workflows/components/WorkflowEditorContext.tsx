@@ -6,6 +6,7 @@ export interface WorkflowEditorContextValue {
     activityId: string,
     insertionContext: BlockInsertionContext,
   ) => void
+  setQuickAddMenuOpen: (open: boolean) => void
   openBlockLibrary: (insertionContext: BlockInsertionContext) => void
   duplicateNode: (nodeId: string) => void
   deleteNode: (nodeId: string) => void

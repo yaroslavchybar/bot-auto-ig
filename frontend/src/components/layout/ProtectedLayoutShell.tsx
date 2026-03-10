@@ -38,6 +38,7 @@ const keepAliveCache = new Map<string, ReactNode>()
 type RouteHandle = {
   breadcrumb?: string
   navId?: NavId
+  appChrome?: 'default' | 'immersive'
 }
 
 function isActivePath(pathname: string, href: string) {
@@ -91,8 +92,24 @@ export function ProtectedLayoutShell() {
   const activeHandle = activeMatch?.handle as RouteHandle | undefined
   const breadcrumb = activeHandle?.breadcrumb ?? 'Profiles Manager'
   const currentPath = location.pathname
+  const appChrome = activeHandle?.appChrome ?? 'default'
   const currentNav =
     NAV_ITEMS.find((item) => isActivePath(currentPath, item.to)) ?? NAV_ITEMS[0]
+
+  if (appChrome === 'immersive') {
+    return (
+      <AuthGuard>
+        <ConvexClientProvider>
+          <div className="bg-shell flex h-svh min-w-0 flex-col overflow-hidden">
+            <div className="min-h-0 min-w-0 flex-1">
+              <KeepAliveViewport pathname={currentPath} outlet={outlet} />
+            </div>
+          </div>
+          <Toaster />
+        </ConvexClientProvider>
+      </AuthGuard>
+    )
+  }
 
   return (
     <AuthGuard>
