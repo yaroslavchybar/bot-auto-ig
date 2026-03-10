@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/sheet'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
-import { mapProfileRecord } from '../lib/mapProfile'
+import { mapProfileRecord } from '../utils/mapProfile'
 
 export function ProfilesPageContainer() {
   const convex = useConvex()

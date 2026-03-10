@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useConvex, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Profile } from '../types'
-import { mapProfileRecord } from '../lib/mapProfile'
+import { mapProfileRecord } from '../utils/mapProfile'
 
 const STORAGE_KEY = 'cached_profiles'
 const CACHE_VERSION = 1
