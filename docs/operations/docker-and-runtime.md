@@ -14,7 +14,7 @@ docker compose up --build
 - `frontend`: `http://localhost:5173`
 - `datauploader`: `http://localhost:3002`
 - `scraper`: `http://localhost:3003`
-- VNC stack exposed by server container: `6080` and `6081-6130`
+- VNC stack exposed by server container for local/direct access: `6080` and `6081-6130`
 
 ## Volumes
 
@@ -35,6 +35,8 @@ docker compose up --build
 - Backend routes and WebSocket remain on server service.
 - Datauploader and scraper run as separate FastAPI services.
 - Non-local deployments must provide `VITE_API_URL` and `VITE_DATAUPLOADER_URL` at image build time so browser requests do not fall back to localhost.
+- Non-local deployments should terminate TLS at the reverse proxy and route `/ws` to `server:3001` before the frontend catch-all.
+- Non-local deployments should proxy `/vnc/<port>/websockify` to `server:<port>/websockify` so browser VNC traffic stays on the main HTTPS origin instead of connecting directly to plain `websockify` ports.
 
 ## Frontend Runtime Requirements
 

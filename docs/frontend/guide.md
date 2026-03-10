@@ -71,6 +71,11 @@ Other route behavior:
 - Clerk token is appended as a query parameter when available.
 - The client reconnects with exponential backoff and handles logs, status, workflow progression, and display-allocation events.
 
+### VNC Transport
+- Browser VNC sessions resolve to the same-origin path `/vnc/<port>/websockify` in non-local deployments so TLS terminates at the reverse proxy instead of at `websockify`.
+- Local browser sessions on `localhost` / `127.0.0.1` keep using direct `ws://localhost:<port>/websockify` because the frontend dev server does not proxy dynamic VNC websocket ports.
+- Production reverse proxies must forward `/vnc/<port>/websockify` to `server:<port>/websockify`.
+
 ### Data Uploader Integration
 - Data uploader base:
   - dev fallback: `http://localhost:3002`

@@ -4,7 +4,15 @@ export function buildVncWebSocketUrl(vncPort: number) {
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${window.location.hostname}:${vncPort}/websockify`
+  const isLocalDevHost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+
+  if (isLocalDevHost) {
+    return `${protocol}://localhost:${vncPort}/websockify`
+  }
+
+  return `${protocol}://${window.location.host}/vnc/${vncPort}/websockify`
 }
 
 
