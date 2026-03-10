@@ -60,7 +60,7 @@ export function WorkflowEdge({
         <EdgeLabelRenderer>
           <button
             type="button"
-            className="border-status-danger-border bg-status-danger hover:bg-status-danger-strong absolute flex h-8 w-8 items-center justify-center rounded-full border text-white shadow-lg transition-colors"
+            className="button-danger absolute flex h-8 w-8 items-center justify-center rounded-full shadow-lg"
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               pointerEvents: 'all',

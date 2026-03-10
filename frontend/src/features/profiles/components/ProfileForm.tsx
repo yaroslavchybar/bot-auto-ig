@@ -333,7 +333,7 @@ export function ProfileForm({
                   type="button"
                   onClick={handleRegenerateSeed}
                   disabled={saving}
-                  className="border-line text-copy hover:bg-panel-hover h-9 border bg-transparent shadow-none transition-all hover:text-ink"
+                  className="h-9"
                 >
                   <RefreshCw className="mr-2 h-3.5 w-3.5" />
                   New Seed
@@ -425,7 +425,6 @@ export function ProfileForm({
             variant="ghost"
             onClick={onCancel}
             disabled={saving}
-            className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
           >
             Cancel
           </Button>

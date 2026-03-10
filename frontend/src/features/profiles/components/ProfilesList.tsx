@@ -222,7 +222,7 @@ export function ProfilesList({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-inverse truncate text-base font-semibold">
+                  <h3 className="text-ink truncate text-base font-semibold">
                     {profile.name}
                   </h3>
                   <p className="text-subtle-copy mt-1 truncate font-mono text-[11px]">
@@ -456,6 +456,5 @@ export function ProfilesList({
     </div>
   )
 }
-
 
 

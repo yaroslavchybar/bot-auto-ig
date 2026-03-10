@@ -389,7 +389,6 @@ function ScheduleDialogInner({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="border-line hover:bg-panel-hover text-copy bg-transparent"
             >
               Cancel
             </Button>

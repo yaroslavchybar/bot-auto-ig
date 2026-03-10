@@ -345,12 +345,12 @@ export function ProfilesPageContainer() {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-grow items-center gap-2">
             <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
-              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[rgb(163,163,177)]" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search..."
-                className="border-transparent bg-[rgb(51,51,62)] text-[rgb(246,246,247)] placeholder:text-[rgb(147,148,161)] brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-[inset_0_0_0_1px_rgba(61,61,74,0.88),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)] focus-visible:border-transparent focus-visible:ring-0 focus-visible:shadow-[inset_0_0_0_1px_rgba(130,130,148,0.92),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)]"
+                className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
               />
             </div>
             <Button
@@ -360,7 +360,7 @@ export function ProfilesPageContainer() {
               disabled={loading || saving}
               aria-label="Refresh profiles"
               title="Refresh profiles"
-              className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
+              className="h-8 w-8 shrink-0 p-0"
             >
               <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
               <span className="sr-only">Refresh</span>
@@ -368,12 +368,12 @@ export function ProfilesPageContainer() {
           </div>
           <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
             <Button
-              size={isMobile ? 'default' : 'sm'}
+              size="icon"
               onClick={handleCreate}
               disabled={loading || saving}
-              className="h-8 w-auto shrink-0 rounded-md border-transparent bg-[#6c47ff] px-3.5 text-sm font-normal text-white shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.16),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.12)] transition-[background-color,box-shadow] hover:bg-[#7a59ff] hover:shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.2),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.12)] focus-visible:ring-0"
+              className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4" />
               New Profile
             </Button>
           </div>
@@ -517,19 +517,21 @@ export function ProfilesPageContainer() {
         </SheetContent>
       </Sheet>
 
-      {deleteProfile ? (
-        <ConfirmDeleteDialog
-          open={Boolean(deleteProfile)}
-          title="Delete Profile?"
-          entityLabel="and its data"
-          itemName={deleteProfile.name}
-          confirmLabel="Delete Profile"
-          saving={saving}
-          error={error}
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setDeleteProfileId(null)}
-        />
-      ) : null}
+      {
+        deleteProfile ? (
+          <ConfirmDeleteDialog
+            open={Boolean(deleteProfile)}
+            title="Delete Profile?"
+            entityLabel="and its data"
+            itemName={deleteProfile.name}
+            confirmLabel="Delete Profile"
+            saving={saving}
+            error={error}
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => setDeleteProfileId(null)}
+          />
+        ) : null
+      }
 
       <LoginDialog
         open={Boolean(loginProfile)}
@@ -538,7 +540,7 @@ export function ProfilesPageContainer() {
         onClose={() => setLoginProfileId(null)}
         onSuccess={refreshProfiles}
       />
-    </div>
+    </div >
   )
 }
 

@@ -94,7 +94,6 @@ function WorkflowDialogInner({
               variant="outline"
               onClick={onCancel}
               disabled={saving}
-              className="border-line hover:bg-panel-hover text-copy bg-transparent"
             >
               Cancel
             </Button>

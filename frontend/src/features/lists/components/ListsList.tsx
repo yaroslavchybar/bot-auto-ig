@@ -76,7 +76,7 @@ export function ListsList({
                 <div className="text-subtle-copy text-[11px] tracking-[0.18em] uppercase">
                   List #{idx + 1}
                 </div>
-                <h3 className="text-inverse mt-1 truncate text-base font-semibold">
+                <h3 className="text-ink mt-1 truncate text-base font-semibold">
                   {list.name}
                 </h3>
                 <p className="text-subtle-copy mt-2 truncate font-mono text-[11px]">

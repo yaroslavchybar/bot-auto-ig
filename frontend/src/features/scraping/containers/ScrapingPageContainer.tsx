@@ -440,32 +440,32 @@ export function ScrapingPageContainer() {
       <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
           <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => void refreshAll()}
-            disabled={eligibleLoading || Boolean(runningId)}
-            aria-label="Refresh profiles"
-            title="Refresh profiles"
-            className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
-          >
-            <RefreshCw
-              className={eligibleLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
-            />
-            <span className="sr-only">Refresh</span>
-          </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => void refreshAll()}
+              disabled={eligibleLoading || Boolean(runningId)}
+              aria-label="Refresh profiles"
+              title="Refresh profiles"
+              className="h-8 w-8 shrink-0 p-0"
+            >
+              <RefreshCw
+                className={eligibleLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+              />
+              <span className="sr-only">Refresh</span>
+            </Button>
 
-          <Button
-            size="sm"
-            onClick={handleOpenCreate}
-            disabled={eligibleLoading || Boolean(runningId)}
-            className="mobile-effect-shadow brand-button"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Create task
-          </Button>
+            <Button
+              size="icon"
+              onClick={handleOpenCreate}
+              disabled={eligibleLoading || Boolean(runningId)}
+              className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Create task
+            </Button>
+          </div>
         </div>
-      </div>
       </div>
 
       {error && (

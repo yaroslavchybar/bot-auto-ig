@@ -117,8 +117,8 @@ export function BlockLibraryDialog({
                   type="button"
                   onClick={() => setSelectedCategory(category)}
                   className={cn(
-                    'text-copy hover:bg-panel-hover flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors',
-                    active && 'bg-panel text-ink border-line border shadow-xs',
+                    'button-ghost flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-[13px]',
+                    active && 'button-neutral shadow-none',
                   )}
                 >
                   <span>{label}</span>
@@ -141,7 +141,7 @@ export function BlockLibraryDialog({
                     <button
                       key={`recent-${activity.id}`}
                       type="button"
-                      className="border-line hover:border-line-strong hover:bg-panel-subtle flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors"
+                      className="button-panel flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left"
                       onClick={() => {
                         if (!insertionContext) return
                         insertActivity(activity.id, insertionContext)
@@ -186,7 +186,7 @@ export function BlockLibraryDialog({
                     <button
                       key={activity.id}
                       type="button"
-                      className="border-line hover:border-line-strong hover:bg-panel-subtle flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors"
+                      className="button-panel flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left"
                       onClick={() => {
                         if (!insertionContext) return
                         insertActivity(activity.id, insertionContext)

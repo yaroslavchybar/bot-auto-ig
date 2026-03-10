@@ -83,7 +83,7 @@ export function QuickAddMenu({
         <button
           type="button"
           className={cn(
-            'border-line bg-panel/96 text-ink hover:bg-panel-hover inline-flex items-center justify-center rounded-full border shadow-md backdrop-blur-sm transition-[opacity,background-color,color,transform]',
+            'button-positive inline-flex items-center justify-center rounded-full backdrop-blur-sm transition-[opacity,background-color,color,transform]',
             compact ? 'h-6 w-6' : 'h-8 w-8',
             className,
           )}

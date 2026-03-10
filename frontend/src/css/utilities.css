@@ -1,26 +1,252 @@
 @utility brand-button {
-  border: 1px solid var(--button-brand-border);
-  color: var(--primary-foreground);
-  background-color: var(--primary);
-  background-image: var(--button-brand-surface);
-  box-shadow: var(--button-brand-shadow);
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: var(--button-positive-border);
+  color: var(--button-positive-foreground);
+  background-color: var(--button-positive-bg);
+  box-shadow: none;
   transition:
-    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    background-image 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out,
+    transform 200ms ease-out;
+
+  & svg {
+    color: var(--button-positive-icon);
+  }
 
   &:hover:not(:disabled) {
-    border-color: var(--button-brand-border-hover);
-    background-image: var(--button-brand-surface-hover);
-    box-shadow: var(--button-brand-shadow-hover);
+    border-color: var(--button-positive-border-hover);
+    background-color: var(--button-positive-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-positive-focus);
+    outline-offset: 1px;
   }
 
   &:active:not(:disabled) {
-    box-shadow: var(--button-brand-shadow-pressed);
     transform: translateY(1px);
+  }
+}
+
+@utility button-positive {
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: var(--button-positive-border);
+  color: var(--button-positive-foreground);
+  background-color: var(--button-positive-bg);
+  box-shadow: none;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out,
+    transform 200ms ease-out;
+
+  & svg {
+    color: var(--button-positive-icon);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--button-positive-border-hover);
+    background-color: var(--button-positive-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-positive-focus);
+    outline-offset: 1px;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+}
+
+@utility button-neutral {
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: var(--button-neutral-border);
+  color: var(--button-neutral-foreground);
+  background-color: var(--button-neutral-bg);
+  box-shadow: none;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out,
+    transform 200ms ease-out;
+
+  & svg {
+    color: var(--button-neutral-icon);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--button-neutral-border-hover);
+    background-color: var(--button-neutral-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-neutral-focus);
+    outline-offset: 1px;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+}
+
+@utility button-warning {
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: var(--button-warning-border);
+  color: var(--button-warning-foreground);
+  background-color: var(--button-warning-bg);
+  box-shadow: none;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out,
+    transform 200ms ease-out;
+
+  & svg {
+    color: var(--button-warning-icon);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--button-warning-border-hover);
+    background-color: var(--button-warning-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-warning-focus);
+    outline-offset: 1px;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+}
+
+@utility button-danger {
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: var(--button-danger-border);
+  color: var(--button-danger-foreground);
+  background-color: var(--button-danger-bg);
+  box-shadow: none;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out,
+    transform 200ms ease-out;
+
+  & svg {
+    color: var(--button-danger-icon);
+  }
+
+  &:hover:not(:disabled) {
+    border-color: var(--button-danger-border-hover);
+    background-color: var(--button-danger-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-danger-focus);
+    outline-offset: 1px;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+}
+
+@utility button-ghost {
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: transparent;
+  color: var(--button-ghost-foreground);
+  background-color: transparent;
+  box-shadow: none;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out,
+    transform 200ms ease-out;
+
+  & svg {
+    color: currentColor;
+  }
+
+  &:hover:not(:disabled) {
+    background-color: var(--button-ghost-bg-hover);
+    color: var(--button-ghost-foreground-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-ghost-focus);
+    outline-offset: 1px;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+}
+
+@utility button-toolbar {
+  border-width: 0.8px;
+  border-style: solid;
+  border-color: transparent;
+  color: var(--button-toolbar-foreground);
+  background-color: transparent;
+  transition:
+    background-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out;
+
+  & svg {
+    color: currentColor;
+  }
+
+  &:hover:not(:disabled) {
+    background-color: var(--button-toolbar-bg-hover);
+    color: var(--button-toolbar-foreground-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-toolbar-focus);
+    outline-offset: 1px;
+  }
+}
+
+@utility button-toolbar-group {
+  border: 1px solid var(--button-toolbar-border);
+  background-color: var(--button-toolbar-bg);
+}
+
+@utility button-panel {
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--button-panel-border);
+  color: var(--button-panel-foreground);
+  background-color: var(--button-panel-bg);
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    color 200ms ease-out,
+    outline-color 200ms ease-out;
+
+  &:hover:not(:disabled) {
+    border-color: var(--button-panel-border-hover);
+    background-color: var(--button-panel-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 4px solid var(--button-panel-focus);
+    outline-offset: 1px;
   }
 }
 

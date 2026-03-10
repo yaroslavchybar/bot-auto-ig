@@ -138,7 +138,7 @@ export function TasksTable({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-inverse truncate text-base font-semibold">
+                  <h3 className="text-ink truncate text-base font-semibold">
                     {task.name}
                   </h3>
                   <p className="text-subtle-copy mt-1 text-[11px]">

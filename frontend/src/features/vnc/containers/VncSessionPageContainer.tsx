@@ -147,7 +147,7 @@ function ResolvedVncSessionPage({
               variant="outline"
               size="sm"
               onClick={onBack}
-              className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
+              className="h-8"
             >
               <ArrowLeft className="mr-2 h-3.5 w-3.5" />
               Back
@@ -165,7 +165,7 @@ function ResolvedVncSessionPage({
             variant="outline"
             size="sm"
             onClick={() => setShowMobileLogs((current) => !current)}
-            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
+            className="h-8"
           >
             <FileText className="h-3.5 w-3.5" />
             {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
@@ -196,7 +196,7 @@ function ResolvedVncSessionPage({
                     <Button
                       variant="outline"
                       onClick={() => setControlState('locked')}
-                      className="border-line text-copy hover:bg-panel-hover flex-1 border bg-transparent shadow-none transition-all hover:text-ink"
+                      className="flex-1"
                     >
                       Cancel
                     </Button>
@@ -211,7 +211,7 @@ function ResolvedVncSessionPage({
                   <Button
                     variant="outline"
                     onClick={() => setControlState('confirm')}
-                    className="bg-field border-line text-copy hover:bg-panel-hover w-full border shadow-none transition-all hover:text-ink"
+                    className="w-full"
                   >
                     Take Control
                   </Button>
@@ -222,7 +222,6 @@ function ResolvedVncSessionPage({
             <Button
               variant="outline"
               onClick={() => setControlState('locked')}
-              className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none transition-all hover:text-ink"
             >
               Return To Agent
             </Button>
@@ -258,7 +257,7 @@ function ResolvedVncSessionPage({
             variant="outline"
             size="sm"
             onClick={onBack}
-            className="border-line text-copy hover:bg-panel-hover h-8 bg-transparent shadow-none transition-all hover:text-ink"
+            className="h-8"
           >
             <ArrowLeft className="mr-2 h-3.5 w-3.5" />
             Back to Grid
@@ -278,7 +277,7 @@ function ResolvedVncSessionPage({
           onClick={() => void onRefresh()}
           aria-label="Refresh sessions"
           title="Refresh sessions"
-          className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
+          className="h-8 w-8 shrink-0 p-0"
         >
           <RefreshCw
             className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
@@ -352,7 +351,7 @@ function ResolvedVncSessionPage({
                             <Button
                               variant="outline"
                               onClick={() => setControlState('locked')}
-                              className="border-line text-copy hover:bg-panel-hover mt-2 border bg-transparent shadow-none transition-all hover:text-ink sm:mt-0"
+                              className="mt-2 sm:mt-0"
                             >
                               Cancel
                             </Button>
@@ -367,7 +366,6 @@ function ResolvedVncSessionPage({
                           <Button
                             variant="outline"
                             onClick={() => setControlState('confirm')}
-                            className="bg-field border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-xs transition-all hover:text-ink"
                           >
                             Take Control
                           </Button>
@@ -383,7 +381,6 @@ function ResolvedVncSessionPage({
                   <Button
                     variant="outline"
                     onClick={() => setControlState('locked')}
-                    className="bg-overlay-strong border-line text-copy hover:bg-panel-hover border shadow-none backdrop-blur-md transition-all hover:text-ink"
                   >
                     Return To Agent
                   </Button>

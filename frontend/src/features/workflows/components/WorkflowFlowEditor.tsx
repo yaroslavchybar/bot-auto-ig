@@ -626,12 +626,12 @@ function WorkflowFlowEditorInner({
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel className="border-line hover:bg-panel-hover text-copy bg-transparent">
+              <AlertDialogCancel>
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
+                variant="destructive"
                 onClick={handleConfirmDeleteNode}
-                className="border-status-danger-border bg-status-danger hover:bg-status-danger-strong text-white border"
               >
                 Delete node
               </AlertDialogAction>

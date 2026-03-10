@@ -38,19 +38,16 @@ export function DeleteTaskDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter className="mt-4">
-          <AlertDialogCancel
-            disabled={disabled}
-            className="border-line text-copy hover:bg-panel-muted bg-transparent hover:text-ink"
-          >
+          <AlertDialogCancel disabled={disabled}>
             Cancel
           </AlertDialogCancel>
           <AlertDialogAction
+            variant="destructive"
             disabled={disabled}
             onClick={(e) => {
               e.preventDefault()
               onConfirm()
             }}
-            className="status-glow-danger bg-status-danger-soft text-status-danger border-status-danger-border hover:bg-status-danger-strong border font-semibold transition-all"
           >
             Delete
           </AlertDialogAction>

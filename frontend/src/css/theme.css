@@ -82,23 +82,64 @@
   --title-gradient-end: var(--muted-copy);
   --workflow-edge: rgb(94 95 110);
   --workflow-grid: rgb(217 217 222);
-  --button-brand-surface: linear-gradient(
-    180deg,
-    rgb(32 118 61) 0%,
-    rgb(22 94 47) 100%
-  );
-  --button-brand-surface-hover: linear-gradient(
-    180deg,
-    rgb(38 132 68) 0%,
-    rgb(25 106 53) 100%
-  );
-  --button-brand-border: rgb(27 108 54);
-  --button-brand-border-hover: rgb(35 126 64);
-  --button-brand-shadow: 0 1px 2px rgb(0 0 0 / 0.2),
-    inset 0 1px 0 rgb(255 255 255 / 0.06);
-  --button-brand-shadow-hover: 0 1px 2px rgb(0 0 0 / 0.12),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --button-brand-shadow-pressed: inset 0 1px 1px rgb(0 0 0 / 0.22);
+  --button-positive-bg: rgb(102 222 166 / 0.8);
+  --button-positive-bg-hover: rgb(102 222 166);
+  --button-positive-border: rgb(9 124 79);
+  --button-positive-border-hover: rgb(7 97 62);
+  --button-positive-foreground: rgb(23 23 23);
+  --button-positive-icon: rgb(9 124 79);
+  --button-positive-focus: rgb(9 124 79 / 0.24);
+
+  --button-neutral-bg: rgb(237 237 237);
+  --button-neutral-bg-hover: rgb(224 224 224);
+  --button-neutral-border: rgb(143 143 143);
+  --button-neutral-border-hover: rgb(115 115 115);
+  --button-neutral-foreground: rgb(23 23 23);
+  --button-neutral-icon: rgb(115 115 115);
+  --button-neutral-focus: rgb(143 143 143 / 0.22);
+
+  --button-warning-bg: rgb(253 216 211);
+  --button-warning-bg-hover: rgb(252 196 189);
+  --button-warning-border: rgb(229 77 46);
+  --button-warning-border-hover: rgb(202 50 20);
+  --button-warning-foreground: rgb(23 23 23);
+  --button-warning-icon: rgb(202 50 20);
+  --button-warning-focus: rgb(229 77 46 / 0.22);
+
+  --button-danger-bg: rgb(254 205 211);
+  --button-danger-bg-hover: rgb(251 182 196);
+  --button-danger-border: rgb(225 29 72);
+  --button-danger-border-hover: rgb(190 24 60);
+  --button-danger-foreground: rgb(23 23 23);
+  --button-danger-icon: rgb(190 24 60);
+  --button-danger-focus: rgb(225 29 72 / 0.22);
+
+  --button-ghost-foreground: rgb(94 95 110);
+  --button-ghost-foreground-hover: rgb(33 33 38);
+  --button-ghost-bg-hover: rgb(224 224 224 / 0.75);
+  --button-ghost-focus: rgb(143 143 143 / 0.16);
+
+  --button-toolbar-bg: rgb(237 237 237 / 0.96);
+  --button-toolbar-bg-hover: rgb(224 224 224);
+  --button-toolbar-border: rgb(143 143 143 / 0.6);
+  --button-toolbar-foreground: rgb(115 115 115);
+  --button-toolbar-foreground-hover: rgb(23 23 23);
+  --button-toolbar-focus: rgb(143 143 143 / 0.16);
+
+  --button-panel-bg: rgb(255 255 255);
+  --button-panel-bg-hover: rgb(246 246 247);
+  --button-panel-border: rgb(217 217 222);
+  --button-panel-border-hover: rgb(183 184 194);
+  --button-panel-foreground: rgb(33 33 38);
+  --button-panel-focus: rgb(143 143 143 / 0.18);
+
+  --button-brand-surface: var(--button-positive-bg);
+  --button-brand-surface-hover: var(--button-positive-bg-hover);
+  --button-brand-border: var(--button-positive-border);
+  --button-brand-border-hover: var(--button-positive-border-hover);
+  --button-brand-shadow: none;
+  --button-brand-shadow-hover: none;
+  --button-brand-shadow-pressed: inset 0 1px 0 rgb(0 0 0 / 0.08);
   --shadow-brand: 0 10px 30px rgb(17 17 19 / 0.12);
   --shadow-brand-strong: 0 14px 36px rgb(17 17 19 / 0.18);
   --shadow-node: 0 12px 30px rgb(17 17 19 / 0.1);
@@ -204,23 +245,64 @@
   --title-gradient-end: var(--muted-copy);
   --workflow-edge: rgb(147 148 161);
   --workflow-grid: rgb(51 51 56);
-  --button-brand-surface: linear-gradient(
-    180deg,
-    rgb(31 122 61) 0%,
-    rgb(22 96 48) 100%
-  );
-  --button-brand-surface-hover: linear-gradient(
-    180deg,
-    rgb(37 136 69) 0%,
-    rgb(25 108 54) 100%
-  );
-  --button-brand-border: rgb(28 112 56);
-  --button-brand-border-hover: rgb(36 130 65);
-  --button-brand-shadow: 0 1px 2px rgb(0 0 0 / 0.28),
-    inset 0 1px 0 rgb(255 255 255 / 0.06);
-  --button-brand-shadow-hover: 0 1px 2px rgb(0 0 0 / 0.14),
-    inset 0 1px 0 rgb(255 255 255 / 0.08);
-  --button-brand-shadow-pressed: inset 0 1px 1px rgb(0 0 0 / 0.28);
+  --button-positive-bg: rgb(27 108 72 / 0.733);
+  --button-positive-bg-hover: rgb(27 108 72 / 0.9);
+  --button-positive-border: rgb(62 207 142);
+  --button-positive-border-hover: rgb(133 224 183);
+  --button-positive-foreground: rgb(237 237 237);
+  --button-positive-icon: rgb(133 224 183);
+  --button-positive-focus: rgb(62 207 142 / 0.24);
+
+  --button-neutral-bg: rgb(40 40 40);
+  --button-neutral-bg-hover: rgb(50 50 50);
+  --button-neutral-border: rgb(80 80 80);
+  --button-neutral-border-hover: rgb(100 100 100);
+  --button-neutral-foreground: rgb(237 237 237);
+  --button-neutral-icon: rgb(163 163 177);
+  --button-neutral-focus: rgb(80 80 80 / 0.22);
+
+  --button-warning-bg: rgb(229 77 46 / 0.5);
+  --button-warning-bg-hover: rgb(229 77 46 / 0.7);
+  --button-warning-border: rgb(229 77 46);
+  --button-warning-border-hover: rgb(241 106 80);
+  --button-warning-foreground: rgb(237 237 237);
+  --button-warning-icon: rgb(241 106 80);
+  --button-warning-focus: rgb(229 77 46 / 0.22);
+
+  --button-danger-bg: rgb(190 24 93 / 0.4);
+  --button-danger-bg-hover: rgb(190 24 93 / 0.56);
+  --button-danger-border: rgb(251 113 133);
+  --button-danger-border-hover: rgb(253 164 175);
+  --button-danger-foreground: rgb(237 237 237);
+  --button-danger-icon: rgb(253 164 175);
+  --button-danger-focus: rgb(251 113 133 / 0.22);
+
+  --button-ghost-foreground: rgb(147 148 161);
+  --button-ghost-foreground-hover: rgb(246 246 247);
+  --button-ghost-bg-hover: rgb(118 118 134 / 0.18);
+  --button-ghost-focus: rgb(147 148 161 / 0.16);
+
+  --button-toolbar-bg: rgb(43 45 49 / 0.96);
+  --button-toolbar-bg-hover: rgb(54 56 62);
+  --button-toolbar-border: rgb(30 31 34);
+  --button-toolbar-foreground: rgb(181 186 193);
+  --button-toolbar-foreground-hover: rgb(255 255 255);
+  --button-toolbar-focus: rgb(147 148 161 / 0.16);
+
+  --button-panel-bg: rgb(27 27 31);
+  --button-panel-bg-hover: rgb(33 33 38);
+  --button-panel-border: rgb(47 48 55);
+  --button-panel-border-hover: rgb(66 67 77);
+  --button-panel-foreground: rgb(246 246 247);
+  --button-panel-focus: rgb(147 148 161 / 0.18);
+
+  --button-brand-surface: var(--button-positive-bg);
+  --button-brand-surface-hover: var(--button-positive-bg-hover);
+  --button-brand-border: var(--button-positive-border);
+  --button-brand-border-hover: var(--button-positive-border-hover);
+  --button-brand-shadow: none;
+  --button-brand-shadow-hover: none;
+  --button-brand-shadow-pressed: inset 0 1px 0 rgb(0 0 0 / 0.18);
   --shadow-brand: 0 14px 36px rgb(0 0 0 / 0.28);
   --shadow-brand-strong: 0 18px 42px rgb(0 0 0 / 0.36);
   --shadow-node: 0 16px 36px rgb(0 0 0 / 0.42);

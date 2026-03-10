@@ -207,7 +207,6 @@ export function LoginDialog({
                 onClick={onClose}
                 disabled={loading}
                 size="sm"
-                className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
               >
                 Cancel
               </Button>
@@ -271,7 +270,7 @@ export function LoginDialog({
               <Button
                 onClick={handleClose}
                 size="sm"
-                className="border-line text-copy hover:bg-panel-hover w-full border bg-transparent shadow-none transition-all hover:text-ink"
+                className="w-full"
               >
                 Close & Refresh
               </Button>

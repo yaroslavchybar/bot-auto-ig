@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   children: ReactNode
@@ -10,9 +10,6 @@ interface State {
   hasError: boolean
   error?: Error
 }
-
-const actionButtonClassName =
-  'inline-flex h-9 items-center justify-center rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50'
 
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false }
@@ -54,26 +51,12 @@ export class ErrorBoundary extends Component<Props, State> {
           )}
 
           <div className="flex gap-3">
-            <button
-              type="button"
-              className={cn(
-                actionButtonClassName,
-                'border-input bg-background hover:bg-accent hover:text-accent-foreground border shadow-xs',
-              )}
-              onClick={this.handleReset}
-            >
+            <Button type="button" variant="outline" onClick={this.handleReset}>
               Try Again
-            </button>
-            <button
-              type="button"
-              className={cn(
-                actionButtonClassName,
-                'bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs',
-              )}
-              onClick={this.handleReload}
-            >
+            </Button>
+            <Button type="button" onClick={this.handleReload}>
               Reload Page
-            </button>
+            </Button>
           </div>
         </div>
       )

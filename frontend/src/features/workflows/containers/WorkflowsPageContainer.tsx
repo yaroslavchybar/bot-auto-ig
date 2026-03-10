@@ -352,12 +352,12 @@ export function WorkflowsPageContainer() {
   const handleSaveSchedule = useCallback(
     async (data: {
       scheduleType:
-        | 'interval'
-        | 'daily'
-        | 'weekly'
-        | 'monthly'
-        | 'cron'
-        | 'instant'
+      | 'interval'
+      | 'daily'
+      | 'weekly'
+      | 'monthly'
+      | 'cron'
+      | 'instant'
       scheduleConfig: {
         intervalMs?: number
         hourUTC?: number
@@ -410,12 +410,12 @@ export function WorkflowsPageContainer() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
             <Button
-              size={isMobile ? 'default' : 'sm'}
+              size="icon"
               onClick={handleCreate}
               disabled={saving}
-              className="mobile-effect-shadow brand-button w-full font-medium md:w-auto"
+              className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm font-medium"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="mr-2 h-4 w-4" />
               New Workflow
             </Button>
             <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
@@ -426,7 +426,7 @@ export function WorkflowsPageContainer() {
                 disabled={workflowsLoading || saving || refreshing}
                 aria-label="Refresh workflows"
                 title="Refresh workflows"
-                className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
+                className="h-8 w-8 shrink-0 p-0"
               >
                 <RefreshCw
                   className={
@@ -437,12 +437,12 @@ export function WorkflowsPageContainer() {
               </Button>
               <Button
                 variant="outline"
-                size={isMobile ? 'default' : 'sm'}
+                size="icon"
                 onClick={handleImportClick}
                 disabled={saving}
-                className="border-line hover:bg-panel-hover text-copy bg-transparent font-medium transition-all"
+                className="h-8 w-auto px-3.5 text-sm font-medium"
               >
-                <Upload className={isMobile ? 'h-4 w-4' : 'mr-2 h-4 w-4'} />
+                <Upload className="mr-2 h-4 w-4" />
                 <span>Import JSON</span>
               </Button>
             </div>
@@ -545,16 +545,13 @@ export function WorkflowsPageContainer() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel
-              disabled={saving}
-              className="border-line hover:bg-panel-hover text-copy bg-transparent"
-            >
+            <AlertDialogCancel disabled={saving}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={handleConfirmDelete}
               disabled={saving}
-              className="bg-status-danger-soft text-status-danger hover:bg-status-danger-strong border-status-danger-border border"
             >
               {saving ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>

@@ -184,19 +184,10 @@ export function ListsForm({
           )}
 
           <div className="flex justify-end gap-3">
-            <Button
-              variant="ghost"
-              onClick={onCancel}
-              disabled={saving}
-              className="border-line text-copy hover:bg-panel-hover border bg-transparent shadow-none transition-all hover:text-ink"
-            >
+            <Button variant="outline" onClick={onCancel} disabled={saving}>
               Cancel
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={saveDisabled}
-              className="brand-button font-medium"
-            >
+            <Button onClick={handleSubmit} disabled={saveDisabled} className="font-medium">
               {footerButtonLabel}
             </Button>
           </div>
@@ -209,10 +200,10 @@ export function ListsForm({
     <div className={cn('flex h-[min(82vh,720px)] flex-col', className)}>
       <div className="border-line-soft flex items-center justify-between gap-4 border-b px-6 py-3">
         <div className="flex min-w-0 flex-1 items-center gap-6">
-          <DialogTitle className="text-inverse shrink-0 text-xl font-semibold tracking-tight">
+          <DialogTitle className="text-ink shrink-0 text-xl font-semibold tracking-tight">
             Edit List
           </DialogTitle>
-          
+
           <div className="flex min-w-0 flex-1 items-center gap-3 sm:max-w-md">
             <Input
               id="name"
@@ -235,7 +226,7 @@ export function ListsForm({
           <button
             type="button"
             aria-label="Close modal"
-            className="border-line bg-panel-subtle text-subtle-copy hover:border-line-strong inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors hover:text-ink"
+            className="button-neutral inline-flex h-8 w-8 items-center justify-center rounded-full"
           >
             <X className="h-4 w-4" />
           </button>
@@ -250,12 +241,12 @@ export function ListsForm({
 
               <div className="mb-3">
                 <div className="relative">
-                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[rgb(163,163,177)]" />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
                   <Input
                     placeholder="Search profiles..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="border-transparent bg-[rgb(51,51,62)] text-[rgb(246,246,247)] placeholder:text-[rgb(147,148,161)] brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-[inset_0_0_0_1px_rgba(61,61,74,0.88),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)] focus-visible:border-transparent focus-visible:ring-0 focus-visible:shadow-[inset_0_0_0_1px_rgba(130,130,148,0.92),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24)]"
+                    className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
                     disabled={loadingProfiles || saving}
                   />
                 </div>
@@ -303,9 +294,9 @@ export function ListsForm({
                           type="button"
                           onClick={() => handleToggle(profile.profile_id)}
                           className={cn(
-                            'flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left transition-colors',
+                            'button-panel flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left',
                             index < filteredProfiles.length - 1 &&
-                              'border-line border-b',
+                            'border-line border-b',
                             profile.selected
                               ? 'bg-panel-selected'
                               : 'hover:bg-panel-subtle',
@@ -360,7 +351,7 @@ export function ListsForm({
                             type="button"
                             onClick={() => handleToggle(profile.profile_id)}
                             disabled={saving}
-                            className="text-subtle-copy hover:bg-panel-hover hover:text-ink -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors"
+                            className="button-ghost -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
                             aria-label={`Remove ${profile.name}`}
                           >
                             <X className="h-3.5 w-3.5" />
@@ -387,10 +378,10 @@ export function ListsForm({
           <div className="flex items-center gap-3">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={onCancel}
               disabled={saving}
-              className="border-line bg-panel-soft text-ink hover:bg-panel-hover h-8 border px-3 text-xs hover:text-ink"
+              className="h-8 px-3 text-xs"
             >
               Cancel
             </Button>
@@ -398,7 +389,7 @@ export function ListsForm({
               type="button"
               onClick={handleSubmit}
               disabled={saveDisabled}
-              className="brand-button h-8 px-3.5 text-xs"
+              className="h-8 px-3.5 text-xs"
             >
               {footerButtonLabel}
             </Button>
@@ -408,6 +399,5 @@ export function ListsForm({
     </div>
   )
 }
-
 
 

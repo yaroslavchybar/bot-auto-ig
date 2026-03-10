@@ -32,7 +32,7 @@ function ToolbarButton({
     <button
       type="button"
       className={cn(
-        'text-subtle-copy hover:bg-white/10 hover:text-white inline-flex h-4 w-5 items-center justify-center transition-colors',
+        'button-toolbar inline-flex h-4 w-5 items-center justify-center',
         className,
       )}
       onClick={(event) => event.stopPropagation()}
@@ -62,10 +62,10 @@ export function NodeActionToolbar({
         selected && 'opacity-100',
       )}
     >
-      <div className="pointer-events-auto flex h-4 items-center overflow-hidden rounded-full bg-[#2B2D31] text-white shadow-sm border border-[#1E1F22]">
+      <div className="button-toolbar-group pointer-events-auto flex h-4 items-center overflow-hidden rounded-full shadow-sm">
         <DropdownMenu modal={false}>
           <DropdownMenuTrigger asChild>
-            <ToolbarButton className="border-r border-white/10 text-[#B5BAC1]">
+            <ToolbarButton className="border-r border-white/10">
               <MoreHorizontal className="h-2.5 w-2.5" />
             </ToolbarButton>
           </DropdownMenuTrigger>
@@ -91,19 +91,13 @@ export function NodeActionToolbar({
         </DropdownMenu>
 
         {canDuplicate ? (
-          <ToolbarButton
-            className="border-r border-white/10 text-[#B5BAC1]"
-            onClick={() => duplicateNode(nodeId)}
-          >
+          <ToolbarButton className="border-r border-white/10" onClick={() => duplicateNode(nodeId)}>
             <Copy className="h-2 w-2" />
           </ToolbarButton>
         ) : null}
 
         {canDelete ? (
-          <ToolbarButton
-            className="text-[#B5BAC1]"
-            onClick={() => deleteNode(nodeId)}
-          >
+          <ToolbarButton onClick={() => deleteNode(nodeId)}>
             <Trash2 className="h-2 w-2" />
           </ToolbarButton>
         ) : null}

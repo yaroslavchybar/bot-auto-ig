@@ -253,7 +253,6 @@ function ProcessingResultPanel({
           variant="outline"
           size="sm"
           onClick={onReset}
-          className="border-line text-copy hover:bg-panel-hover bg-transparent"
         >
           <RotateCcw className="mr-2 h-4 w-4" />
           {actionLabel}
@@ -596,7 +595,7 @@ export function AccountsPageContainer() {
                     disabled={isScrapingBusy}
                     aria-label="Refresh scraping tasks"
                     title="Refresh scraping tasks"
-                    className="h-8 w-8 shrink-0 rounded-md border-transparent bg-[rgb(51,51,62)] p-0 text-[rgb(163,163,177)] shadow-[inset_0_1px_0.5px_rgba(255,255,255,0.05),0_2px_2px_-1px_rgba(0,0,0,0.16),0_4px_4px_-2px_rgba(0,0,0,0.24),0_0_0_1px_rgba(0,0,0,0.1)] transition-[background-color,box-shadow,color] hover:bg-[rgb(58,58,70)] hover:text-[rgb(246,246,247)] focus-visible:ring-0"
+                    className="h-8 w-8 shrink-0 p-0"
                   >
                     <RefreshCw
                       className={scrapingLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
@@ -612,7 +611,6 @@ export function AccountsPageContainer() {
                     size={isMobile ? 'default' : 'sm'}
                     onClick={handleResetActiveMode}
                     disabled={activeMode === 'csv' ? isCsvBusy : isScrapingBusy}
-                    className="border-line text-copy hover:bg-panel-hover bg-transparent"
                   >
                     <RotateCcw
                       className={isMobile ? 'h-4 w-4' : 'mr-2 h-3.5 w-3.5'}
@@ -843,7 +841,7 @@ export function AccountsPageContainer() {
                         value={taskSearchQuery}
                         onChange={(event) => setTaskSearchQuery(event.target.value)}
                         placeholder="Search scraping tasks..."
-                        className="brand-focus brand-focus-strong border-line bg-panel-strong text-inverse placeholder:text-subtle-copy h-11 rounded-xl pl-10"
+                        className="brand-focus brand-focus-strong border-line bg-panel-strong text-ink placeholder:text-subtle-copy h-11 rounded-xl pl-10"
                       />
                     </div>
 
@@ -852,11 +850,6 @@ export function AccountsPageContainer() {
                         variant={tasksKind === '' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setTasksKind('')}
-                        className={cn(
-                          tasksKind === ''
-                            ? 'brand-button'
-                            : 'border-line text-copy hover:bg-panel-hover bg-transparent',
-                        )}
                       >
                         All
                       </Button>
@@ -864,11 +857,6 @@ export function AccountsPageContainer() {
                         variant={tasksKind === 'followers' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setTasksKind('followers')}
-                        className={cn(
-                          tasksKind === 'followers'
-                            ? 'brand-button'
-                            : 'border-line text-copy hover:bg-panel-hover bg-transparent',
-                        )}
                       >
                         Followers
                       </Button>
@@ -876,11 +864,6 @@ export function AccountsPageContainer() {
                         variant={tasksKind === 'following' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setTasksKind('following')}
-                        className={cn(
-                          tasksKind === 'following'
-                            ? 'brand-button'
-                            : 'border-line text-copy hover:bg-panel-hover bg-transparent',
-                        )}
                       >
                         Following
                       </Button>
@@ -920,7 +903,7 @@ export function AccountsPageContainer() {
                               type="button"
                               onClick={() => void handleSelectTask(taskId)}
                               className={cn(
-                                'bg-panel-strong border-line hover:border-line-strong w-full rounded-2xl border p-4 text-left transition-colors',
+                                'button-panel w-full rounded-2xl p-4 text-left',
                                 isSelected && 'border-brand',
                               )}
                             >

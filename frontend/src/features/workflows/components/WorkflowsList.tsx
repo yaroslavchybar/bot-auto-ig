@@ -202,7 +202,7 @@ export function WorkflowsList({
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-inverse truncate text-base font-semibold">
+                    <h3 className="text-ink truncate text-base font-semibold">
                       {workflow.name}
                     </h3>
                     {workflow.status && workflow.status !== 'idle' && (

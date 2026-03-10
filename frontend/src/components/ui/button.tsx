@@ -5,26 +5,23 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl border text-sm font-medium transition-[background-color,background-image,border-color,color,box-shadow,transform] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring/60 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border text-xs leading-4 font-normal transition-[background-color,border-color,color,transform,outline-color] duration-200 ease-out focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default:
-          'brand-button',
-        destructive:
-          'bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90',
-        outline:
-          'border-line bg-panel text-copy shadow-xs hover:bg-panel-hover hover:text-ink',
-        secondary:
-          'bg-panel-muted text-copy border-line/70 shadow-none hover:bg-panel-hover hover:text-ink',
-        ghost: 'text-muted-copy shadow-none hover:bg-panel-hover hover:text-ink',
+        default: 'button-positive',
+        warning: 'button-warning',
+        destructive: 'button-danger',
+        outline: 'button-neutral',
+        secondary: 'button-neutral',
+        ghost: 'button-ghost',
         link: 'text-copy underline-offset-4 hover:text-ink hover:underline',
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 rounded-md px-3 text-xs',
-        lg: 'h-10 rounded-md px-8',
-        icon: 'h-9 w-9',
+        default: 'h-[26px] px-2.5 py-1',
+        sm: 'h-6 px-2 text-[11px]',
+        lg: 'h-8 px-4 text-sm',
+        icon: 'h-[26px] w-[26px] p-0',
       },
     },
     defaultVariants: {

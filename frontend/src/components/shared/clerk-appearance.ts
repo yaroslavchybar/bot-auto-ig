@@ -38,7 +38,7 @@ export function getClerkAppearance(theme: ThemePreference) {
         'brand-focus bg-field border border-line text-ink rounded-lg text-[11px] h-7 px-2 transition-colors',
       footerActionLink: 'brand-link transition-colors font-medium text-[11px]',
       socialButtonsBlockButton:
-        'bg-transparent border border-line text-copy hover:bg-panel-hover hover:text-ink rounded-lg text-[11px] h-7 transition-all',
+        'button-neutral rounded-lg text-[11px] h-7 transition-all',
       socialButtonsBlockButtonText: 'font-medium',
       dividerLine: 'bg-panel-hover',
       dividerText: 'text-subtle-copy text-[10px] uppercase tracking-wider',
