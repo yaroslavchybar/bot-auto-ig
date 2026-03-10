@@ -179,3 +179,4 @@ Thumbs.db
 artifacts/
 .worktrees/
 design/
+tests/
