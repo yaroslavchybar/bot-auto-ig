@@ -14,15 +14,7 @@ function resolveApiUrl(path: string): string {
     return path
   }
 
-  if (!env.apiUrl) {
-    return path
-  }
-
-  if (/^https?:\/\//.test(env.apiUrl)) {
-    return new URL(path, `${env.apiUrl}/`).toString()
-  }
-
-  return `${env.apiUrl}${path}`
+  return new URL(path, `${env.apiUrl}/`).toString()
 }
 
 export async function apiFetch<T>(

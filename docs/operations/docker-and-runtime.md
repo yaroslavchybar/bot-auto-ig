@@ -34,10 +34,7 @@ docker compose up --build
 - Frontend still builds client and server bundles from the React Router SSR build output.
 - Backend routes and WebSocket remain on server service.
 - Datauploader and scraper run as separate FastAPI services.
-- Non-local deployments can rely on same-origin defaults when the frontend sits behind the bundled proxy:
-  - `VITE_API_URL` defaults to empty, so browser calls use `/api/*` on the current host.
-  - `VITE_DATAUPLOADER_URL` defaults to `/api/datauploader`.
-- Override `VITE_API_URL` and `VITE_DATAUPLOADER_URL` only when the browser must call a different public origin directly.
+- Non-local deployments must provide `VITE_API_URL` and `VITE_DATAUPLOADER_URL` at image build time so browser requests do not fall back to localhost.
 
 ## Frontend Runtime Requirements
 

@@ -9,10 +9,9 @@
   - verify `CLERK_SECRET_KEY` is present for authenticated routes and WebSocket verification.
 - API calls fail from frontend:
   - verify backend at `http://localhost:3001`.
-  - verify `VITE_API_URL` overrides are intentional; same-origin proxy deployments should usually leave it unset.
+  - verify `VITE_API_URL` overrides are intentional.
 - Data uploader actions fail:
   - verify `VITE_DATAUPLOADER_URL` in frontend and `CONVEX_URL_DEV/PROD` in service env.
-  - same-origin proxy deployments should usually use `/api/datauploader` or leave the compose default in place.
 
 ## Auth and Access Failures
 
