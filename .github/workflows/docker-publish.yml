@@ -40,8 +40,16 @@ jobs:
       - name: Ensure frontend build args are set
         if: matrix.service == 'frontend'
         run: |
-          if [ -z "${{ secrets.VITE_CONVEX_URL }}" ]; then
-            echo "Missing secret: VITE_CONVEX_URL"
+          if [ -z "${{ vars.VITE_API_URL }}" ]; then
+            echo "Missing repo variable: VITE_API_URL"
+            exit 1
+          fi
+          if [ -z "${{ vars.VITE_DATAUPLOADER_URL }}" ]; then
+            echo "Missing repo variable: VITE_DATAUPLOADER_URL"
+            exit 1
+          fi
+          if [ -z "${{ vars.VITE_CONVEX_URL }}" ]; then
+            echo "Missing repo variable: VITE_CONVEX_URL"
             exit 1
           fi
           if [ -z "${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}" ]; then
@@ -75,7 +83,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VITE_CONVEX_URL=${{ secrets.VITE_CONVEX_URL }}
+            VITE_API_URL=${{ vars.VITE_API_URL }}
+            VITE_DATAUPLOADER_URL=${{ vars.VITE_DATAUPLOADER_URL }}
+            VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
             VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
 
       - name: Build and push datauploader
