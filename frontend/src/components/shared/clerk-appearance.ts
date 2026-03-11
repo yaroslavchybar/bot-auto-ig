@@ -5,13 +5,17 @@ export function getClerkAppearance(theme: ThemePreference) {
   return {
     baseTheme: theme === 'dark' ? dark : shadcn,
     variables: {
-      colorPrimary: 'var(--primary)',
+      colorPrimary: 'var(--button-brand-border)',
+      colorPrimaryForeground: 'var(--button-positive-foreground)',
       colorBackground: 'var(--panel)',
-      colorInputBackground: 'var(--field)',
-      colorInputText: 'var(--ink)',
-      colorText: 'var(--copy)',
-      colorTextSecondary: 'var(--muted-copy)',
+      colorForeground: 'var(--copy)',
+      colorMutedForeground: 'var(--muted-copy)',
+      colorInput: 'var(--field)',
+      colorInputForeground: 'var(--ink)',
       colorDanger: 'var(--status-danger)',
+      colorBorder: 'var(--line)',
+      colorRing: 'var(--ring)',
+      colorModalBackdrop: 'var(--overlay-strong)',
       borderRadius: '0.75rem',
       fontFamily:
         'geistNumbers, "Suisse Intl", Suisse, Inter, "Segoe UI", system-ui, sans-serif',
