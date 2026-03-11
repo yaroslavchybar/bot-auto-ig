@@ -6,6 +6,7 @@ from typing import TypedDict
 
 from clean_data import detect_csv_separator
 from convex_client import get_convex_url, prepare_account, insert_accounts_batch
+from scraping_tasks import extract_users_from_payload
 
 BATCH_SIZE = 500
 
@@ -186,9 +187,7 @@ def upload_accounts_to_convex(
 
 
 def extract_usernames_from_scraping_task_payload(payload: dict) -> list[str]:
-    users = payload.get("users")
-    if not isinstance(users, list):
-        return []
+    users = extract_users_from_payload(payload)
     out: list[str] = []
     seen: set[str] = set()
     for u in users:

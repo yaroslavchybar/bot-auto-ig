@@ -18,11 +18,13 @@ import {
 } from '@/components/ui/table'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
+  Pause,
   Download,
   Eye,
   MoreHorizontal,
   Pencil,
   Play,
+  Square,
   Trash2,
 } from 'lucide-react'
 import { useConvex } from 'convex/react'
@@ -62,6 +64,8 @@ type Props = {
   running: boolean
   onRun: (task: Doc<'scrapingTasks'>) => void
   onResume: (task: Doc<'scrapingTasks'>) => void
+  onPause: (task: Doc<'scrapingTasks'>) => void
+  onCancel: (task: Doc<'scrapingTasks'>) => void
   onEdit: (task: Doc<'scrapingTasks'>) => void
   onViewOutput: (task: Doc<'scrapingTasks'>) => void
   onDelete: (task: Doc<'scrapingTasks'>) => void
@@ -72,6 +76,8 @@ export function TasksTable({
   running,
   onRun,
   onResume,
+  onPause,
+  onCancel,
   onEdit,
   onViewOutput,
   onDelete,
@@ -111,25 +117,34 @@ export function TasksTable({
     return (
       <div className="space-y-3 p-3">
         {tasks.map((task) => {
-          const taskStatus =
-            task.status === 'running' ||
-            task.status === 'paused' ||
-            task.status === 'completed' ||
-            task.status === 'failed'
-              ? task.status
-              : 'idle'
+          const rawStatus = String(task.status || 'idle').toLowerCase()
+          const taskStatus = [
+            'idle',
+            'queued',
+            'leasing',
+            'running',
+            'paused',
+            'retry_wait',
+            'completed',
+            'failed',
+            'cancelled',
+          ].includes(rawStatus)
+            ? rawStatus
+            : 'idle'
           const canViewOutput =
-            task.lastOutput !== undefined ||
+            task.manifestStorageId ||
+            task.storageId ||
+            task.stats !== undefined ||
             (typeof task.lastError === 'string' && task.lastError.trim())
-          const canResume = (() => {
-            if (taskStatus === 'paused') return true
-            if (!task.lastOutput || typeof task.lastOutput !== 'object')
-              return false
-            const r = task.lastOutput as Record<string, unknown>
-            const state = r.resumeState
-            if (!state || typeof state !== 'object') return false
-            return (state as Record<string, unknown>).done === false
-          })()
+          const canResume = taskStatus === 'paused' || taskStatus === 'retry_wait'
+          const canPause = taskStatus === 'queued' || taskStatus === 'leasing' || taskStatus === 'running'
+          const canCancel =
+            taskStatus === 'queued' ||
+            taskStatus === 'leasing' ||
+            taskStatus === 'running' ||
+            taskStatus === 'paused' ||
+            taskStatus === 'retry_wait'
+          const isActive = taskStatus === 'queued' || taskStatus === 'leasing' || taskStatus === 'running'
 
           return (
             <div
@@ -178,6 +193,14 @@ export function TasksTable({
                     >
                       <Play className="mr-2 h-4 w-4" /> Run
                     </DropdownMenuItem>
+                    {canPause ? (
+                      <DropdownMenuItem
+                        onClick={() => onPause(task)}
+                        disabled={running}
+                      >
+                        <Pause className="mr-2 h-4 w-4" /> Pause
+                      </DropdownMenuItem>
+                    ) : null}
                     {canResume ? (
                       <DropdownMenuItem
                         onClick={() => onResume(task)}
@@ -186,9 +209,17 @@ export function TasksTable({
                         <Play className="mr-2 h-4 w-4" /> Resume
                       </DropdownMenuItem>
                     ) : null}
+                    {canCancel ? (
+                      <DropdownMenuItem
+                        onClick={() => onCancel(task)}
+                        disabled={running}
+                      >
+                        <Square className="mr-2 h-4 w-4" /> Cancel
+                      </DropdownMenuItem>
+                    ) : null}
                     <DropdownMenuItem
                       onClick={() => onEdit(task)}
-                      disabled={running || task.status === 'running'}
+                      disabled={running || isActive}
                     >
                       <Pencil className="mr-2 h-4 w-4" /> Edit
                     </DropdownMenuItem>
@@ -234,8 +265,12 @@ export function TasksTable({
                     className={
                       taskStatus === 'running'
                         ? 'bg-status-success-soft text-status-success border-status-success-border border'
+                        : taskStatus === 'queued' || taskStatus === 'leasing'
+                          ? 'bg-status-info-soft text-status-info border-status-info-border border'
                         : taskStatus === 'paused'
                           ? 'bg-status-warning-soft text-status-warning border-status-warning-border border'
+                          : taskStatus === 'retry_wait'
+                            ? 'bg-status-warning-soft text-status-warning border-status-warning-border border'
                           : taskStatus === 'failed'
                             ? 'bg-status-danger-soft text-status-danger border-status-danger-border border'
                             : 'text-subtle-copy border-line-soft border bg-transparent'
@@ -269,21 +304,40 @@ export function TasksTable({
         </TableHeader>
         <TableBody>
           {tasks.map((task) => {
-            const taskStatus =
-              task.status === 'running' ||
-              task.status === 'paused' ||
-              task.status === 'completed' ||
-              task.status === 'failed'
-                ? task.status
-                : 'idle'
+            const rawStatus = String(task.status || 'idle').toLowerCase()
+            const taskStatus = [
+              'idle',
+              'queued',
+              'leasing',
+              'running',
+              'paused',
+              'retry_wait',
+              'completed',
+              'failed',
+              'cancelled',
+            ].includes(rawStatus)
+              ? rawStatus
+              : 'idle'
             const statusBadge =
               taskStatus === 'running' ? (
                 <Badge className="status-glow-success bg-status-success-soft text-status-success border-status-success-border hover:bg-status-success-strong border transition-colors">
                   Running
                 </Badge>
+              ) : taskStatus === 'queued' ? (
+                <Badge className="bg-status-info-soft text-status-info border-status-info-border hover:bg-status-info-strong border transition-colors">
+                  Queued
+                </Badge>
+              ) : taskStatus === 'leasing' ? (
+                <Badge className="bg-status-info-soft text-status-info border-status-info-border hover:bg-status-info-strong border transition-colors">
+                  Leasing
+                </Badge>
               ) : taskStatus === 'paused' ? (
                 <Badge className="bg-status-warning-soft text-status-warning border-status-warning-border hover:bg-status-warning-strong border transition-colors">
                   Paused
+                </Badge>
+              ) : taskStatus === 'retry_wait' ? (
+                <Badge className="bg-status-warning-soft text-status-warning border-status-warning-border hover:bg-status-warning-strong border transition-colors">
+                  Retry wait
                 </Badge>
               ) : taskStatus === 'failed' ? (
                 <Badge className="status-glow-danger bg-status-danger-soft text-status-danger border-status-danger-border hover:bg-status-danger-strong border transition-colors">
@@ -299,18 +353,19 @@ export function TasksTable({
                 </Badge>
               )
             const canViewOutput =
-              task.lastOutput !== undefined ||
+              task.manifestStorageId ||
+              task.storageId ||
+              task.stats !== undefined ||
               (typeof task.lastError === 'string' && task.lastError.trim())
-            const canResume = (() => {
-              if (taskStatus === 'paused') return true
-              if (!task.lastOutput || typeof task.lastOutput !== 'object')
-                return false
-              const r = task.lastOutput as Record<string, unknown>
-              const state = r.resumeState
-              if (!state || typeof state !== 'object') return false
-              const done = (state as Record<string, unknown>).done
-              return done === false
-            })()
+            const canResume = taskStatus === 'paused' || taskStatus === 'retry_wait'
+            const canPause = taskStatus === 'queued' || taskStatus === 'leasing' || taskStatus === 'running'
+            const canCancel =
+              taskStatus === 'queued' ||
+              taskStatus === 'leasing' ||
+              taskStatus === 'running' ||
+              taskStatus === 'paused' ||
+              taskStatus === 'retry_wait'
+            const isActive = taskStatus === 'queued' || taskStatus === 'leasing' || taskStatus === 'running'
 
             return (
               <TableRow
@@ -397,6 +452,14 @@ export function TasksTable({
                       >
                         <Play className="mr-2 h-4 w-4" /> Run
                       </DropdownMenuItem>
+                      {canPause && (
+                        <DropdownMenuItem
+                          onClick={() => onPause(task)}
+                          disabled={running}
+                        >
+                          <Pause className="mr-2 h-4 w-4" /> Pause
+                        </DropdownMenuItem>
+                      )}
                       {canResume && (
                         <DropdownMenuItem
                           onClick={() => onResume(task)}
@@ -405,9 +468,17 @@ export function TasksTable({
                           <Play className="mr-2 h-4 w-4" /> Resume
                         </DropdownMenuItem>
                       )}
+                      {canCancel && (
+                        <DropdownMenuItem
+                          onClick={() => onCancel(task)}
+                          disabled={running}
+                        >
+                          <Square className="mr-2 h-4 w-4" /> Cancel
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         onClick={() => onEdit(task)}
-                        disabled={running || task.status === 'running'}
+                        disabled={running || isActive}
                       >
                         <Pencil className="mr-2 h-4 w-4" /> Edit
                       </DropdownMenuItem>

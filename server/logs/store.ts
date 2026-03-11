@@ -66,8 +66,16 @@ export function getLogs(): LogEntry[] {
 	return logs;
 }
 
-export function appendLog(message: string, source?: string, level: LogLevel = 'info', profileName?: string): void {
-	const entry: LogEntry = { ts: Date.now(), message, source, level, profileName };
+type LogMeta = Partial<Pick<LogEntry, 'workflowId' | 'taskId' | 'targetUsername' | 'errorCode' | 'outcome' | 'attempt' | 'diagnostics'>>
+
+export function appendLog(
+	message: string,
+	source?: string,
+	level: LogLevel = 'info',
+	profileName?: string,
+	meta: LogMeta = {},
+): void {
+	const entry: LogEntry = { ts: Date.now(), message, source, level, profileName, ...meta };
 	logs.push(entry);
 	trimLogs();
 

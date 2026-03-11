@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { apiFetch, apiFetchWithRetry } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
@@ -55,7 +55,9 @@ export function ScrapingPageContainer() {
   const [deleteTaskId, setDeleteTaskId] = useState<Id<'scrapingTasks'> | null>(
     null,
   )
-  const [runningId, setRunningId] = useState<Id<'scrapingTasks'> | null>(null)
+  const [actionTaskId, setActionTaskId] = useState<Id<'scrapingTasks'> | null>(
+    null,
+  )
 
   const [eligibleProfiles, setEligibleProfiles] = useState<EligibleProfile[]>(
     [],
@@ -86,10 +88,8 @@ export function ScrapingPageContainer() {
   const tasks = useQuery(api.scrapingTasks.list, {}) as
     | Doc<'scrapingTasks'>[]
     | undefined
-  const createTaskMutation = useMutation(api.scrapingTasks.create)
   const updateTaskMutation = useMutation(api.scrapingTasks.update)
   const removeTaskMutation = useMutation(api.scrapingTasks.remove)
-  const setTaskStatusMutation = useMutation(api.scrapingTasks.setStatus)
 
   const tasksList = useMemo(() => tasks ?? [], [tasks])
   const tasksLoading = tasks === undefined
@@ -151,206 +151,103 @@ export function ScrapingPageContainer() {
 
     try {
       const name = baseName ? baseName : `${firstTarget} ${kind}`
-      const created = await createTaskMutation({
-        name,
-        kind,
-        targetUsername: packedTargets,
+      const created = await apiFetch<unknown>('/api/scraping/jobs', {
+        method: 'POST',
+        body: {
+          name,
+          kind,
+          targets,
+        },
       })
       setIsCreateOpen(false)
       void created
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
-  }, [canCreate, createTaskMutation, kind, taskName, targetUsername])
+  }, [canCreate, kind, targetUsername, taskName])
 
-  const handleRunTask = useCallback(
-    async (task: Doc<'scrapingTasks'>, opts?: { resume?: boolean }) => {
-      if (runningId) return
-
-      const taskTargets = parseTargets(String(task.targetUsername || ''))
-      if (taskTargets.length === 0) return
-
-      setRunningId(task._id)
+  const withTaskAction = useCallback(
+    async (
+      taskId: Id<'scrapingTasks'>,
+      action: () => Promise<unknown>,
+      options?: { closeDeleteDialog?: boolean },
+    ) => {
+      if (actionTaskId) return
+      setActionTaskId(taskId)
       setError(null)
-
-      const startAt = Date.now()
-      await setTaskStatusMutation({
-        id: task._id,
-        status: 'running',
-        lastRunAt: startAt,
-        lastError: undefined,
-        lastScraped: undefined,
-      })
-
-      const taskKind = task.kind === 'following' ? 'following' : 'followers'
-      const apiEndpoint =
-        taskKind === 'following'
-          ? '/api/scraping/following-chunk'
-          : '/api/scraping/followers-chunk'
-      const resume = Boolean(opts?.resume)
-      const existingResumeState = (() => {
-        if (!task.lastOutput || typeof task.lastOutput !== 'object')
-          return undefined
-        const r = task.lastOutput as Record<string, unknown>
-        return r.resumeState
-      })()
-
       try {
-        const startedAt = Date.now()
-        let lastOutput: unknown = null
-        let lastStorageId: unknown = task.storageId
-        let resumeState: unknown = resume ? existingResumeState : undefined
-        let done = false
-        let capacityExhaustedMessage: string | undefined
-        let chunkLimit = 100
-        let maxPages = 3
-
-        const getDone = (res: unknown): boolean => {
-          if (!res || typeof res !== 'object') return false
-          const r = res as Record<string, unknown>
-          return r.done === true
+        await action()
+        if (options?.closeDeleteDialog) {
+          setDeleteTaskId(null)
         }
-
-        const getResumeState = (res: unknown): unknown => {
-          if (!res || typeof res !== 'object') return undefined
-          const r = res as Record<string, unknown>
-          return r.resumeState
-        }
-
-        const getStorageId = (res: unknown): unknown => {
-          if (!res || typeof res !== 'object') return undefined
-          const r = res as Record<string, unknown>
-          return r.storageId
-        }
-
-        const getCapacityExhaustedMessage = (
-          res: unknown,
-        ): string | undefined => {
-          if (!res || typeof res !== 'object') return undefined
-          const r = res as Record<string, unknown>
-          if (r.capacityExhausted !== true) return undefined
-          return typeof r.error === 'string' && r.error.trim()
-            ? r.error
-            : 'Daily scraping capacity exhausted before all targets were completed'
-        }
-
-        const maxIterations = 50
-        for (let i = 0; i < maxIterations; i++) {
-          if (Date.now() - startedAt > 110000) break
-
-          let output: unknown
-          try {
-            output = await apiFetchWithRetry<unknown>(apiEndpoint, {
-              method: 'POST',
-              body: {
-                targetUsernames: taskTargets,
-                taskId: task._id,
-                resume: resume || i > 0,
-                ...(resume || i > 0
-                  ? { resumeState, storageId: lastStorageId }
-                  : {}),
-                chunkLimit,
-                maxPages,
-              },
-              timeout: 45000,
-              maxRetries: 2,
-            })
-          } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e)
-            const lower = msg.toLowerCase()
-            const looksLike504 =
-              lower.includes('504') ||
-              lower.includes('gateway time-out') ||
-              lower.includes('gateway timeout')
-            if (looksLike504 && (chunkLimit > 25 || maxPages > 1)) {
-              chunkLimit = Math.max(25, Math.min(chunkLimit, 50))
-              maxPages = 1
-              output = await apiFetchWithRetry<unknown>(apiEndpoint, {
-                method: 'POST',
-                body: {
-                  targetUsernames: taskTargets,
-                  taskId: task._id,
-                  resume: resume || i > 0,
-                  ...(resume || i > 0
-                    ? { resumeState, storageId: lastStorageId }
-                    : {}),
-                  chunkLimit,
-                  maxPages,
-                },
-                timeout: 45000,
-                maxRetries: 1,
-              })
-            } else {
-              throw e
-            }
-          }
-
-          lastOutput = output
-          resumeState = getResumeState(output)
-          const sid = getStorageId(output)
-          if (sid !== undefined) lastStorageId = sid
-
-          done = getDone(output)
-          capacityExhaustedMessage = getCapacityExhaustedMessage(output)
-
-          await setTaskStatusMutation({
-            id: task._id,
-            status: done ? 'completed' : 'running',
-            lastRunAt: startAt,
-            lastScraped: undefined,
-            lastError: capacityExhaustedMessage,
-            lastOutput,
-          })
-
-          if (done || capacityExhaustedMessage) break
-          await new Promise((r) => setTimeout(r, 250))
-        }
-
-        const getLastScraped = (res: unknown): number | undefined => {
-          if (!res || typeof res !== 'object') return undefined
-          const r = res as Record<string, unknown>
-          const v =
-            typeof r.totalStored === 'number'
-              ? r.totalStored
-              : typeof r.totalScraped === 'number'
-                ? r.totalScraped
-                : typeof r.scraped === 'number'
-                  ? r.scraped
-                  : undefined
-          return typeof v === 'number' && Number.isFinite(Number(v))
-            ? Number(v)
-            : undefined
-        }
-
-        const lastScraped = getLastScraped(lastOutput)
-        await setTaskStatusMutation({
-          id: task._id,
-          status: done ? 'completed' : 'paused',
-          lastRunAt: startAt,
-          lastScraped,
-          lastError: capacityExhaustedMessage,
-          lastOutput: lastOutput ?? undefined,
-        })
       } catch (e) {
-        const message = e instanceof Error ? e.message : String(e)
-        await setTaskStatusMutation({
-          id: task._id,
-          status: 'failed',
-          lastRunAt: startAt,
-          lastError: message,
-          lastScraped: undefined,
-          lastOutput: { error: message },
-        })
+        setError(e instanceof Error ? e.message : String(e))
       } finally {
-        setRunningId(null)
+        setActionTaskId(null)
       }
     },
-    [runningId, setTaskStatusMutation],
+    [actionTaskId],
+  )
+
+  const handleStartTask = useCallback(
+    async (task: Doc<'scrapingTasks'>) => {
+      await withTaskAction(task._id, async () => {
+        await apiFetch(`/api/scraping/jobs/${task._id}/start`, {
+          method: 'POST',
+        })
+      })
+    },
+    [withTaskAction],
+  )
+
+  const handlePauseTask = useCallback(
+    async (task: Doc<'scrapingTasks'>) => {
+      await withTaskAction(task._id, async () => {
+        await apiFetch(`/api/scraping/jobs/${task._id}/pause`, {
+          method: 'POST',
+        })
+      })
+    },
+    [withTaskAction],
+  )
+
+  const handleResumeTask = useCallback(
+    async (task: Doc<'scrapingTasks'>) => {
+      await withTaskAction(task._id, async () => {
+        await apiFetch(`/api/scraping/jobs/${task._id}/resume`, {
+          method: 'POST',
+        })
+      })
+    },
+    [withTaskAction],
+  )
+
+  const handleCancelTask = useCallback(
+    async (task: Doc<'scrapingTasks'>) => {
+      await withTaskAction(task._id, async () => {
+        await apiFetch(`/api/scraping/jobs/${task._id}/cancel`, {
+          method: 'POST',
+        })
+      })
+    },
+    [withTaskAction],
   )
 
   const handleViewOutput = useCallback((task: Doc<'scrapingTasks'>) => {
     setOutputTaskId(task._id)
-    const output = task.lastOutput ?? task.lastError
+    const output =
+      task.lastOutput ??
+      {
+        status: task.status,
+        stats: task.stats,
+        lastError: task.lastError,
+        lastErrorCode: task.lastErrorCode,
+        lastErrorMessage: task.lastErrorMessage,
+        manifestStorageId: task.manifestStorageId,
+        storageId: task.storageId,
+        assignedProfileName: task.assignedProfileName,
+        heartbeatAt: task.heartbeatAt,
+      }
     setOutputTitle(task.name)
     setOutputPayload(output)
     setIsOutputOpen(true)
@@ -387,22 +284,39 @@ export function ScrapingPageContainer() {
   const handleConfirmDelete = useCallback(async () => {
     const id = deleteTaskId
     if (!id) return
-    try {
-      await removeTaskMutation({ id })
-      setDeleteTaskId(null)
-      if (editTaskId === id) {
-        setEditTaskId(null)
-      }
-      if (outputTaskId === id) {
-        setOutputTaskId(null)
-        setIsOutputOpen(false)
-        setOutputPayload(null)
-        setOutputTitle('')
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    }
-  }, [deleteTaskId, editTaskId, outputTaskId, removeTaskMutation])
+    const task = tasksList.find((item) => item._id === id) ?? null
+    const status = String(task?.status || 'idle').toLowerCase()
+
+    await withTaskAction(
+      id,
+      async () => {
+        if (
+          status === 'queued' ||
+          status === 'leasing' ||
+          status === 'running' ||
+          status === 'paused' ||
+          status === 'retry_wait'
+        ) {
+          await apiFetch(`/api/scraping/jobs/${id}/cancel`, {
+            method: 'POST',
+          })
+        } else {
+          await removeTaskMutation({ id })
+        }
+
+        if (editTaskId === id) {
+          setEditTaskId(null)
+        }
+        if (outputTaskId === id) {
+          setOutputTaskId(null)
+          setIsOutputOpen(false)
+          setOutputPayload(null)
+          setOutputTitle('')
+        }
+      },
+      { closeDeleteDialog: true },
+    )
+  }, [deleteTaskId, editTaskId, outputTaskId, removeTaskMutation, tasksList, withTaskAction])
 
   const handleSaveEdit = useCallback(async () => {
     if (!editTaskId) return
@@ -444,7 +358,7 @@ export function ScrapingPageContainer() {
               variant="outline"
               size="icon"
               onClick={() => void refreshAll()}
-              disabled={eligibleLoading || Boolean(runningId)}
+              disabled={eligibleLoading || Boolean(actionTaskId)}
               aria-label="Refresh profiles"
               title="Refresh profiles"
               className="h-8 w-8 shrink-0 p-0"
@@ -458,7 +372,7 @@ export function ScrapingPageContainer() {
             <Button
               size="icon"
               onClick={handleOpenCreate}
-              disabled={eligibleLoading || Boolean(runningId)}
+              disabled={eligibleLoading || Boolean(actionTaskId)}
               className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm"
             >
               <Plus className="mr-2 h-4 w-4" />
@@ -499,9 +413,11 @@ export function ScrapingPageContainer() {
           ) : (
             <TasksTable
               tasks={tasksList}
-              running={Boolean(runningId)}
-              onRun={(task) => void handleRunTask(task, { resume: false })}
-              onResume={(task) => void handleRunTask(task, { resume: true })}
+              running={Boolean(actionTaskId)}
+              onRun={(task) => void handleStartTask(task)}
+              onResume={(task) => void handleResumeTask(task)}
+              onPause={(task) => void handlePauseTask(task)}
+              onCancel={(task) => void handleCancelTask(task)}
               onEdit={handleOpenEdit}
               onViewOutput={handleViewOutput}
               onDelete={(task) => {
@@ -530,7 +446,7 @@ export function ScrapingPageContainer() {
         eligibleLoading={eligibleLoading}
         submitLabel="Create"
         submitDisabled={!canCreate}
-        disabled={Boolean(runningId)}
+        disabled={Boolean(actionTaskId)}
         onCancel={handleCloseCreate}
         onSubmit={() => void handleCreateTask()}
       />
@@ -553,7 +469,7 @@ export function ScrapingPageContainer() {
         eligibleLoading={eligibleLoading}
         submitLabel="Save"
         submitDisabled={!canSaveEdit}
-        disabled={Boolean(runningId)}
+        disabled={Boolean(actionTaskId)}
         onCancel={handleCloseEdit}
         onSubmit={() => void handleSaveEdit()}
       />
@@ -578,7 +494,7 @@ export function ScrapingPageContainer() {
           if (!open) setDeleteTaskId(null)
         }}
         taskName={deleteTask?.name ?? 'this task'}
-        disabled={Boolean(runningId) || !deleteTaskId}
+        disabled={Boolean(actionTaskId) || !deleteTaskId}
         onConfirm={() => void handleConfirmDelete()}
       />
     </div>

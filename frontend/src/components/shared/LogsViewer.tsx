@@ -287,7 +287,21 @@ export function LogsViewer({
       const msg = String(log.message || '').toLowerCase()
       const src = String(log.source || '').toLowerCase()
       const profile = String(log.profileName || '').toLowerCase()
-      return msg.includes(q) || src.includes(q) || profile.includes(q)
+      const taskId = String(log.taskId || '').toLowerCase()
+      const target = String(log.targetUsername || '').toLowerCase()
+      const errorCode = String(log.errorCode || '').toLowerCase()
+      const outcome = String(log.outcome || '').toLowerCase()
+      const diagnostics = String(log.diagnostics || '').toLowerCase()
+      return (
+        msg.includes(q) ||
+        src.includes(q) ||
+        profile.includes(q) ||
+        taskId.includes(q) ||
+        target.includes(q) ||
+        errorCode.includes(q) ||
+        outcome.includes(q) ||
+        diagnostics.includes(q)
+      )
     })
   }, [logs, filterQuery, levelFilter, feedDebugOnly, workflowId, profileName])
 
@@ -683,6 +697,13 @@ export function LogsViewer({
                 const appearance =
                   LevelAppearance[levelKey] || LevelAppearance.info
                 const severityString = (entry.level || 'INFO').toUpperCase()
+                const hasMeta =
+                  Boolean(entry.taskId) ||
+                  Boolean(entry.targetUsername) ||
+                  Boolean(entry.errorCode) ||
+                  Boolean(entry.outcome) ||
+                  typeof entry.attempt === 'number' ||
+                  Boolean(entry.diagnostics)
 
                 return (
                   <div
@@ -720,10 +741,34 @@ export function LogsViewer({
                       {severityString}
                     </div>
 
-                    <div
-                      className={`flex-1 px-2 py-0.5 break-words whitespace-pre-wrap ${appearance.text} ${isFeedDebug ? 'text-status-info font-medium' : ''}`}
-                    >
-                      {entry.message}
+                    <div className="flex-1 px-2 py-0.5">
+                      <div
+                        className={`break-words whitespace-pre-wrap ${appearance.text} ${isFeedDebug ? 'text-status-info font-medium' : ''}`}
+                      >
+                        {entry.message}
+                      </div>
+                      {hasMeta && (
+                        <div className="text-subtle-copy mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px]">
+                          {entry.taskId && <span>task: {entry.taskId}</span>}
+                          {entry.targetUsername && (
+                            <span>target: @{entry.targetUsername}</span>
+                          )}
+                          {entry.errorCode && (
+                            <span>code: {entry.errorCode}</span>
+                          )}
+                          {entry.outcome && (
+                            <span>outcome: {entry.outcome}</span>
+                          )}
+                          {typeof entry.attempt === 'number' && (
+                            <span>attempt: {entry.attempt}</span>
+                          )}
+                          {entry.diagnostics && (
+                            <span className="basis-full break-all">
+                              diagnostics: {entry.diagnostics}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )

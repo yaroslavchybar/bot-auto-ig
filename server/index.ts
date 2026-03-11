@@ -21,6 +21,7 @@ import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { profileManager } from './data/profiles.js'
 import { profileProcesses } from './store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
+import { scrapingJobWorker } from './services/scraping-worker.js'
 
 const app = express()
 const server = createServer(app)
@@ -95,6 +96,8 @@ async function startServer(): Promise<void> {
     server.listen(PORT, () => {
         console.log(`[Server] API server running on http://localhost:${PORT}`)
         console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`)
+        scrapingJobWorker.start()
+        console.log('[Server] Scraping job worker started')
     })
 }
 

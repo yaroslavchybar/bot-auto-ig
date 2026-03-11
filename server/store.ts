@@ -7,7 +7,20 @@ export const clients: Set<WebSocket> = new Set()
 
 // Store logs in memory (limited to last 1000 entries)
 export const MAX_LOGS = 1000
-export const logsStore: Array<{ message: string; level: string; source: string; ts: number; profileName?: string; workflowId?: string }> = []
+export const logsStore: Array<{
+    message: string;
+    level: string;
+    source: string;
+    ts: number;
+    profileName?: string;
+    workflowId?: string;
+    taskId?: string;
+    targetUsername?: string;
+    errorCode?: string;
+    outcome?: string;
+    attempt?: number;
+    diagnostics?: string;
+}> = []
 
 // Automation state
 export const automationState = {

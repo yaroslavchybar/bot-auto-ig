@@ -106,7 +106,7 @@ router.post('/start', async (req, res) => {
                 broadcast({
                     type: 'log',
                     message: log.message,
-                    level: 'error',
+                    level: log.explicitLevel ? log.level : 'error',
                     source: 'python'
                 })
             }

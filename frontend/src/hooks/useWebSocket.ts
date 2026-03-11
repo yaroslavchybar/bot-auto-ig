@@ -8,6 +8,12 @@ export interface LogEntry {
   source: string
   workflowId?: string
   profileName?: string
+  taskId?: string
+  targetUsername?: string
+  errorCode?: string
+  outcome?: string
+  attempt?: number
+  diagnostics?: string
   ts: number
 }
 
@@ -40,6 +46,12 @@ interface WebSocketMessage {
   total_accounts?: number
   profile?: string
   profileName?: string
+  taskId?: string
+  targetUsername?: string
+  errorCode?: string
+  outcome?: string
+  attempt?: number
+  diagnostics?: string
   task?: string
   vnc_port?: number
   vncPort?: number
@@ -137,6 +149,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           workflowId: msgWorkflowId ?? undefined,
           profileName:
             data.profileName || currentProfileRef.current || undefined,
+          taskId: data.taskId || undefined,
+          targetUsername: data.targetUsername || undefined,
+          errorCode: data.errorCode || undefined,
+          outcome: data.outcome || undefined,
+          attempt:
+            typeof data.attempt === 'number' ? data.attempt : undefined,
+          diagnostics:
+            typeof data.diagnostics === 'string' ? data.diagnostics : undefined,
           ts: Date.now(),
         }
         setLogs((prev) => {

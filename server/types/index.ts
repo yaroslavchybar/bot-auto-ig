@@ -17,6 +17,13 @@ export type LogEntry = {
     source?: string;
     level?: LogLevel;
     profileName?: string;
+    workflowId?: string;
+    taskId?: string;
+    targetUsername?: string;
+    errorCode?: string;
+    outcome?: string;
+    attempt?: number;
+    diagnostics?: string;
 };
 
 export type InstagramSettings = {

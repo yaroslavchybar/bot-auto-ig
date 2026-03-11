@@ -13,6 +13,15 @@ from pydantic import BaseModel
 from clean_data import detect_csv_separator
 from filter_instagram import filter_csv, filter_with_keywords, load_all_keyword_sets
 from convex_client import convex_mutation, convex_query, get_keywords, upsert_keywords, list_keywords, remove_keywords
+from scraping_tasks import (
+    EXPORT_STORAGE_ID_KEYS,
+    build_manifest_payload,
+    extract_chunk_storage_ids,
+    extract_users_from_payload,
+    get_nested_storage_id,
+    has_user_collection,
+    normalize_task_row,
+)
 from uploader import extract_usernames_from_scraping_task_payload, upload_to_convex, upload_usernames_to_convex, upload_accounts_to_convex
 
 import requests
@@ -152,7 +161,8 @@ async def list_scraping_tasks(env: str = "dev", kind: str | None = None) -> Scra
         tasks = convex_query("scrapingTasks:listUnimported", {"kind": kind} if kind is not None else {}, env=env)
         if not isinstance(tasks, list):
             tasks = []
-        return ScrapingTasksListResponse(tasks=tasks)
+        normalized = [normalize_task_row(task) for task in tasks if isinstance(task, dict)]
+        return ScrapingTasksListResponse(tasks=normalized)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -192,24 +202,74 @@ def _extract_fullname_from_user(user: Any) -> str:
     return ""
 
 
-def _get_task_and_payload(task_id: str, env: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    task = convex_query("scrapingTasks:getById", {"id": task_id}, env=env)
-    if not task or not isinstance(task, dict):
-        raise HTTPException(status_code=404, detail="Task not found")
-    storage_id = task.get("storageId")
-    if not storage_id:
-        raise HTTPException(status_code=400, detail="Task has no storageId")
-
+def _fetch_storage_payload(storage_id: str, env: str) -> dict[str, Any]:
     url = convex_query("scrapingTasks:getStorageUrl", {"storageId": storage_id}, env=env)
     if not url or not isinstance(url, str):
-        raise HTTPException(status_code=400, detail="Could not get storage URL")
+        raise HTTPException(status_code=400, detail=f"Could not get storage URL for {storage_id}")
 
     resp = requests.get(url, timeout=60)
     resp.raise_for_status()
     payload = resp.json()
     if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Invalid task file payload")
-    return task, payload
+        raise HTTPException(status_code=400, detail=f"Invalid task file payload for {storage_id}")
+    return payload
+
+
+def _load_manifest_payload(task: dict[str, Any], manifest_payload: dict[str, Any], env: str) -> dict[str, Any]:
+    chunk_storage_ids = extract_chunk_storage_ids(manifest_payload, task)
+    if not chunk_storage_ids:
+        return build_manifest_payload(task, manifest_payload, [])
+
+    chunk_payloads = [_fetch_storage_payload(storage_id, env) for storage_id in chunk_storage_ids]
+    return build_manifest_payload(task, manifest_payload, chunk_payloads)
+
+
+def _get_task_and_payload(task_id: str, env: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    task = convex_query("scrapingTasks:getById", {"id": task_id}, env=env)
+    if not task or not isinstance(task, dict):
+        raise HTTPException(status_code=404, detail="Task not found")
+    normalized_task = normalize_task_row(task)
+
+    primary_storage_ids: list[str] = []
+    seen_storage_ids: set[str] = set()
+    for value in [
+        task.get("exportStorageId"),
+        task.get("storageId"),
+        task.get("manifestStorageId"),
+    ]:
+        cleaned = str(value).strip() if value is not None else ""
+        if cleaned and cleaned not in seen_storage_ids:
+            seen_storage_ids.add(cleaned)
+            primary_storage_ids.append(cleaned)
+
+    primary_payload: dict[str, Any] | None = None
+    for storage_id in primary_storage_ids:
+        payload = _fetch_storage_payload(storage_id, env)
+        if primary_payload is None:
+            primary_payload = payload
+
+        if has_user_collection(payload):
+            payload["storageKind"] = "export"
+            return normalized_task, payload
+
+        export_storage_id = get_nested_storage_id(payload, EXPORT_STORAGE_ID_KEYS)
+        if export_storage_id:
+            export_payload = _fetch_storage_payload(export_storage_id, env)
+            if has_user_collection(export_payload):
+                export_payload["storageKind"] = "export"
+                return normalized_task, export_payload
+
+        chunk_storage_ids = extract_chunk_storage_ids(payload, task)
+        if chunk_storage_ids or task.get("manifestStorageId") == storage_id:
+            return normalized_task, _load_manifest_payload(task, payload, env)
+
+    if primary_payload is not None and (task.get("manifestStorageId") or task.get("chunkRefs")):
+        return normalized_task, _load_manifest_payload(task, primary_payload, env)
+
+    if task.get("chunkRefs"):
+        return normalized_task, _load_manifest_payload(task, {}, env)
+
+    raise HTTPException(status_code=400, detail="Task has no readable storage payload")
 
 
 class ScrapingTaskFieldsResponse(BaseModel):
@@ -224,9 +284,7 @@ class ScrapingTaskFieldsResponse(BaseModel):
 async def get_scraping_task_fields(task_id: str, env: str = "dev") -> ScrapingTaskFieldsResponse:
     try:
         _, payload = _get_task_and_payload(task_id, env)
-        users = payload.get("users")
-        if not isinstance(users, list):
-            users = []
+        users = extract_users_from_payload(payload)
 
         fields_set: set[str] = set()
         sample_user: Any = None
@@ -288,7 +346,7 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
 
         users = payload.get("users")
         if not isinstance(users, list):
-            users = []
+            users = extract_users_from_payload(payload)
 
         # Load keyword sets from DB for filtering
         keyword_sets = load_all_keyword_sets(env=env)

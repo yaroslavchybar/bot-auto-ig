@@ -264,7 +264,13 @@ router.post('/run', async (req, res) => {
             for (const log of parsed) {
                 const stopRequested = Boolean((proc as any).__stopRequested)
                 if (stopRequested && isStopNoiseLog(log?.message)) continue
-                broadcast({ type: 'log', workflowId, message: log.message, level: 'error', source: 'python' })
+                broadcast({
+                    type: 'log',
+                    workflowId,
+                    message: log.message,
+                    level: log.explicitLevel ? log.level : 'error',
+                    source: 'python',
+                })
             }
         })
 

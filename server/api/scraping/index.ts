@@ -6,6 +6,7 @@ import followersRouter from './followers.js'
 import followingRouter from './following.js'
 import followersChunkRouter from './followers-chunk.js'
 import followingChunkRouter from './following-chunk.js'
+import jobsRouter from './jobs.js'
 
 const router = Router()
 
@@ -19,6 +20,8 @@ router.get('/eligible-profiles', async (_req, res) => {
     res.status(500).json({ error: message })
   }
 })
+
+router.use('/jobs', jobsRouter)
 
 // Mount sub-routers
 router.use('/followers', followersRouter)

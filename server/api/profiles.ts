@@ -307,7 +307,7 @@ router.post('/:name/start', async (req, res) => {
                     type: log.eventType ? log.eventType : 'log',
                     workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
                     message: log.message,
-                    level: 'error',
+                    level: log.explicitLevel ? log.level : 'error',
                     source: 'python',
                     profileName: name,
                     ...meta,

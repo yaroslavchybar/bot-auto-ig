@@ -9,6 +9,7 @@ interface ParsedLog {
     source: 'python' | 'server'
     eventType?: string
     metadata?: Record<string, unknown>
+    explicitLevel?: boolean
 }
 
 // Event pattern: __EVENT__{"type": "...", ...}__EVENT__
@@ -19,6 +20,8 @@ const TIMESTAMP_PATTERN = /^\[?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^\]]*\]?\s*/
 
 // Debug prefix pattern
 const DEBUG_PATTERN = /^DEBUG:\s*/i
+const STREAM_PREFIX_PATTERN = /^-\s*\[pid=\d+\]\[(out|err)\]\s*/i
+const EXPLICIT_LEVEL_PATTERN = /^(INFO|WARNING|WARN|ERROR|CRITICAL|SUCCESS)\s*:\s*/i
 
 /**
  * Human-readable event type mapping
@@ -70,6 +73,7 @@ export function parseLogLine(raw: string): ParsedLog | null {
 
     // Remove timestamps from messages (frontend adds its own)
     let cleaned = line.replace(TIMESTAMP_PATTERN, '')
+    cleaned = cleaned.replace(STREAM_PREFIX_PATTERN, '')
 
     // Check for DEBUG messages - filter or demote
     if (DEBUG_PATTERN.test(cleaned)) {
@@ -79,12 +83,31 @@ export function parseLogLine(raw: string): ParsedLog | null {
 
     // Determine level from content
     let level: ParsedLog['level'] = 'info'
+    let explicitLevel = false
+
+    const explicitMatch = cleaned.match(EXPLICIT_LEVEL_PATTERN)
+    if (explicitMatch) {
+        explicitLevel = true
+        const token = String(explicitMatch[1] || '').toLowerCase()
+        if (token === 'warning' || token === 'warn') {
+            level = 'warn'
+        } else if (token === 'error' || token === 'critical') {
+            level = 'error'
+        } else if (token === 'success') {
+            level = 'success'
+        } else {
+            level = 'info'
+        }
+        cleaned = cleaned.replace(EXPLICIT_LEVEL_PATTERN, '')
+    }
 
     if (cleaned.startsWith('[!]')) {
         level = 'warn'
+        explicitLevel = true
         cleaned = cleaned.replace(/^\[!\]\s*/, '')
     } else if (cleaned.startsWith('[*]')) {
         level = 'info'
+        explicitLevel = true
         cleaned = cleaned.replace(/^\[\*\]\s*/, '')
     } else if (cleaned.startsWith('[✓]') || cleaned.includes('successfully') || cleaned.includes('finished')) {
         level = 'success'
@@ -100,6 +123,7 @@ export function parseLogLine(raw: string): ParsedLog | null {
         message: cleaned,
         level,
         source: 'python',
+        explicitLevel,
     }
 }
 

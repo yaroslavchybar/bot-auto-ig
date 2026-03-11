@@ -1,4 +1,5 @@
 Requests
+httpx
 fake_useragent
 colorama
 pyfiglet

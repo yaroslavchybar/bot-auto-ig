@@ -50,13 +50,30 @@ export function broadcast(data: object) {
             source: (data as any).source || 'unknown',
             profileName: (data as any).profileName,
             workflowId: (data as any).workflowId,
+            taskId: (data as any).taskId,
+            targetUsername: (data as any).targetUsername,
+            errorCode: (data as any).errorCode,
+            outcome: (data as any).outcome,
+            diagnostics: (data as any).diagnostics,
+            attempt:
+                typeof (data as any).attempt === 'number'
+                    ? (data as any).attempt
+                    : undefined,
             ts: Date.now()
         }
         logsStore.push(logEntry)
         if (logsStore.length > MAX_LOGS) {
             logsStore.shift()
         }
-        appendFileLog(logEntry.message, logEntry.source, logEntry.level as any, logEntry.profileName)
+        appendFileLog(logEntry.message, logEntry.source, logEntry.level as any, logEntry.profileName, {
+            workflowId: logEntry.workflowId,
+            taskId: logEntry.taskId,
+            targetUsername: logEntry.targetUsername,
+            errorCode: logEntry.errorCode,
+            outcome: logEntry.outcome,
+            diagnostics: logEntry.diagnostics,
+            attempt: logEntry.attempt,
+        })
     }
 
     clients.forEach((client) => {

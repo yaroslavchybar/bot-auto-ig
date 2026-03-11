@@ -9,6 +9,8 @@ from colorama import init, Fore
 from fake_useragent import UserAgent
 
 from modules.diagnostics import body_preview, json_keys, mask_session_id, response_preview, safe_json_loads
+from modules.instagram_shared import run_with_temporary_service
+from modules.proxy_utils import normalize_proxy
 
 init()
 logger = logging.getLogger(__name__)
@@ -125,108 +127,20 @@ def get_userid(to_scrape_username, session_id=None):
         print(f"{UI.WARNING} Error getting user ID: {e}")
         return None
 
-def verify_session(username, session_id):
+def verify_session(username, session_id, proxy=None):
     """Verify if a session ID is valid"""
-    session_summary = mask_session_id(session_id)
-    logger.info(
-        "verify_session start username=%s session=%s",
-        username,
-        session_summary,
+    result = run_with_temporary_service(
+        lambda service: service.verify_session(
+            username=username,
+            session_id=session_id,
+            proxy=normalize_proxy(proxy),
+        )
     )
-    test_usernames = [
-        username,
-        "instagram",
-        "kimkardashian",
-        "selena_gomez",
-        "justinbieber",
-        "arianagrande",
-        "dwaynejohnson",
-        "ladygaga",
-        "beyonce",
-        "shakira",
-    ]
-
-    user_id = None
-    for test_username in test_usernames:
-        if not test_username:
-            continue
-        user_id = get_userid(test_username, session_id)
-        if user_id:
-            logger.info(
-                "verify_session probe resolved username=%s probe_username=%s session=%s user_id=%s",
-                username,
-                test_username,
-                session_summary,
-                user_id,
-            )
-            break
-        logger.warning(
-            "verify_session probe failed username=%s probe_username=%s session=%s",
-            username,
-            test_username,
-            session_summary,
-        )
-        sleep(random.uniform(0.2, 0.6))
-
-    if not user_id:
-        logger.error(
-            "verify_session failed to resolve any probe usernames username=%s session=%s",
-            username,
-            session_summary,
-        )
-        return False, "Failed to get test user ID"
-    
-    params = {'count': '25'}
-    cookies = {'sessionid': session_id}
-    headers = {
-        'accept': '*/*',
-        'accept-language': 'en-US,en;q=0.8',
-        'cache-control': 'no-cache',
-        'pragma': 'no-cache',
-        'priority': 'u=1, i',
-        'referer': f'https://www.instagram.com/{username}/following/',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-model': '""',
-        'sec-fetch-dest': 'empty',
-        'sec-fetch-mode': 'cors',
-        'sec-fetch-site': 'same-origin',
-        'sec-gpc': '1',
-        'user-agent': UserAgent().random,
-        'x-ig-app-id': '936619743392459',
-        'x-requested-with': 'XMLHttpRequest',
-
-    }
-    url = f'https://www.instagram.com/api/v1/friendships/{user_id}/following/'
-    
-    try:
-        response = requests.get(url, headers=headers, cookies=cookies, params=params)
-        logger.info(
-            "verify_session friendships response username=%s session=%s status=%s content_type=%s body_preview=%r",
-            username,
-            session_summary,
-            response.status_code,
-            response.headers.get('content-type', ''),
-            body_preview(response_preview(response)),
-        )
-        
-        if response.status_code == 200:
-            return True, "Session is valid!"
-        elif response.status_code == 404:
-            return False, "User not found (but session might be valid)"
-        elif response.status_code == 401:
-            return False, "Session is invalid or expired"
-        elif response.status_code == 403:
-            return False, "Access forbidden - try using residential proxy"
-        else:
-            return False, f"Request failed with status {response.status_code}"
-    except Exception as e:
-        logger.exception(
-            "verify_session exception username=%s session=%s error=%s",
-            username,
-            session_summary,
-            e,
-        )
-        return False, f"Request error: {str(e)}"
+    if result.outcome == 'success':
+        if result.diagnostics.get('verificationDegraded'):
+            return False, 'Failed to get test user ID'
+        return True, 'Session is valid!'
+    return False, result.error_message or 'Session verification failed'
 
 def add_sessions():
     """Add new sessions"""

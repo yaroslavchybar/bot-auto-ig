@@ -11,6 +11,8 @@ import pickle
 import sys
 
 from modules.diagnostics import body_preview, json_keys, response_preview, safe_json_loads, summarize_proxy
+from modules.instagram_shared import run_with_temporary_service
+from modules.proxy_utils import normalize_proxy
 
 init()
 logger = logging.getLogger(__name__)
@@ -214,66 +216,23 @@ def load_existing_data(data_json_file):
 
 def get_userid(to_scrape_username, proxy=None):
     print(f'\n{Colors.GREEN}Getting userid {Colors.RESET}\n')
-    proxy_summary = summarize_proxy(proxy)
-    logger.info(
-        "followers.get_userid start target_username=%s proxy=%s",
-        to_scrape_username,
-        proxy_summary,
+    result = run_with_temporary_service(
+        lambda service: service.resolve_target_user(
+            to_scrape_username,
+            kind='followers',
+            proxy=normalize_proxy(proxy),
+        )
     )
-    headers = {
-            "authority": "www.instagram.com",
-            "method": "GET",
-            "path": f"/api/v1/users/web_profile_info/?username={to_scrape_username}",
-            "scheme": "https",
-            "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br",
-            "accept-language": "en-US,en;q=0.6",
-            "priority": "u=1, i",
-            "referer": f"https://www.instagram.com/{to_scrape_username}/",
-            "user-agent": UserAgent().random,
-            'x-ig-app-id': '936619743392459', 
-            "x-ig-www-claim": "0",
-            "x-requested-with": "XMLHttpRequest"
-        }
-    url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={to_scrape_username}"
-    proxies = {"http": proxy, "https": proxy} if proxy else None
-    try:
-        response = requests.request('GET', url, headers=headers, proxies=proxies, timeout=30)
-        payload = safe_json_loads(response.text)
-        user = payload.get('data', {}).get('user') if isinstance(payload, dict) else None
-        user_id = user.get('id') if isinstance(user, dict) else None
-        followers_count = user.get('edge_followed_by', {}).get('count') if isinstance(user, dict) else None
-        if user_id:
-            logger.info(
-                "followers.get_userid success target_username=%s user_id=%s status=%s content_type=%s proxy=%s followers_count=%s",
-                to_scrape_username,
-                user_id,
-                response.status_code,
-                response.headers.get('content-type', ''),
-                proxy_summary,
-                followers_count,
-            )
-            return user_id, followers_count
-
-        logger.warning(
-            "followers.get_userid unresolved target_username=%s status=%s content_type=%s proxy=%s payload_keys=%s body_preview=%r",
-            to_scrape_username,
-            response.status_code,
-            response.headers.get('content-type', ''),
-            proxy_summary,
-            json_keys(payload),
-            body_preview(response_preview(response)),
-        )
-        return None, None
-    except Exception as e:
-        logger.exception(
-            "followers.get_userid exception target_username=%s proxy=%s error=%s",
-            to_scrape_username,
-            proxy_summary,
-            e,
-        )
-        print(f"{UI.WARNING} Error loading existing data: {e}")
-        return None, None
+    if result.user_id:
+        return result.user_id, result.total
+    logger.warning(
+        'followers.get_userid unresolved target_username=%s proxy=%s error_code=%s error_message=%s',
+        to_scrape_username,
+        summarize_proxy(normalize_proxy(proxy)),
+        result.error_code,
+        result.error_message,
+    )
+    return None, None
 
 def req(params, user_id, username, session_id, proxy=None, max_retries=3):
     """Make request to Instagram API"""
@@ -321,49 +280,27 @@ def req(params, user_id, username, session_id, proxy=None, max_retries=3):
     return None
 
 def get_data_chunk(user_id, username, session_id, cursor=None, chunk_limit=200, max_pages=10, proxy=None):
-    users = []
-    params = {
-        'count': '25',
-        'search_surface': 'follow_list_page',
-    }
-    if cursor:
-        params['max_id'] = cursor
-
-    pages = 0
-    last_result = None
-    last_cursor = cursor
-
-    while len(users) < int(chunk_limit) and pages < int(max_pages):
-        resp = req(params, user_id, username, session_id, proxy=proxy)
-        if resp is None or getattr(resp, "status_code", None) != 200:
-            return users[: int(chunk_limit)], last_cursor, True
-
-        try:
-            last_result = resp.json()
-        except Exception:
-            return users[: int(chunk_limit)], last_cursor, True
-
-        batch = last_result.get('users', [])
-        if isinstance(batch, list) and batch:
-            users.extend(batch)
-
-        pages += 1
-        has_more = bool(last_result.get('next_max_id') and last_result.get('big_list'))
-        if not has_more:
-            return users[: int(chunk_limit)], None, False
-
-        last_cursor = last_result.get('next_max_id')
-        if not last_cursor:
-            return users[: int(chunk_limit)], None, False
-
-        params['max_id'] = last_cursor
-
-        if len(users) >= int(chunk_limit):
-            break
-
-        time.sleep(random.randint(3, 5))
-
-    return users[: int(chunk_limit)], last_cursor, True
+    result = run_with_temporary_service(
+        lambda service: service.scrape_chunk(
+            kind='followers',
+            auth_username=username,
+            session_id=session_id,
+            target_username=username,
+            cursor=cursor,
+            chunk_limit=int(chunk_limit),
+            max_pages=int(max_pages),
+            proxy=normalize_proxy(proxy),
+        )
+    )
+    if result.outcome != 'success':
+        logger.warning(
+            'followers.get_data_chunk non_success target_username=%s outcome=%s error_code=%s error_message=%s',
+            username,
+            result.outcome,
+            result.error_code,
+            result.error_message,
+        )
+    return result.users, result.next_cursor, result.has_more
 
 def get_data(user_id, followers, username, session_id, scrape_amount, resume_data=None):
     """Main scraping function with resume capability"""
@@ -449,8 +386,7 @@ def get_data(user_id, followers, username, session_id, scrape_amount, resume_dat
     except Exception as e:
         print(f"{UI.ERROR} Error in get_data: {e}")
         return users
-    finally:
-        return users
+    return users
 def write_json_data(data, username, append_mode=False):
     """Write unique followers users data to a JSON file"""
     followers_dir = os.path.join('FOLLOWERS DATA', username)

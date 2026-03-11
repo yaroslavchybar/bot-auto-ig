@@ -65,6 +65,10 @@ function mapProfileToPython(profile: any, optionsOrIndex?: { includeCookies?: bo
 		login: Boolean(profile.login),
 		daily_scraping_limit: typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null,
 		daily_scraping_used: typeof profile.dailyScrapingUsed === "number" ? profile.dailyScrapingUsed : 0,
+		scrape_lease_owner: typeof profile.scrapeLeaseOwner === "string" ? profile.scrapeLeaseOwner : null,
+		scrape_lease_expires_at: toIso(profile.scrapeLeaseExpiresAt),
+		scrape_health: typeof profile.scrapeHealth === "number" ? profile.scrapeHealth : 100,
+		last_scrape_failure_at: toIso(profile.lastScrapeFailureAt),
 	};
 	if (options?.includeCookies) {
 		mapped.cookies_json = typeof profile.cookiesJson === "string" ? profile.cookiesJson : null;
@@ -130,6 +134,12 @@ const apiPaths = [
 	"/api/profiles/sync-status",
 	"/api/profiles/set-login-true",
 	"/api/profiles/increment-daily-scraping-used",
+	"/api/profiles/claim-scrape-lease",
+	"/api/profiles/refresh-scrape-lease",
+	"/api/profiles/release-scrape-lease",
+	"/api/profiles/mark-scrape-success",
+	"/api/profiles/mark-scrape-failure",
+	"/api/profiles/sweep-expired-scrape-leases",
 	"/api/profiles/assigned",
 	"/api/profiles/unassigned",
 	"/api/profiles/bulk-set-list-id",
@@ -157,8 +167,24 @@ const apiPaths = [
 	"/api/instagram-accounts/profiles-with-assigned",
 	"/api/scraping-tasks",
 	"/api/scraping-tasks/by-id",
-	"/api/scraping-tasks/store-data",
+	"/api/scraping-tasks/create",
+	"/api/scraping-tasks/update",
+	"/api/scraping-tasks/delete",
+	"/api/scraping-tasks/start",
+	"/api/scraping-tasks/pause",
+	"/api/scraping-tasks/resume",
+	"/api/scraping-tasks/cancel",
+	"/api/scraping-tasks/claim-next",
+	"/api/scraping-tasks/lease-profile",
+	"/api/scraping-tasks/note-running",
+	"/api/scraping-tasks/heartbeat",
+	"/api/scraping-tasks/store-chunk",
+	"/api/scraping-tasks/finalize",
+	"/api/scraping-tasks/record-retry",
+	"/api/scraping-tasks/record-failure",
+	"/api/scraping-tasks/sweep-expired-leases",
 	"/api/scraping-tasks/storage-url",
+	"/api/scraping-tasks/manifest-url",
 	"/api/scraping-tasks/unimported",
 	"/api/scraping-tasks/set-imported",
 	"/api/workflows",
@@ -452,6 +478,126 @@ http.route({
 			const body = await parseBody(request);
 			const ok = await ctx.runMutation(internal.profiles.incrementDailyScrapingUsedInternal, body as any);
 			return jsonResponse({ ok });
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/claim-scrape-lease",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profile = await ctx.runMutation(internal.profiles.claimBestScrapeLeaseInternal, {
+				workerId: body?.workerId,
+				leaseMs: body?.leaseMs,
+				now: body?.now ?? Date.now(),
+				minHealth: body?.minHealth,
+			});
+			return jsonResponse(mapProfileToPython(profile));
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/refresh-scrape-lease",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profile = await ctx.runMutation(internal.profiles.refreshScrapeLeaseInternal, {
+				profileId: body?.profileId,
+				workerId: body?.workerId,
+				leaseMs: body?.leaseMs,
+				now: body?.now ?? Date.now(),
+			});
+			return jsonResponse(mapProfileToPython(profile));
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/release-scrape-lease",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const ok = await ctx.runMutation(internal.profiles.releaseScrapeLeaseInternal, {
+				profileId: body?.profileId,
+				workerId: body?.workerId,
+			});
+			return jsonResponse({ ok });
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/mark-scrape-success",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profile = await ctx.runMutation(internal.profiles.markScrapeSuccessInternal, {
+				profileId: body?.profileId,
+				workerId: body?.workerId,
+				amount: body?.amount,
+				now: body?.now ?? Date.now(),
+			});
+			return jsonResponse(mapProfileToPython(profile));
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/mark-scrape-failure",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profile = await ctx.runMutation(internal.profiles.markScrapeFailureInternal, {
+				profileId: body?.profileId,
+				workerId: body?.workerId,
+				now: body?.now ?? Date.now(),
+			});
+			return jsonResponse(mapProfileToPython(profile));
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/profiles/sweep-expired-scrape-leases",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.profiles.sweepExpiredScrapeLeasesInternal, {
+				now: body?.now ?? Date.now(),
+			});
+			return jsonResponse(result);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}
@@ -974,6 +1120,69 @@ http.route({
 });
 
 http.route({
+	path: "/api/scraping-tasks/create",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.createInternal, {
+				name: body?.name,
+				kind: body?.kind,
+				targetUsername: body?.targetUsername ?? body?.target_username,
+				targets: body?.targets,
+				maxAttempts: body?.maxAttempts ?? body?.max_attempts,
+			});
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/update",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(api.scrapingTasks.update, {
+				id: body?.id ?? body?.taskId,
+				name: body?.name,
+				kind: body?.kind,
+				targetUsername: body?.targetUsername ?? body?.target_username,
+				targets: body?.targets,
+				maxAttempts: body?.maxAttempts ?? body?.max_attempts,
+			});
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/delete",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const ok = await ctx.runMutation(api.scrapingTasks.remove, {
+				id: body?.id ?? body?.taskId,
+			});
+			return jsonResponse({ ok });
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
 	path: "/api/scraping-tasks/by-id",
 	method: "GET",
 	handler: httpAction(async (ctx, request) => {
@@ -984,6 +1193,162 @@ http.route({
 			const id = url.searchParams.get("id") || url.searchParams.get("taskId") || "";
 			if (!id) return jsonResponse({ error: "id is required" }, 400);
 			const task = await ctx.runQuery(internal.scrapingTasks.getByIdInternal, { id: id as any });
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/start",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.startInternal, {
+				id: body?.id ?? body?.taskId,
+			} as any);
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/pause",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.pauseInternal, {
+				id: body?.id ?? body?.taskId,
+			} as any);
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/resume",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.resumeInternal, {
+				id: body?.id ?? body?.taskId,
+			} as any);
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/cancel",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.cancelInternal, {
+				id: body?.id ?? body?.taskId,
+			} as any);
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/claim-next",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.claimNextInternal, {
+				workerId: body?.workerId ?? body?.worker_id,
+				now: body?.now,
+				leaseMs: body?.leaseMs ?? body?.lease_ms,
+			} as any);
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/lease-profile",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const profile = await ctx.runMutation(internal.profiles.claimBestScrapeLeaseInternal, {
+				workerId: body?.workerId ?? body?.worker_id,
+				now: body?.now,
+				leaseMs: body?.leaseMs ?? body?.lease_ms,
+				minHealth: body?.minHealth ?? body?.min_health,
+			} as any);
+			return jsonResponse(profile);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/note-running",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.noteRunningInternal, {
+				taskId: body?.taskId ?? body?.task_id,
+				workerId: body?.workerId ?? body?.worker_id,
+				profileId: body?.profileId ?? body?.profile_id,
+				now: body?.now,
+				leaseMs: body?.leaseMs ?? body?.lease_ms,
+			} as any);
+			return jsonResponse(task);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/heartbeat",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const task = await ctx.runMutation(internal.scrapingTasks.heartbeatInternal, {
+				taskId: body?.taskId ?? body?.task_id,
+				workerId: body?.workerId ?? body?.worker_id,
+				now: body?.now,
+				leaseMs: body?.leaseMs ?? body?.lease_ms,
+			} as any);
 			return jsonResponse(task);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -1011,6 +1376,173 @@ http.route({
 });
 
 http.route({
+	path: "/api/scraping-tasks/store-chunk",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const now = Number.isFinite(Number(body?.now)) ? Math.floor(Number(body.now)) : Date.now();
+			const users = Array.isArray(body?.users) ? body.users : [];
+			const payload = {
+				taskId: body?.taskId ?? body?.task_id,
+				targetUsername: body?.targetUsername ?? body?.target_username,
+				profileId: body?.profileId ?? body?.profile_id,
+				scrapedAt: now,
+				count: users.length,
+				users,
+			};
+			const stored = await ctx.runAction(internal.scrapingTasks.storeArtifactInternal, {
+				payload,
+			});
+			const task = await ctx.runMutation(internal.scrapingTasks.appendChunkInternal, {
+				taskId: body?.taskId ?? body?.task_id,
+				workerId: body?.workerId ?? body?.worker_id,
+				now,
+				storageId: stored.storageId,
+				targetUsername: body?.targetUsername ?? body?.target_username,
+				scraped: users.length,
+				hasMore: Boolean(body?.hasMore ?? body?.has_more),
+				nextCursor: body?.nextCursor ?? body?.next_cursor ?? undefined,
+				sourceProfileId: body?.profileId ?? body?.profile_id,
+				sourceProfileName: body?.profileName ?? body?.profile_name,
+			} as any);
+
+			const taskStats = task?.stats ?? {
+				scraped: 0,
+				deduped: 0,
+				chunksCompleted: 0,
+				targetsCompleted: 0,
+			};
+			const taskTargets = Array.isArray(task?.targets) ? task.targets : [];
+			const currentTargetIndex =
+				typeof task?.currentTargetIndex === "number" ? task.currentTargetIndex : 0;
+			const done = currentTargetIndex >= taskTargets.length;
+			const nextTargetUsername =
+				!done && currentTargetIndex >= 0 && currentTargetIndex < taskTargets.length
+					? taskTargets[currentTargetIndex]
+					: null;
+
+			return jsonResponse({
+				storageId: stored.storageId,
+				count: users.length,
+				done,
+				stats: taskStats,
+				currentTargetIndex,
+				nextTargetUsername,
+			});
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/finalize",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const now = Number.isFinite(Number(body?.now)) ? Math.floor(Number(body.now)) : Date.now();
+			const taskId = body?.taskId ?? body?.task_id;
+			const task = await ctx.runQuery(internal.scrapingTasks.getByIdInternal, {
+				id: taskId,
+			} as any);
+			if (!task) {
+				return jsonResponse({ error: "Task not found" }, 404);
+			}
+
+			const manifestPayload = {
+				taskId,
+				name: task.name,
+				kind: task.kind,
+				targets: Array.isArray(task.targets) ? task.targets : [],
+				stats: task.stats ?? {
+					scraped: 0,
+					deduped: 0,
+					chunksCompleted: 0,
+					targetsCompleted: 0,
+				},
+				chunks: Array.isArray(task.chunkRefs) ? task.chunkRefs : [],
+				completedAt: now,
+			};
+			const stored = await ctx.runAction(internal.scrapingTasks.storeArtifactInternal, {
+				payload: manifestPayload,
+			});
+			const completed = await ctx.runMutation(internal.scrapingTasks.markCompletedInternal, {
+				taskId,
+				workerId: body?.workerId ?? body?.worker_id,
+				now,
+				manifestStorageId: stored.storageId,
+				exportStorageId: body?.exportStorageId ?? body?.export_storage_id ?? undefined,
+				deduped: body?.deduped ?? task?.stats?.deduped ?? 0,
+			} as any);
+
+			return jsonResponse({
+				manifestStorageId: stored.storageId,
+				stats: completed?.stats ?? manifestPayload.stats,
+				chunkCount: Array.isArray(task.chunkRefs) ? task.chunkRefs.length : 0,
+			});
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/record-retry",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.scrapingTasks.markRetryInternal, {
+				taskId: body?.taskId ?? body?.task_id,
+				workerId: body?.workerId ?? body?.worker_id,
+				now: body?.now,
+				errorCode: body?.errorCode ?? body?.error_code,
+				errorMessage: body?.errorMessage ?? body?.error_message,
+				retryDelayMs:
+					body?.retryDelayMs ??
+					body?.retry_delay_ms ??
+					(typeof body?.nextRunAt === "number" && typeof body?.now === "number"
+						? Math.max(1_000, body.nextRunAt - body.now)
+						: 30_000),
+			} as any);
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/record-failure",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.scrapingTasks.markFailedInternal, {
+				taskId: body?.taskId ?? body?.task_id,
+				workerId: body?.workerId ?? body?.worker_id,
+				now: body?.now,
+				errorCode: body?.errorCode ?? body?.error_code,
+				errorMessage: body?.errorMessage ?? body?.error_message,
+			} as any);
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
 	path: "/api/scraping-tasks/set-imported",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
@@ -1030,6 +1562,24 @@ http.route({
 });
 
 http.route({
+	path: "/api/scraping-tasks/sweep-expired-leases",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runMutation(internal.scrapingTasks.recoverExpiredLeasesInternal, {
+				now: body?.now,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
 	path: "/api/scraping-tasks/store-data",
 	method: "POST",
 	handler: httpAction(async (ctx, request) => {
@@ -1037,17 +1587,29 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const taskId = body?.taskId ?? body?.task_id;
-			const users = body?.users ?? [];
-			const metadata = body?.metadata ?? {};
-
-			// Run the action to store scraped data
 			const result = await ctx.runAction(internal.scrapingTasks.storeScrapedData, {
-				taskId: taskId as any,
-				users,
-				metadata,
-			});
+				taskId: body?.taskId ?? body?.task_id,
+				users: Array.isArray(body?.users) ? body.users : [],
+				metadata: body?.metadata ?? {},
+			} as any);
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
 
+http.route({
+	path: "/api/scraping-tasks/store-artifact",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runAction(internal.scrapingTasks.storeArtifactInternal, {
+				payload: body?.payload ?? {},
+			});
 			return jsonResponse(result);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -1073,6 +1635,28 @@ http.route({
 				storageId: storageId as any,
 			});
 
+			return jsonResponse(fileUrl);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/scraping-tasks/manifest-url",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const id = url.searchParams.get("id") || url.searchParams.get("taskId") || "";
+			if (!id) {
+				return jsonResponse({ error: "id is required" }, 400);
+			}
+			const fileUrl = await ctx.runQuery(internal.scrapingTasks.getManifestUrlInternal, {
+				id: id as any,
+			});
 			return jsonResponse(fileUrl);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
