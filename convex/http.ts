@@ -2,6 +2,8 @@ import { httpRouter } from "convex/server";
 import { api, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 
+const internalApi = internal as any;
+
 const corsHeaders = {
 	"Access-Control-Allow-Origin": "*",
 	"Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -193,7 +195,7 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const name = url.searchParams.get("name") || "";
-			const profile = await ctx.runQuery(api.profiles.getByName, { name });
+			const profile = await ctx.runQuery(internalApi.profiles.getByNameInternal, { name });
 			return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -230,7 +232,7 @@ http.route({
 			const body = await parseBody(request);
 			const listIds = (body?.listIds ?? body?.list_ids ?? []) as any[];
 			const cooldownMinutes = body?.cooldownMinutes ?? body?.cooldown_minutes ?? 0;
-			const profiles = await ctx.runQuery(api.profiles.getAvailableForLists, {
+			const profiles = await ctx.runQuery(internalApi.profiles.getAvailableForListsInternal, {
 				listIds,
 				cooldownMinutes,
 			});
@@ -250,7 +252,7 @@ http.route({
 		try {
 			const body = await parseBody(request);
 			const listIds = (body?.listIds ?? body?.list_ids ?? []) as any[];
-			const profiles = await ctx.runQuery(api.profiles.getByListIds, { listIds });
+			const profiles = await ctx.runQuery(internalApi.profiles.getByListIdsInternal, { listIds });
 			return jsonResponse(profiles.map(mapProfileToPython));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -266,7 +268,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const created = await ctx.runMutation(api.profiles.create, {
+			const created = await ctx.runMutation(internalApi.profiles.createInternal, {
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
 				proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
@@ -292,7 +294,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.profiles.updateByName, {
+			const updated = await ctx.runMutation(internalApi.profiles.updateByNameInternal, {
 				oldName: body?.oldName ?? body?.old_name,
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
@@ -319,7 +321,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const updated = await ctx.runMutation(api.profiles.updateById, {
+			const updated = await ctx.runMutation(internalApi.profiles.updateByIdInternal, {
 				profileId: (body?.profileId ?? body?.profile_id) as any,
 				name: body?.name,
 				proxy: body?.proxy ?? undefined,
@@ -346,7 +348,9 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.removeById, { profileId: (body?.profileId ?? body?.profile_id) as any });
+			const ok = await ctx.runMutation(internalApi.profiles.removeByIdInternal, {
+				profileId: (body?.profileId ?? body?.profile_id) as any,
+			});
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -362,7 +366,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.removeByName, body as any);
+			const ok = await ctx.runMutation(internalApi.profiles.removeByNameInternal, body as any);
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -379,7 +383,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.removeByName, body as any);
+			const ok = await ctx.runMutation(internalApi.profiles.removeByNameInternal, body as any);
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -396,7 +400,9 @@ http.route({
 		try {
 			const body = await parseBody(request);
 			const listIds = body?.listIds ?? body?.list_ids ?? [];
-			const ok = await ctx.runMutation(api.profiles.clearBusyForLists, { listIds: listIds as any[] });
+			const ok = await ctx.runMutation(internalApi.profiles.clearBusyForListsInternal, {
+				listIds: listIds as any[],
+			});
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -412,7 +418,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.syncStatus, body as any);
+			const ok = await ctx.runMutation(internalApi.profiles.syncStatusInternal, body as any);
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -428,7 +434,7 @@ http.route({
 		if (authError) return authError;
 		try {
 			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.profiles.setLoginTrue, body as any);
+			const ok = await ctx.runMutation(internalApi.profiles.setLoginTrueInternal, body as any);
 			return jsonResponse({ ok });
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -542,7 +548,7 @@ http.route({
 			const url = new URL(request.url);
 			const listId = url.searchParams.get("list_id");
 			if (!listId) return jsonResponse({ error: "list_id is required" }, 400);
-			const profiles = await ctx.runQuery(api.profiles.listAssigned, { listId: listId as any });
+			const profiles = await ctx.runQuery(internalApi.profiles.listAssignedInternal, { listId: listId as any });
 			return jsonResponse(profiles.map((p: any) => ({ profile_id: p.profileId, name: p.name })));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -557,7 +563,7 @@ http.route({
 		const authError = await requireAuth(request);
 		if (authError) return authError;
 		try {
-			const profiles = await ctx.runQuery(api.profiles.listUnassigned, {});
+			const profiles = await ctx.runQuery(internalApi.profiles.listUnassignedInternal, {});
 			return jsonResponse(profiles.map((p: any) => ({ profile_id: p.profileId, name: p.name })));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -575,7 +581,7 @@ http.route({
 			const body = await parseBody(request);
 			const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
 			const listId = body?.listId ?? body?.list_id;
-			const ok = await ctx.runMutation(api.profiles.bulkSetListId, {
+			const ok = await ctx.runMutation(internalApi.profiles.bulkSetListIdInternal, {
 				profileIds: profileIds as any[],
 				listId: listId === null ? null : (listId as any),
 			});
@@ -596,7 +602,7 @@ http.route({
 			const body = await parseBody(request);
 			const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
 			const listId = body?.listId ?? body?.list_id;
-			const ok = await ctx.runMutation(api.profiles.bulkAddToList, {
+			const ok = await ctx.runMutation(internalApi.profiles.bulkAddToListInternal, {
 				profileIds: profileIds as any[],
 				listId: listId as any,
 			});
@@ -617,7 +623,7 @@ http.route({
 			const body = await parseBody(request);
 			const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
 			const listId = body?.listId ?? body?.list_id;
-			const ok = await ctx.runMutation(api.profiles.bulkRemoveFromList, {
+			const ok = await ctx.runMutation(internalApi.profiles.bulkRemoveFromListInternal, {
 				profileIds: profileIds as any[],
 				listId: listId as any,
 			});

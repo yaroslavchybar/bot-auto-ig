@@ -2,7 +2,13 @@ import { expect, test, vi } from 'vitest'
 
 import { api } from '../../convex/_generated/api'
 import { internal } from '../../convex/_generated/api'
-import { createConvexTest, seedList, seedProfile, seedWorkflow } from './helpers'
+import {
+  createConvexTest,
+  createUnauthenticatedConvexTest,
+  seedList,
+  seedProfile,
+  seedWorkflow,
+} from './helpers'
 
 function stubEnv(env: Record<string, string>) {
   vi.stubGlobal('process', { env })
@@ -76,6 +82,69 @@ test('parses snake_case profile payloads and maps the response back to Python fi
     test_ip: true,
     proxy_type: 'http',
   })
+})
+
+test('updates and syncs profiles over the internal HTTP surface without Clerk identity', async () => {
+  const t = createUnauthenticatedConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const created = await t.run(async (ctx) =>
+    await ctx.db.insert('profiles', {
+      createdAt: Date.now(),
+      name: 'Profile Start',
+      status: 'idle',
+      mode: 'direct',
+      using: false,
+      testIp: false,
+      listIds: [],
+      login: false,
+      dailyScrapingUsed: 0,
+    }),
+  )
+
+  const updateResponse = await t.fetch('/api/profiles/update-by-name', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      old_name: 'Profile Start',
+      name: 'Profile Start',
+      fingerprint_seed: 'seed-123',
+      fingerprint_os: 'windows',
+    }),
+  })
+  const syncResponse = await t.fetch('/api/profiles/sync-status', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      name: 'Profile Start',
+      status: 'running',
+      using: true,
+    }),
+  })
+  const updated = await t.run(async (ctx) => await ctx.db.get(created))
+
+  expect(updateResponse.status).toBe(200)
+  await expect(updateResponse.json()).resolves.toMatchObject({
+    name: 'Profile Start',
+    fingerprint_seed: 'seed-123',
+    fingerprint_os: 'windows',
+  })
+  expect(syncResponse.status).toBe(200)
+  await expect(syncResponse.json()).resolves.toEqual({ ok: true })
+  expect(updated).toMatchObject({
+    name: 'Profile Start',
+    fingerprintSeed: 'seed-123',
+    fingerprintOs: 'windows',
+    status: 'running',
+    using: true,
+  })
+  expect(typeof updated?.lastOpenedAt).toBe('number')
 })
 
 test('omits cookies from list responses but includes them on profile detail responses', async () => {

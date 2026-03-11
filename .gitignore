@@ -180,3 +180,6 @@ artifacts/
 .worktrees/
 design/
 tests/
+!python/tests/
+python/tests/*
+!python/tests/test_display_manager.py

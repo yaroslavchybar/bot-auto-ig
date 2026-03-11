@@ -3,6 +3,16 @@ import { useNavigate, useParams } from 'react-router'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 import { ArrowLeft, FileText, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
@@ -347,49 +357,17 @@ function ResolvedVncSessionPage({
 
               {!isInteractive && (
                 <div
-                  className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-field pointer-events-auto backdrop-blur-xs' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
+                  className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'pointer-events-none bg-black/0' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
                 >
-                  <div className={`${isConfirming ? 'mx-4 w-full max-w-[360px]' : ''}`}>
-                    <div
-                      className={`bg-panel border-line overflow-hidden rounded-lg border shadow-lg sm:rounded-lg ${isConfirming ? 'opacity-100' : 'pointer-events-auto opacity-0 transition-opacity group-hover:opacity-100'}`}
-                    >
-                      {isConfirming && (
-                        <div className="flex flex-col space-y-1.5 px-6 py-4 text-center sm:text-left">
-                          <h2 className="brand-text-gradient text-lg leading-none font-semibold tracking-tight">
-                            Control Handoff
-                          </h2>
-                          <p className="text-subtle-copy text-sm">
-                            Taking control will interrupt the agent.
-                          </p>
-                        </div>
-                      )}
-                      <div
-                        className={`flex flex-col-reverse px-6 sm:flex-row sm:justify-end sm:space-x-2 ${isConfirming ? 'pt-2 pb-6' : 'py-6'}`}
-                      >
-                        {isConfirming ? (
-                          <>
-                            <Button
-                              variant="outline"
-                              onClick={() => setControlState('locked')}
-                              className="mt-2 sm:mt-0"
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              onClick={() => setControlState('unlocked')}
-                              className="brand-button font-medium"
-                            >
-                              Confirm
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            onClick={() => setControlState('confirm')}
-                          >
-                            Take Control
-                          </Button>
-                        )}
+                  <div>
+                    <div className="bg-panel border-line pointer-events-auto overflow-hidden rounded-lg border opacity-0 shadow-lg transition-opacity group-hover:opacity-100 sm:rounded-lg">
+                      <div className="px-6 py-6">
+                        <Button
+                          variant="outline"
+                          onClick={() => setControlState('confirm')}
+                        >
+                          Take Control
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -428,6 +406,31 @@ function ResolvedVncSessionPage({
           </Panel>
         </Group>
       </div>
+
+      <AlertDialog
+        open={isConfirming}
+        onOpenChange={(open) => setControlState(open ? 'confirm' : 'locked')}
+      >
+        <AlertDialogContent className="max-w-[28rem]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="brand-text-gradient">
+              Control Handoff
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-subtle-copy">
+              Taking control will interrupt the agent.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => setControlState('unlocked')}
+              className="brand-button font-medium"
+            >
+              Confirm
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
