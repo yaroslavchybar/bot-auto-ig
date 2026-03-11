@@ -7,10 +7,11 @@ function cleanString(val: unknown): string {
 	return String(val ?? "").trim();
 }
 
-function cleanStatus(val: unknown): "idle" | "running" | "paused" | "completed" | "failed" {
+function parseStatus(val: unknown): "idle" | "running" | "paused" | "completed" | "failed" {
 	const s = cleanString(val).toLowerCase();
 	if (s === "running" || s === "paused" || s === "completed" || s === "failed") return s;
-	return "idle";
+	if (s === "idle") return s;
+	throw new Error(`Invalid scraping task status: ${cleanString(val) || "(empty)"}`);
 }
 
 async function listTasksByKind(ctx: any, kindRaw: unknown) {
@@ -170,7 +171,7 @@ export const setStatus = mutation({
 		if (!existing) throw new Error("Task not found");
 
 		const patch: Record<string, unknown> = {
-			status: cleanStatus(args.status),
+			status: parseStatus(args.status),
 			updatedAt: Date.now(),
 		};
 

@@ -87,7 +87,7 @@ class ProcessManager:
             return False, "Profile already running"
 
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-        launcher_path = os.path.join(project_root, "python", "launcher.py")
+        launcher_path = os.path.join(project_root, "python", "getting_started", "launcher.py")
         cmd = [sys.executable, launcher_path, "--name", name, "--proxy", proxy, "--action", action]
         
         # Add kwargs as arguments

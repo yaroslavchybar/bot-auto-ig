@@ -24,6 +24,75 @@ type ScheduleConfig = {
 	dayOfMonth?: number;
 	cronspec?: string;
 };
+type WorkflowStatus = "idle" | "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+
+function requireIntegerInRange(value: number | undefined, field: string, min: number, max: number): number {
+	if (!Number.isInteger(value) || value! < min || value! > max) {
+		throw new Error(`${field} must be an integer between ${min} and ${max}`);
+	}
+	return value!;
+}
+
+function hasDefinedScheduleConfigValues(config: ScheduleConfig): boolean {
+	return Object.values(config).some((value) => value !== undefined);
+}
+
+function validateScheduleConfig(scheduleType: ScheduleType, config: ScheduleConfig) {
+	switch (scheduleType) {
+		case "instant":
+			if (hasDefinedScheduleConfigValues(config)) {
+				throw new Error("Instant workflows do not accept scheduleConfig values");
+			}
+			return;
+		case "interval":
+			if (!Number.isInteger(config.intervalMs) || (config.intervalMs ?? 0) <= 0) {
+				throw new Error("intervalMs must be a positive integer");
+			}
+			return;
+		case "daily":
+			requireIntegerInRange(config.hourUTC, "hourUTC", 0, 23);
+			requireIntegerInRange(config.minuteUTC, "minuteUTC", 0, 59);
+			return;
+		case "weekly": {
+			requireIntegerInRange(config.hourUTC, "hourUTC", 0, 23);
+			requireIntegerInRange(config.minuteUTC, "minuteUTC", 0, 59);
+			if (!Array.isArray(config.daysOfWeek) || config.daysOfWeek.length === 0) {
+				throw new Error("daysOfWeek must contain at least one day");
+			}
+			for (const day of config.daysOfWeek) {
+				requireIntegerInRange(day, "daysOfWeek", 0, 6);
+			}
+			return;
+		}
+		case "monthly":
+			requireIntegerInRange(config.hourUTC, "hourUTC", 0, 23);
+			requireIntegerInRange(config.minuteUTC, "minuteUTC", 0, 59);
+			requireIntegerInRange(config.dayOfMonth, "dayOfMonth", 1, 31);
+			return;
+		case "cron":
+			if (!String(config.cronspec ?? "").trim()) {
+				throw new Error("cronspec is required");
+			}
+			return;
+	}
+}
+
+function assertValidStatusTransition(currentStatus: WorkflowStatus | undefined, nextStatus: WorkflowStatus) {
+	const current = currentStatus ?? "idle";
+	const allowedTransitions: Record<WorkflowStatus, WorkflowStatus[]> = {
+		idle: ["idle", "pending"],
+		pending: ["pending", "running", "completed", "failed", "cancelled"],
+		running: ["running", "paused", "completed", "failed", "cancelled"],
+		paused: ["paused", "running", "failed", "cancelled"],
+		completed: ["completed"],
+		failed: ["failed"],
+		cancelled: ["cancelled"],
+	};
+
+	if (!allowedTransitions[current].includes(nextStatus)) {
+		throw new Error(`Illegal workflow status transition from ${current} to ${nextStatus}; use reset or retry`);
+	}
+}
 
 function buildCronSchedule(
 	scheduleType: ScheduleType,
@@ -312,6 +381,7 @@ export const updateStatus = mutation({
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.get(args.id);
 		if (!existing) throw new Error("Workflow not found");
+		assertValidStatusTransition(existing.status as WorkflowStatus | undefined, args.status as WorkflowStatus);
 
 		const patch: Record<string, any> = {
 			status: args.status,
@@ -476,25 +546,28 @@ export const updateSchedule = mutation({
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
 		if (!workflow) throw new Error("Workflow not found");
+		const scheduleConfig = args.scheduleConfig as ScheduleConfig;
+		validateScheduleConfig(args.scheduleType as ScheduleType, scheduleConfig);
 
 		await ctx.db.patch(args.id, {
 			scheduleType: args.scheduleType,
-			scheduleConfig: args.scheduleConfig,
+			scheduleConfig,
 			maxRunsPerDay: args.maxRunsPerDay,
 			timezone: args.timezone,
 			updatedAt: Date.now(),
 		});
 
 		// If already active, update the cron job
-		if (workflow.isActive && workflow.cronJobId) {
-			// Delete old cron
-			await crons.delete(ctx, { id: workflow.cronJobId });
+		if (workflow.isActive) {
+			if (workflow.cronJobId) {
+				await crons.delete(ctx, { id: workflow.cronJobId });
+			}
 			if (args.scheduleType === "instant") {
 				// Instant doesn't need a recurring cron — clear cronJobId
 				await ctx.db.patch(args.id, { cronJobId: undefined });
 			} else {
 				// Create new cron
-				const schedule = buildCronSchedule(args.scheduleType, args.scheduleConfig);
+				const schedule = buildCronSchedule(args.scheduleType as ScheduleType, scheduleConfig);
 				const cronJobId = await crons.register(
 					ctx,
 					schedule,
@@ -523,22 +596,35 @@ export const activate = mutation({
 		}
 
 		const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
-		const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
+		validateScheduleConfig(workflow.scheduleType as ScheduleType, scheduleConfig);
 
-		// Register the cron job
-		const cronJobId = await crons.register(
-			ctx,
-			schedule,
-			internal.workflows.executeScheduledWorkflow,
-			{ workflowId: args.id },
-			`workflow_${args.id}`
-		);
+		if (workflow.scheduleType === "instant") {
+			await ctx.db.patch(args.id, {
+				isActive: true,
+				cronJobId: undefined,
+				updatedAt: Date.now(),
+			});
+			await ctx.scheduler.runAfter(0, internal.workflows.executeScheduledWorkflow, {
+				workflowId: args.id,
+			});
+		} else {
+			const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
 
-		await ctx.db.patch(args.id, {
-			isActive: true,
-			cronJobId,
-			updatedAt: Date.now(),
-		});
+			// Register the cron job
+			const cronJobId = await crons.register(
+				ctx,
+				schedule,
+				internal.workflows.executeScheduledWorkflow,
+				{ workflowId: args.id },
+				`workflow_${args.id}`
+			);
+
+			await ctx.db.patch(args.id, {
+				isActive: true,
+				cronJobId,
+				updatedAt: Date.now(),
+			});
+		}
 
 		return await ctx.db.get(args.id);
 	},
@@ -596,10 +682,14 @@ export const toggleActive = mutation({
 				throw new Error("Please configure a schedule before activating");
 			}
 
+			const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
+			validateScheduleConfig(workflow.scheduleType as ScheduleType, scheduleConfig);
+
 			if (workflow.scheduleType === "instant") {
 				// Instant run: trigger immediately, no cron job
 				await ctx.db.patch(args.id, {
 					isActive: true,
+					cronJobId: undefined,
 					updatedAt: Date.now(),
 				});
 				// Trigger immediate execution
@@ -607,7 +697,6 @@ export const toggleActive = mutation({
 					workflowId: args.id,
 				});
 			} else {
-				const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
 				const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
 				const cronJobId = await crons.register(
 					ctx,

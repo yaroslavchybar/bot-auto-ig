@@ -26,6 +26,13 @@ function buildListPatch(listIds: any[]): { listIds: any[] } {
 	};
 }
 
+function normalizeDailyScrapingLimit(limit: unknown): number | undefined {
+	if (limit === null || typeof limit === "undefined") return undefined;
+	const numeric = Number(limit);
+	if (!Number.isFinite(numeric)) return undefined;
+	return Math.max(0, Math.floor(numeric));
+}
+
 async function listProfileRows(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	rows.sort((a: any, b: any) => a.createdAt - b.createdAt);
@@ -92,7 +99,7 @@ async function createProfileRow(ctx: any, args: any) {
 	const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 	const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
-	const dailyLimit = typeof args.dailyScrapingLimit === "number" ? args.dailyScrapingLimit : undefined;
+	const dailyLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
 
 	const id = await ctx.db.insert("profiles", {
 		createdAt: Date.now(),
@@ -155,7 +162,7 @@ async function updateProfileByNameRow(ctx: any, args: any) {
 		next.sessionId = cleaned ? cleaned : undefined;
 	}
 	if (typeof args.dailyScrapingLimit === "number") {
-		next.dailyScrapingLimit = args.dailyScrapingLimit;
+		next.dailyScrapingLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
 	} else if (args.dailyScrapingLimit === null) {
 		next.dailyScrapingLimit = undefined;
 	}
@@ -198,7 +205,7 @@ async function updateProfileByIdRow(ctx: any, args: any) {
 		next.sessionId = cleaned ? cleaned : undefined;
 	}
 	if (typeof args.dailyScrapingLimit === "number") {
-		next.dailyScrapingLimit = args.dailyScrapingLimit;
+		next.dailyScrapingLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
 	} else if (args.dailyScrapingLimit === null) {
 		next.dailyScrapingLimit = undefined;
 	}
@@ -690,7 +697,7 @@ export const updateDailyScrapingLimit = mutation({
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.get(args.profileId);
 		if (!existing) throw new Error("Profile not found");
-		const limit = args.limit === null ? undefined : Number.isFinite(args.limit) ? Math.max(0, Math.floor(args.limit)) : undefined;
+		const limit = normalizeDailyScrapingLimit(args.limit);
 		await ctx.db.patch(args.profileId, { dailyScrapingLimit: limit });
 		return await ctx.db.get(args.profileId);
 	},

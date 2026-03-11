@@ -6,6 +6,13 @@ function computeProfileMode(proxy: unknown): 'proxy' | 'direct' {
   return value ? 'proxy' : 'direct'
 }
 
+function normalizeDailyScrapingLimit(limit: unknown): number | undefined {
+  if (limit === null || typeof limit === 'undefined') return undefined
+  const numeric = Number(limit)
+  if (!Number.isFinite(numeric)) return undefined
+  return Math.max(0, Math.floor(numeric))
+}
+
 async function listProfiles(ctx: any) {
   const rows = await ctx.db.query('profiles').collect()
   rows.sort((a: any, b: any) => a.createdAt - b.createdAt)
@@ -66,8 +73,7 @@ export const profilesCreate = internalMutation({
       listIds: [],
       lastOpenedAt: undefined,
       login: false,
-      dailyScrapingLimit:
-        typeof args.dailyScrapingLimit === 'number' ? args.dailyScrapingLimit : undefined,
+      dailyScrapingLimit: normalizeDailyScrapingLimit(args.dailyScrapingLimit),
       dailyScrapingUsed: 0,
     })
 
@@ -119,7 +125,7 @@ export const profilesUpdateByName = internalMutation({
       patch.sessionId = sessionId || undefined
     }
     if (typeof args.dailyScrapingLimit === 'number') {
-      patch.dailyScrapingLimit = args.dailyScrapingLimit
+      patch.dailyScrapingLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit)
     } else if (args.dailyScrapingLimit === null) {
       patch.dailyScrapingLimit = undefined
     }

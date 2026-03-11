@@ -21,6 +21,10 @@ test('creates workflows, deduplicates list ids, and transitions status', async (
     currentNodeId: 'node-1',
     nodeStates: { 'node-1': 'running' },
   })
+  const completed = await t.mutation(api.workflows.updateStatus, {
+    id: created!._id,
+    status: 'completed',
+  })
 
   expect(created).toMatchObject({
     name: 'Workflow A',
@@ -32,6 +36,33 @@ test('creates workflows, deduplicates list ids, and transitions status', async (
     currentNodeId: 'node-1',
   })
   expect(running?.startedAt).toEqual(expect.any(Number))
+  expect(completed?.status).toBe('completed')
+  expect(completed?.completedAt).toEqual(expect.any(Number))
+})
+
+test('allows pending-running-paused-running transitions for active runs', async () => {
+  const t = createConvexTest()
+  const workflow = await seedWorkflow(t, {
+    name: 'Workflow Transition Check',
+    status: 'pending',
+  })
+
+  const running = await t.mutation(api.workflows.updateStatus, {
+    id: workflow!._id,
+    status: 'running',
+  })
+  const paused = await t.mutation(api.workflows.updateStatus, {
+    id: workflow!._id,
+    status: 'paused',
+  })
+  const resumed = await t.mutation(api.workflows.updateStatus, {
+    id: workflow!._id,
+    status: 'running',
+  })
+
+  expect(running?.status).toBe('running')
+  expect(paused?.status).toBe('paused')
+  expect(resumed?.status).toBe('running')
 })
 
 test('executes instant workflows through scheduler and mocked fetch boundaries', async () => {

@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test'
 import type { UserIdentity } from 'convex/server'
+import { register as registerCronsComponent } from '@convex-dev/crons/test'
 
 import { api } from '../../convex/_generated/api'
 import schema from '../../convex/schema'
@@ -17,11 +18,15 @@ const TEST_IDENTITY: Partial<UserIdentity> = {
 }
 
 export function createConvexTest() {
-  return convexTest(schema, modules).withIdentity(TEST_IDENTITY)
+  const t = convexTest(schema, modules)
+  registerCronsComponent(t)
+  return t.withIdentity(TEST_IDENTITY)
 }
 
 export function createUnauthenticatedConvexTest() {
-  return convexTest(schema, modules)
+  const t = convexTest(schema, modules)
+  registerCronsComponent(t)
+  return t
 }
 
 export async function insertDoc(
