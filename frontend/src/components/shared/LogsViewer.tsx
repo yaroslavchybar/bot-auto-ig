@@ -81,6 +81,7 @@ export function LogsViewer({
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [filesLoading, setFilesLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [files, setFiles] = useState<LogFileItem[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
 
@@ -132,8 +133,10 @@ export function LogsViewer({
       if (!selectedFile && items[0]) {
         setSelectedFile(items[0].value)
       }
+      return items
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+      return []
     } finally {
       setFilesLoading(false)
     }
@@ -158,6 +161,38 @@ export function LogsViewer({
     },
     [liveBufferSize],
   )
+
+  const refreshStaticLogs = useCallback(async () => {
+    const items = await loadFiles()
+    const nextSelectedFile = selectedFile
+      ? items.find((item) => item.value === selectedFile)?.value ?? null
+      : (items[0]?.value ?? null)
+
+    if (!nextSelectedFile) {
+      setSelectedFile(null)
+      setLogs([])
+      return
+    }
+
+    if (nextSelectedFile !== selectedFile) {
+      setSelectedFile(nextSelectedFile)
+      return
+    }
+
+    await loadFileLogs(nextSelectedFile)
+  }, [loadFileLogs, loadFiles, selectedFile])
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        mode === 'live' ? loadLiveLogs() : refreshStaticLogs(),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [loadLiveLogs, mode, refreshStaticLogs])
 
   const handleClearLive = useCallback(async () => {
     setLoading(true)
@@ -355,18 +390,18 @@ export function LogsViewer({
             <Button
               variant="outline"
               size="icon"
-              onClick={
-                mode === 'live'
-                  ? () => void loadLiveLogs()
-                  : () => void loadFiles()
-              }
+              onClick={() => void handleRefresh()}
               aria-label="Refresh logs"
               title="Refresh logs"
               className="h-8 w-8 shrink-0 p-0"
-              disabled={loading || filesLoading}
+              disabled={loading || filesLoading || refreshing}
             >
               <RefreshCw
-                className={loading || filesLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+                className={
+                  loading || filesLoading || refreshing
+                    ? 'h-4 w-4 animate-spin'
+                    : 'h-4 w-4'
+                }
               />
               <span className="sr-only">Refresh</span>
             </Button>

@@ -52,6 +52,7 @@ export function ProfilesPageContainer() {
   // Local loading state for actions (save, delete, etc)
   const loading = profilesLoading
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -160,7 +161,12 @@ export function ProfilesPageContainer() {
     try {
       const data = await apiFetch<LogEntry[]>('/api/logs')
       const filtered = profileName
-        ? data.filter((l) => String(l.message).includes(profileName))
+        ? data.filter((log) => {
+            const structuredProfile = String(log.profileName || '').trim()
+            return structuredProfile
+              ? structuredProfile === profileName
+              : String(log.message || '').includes(profileName)
+          })
         : data
       setLogs(filtered.slice(-500))
     } catch (e) {
@@ -175,6 +181,18 @@ export function ProfilesPageContainer() {
       void loadLogs(logsProfile.name)
     }
   }, [logsProfile?.name, loadLogs])
+
+  const handleRefreshProfiles = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        refreshProfiles(),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refreshProfiles])
 
   const handleCreate = () => {
     setEditProfile(null)
@@ -346,13 +364,17 @@ export function ProfilesPageContainer() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => refreshProfiles()}
-              disabled={loading || saving}
+              onClick={() => void handleRefreshProfiles()}
+              disabled={loading || saving || refreshing}
               aria-label="Refresh profiles"
               title="Refresh profiles"
               className="h-8 w-8 shrink-0 p-0"
             >
-              <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+              <RefreshCw
+                className={
+                  loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
+                }
+              />
               <span className="sr-only">Refresh</span>
             </Button>
           </div>

@@ -326,9 +326,11 @@ export function AccountsPageContainer() {
         tasksKind || undefined,
       )
       setScrapingTasks(tasks)
+      return tasks
     } catch (error) {
       setScrapingTasks([])
       setScrapingError(error instanceof Error ? error.message : String(error))
+      return []
     } finally {
       setScrapingLoading(false)
     }
@@ -503,13 +505,11 @@ export function AccountsPageContainer() {
     )
   }, [csvMissingUsername, processFile, state])
 
-  const handleSelectTask = useCallback(
+  const loadSelectedTaskPreview = useCallback(
     async (taskId: string) => {
-      if (!taskId || selectedTaskLoading) return
+      if (!taskId) return
 
-      setSelectedTaskId(taskId)
       setSelectedTaskError(null)
-      setScrapingResult(null)
       setSelectedTaskLoading(true)
 
       try {
@@ -522,7 +522,40 @@ export function AccountsPageContainer() {
         setSelectedTaskLoading(false)
       }
     },
-    [getScrapingTaskFields, selectedTaskLoading],
+    [getScrapingTaskFields],
+  )
+
+  const handleRefreshScrapingTasks = useCallback(async () => {
+    const tasks = await refreshScrapingTasks()
+
+    if (!selectedTaskId) {
+      return
+    }
+
+    const stillExists = tasks.some(
+      (task) => String(task._id || '') === selectedTaskId,
+    )
+
+    if (!stillExists) {
+      setSelectedTaskId(null)
+      setSelectedTaskPreview(null)
+      setSelectedTaskError(null)
+      return
+    }
+
+    await loadSelectedTaskPreview(selectedTaskId)
+  }, [loadSelectedTaskPreview, refreshScrapingTasks, selectedTaskId])
+
+  const handleSelectTask = useCallback(
+    async (taskId: string) => {
+      if (!taskId || selectedTaskLoading) return
+
+      setSelectedTaskId(taskId)
+      setSelectedTaskError(null)
+      setScrapingResult(null)
+      await loadSelectedTaskPreview(taskId)
+    },
+    [loadSelectedTaskPreview, selectedTaskLoading],
   )
 
   const handleProcessTask = useCallback(async () => {
@@ -591,14 +624,14 @@ export function AccountsPageContainer() {
                   <Button
                     variant="outline"
                     size="icon"
-                    onClick={() => void refreshScrapingTasks()}
+                    onClick={() => void handleRefreshScrapingTasks()}
                     disabled={isScrapingBusy}
                     aria-label="Refresh scraping tasks"
                     title="Refresh scraping tasks"
                     className="h-8 w-8 shrink-0 p-0"
                   >
                     <RefreshCw
-                      className={scrapingLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+                      className={isScrapingBusy ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
                     />
                     <span className="sr-only">Refresh</span>
                   </Button>

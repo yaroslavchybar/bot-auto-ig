@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useMutation } from 'convex/react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ListsForm } from '../components/ListsForm'
@@ -32,6 +32,7 @@ export function ListsPageContainer() {
   } = useLists()
   const loading = listsLoading
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editList, setEditList] = useState<List | null>(null)
   const [deleteListTarget, setDeleteListTarget] = useState<List | null>(null)
@@ -142,6 +143,18 @@ export function ListsPageContainer() {
     }
   }
 
+  const handleRefreshLists = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        refresh(),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refresh])
+
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
       <AmbientGlow />
@@ -153,14 +166,16 @@ export function ListsPageContainer() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => void refresh()}
-            disabled={loading || saving}
+            onClick={() => void handleRefreshLists()}
+            disabled={loading || saving || refreshing}
             aria-label="Refresh lists"
             title="Refresh lists"
             className="h-8 w-8 shrink-0 p-0"
           >
             <RefreshCw
-              className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+              className={
+                loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
+              }
             />
             <span className="sr-only">Refresh</span>
           </Button>

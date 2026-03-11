@@ -26,6 +26,7 @@ export function VncSessionPageContainer() {
   const workflowId = decodeRouteParam(rawWorkflowId)
   const profileName = decodeRouteParam(rawProfileName)
   const { sessions, loading, error, refresh } = useVncSessions()
+  const [refreshing, setRefreshing] = useState(false)
 
   const session = useMemo(
     () =>
@@ -39,6 +40,18 @@ export function VncSessionPageContainer() {
   const handleBack = useCallback(() => {
     navigate('/vnc')
   }, [navigate])
+
+  const handleManualRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        refresh(),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refresh])
 
   if (!workflowId || !profileName) {
     return (
@@ -61,7 +74,7 @@ export function VncSessionPageContainer() {
     )
   }
 
-  if (loading && !session) {
+  if (loading && !session && !refreshing) {
     return (
       <div className="bg-shell text-subtle-copy flex h-full items-center justify-center text-sm">
         Loading live session...
@@ -87,10 +100,17 @@ export function VncSessionPageContainer() {
           <div className="flex justify-center gap-3">
             <Button
               variant="outline"
-              onClick={() => void refresh()}
+              onClick={() => void handleManualRefresh()}
+              disabled={loading || refreshing}
               className="border-line bg-field hover:bg-panel-hover text-copy"
             >
-              <RefreshCw className="mr-2 h-4 w-4" />
+              <RefreshCw
+                className={
+                  loading || refreshing
+                    ? 'mr-2 h-4 w-4 animate-spin'
+                    : 'mr-2 h-4 w-4'
+                }
+              />
               Refresh
             </Button>
             <Button onClick={handleBack} className="brand-button">
@@ -107,9 +127,9 @@ export function VncSessionPageContainer() {
     <ResolvedVncSessionPage
       key={sessionKey(session)}
       session={session}
-      loading={loading}
+      loading={loading || refreshing}
       onBack={handleBack}
-      onRefresh={refresh}
+      onRefresh={handleManualRefresh}
     />
   )
 }

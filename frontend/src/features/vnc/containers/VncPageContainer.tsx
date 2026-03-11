@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { LayoutGrid, RefreshCw } from 'lucide-react'
 import { VncTile } from '../components/VncTile'
@@ -10,6 +10,7 @@ import { buildVncSessionPath, sessionKey } from '../utils/liveSessions'
 export function VncPageContainer() {
   const navigate = useNavigate()
   const { sessions, loading, error, connected, refresh } = useVncSessions()
+  const [refreshing, setRefreshing] = useState(false)
 
   const handleSelect = useCallback(
     (workflowId: string, profileName: string) => {
@@ -17,6 +18,18 @@ export function VncPageContainer() {
     },
     [navigate],
   )
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    try {
+      await Promise.all([
+        refresh(),
+        new Promise((resolve) => setTimeout(resolve, 300)),
+      ])
+    } finally {
+      setRefreshing(false)
+    }
+  }, [refresh])
 
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
@@ -50,13 +63,16 @@ export function VncPageContainer() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() => void refresh()}
+              onClick={() => void handleRefresh()}
+              disabled={loading || refreshing}
               aria-label="Refresh sessions"
               title="Refresh sessions"
               className="h-8 w-8 shrink-0 p-0"
             >
               <RefreshCw
-                className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+                className={
+                  loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
+                }
               />
               <span className="sr-only">Refresh</span>
             </Button>

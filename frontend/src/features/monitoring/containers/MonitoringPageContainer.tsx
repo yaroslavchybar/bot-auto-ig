@@ -320,9 +320,11 @@ function MonitoringSkeleton() {
 function FatalErrorState({
   error,
   onRetry,
+  retrying,
 }: {
   error: string
   onRetry: () => void
+  retrying: boolean
 }) {
   return (
     <div className="bg-shell relative flex h-full items-center justify-center p-4 md:p-6">
@@ -338,8 +340,8 @@ function FatalErrorState({
             </h2>
             <p className="text-muted-copy text-sm">{error}</p>
           </div>
-          <Button onClick={onRetry} className="brand-button w-full">
-            <RefreshCw className="h-4 w-4" />
+          <Button onClick={onRetry} disabled={retrying} className="brand-button w-full">
+            <RefreshCw className={retrying ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
             Retry
           </Button>
         </CardContent>
@@ -355,6 +357,7 @@ export function MonitoringPageContainer() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -374,6 +377,15 @@ export function MonitoringPageContainer() {
     }
   }, [])
 
+  const handleRetry = useCallback(async () => {
+    setRetrying(true)
+    try {
+      await fetchData()
+    } finally {
+      setRetrying(false)
+    }
+  }, [fetchData])
+
   useEffect(() => {
     if (!isVisible) {
       return
@@ -392,7 +404,7 @@ export function MonitoringPageContainer() {
   }
 
   if (error && !data) {
-    return <FatalErrorState error={error} onRetry={() => void fetchData()} />
+    return <FatalErrorState error={error} onRetry={() => void handleRetry()} retrying={retrying} />
   }
 
   if (!data) {
