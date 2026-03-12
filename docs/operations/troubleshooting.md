@@ -50,7 +50,7 @@
 ## Python Runtime Problems
 
 - Browser launch/proxy failures:
-  - inspect `python/getting_started/launcher.py` and runtime logs.
+  - inspect `python/runners/launcher.py` and runtime logs.
 - Frequent retries or aborts:
   - inspect error handling decisions in `python/internal_systems/error_handling`.
 
@@ -73,5 +73,5 @@ Expected: no matches outside the docs pages that document this check.
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`
 - `server/api/displays.ts`
-- `python/getting_started/launcher.py`
-- `python/getting_started/run_workflow.py`
+- `python/runners/launcher.py`
+- `python/runners/run_workflow.py`

@@ -34,7 +34,7 @@
 
 - Server starts Python for manual automation/profile sessions.
 - Workflows API starts `run_workflow.py` with JSON payload over stdin.
-- Multi-account helper flows remain in `python/getting_started/` and are not mounted as direct server API endpoints.
+- Multi-account helper flows remain in `python/runners/` and are not mounted as direct server API endpoints.
 - Runtime emits structured `__EVENT__...__EVENT__` messages for WS propagation.
 
 ## Reliability Model

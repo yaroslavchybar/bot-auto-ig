@@ -5,6 +5,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, Error as
 from python.core.errors.exceptions import BotException, ElementNotFoundError, SelectorTimeoutError
 from python.core.selectors import HOME_BUTTON
 from python.core.errors.retry import jitter
+from python.actions.common import random_delay
 from python.actions.browsing.utils import human_scroll, scroll_to_element
 from .likes import perform_like
 from .following import perform_follow

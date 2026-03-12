@@ -41,7 +41,11 @@ Use this layer for browser lifecycle, anti-detection strategy, and display alloc
 - `python/core/errors/`: error handling, exceptions, retry, http client.
 - `python/core/logging.py`: logging configuration.
 - `python/core/process/`: healthcheck, process manager, job object.
-- `python/core/storage/`: atomic writes, state persistence, selector cache.
+- `python/core/selectors.py`: semantic selectors with strategy fallback and selector-cache feedback.
+- `python/core/snapshot_debugger.py`: HTML/screenshot capture for selector and page-state debugging.
+- `python/core/totp.py`: TOTP code generation from Base32 secrets.
+- `python/core/storage/`: atomic writes, profile persistence helpers, state persistence, selector cache.
+- `python/core/storage/profile_manager.py`: profile cache plus database sync for local/private profiles.
 - `python/core/utils.py`: shared worker utilities.
 
 ## Verified Against
