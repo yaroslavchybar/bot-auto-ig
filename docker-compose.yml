@@ -29,7 +29,6 @@ services:
       - .env
     environment:
       - CONVEX_URL_DEV=${CONVEX_URL_DEV}
-      - CONVEX_URL_PROD=${CONVEX_URL_PROD}
     restart: unless-stopped
 
   scraper:

@@ -5,7 +5,6 @@ import {
   Search,
   List,
   FileText,
-  Command,
   Upload,
   GitBranch,
   Monitor,
@@ -23,6 +22,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  SidebarTrigger,
 } from '@/components/ui/sidebar'
 
 export const NAV_IDS = [
@@ -121,23 +121,9 @@ export function AppSidebar(props: AppSidebarProps) {
       {...props}
     >
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild size="lg" className="hover:bg-panel-subtle">
-              <NavLink to="/profiles">
-                <div className="brand-avatar flex aspect-square size-8 items-center justify-center rounded-lg">
-                  <Command className="size-4" />
-                </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="text-ink truncate font-semibold">Anti</span>
-                  <span className="text-subtle-copy truncate text-xs">
-                    Automation Platform
-                  </span>
-                </div>
-              </NavLink>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="flex items-center justify-start px-1 group-data-[collapsible=icon]:justify-center">
+          <SidebarTrigger className="text-muted-copy hover:text-ink size-8" />
+        </div>
       </SidebarHeader>
       <SidebarContent>
         {navMain.map((group) => (
