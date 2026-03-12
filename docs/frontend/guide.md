@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The frontend is a Clerk-protected React Router 7 + Vite operations app across profiles, lists, scraping, workflows, accounts upload, logs, VNC, and monitoring. It now uses Clerk's React Router integration with SSR enabled so route auth and redirect behavior run on the server, not only after client render.
+The frontend is a Clerk-protected React Router 7 + Vite operations app across profiles, lists, workflows, scraped data, accounts upload, logs, VNC, and monitoring. It now uses Clerk's React Router integration with SSR enabled so route auth and redirect behavior run on the server, not only after client render.
 
 ## Application Shape
 
@@ -24,8 +24,8 @@ Feature folders:
 - `auth`
 - `profiles`
 - `lists`
-- `scraping`
 - `workflows`
+- `scraped-data`
 - `accounts`
 - `logs`
 - `vnc`
@@ -36,9 +36,9 @@ Feature folders:
 Protected routes under the authenticated shell:
 - `/profiles`
 - `/lists`
-- `/scraping`
 - `/workflows`
 - `/workflows/:workflowId/editor` (immersive editor route without the global sidebar/top header; uses local editor controls)
+- `/scraped-data`
 - `/accounts`
 - `/logs`
 - `/vnc`
@@ -49,6 +49,8 @@ Protected routes under the authenticated shell:
 - Workflow activity nodes are schema-driven from `frontend/src/features/workflows/activities/*`.
 - The right-side node settings panel renders grouped inputs directly from activity metadata; there is no separate modal/settings framework for workflow nodes.
 - `start_browser` is the workflow-wide execution settings node for headless mode, parallel profile count, profile reopen cooldown, and messaging cooldown.
+- `scrape_relationships` is the workflow-owned follower/following scraping node. It stores resumable runtime progress in workflow node state and exposes downloadable artifacts from workflow details.
+- `/scraped-data` is the dedicated artifact-management page for all workflow scrape outputs. It uses Convex-authenticated workflow artifact queries and exposes download/delete actions without replacing the `/accounts` import flow.
 - Existing workflows remain backward compatible with legacy `start_browser` cooldown keys; the editor normalizes them to the current config shape on load/save.
 - `send_dm` node template management stays connected to shared Convex template banks and can switch between `message` and `message_2` from node config.
 
@@ -92,11 +94,11 @@ Other route behavior:
 
 ### Convex Integration
 - `VITE_CONVEX_URL` is required and normalized to HTTPS.
-- Browser data access for profiles, lists, workflows, scraping tasks, and message templates goes directly through the Convex React client.
+- Browser data access for profiles, lists, workflows, workflow artifacts, and message templates goes directly through the Convex React client.
 - `ConvexProviderWithClerk` uses Clerk auth tokens so every browser-facing Convex query and mutation runs with a Clerk identity.
 - Protected layout rendering is gated with Convex auth state (`AuthLoading` / `Authenticated` / `Unauthenticated`) so feature query hooks mount only after Convex validates Clerk tokens.
 - Browser code should not call `.convex.site/api/*` directly.
-- Scraping artifact download still resolves storage URLs through authenticated Convex queries.
+- Workflow scrape artifact download resolves storage URLs through authenticated workflow artifact helpers.
 
 ### Styling
 - Tailwind CSS is configured in CSS-first mode from `frontend/src/index.css`.
@@ -179,7 +181,6 @@ npm --prefix frontend run preview
 - `frontend/src/features/profiles/hooks/useProfiles.ts`
 - `frontend/src/features/lists/hooks/useLists.ts`
 - `frontend/src/features/accounts/hooks/useDataUploader.ts`
-- `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowEditorPageContainer.tsx`
 - `frontend/src/features/workflows/utils/workflowImportExport.ts`

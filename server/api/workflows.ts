@@ -6,7 +6,13 @@ import { activeDisplays, workflowWorkers } from '../store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../helpers/mutex.js'
 import { parseLogOutput } from '../logs/parser.js'
-import { workflowsGetById, workflowsStart, workflowsUpdateStatus } from '../data/convex.js'
+import {
+    workflowArtifactsGetStorageUrl,
+    workflowArtifactsListByWorkflow,
+    workflowsGetById,
+    workflowsStart,
+    workflowsUpdateStatus,
+} from '../data/convex.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -137,6 +143,69 @@ router.get('/status', (req, res) => {
     })
 })
 
+router.get('/artifacts', async (req, res) => {
+    try {
+        const workflowId = String((req.query as any)?.workflowId ?? (req.query as any)?.workflow_id ?? (req.query as any)?.id ?? '').trim()
+        if (!workflowId) {
+            return res.status(400).json({ error: 'workflowId is required' })
+        }
+
+        const artifacts = await workflowArtifactsListByWorkflow(workflowId)
+        return res.json(artifacts)
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return res.status(500).json({ error: message })
+    }
+})
+
+router.get('/artifacts/storage-url', async (req, res) => {
+    try {
+        const storageId = String((req.query as any)?.storageId ?? '').trim()
+        if (!storageId) {
+            return res.status(400).json({ error: 'storageId is required' })
+        }
+
+        const url = await workflowArtifactsGetStorageUrl(storageId)
+        if (!url) {
+            return res.status(404).json({ error: 'Artifact URL is not ready' })
+        }
+
+        return res.json({ url })
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return res.status(500).json({ error: message })
+    }
+})
+
+router.get('/artifacts/download', async (req, res) => {
+    try {
+        const storageId = String((req.query as any)?.storageId ?? '').trim()
+        const fileName = String((req.query as any)?.fileName ?? 'artifact.json').trim() || 'artifact.json'
+        if (!storageId) {
+            return res.status(400).json({ error: 'storageId is required' })
+        }
+
+        const url = await workflowArtifactsGetStorageUrl(storageId)
+        if (!url) {
+            return res.status(404).json({ error: 'Artifact URL is not ready' })
+        }
+
+        const upstream = await fetch(url)
+        if (!upstream.ok) {
+            return res.status(502).json({ error: `Failed to download artifact (${upstream.status})` })
+        }
+
+        const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+        const arrayBuffer = await upstream.arrayBuffer()
+        res.setHeader('Content-Type', contentType)
+        res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+        return res.send(Buffer.from(arrayBuffer))
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        return res.status(500).json({ error: message })
+    }
+})
+
 router.post('/run', async (req, res) => {
     const release = await automationMutex.acquire()
 
@@ -180,8 +249,19 @@ router.post('/run', async (req, res) => {
 
         const payload = JSON.stringify({
             workflowId,
-            workflow: { nodes: workflow.nodes ?? [], edges: workflow.edges ?? [] },
-            options: parallelProfiles === undefined ? {} : { parallel_profiles: parallelProfiles },
+            workflow: {
+                name: workflow.name,
+                nodes: workflow.nodes ?? [],
+                edges: workflow.edges ?? [],
+                nodeStates: workflow.nodeStates ?? {},
+                currentNodeId: workflow.currentNodeId ?? null,
+            },
+            options: {
+                ...(parallelProfiles === undefined ? {} : { parallel_profiles: parallelProfiles }),
+                node_states: workflow.nodeStates ?? {},
+                current_node_id: workflow.currentNodeId ?? null,
+                workflow_name: workflow.name,
+            },
         })
         proc.stdin?.write(payload)
         proc.stdin?.end()
@@ -191,6 +271,8 @@ router.post('/run', async (req, res) => {
         const maybeUpdateStatusFromEvent = async (log: any) => {
             const meta = (log?.metadata as any) || {}
             const eventType = log?.eventType
+            const nextNodeStates = meta.node_states ?? meta.nodeStates
+            const nextCurrentNodeId = meta.node_id ?? meta.nodeId
 
             if (eventType === 'session_started') {
                 try {
@@ -206,9 +288,9 @@ router.post('/run', async (req, res) => {
                 currentProfile = null;
             }
 
-            if (eventType === 'task_started' && (meta.node_id || meta.nodeId)) {
-                const currentNodeId = String(meta.node_id ?? meta.nodeId)
-                const nodeStates = meta.node_states ?? meta.nodeStates
+            if ((eventType === 'task_started' || eventType === 'task_completed' || eventType === 'task_progress') && nextCurrentNodeId) {
+                const currentNodeId = String(nextCurrentNodeId)
+                const nodeStates = nextNodeStates
                 try {
                     await workflowsUpdateStatus({ workflowId, status: 'running', currentNodeId, nodeStates })
                 } catch {
@@ -219,7 +301,25 @@ router.post('/run', async (req, res) => {
             if (eventType === 'session_ended') {
                 const status = normalizeWorkflowTerminalStatus(meta?.status)
                 try {
-                    await workflowsUpdateStatus({ workflowId, status })
+                    await workflowsUpdateStatus({
+                        workflowId,
+                        status,
+                        currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
+                        nodeStates: nextNodeStates,
+                    })
+                } catch {
+                }
+                return
+            }
+
+            if (nextNodeStates !== undefined) {
+                try {
+                    await workflowsUpdateStatus({
+                        workflowId,
+                        status: 'running',
+                        currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
+                        nodeStates: nextNodeStates,
+                    })
                 } catch {
                 }
             }

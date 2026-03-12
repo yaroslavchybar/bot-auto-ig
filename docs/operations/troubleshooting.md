@@ -23,7 +23,7 @@
 - Internal workflow calls rejected:
   - verify `INTERNAL_API_KEY` in both caller and server.
 
-## Workflow and Scraping Issues
+## Workflow and Scrape Node Issues
 
 - Workflow run denied:
   - check `WORKFLOW_MAX_CONCURRENCY` cap.
@@ -35,10 +35,10 @@
   - open workflow editor and replace/remove unsupported activity nodes before export/import.
 - Workflow JSON import warning (`Select List node references missing list IDs`):
   - import succeeds; create missing lists or remap `select_list.sourceLists` in the editor.
-- No eligible scraping profiles:
-  - verify profile login/runtime/list assignment state.
-- Scraping target failures:
-  - inspect `/api/scraping/*` responses and task output payloads.
+- Scrape workflow run denied:
+  - verify the workflow includes `start_browser` and exactly one selected auth profile for `scrape_relationships`.
+- Scrape node target failures:
+  - inspect workflow details for scrape node state, retry metadata, and downloadable artifact or manifest payloads.
 
 ## Monitoring and VNC
 
@@ -67,12 +67,11 @@ Expected: no matches outside the docs pages that document this check.
 - `frontend/src/root.tsx`
 - `frontend/src/lib/env.ts`
 - `frontend/src/hooks/useAuthenticatedFetch.ts`
-- `frontend/src/features/scraping/containers/ScrapingPageContainer.tsx`
 - `frontend/src/features/workflows/containers/WorkflowsPageContainer.tsx`
 - `frontend/src/features/workflows/utils/workflowImportExport.ts`
 - `frontend/src/features/monitoring/containers/MonitoringPageContainer.tsx`
-- `server/api/scraping/index.ts`
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`
 - `server/api/displays.ts`
 - `python/getting_started/launcher.py`
+- `python/getting_started/run_workflow.py`

@@ -17,6 +17,7 @@ export type ActivityCategory =
 // Types of inputs an activity can have
 export type InputType =
   | 'string'
+  | 'string_list'
   | 'number'
   | 'boolean'
   | 'select'

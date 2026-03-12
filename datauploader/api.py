@@ -158,7 +158,7 @@ class ScrapingTasksListResponse(BaseModel):
 @app.get("/scraping-tasks")
 async def list_scraping_tasks(env: str = "dev", kind: str | None = None) -> ScrapingTasksListResponse:
     try:
-        tasks = convex_query("scrapingTasks:listUnimported", {"kind": kind} if kind is not None else {}, env=env)
+        tasks = convex_query("workflowArtifacts:listUnimported", {"kind": kind} if kind is not None else {}, env=env)
         if not isinstance(tasks, list):
             tasks = []
         normalized = [normalize_task_row(task) for task in tasks if isinstance(task, dict)]
@@ -203,7 +203,7 @@ def _extract_fullname_from_user(user: Any) -> str:
 
 
 def _fetch_storage_payload(storage_id: str, env: str) -> dict[str, Any]:
-    url = convex_query("scrapingTasks:getStorageUrl", {"storageId": storage_id}, env=env)
+    url = convex_query("workflowArtifacts:getStorageUrl", {"storageId": storage_id}, env=env)
     if not url or not isinstance(url, str):
         raise HTTPException(status_code=400, detail=f"Could not get storage URL for {storage_id}")
 
@@ -225,7 +225,7 @@ def _load_manifest_payload(task: dict[str, Any], manifest_payload: dict[str, Any
 
 
 def _get_task_and_payload(task_id: str, env: str) -> tuple[dict[str, Any], dict[str, Any]]:
-    task = convex_query("scrapingTasks:getById", {"id": task_id}, env=env)
+    task = convex_query("workflowArtifacts:getById", {"id": task_id}, env=env)
     if not task or not isinstance(task, dict):
         raise HTTPException(status_code=404, detail="Task not found")
     normalized_task = normalize_task_row(task)
@@ -401,7 +401,7 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
                 result = upload_accounts_to_convex(unique_accounts, env=out_env, status=request.accountStatus)
                 uploaded[out_env] = int(result.get("inserted", 0))
                 duplicates[out_env] = int(result.get("skipped", 0))
-            convex_mutation("scrapingTasks:setImported", {"id": task_id, "imported": True}, env=env)
+            convex_mutation("workflowArtifacts:setImported", {"id": task_id, "imported": True}, env=env)
 
         return {
             "status": "completed",
@@ -433,7 +433,7 @@ async def import_scraping_task(task_id: str, request: ImportScrapingTaskRequest)
         usernames = extract_usernames_from_scraping_task_payload(payload)
         result = upload_usernames_to_convex(usernames, env=env, status=request.accountStatus)
 
-        convex_mutation("scrapingTasks:setImported", {"id": task_id, "imported": True}, env=env)
+        convex_mutation("workflowArtifacts:setImported", {"id": task_id, "imported": True}, env=env)
 
         return {
             "taskId": task_id,

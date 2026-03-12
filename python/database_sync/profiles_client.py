@@ -130,6 +130,18 @@ class ProfilesClient:
         """Set login field to True for a profile."""
         self._make_request("POST", "/set-login-true", data={"name": name})
 
+    def increment_daily_scraping_used(self, name: str, amount: int) -> bool:
+        clean_name = str(name or "").strip()
+        safe_amount = max(0, int(amount)) if isinstance(amount, (int, float)) else 0
+        if not clean_name or safe_amount <= 0:
+            return False
+        self._make_request(
+            "POST",
+            "/increment-daily-scraping-used",
+            data={"name": clean_name, "amount": safe_amount},
+        )
+        return True
+
 
 # Backwards compatibility aliases
 SupabaseProfilesClient = ProfilesClient

@@ -31,14 +31,6 @@ services:
       - CONVEX_URL_DEV=${CONVEX_URL_DEV}
     restart: unless-stopped
 
-  scraper:
-    build:
-      context: ./scraper
-      dockerfile: Dockerfile
-    ports:
-      - "3003:3003"
-    restart: unless-stopped
-
   frontend:
     build:
       context: .
@@ -58,5 +50,4 @@ services:
     depends_on:
       - server
       - datauploader
-      - scraper
     restart: unless-stopped

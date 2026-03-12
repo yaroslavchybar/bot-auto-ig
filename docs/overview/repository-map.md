@@ -5,9 +5,8 @@
 - `frontend/`: React Router 7 + Vite frontend with route modules, feature-owned UI, and SSR/client entrypoints.
 - `server/`: Express API, WebSocket server, automation orchestration, and Convex-backed data access.
 - `python/`: browser automation runtime, workflow executor, and internal support systems.
-- `convex/`: schema, query/mutation modules, HTTP actions, cron jobs, and migration helpers.
-- `datauploader/`: FastAPI CSV and scraping-task ingest service.
-- `scraper/`: FastAPI and CLI follower/following scraper service.
+- `convex/`: schema, query/mutation modules, HTTP actions, and cron jobs.
+- `datauploader/`: FastAPI CSV and workflow-artifact ingest service.
 - `data/`: runtime artifacts such as logs and uploads.
 - `docs/`: canonical documentation.
 
@@ -23,8 +22,8 @@ Feature-owned domains under `frontend/src/features/`:
 - `auth`
 - `profiles`
 - `lists`
-- `scraping`
 - `workflows`
+- `scraped-data`
 - `accounts`
 - `logs`
 - `vnc`
@@ -43,18 +42,9 @@ Mounted API route files under `server/api/`:
 - `profiles.ts`
 - `lists.ts`
 - `logs.ts`
-- `scraping.ts` (compatibility re-export to `server/api/scraping/index.ts`)
 - `workflows.ts`
 - `monitoring.ts`
 - `displays.ts`
-
-Nested scraping router modules under `server/api/scraping/`:
-- `index.ts`
-- `followers.ts`
-- `following.ts`
-- `followers-chunk.ts`
-- `following-chunk.ts`
-- shared helpers, types, and logging modules under the same folder
 
 Additional server surfaces:
 - `automation/`: process runner, shutdown, and session state helpers.
@@ -71,11 +61,10 @@ Primary owned modules under `convex/`:
 - `instagramAccounts.ts`
 - `messageTemplates.ts`
 - `keywords.ts`
-- `scrapingTasks.ts`
+- `workflowArtifacts.ts`
 - `workflows.ts`
 - `http.ts`
 - `crons.ts`
-- `migrations.ts`
 - `convex.config.ts`
 
 Generated artifacts:
@@ -88,6 +77,6 @@ Generated artifacts:
 - `frontend/src/components/layout/ProtectedLayoutShell.tsx`
 - directory listings for `frontend/src/features` and `frontend/src/routes`
 - `server/index.ts`
-- directory listings for `server/api` and `server/api/scraping`
+- directory listings for `server/api`
 - `convex/schema.ts`
 - directory listing for `convex/*.ts`

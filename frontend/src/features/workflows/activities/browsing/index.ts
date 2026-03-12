@@ -7,10 +7,12 @@
 
 export { browseFeed } from './browse-feed'
 export { browseReels } from './browse-reels'
+export { scrapeRelationships } from './scrape-relationships'
 
 import { browseFeed } from './browse-feed'
 import { browseReels } from './browse-reels'
+import { scrapeRelationships } from './scrape-relationships'
 
-export const browsingActivities = [browseFeed, browseReels]
+export const browsingActivities = [browseFeed, browseReels, scrapeRelationships]
 
 

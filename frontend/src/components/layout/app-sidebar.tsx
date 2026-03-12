@@ -2,13 +2,13 @@ import * as React from 'react'
 import { NavLink, useLocation } from 'react-router'
 import {
   Users,
-  Search,
   List,
   FileText,
   Upload,
   GitBranch,
   Monitor,
   Activity,
+  Database,
 } from 'lucide-react'
 
 import {
@@ -28,7 +28,7 @@ import {
 export const NAV_IDS = [
   'profiles',
   'workflows',
-  'scraping',
+  'scraped-data',
   'lists',
   'accounts',
   'logs',
@@ -54,11 +54,11 @@ export const NAV_ITEMS = [
     breadcrumb: 'Workflows',
   },
   {
-    title: 'Scraping',
-    id: 'scraping',
-    to: '/scraping',
-    icon: Search,
-    breadcrumb: 'Scraping',
+    title: 'Scraped Data',
+    id: 'scraped-data',
+    to: '/scraped-data',
+    icon: Database,
+    breadcrumb: 'Scraped Data',
   },
   {
     title: 'Lists Manager',

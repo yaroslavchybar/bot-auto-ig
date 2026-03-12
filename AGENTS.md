@@ -23,7 +23,6 @@ Domain guides:
 
 Service guides:
 - Data uploader: [docs/services/datauploader.md](docs/services/datauploader.md)
-- Scraper: [docs/services/scraper.md](docs/services/scraper.md)
 
 Operations:
 - Environment and security: [docs/operations/environment-and-security.md](docs/operations/environment-and-security.md)
@@ -35,12 +34,11 @@ Operations:
 
 ## Quick Repo Map
 
-- `frontend/`: React Router app (`root.tsx`, `routes.ts`, route modules, feature-owned UI for `profiles`, `lists`, `scraping`, `workflows`, `accounts`, `logs`, `vnc`, `monitoring`).
-- `server/`: Express API route files (`automation`, `profiles`, `lists`, `logs`, `scraping`, `workflows`, `monitoring`, `displays`) + WebSocket.
+- `frontend/`: React Router app (`root.tsx`, `routes.ts`, route modules, feature-owned UI for `profiles`, `lists`, `workflows`, `accounts`, `logs`, `vnc`, `monitoring`).
+- `server/`: Express API route files (`automation`, `profiles`, `lists`, `logs`, `workflows`, `monitoring`, `displays`) + WebSocket.
 - `python/`: automation runtime entrypoints and internal systems.
-- `convex/`: schema/modules/http/crons/migrations including `keywords`, `scrapingTasks`, `workflows`.
-- `datauploader/`: CSV + scraping-task ingest service.
-- `scraper/`: follower/following scraping service.
+- `convex/`: schema/modules/http/crons/migrations including `keywords`, `workflowArtifacts`, `workflows`.
+- `datauploader/`: CSV + workflow-artifact ingest service.
 - `data/`: runtime logs/uploads.
 
 ## Quick Commands

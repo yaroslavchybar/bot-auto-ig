@@ -50,13 +50,3 @@ export async function createWorkflow(
   })
 }
 
-export async function createScrapingTask(
-  t: any,
-  overrides: Record<string, unknown> = {}
-) {
-  return await t.mutation(api.scrapingTasks.create, {
-    name: 'task-1',
-    targetUsername: 'target-user',
-    ...overrides,
-  })
-}

@@ -62,22 +62,22 @@ def convex_internal_fetch(
 
 def convex_query(path: str, args: dict[str, Any] | None = None, env: str = "dev") -> Any:
     args = args or {}
-    if path == "scrapingTasks:listUnimported":
+    if path == "workflowArtifacts:listUnimported":
         kind = args.get("kind")
-        endpoint = "/api/scraping-tasks/unimported"
+        endpoint = "/api/workflow-artifacts/unimported"
         if kind:
             endpoint = f"{endpoint}?kind={kind}"
         return convex_internal_fetch(endpoint, env=env)
-    if path == "scrapingTasks:getById":
-        task_id = args.get("id")
+    if path == "workflowArtifacts:getById":
+        artifact_id = args.get("id")
         return convex_internal_fetch(
-            f"/api/scraping-tasks/by-id?id={task_id}",
+            f"/api/workflow-artifacts/by-id?id={artifact_id}",
             env=env,
         )
-    if path == "scrapingTasks:getStorageUrl":
+    if path == "workflowArtifacts:getStorageUrl":
         storage_id = args.get("storageId")
         return convex_internal_fetch(
-            f"/api/scraping-tasks/storage-url?storageId={storage_id}",
+            f"/api/workflow-artifacts/storage-url?storageId={storage_id}",
             env=env,
         )
     if path == "keywords:get":
@@ -104,6 +104,13 @@ def convex_query(path: str, args: dict[str, Any] | None = None, env: str = "dev"
 
 def convex_mutation(path: str, args: dict[str, Any] | None = None, env: str = "dev") -> Any:
     args = args or {}
+    if path == "workflowArtifacts:setImported":
+        return convex_internal_fetch(
+            "/api/workflow-artifacts/set-imported",
+            method="POST",
+            body=args,
+            env=env,
+        )
     if path == "instagramAccounts:insert":
         return convex_internal_fetch(
             "/api/instagram-accounts",
@@ -132,14 +139,6 @@ def convex_mutation(path: str, args: dict[str, Any] | None = None, env: str = "d
             body=args,
             env=env,
         )
-    if path == "scrapingTasks:setImported":
-        return convex_internal_fetch(
-            "/api/scraping-tasks/set-imported",
-            method="POST",
-            body=args,
-            env=env,
-        )
-
     url = f"{get_convex_url(env)}/api/mutation"
     body = {"path": path, "args": args, "format": "json"}
     headers = {"Content-Type": "application/json"}

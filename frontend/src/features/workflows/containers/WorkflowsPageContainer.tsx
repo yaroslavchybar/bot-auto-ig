@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Plus, RefreshCw, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { apiFetch } from '@/lib/api'
+import { apiDownload, apiFetch } from '@/lib/api'
 import { getActivityById } from '@/features/workflows/activities'
 import { WorkflowsList } from '../components/WorkflowsList'
 import { WorkflowDialog } from '../components/WorkflowDialog'
@@ -41,6 +41,27 @@ import {
   validateWorkflowImport,
 } from '../utils/workflowImportExport'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
+
+type WorkflowArtifact = {
+  _id: string
+  name: string
+  nodeLabel?: string | null
+  kind: 'followers' | 'following'
+  targets?: string[]
+  targetUsername?: string | null
+  status?: string | null
+  storageId?: string | null
+  manifestStorageId?: string | null
+  exportStorageId?: string | null
+  sourceProfileName?: string | null
+  lastRunAt?: number | null
+  stats?: {
+    scraped?: number
+    deduped?: number
+    chunksCompleted?: number
+    targetsCompleted?: number
+  } | null
+}
 
 export function WorkflowsPageContainer() {
   const convex = useConvex()
@@ -63,6 +84,10 @@ export function WorkflowsPageContainer() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [workflowsData, setWorkflowsData] = useState<Workflow[] | null>(null)
+  const [artifactsLoading, setArtifactsLoading] = useState(false)
+  const [workflowArtifacts, setWorkflowArtifacts] = useState<
+    Record<string, WorkflowArtifact[]>
+  >({})
 
   const workflows = useQuery(api.workflows.list, {})
   const lists = useQuery(api.lists.list, {})
@@ -74,6 +99,37 @@ export function WorkflowsPageContainer() {
       setWorkflowsData(workflows)
     }
   }, [workflows])
+
+  useEffect(() => {
+    const workflowId = detailsWorkflowId ? String(detailsWorkflowId) : ''
+    if (!workflowId) return
+
+    let cancelled = false
+    setArtifactsLoading(true)
+    void apiFetch<WorkflowArtifact[]>(
+      `/api/workflows/artifacts?workflowId=${encodeURIComponent(workflowId)}`,
+    )
+      .then((rows) => {
+        if (cancelled) return
+        setWorkflowArtifacts((prev) => ({
+          ...prev,
+          [workflowId]: Array.isArray(rows) ? rows : [],
+        }))
+      })
+      .catch((cause) => {
+        if (cancelled) return
+        setError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setArtifactsLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [detailsWorkflowId])
 
   const createWorkflow = useMutation(api.workflows.create)
   const updateWorkflow = useMutation(api.workflows.update)
@@ -400,6 +456,16 @@ export function WorkflowsPageContainer() {
     [resetWorkflow],
   )
 
+  const handleDownloadArtifact = useCallback(
+    async (storageId: string, fileName: string) => {
+      await apiDownload(
+        `/api/workflows/artifacts/download?storageId=${encodeURIComponent(storageId)}&fileName=${encodeURIComponent(fileName)}`,
+        fileName,
+      )
+    },
+    [],
+  )
+
   return (
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
       <AmbientGlow />
@@ -513,6 +579,11 @@ export function WorkflowsPageContainer() {
           {detailsWorkflow ? (
             <WorkflowDetails
               workflow={detailsWorkflow}
+              artifacts={workflowArtifacts[String(detailsWorkflow._id)] ?? []}
+              artifactsLoading={artifactsLoading}
+              onDownloadArtifact={(storageId, fileName) =>
+                void handleDownloadArtifact(storageId, fileName)
+              }
               onToggleActive={() => handleToggleActive(detailsWorkflow)}
               onEditSchedule={() => handleEditSchedule(detailsWorkflow)}
               onReset={() => handleReset(detailsWorkflow)}

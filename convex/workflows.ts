@@ -312,6 +312,29 @@ export const remove = mutation({
 			throw new Error("Cannot delete running workflow");
 		}
 
+		const artifacts = await ctx.db
+			.query("workflowArtifacts")
+			.withIndex("by_workflowId", (q: any) => q.eq("workflowId", args.id))
+			.collect();
+		for (const artifact of artifacts) {
+			const storageIds = new Set<string>();
+			for (const candidate of [artifact.storageId, artifact.exportStorageId, artifact.manifestStorageId]) {
+				if (!candidate) continue;
+				const key = String(candidate || "").trim();
+				if (!key || storageIds.has(key)) continue;
+				storageIds.add(key);
+				try {
+					await ctx.storage.delete(candidate);
+				} catch (error: any) {
+					const message = String(error?.message || error || "").toLowerCase();
+					if (!message.includes("not found")) {
+						throw error;
+					}
+				}
+			}
+			await ctx.db.delete(artifact._id);
+		}
+
 		await ctx.db.delete(args.id);
 		return true;
 	},
@@ -375,7 +398,6 @@ async function startWorkflow(ctx: any, args: { id: any }) {
 		lastRunAt: Date.now(),
 		error: undefined,
 		currentNodeId: undefined,
-		nodeStates: {},
 		startedAt: undefined,
 		completedAt: undefined,
 		updatedAt: Date.now(),
@@ -786,7 +808,6 @@ export const executeScheduledWorkflow = internalMutation({
 			lastRunAt: Date.now(),
 			error: undefined,
 			currentNodeId: undefined,
-			nodeStates: {},
 			startedAt: undefined,
 			completedAt: undefined,
 			updatedAt: Date.now(),

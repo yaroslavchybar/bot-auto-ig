@@ -56,67 +56,6 @@ export default defineSchema({
 		updatedAt: v.number(),
 	}).index("by_kind", ["kind"]),
 
-	scrapingTasks: defineTable({
-		name: v.string(),
-		kind: v.union(v.literal("followers"), v.literal("following")),
-		targetUsername: v.optional(v.string()),
-		targets: v.optional(v.array(v.string())),
-		imported: v.optional(v.boolean()),
-		status: v.optional(v.union(
-			v.literal("idle"),
-			v.literal("queued"),
-			v.literal("leasing"),
-			v.literal("running"),
-			v.literal("paused"),
-			v.literal("retry_wait"),
-			v.literal("completed"),
-			v.literal("failed"),
-			v.literal("cancelled")
-		)),
-		lastRunAt: v.optional(v.number()),
-		lastScraped: v.optional(v.number()),
-		lastError: v.optional(v.string()),
-		lastErrorCode: v.optional(v.string()),
-		lastErrorMessage: v.optional(v.string()),
-		lastOutput: v.optional(v.any()),
-		storageId: v.optional(v.id("_storage")),
-		manifestStorageId: v.optional(v.id("_storage")),
-		exportStorageId: v.optional(v.id("_storage")),
-		currentTargetIndex: v.optional(v.number()),
-		cursor: v.optional(v.string()),
-		attempt: v.optional(v.number()),
-		maxAttempts: v.optional(v.number()),
-		leaseOwner: v.optional(v.string()),
-		leaseExpiresAt: v.optional(v.number()),
-		heartbeatAt: v.optional(v.number()),
-		assignedProfileId: v.optional(v.id("profiles")),
-		assignedProfileName: v.optional(v.string()),
-		stats: v.optional(v.object({
-			scraped: v.number(),
-			deduped: v.number(),
-			chunksCompleted: v.number(),
-			targetsCompleted: v.number(),
-		})),
-		startedAt: v.optional(v.number()),
-		completedAt: v.optional(v.number()),
-		nextRunAt: v.optional(v.number()),
-		chunkRefs: v.optional(v.array(v.object({
-			storageId: v.id("_storage"),
-			targetUsername: v.string(),
-			sequence: v.number(),
-			sourceProfileId: v.optional(v.id("profiles")),
-			sourceProfileName: v.optional(v.string()),
-			scrapedAt: v.number(),
-			count: v.number(),
-		}))),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	})
-		.index("by_createdAt", ["createdAt"])
-		.index("by_status", ["status"])
-		.index("by_kind", ["kind"])
-		.index("by_status_nextRunAt", ["status", "nextRunAt"]),
-
 	// ═══════════════════════════════════════════════════════════════════
 	// WORKFLOW SYSTEM TABLES
 	// ═══════════════════════════════════════════════════════════════════
@@ -185,6 +124,37 @@ export default defineSchema({
 		.index("by_isActive", ["isActive"])
 		.index("by_status", ["status"])
 		.index("by_scheduledAt", ["scheduledAt"]),
+
+	workflowArtifacts: defineTable({
+		name: v.string(),
+		workflowId: v.id("workflows"),
+		workflowName: v.string(),
+		nodeId: v.string(),
+		nodeLabel: v.optional(v.string()),
+		kind: v.union(v.literal("followers"), v.literal("following")),
+		targetUsername: v.optional(v.string()),
+		targets: v.array(v.string()),
+		status: v.optional(v.string()),
+		imported: v.optional(v.boolean()),
+		sourceProfileName: v.optional(v.string()),
+		lastRunAt: v.optional(v.number()),
+		storageId: v.optional(v.id("_storage")),
+		manifestStorageId: v.optional(v.id("_storage")),
+		exportStorageId: v.optional(v.id("_storage")),
+		stats: v.optional(v.object({
+			scraped: v.number(),
+			deduped: v.number(),
+			chunksCompleted: v.number(),
+			targetsCompleted: v.number(),
+		})),
+		metadata: v.optional(v.any()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index("by_workflowId", ["workflowId"])
+		.index("by_workflowId_nodeId", ["workflowId", "nodeId"])
+		.index("by_imported", ["imported"])
+		.index("by_kind", ["kind"]),
 
 	// ═══════════════════════════════════════════════════════════════════
 	// KEYWORDS TABLE (for filtration name lists)

@@ -13,7 +13,6 @@ import automationRouter from './api/automation.js'
 import logsRouter from './api/logs.js'
 import profilesRouter from './api/profiles.js'
 import listsRouter from './api/lists.js'
-import scrapingRouter from './api/scraping.js'
 import workflowsRouter from './api/workflows.js'
 import monitoringRouter from './api/monitoring.js'
 import displaysRouter from './api/displays.js'
@@ -21,7 +20,6 @@ import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { profileManager } from './data/profiles.js'
 import { profileProcesses } from './store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
-import { scrapingJobWorker } from './services/scraping-worker.js'
 
 const app = express()
 const server = createServer(app)
@@ -70,7 +68,6 @@ app.use('/api/automation', requireApiAuth, automationLimiter, automationRouter)
 app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
-app.use('/api/scraping', requireApiAuth, apiLimiter, scrapingRouter)
 app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
 app.use('/api/monitoring', requireApiAuth, apiLimiter, monitoringRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
@@ -96,8 +93,6 @@ async function startServer(): Promise<void> {
     server.listen(PORT, () => {
         console.log(`[Server] API server running on http://localhost:${PORT}`)
         console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`)
-        scrapingJobWorker.start()
-        console.log('[Server] Scraping job worker started')
     })
 }
 

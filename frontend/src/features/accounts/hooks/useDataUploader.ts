@@ -29,8 +29,8 @@ export function useDataUploader() {
       if (!response.ok) {
         const error = await response
           .json()
-          .catch(() => ({ detail: 'Failed to load scraping tasks' }))
-        throw new Error(error.detail || 'Failed to load scraping tasks')
+          .catch(() => ({ detail: 'Failed to load workflow scrape artifacts' }))
+        throw new Error(error.detail || 'Failed to load workflow scrape artifacts')
       }
       const data: ListScrapingTasksResponse = await response.json()
       return Array.isArray(data.tasks) ? (data.tasks as ScrapingTaskRow[]) : []

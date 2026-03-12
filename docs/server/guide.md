@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The server exposes authenticated REST + WebSocket surfaces, orchestrates Python automation/scraping/workflow processes, and uses Convex as the shared data layer. Browser application data now reads and writes Convex directly with Clerk-authenticated tokens, while the server stays focused on orchestration, runtime control, monitoring, logs, and WebSocket delivery.
+The server exposes authenticated REST + WebSocket surfaces, orchestrates Python automation/workflow processes, and uses Convex as the shared data layer. Browser application data now reads and writes Convex directly with Clerk-authenticated tokens, while the server stays focused on orchestration, runtime control, monitoring, logs, and WebSocket delivery.
 
 ## Mounted Route Domains
 
@@ -11,7 +11,6 @@ Mounted under `/api/*`:
 - `/api/profiles`
 - `/api/lists`
 - `/api/logs`
-- `/api/scraping`
 - `/api/workflows`
 - `/api/monitoring`
 - `/api/displays`
@@ -47,17 +46,12 @@ Mounted under `/api/*`:
 - Browser CRUD for profiles and lists now uses authenticated Convex client functions instead of Express list/detail CRUD routes.
 - Profile detail reads that require the sensitive cookie field still remain explicit and do not surface through the cached list flow.
 
-### Scraping
-- `server/api/scraping.ts` is a compatibility re-export; the live router is `server/api/scraping/index.ts`.
-- Exposes eligible profile discovery at `/api/scraping/eligible-profiles`.
-- Mounts followers, following, and chunked pagination subrouters from `server/api/scraping/*`.
-- Scraping lifecycle events are emitted into the shared log stream with `source: scraper`, so they appear on the Logs page and in archived session logs.
-
 ### Workflows
 - Run/stop workflow execution.
 - Reports workflow status.
 - Spawns `python/getting_started/run_workflow.py` and broadcasts workflow events.
 - Workflow definitions and editor data are read and written from the browser through authenticated Convex functions; Express handles execution and lifecycle control.
+- Workflow scrape artifacts are exposed through `/api/workflows/artifacts` and `/api/workflows/artifacts/storage-url`.
 
 ### Monitoring and Displays
 - System metrics endpoint for CPU/memory/disk/network/uptime.
@@ -75,7 +69,6 @@ Mounted under `/api/*`:
 - `ALLOWED_ORIGINS`
 - `NODE_ENV`
 - `PYTHON`
-- `SCRAPER_URL`
 - `WORKFLOW_MAX_CONCURRENCY`
 - `CONVEX_URL`
 - `CLERK_PUBLISHABLE_KEY` (server runtime; falls back to `VITE_CLERK_PUBLISHABLE_KEY` in local dev bootstrap)
@@ -97,12 +90,6 @@ npm --prefix server run start
 - `server/api/profiles.ts`
 - `server/api/lists.ts`
 - `server/api/logs.ts`
-- `server/api/scraping.ts`
-- `server/api/scraping/index.ts`
-- `server/api/scraping/followers.ts`
-- `server/api/scraping/following.ts`
-- `server/api/scraping/followers-chunk.ts`
-- `server/api/scraping/following-chunk.ts`
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`
 - `server/api/displays.ts`

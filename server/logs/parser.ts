@@ -34,6 +34,7 @@ const EVENT_LABELS: Record<string, string> = {
     profile_skipped: '⏭️ Profile skipped',
     task_started: '📋 Task started',
     task_completed: '✓ Task completed',
+    task_progress: '↻ Task progress',
     action_performed: '⚡ Action performed',
     error: '❌ Error',
 }
@@ -112,7 +113,7 @@ export function parseLogLine(raw: string): ParsedLog | null {
     } else if (cleaned.startsWith('[✓]') || cleaned.includes('successfully') || cleaned.includes('finished')) {
         level = 'success'
         cleaned = cleaned.replace(/^\[✓\]\s*/, '')
-    } else if (cleaned.toLowerCase().includes('error') || cleaned.toLowerCase().includes('failed')) {
+    } else if (/\b(error|failed|exception)\b/i.test(cleaned)) {
         level = 'error'
     }
 

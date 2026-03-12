@@ -80,6 +80,11 @@ const ACTIVITY_METADATA: Record<
     pickerGroup: 'browsing',
     keywords: ['feed', 'scroll'],
   },
+  scrape_relationships: {
+    keywords: ['scrape', 'followers', 'following', 'relationship'],
+    pickerGroup: 'browsing',
+    quickAdd: false,
+  },
   browse_reels: {
     keywords: ['reels', 'video'],
     pickerGroup: 'browsing',

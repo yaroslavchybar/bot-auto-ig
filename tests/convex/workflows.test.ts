@@ -137,6 +137,39 @@ test('resets daily runs for active workflows', async () => {
   expect(rows[0]?.runsToday).toBe(0)
 })
 
+test('deleting a workflow also removes its stored artifacts', async () => {
+  const t = createConvexTest()
+  const workflow = await seedWorkflow(t, { name: 'Workflow Delete Cascade' })
+  const stored = await t.action(internal.workflowArtifacts.storeArtifactInternal, {
+    payload: {
+      storageKind: 'export',
+      users: [{ userName: 'user-delete' }],
+    },
+  })
+
+  const artifact = await t.mutation(api.workflowArtifacts.upsert, {
+    workflowId: workflow!._id,
+    workflowName: workflow!.name,
+    nodeId: 'node-delete-cascade',
+    kind: 'followers',
+    targets: ['target-delete'],
+    storageId: stored.storageId,
+    exportStorageId: stored.storageId,
+  })
+
+  const removed = await t.mutation(api.workflows.remove, { id: workflow!._id })
+  const artifactAfterDelete = await t.query(api.workflowArtifacts.getById, {
+    id: artifact!._id,
+  })
+  const storageUrl = await t.query(api.workflowArtifacts.getStorageUrl, {
+    storageId: stored.storageId,
+  })
+
+  expect(removed).toBe(true)
+  expect(artifactAfterDelete).toBeNull()
+  expect(storageUrl).toBeNull()
+})
+
 test('provides expanded default config for workflow activities', () => {
   const startBrowserDefaults = getDefaultConfig('start_browser')
   const sendDmDefaults = getDefaultConfig('send_dm')

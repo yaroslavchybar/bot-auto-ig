@@ -13,7 +13,6 @@ docker compose up --build
 - `server`: `http://localhost:3001`
 - `frontend`: `http://localhost:5173`
 - `datauploader`: `http://localhost:3002`
-- `scraper`: `http://localhost:3003`
 - VNC stack exposed by server container for local/direct access: `6080` and `6081-6130`
 
 ## Volumes
@@ -33,7 +32,7 @@ docker compose up --build
 - Frontend runtime should serve the React Router server build through `react-router-serve` so Clerk middleware/loaders and protected-route redirects execute server-side.
 - Frontend still builds client and server bundles from the React Router SSR build output.
 - Backend routes and WebSocket remain on server service.
-- Datauploader and scraper run as separate FastAPI services.
+- Datauploader runs as a separate FastAPI service.
 - Non-local deployments must provide `VITE_API_URL` and `VITE_DATAUPLOADER_URL` at image build time so browser requests do not fall back to localhost.
 - Non-local deployments should terminate TLS at the reverse proxy and route `/ws` to `server:3001` before the frontend catch-all.
 - Non-local deployments should proxy `/vnc/<port>/websockify` to `server:<port>/websockify` so browser VNC traffic stays on the main HTTPS origin instead of connecting directly to plain `websockify` ports.
@@ -48,7 +47,7 @@ docker compose up --build
 ## Useful Commands
 
 ```bash
-docker compose build server frontend datauploader scraper
+docker compose build server frontend datauploader
 docker compose up server
 docker compose up frontend
 docker compose ps
@@ -60,4 +59,3 @@ docker compose ps
 - `frontend/Dockerfile`
 - `server/Dockerfile`
 - `datauploader/Dockerfile`
-- `scraper/Dockerfile`

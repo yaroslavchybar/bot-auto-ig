@@ -9,7 +9,7 @@ export function setTokenGetter(getter: () => Promise<string | null>) {
 
 const DEFAULT_TIMEOUT_MS = 30000
 
-function resolveApiUrl(path: string): string {
+export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//.test(path)) {
     return path
   }
@@ -63,6 +63,59 @@ export async function apiFetch<T>(
 
   if (resp.status === 204) return undefined as T
   return (await resp.json()) as T
+}
+
+export async function apiDownload(
+  path: string,
+  fileName: string,
+  options: { timeout?: number } = {},
+): Promise<void> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    options.timeout ?? DEFAULT_TIMEOUT_MS,
+  )
+
+  const headers: Record<string, string> = {
+    Accept: '*/*',
+  }
+
+  if (tokenGetter) {
+    try {
+      const token = await tokenGetter()
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+    } catch {
+      // Continue without token
+    }
+  }
+
+  let resp: Response
+  try {
+    resp = await fetch(resolveApiUrl(path), {
+      method: 'GET',
+      headers,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
+  }
+
+  const blob = await resp.blob()
+  const blobUrl = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = blobUrl
+  link.download = fileName
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(blobUrl)
 }
 
 // Custom error class to preserve HTTP status

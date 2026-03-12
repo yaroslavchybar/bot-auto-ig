@@ -10,7 +10,7 @@ export default [
     route('profiles', './routes/profiles.tsx'),
     route('workflows', './routes/workflows.tsx'),
     route('workflows/:workflowId/editor', './routes/workflow-editor.tsx'),
-    route('scraping', './routes/scraping.tsx'),
+    route('scraped-data', './routes/scraped-data.tsx'),
     route('lists', './routes/lists.tsx'),
     route('accounts', './routes/accounts.tsx'),
     route('logs', './routes/logs.tsx'),

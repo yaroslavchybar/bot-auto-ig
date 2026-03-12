@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`datauploader/` provides CSV/task ingestion and upload flows for accounts data and keyword management.
+`datauploader/` provides CSV/workflow-artifact ingestion and upload flows for accounts data and keyword management.
 
 ## API Endpoints
 
@@ -12,7 +12,7 @@
 - `POST /keywords/upload-file`
 - `DELETE /keywords/{filename}`
 
-Scraping task import flow:
+Workflow scrape artifact import flow:
 - `GET /scraping-tasks` (`env`, optional `kind`)
 - `GET /scraping-tasks/{task_id}/fields`
 - `POST /scraping-tasks/{task_id}/process`
@@ -30,8 +30,8 @@ Upload flow:
 - Stores uploaded files in `/app/uploads`.
 - Uses in-memory job state for processing lifecycle.
 - Upload jobs expose detected `fields`, `sampleRow`, and `rowCount` before processing.
-- CSV and scraping-task processing responses include normalized `stats`, `uploaded`, and `duplicates` summaries.
-- Scraping-task processing fetches task payloads from Convex storage URLs and marks the task as imported after successful upload/import.
+- CSV and workflow-artifact processing responses include normalized `stats`, `uploaded`, and `duplicates` summaries.
+- The `/scraping-tasks` API shape fronts completed workflow scrape artifacts, and successful upload/import marks the workflow artifact as imported.
 - Reads and writes Convex data through `convex_client.py` helpers.
 
 ## Request Notes

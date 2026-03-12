@@ -7,6 +7,7 @@ import { CodeInput } from './inputs/CodeInput'
 import { TextInput } from './inputs/TextInput'
 import { TemplateInput } from './TemplateInput'
 import { ListSelectInput } from './inputs/ListSelectInput'
+import { StringListInput } from './inputs/StringListInput'
 
 interface InputFieldProps {
   input: ActivityInput
@@ -50,6 +51,8 @@ export function InputField({
       return <TemplateInput input={input} config={config} />
     case 'code':
       return <CodeInput input={input} value={value} onChange={onChange} />
+    case 'string_list':
+      return <StringListInput input={input} value={value} onChange={onChange} />
     case 'list_select':
       return <ListSelectInput input={input} value={value} onChange={onChange} />
     case 'profile':

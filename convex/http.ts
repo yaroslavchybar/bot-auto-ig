@@ -153,10 +153,6 @@ const apiPaths = [
 	"/api/instagram-settings",
 	"/api/keywords",
 	"/api/keywords/delete",
-	"/api/migrations/scraper-auto-only/apply-profile-cleanup",
-	"/api/migrations/scraper-auto-only/apply-task-cleanup",
-	"/api/migrations/scraper-auto-only/rollback-profile",
-	"/api/migrations/scraper-auto-only/rollback-task",
 	"/api/message-templates",
 	"/api/instagram-accounts",
 	"/api/instagram-accounts/batch",
@@ -166,32 +162,17 @@ const apiPaths = [
 	"/api/instagram-accounts/update-message",
 	"/api/instagram-accounts/usernames",
 	"/api/instagram-accounts/profiles-with-assigned",
-	"/api/scraping-tasks",
-	"/api/scraping-tasks/by-id",
-	"/api/scraping-tasks/create",
-	"/api/scraping-tasks/update",
-	"/api/scraping-tasks/delete",
-	"/api/scraping-tasks/start",
-	"/api/scraping-tasks/pause",
-	"/api/scraping-tasks/resume",
-	"/api/scraping-tasks/cancel",
-	"/api/scraping-tasks/claim-next",
-	"/api/scraping-tasks/lease-profile",
-	"/api/scraping-tasks/note-running",
-	"/api/scraping-tasks/heartbeat",
-	"/api/scraping-tasks/store-chunk",
-	"/api/scraping-tasks/finalize",
-	"/api/scraping-tasks/record-retry",
-	"/api/scraping-tasks/record-failure",
-	"/api/scraping-tasks/sweep-expired-leases",
-	"/api/scraping-tasks/storage-url",
-	"/api/scraping-tasks/manifest-url",
-	"/api/scraping-tasks/unimported",
-	"/api/scraping-tasks/set-imported",
 	"/api/workflows",
 	"/api/workflows/by-id",
 	"/api/workflows/start",
 	"/api/workflows/update-status",
+	"/api/workflow-artifacts",
+	"/api/workflow-artifacts/by-id",
+	"/api/workflow-artifacts/unimported",
+	"/api/workflow-artifacts/upsert",
+	"/api/workflow-artifacts/set-imported",
+	"/api/workflow-artifacts/store-artifact",
+	"/api/workflow-artifacts/storage-url",
 ];
 
 for (const path of apiPaths) {
@@ -840,81 +821,6 @@ http.route({
 });
 
 http.route({
-	path: "/api/migrations/scraper-auto-only/apply-profile-cleanup",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyApplyProfileCleanup, {
-				profileId: body?.profileId,
-			});
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/migrations/scraper-auto-only/apply-task-cleanup",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyApplyTaskCleanup, {
-				taskId: body?.taskId,
-			});
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/migrations/scraper-auto-only/rollback-profile",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyRollbackProfile, {
-				profileId: body?.profileId,
-				hadAutomation: body?.hadAutomation,
-				automation: body?.automation,
-			});
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/migrations/scraper-auto-only/rollback-task",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.migrations.scraperAutoOnlyRollbackTask, {
-				taskId: body?.taskId,
-				snapshot: body?.snapshot,
-			});
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
 	path: "/api/message-templates",
 	method: "GET",
 	handler: httpAction(async (ctx, request) => {
@@ -1108,570 +1014,6 @@ http.route({
 	}),
 });
 
-// ==================== SCRAPING TASKS ====================
-
-http.route({
-	path: "/api/scraping-tasks",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const kind = url.searchParams.get("kind") || undefined;
-			const tasks = await ctx.runQuery(internal.scrapingTasks.listInternal, { kind: kind as any });
-			return jsonResponse(tasks);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/create",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.createInternal, {
-				name: body?.name,
-				kind: body?.kind,
-				targetUsername: body?.targetUsername ?? body?.target_username,
-				targets: body?.targets,
-				maxAttempts: body?.maxAttempts ?? body?.max_attempts,
-			});
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/update",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(api.scrapingTasks.update, {
-				id: body?.id ?? body?.taskId,
-				name: body?.name,
-				kind: body?.kind,
-				targetUsername: body?.targetUsername ?? body?.target_username,
-				targets: body?.targets,
-				maxAttempts: body?.maxAttempts ?? body?.max_attempts,
-			});
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/delete",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const ok = await ctx.runMutation(api.scrapingTasks.remove, {
-				id: body?.id ?? body?.taskId,
-			});
-			return jsonResponse({ ok });
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/by-id",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const id = url.searchParams.get("id") || url.searchParams.get("taskId") || "";
-			if (!id) return jsonResponse({ error: "id is required" }, 400);
-			const task = await ctx.runQuery(internal.scrapingTasks.getByIdInternal, { id: id as any });
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/start",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.startInternal, {
-				id: body?.id ?? body?.taskId,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/pause",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.pauseInternal, {
-				id: body?.id ?? body?.taskId,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/resume",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.resumeInternal, {
-				id: body?.id ?? body?.taskId,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/cancel",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.cancelInternal, {
-				id: body?.id ?? body?.taskId,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/claim-next",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.claimNextInternal, {
-				workerId: body?.workerId ?? body?.worker_id,
-				now: body?.now,
-				leaseMs: body?.leaseMs ?? body?.lease_ms,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/lease-profile",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const profile = await ctx.runMutation(internal.profiles.claimBestScrapeLeaseInternal, {
-				workerId: body?.workerId ?? body?.worker_id,
-				now: body?.now,
-				leaseMs: body?.leaseMs ?? body?.lease_ms,
-				minHealth: body?.minHealth ?? body?.min_health,
-			} as any);
-			return jsonResponse(profile);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/note-running",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.noteRunningInternal, {
-				taskId: body?.taskId ?? body?.task_id,
-				workerId: body?.workerId ?? body?.worker_id,
-				profileId: body?.profileId ?? body?.profile_id,
-				now: body?.now,
-				leaseMs: body?.leaseMs ?? body?.lease_ms,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/heartbeat",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.heartbeatInternal, {
-				taskId: body?.taskId ?? body?.task_id,
-				workerId: body?.workerId ?? body?.worker_id,
-				now: body?.now,
-				leaseMs: body?.leaseMs ?? body?.lease_ms,
-			} as any);
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/unimported",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const kind = url.searchParams.get("kind") || undefined;
-			const tasks = await ctx.runQuery(internal.scrapingTasks.listUnimportedInternal, {
-				kind: kind as any,
-			});
-			return jsonResponse(tasks);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/store-chunk",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const now = Number.isFinite(Number(body?.now)) ? Math.floor(Number(body.now)) : Date.now();
-			const users = Array.isArray(body?.users) ? body.users : [];
-			const payload = {
-				taskId: body?.taskId ?? body?.task_id,
-				targetUsername: body?.targetUsername ?? body?.target_username,
-				profileId: body?.profileId ?? body?.profile_id,
-				scrapedAt: now,
-				count: users.length,
-				users,
-			};
-			const stored = await ctx.runAction(internal.scrapingTasks.storeArtifactInternal, {
-				payload,
-			});
-			const task = await ctx.runMutation(internal.scrapingTasks.appendChunkInternal, {
-				taskId: body?.taskId ?? body?.task_id,
-				workerId: body?.workerId ?? body?.worker_id,
-				now,
-				storageId: stored.storageId,
-				targetUsername: body?.targetUsername ?? body?.target_username,
-				scraped: users.length,
-				hasMore: Boolean(body?.hasMore ?? body?.has_more),
-				nextCursor: body?.nextCursor ?? body?.next_cursor ?? undefined,
-				sourceProfileId: body?.profileId ?? body?.profile_id,
-				sourceProfileName: body?.profileName ?? body?.profile_name,
-			} as any);
-
-			const taskStats = task?.stats ?? {
-				scraped: 0,
-				deduped: 0,
-				chunksCompleted: 0,
-				targetsCompleted: 0,
-			};
-			const taskTargets = Array.isArray(task?.targets) ? task.targets : [];
-			const currentTargetIndex =
-				typeof task?.currentTargetIndex === "number" ? task.currentTargetIndex : 0;
-			const done = currentTargetIndex >= taskTargets.length;
-			const nextTargetUsername =
-				!done && currentTargetIndex >= 0 && currentTargetIndex < taskTargets.length
-					? taskTargets[currentTargetIndex]
-					: null;
-
-			return jsonResponse({
-				storageId: stored.storageId,
-				count: users.length,
-				done,
-				stats: taskStats,
-				currentTargetIndex,
-				nextTargetUsername,
-			});
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/finalize",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const now = Number.isFinite(Number(body?.now)) ? Math.floor(Number(body.now)) : Date.now();
-			const taskId = body?.taskId ?? body?.task_id;
-			const task = await ctx.runQuery(internal.scrapingTasks.getByIdInternal, {
-				id: taskId,
-			} as any);
-			if (!task) {
-				return jsonResponse({ error: "Task not found" }, 404);
-			}
-
-			const manifestPayload = {
-				taskId,
-				name: task.name,
-				kind: task.kind,
-				targets: Array.isArray(task.targets) ? task.targets : [],
-				stats: task.stats ?? {
-					scraped: 0,
-					deduped: 0,
-					chunksCompleted: 0,
-					targetsCompleted: 0,
-				},
-				chunks: Array.isArray(task.chunkRefs) ? task.chunkRefs : [],
-				completedAt: now,
-			};
-			const stored = await ctx.runAction(internal.scrapingTasks.storeArtifactInternal, {
-				payload: manifestPayload,
-			});
-			const completed = await ctx.runMutation(internal.scrapingTasks.markCompletedInternal, {
-				taskId,
-				workerId: body?.workerId ?? body?.worker_id,
-				now,
-				manifestStorageId: stored.storageId,
-				exportStorageId: body?.exportStorageId ?? body?.export_storage_id ?? undefined,
-				deduped: body?.deduped ?? task?.stats?.deduped ?? 0,
-			} as any);
-
-			return jsonResponse({
-				manifestStorageId: stored.storageId,
-				stats: completed?.stats ?? manifestPayload.stats,
-				chunkCount: Array.isArray(task.chunkRefs) ? task.chunkRefs.length : 0,
-			});
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/record-retry",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.scrapingTasks.markRetryInternal, {
-				taskId: body?.taskId ?? body?.task_id,
-				workerId: body?.workerId ?? body?.worker_id,
-				now: body?.now,
-				errorCode: body?.errorCode ?? body?.error_code,
-				errorMessage: body?.errorMessage ?? body?.error_message,
-				retryDelayMs:
-					body?.retryDelayMs ??
-					body?.retry_delay_ms ??
-					(typeof body?.nextRunAt === "number" && typeof body?.now === "number"
-						? Math.max(1_000, body.nextRunAt - body.now)
-						: 30_000),
-			} as any);
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/record-failure",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.scrapingTasks.markFailedInternal, {
-				taskId: body?.taskId ?? body?.task_id,
-				workerId: body?.workerId ?? body?.worker_id,
-				now: body?.now,
-				errorCode: body?.errorCode ?? body?.error_code,
-				errorMessage: body?.errorMessage ?? body?.error_message,
-			} as any);
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/set-imported",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const task = await ctx.runMutation(internal.scrapingTasks.setImportedInternal, {
-				id: body?.id ?? body?.taskId,
-				imported: body?.imported,
-			});
-			return jsonResponse(task);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/sweep-expired-leases",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runMutation(internal.scrapingTasks.recoverExpiredLeasesInternal, {
-				now: body?.now,
-			});
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/store-data",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runAction(internal.scrapingTasks.storeScrapedData, {
-				taskId: body?.taskId ?? body?.task_id,
-				users: Array.isArray(body?.users) ? body.users : [],
-				metadata: body?.metadata ?? {},
-			} as any);
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/store-artifact",
-	method: "POST",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const body = await parseBody(request);
-			const result = await ctx.runAction(internal.scrapingTasks.storeArtifactInternal, {
-				payload: body?.payload ?? {},
-			});
-			return jsonResponse(result);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/storage-url",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const storageId = url.searchParams.get("storageId") || url.searchParams.get("storage_id") || "";
-
-			if (!storageId) {
-				return jsonResponse({ error: "storageId is required" }, 400);
-			}
-
-			const fileUrl = await ctx.runQuery(internal.scrapingTasks.getStorageUrlInternal, {
-				storageId: storageId as any,
-			});
-
-			return jsonResponse(fileUrl);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
-http.route({
-	path: "/api/scraping-tasks/manifest-url",
-	method: "GET",
-	handler: httpAction(async (ctx, request) => {
-		const authError = await requireAuth(request);
-		if (authError) return authError;
-		try {
-			const url = new URL(request.url);
-			const id = url.searchParams.get("id") || url.searchParams.get("taskId") || "";
-			if (!id) {
-				return jsonResponse({ error: "id is required" }, 400);
-			}
-			const fileUrl = await ctx.runQuery(internal.scrapingTasks.getManifestUrlInternal, {
-				id: id as any,
-			});
-			return jsonResponse(fileUrl);
-		} catch (err: any) {
-			return jsonResponse({ error: String(err?.message || err) }, 400);
-		}
-	}),
-});
-
 // ==================== WORKFLOWS ====================
 
 http.route({
@@ -1747,6 +1089,163 @@ http.route({
 				error: body?.error,
 			});
 			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+// ==================== WORKFLOW ARTIFACTS ====================
+
+http.route({
+	path: "/api/workflow-artifacts",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const workflowId = url.searchParams.get("workflowId") || url.searchParams.get("id") || "";
+			if (!workflowId) return jsonResponse({ error: "workflowId is required" }, 400);
+			const rows = await ctx.runQuery(internalApi.workflowArtifacts.listByWorkflowInternal, {
+				workflowId: workflowId as any,
+			});
+			return jsonResponse(rows);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-artifacts/by-id",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const id = url.searchParams.get("id") || "";
+			if (!id) return jsonResponse({ error: "id is required" }, 400);
+			const row = await ctx.runQuery(internalApi.workflowArtifacts.getByIdInternal, {
+				id: id as any,
+			});
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-artifacts/unimported",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const kind = url.searchParams.get("kind") || undefined;
+			const rows = await ctx.runQuery(internalApi.workflowArtifacts.listUnimportedInternal, {
+				kind,
+			});
+			return jsonResponse(rows);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-artifacts/upsert",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const workflowId = body?.workflowId ?? body?.workflow_id;
+			if (!workflowId) return jsonResponse({ error: "workflowId is required" }, 400);
+			const nodeId = body?.nodeId ?? body?.node_id;
+			if (!nodeId) return jsonResponse({ error: "nodeId is required" }, 400);
+			const row = await ctx.runMutation(internalApi.workflowArtifacts.upsertInternal, {
+				workflowId: workflowId as any,
+				workflowName: body?.workflowName ?? body?.workflow_name ?? "",
+				nodeId: String(nodeId),
+				nodeLabel: body?.nodeLabel ?? body?.node_label,
+				name: body?.name,
+				kind: body?.kind,
+				targets: body?.targets,
+				targetUsername: body?.targetUsername ?? body?.target_username,
+				status: body?.status,
+				sourceProfileName: body?.sourceProfileName ?? body?.source_profile_name,
+				lastRunAt: body?.lastRunAt ?? body?.last_run_at,
+				storageId: body?.storageId ?? body?.storage_id,
+				manifestStorageId: body?.manifestStorageId ?? body?.manifest_storage_id,
+				exportStorageId: body?.exportStorageId ?? body?.export_storage_id,
+				stats: body?.stats,
+				metadata: body?.metadata,
+			});
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-artifacts/set-imported",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const id = body?.id;
+			if (!id) return jsonResponse({ error: "id is required" }, 400);
+			const row = await ctx.runMutation(internalApi.workflowArtifacts.setImportedInternal, {
+				id: id as any,
+				imported: Boolean(body?.imported),
+			});
+			return jsonResponse(row);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-artifacts/store-artifact",
+	method: "POST",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const body = await parseBody(request);
+			const result = await ctx.runAction(internalApi.workflowArtifacts.storeArtifactInternal, {
+				payload: body?.payload,
+			});
+			return jsonResponse(result);
+		} catch (err: any) {
+			return jsonResponse({ error: String(err?.message || err) }, 400);
+		}
+	}),
+});
+
+http.route({
+	path: "/api/workflow-artifacts/storage-url",
+	method: "GET",
+	handler: httpAction(async (ctx, request) => {
+		const authError = await requireAuth(request);
+		if (authError) return authError;
+		try {
+			const url = new URL(request.url);
+			const storageId = url.searchParams.get("storageId") || "";
+			if (!storageId) return jsonResponse({ error: "storageId is required" }, 400);
+			const result = await ctx.runQuery(internalApi.workflowArtifacts.getStorageUrlInternal, {
+				storageId: storageId as any,
+			});
+			return jsonResponse(result);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
 		}

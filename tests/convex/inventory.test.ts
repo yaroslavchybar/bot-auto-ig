@@ -18,10 +18,9 @@ test('tracks the full owned convex module cohort', () => {
     '../../convex/keywords.ts',
     '../../convex/lists.ts',
     '../../convex/messageTemplates.ts',
-    '../../convex/migrations.ts',
     '../../convex/profiles.ts',
     '../../convex/schema.ts',
-    '../../convex/scrapingTasks.ts',
+    '../../convex/workflowArtifacts.ts',
     '../../convex/workflows.ts',
   ])
 })

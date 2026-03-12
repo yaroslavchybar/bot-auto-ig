@@ -615,7 +615,7 @@ export function AccountsPageContainer() {
                   value="scraping"
                   className="data-[state=active]:bg-panel-strong data-[state=active]:text-ink rounded-lg px-4"
                 >
-                  Scraping Import
+                  Workflow Scrape Import
                 </TabsTrigger>
               </TabsList>
 
@@ -626,8 +626,8 @@ export function AccountsPageContainer() {
                     size="icon"
                     onClick={() => void handleRefreshScrapingTasks()}
                     disabled={isScrapingBusy}
-                    aria-label="Refresh scraping tasks"
-                    title="Refresh scraping tasks"
+                    aria-label="Refresh workflow scrape artifacts"
+                    title="Refresh workflow scrape artifacts"
                     className="h-8 w-8 shrink-0 p-0"
                   >
                     <RefreshCw
@@ -873,7 +873,7 @@ export function AccountsPageContainer() {
                       <Input
                         value={taskSearchQuery}
                         onChange={(event) => setTaskSearchQuery(event.target.value)}
-                        placeholder="Search scraping tasks..."
+                        placeholder="Search workflow scrape artifacts..."
                         className="brand-focus brand-focus-strong border-line bg-panel-strong text-ink placeholder:text-subtle-copy h-11 rounded-xl pl-10"
                       />
                     </div>
@@ -909,20 +909,20 @@ export function AccountsPageContainer() {
                     {scrapingLoading ? (
                       <div className="flex items-center justify-center px-6 py-12 text-sm">
                         <Loader2 className="text-brand mr-2 h-4 w-4 animate-spin" />
-                        Loading tasks...
+                        Loading workflow artifacts...
                       </div>
                     ) : filteredScrapingTasks.length === 0 ? (
                       <div className="flex flex-col items-center justify-center p-12 text-center">
                         <FileSpreadsheet className="text-subtle-copy mb-4 h-10 w-10" />
                         <h3 className="text-lg font-medium">
                           {taskSearchQuery.trim()
-                            ? 'No matching tasks'
-                            : 'No scraping tasks ready'}
+                            ? 'No matching artifacts'
+                            : 'No workflow scrape artifacts ready'}
                         </h3>
                         <p className="text-subtle-copy mt-1 text-sm">
                           {taskSearchQuery.trim()
                             ? 'Try a different query or clear the filter.'
-                            : 'Completed unimported tasks will appear here.'}
+                            : 'Completed unimported workflow scrape artifacts will appear here.'}
                         </p>
                       </div>
                     ) : isMobile ? (
@@ -943,7 +943,7 @@ export function AccountsPageContainer() {
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="text-ink truncate font-semibold">
-                                    {task.name || 'Untitled task'}
+                                    {task.name || 'Untitled artifact'}
                                   </div>
                                   <div className="text-subtle-copy mt-1 text-xs">
                                     {formatDate(task.createdAt)}
@@ -965,7 +965,7 @@ export function AccountsPageContainer() {
                         <TableHeader>
                           <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
                             <TableHead className="text-muted-copy h-12 pl-4 font-medium">
-                              Task
+                              Artifact
                             </TableHead>
                             <TableHead className="text-muted-copy h-12 font-medium">
                               Kind
@@ -994,7 +994,7 @@ export function AccountsPageContainer() {
                                 <TableCell className="pl-4">
                                   <div className="flex flex-col gap-0.5">
                                     <span className="text-ink truncate font-medium">
-                                      {task.name || 'Untitled task'}
+                                      {task.name || 'Untitled artifact'}
                                     </span>
                                     <span className="text-subtle-copy max-w-[320px] truncate text-[11px]">
                                       {task.targetUsername || '-'}
@@ -1031,9 +1031,9 @@ export function AccountsPageContainer() {
                         <FileSpreadsheet className="h-5 w-5" />
                       </div>
                       <div>
-                        <h3 className="text-lg font-semibold">Task details</h3>
+                        <h3 className="text-lg font-semibold">Artifact details</h3>
                         <p className="text-subtle-copy text-sm">
-                          Select a completed scraping task to review and import.
+                          Select a completed workflow scrape artifact to review and import.
                         </p>
                       </div>
                     </div>
@@ -1047,27 +1047,27 @@ export function AccountsPageContainer() {
                     {selectedTaskLoading ? (
                       <div className="flex items-center justify-center px-4 py-10 text-sm">
                         <Loader2 className="text-brand mr-2 h-4 w-4 animate-spin" />
-                        Loading task preview...
+                        Loading artifact preview...
                       </div>
                     ) : !selectedTask || !selectedTaskPreview ? (
                       <div className="text-subtle-copy border-line mt-5 rounded-2xl border border-dashed px-4 py-10 text-center text-sm">
-                        Pick a task from the list to inspect the detected account
+                        Pick an artifact from the list to inspect the detected account
                         data before importing.
                       </div>
                     ) : (
                       <div className="mt-5 space-y-5">
                         {scrapingResult ? (
                           <ProcessingResultPanel
-                            title="Scraping import complete"
+                            title="Workflow scrape import complete"
                             summary={scrapingResult}
-                            actionLabel="Import another task"
+                            actionLabel="Import another artifact"
                             onReset={handleScrapingReset}
                           />
                         ) : null}
 
                         {selectedTaskMissingUsername ? (
                           <StatusBanner tone="warning">
-                            This task does not expose a supported username field.
+                            This artifact does not expose a supported username field.
                             Expected one of: {USERNAME_ALIASES.join(', ')}.
                           </StatusBanner>
                         ) : null}
@@ -1076,7 +1076,7 @@ export function AccountsPageContainer() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="text-ink truncate text-lg font-semibold">
-                                {selectedTask.name || 'Untitled task'}
+                                {selectedTask.name || 'Untitled artifact'}
                               </div>
                               <div className="text-subtle-copy mt-1 text-sm">
                                 Created {formatDate(selectedTask.createdAt)}
@@ -1132,7 +1132,7 @@ export function AccountsPageContainer() {
                             sampleRow={selectedTaskPreview.sampleRow}
                             detectedUsernameField={selectedTaskDetectedUsernameField}
                             detectedFullNameField={selectedTaskDetectedFullNameField}
-                            emptyMessage="No sample data is available for this task."
+                            emptyMessage="No sample data is available for this artifact."
                           />
                         </div>
 

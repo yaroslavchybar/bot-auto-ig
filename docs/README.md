@@ -29,7 +29,6 @@ Conflict resolution order:
 
 ### Services
 - [Data Uploader Service](./services/datauploader.md)
-- [Scraper Service](./services/scraper.md)
 
 ### Operations
 - [Environment and Security](./operations/environment-and-security.md)

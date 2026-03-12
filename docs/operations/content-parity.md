@@ -11,7 +11,6 @@ This file tracks where legacy README knowledge now lives in canonical docs.
 - Python runtime docs -> `docs/python/automation.md`
 - Python component breakdown -> `docs/python/components.md`
 - Data uploader docs -> `docs/services/datauploader.md`
-- Scraper docs -> `docs/services/scraper.md`
 - Env/runtime/troubleshooting docs -> `docs/operations/*`
 
 ## Consolidation Rules

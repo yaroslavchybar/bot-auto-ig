@@ -63,41 +63,6 @@ export type ScrapingTaskStats = {
     targetsCompleted: number;
 };
 
-export type DbScrapingTaskRow = Record<string, any> & {
-    _id: string;
-    name: string;
-    kind: 'followers' | 'following';
-    targets: string[];
-    targetUsername?: string;
-    imported?: boolean;
-    status?: string;
-    currentTargetIndex?: number;
-    cursor?: string | null;
-    attempt?: number;
-    maxAttempts?: number;
-    leaseOwner?: string | null;
-    leaseExpiresAt?: number | null;
-    heartbeatAt?: number | null;
-    assignedProfileId?: string | null;
-    assignedProfileName?: string | null;
-    lastErrorCode?: string | null;
-    lastErrorMessage?: string | null;
-    manifestStorageId?: string | null;
-    storageId?: string | null;
-    stats?: ScrapingTaskStats | null;
-    startedAt?: number | null;
-    completedAt?: number | null;
-    nextRunAt?: number | null;
-    chunkRefs?: Array<{
-        storageId: string;
-        targetUsername: string;
-        sourceProfileId?: string;
-        sourceProfileName?: string;
-        scrapedAt: number;
-        count: number;
-    }>;
-};
-
 export type ProfileInput = {
     name: string;
     proxy?: string;
@@ -376,225 +341,29 @@ export async function messageTemplatesUpsert(kind: string, texts: string[]): Pro
     return true;
 }
 
-// ==================== SCRAPING TASKS ====================
-
-export async function scrapingTasksList(kind?: string): Promise<DbScrapingTaskRow[]> {
-    const suffix = kind ? `?kind=${encodeURIComponent(kind)}` : '';
-    return convexFetch<DbScrapingTaskRow[]>(`/api/scraping-tasks${suffix}`);
-}
-
-export async function scrapingTasksGetById(taskId: string): Promise<DbScrapingTaskRow | null> {
-    const cleaned = String(taskId || '').trim();
-    if (!cleaned) throw new Error('taskId is required');
-    return convexFetch<DbScrapingTaskRow | null>(`/api/scraping-tasks/by-id?id=${encodeURIComponent(cleaned)}`);
-}
-
-export async function scrapingTasksCreate(input: {
-    name: string;
-    kind?: 'followers' | 'following';
-    targets: string[];
-    maxAttempts?: number;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/create', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksUpdate(input: {
-    id: string;
-    name?: string;
-    kind?: 'followers' | 'following';
-    targets?: string[];
-    maxAttempts?: number;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/update', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksDelete(id: string): Promise<true> {
-    await convexFetch<any>('/api/scraping-tasks/delete', {
-        method: 'POST',
-        body: { id },
-    });
-    return true;
-}
-
-export async function scrapingTasksStart(id: string): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/start', {
-        method: 'POST',
-        body: { id },
-    });
-}
-
-export async function scrapingTasksPause(id: string): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/pause', {
-        method: 'POST',
-        body: { id },
-    });
-}
-
-export async function scrapingTasksResume(id: string): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/resume', {
-        method: 'POST',
-        body: { id },
-    });
-}
-
-export async function scrapingTasksCancel(id: string): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/cancel', {
-        method: 'POST',
-        body: { id },
-    });
-}
-
-export async function scrapingTasksClaimNext(input: {
-    workerId: string;
-    now: number;
-    leaseMs: number;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/claim-next', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksNoteRunning(input: {
-    taskId: string;
-    workerId: string;
-    profileId: string;
-    now: number;
-    leaseMs: number;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/note-running', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksHeartbeat(input: {
-    taskId: string;
-    workerId: string;
-    now: number;
-    leaseMs: number;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/heartbeat', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksRecordRetry(input: {
-    taskId: string;
-    workerId: string;
-    now: number;
-    nextRunAt: number;
-    errorCode: string;
-    errorMessage: string;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/record-retry', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksRecordFailure(input: {
-    taskId: string;
-    workerId: string;
-    now: number;
-    errorCode: string;
-    errorMessage: string;
-}): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/record-failure', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksStoreChunk(input: {
-    taskId: string;
-    workerId: string;
-    profileId: string;
-    targetUsername: string;
-    users: any[];
-    hasMore: boolean;
-    nextCursor: string | null;
-    now: number;
-    leaseMs: number;
-}): Promise<{
-    storageId: string;
-    count: number;
-    done: boolean;
-    stats: ScrapingTaskStats;
-    currentTargetIndex: number;
-    nextTargetUsername: string | null;
-}> {
-    return convexFetch('/api/scraping-tasks/store-chunk', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksStoreData(taskId: string, users: any[], metadata: Record<string, any> = {}): Promise<{
-    storageId: string;
-    count: number;
-}> {
-    return convexFetch('/api/scraping-tasks/store-data', {
-        method: 'POST',
-        body: {
-            taskId,
-            users,
-            metadata,
-        },
-    });
-}
-
-export async function scrapingTasksFinalize(input: {
-    taskId: string;
-    workerId: string;
-    now: number;
-}): Promise<{
-    manifestStorageId: string;
-    stats: ScrapingTaskStats;
-    chunkCount: number;
-}> {
-    return convexFetch('/api/scraping-tasks/finalize', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function scrapingTasksSweepExpiredLeases(now: number = Date.now()): Promise<{ reclaimed: number }> {
-    return convexFetch('/api/scraping-tasks/sweep-expired-leases', {
-        method: 'POST',
-        body: { now },
-    });
-}
-
-export async function scrapingTasksSetImported(id: string, imported: boolean): Promise<DbScrapingTaskRow | null> {
-    return convexFetch<DbScrapingTaskRow | null>('/api/scraping-tasks/set-imported', {
-        method: 'POST',
-        body: { id, imported },
-    });
-}
-
-export async function scrapingTasksGetStorageUrl(storageId: string): Promise<string | null> {
-    const cleaned = String(storageId || '').trim();
-    if (!cleaned) throw new Error('storageId is required');
-    return convexFetch<string | null>(`/api/scraping-tasks/storage-url?storageId=${encodeURIComponent(cleaned)}`);
-}
-
-export async function scrapingTasksGetManifestUrl(taskId: string): Promise<string | null> {
-    const cleaned = String(taskId || '').trim();
-    if (!cleaned) throw new Error('taskId is required');
-    return convexFetch<string | null>(`/api/scraping-tasks/manifest-url?id=${encodeURIComponent(cleaned)}`);
-}
-
 // ==================== WORKFLOWS ====================
 
 export type DbWorkflowRow = Record<string, any> & { _id: string }
+
+export type DbWorkflowArtifactRow = Record<string, any> & {
+    _id: string
+    workflowId: string
+    workflowName: string
+    nodeId: string
+    nodeLabel?: string | null
+    name: string
+    kind: 'followers' | 'following'
+    targetUsername?: string | null
+    targets?: string[]
+    status?: string | null
+    imported?: boolean
+    sourceProfileName?: string | null
+    lastRunAt?: number | null
+    storageId?: string | null
+    manifestStorageId?: string | null
+    exportStorageId?: string | null
+    stats?: ScrapingTaskStats | null
+}
 
 export async function workflowsGetById(workflowId: string): Promise<DbWorkflowRow | null> {
     const cleaned = String(workflowId || '').trim()
@@ -627,4 +396,22 @@ export async function workflowsUpdateStatus(input: {
             error: input.error,
         },
     })
+}
+
+export async function workflowArtifactsListByWorkflow(workflowId: string): Promise<DbWorkflowArtifactRow[]> {
+    const cleaned = String(workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowArtifactRow[]>(`/api/workflow-artifacts?workflowId=${encodeURIComponent(cleaned)}`)
+}
+
+export async function workflowArtifactsGetById(id: string): Promise<DbWorkflowArtifactRow | null> {
+    const cleaned = String(id || '').trim()
+    if (!cleaned) throw new Error('id is required')
+    return convexFetch<DbWorkflowArtifactRow | null>(`/api/workflow-artifacts/by-id?id=${encodeURIComponent(cleaned)}`)
+}
+
+export async function workflowArtifactsGetStorageUrl(storageId: string): Promise<string | null> {
+    const cleaned = String(storageId || '').trim()
+    if (!cleaned) throw new Error('storageId is required')
+    return convexFetch<string | null>(`/api/workflow-artifacts/storage-url?storageId=${encodeURIComponent(cleaned)}`)
 }

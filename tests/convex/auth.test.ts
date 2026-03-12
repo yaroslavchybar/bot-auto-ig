@@ -22,10 +22,10 @@ test('rejects unauthenticated public mutations', async () => {
   ).rejects.toThrow('Unauthorized')
 
   await expect(
-    t.mutation(api.scrapingTasks.create, {
-      name: 'Task A',
-      kind: 'followers',
-      targetUsername: 'target-a',
+    t.mutation(api.workflows.create, {
+      name: 'Workflow A',
+      nodes: [],
+      edges: [],
     }),
   ).rejects.toThrow('Unauthorized')
 })

@@ -328,43 +328,63 @@ test('inserts instagram accounts through the internal HTTP surface', async () =>
   expect(body).toMatchObject({ inserted: 1, skipped: 0 })
 })
 
-test('lists and updates scraping tasks through internal-key routes', async () => {
+test('lists and updates workflow artifacts through internal-key routes', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
-  const task = await t.mutation(api.scrapingTasks.create, {
+  const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Host' })
+  const stored = await t.action(internal.workflowArtifacts.storeArtifactInternal, {
+    payload: {
+      storageKind: 'export',
+      users: [{ username: 'target-a' }],
+    },
+  })
+  const artifact = await t.mutation(api.workflowArtifacts.upsert, {
+    workflowId: workflow!._id,
+    workflowName: workflow!.name,
+    nodeId: 'node-1',
+    nodeLabel: 'Scrape Relationships',
     name: 'Task A',
     kind: 'followers',
-    targetUsername: 'target-a',
+    targets: ['target-a'],
+    storageId: stored.storageId,
   })
 
-  const listResponse = await t.fetch('/api/scraping-tasks', {
-    method: 'GET',
-    headers: { authorization: 'Bearer secret-token' },
-  })
-  const byIdResponse = await t.fetch(`/api/scraping-tasks/by-id?id=${encodeURIComponent(String(task!._id))}`, {
-    method: 'GET',
-    headers: { authorization: 'Bearer secret-token' },
-  })
-  const setImportedResponse = await t.fetch('/api/scraping-tasks/set-imported', {
+  const listResponse = await t.fetch(
+    `/api/workflow-artifacts?workflowId=${encodeURIComponent(String(workflow!._id))}`,
+    {
+      method: 'GET',
+      headers: { authorization: 'Bearer secret-token' },
+    },
+  )
+  const byIdResponse = await t.fetch(
+    `/api/workflow-artifacts/by-id?id=${encodeURIComponent(String(artifact!._id))}`,
+    {
+      method: 'GET',
+      headers: { authorization: 'Bearer secret-token' },
+    },
+  )
+  const setImportedResponse = await t.fetch('/api/workflow-artifacts/set-imported', {
     method: 'POST',
     headers: {
       authorization: 'Bearer secret-token',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      id: task!._id,
+      id: artifact!._id,
       imported: true,
     }),
   })
 
   expect(listResponse.status).toBe(200)
-  await expect(listResponse.json()).resolves.toHaveLength(1)
+  await expect(listResponse.json()).resolves.toMatchObject([
+    { _id: artifact!._id, workflowId: workflow!._id },
+  ])
   expect(byIdResponse.status).toBe(200)
-  await expect(byIdResponse.json()).resolves.toMatchObject({ _id: task!._id })
+  await expect(byIdResponse.json()).resolves.toMatchObject({ _id: artifact!._id })
   expect(setImportedResponse.status).toBe(200)
   await expect(setImportedResponse.json()).resolves.toMatchObject({
-    _id: task!._id,
+    _id: artifact!._id,
     imported: true,
   })
 })
