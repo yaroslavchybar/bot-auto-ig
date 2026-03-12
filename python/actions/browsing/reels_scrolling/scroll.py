@@ -1,0 +1,283 @@
+import random
+import time
+from python.actions.common import random_delay, safe_mouse_move
+from .likes import perform_like
+from python.core.storage.state_persistence import save_state
+import logging
+
+logger = logging.getLogger(__name__)
+
+NEXT_REEL_BUTTON_XPATH = (
+    "//div[@role='button' and "
+    "(contains(@aria-label, 'next Reel') or contains(@aria-label, 'Next Reel'))]"
+)
+PREVIOUS_REEL_BUTTON_XPATH = (
+    "//div[@role='button' and "
+    "(contains(@aria-label, 'previous Reel') or contains(@aria-label, 'Previous Reel'))]"
+)
+
+
+def _find_reels_navigation_button(page, button_xpath: str):
+    """Return the first visible Reels navigation button matching the semantic XPath."""
+    button = page.locator(f'xpath={button_xpath}').first
+    if button.count() == 0 or not button.is_visible():
+        return None
+    return button
+
+
+def _go_to_next_reel(page) -> bool:
+    """
+    Click the semantic Reels "next" control to advance.
+    """
+    try:
+        next_btn = _find_reels_navigation_button(page, NEXT_REEL_BUTTON_XPATH)
+        if next_btn:
+            box = next_btn.bounding_box()
+            if box:
+                logger.debug(f"Found 'Next Reel' arrow at ({box['x']}, {box['y']})")
+
+                # Hover first to keep the interaction pattern human-like.
+                center_x = box['x'] + box['width'] / 2
+                center_y = box['y'] + box['height'] / 2
+
+                safe_mouse_move(page, center_x, center_y, steps=5)
+                random_delay(0.2, 0.5)
+                page.mouse.click(center_x, center_y)
+                logger.info("Clicked 'Next Reel' arrow")
+                return True
+        
+        logger.warning("Semantic 'Next Reel' button not found.")
+        return False
+    except Exception as e:
+        logger.error(f"Error navigating to next reel: {e}")
+        return False
+
+
+def _navigate_reels(page):
+    """Navigate to the Reels tab if not already there."""
+    if "instagram.com/reels" in page.url:
+        return
+
+    logger.info("Navigating to Reels tab via UI...")
+    try:
+        reels_link = page.query_selector('a[href="/reels/"]')
+        if reels_link:
+            box = reels_link.bounding_box()
+            if box:
+                # Move directly to the center of the button with minimal steps
+                target_x = box["x"] + (box["width"] / 2)
+                target_y = box["y"] + (box["height"] / 2)
+                safe_mouse_move(page, target_x, target_y, steps=4)
+                random_delay(0.2, 0.4)
+                page.mouse.click(target_x, target_y)
+                page.wait_for_url("**/reels/**", timeout=15000)
+                random_delay(1, 2)
+            else:
+                logger.warning("Reels link visible but no bounding box")
+                page.goto("https://www.instagram.com/reels/", timeout=30000)
+        else:
+            logger.warning("Reels link not found in sidebar")
+            page.goto("https://www.instagram.com/reels/", timeout=30000)
+    except Exception as nav_e:
+        logger.error(f"Navigation error, fallback to URL: {nav_e}")
+        page.goto("https://www.instagram.com/reels/", timeout=30000)
+        random_delay(3, 5)
+
+
+def _perform_follow(page) -> bool:
+    try:
+        btn_handle = page.evaluate_handle(
+            """
+            () => {
+                const candidates = Array.from(
+                    document.querySelectorAll('button, div[role="button"]')
+                );
+                const viewportHeight = window.innerHeight;
+                const viewportWidth = window.innerWidth;
+                let best = null;
+                let bestDistance = Infinity;
+
+                for (const candidate of candidates) {
+                    if (candidate.closest('[role="dialog"]')) continue;
+                    const text = (candidate.textContent || '').trim();
+                    if (text !== 'Follow') continue;
+
+                    const rect = candidate.getBoundingClientRect();
+                    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+                    if (rect.top < 0 || rect.bottom > viewportHeight) continue;
+                    if (rect.left < 0 || rect.right > viewportWidth) continue;
+
+                    const centerY = rect.top + rect.height / 2;
+                    const distance = Math.abs(centerY - viewportHeight / 2);
+                    if (distance < bestDistance) {
+                        best = candidate;
+                        bestDistance = distance;
+                    }
+                }
+
+                return best;
+            }
+            """
+        )
+
+        target = btn_handle.as_element()
+        if not target:
+            logger.debug("No visible Follow button found for current reel")
+            return False
+
+        box = target.bounding_box()
+        if not box:
+            return False
+
+        center_x = box["x"] + box["width"] / 2
+        center_y = box["y"] + box["height"] / 2
+        safe_mouse_move(page, center_x, center_y, steps=random.randint(4, 8))
+        random_delay(0.15, 0.35)
+        page.mouse.click(center_x, center_y, delay=random.randint(20, 60))
+        logger.info("Followed user from reel")
+        return True
+    except Exception as exc:
+        logger.error(f"Error following from reel: {exc}")
+        return False
+
+
+def _queue_actions(page, actions_config):
+    """Prepare action callables for the current reel based on configured chances."""
+    actions_to_perform = []
+
+    if random.randint(0, 100) < actions_config.get("like_chance", 0):
+        actions_to_perform.append(("like", lambda: perform_like(page)))
+
+    if random.randint(0, 100) < actions_config.get("follow_chance", 0):
+        actions_to_perform.append(("follow", lambda: _perform_follow(page)))
+
+    random.shuffle(actions_to_perform)
+    return actions_to_perform
+
+
+def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=None, profile_name: str = "unknown") -> dict:
+    """
+    Scroll through Instagram Reels and perform random actions.
+
+    Args:
+        page: Playwright page object
+        duration_minutes: How long to scroll
+        actions_config: Dict with 'like_chance', 'follow_chance' (0-100)
+        should_stop: Optional callable that returns True if execution should stop
+        profile_name: Name of the profile being automated (for state persistence)
+
+    Returns:
+        Dict with stats: {'likes': N, 'follows': N}
+    """
+    stats = {"likes": 0, "follows": 0}
+    start_time = time.time()
+    end_time = start_time + (duration_minutes * 60)
+
+    try:
+        _navigate_reels(page)
+        logger.info(f"Starting {duration_minutes} minute REELS session...")
+
+        # Add a hard timeout buffer (2 minutes) to ensure we don't get stuck in Playwright hangs
+        hard_timeout_time = end_time + 120 
+        last_action_time = start_time
+
+        while True:
+            current_time = time.time()
+            if current_time >= end_time:
+                logger.info(f"Expected duration of {duration_minutes}m reached. Ending reels session.")
+                break
+            
+            if current_time >= hard_timeout_time:
+                logger.error(f"HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.")
+                break
+
+            if current_time - last_action_time >= 180:
+                logger.warning("No reels processed in the last 3 minutes. Auto-reloading page...")
+                try:
+                    page.reload(timeout=15000)
+                except Exception as e:
+                    logger.error(f"Failed to reload page: {e}")
+                last_action_time = current_time
+                random_delay(3, 6)
+                continue
+
+            # Log time remaining occasionally 
+            minutes_left = (end_time - current_time) / 60
+            logger.info(f"Time remaining in session: {minutes_left:.1f} minutes")
+
+            # Save state
+            elapsed = current_time - start_time
+            total_duration = duration_minutes * 60
+            progress = int((elapsed / total_duration) * 100) if total_duration > 0 else 0
+            progress = min(progress, 99)
+            save_state(profile_name, "scroll_reels", progress)
+
+            if should_stop and should_stop():
+                logger.info("Stop signal received. Ending reels session.")
+                break
+
+            # Simulate human behavior:
+            # Use configured chance to "skip" boring content
+            skip_chance = actions_config.get("reels_skip_chance", 30)
+            
+            skip_min = actions_config.get("reels_skip_min_time", 0.8)
+            skip_max = actions_config.get("reels_skip_max_time", 2.0)
+            normal_min = actions_config.get("reels_normal_min_time", 5.0)
+            normal_max = actions_config.get("reels_normal_max_time", 20.0)
+            advance_min = actions_config.get("reels_advance_min_seconds", 1.5)
+            advance_max = actions_config.get("reels_advance_max_seconds", 3.0)
+            if skip_max < skip_min:
+                skip_min, skip_max = skip_max, skip_min
+            if normal_max < normal_min:
+                normal_min, normal_max = normal_max, normal_min
+            if advance_max < advance_min:
+                advance_min, advance_max = advance_max, advance_min
+
+            if random.randint(0, 100) < skip_chance:
+                watch_time = random.uniform(skip_min, skip_max)
+                logger.info(f"Short watch (skip): {watch_time:.2f}s")
+            else:
+                watch_time = random.uniform(normal_min, normal_max)
+                logger.info(f"Normal watch: {watch_time:.2f}s")
+            
+            # Check for stop signal during watch time (sleep in chunks)
+            start_sleep = time.time()
+            while time.time() - start_sleep < watch_time:
+                if should_stop and should_stop():
+                    break
+                time.sleep(0.5)
+                
+            if should_stop and should_stop():
+                logger.info("Stop signal received. Ending reels session.")
+                break
+
+            # Successfully watched a reel
+            last_action_time = time.time()
+
+            actions_to_perform = _queue_actions(page, actions_config)
+
+            for action_name, action_func in actions_to_perform:
+                if should_stop and should_stop():
+                    break
+                    
+                try:
+                    if action_func():
+                        stats[action_name + "s"] += 1
+                        random_delay(1, 2)
+                except Exception as e:
+                    logger.error(f"Error executing {action_name} action on reel: {e}")
+
+            if should_stop and should_stop():
+                logger.info("Stop signal received. Ending reels session.")
+                break
+
+            if not _go_to_next_reel(page):
+                break
+            random_delay(advance_min, advance_max)
+
+    except Exception as e:
+        logger.error(f"Error during reels scrolling: {e}")
+
+    logger.info(f"Reels session complete: {stats}")
+    return stats
+

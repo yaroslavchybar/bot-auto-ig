@@ -36,7 +36,7 @@ Operations:
 
 - `frontend/`: React Router app (`root.tsx`, `routes.ts`, route modules, feature-owned UI for `profiles`, `lists`, `workflows`, `accounts`, `logs`, `vnc`, `monitoring`).
 - `server/`: Express API route files (`automation`, `profiles`, `lists`, `logs`, `workflows`, `monitoring`, `displays`) + WebSocket.
-- `python/`: automation runtime entrypoints and internal systems.
+- `python/`: automation runtime — `runners/` (entry points), `actions/` (Instagram domain), `browser/` (lifecycle), `database/` (Convex clients), `core/` (infra).
 - `convex/`: schema/modules/http/crons/migrations including `keywords`, `workflowArtifacts`, `workflows`.
 - `datauploader/`: CSV + workflow-artifact ingest service.
 - `data/`: runtime logs/uploads.

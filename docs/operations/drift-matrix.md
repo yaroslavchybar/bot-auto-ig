@@ -46,4 +46,5 @@ Status legend:
 ## Backlog Closure
 
 - All `stale` and `partial` items found in the March 9, 2026 canonical-docs refresh are resolved in this cycle.
+- March 12, 2026 follow-up: `docs/python/components.md` briefly omitted `python/core/selectors.py`, `python/core/totp.py`, `python/core/snapshot_debugger.py`, and `python/core/storage/profile_manager.py` during a manual refresh; the canonical component inventory is now realigned.
 - New drift findings should be appended here with owner, risk, action, and final status.

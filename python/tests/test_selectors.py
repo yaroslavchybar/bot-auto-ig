@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from python.internal_systems.shared_utilities.selectors import SemanticSelector
+from python.core.selectors import SemanticSelector
 
 def test_semantic_selector_role_success():
     mock_page = MagicMock()
@@ -71,7 +71,7 @@ def test_semantic_selector_skips_hidden_first_match():
     result = selector.find(mock_page)
     assert result == second
 
-@patch('python.internal_systems.shared_utilities.selectors.save_debug_snapshot')
+@patch('python.core.selectors.save_debug_snapshot')
 def test_semantic_selector_snapshot_on_failure(mock_save_snapshot):
     mock_page = MagicMock()
     

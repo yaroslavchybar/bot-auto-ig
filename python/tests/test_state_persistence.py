@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 import pytest
-from python.internal_systems.storage.state_persistence import save_state, load_state, clear_state, STATE_FILE
+from python.core.storage.state_persistence import save_state, load_state, clear_state, STATE_FILE
 
 @pytest.fixture
 def clean_state_file():

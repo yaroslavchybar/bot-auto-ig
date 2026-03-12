@@ -17,7 +17,7 @@ import {
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
-const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'getting_started', 'run_workflow.py')
+const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_workflow.py')
 
 const router = Router()
 

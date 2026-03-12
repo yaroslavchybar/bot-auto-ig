@@ -49,7 +49,7 @@ Mounted under `/api/*`:
 ### Workflows
 - Run/stop workflow execution.
 - Reports workflow status.
-- Spawns `python/getting_started/run_workflow.py` and broadcasts workflow events.
+- Spawns `python/runners/run_workflow.py` and broadcasts workflow events.
 - Workflow definitions and editor data are read and written from the browser through authenticated Convex functions; Express handles execution and lifecycle control.
 - Workflow scrape artifacts are exposed through `/api/workflows/artifacts` and `/api/workflows/artifacts/storage-url`.
 

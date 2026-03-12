@@ -17,8 +17,8 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 // From dist/routes/ we need to go up to server/, then up to project root
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
-const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'getting_started', 'run_multiple_accounts.py')
-const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'instagram_actions', 'login', 'session.py')
+const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_multiple_accounts.py')
+const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'actions', 'login', 'session.py')
 
 const router = Router()
 

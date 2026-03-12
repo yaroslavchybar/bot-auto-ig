@@ -6,16 +6,16 @@
 
 ## Entry Points
 
-- `python/getting_started/launcher.py` (manual/session automation launcher)
-- `python/getting_started/run_multiple_accounts.py` (multi-account execution helper)
-- `python/getting_started/run_workflow.py` (workflow executor)
+- `python/runners/launcher.py` (manual/session automation launcher)
+- `python/runners/run_multiple_accounts.py` (multi-account execution helper)
+- `python/runners/run_workflow.py` (workflow executor)
 
 ## Runtime Architecture
 
-- `instagram_actions/`: feed/reels/engagement/stories/messaging/login actions.
-- `browser_control/`: browser setup, fingerprints, display/session helpers.
-- `database_sync/`: Convex-facing clients and config.
-- `internal_systems/`: error handling, logging, process management, data models, storage.
+- `actions/`: feed/reels/engagement/stories/messaging/login actions.
+- `browser/`: browser setup, fingerprints, display/session helpers.
+- `database/`: Convex-facing clients.
+- `core/`: config, error handling, logging, process management, data models, storage.
 
 ## Workflow Runtime Settings
 
@@ -34,7 +34,7 @@
 
 - Server starts Python for manual automation/profile sessions.
 - Workflows API starts `run_workflow.py` with JSON payload over stdin.
-- Multi-account helper flows remain in `python/getting_started/` and are not mounted as direct server API endpoints.
+- Multi-account helper flows remain in `python/runners/` and are not mounted as direct server API endpoints.
 - Runtime emits structured `__EVENT__...__EVENT__` messages for WS propagation.
 
 ## Reliability Model
@@ -54,19 +54,13 @@ python -m pytest python/tests -q
 
 ## Environment Notes
 
-- Convex endpoint/key settings come from `python/database_sync/config.py`, which loads `.env` when `python-dotenv` is available and reuses `INTERNAL_API_KEY` for protected HTTP actions.
+- Convex endpoint/key settings come from `python/core/config.py`, which loads `.env` when `python-dotenv` is available and reuses `INTERNAL_API_KEY` for protected HTTP actions.
 - Feed debug behavior reads `FEED_DEBUG_MOUSE` in feed scrolling modules.
 - Browser bootstrap seeds the cursor to a randomized viewport-safe start position before the first navigation so sessions do not visibly begin from a fixed viewport edge.
 - Shared browser bootstrap preloads normalized profile cookies from Convex before the first Instagram navigation and writes the latest cookies back on successful session updates and clean shutdown.
 
 ## Verified Against
 
-- `python/getting_started/launcher.py`
-- `python/getting_started/run_multiple_accounts.py`
-- `python/getting_started/run_workflow.py`
-- `python/database_sync/config.py`
-- `python/instagram_actions/browsing/feed_scrolling/likes.py`
-- `python/instagram_actions/browsing/feed_scrolling/scroll.py`
-- `python/internal_systems/process_management`
-- `python/internal_systems/logging`
+- Directory listings for `python/*`
+- All 86 tests passing after restructure
 - `python/tests`

@@ -24,8 +24,8 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 // From dist/routes/ we need to go up to server/, then up to project root
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
-const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'getting_started', 'launcher.py')
-const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'browser_control', 'fingerprint_generator.py')
+const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'runners', 'launcher.py')
+const FINGERPRINT_GENERATOR_SCRIPT = path.join(PROJECT_ROOT, 'python', 'browser', 'fingerprint.py')
 
 const router = Router()
 
