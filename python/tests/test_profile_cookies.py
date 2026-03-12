@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from python.browser_control import browser_setup
-from python.browser_control.profile_cookies import (
+from python.browser import setup as browser_setup
+from python.browser.cookies import (
     canonical_cookies_json,
     extract_instagram_session_id,
     normalize_profile_cookies,
@@ -59,7 +59,7 @@ def test_preload_profile_cookies_adds_normalized_cookies(monkeypatch):
 
 def test_sync_profile_session_state_writes_cookies_and_session(monkeypatch):
     client = MagicMock()
-    monkeypatch.setattr("python.database_sync.profiles_client.ProfilesClient", lambda: client)
+    monkeypatch.setattr("python.database.profiles.ProfilesClient", lambda: client)
     context = MagicMock()
     context.cookies.return_value = [
         {"name": "sessionid", "value": "abc", "domain": ".instagram.com", "path": "/"},

@@ -16,7 +16,7 @@ class TestSharedSession(unittest.TestCase):
     def setUp(self):
         """Reset the global session before each test."""
         # Import here to avoid module-level import issues
-        import python.database_sync.shared_session as ss
+        import python.database.session as ss
         self.ss = ss
         # Reset global state
         ss._session = None
@@ -88,14 +88,14 @@ class TestProfilesClientResilientHttpClient(unittest.TestCase):
         }):
             # Reset config cache
             import importlib
-            import python.database_sync.config as config_mod
+            import python.core.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.database_sync.profiles_client.ResilientHttpClient") as MockClient:
+            with patch("python.database.profiles.ResilientHttpClient") as MockClient:
                 mock_http_client = MagicMock()
                 MockClient.return_value = mock_http_client
                 
-                from python.database_sync.profiles_client import ProfilesClient
+                from python.database.profiles import ProfilesClient
                 client = ProfilesClient()
                 
                 MockClient.assert_called_once()
@@ -112,14 +112,14 @@ class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
             "CONVEX_API_KEY": "test-key"
         }):
             import importlib
-            import python.database_sync.config as config_mod
+            import python.core.config as config_mod
             importlib.reload(config_mod)
             
-            with patch("python.database_sync.accounts_client.ResilientHttpClient") as MockClient:
+            with patch("python.database.accounts.ResilientHttpClient") as MockClient:
                 mock_http_client = MagicMock()
                 MockClient.return_value = mock_http_client
                 
-                from python.database_sync.accounts_client import InstagramAccountsClient
+                from python.database.accounts import InstagramAccountsClient
                 client = InstagramAccountsClient()
                 
                 MockClient.assert_called_once()
@@ -128,7 +128,7 @@ class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
 
 class TestWorkflowRunnerSettings(unittest.TestCase):
     def test_extract_start_browser_settings_maps_legacy_fields(self):
-        import python.getting_started.run_workflow as run_workflow
+        import python.runners.run_workflow as run_workflow
 
         settings = run_workflow._extract_start_browser_settings(
             [
@@ -162,7 +162,7 @@ class TestWorkflowRunnerSettings(unittest.TestCase):
         )
 
     def test_fetch_profiles_for_lists_uses_available_endpoint_when_cooldown_enabled(self):
-        import python.getting_started.run_workflow as run_workflow
+        import python.runners.run_workflow as run_workflow
 
         captured = {}
 

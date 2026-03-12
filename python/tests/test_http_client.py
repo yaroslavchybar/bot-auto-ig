@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import Mock, patch
 import time
 from requests.exceptions import ConnectionError, Timeout
-from python.internal_systems.error_handling.http_client import ResilientHttpClient, CircuitBreakerOpenError
+from python.core.errors.http_client import ResilientHttpClient, CircuitBreakerOpenError
 
 class TestResilientHttpClient(unittest.TestCase):
     def setUp(self):

@@ -25,7 +25,7 @@ class ManualAutomationService extends EventEmitter {
         const name = profile.name;
         if (this._processes.has(name)) return;
 
-        const scriptPath = path.join(PROJECT_ROOT, 'python', 'getting_started', 'launcher.py');
+        const scriptPath = path.join(PROJECT_ROOT, 'python', 'runners', 'launcher.py');
         const args = ['--name', name];
         if (profile.proxy) args.push('--proxy', profile.proxy);
         args.push('--action', 'manual');
