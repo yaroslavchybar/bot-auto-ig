@@ -18,9 +18,14 @@ def run_approve_follow_requests(
     client,
     log: Callable[[str], None],
     should_stop: Callable[[], bool],
+    approve_delay_range=(1.0, 2.0),
+    finish_delay_seconds: float = 3.0,
 ) -> None:
     try:
         ensure_instagram_open(page, log)
+        delay_min, delay_max = approve_delay_range
+        if delay_max < delay_min:
+            delay_min, delay_max = delay_max, delay_min
 
         opened = open_notifications(page, log)
         if not opened:
@@ -50,7 +55,7 @@ def run_approve_follow_requests(
                         mark_account_approved(client, username, log)
 
                     log("Подтверждена заявка")
-                    random_delay(1, 2)
+                    random_delay(delay_min, delay_max)
                 except Exception as e:
                     log(f"Ошибка при подтверждении: {e}")
         else:
@@ -58,8 +63,8 @@ def run_approve_follow_requests(
 
         close_notifications(page, log)
 
-        log("Ожидание 3 секунды перед закрытием сессии...")
-        random_delay(3, 3)
+        log(f"Ожидание {finish_delay_seconds} секунды перед закрытием сессии...")
+        random_delay(finish_delay_seconds, finish_delay_seconds)
 
         log("Обработка уведомлений завершена.")
     except Exception as e:

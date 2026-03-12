@@ -47,6 +47,7 @@ export interface ActivityInput {
   placeholder?: string // Placeholder text
   helpText?: string // Help text shown below
   group?: string // Group related inputs together
+  templateKindField?: string // Sibling config field that selects template bank
 }
 
 // Possible output handles from an activity

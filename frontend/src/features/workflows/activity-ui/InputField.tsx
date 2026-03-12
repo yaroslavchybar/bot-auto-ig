@@ -21,6 +21,7 @@ export function InputField({
   value,
   onChange,
   compact,
+  config,
 }: InputFieldProps) {
   switch (input.type) {
     case 'range':
@@ -46,7 +47,7 @@ export function InputField({
         />
       )
     case 'template':
-      return <TemplateInput input={input} />
+      return <TemplateInput input={input} config={config} />
     case 'code':
       return <CodeInput input={input} value={value} onChange={onChange} />
     case 'list_select':

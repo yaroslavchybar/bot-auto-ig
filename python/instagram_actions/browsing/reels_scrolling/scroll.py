@@ -84,12 +84,72 @@ def _navigate_reels(page):
         random_delay(3, 5)
 
 
+def _perform_follow(page) -> bool:
+    try:
+        btn_handle = page.evaluate_handle(
+            """
+            () => {
+                const candidates = Array.from(
+                    document.querySelectorAll('button, div[role="button"]')
+                );
+                const viewportHeight = window.innerHeight;
+                const viewportWidth = window.innerWidth;
+                let best = null;
+                let bestDistance = Infinity;
+
+                for (const candidate of candidates) {
+                    if (candidate.closest('[role="dialog"]')) continue;
+                    const text = (candidate.textContent || '').trim();
+                    if (text !== 'Follow') continue;
+
+                    const rect = candidate.getBoundingClientRect();
+                    if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+                    if (rect.top < 0 || rect.bottom > viewportHeight) continue;
+                    if (rect.left < 0 || rect.right > viewportWidth) continue;
+
+                    const centerY = rect.top + rect.height / 2;
+                    const distance = Math.abs(centerY - viewportHeight / 2);
+                    if (distance < bestDistance) {
+                        best = candidate;
+                        bestDistance = distance;
+                    }
+                }
+
+                return best;
+            }
+            """
+        )
+
+        target = btn_handle.as_element()
+        if not target:
+            logger.debug("No visible Follow button found for current reel")
+            return False
+
+        box = target.bounding_box()
+        if not box:
+            return False
+
+        center_x = box["x"] + box["width"] / 2
+        center_y = box["y"] + box["height"] / 2
+        safe_mouse_move(page, center_x, center_y, steps=random.randint(4, 8))
+        random_delay(0.15, 0.35)
+        page.mouse.click(center_x, center_y, delay=random.randint(20, 60))
+        logger.info("Followed user from reel")
+        return True
+    except Exception as exc:
+        logger.error(f"Error following from reel: {exc}")
+        return False
+
+
 def _queue_actions(page, actions_config):
     """Prepare action callables for the current reel based on configured chances."""
     actions_to_perform = []
 
     if random.randint(0, 100) < actions_config.get("like_chance", 0):
         actions_to_perform.append(("like", lambda: perform_like(page)))
+
+    if random.randint(0, 100) < actions_config.get("follow_chance", 0):
+        actions_to_perform.append(("follow", lambda: _perform_follow(page)))
 
     random.shuffle(actions_to_perform)
     return actions_to_perform
@@ -164,6 +224,14 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
             skip_max = actions_config.get("reels_skip_max_time", 2.0)
             normal_min = actions_config.get("reels_normal_min_time", 5.0)
             normal_max = actions_config.get("reels_normal_max_time", 20.0)
+            advance_min = actions_config.get("reels_advance_min_seconds", 1.5)
+            advance_max = actions_config.get("reels_advance_max_seconds", 3.0)
+            if skip_max < skip_min:
+                skip_min, skip_max = skip_max, skip_min
+            if normal_max < normal_min:
+                normal_min, normal_max = normal_max, normal_min
+            if advance_max < advance_min:
+                advance_min, advance_max = advance_max, advance_min
 
             if random.randint(0, 100) < skip_chance:
                 watch_time = random.uniform(skip_min, skip_max)
@@ -205,7 +273,7 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
 
             if not _go_to_next_reel(page):
                 break
-            random_delay(1.5, 3.0)
+            random_delay(advance_min, advance_max)
 
     except Exception as e:
         logger.error(f"Error during reels scrolling: {e}")

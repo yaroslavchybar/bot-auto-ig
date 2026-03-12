@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from python.browser_control.browser_setup import create_browser_context
 from python.database_sync.accounts_client import InstagramAccountsClient
@@ -12,6 +12,8 @@ def approve_follow_requests(
     should_stop: Optional[Callable[[], bool]] = None,
     page: Optional[object] = None,
     user_agent: Optional[str] = None,
+    approve_delay_range: Tuple[float, float] = (1.0, 2.0),
+    finish_delay_seconds: float = 3.0,
 ):
     """
     Open Camoufox, navigate to notifications/activity, and approve follow requests.
@@ -27,6 +29,8 @@ def approve_follow_requests(
             client=client,
             log=log,
             should_stop=should_stop,
+            approve_delay_range=approve_delay_range,
+            finish_delay_seconds=finish_delay_seconds,
         )
 
     if page:

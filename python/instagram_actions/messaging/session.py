@@ -15,6 +15,7 @@ def send_messages(
     should_stop: Optional[Callable[[], bool]] = None,
     page: Optional[object] = None,
     user_agent: Optional[str] = None,
+    behavior_config: Optional[Dict] = None,
 ):
     """
     Send messages to a list of target users.
@@ -38,6 +39,7 @@ def send_messages(
             log=log,
             should_stop=should_stop,
             client=client,
+            behavior_config=behavior_config or {},
         )
 
     if page:

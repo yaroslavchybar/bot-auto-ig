@@ -32,7 +32,7 @@ export type {
 // Import all activity groups
 import { browsingActivities } from './browsing'
 import { engagementActivities } from './engagement'
-import { messagingActivities } from './messaging'
+import { sendDm } from './messaging/send-dm'
 import { storiesActivities } from './stories'
 import { controlActivities } from './control'
 import { pythonActivities } from './pythonnode'
@@ -129,7 +129,7 @@ const ACTIVITY_METADATA: Record<
 const BASE_ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...browsingActivities,
   ...engagementActivities,
-  ...messagingActivities,
+  sendDm,
   ...storiesActivities,
   ...controlActivities,
   ...pythonActivities,
@@ -250,6 +250,43 @@ export function getDefaultConfig(activityId: string): Record<string, unknown> {
     }
   }
   return config
+}
+
+export function normalizeActivityConfig(
+  activityId: string,
+  config: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  const defaults = getDefaultConfig(activityId)
+  const rawConfig =
+    config && typeof config === 'object' ? { ...config } : {}
+
+  if (activityId === 'start_browser') {
+    if (
+      rawConfig.profileReopenCooldownEnabled === undefined &&
+      rawConfig.profileReopenCooldownMinutes === undefined &&
+      rawConfig.profileReopenCooldown !== undefined
+    ) {
+      rawConfig.profileReopenCooldownEnabled = true
+      rawConfig.profileReopenCooldownMinutes = rawConfig.profileReopenCooldown
+    }
+
+    if (
+      rawConfig.messagingCooldownEnabled === undefined &&
+      rawConfig.messagingCooldownHours === undefined &&
+      rawConfig.messagingCooldown !== undefined
+    ) {
+      rawConfig.messagingCooldownEnabled = true
+      rawConfig.messagingCooldownHours = rawConfig.messagingCooldown
+    }
+
+    delete rawConfig.profileReopenCooldown
+    delete rawConfig.messagingCooldown
+  }
+
+  return {
+    ...defaults,
+    ...rawConfig,
+  }
 }
 
 /**

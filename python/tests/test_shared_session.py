@@ -126,5 +126,82 @@ class TestInstagramAccountsClientResilientHttpClient(unittest.TestCase):
                 self.assertEqual(client.http_client, mock_http_client)
 
 
+class TestWorkflowRunnerSettings(unittest.TestCase):
+    def test_extract_start_browser_settings_maps_legacy_fields(self):
+        import python.getting_started.run_workflow as run_workflow
+
+        settings = run_workflow._extract_start_browser_settings(
+            [
+                {
+                    "id": "start_browser_1",
+                    "type": "activity",
+                    "data": {
+                        "activityId": "start_browser",
+                        "config": {
+                            "headlessMode": True,
+                            "parallelProfiles": 4,
+                            "profileReopenCooldown": 45,
+                            "messagingCooldown": 12,
+                        },
+                    },
+                }
+            ],
+            {},
+        )
+
+        self.assertEqual(
+            settings,
+            {
+                "headless": True,
+                "parallel_profiles": 4,
+                "profile_reopen_cooldown_enabled": True,
+                "profile_reopen_cooldown_minutes": 45,
+                "messaging_cooldown_enabled": True,
+                "messaging_cooldown_hours": 12,
+            },
+        )
+
+    def test_fetch_profiles_for_lists_uses_available_endpoint_when_cooldown_enabled(self):
+        import python.getting_started.run_workflow as run_workflow
+
+        captured = {}
+
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return [{"profile_id": "profile-1", "name": "Profile 1"}]
+
+        def fake_post(url, json, headers, timeout):
+            captured["url"] = url
+            captured["payload"] = json
+            captured["timeout"] = timeout
+            return Response()
+
+        with patch.object(run_workflow, "PROJECT_URL", "https://convex.example"), patch.object(
+            run_workflow, "SECRET_KEY", "secret"
+        ), patch("requests.post", side_effect=fake_post):
+            profiles = run_workflow._fetch_profiles_for_lists(
+                ["list-1"],
+                cooldown_minutes=30,
+                enforce_cooldown=True,
+            )
+
+        self.assertEqual(
+            captured["url"],
+            "https://convex.example/api/profiles/available",
+        )
+        self.assertEqual(
+            captured["payload"],
+            {"listIds": ["list-1"], "cooldownMinutes": 30},
+        )
+        self.assertEqual(captured["timeout"], 30)
+        self.assertEqual(
+            profiles,
+            [{"profile_id": "profile-1", "name": "Profile 1"}],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

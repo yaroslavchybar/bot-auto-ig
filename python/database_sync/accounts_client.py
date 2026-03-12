@@ -77,10 +77,15 @@ class InstagramAccountsClient:
         }
         return self._request("GET", f"{self.accounts_url}/for-profile", params=params) or []
 
-    def get_accounts_to_message(self, profile_id: str) -> List[Dict]:
+    def get_accounts_to_message(
+        self,
+        profile_id: str,
+        cooldown_hours: float = 0,
+    ) -> List[Dict]:
         """Fetch accounts assigned to profile that need a message (message=true)."""
         params = {
             "profileId": profile_id,
+            "cooldownHours": cooldown_hours,
         }
         return self._request("GET", f"{self.accounts_url}/to-message", params=params) or []
 
@@ -113,7 +118,12 @@ class InstagramAccountsClient:
         )
         return result if isinstance(result, dict) else None
 
-    def update_account_message(self, user_name: str, message: bool = True):
+    def update_account_message(
+        self,
+        user_name: str,
+        message: bool = True,
+        last_messaged_at: Optional[int] = None,
+    ):
         """
         Update the message field for an account by username.
         """
@@ -127,7 +137,15 @@ class InstagramAccountsClient:
         result = self._request(
             "POST",
             f"{self.accounts_url}/update-message",
-            data={"user_name": normalized, "message": message},
+            data={
+                "user_name": normalized,
+                "message": message,
+                **(
+                    {"last_messaged_at": int(last_messaged_at)}
+                    if last_messaged_at is not None
+                    else {}
+                ),
+            },
         )
         return result if isinstance(result, dict) else None
 

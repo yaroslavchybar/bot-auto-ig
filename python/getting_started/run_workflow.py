@@ -100,7 +100,32 @@ def _parse_float(value: Any, default: float) -> float:
         return default
 
 
-def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def _pick_first(mapping: Dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in mapping and mapping.get(key) is not None:
+            return mapping.get(key)
+    return None
+
+
+def _fetch_profiles_for_lists(
+    list_ids: List[str],
+    *,
+    cooldown_minutes: int = 0,
+    enforce_cooldown: bool = False,
+) -> List[Dict[str, Any]]:
     if not PROJECT_URL:
         return []
     clean_ids = [str(lid).strip().replace('"', "") for lid in list_ids if str(lid).strip()]
@@ -113,12 +138,16 @@ def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
     }
     if SECRET_KEY:
         headers["Authorization"] = f"Bearer {SECRET_KEY}"
+    endpoint = "/api/profiles/available" if enforce_cooldown and cooldown_minutes > 0 else "/api/profiles/by-list-ids"
+    payload = {"listIds": clean_ids}
+    if endpoint.endswith("/available"):
+        payload["cooldownMinutes"] = max(0, int(cooldown_minutes))
     try:
         import requests
 
         r = requests.post(
-            f"{PROJECT_URL}/api/profiles/by-list-ids",
-            json={"listIds": clean_ids},
+            f"{PROJECT_URL}{endpoint}",
+            json=payload,
             headers=headers,
             timeout=30,
         )
@@ -139,6 +168,84 @@ def _fetch_profiles_for_lists(list_ids: List[str]) -> List[Dict[str, Any]]:
         return unique
     except Exception:
         return []
+
+
+def _extract_start_browser_settings(
+    nodes: List[Dict[str, Any]],
+    start_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    config: Dict[str, Any] = {}
+    for node in nodes:
+        node_data = node.get("data") if isinstance(node.get("data"), dict) else {}
+        if str(node_data.get("activityId") or "") != "start_browser":
+            continue
+        node_config = node_data.get("config")
+        if isinstance(node_config, dict):
+            config = dict(node_config)
+            break
+
+    legacy_profile_cooldown = _pick_first(config, "profileReopenCooldown", "profile_reopen_cooldown")
+    legacy_messaging_cooldown = _pick_first(config, "messagingCooldown", "messaging_cooldown")
+
+    profile_cooldown_enabled_raw = _pick_first(
+        config,
+        "profileReopenCooldownEnabled",
+        "profile_reopen_cooldown_enabled",
+    )
+    if profile_cooldown_enabled_raw is None and legacy_profile_cooldown is not None:
+        profile_cooldown_enabled_raw = True
+
+    profile_cooldown_minutes_raw = _pick_first(
+        config,
+        "profileReopenCooldownMinutes",
+        "profile_reopen_cooldown_minutes",
+    )
+    if profile_cooldown_minutes_raw is None:
+        profile_cooldown_minutes_raw = legacy_profile_cooldown
+
+    messaging_cooldown_enabled_raw = _pick_first(
+        config,
+        "messagingCooldownEnabled",
+        "messaging_cooldown_enabled",
+    )
+    if messaging_cooldown_enabled_raw is None and legacy_messaging_cooldown is not None:
+        messaging_cooldown_enabled_raw = True
+
+    messaging_cooldown_hours_raw = _pick_first(
+        config,
+        "messagingCooldownHours",
+        "messaging_cooldown_hours",
+    )
+    if messaging_cooldown_hours_raw is None:
+        messaging_cooldown_hours_raw = legacy_messaging_cooldown
+
+    headless_raw = _pick_first(config, "headlessMode", "headless", "headless_mode")
+    if headless_raw is None:
+        headless_raw = start_data.get("headlessMode")
+
+    return {
+        "headless": _parse_bool(headless_raw, default=_parse_bool(start_data.get("headlessMode"), False)),
+        "parallel_profiles": max(
+            1,
+            min(
+                10,
+                _parse_int(
+                    _pick_first(config, "parallelProfiles", "parallel_profiles"),
+                    1,
+                ),
+            ),
+        ),
+        "profile_reopen_cooldown_enabled": _parse_bool(profile_cooldown_enabled_raw, False),
+        "profile_reopen_cooldown_minutes": max(
+            0,
+            _parse_int(profile_cooldown_minutes_raw, 30),
+        ),
+        "messaging_cooldown_enabled": _parse_bool(messaging_cooldown_enabled_raw, False),
+        "messaging_cooldown_hours": max(
+            0,
+            _parse_int(messaging_cooldown_hours_raw, 2),
+        ),
+    }
 
 
 def _find_start_node(nodes: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -206,12 +313,18 @@ class WorkflowRunner:
         self.edge_index = _build_edge_index(edges)
         self.accounts = accounts
         self.running = True
-        self.headless = bool(options.get("headless"))
+        self.options = options
+        self.headless = _parse_bool(options.get("headless"), False)
+        self.messaging_cooldown_enabled = _parse_bool(options.get("messaging_cooldown_enabled"), False)
+        self.messaging_cooldown_hours = max(0, _parse_int(options.get("messaging_cooldown_hours"), 2))
         self.accounts_client = InstagramAccountsClient()
         self.profiles_client = ProfilesClient()
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
         self._profile_cache_lock = Lock()
-        configured = _parse_int(options.get("parallel_profiles"), 1)
+        configured = _parse_int(
+            options.get("parallel_profiles", options.get("parallelProfiles")),
+            1,
+        )
         account_count = len(accounts) if accounts else 1
         self._max_workers = max(1, min(account_count, configured))
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
@@ -604,8 +717,14 @@ class WorkflowRunner:
                     "follow_chance": _parse_int(cfg.get("follow_chance"), 0),
                     "carousel_watch_chance": _parse_int(cfg.get("carousel_watch_chance"), 0),
                     "carousel_max_slides": _parse_int(cfg.get("carousel_max_slides"), 3),
-                    "watch_stories": False,
-                    "stories_max": 0,
+                    "watch_stories": _parse_bool(cfg.get("watch_stories"), False),
+                    "stories_max": _parse_int(cfg.get("stories_max"), 3),
+                    "stories_min_view_seconds": _parse_float(cfg.get("stories_min_view_seconds"), 2.0),
+                    "stories_max_view_seconds": _parse_float(cfg.get("stories_max_view_seconds"), 5.0),
+                    "skip_post_chance": _parse_int(cfg.get("skip_post_chance"), 30),
+                    "skip_post_max": _parse_int(cfg.get("skip_post_max"), 2),
+                    "post_view_min_seconds": _parse_float(cfg.get("post_view_min_seconds"), 2.0),
+                    "post_view_max_seconds": _parse_float(cfg.get("post_view_max_seconds"), 5.0),
                 }
                 scroll_feed(page, duration, config, should_stop=lambda: not self.running)
                 return "success"
@@ -624,15 +743,21 @@ class WorkflowRunner:
                     "reels_skip_max_time": _parse_float(cfg.get("reels_skip_max_time"), 2.0),
                     "reels_normal_min_time": _parse_float(cfg.get("reels_normal_min_time"), 5.0),
                     "reels_normal_max_time": _parse_float(cfg.get("reels_normal_max_time"), 20.0),
-                    "watch_stories": False,
-                    "stories_max": 0,
+                    "reels_advance_min_seconds": _parse_float(cfg.get("reels_advance_min_seconds"), 1.5),
+                    "reels_advance_max_seconds": _parse_float(cfg.get("reels_advance_max_seconds"), 3.0),
                 }
                 scroll_reels(page, duration, config, should_stop=lambda: not self.running)
                 return "success"
 
             if activity_id == "watch_stories":
                 max_stories = _parse_int(cfg.get("stories_max"), 3)
-                watch_stories(page, max_stories=max_stories, log=log)
+                watch_stories(
+                    page,
+                    max_stories=max_stories,
+                    min_view_s=_parse_float(cfg.get("stories_min_view_seconds"), 2.0),
+                    max_view_s=_parse_float(cfg.get("stories_max_view_seconds"), 5.0),
+                    log=log,
+                )
                 return "success"
 
             if activity_id == "follow_user":
@@ -652,6 +777,9 @@ class WorkflowRunner:
                 follow_max = _parse_int(cfg.get("follow_max_count"), 15)
                 follow_min, follow_max = normalize_range((follow_min, follow_max), (5, 15))
                 usernames = apply_count_limit(usernames, (follow_min, follow_max))
+                follow_delay_min = _parse_int(cfg.get("follow_min_delay_seconds"), 10)
+                follow_delay_max = _parse_int(cfg.get("follow_max_delay_seconds"), 20)
+                follow_delay_min, follow_delay_max = normalize_range((follow_delay_min, follow_delay_max), (10, 20))
                 highlights_min = _parse_int(cfg.get("highlights_min"), 0)
                 highlights_max = _parse_int(cfg.get("highlights_max"), 2)
                 highlights_min, highlights_max = normalize_range((highlights_min, highlights_max), (0, 2))
@@ -670,6 +798,7 @@ class WorkflowRunner:
                     log=log,
                     should_stop=lambda: not self.running,
                     page=page,
+                    delay_range=(follow_delay_min, follow_delay_max),
                 )
                 return "success"
 
@@ -718,12 +847,18 @@ class WorkflowRunner:
                 return "success"
 
             if activity_id == "approve_requests":
+                approve_min_delay = _parse_float(cfg.get("approve_min_delay_seconds"), 1.0)
+                approve_max_delay = _parse_float(cfg.get("approve_max_delay_seconds"), 2.0)
+                if approve_max_delay < approve_min_delay:
+                    approve_min_delay, approve_max_delay = approve_max_delay, approve_min_delay
                 approve_follow_requests(
                     profile_name=account.username,
                     proxy_string=account.proxy or "",
                     log=log,
                     should_stop=lambda: not self.running,
                     page=page,
+                    approve_delay_range=(approve_min_delay, approve_max_delay),
+                    finish_delay_seconds=_parse_float(cfg.get("approve_finish_delay_seconds"), 3.0),
                 )
                 return "success"
 
@@ -743,9 +878,8 @@ class WorkflowRunner:
                     profile_id = fallback.get("profile_id") if fallback else None
                 if not profile_id:
                     return "failure"
-                targets = self.accounts_client.get_accounts_for_profile(profile_id, status="assigned")
-                # Filter out already-messaged accounts (message=true means sent)
-                targets = [t for t in targets if not t.get("message")]
+                cooldown_hours = self.messaging_cooldown_hours if self.messaging_cooldown_enabled else 0
+                targets = self.accounts_client.get_accounts_to_message(profile_id, cooldown_hours=cooldown_hours)
                 if not targets:
                     return "failure"
                 send_messages(
@@ -756,6 +890,17 @@ class WorkflowRunner:
                     log=log,
                     should_stop=lambda: not self.running,
                     page=page,
+                    behavior_config={
+                        "follow_if_no_message_button": _parse_bool(cfg.get("follow_if_no_message_button"), True),
+                        "navigation_delay_min_seconds": _parse_float(cfg.get("navigation_delay_min_seconds"), 2.0),
+                        "navigation_delay_max_seconds": _parse_float(cfg.get("navigation_delay_max_seconds"), 3.0),
+                        "composer_delay_min_seconds": _parse_float(cfg.get("composer_delay_min_seconds"), 1.0),
+                        "composer_delay_max_seconds": _parse_float(cfg.get("composer_delay_max_seconds"), 2.0),
+                        "typing_delay_min_ms": _parse_int(cfg.get("typing_delay_min_ms"), 100),
+                        "typing_delay_max_ms": _parse_int(cfg.get("typing_delay_max_ms"), 200),
+                        "between_targets_min_seconds": _parse_float(cfg.get("between_targets_min_seconds"), 3.0),
+                        "between_targets_max_seconds": _parse_float(cfg.get("between_targets_max_seconds"), 5.0),
+                    },
                 )
                 return "success"
 
@@ -796,7 +941,6 @@ def main() -> int:
     start_data = start_node.get("data") if start_node and isinstance(start_node.get("data"), dict) else {}
 
     list_ids: List[str] = []
-    headless = False
 
     for n in nodes:
         n_data = n.get("data") if isinstance(n.get("data"), dict) else {}
@@ -806,23 +950,27 @@ def main() -> int:
             src = n_config.get("sourceLists") or []
             if isinstance(src, list):
                 list_ids.extend([str(x) for x in src if str(x).strip()])
-        if n_activity == "start_browser":
-            headless = bool(n_config.get("headlessMode"))
 
     # Fallback: also check old-style start node data (backwards compat)
     if not list_ids:
         old_lists = start_data.get("sourceLists") or []
         if isinstance(old_lists, list):
             list_ids = [str(x) for x in old_lists if str(x).strip()]
-    if not headless:
-        headless = bool(start_data.get("headlessMode"))
+
+    start_settings = _extract_start_browser_settings(nodes, start_data)
 
     if not list_ids:
         log("Выберите список профилей!")
         emit_event("session_ended", status="failed", workflow_id=workflow_id)
         return 2
 
-    profiles = _fetch_profiles_for_lists(list_ids)
+    profile_cooldown_enabled = _parse_bool(start_settings.get("profile_reopen_cooldown_enabled"), True)
+    profile_cooldown_minutes = max(0, _parse_int(start_settings.get("profile_reopen_cooldown_minutes"), 30))
+    profiles = _fetch_profiles_for_lists(
+        list_ids,
+        cooldown_minutes=profile_cooldown_minutes,
+        enforce_cooldown=profile_cooldown_enabled,
+    )
     if not profiles:
         log("В выбранном списке нет профилей!")
         emit_event("session_ended", status="failed", workflow_id=workflow_id)
@@ -840,7 +988,7 @@ def main() -> int:
         emit_event("session_ended", status="failed", workflow_id=workflow_id)
         return 2
 
-    options = {**options, "headless": headless}
+    options = {**start_settings, **options}
     runner = WorkflowRunner(workflow_id, nodes, edges, accounts, options)
     atexit.register(DisplayManager.cleanup_owner_sessions, os.getpid())
 

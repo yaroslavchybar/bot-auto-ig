@@ -25,6 +25,7 @@ def follow_usernames(
     interactions_config: Optional[Dict[str, Tuple[int, int]]] = None,
     page: Optional[object] = None,
     user_agent: Optional[str] = None,
+    delay_range: Tuple[int, int] = (10, 20),
 ):
     """Open Camoufox profile and follow each username.
     
@@ -35,6 +36,9 @@ def follow_usernames(
     highlights_range = interactions_config.get("highlights_range", (2, 4))
     likes_percentage = interactions_config.get("likes_percentage", 0)
     scroll_percentage = interactions_config.get("scroll_percentage", 0)
+    delay_min, delay_max = delay_range
+    if delay_max < delay_min:
+        delay_min, delay_max = delay_max, delay_min
 
     clean_usernames_list: List[str] = clean_usernames(usernames)
 
@@ -111,7 +115,7 @@ def follow_usernames(
                 random_delay(2, 5)
 
             # Random delay between users
-            random_delay(10, 20)
+            random_delay(delay_min, delay_max)
 
     if page:
         log(f"Использую существующую сессию для подписки ({len(clean_usernames_list)} чел.)")

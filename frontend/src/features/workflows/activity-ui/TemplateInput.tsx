@@ -15,6 +15,7 @@ import type { ActivityInput } from '@/features/workflows/activities/types'
 
 interface TemplateInputProps {
   input: ActivityInput
+  config?: Record<string, unknown>
 }
 
 const MACROS = [
@@ -23,9 +24,19 @@ const MACROS = [
   { id: 'matchedName', label: '{matchedName}', desc: 'Extracted first name' },
 ]
 
-export function TemplateInput({ input }: TemplateInputProps) {
-  // Get template kind from config for template inputs
-  const templateKind = 'message'
+function resolveTemplateKind(
+  input: ActivityInput,
+  config?: Record<string, unknown>,
+): 'message' | 'message_2' {
+  const fieldName = input.templateKindField
+  const rawValue =
+    fieldName && config ? String(config[fieldName] ?? '').trim() : ''
+
+  return rawValue === 'message_2' ? 'message_2' : 'message'
+}
+
+export function TemplateInput({ input, config }: TemplateInputProps) {
+  const templateKind = resolveTemplateKind(input, config)
   const templates = useQuery(api.messageTemplates.get, {
     kind: templateKind,
   }) as string[] | undefined

@@ -44,6 +44,14 @@ Protected routes under the authenticated shell:
 - `/vnc`
 - `/monitoring`
 
+## Workflow Editor
+
+- Workflow activity nodes are schema-driven from `frontend/src/features/workflows/activities/*`.
+- The right-side node settings panel renders grouped inputs directly from activity metadata; there is no separate modal/settings framework for workflow nodes.
+- `start_browser` is the workflow-wide execution settings node for headless mode, parallel profile count, profile reopen cooldown, and messaging cooldown.
+- Existing workflows remain backward compatible with legacy `start_browser` cooldown keys; the editor normalizes them to the current config shape on load/save.
+- `send_dm` node template management stays connected to shared Convex template banks and can switch between `message` and `message_2` from node config.
+
 Other route behavior:
 - `/` redirects server-side to `/profiles` when signed in and `/sign-in` when signed out.
 - `/sign-in/*` and `/sign-up/*` run through the auth layout and redirect signed-in users back to `/profiles` from route loaders.

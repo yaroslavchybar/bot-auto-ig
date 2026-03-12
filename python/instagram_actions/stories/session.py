@@ -60,6 +60,8 @@ def _go_home(page, log=None) -> bool:
 def watch_stories(page, max_stories: int = 3, min_view_s: float = 2.0, max_view_s: float = 5.0, log=None) -> bool:
     try:
         log = log or logger.info
+        if max_view_s < min_view_s:
+            min_view_s, max_view_s = max_view_s, min_view_s
         _go_home(page, log=log)
         bubble = find_story_bubble(page, log=log)
         if not bubble:

@@ -101,13 +101,23 @@ export const getForProfile = internalQuery({
 });
 
 export const getToMessage = internalQuery({
-	args: { profileId: v.id("profiles") },
+	args: {
+		profileId: v.id("profiles"),
+		cooldownHours: v.optional(v.number()),
+	},
 	handler: async (ctx, args) => {
 		const rows = await ctx.db
 			.query("instagramAccounts")
 			.withIndex("by_assignedTo", (q) => q.eq("assignedTo", args.profileId))
 			.collect();
-		const filtered = rows.filter((r) => r.message === false);
+		const cooldownHours = Math.max(0, Number(args.cooldownHours ?? 0));
+		const cutoffMs = Date.now() - cooldownHours * 60 * 60 * 1000;
+		const filtered = rows.filter((r) => {
+			if (r.message !== false) return false;
+			if (cooldownHours <= 0) return true;
+			if (typeof r.lastMessagedAt !== "number") return true;
+			return r.lastMessagedAt <= cutoffMs;
+		});
 		filtered.sort((a, b) => a.createdAt - b.createdAt);
 		return filtered;
 	},
@@ -137,7 +147,11 @@ export const updateStatus = internalMutation({
 });
 
 export const updateMessage = internalMutation({
-	args: { userName: v.string(), message: v.optional(v.boolean()) },
+	args: {
+		userName: v.string(),
+		message: v.optional(v.boolean()),
+		lastMessagedAt: v.optional(v.number()),
+	},
 	handler: async (ctx, args) => {
 		const normalized = normalizeUserName(args.userName);
 		if (!normalized) return null;
@@ -146,7 +160,12 @@ export const updateMessage = internalMutation({
 		const existing =
 			rows.find((r) => r.userName === normalized) ?? rows.find((r) => String(r.userName || "").toLowerCase() === lower);
 		if (!existing) return null;
-		await ctx.db.patch(existing._id, { message: args.message ?? true });
+		const nextMessage = args.message ?? true;
+		const patch: Record<string, unknown> = { message: nextMessage };
+		if (nextMessage) {
+			patch.lastMessagedAt = typeof args.lastMessagedAt === "number" ? args.lastMessagedAt : Date.now();
+		}
+		await ctx.db.patch(existing._id, patch as any);
 		return await ctx.db.get(existing._id);
 	},
 });

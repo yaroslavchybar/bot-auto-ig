@@ -210,6 +210,79 @@ test('maps workflow rows through the http router', async () => {
   expect(body[0]).toMatchObject({ name: 'Workflow B', status: 'running' })
 })
 
+test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', async () => {
+  const t = createUnauthenticatedConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const workflowId = await t.run(async (ctx) =>
+    await ctx.db.insert('workflows', {
+      name: 'Workflow Internal Auth',
+      description: 'workflow auth bridge',
+      nodes: [],
+      edges: [],
+      listIds: [],
+      status: 'idle',
+      isActive: false,
+      scheduleType: 'instant',
+      scheduleConfig: {},
+      runsToday: 0,
+      retryCount: 0,
+      maxRetries: 2,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }),
+  )
+
+  const listResponse = await t.fetch('/api/workflows?status=idle', {
+    method: 'GET',
+    headers: { authorization: 'Bearer secret-token' },
+  })
+  const byIdResponse = await t.fetch(
+    `/api/workflows/by-id?workflowId=${encodeURIComponent(String(workflowId))}`,
+    {
+      method: 'GET',
+      headers: { authorization: 'Bearer secret-token' },
+    },
+  )
+  const startResponse = await t.fetch('/api/workflows/start', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ id: workflowId }),
+  })
+  const updateStatusResponse = await t.fetch('/api/workflows/update-status', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ id: workflowId, status: 'running' }),
+  })
+
+  expect(listResponse.status).toBe(200)
+  await expect(listResponse.json()).resolves.toMatchObject([
+    { _id: workflowId, name: 'Workflow Internal Auth', status: 'idle' },
+  ])
+  expect(byIdResponse.status).toBe(200)
+  await expect(byIdResponse.json()).resolves.toMatchObject({
+    _id: workflowId,
+    name: 'Workflow Internal Auth',
+    status: 'idle',
+  })
+  expect(startResponse.status).toBe(200)
+  await expect(startResponse.json()).resolves.toMatchObject({
+    _id: workflowId,
+    status: 'pending',
+  })
+  expect(updateStatusResponse.status).toBe(200)
+  await expect(updateStatusResponse.json()).resolves.toMatchObject({
+    _id: workflowId,
+    status: 'running',
+  })
+})
+
 test('serves internal keyword routes behind INTERNAL_API_KEY auth', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })

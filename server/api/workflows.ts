@@ -100,6 +100,20 @@ function clearWorkflowDisplays(workflowId: string): void {
     }
 }
 
+function normalizeOptionalParallelProfiles(value: unknown): number | undefined {
+    if (value === undefined || value === null) return undefined
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed)) return undefined
+    return Math.max(1, Math.min(10, Math.floor(parsed)))
+}
+
+function normalizeWorkflowTerminalStatus(value: unknown): 'completed' | 'failed' | 'cancelled' {
+    const normalized = String(value ?? '').trim().toLowerCase()
+    if (normalized === 'failed') return 'failed'
+    if (normalized === 'cancelled') return 'cancelled'
+    return 'completed'
+}
+
 router.get('/status', (req, res) => {
     const workflowId = String((req.query as any)?.workflowId ?? (req.query as any)?.workflow_id ?? (req.query as any)?.id ?? '').trim()
     if (workflowId) {
@@ -147,8 +161,9 @@ router.post('/run', async (req, res) => {
             return res.status(404).json({ error: 'Workflow not found' })
         }
 
-        const requestedParallel = Number(req.body?.parallelProfiles ?? req.body?.parallel_profiles ?? req.body?.parallel ?? 1)
-        const parallelProfiles = Number.isFinite(requestedParallel) ? Math.max(1, Math.min(10, Math.floor(requestedParallel))) : 1
+        const parallelProfiles = normalizeOptionalParallelProfiles(
+            req.body?.parallelProfiles ?? req.body?.parallel_profiles ?? req.body?.parallel,
+        )
 
         await workflowsStart(workflowId)
 
@@ -166,7 +181,7 @@ router.post('/run', async (req, res) => {
         const payload = JSON.stringify({
             workflowId,
             workflow: { nodes: workflow.nodes ?? [], edges: workflow.edges ?? [] },
-            options: { parallel_profiles: parallelProfiles },
+            options: parallelProfiles === undefined ? {} : { parallel_profiles: parallelProfiles },
         })
         proc.stdin?.write(payload)
         proc.stdin?.end()
@@ -202,7 +217,7 @@ router.post('/run', async (req, res) => {
             }
 
             if (eventType === 'session_ended') {
-                const status = meta?.status === 'completed' ? 'completed' : meta?.status === 'failed' ? 'failed' : 'completed'
+                const status = normalizeWorkflowTerminalStatus(meta?.status)
                 try {
                     await workflowsUpdateStatus({ workflowId, status })
                 } catch {

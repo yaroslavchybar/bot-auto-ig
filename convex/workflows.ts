@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalAction } from "./_generated/server";
+import { internalMutation, internalAction, internalQuery } from "./_generated/server";
 import { components, internal } from "./_generated/api";
 import { Crons } from "@convex-dev/crons";
 import { mutation, query } from "./auth";
@@ -153,32 +153,48 @@ const statusValidator = v.union(
 // QUERIES
 // ═══════════════════════════════════════════════════════════════════
 
+async function listWorkflows(ctx: any, args: { status?: WorkflowStatus }) {
+	let rows;
+
+	if (args.status) {
+		rows = await ctx.db
+			.query("workflows")
+			.withIndex("by_status", (q: any) => q.eq("status", args.status!))
+			.collect();
+	} else {
+		rows = await ctx.db.query("workflows").collect();
+	}
+
+	rows.sort((a: any, b: any) => b.updatedAt - a.updatedAt);
+	return rows;
+}
+
+async function getWorkflow(ctx: any, args: { id: any }) {
+	return await ctx.db.get(args.id);
+}
+
 export const list = query({
 	args: {
 		status: v.optional(statusValidator),
 	},
-	handler: async (ctx, args) => {
-		let rows;
+	handler: listWorkflows,
+});
 
-		if (args.status) {
-			rows = await ctx.db
-				.query("workflows")
-				.withIndex("by_status", (q) => q.eq("status", args.status!))
-				.collect();
-		} else {
-			rows = await ctx.db.query("workflows").collect();
-		}
-
-		rows.sort((a, b) => b.updatedAt - a.updatedAt);
-		return rows;
+export const listInternal = internalQuery({
+	args: {
+		status: v.optional(statusValidator),
 	},
+	handler: listWorkflows,
 });
 
 export const get = query({
 	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		return await ctx.db.get(args.id);
-	},
+	handler: getWorkflow,
+});
+
+export const getInternal = internalQuery({
+	args: { id: v.id("workflows") },
+	handler: getWorkflow,
 });
 
 export const getQueue = query({
@@ -331,43 +347,84 @@ export const duplicate = mutation({
 // EXECUTION MUTATIONS
 // ═══════════════════════════════════════════════════════════════════
 
+async function startWorkflow(ctx: any, args: { id: any }) {
+	const workflow = await ctx.db.get(args.id);
+	if (!workflow) throw new Error("Workflow not found");
+
+	if (workflow.status === "running") {
+		throw new Error("Workflow is already running");
+	}
+
+	// If already pending (e.g., scheduled run already set it), just return
+	if (workflow.status === "pending") {
+		return workflow;
+	}
+
+	// Reset counter if last run was a different day
+	const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
+
+	// Check daily limit
+	const maxRuns = workflow.maxRunsPerDay ?? 0;
+	if (maxRuns > 0 && runsToday >= maxRuns) {
+		throw new Error("Daily run limit reached");
+	}
+
+	await ctx.db.patch(args.id, {
+		status: "pending",
+		runsToday: runsToday + 1,
+		lastRunAt: Date.now(),
+		error: undefined,
+		currentNodeId: undefined,
+		nodeStates: {},
+		startedAt: undefined,
+		completedAt: undefined,
+		updatedAt: Date.now(),
+	});
+	return await ctx.db.get(args.id);
+}
+
+type UpdateStatusArgs = {
+	id: any;
+	status: WorkflowStatus;
+	currentNodeId?: string;
+	nodeStates?: any;
+	error?: string;
+};
+
+async function updateWorkflowStatus(ctx: any, args: UpdateStatusArgs) {
+	const existing = await ctx.db.get(args.id);
+	if (!existing) throw new Error("Workflow not found");
+	assertValidStatusTransition(existing.status as WorkflowStatus | undefined, args.status as WorkflowStatus);
+
+	const patch: Record<string, any> = {
+		status: args.status,
+		updatedAt: Date.now(),
+	};
+
+	if (args.currentNodeId !== undefined) patch.currentNodeId = args.currentNodeId;
+	if (args.nodeStates !== undefined) patch.nodeStates = args.nodeStates;
+	if (args.error !== undefined) patch.error = args.error;
+
+	// Set timestamps based on status
+	if (args.status === "running" && !existing.startedAt) {
+		patch.startedAt = Date.now();
+	}
+	if (args.status === "completed" || args.status === "failed" || args.status === "cancelled") {
+		patch.completedAt = Date.now();
+	}
+
+	await ctx.db.patch(args.id, patch);
+	return await ctx.db.get(args.id);
+}
+
 export const start = mutation({
 	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
+	handler: startWorkflow,
+});
 
-		if (workflow.status === "running") {
-			throw new Error("Workflow is already running");
-		}
-
-		// If already pending (e.g., scheduled run already set it), just return
-		if (workflow.status === "pending") {
-			return workflow;
-		}
-
-		// Reset counter if last run was a different day
-		const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
-
-		// Check daily limit
-		const maxRuns = workflow.maxRunsPerDay ?? 0;
-		if (maxRuns > 0 && runsToday >= maxRuns) {
-			throw new Error("Daily run limit reached");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "pending",
-			runsToday: runsToday + 1,
-			lastRunAt: Date.now(),
-			error: undefined,
-			currentNodeId: undefined,
-			nodeStates: {},
-			startedAt: undefined,
-			completedAt: undefined,
-			updatedAt: Date.now(),
-		});
-		return await ctx.db.get(args.id);
-	},
+export const startInternal = internalMutation({
+	args: { id: v.id("workflows") },
+	handler: startWorkflow,
 });
 
 export const updateStatus = mutation({
@@ -378,31 +435,18 @@ export const updateStatus = mutation({
 		nodeStates: v.optional(v.any()),
 		error: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const existing = await ctx.db.get(args.id);
-		if (!existing) throw new Error("Workflow not found");
-		assertValidStatusTransition(existing.status as WorkflowStatus | undefined, args.status as WorkflowStatus);
+	handler: updateWorkflowStatus,
+});
 
-		const patch: Record<string, any> = {
-			status: args.status,
-			updatedAt: Date.now(),
-		};
-
-		if (args.currentNodeId !== undefined) patch.currentNodeId = args.currentNodeId;
-		if (args.nodeStates !== undefined) patch.nodeStates = args.nodeStates;
-		if (args.error !== undefined) patch.error = args.error;
-
-		// Set timestamps based on status
-		if (args.status === "running" && !existing.startedAt) {
-			patch.startedAt = Date.now();
-		}
-		if (args.status === "completed" || args.status === "failed" || args.status === "cancelled") {
-			patch.completedAt = Date.now();
-		}
-
-		await ctx.db.patch(args.id, patch);
-		return await ctx.db.get(args.id);
+export const updateStatusInternal = internalMutation({
+	args: {
+		id: v.id("workflows"),
+		status: statusValidator,
+		currentNodeId: v.optional(v.string()),
+		nodeStates: v.optional(v.any()),
+		error: v.optional(v.string()),
 	},
+	handler: updateWorkflowStatus,
 });
 
 export const pause = mutation({

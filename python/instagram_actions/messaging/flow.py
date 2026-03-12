@@ -13,7 +13,43 @@ from python.instagram_actions.messaging.ui import (
 )
 
 
-def _type_message(page, msg_box, text: str, target: Dict) -> None:
+def _normalize_float_range(
+    min_value: float,
+    max_value: float,
+    fallback: tuple[float, float],
+) -> tuple[float, float]:
+    try:
+        start = float(min_value)
+        end = float(max_value)
+    except Exception:
+        start, end = fallback
+    if end < start:
+        start, end = end, start
+    return start, end
+
+
+def _normalize_int_range(
+    min_value: int,
+    max_value: int,
+    fallback: tuple[int, int],
+) -> tuple[int, int]:
+    try:
+        start = int(min_value)
+        end = int(max_value)
+    except Exception:
+        start, end = fallback
+    if end < start:
+        start, end = end, start
+    return start, end
+
+
+def _type_message(
+    page,
+    msg_box,
+    text: str,
+    target: Dict,
+    typing_delay_range_ms: tuple[int, int],
+) -> None:
     """Type a message character by character with human-like delays, replacing macros."""
     # Replace macros with target data
     final_text = text
@@ -29,7 +65,8 @@ def _type_message(page, msg_box, text: str, target: Dict) -> None:
         # If value is None or empty, we replace it with empty string
         final_text = final_text.replace(macro, str(value) if value else "")
         
-    msg_box.type(final_text, delay=random.randint(100, 200))
+    delay_min_ms, delay_max_ms = typing_delay_range_ms
+    msg_box.type(final_text, delay=random.randint(delay_min_ms, delay_max_ms))
 
 
 def _send_current_message(page) -> None:
@@ -52,6 +89,7 @@ def run_messaging_flow(
     log: Callable[[str], None],
     should_stop: Callable[[], bool],
     client,
+    behavior_config: Dict | None = None,
 ) -> int:
     """
     Simplified messaging flow:
@@ -61,6 +99,30 @@ def run_messaging_flow(
     4. Mark as sent (message -> false)
     """
     processed_count = 0
+    behavior_config = behavior_config or {}
+    navigation_delay_range = _normalize_float_range(
+        behavior_config.get("navigation_delay_min_seconds", 2.0),
+        behavior_config.get("navigation_delay_max_seconds", 3.0),
+        (2.0, 3.0),
+    )
+    composer_delay_range = _normalize_float_range(
+        behavior_config.get("composer_delay_min_seconds", 1.0),
+        behavior_config.get("composer_delay_max_seconds", 2.0),
+        (1.0, 2.0),
+    )
+    between_targets_delay_range = _normalize_float_range(
+        behavior_config.get("between_targets_min_seconds", 3.0),
+        behavior_config.get("between_targets_max_seconds", 5.0),
+        (3.0, 5.0),
+    )
+    typing_delay_range_ms = _normalize_int_range(
+        behavior_config.get("typing_delay_min_ms", 100),
+        behavior_config.get("typing_delay_max_ms", 200),
+        (100, 200),
+    )
+    follow_if_missing = bool(
+        behavior_config.get("follow_if_no_message_button", True)
+    )
 
     try:
         ensure_instagram_open(page)
@@ -80,12 +142,12 @@ def run_messaging_flow(
                 if not navigate_to_profile(page, username, log):
                     continue
 
-                random_delay(2, 3)
+                random_delay(*navigation_delay_range)
 
                 # Try to click Message button
                 message_clicked = click_message_button(page, log)
 
-                if not message_clicked:
+                if not message_clicked and follow_if_missing:
                     # No Message button — try to Follow first
                     log(f"Кнопка Message не найдена для {username}, пробую Follow...")
                     followed = click_follow_button(page, log)
@@ -98,7 +160,7 @@ def run_messaging_flow(
                                 log(f"{username}: статус обновлён на subscribed")
                             except Exception as e:
                                 log(f"Ошибка обновления статуса {username}: {e}")
-                        random_delay(2, 3)
+                        random_delay(*navigation_delay_range)
                         # After following, try Message again
                         message_clicked = click_message_button(page, log)
 
@@ -106,7 +168,7 @@ def run_messaging_flow(
                     log(f"Не удалось найти кнопку Message для {username}, пропускаю")
                     continue
 
-                random_delay(2, 3)
+                random_delay(*composer_delay_range)
 
                 # Find message input box and type message
                 try:
@@ -117,8 +179,14 @@ def run_messaging_flow(
                     selected_message = random.choice(message_texts)
                     log(f"Набираю сообщение: {str(selected_message)[:80]}")
 
-                    _type_message(page, msg_box, selected_message, target)
-                    random_delay(1, 2)
+                    _type_message(
+                        page,
+                        msg_box,
+                        selected_message,
+                        target,
+                        typing_delay_range_ms,
+                    )
+                    random_delay(*composer_delay_range)
 
                     _send_current_message(page)
                     log(f"Отправил сообщение для {username}")
@@ -128,7 +196,7 @@ def run_messaging_flow(
                 except Exception as e:
                     log(f"Не удалось отправить сообщение {username}: {str(e)[:50]}")
 
-                random_delay(3, 5)
+                random_delay(*between_targets_delay_range)
             except Exception as e:
                 log(f"Ошибка в процессе отправки для {username}: {e}")
 

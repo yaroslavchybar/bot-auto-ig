@@ -1,7 +1,7 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import { internal } from '../../convex/_generated/api'
-import { createConvexTest, seedProfile } from './helpers'
+import { createConvexTest, insertDoc, seedProfile } from './helpers'
 
 test('normalizes usernames and skips duplicates', async () => {
   const t = createConvexTest()
@@ -26,6 +26,8 @@ test('normalizes usernames and skips duplicates', async () => {
 test('updates assignment state and message flags', async () => {
   const t = createConvexTest()
   const profile = await seedProfile(t, { name: 'Profile A' })
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-03-12T10:00:00Z'))
   const created = await t.mutation(internal.instagramAccounts.insert, {
     userName: 'user-b',
     status: 'available',
@@ -51,6 +53,49 @@ test('updates assignment state and message flags', async () => {
     status: 'assigned',
   })
   expect(messaged?.message).toBe(true)
+  expect(messaged?.lastMessagedAt).toBe(Date.now())
   expect(profiles).toHaveLength(1)
   expect(profiles[0]?._id).toBe(profile!._id)
+})
+
+test('filters message targets by cooldown window', async () => {
+  const t = createConvexTest()
+  const profile = await seedProfile(t, { name: 'Profile B' })
+  const now = Date.UTC(2026, 2, 12, 12, 0, 0)
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'eligible-user',
+    status: 'assigned',
+    assignedTo: profile!._id,
+    message: false,
+    createdAt: now - 10_000,
+    lastMessagedAt: now - 4 * 60 * 60 * 1000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'cooldown-user',
+    status: 'assigned',
+    assignedTo: profile!._id,
+    message: false,
+    createdAt: now - 9_000,
+    lastMessagedAt: now - 30 * 60 * 1000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'never-messaged',
+    status: 'assigned',
+    assignedTo: profile!._id,
+    message: false,
+    createdAt: now - 8_000,
+  })
+
+  const accounts = await t.query(internal.instagramAccounts.getToMessage, {
+    profileId: profile!._id,
+    cooldownHours: 2,
+  })
+
+  expect(accounts.map((account) => account.userName)).toEqual([
+    'eligible-user',
+    'never-messaged',
+  ])
 })

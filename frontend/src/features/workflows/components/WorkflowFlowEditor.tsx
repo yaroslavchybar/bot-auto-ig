@@ -51,6 +51,7 @@ import {
   duplicateWorkflowNode,
   getConnectedInsertPosition,
   getDisconnectedInsertPosition,
+  normalizeWorkflowNode,
   removeNodeEdges,
   selectOnlyNode,
   type BlockInsertionContext,
@@ -147,7 +148,7 @@ function WorkflowFlowEditorInner({
   const initialNodes = useMemo(() => {
     if (workflow?.nodes && (workflow.nodes as Node[]).length > 0) {
       return (workflow.nodes as Node[]).map((node) => ({
-        ...node,
+        ...normalizeWorkflowNode(node),
         selected: false,
       }))
     }

@@ -87,6 +87,7 @@ function mapAccountToPython(account: any): any {
 		status: account.status ?? null,
 		message: Boolean(account.message),
 		subscribed_at: toIso(account.subscribedAt),
+		last_messaged_at: toIso(account.lastMessagedAt),
 		created_at: toIso(account.createdAt),
 	};
 }
@@ -1017,7 +1018,13 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const profileId = url.searchParams.get("profileId") || "";
-			const accounts = await ctx.runQuery(internal.instagramAccounts.getToMessage, { profileId: profileId as any });
+			const cooldownHoursRaw = url.searchParams.get("cooldownHours") || url.searchParams.get("cooldown_hours") || "0";
+			const parsedCooldownHours = Number(cooldownHoursRaw);
+			const cooldownHours = Number.isFinite(parsedCooldownHours) ? parsedCooldownHours : 0;
+			const accounts = await ctx.runQuery(internal.instagramAccounts.getToMessage, {
+				profileId: profileId as any,
+				cooldownHours,
+			});
 			return jsonResponse(accounts.map(mapAccountToPython));
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -1056,6 +1063,7 @@ http.route({
 			const updated = await ctx.runMutation(internal.instagramAccounts.updateMessage, {
 				userName: body?.userName ?? body?.user_name,
 				message: body?.message,
+				lastMessagedAt: body?.lastMessagedAt ?? body?.last_messaged_at,
 			});
 			return jsonResponse(mapAccountToPython(updated));
 		} catch (err: any) {
@@ -1675,7 +1683,7 @@ http.route({
 		try {
 			const url = new URL(request.url);
 			const status = url.searchParams.get("status") || undefined;
-			const rows = await ctx.runQuery(api.workflows.list, {
+			const rows = await ctx.runQuery(internal.workflows.listInternal, {
 				status: status as any,
 			});
 			return jsonResponse(rows);
@@ -1695,7 +1703,7 @@ http.route({
 			const url = new URL(request.url);
 			const workflowId = url.searchParams.get("workflowId") || url.searchParams.get("id") || "";
 			if (!workflowId) return jsonResponse({ error: "workflowId is required" }, 400);
-			const row = await ctx.runQuery(api.workflows.get, { id: workflowId as any });
+			const row = await ctx.runQuery(internal.workflows.getInternal, { id: workflowId as any });
 			return jsonResponse(row);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -1713,7 +1721,7 @@ http.route({
 			const body = await parseBody(request);
 			const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
 			if (!id) return jsonResponse({ error: "id is required" }, 400);
-			const row = await ctx.runMutation(api.workflows.start, { id: id as any });
+			const row = await ctx.runMutation(internal.workflows.startInternal, { id: id as any });
 			return jsonResponse(row);
 		} catch (err: any) {
 			return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -1731,7 +1739,7 @@ http.route({
 			const body = await parseBody(request);
 			const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
 			if (!id) return jsonResponse({ error: "id is required" }, 400);
-			const row = await ctx.runMutation(api.workflows.updateStatus, {
+			const row = await ctx.runMutation(internal.workflows.updateStatusInternal, {
 				id: id as any,
 				status: body?.status,
 				currentNodeId: body?.currentNodeId ?? body?.current_node_id,

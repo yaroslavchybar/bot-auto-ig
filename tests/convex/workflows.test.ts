@@ -2,6 +2,12 @@ import { expect, test, vi } from 'vitest'
 
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedList, seedWorkflow } from './helpers'
+import {
+  getActivityById,
+  getDefaultConfig,
+  normalizeActivityConfig,
+} from '../../frontend/src/features/workflows/activities'
+import { validateWorkflowImport } from '../../frontend/src/features/workflows/utils/workflowImportExport'
 
 test('creates workflows, deduplicates list ids, and transitions status', async () => {
   const t = createConvexTest()
@@ -129,4 +135,112 @@ test('resets daily runs for active workflows', async () => {
 
   expect(result).toEqual({ reset: 1 })
   expect(rows[0]?.runsToday).toBe(0)
+})
+
+test('provides expanded default config for workflow activities', () => {
+  const startBrowserDefaults = getDefaultConfig('start_browser')
+  const sendDmDefaults = getDefaultConfig('send_dm')
+  const browseFeedDefaults = getDefaultConfig('browse_feed')
+
+  expect(startBrowserDefaults).toMatchObject({
+    headlessMode: false,
+    parallelProfiles: 1,
+    profileReopenCooldownEnabled: false,
+    profileReopenCooldownMinutes: 30,
+    messagingCooldownEnabled: false,
+    messagingCooldownHours: 2,
+  })
+  expect(sendDmDefaults).toMatchObject({
+    template_kind: 'message',
+    follow_if_no_message_button: true,
+    typing_delay_min_ms: 100,
+    typing_delay_max_ms: 200,
+  })
+  expect(browseFeedDefaults).toMatchObject({
+    watch_stories: false,
+    stories_min_view_seconds: 2,
+    stories_max_view_seconds: 5,
+    skip_post_chance: 30,
+    post_view_min_seconds: 2,
+    post_view_max_seconds: 5,
+  })
+})
+
+test('normalizes legacy start browser cooldown keys into the new workflow shape', () => {
+  const normalized = normalizeActivityConfig('start_browser', {
+    headlessMode: true,
+    profileReopenCooldown: 45,
+    messagingCooldown: 12,
+  })
+
+  expect(normalized).toMatchObject({
+    headlessMode: true,
+    parallelProfiles: 1,
+    profileReopenCooldownEnabled: true,
+    profileReopenCooldownMinutes: 45,
+    messagingCooldownEnabled: true,
+    messagingCooldownHours: 12,
+  })
+  expect(normalized).not.toHaveProperty('profileReopenCooldown')
+  expect(normalized).not.toHaveProperty('messagingCooldown')
+})
+
+test('workflow import keeps expanded activity config payloads intact', () => {
+  const result = validateWorkflowImport({
+    fileName: 'workflow.json',
+    fileSizeBytes: 1024,
+    rawText: JSON.stringify({
+      format: 'bot-auto-ig.workflow',
+      version: '1.0',
+      exportedAt: '2026-03-12T10:00:00.000Z',
+      workflow: {
+        name: 'Expanded Workflow',
+        nodes: [
+          { id: 'start_node', type: 'start', data: {} },
+          {
+            id: 'start_browser_1',
+            type: 'activity',
+            data: {
+              activityId: 'start_browser',
+              config: {
+                parallelProfiles: 3,
+                profileReopenCooldownEnabled: true,
+                profileReopenCooldownMinutes: 90,
+              },
+            },
+          },
+          {
+            id: 'send_dm_1',
+            type: 'activity',
+            data: {
+              activityId: 'send_dm',
+              config: {
+                template_kind: 'message_2',
+                typing_delay_min_ms: 120,
+                typing_delay_max_ms: 240,
+              },
+            },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'start_node', target: 'start_browser_1' },
+          { id: 'e2', source: 'start_browser_1', target: 'send_dm_1' },
+        ],
+      },
+    }),
+    existingWorkflowNames: [],
+    existingListIds: [],
+    resolveActivityById: (activityId: string) => getActivityById(activityId),
+  })
+
+  const nodes = result.workflow.nodes as Array<Record<string, any>>
+  expect(nodes[1]?.data?.config).toMatchObject({
+    parallelProfiles: 3,
+    profileReopenCooldownMinutes: 90,
+  })
+  expect(nodes[2]?.data?.config).toMatchObject({
+    template_kind: 'message_2',
+    typing_delay_min_ms: 120,
+    typing_delay_max_ms: 240,
+  })
 })

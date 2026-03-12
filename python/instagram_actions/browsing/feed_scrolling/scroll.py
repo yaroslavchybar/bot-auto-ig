@@ -203,6 +203,17 @@ def _viewport_h(page) -> int:
         return 0
 
 
+def _normalize_range(min_value, max_value, fallback):
+    try:
+        start = float(min_value)
+        end = float(max_value)
+    except Exception:
+        start, end = fallback
+    if end < start:
+        start, end = end, start
+    return start, end
+
+
 def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=None, profile_name: str = "unknown") -> dict:
     """
     Scroll through Instagram feed and perform random actions.
@@ -235,7 +246,17 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 # We don't have deep control inside watch_stories easily without modifying it too, 
                 # but let's at least check before starting it.
                 if not (should_stop and should_stop()):
-                    watch_stories(page, max_stories=actions_config.get("stories_max", 3))
+                    story_view_min, story_view_max = _normalize_range(
+                        actions_config.get("stories_min_view_seconds", 2.0),
+                        actions_config.get("stories_max_view_seconds", 5.0),
+                        (2.0, 5.0),
+                    )
+                    watch_stories(
+                        page,
+                        max_stories=actions_config.get("stories_max", 3),
+                        min_view_s=story_view_min,
+                        max_view_s=story_view_max,
+                    )
             except (PlaywrightError, BotException) as e:
                 print(f"[!] Story watch skipped: {type(e).__name__} - {e}")
             except Exception as e:
@@ -332,7 +353,12 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
                 _debug_mouse("after scroll_to_element: failed to read post bounding box")
             
             # View post for random time (like a real person looking at it)
-            view_time = random.uniform(2.0, 5.0)
+            post_view_min, post_view_max = _normalize_range(
+                actions_config.get("post_view_min_seconds", 2.0),
+                actions_config.get("post_view_max_seconds", 5.0),
+                (2.0, 5.0),
+            )
+            view_time = random.uniform(post_view_min, post_view_max)
             print(f"[*] Viewing feed post for {view_time:.1f}s")
             time.sleep(view_time)
             

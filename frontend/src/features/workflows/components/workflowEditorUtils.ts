@@ -2,6 +2,7 @@ import type { Edge, Node, Viewport, XYPosition } from 'reactflow'
 import {
   getActivityById,
   getDefaultConfig,
+  normalizeActivityConfig,
   type ActivityOutput,
 } from '@/features/workflows/activities'
 
@@ -46,7 +47,31 @@ export function createActivityNode(
     data: {
       activityId,
       label: activity?.name ?? activityId,
-      config: getDefaultConfig(activityId),
+      config: normalizeActivityConfig(activityId, getDefaultConfig(activityId)),
+    },
+  }
+}
+
+export function normalizeWorkflowNode(node: Node): Node {
+  if (node.type !== 'activity') {
+    return node
+  }
+
+  const activityId =
+    node.data && typeof node.data.activityId === 'string'
+      ? node.data.activityId
+      : ''
+
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      config: normalizeActivityConfig(
+        activityId,
+        node.data && typeof node.data.config === 'object'
+          ? (node.data.config as Record<string, unknown>)
+          : {},
+      ),
     },
   }
 }

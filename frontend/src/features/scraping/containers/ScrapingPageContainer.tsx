@@ -145,7 +145,6 @@ export function ScrapingPageContainer() {
     const targets = parseTargets(targetUsername)
     const firstTarget = targets[0] || ''
     if (!firstTarget) return
-    const packedTargets = targets.join('\n')
 
     const baseName = String(taskName || '').trim()
 
