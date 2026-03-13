@@ -35,7 +35,6 @@ import { engagementActivities } from './engagement'
 import { sendDm } from './messaging/send-dm'
 import { storiesActivities } from './stories'
 import { controlActivities } from './control'
-import { pythonActivities } from './pythonnode'
 
 import type { ActivityCategory, ActivityDefinition } from './types'
 
@@ -120,11 +119,6 @@ const ACTIVITY_METADATA: Record<
     pickerGroup: 'stories',
     quickAdd: false,
   },
-  python_script: {
-    keywords: ['python', 'script', 'custom code'],
-    pickerGroup: 'advanced',
-    quickAdd: false,
-  },
 }
 
 // ============================================================================
@@ -137,7 +131,6 @@ const BASE_ACTIVITY_REGISTRY: ActivityDefinition[] = [
   sendDm,
   ...storiesActivities,
   ...controlActivities,
-  ...pythonActivities,
 ]
 
 export const ACTIVITY_REGISTRY: ActivityDefinition[] = BASE_ACTIVITY_REGISTRY.map(
@@ -171,7 +164,7 @@ export function getActivitiesByCategory(
  * Get list of all categories
  */
 export function getAllCategories(): ActivityCategory[] {
-  return ['browsing', 'engagement', 'messaging', 'stories', 'control', 'python']
+  return ['browsing', 'engagement', 'messaging', 'stories', 'control']
 }
 
 /**
@@ -184,7 +177,6 @@ export function getCategoryLabel(category: ActivityCategory): string {
     messaging: 'Messaging',
     stories: 'Stories',
     control: 'Control Flow',
-    python: 'Python Script',
   }
   return labels[category]
 }
@@ -199,7 +191,6 @@ export function getCategoryIcon(category: ActivityCategory): string {
     messaging: 'MessageCircle',
     stories: 'CircleDot',
     control: 'Settings2',
-    python: 'TerminalSquare',
   }
   return icons[category]
 }

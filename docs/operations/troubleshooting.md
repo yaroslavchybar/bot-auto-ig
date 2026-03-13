@@ -33,6 +33,8 @@
   - ensure envelope uses `format: bot-auto-ig.workflow` and `version: 1.0`.
 - Workflow JSON import rejected (`Unknown activity IDs: ...`):
   - open workflow editor and replace/remove unsupported activity nodes before export/import.
+- Workflow JSON import rejected because of legacy `python_script` nodes:
+  - remove the node from the workflow; custom Python execution was disabled for security reasons.
 - Workflow JSON import warning (`Select List node references missing list IDs`):
   - import succeeds; create missing lists or remap `select_list.sourceLists` in the editor.
 - Scrape workflow run denied:

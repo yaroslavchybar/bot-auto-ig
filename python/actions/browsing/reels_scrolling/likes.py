@@ -14,113 +14,101 @@ REELS_LIKE_BUTTON_XPATH = (
 def perform_like(page) -> bool:
     """Like the current active reel."""
     try:
-        # Find the clickable Reels like wrapper closest to the viewport center.
-        # Match by semantic XPath so the selector survives Instagram CSS churn.
-        
-        btn_handle = page.evaluate_handle("""
-            (buttonXPath) => {
-                const center = window.innerHeight / 2;
-                const snapshot = document.evaluate(
-                    buttonXPath,
-                    document,
-                    null,
-                    XPathResult.ORDERED_NODE_SNAPSHOT_TYPE,
-                    null
-                );
-                const allButtons = [];
-                for (let i = 0; i < snapshot.snapshotLength; i++) {
-                    allButtons.push(snapshot.snapshotItem(i));
-                }
-                
-                let bestBtn = null;
-                let minDiff = Infinity;
-                
-                for (const btn of allButtons) {
-                    const heartIcon = btn.querySelector('svg[aria-label="Like"], svg[aria-label="Unlike"]');
-                    if (!heartIcon) continue;
+        active_btn = _active_like_button(page)
+        if not active_btn:
+            return False
+        skip_reason = _like_skip_reason(active_btn)
+        if skip_reason == 'missing_icon':
+            return False
+        if skip_reason == 'already_liked':
+            logger.debug('Skipped liking: Reel already liked')
+            return False
+        coordinates = _button_coordinates(page, active_btn)
+        if not coordinates:
+            return False
+        _click_like(page, *coordinates)
+        logger.info('Liked reel')
+        return True
+    except Exception as exc:
+        logger.error(f'Error liking reel: {exc}')
+    return False
 
-                    const rect = btn.getBoundingClientRect();
-                    
-                    // 1. STRICT VISIBILITY CHECK
-                    // The button must be fully inside the viewport vertical bounds.
-                    // This prevents selecting buttons from the previous/next reel that might be slightly peaking in.
-                    if (rect.top < 0 || rect.bottom > window.innerHeight) continue;
-                    if (rect.width === 0 || rect.height === 0) continue;
-                    
-                    // 2. CHECK PARENT OVERFLOW (User Request)
-                    // We traverse up to see if it belongs to a container with overflow: visible
-                    let container = null;
+
+def _active_like_button(page):
+    btn_handle = page.evaluate_handle(
+        """
+        (buttonXPath) => {
+            const center = window.innerHeight / 2;
+            const snapshot = document.evaluate(buttonXPath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+            let bestBtn = null;
+            let minDiff = Infinity;
+            for (let i = 0; i < snapshot.snapshotLength; i++) {
+                const btn = snapshot.snapshotItem(i);
+                const heartIcon = btn.querySelector('svg[aria-label="Like"], svg[aria-label="Unlike"]');
+                if (!heartIcon) continue;
+                const rect = btn.getBoundingClientRect();
+                if (
+                    rect.top < 0 ||
+                    rect.bottom > window.innerHeight ||
+                    rect.left < 0 ||
+                    rect.right > window.innerWidth ||
+                    rect.width === 0 ||
+                    rect.height === 0
+                ) continue;
+                if (!(() => {
                     let curr = btn.parentElement;
-                    let hasVisibleOverflowParent = false;
-                    
-                    for (let i = 0; i < 20; i++) {
-                        if (!curr || curr.tagName === 'BODY') break;
+                    for (let j = 0; j < 20; j++) {
+                        if (!curr || curr.tagName === 'BODY') return false;
                         const style = window.getComputedStyle(curr);
-                        if (style.overflow === 'visible') {
-                             // Check if this container is substantial
-                            const cRect = curr.getBoundingClientRect();
-                            if (cRect.height > 200) {
-                                hasVisibleOverflowParent = true;
-                                break;
-                            }
-                        }
+                        const cRect = curr.getBoundingClientRect();
+                        if (style.overflow === 'visible' && cRect.height > 200) return true;
                         curr = curr.parentElement;
                     }
-                    
-                    if (!hasVisibleOverflowParent) continue;
-
-                    // 3. DISTANCE TO CENTER
-                    const btnCenter = rect.top + rect.height / 2;
-                    const diff = Math.abs(btnCenter - center);
-                    
-                    if (diff < minDiff) {
-                        minDiff = diff;
-                        bestBtn = btn;
-                    }
+                    return false;
+                })()) continue;
+                const diff = Math.abs((rect.top + rect.height / 2) - center);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    bestBtn = btn;
                 }
-                
-                return bestBtn;
             }
-        """, REELS_LIKE_BUTTON_XPATH)
+            return bestBtn;
+        }
+        """,
+        REELS_LIKE_BUTTON_XPATH,
+    )
+    return btn_handle.as_element()
 
-        active_btn = btn_handle.as_element()
-        
-        if active_btn:
-            heart_icon = active_btn.query_selector('svg[aria-label="Like"], svg[aria-label="Unlike"]')
-            if not heart_icon:
-                logger.debug("Skipped liking: Reels like icon not found inside button")
-                return False
 
-            heart_label = heart_icon.get_attribute('aria-label')
-            if heart_label == 'Unlike':
-                logger.debug("Skipped liking: Reel already liked")
-                return False
+def _like_skip_reason(active_btn) -> str | None:
+    heart_icon = active_btn.query_selector('svg[aria-label="Like"], svg[aria-label="Unlike"]')
+    if not heart_icon:
+        logger.debug('Skipped liking: Reels like icon not found inside button')
+        return 'missing_icon'
+    if heart_icon.get_attribute('aria-label') == 'Unlike':
+        return 'already_liked'
+    return None
 
-            # Use mouse click to prevent Playwright from auto-scrolling
-            box = active_btn.bounding_box()
-            if box:
-                # Double check Python-side that coordinates are safe
-                vp = page.viewport_size
-                safe_y_min = 0
-                safe_y_max = vp['height'] if vp else 10000
-                
-                x = box['x'] + box['width'] / 2
-                y = box['y'] + box['height'] / 2
-                
-                if y < safe_y_min or y > safe_y_max:
-                    logger.debug(f"Skipped liking: Button y={y} is outside viewport")
-                    return False
 
-                if vp:
-                    x = max(5.0, min(float(x), float(vp['width']) - 5.0))
-                    y = max(5.0, min(float(y), float(vp['height']) - 5.0))
+def _button_coordinates(page, active_btn):
+    box = active_btn.bounding_box()
+    if not box:
+        return None
+    vp = page.viewport_size
+    x = box['x'] + box['width'] / 2
+    y = box['y'] + box['height'] / 2
+    if y < 0 or y > (vp['height'] if vp else 10000):
+        logger.debug(f'Skipped liking: Button y={y} is outside viewport')
+        return None
+    if not vp:
+        return x, y
+    return (
+        max(5.0, min(float(x), float(vp['width']) - 5.0)),
+        max(5.0, min(float(y), float(vp['height']) - 5.0)),
+    )
 
-                safe_mouse_move(page, x, y, steps=random.randint(5, 10))
-                time.sleep(random.uniform(0.05, 0.12))
-                page.mouse.click(x, y, delay=random.randint(25, 65))
-                logger.info("Liked reel")
-                return True
-    except Exception as e:
-        logger.error(f"Error liking reel: {e}")
-    
-    return False
+
+def _click_like(page, x: float, y: float) -> None:
+    safe_mouse_move(page, x, y, steps=random.randint(5, 10))
+    time.sleep(random.uniform(0.05, 0.12))
+    page.mouse.click(x, y, delay=random.randint(25, 65))

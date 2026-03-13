@@ -106,16 +106,20 @@ def test_find_text_fallback(mock_cache_file, mock_page, mock_locator):
     # Text fallback succeeds
     fallback_locator = MagicMock()
     fallback_locator.count.return_value = 1
-    fallback_locator.is_visible.return_value = True
-    fallback_locator.is_enabled.return_value = True
-    fallback_locator.nth.return_value = fallback_locator
-    
-    mock_page.locator.return_value.all.return_value = [fallback_locator]
+    fallback_candidate = MagicMock()
+    fallback_candidate.is_visible.return_value = True
+    fallback_candidate.is_enabled.return_value = True
+    fallback_locator.nth.return_value = fallback_candidate
+    mock_page.locator.return_value.filter.return_value = fallback_locator
     
     result = selector.find(mock_page)
     
-    assert result == fallback_locator
-    mock_page.locator.assert_called_with("*:has-text('Click Me')")
+    assert result == fallback_candidate
+    mock_page.locator.assert_called_with(
+        'button, a, input, textarea, select, label, '
+        '[role="button"], [role="link"], [tabindex], [contenteditable="true"]'
+    )
+    mock_page.locator.return_value.filter.assert_called_with(has_text='Click Me')
 
 
 def test_text_preferred_does_not_misclassify_role_elements(mock_cache_file, mock_page, mock_locator):

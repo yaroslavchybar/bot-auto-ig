@@ -5,6 +5,7 @@
 import { EventEmitter } from 'events';
 import { appendLog } from '../logs/store.js';
 import { registerCleanup } from './shutdown.js';
+import { extractAutomationEvent } from './event-parser.js';
 import WebSocket from 'ws';
 
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3001';
@@ -46,20 +47,17 @@ export class AutomationService extends EventEmitter {
             this.ws.on('message', (data) => {
                 try {
                     const msg = JSON.parse(data.toString());
+                    const event = extractAutomationEvent(msg);
                     if (msg.type === 'status') {
                         this.setStatus(msg.status);
-                    } else if (msg.type === 'log') {
+                    }
+
+                    if (msg.type === 'log') {
                         appendLog(msg.message, msg.source || 'server');
-                        // Also emit as event for event-based handling
-                        if (msg.message?.includes('__EVENT__')) {
-                            try {
-                                const match = msg.message.match(/__EVENT__(.+?)__EVENT__/);
-                                if (match) {
-                                    const event = JSON.parse(match[1]);
-                                    this.emit('event', event);
-                                }
-                            } catch { }
-                        }
+                    }
+
+                    if (event) {
+                        this.emit('event', event);
                     }
                 } catch { }
             });
