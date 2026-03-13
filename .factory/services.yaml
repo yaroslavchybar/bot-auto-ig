@@ -1,0 +1,26 @@
+commands:
+  install_root: npm install
+  install_frontend: npm --prefix frontend install
+  install_server: npm --prefix server install
+  install_python: pip install -r python/requirements.txt
+  build_server: npm --prefix server run build
+  build_frontend: npm --prefix frontend run build
+  lint_frontend: npm --prefix frontend run lint
+  test_convex: npm run test:convex
+  test_python: python -m pytest python/tests -q
+  test_all: npm run test:convex && python -m pytest python/tests -q && npm --prefix server run build && npm --prefix frontend run build && npm --prefix frontend run lint
+
+services:
+  server:
+    start: npm --prefix server run dev
+    stop: powershell -Command "Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+    healthcheck: powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:3001/api/health' -TimeoutSec 5 -UseBasicParsing | Select-Object -ExpandProperty StatusCode } catch { exit 1 }"
+    port: 3001
+    depends_on: []
+
+  frontend:
+    start: npm --prefix frontend run dev
+    stop: powershell -Command "Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+    healthcheck: powershell -Command "try { Invoke-WebRequest -Uri 'http://localhost:5173' -TimeoutSec 5 -UseBasicParsing | Select-Object -ExpandProperty StatusCode } catch { exit 1 }"
+    port: 5173
+    depends_on: [server]
