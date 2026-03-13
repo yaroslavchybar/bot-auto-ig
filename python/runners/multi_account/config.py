@@ -25,7 +25,14 @@ def _action_order(settings: Dict[str, Any]) -> List[str]:
     action_order = settings.get('action_order')
     if not isinstance(action_order, list):
         return []
-    return [str(action) for action in action_order if str(action).strip()]
+    order: List[str] = []
+    for action in action_order:
+        if not action:
+            continue
+        action_name = str(action).strip()
+        if action_name:
+            order.append(action_name)
+    return order
 
 
 def _chance_settings(compat, settings: Dict[str, Any]) -> Dict[str, int]:

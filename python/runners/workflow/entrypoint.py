@@ -9,6 +9,19 @@ from python.runners.workflow.compat import compat as compat_module
 from python.runners.workflow.runtime import WorkflowRunner
 
 
+def _normalize_list_ids(raw_items: Any) -> List[str]:
+    if not isinstance(raw_items, list):
+        return []
+    list_ids: List[str] = []
+    for item in raw_items:
+        if not item:
+            continue
+        item_text = str(item).strip()
+        if item_text:
+            list_ids.append(item_text)
+    return list_ids
+
+
 def main() -> int:
     compat = compat_module()
     payload = _read_payload(compat)
@@ -76,13 +89,9 @@ def _start_node_inputs(nodes: List[Dict[str, Any]]) -> tuple[Optional[Dict[str, 
         config = node_data.get('config') if isinstance(node_data.get('config'), dict) else {}
         if str(node_data.get('activityId') or '') != 'select_list':
             continue
-        source_lists = config.get('sourceLists') or []
-        if isinstance(source_lists, list):
-            list_ids.extend([str(item) for item in source_lists if str(item).strip()])
+        list_ids.extend(_normalize_list_ids(config.get('sourceLists')))
     if not list_ids:
-        old_lists = start_data.get('sourceLists') or []
-        if isinstance(old_lists, list):
-            list_ids = [str(item) for item in old_lists if str(item).strip()]
+        list_ids = _normalize_list_ids(start_data.get('sourceLists'))
     return start_node, start_data, list_ids
 
 

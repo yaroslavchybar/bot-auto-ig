@@ -175,6 +175,16 @@ def _run_enabled_actions(runner, page, account, profile_data, message_targets) -
 
 def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool:
     compat = compat_module()
+    if not runner.running:
+        compat.emit_event('profile_completed', profile=profile_name, status='cancelled')
+        _sync_profile_idle(runner, profile_name)
+        return False
+    if 'Target page, context or browser has been closed' in str(exc):
+        compat.emit_event('profile_completed', profile=profile_name, status='cancelled')
+        compat.log(f'Остановлено @{profile_name}')
+        _sync_profile_idle(runner, profile_name)
+        return False
+    compat.emit_event('profile_completed', profile=profile_name, status='failed')
     compat.log(f'Ошибка @{profile_name}: {exc}')
     _sync_profile_idle(runner, profile_name)
     return False

@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Dict, List, Optional
 
 from python.runners.workflow.parsing import (
@@ -5,6 +6,9 @@ from python.runners.workflow.parsing import (
     _parse_int,
     _pick_first,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 def _workflow_has_activity(nodes: List[Dict[str, Any]], activity_id: str) -> bool:
@@ -140,4 +144,9 @@ def fetch_profiles_for_lists(
             unique.append(profile)
         return unique
     except Exception:
+        logger.exception(
+            'Failed to fetch workflow profiles for lists via %s (list_count=%s)',
+            endpoint,
+            len(clean_ids),
+        )
         return []

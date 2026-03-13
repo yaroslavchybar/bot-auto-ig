@@ -9,6 +9,10 @@ from python.actions.common import safe_mouse_move
 logger = logging.getLogger(__name__)
 
 
+class _ScrollStopped(RuntimeError):
+    """Raised when scrolling is intentionally interrupted."""
+
+
 def ease_out_cubic(t: float) -> float:
     return 1 - pow(1 - t, 3)
 
@@ -33,7 +37,7 @@ def _smooth_wheel(
     moved = 0
     for index in range(1, steps + 1):
         if should_stop and should_stop():
-            return
+            raise _ScrollStopped('scroll stopped')
         t = index / steps
         target = total_delta * easing(t)
         step = int(round(target - moved))
@@ -68,6 +72,8 @@ def scroll_to_element(
         _prepare_scroll_cursor(page, viewport_w, viewport_h, should_stop)
         _perform_element_scroll(page, delta, viewport_h, should_stop)
         return True
+    except _ScrollStopped:
+        return False
     except Exception as exc:
         logger.error(f'Error in scroll_to_element: {exc}')
         return False
@@ -104,7 +110,7 @@ def _prepare_scroll_cursor(page, viewport_w: int, viewport_h: int, should_stop) 
     safe_mouse_move(page, x, y)
     time.sleep(random.uniform(0.03, 0.10))
     if should_stop and should_stop():
-        raise RuntimeError('scroll stopped')
+        raise _ScrollStopped('scroll stopped')
 
 
 def _perform_element_scroll(page, delta: int, viewport_h: int, should_stop) -> None:
@@ -121,6 +127,8 @@ def human_scroll(page, total_delta: int | None = None, should_stop: Callable[[],
         duration_s = random.uniform(0.18, 0.32) + min(2.2, abs(total) / 700) * random.uniform(0.22, 0.55)
         _smooth_wheel(page, int(total), duration_s=duration_s, easing=ease_in_out_cubic, should_stop=should_stop)
         _apply_scroll_correction(page, total)
+    except _ScrollStopped:
+        return
     except Exception as exc:
         logger.error(f'Error in human_scroll: {exc}')
         _scroll_fallback(page, total_delta)
@@ -131,7 +139,7 @@ def _position_scroll_cursor(page, viewport_w: int, viewport_h: int, should_stop)
     safe_mouse_move(page, x, y)
     time.sleep(random.uniform(0.05, 0.15))
     if should_stop and should_stop():
-        raise RuntimeError('scroll stopped')
+        raise _ScrollStopped('scroll stopped')
 
 
 def _scroll_total(total_delta: int | None, viewport_h: int) -> int:

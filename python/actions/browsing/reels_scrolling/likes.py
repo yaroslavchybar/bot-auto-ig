@@ -17,7 +17,10 @@ def perform_like(page) -> bool:
         active_btn = _active_like_button(page)
         if not active_btn:
             return False
-        if _already_liked(active_btn):
+        skip_reason = _like_skip_reason(active_btn)
+        if skip_reason == 'missing_icon':
+            return False
+        if skip_reason == 'already_liked':
             logger.debug('Skipped liking: Reel already liked')
             return False
         coordinates = _button_coordinates(page, active_btn)
@@ -44,7 +47,14 @@ def _active_like_button(page):
                 const heartIcon = btn.querySelector('svg[aria-label="Like"], svg[aria-label="Unlike"]');
                 if (!heartIcon) continue;
                 const rect = btn.getBoundingClientRect();
-                if (rect.top < 0 || rect.bottom > window.innerHeight || rect.width === 0 || rect.height === 0) continue;
+                if (
+                    rect.top < 0 ||
+                    rect.bottom > window.innerHeight ||
+                    rect.left < 0 ||
+                    rect.right > window.innerWidth ||
+                    rect.width === 0 ||
+                    rect.height === 0
+                ) continue;
                 if (!(() => {
                     let curr = btn.parentElement;
                     for (let j = 0; j < 20; j++) {
@@ -70,12 +80,14 @@ def _active_like_button(page):
     return btn_handle.as_element()
 
 
-def _already_liked(active_btn) -> bool:
+def _like_skip_reason(active_btn) -> str | None:
     heart_icon = active_btn.query_selector('svg[aria-label="Like"], svg[aria-label="Unlike"]')
     if not heart_icon:
         logger.debug('Skipped liking: Reels like icon not found inside button')
-        return True
-    return heart_icon.get_attribute('aria-label') == 'Unlike'
+        return 'missing_icon'
+    if heart_icon.get_attribute('aria-label') == 'Unlike':
+        return 'already_liked'
+    return None
 
 
 def _button_coordinates(page, active_btn):

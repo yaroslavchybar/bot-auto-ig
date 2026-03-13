@@ -86,7 +86,7 @@ def _load_profiles(compat, selected_list_ids: List[str]):
         compat.log('Выберите список профилей!')
         return None
     profiles = compat._fetch_profiles_for_lists(selected_list_ids)
-    compat.log(f'DEBUG: fetched profiles count={len(profiles)}')
+    compat.log(f'DEBUG: fetched profiles count={len(profiles or [])}')
     if profiles:
         return profiles
     compat.log('В выбранном списке нет профилей!')

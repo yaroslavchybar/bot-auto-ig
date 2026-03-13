@@ -250,17 +250,20 @@ def _search_dialog(page, search_input):
 
 
 def _wait_for_profile_url(page, username: str) -> bool:
+    username_lower = (username or '').strip().lstrip('@').lower()
+    if not username_lower:
+        return False
     try:
         page.wait_for_load_state('domcontentloaded', timeout=15000)
     except Exception:
         pass
-    for pattern in (f'**/{username}/', f'**/{username}/*'):
+    for pattern in (f'**/{username_lower}/', f'**/{username_lower}/*'):
         try:
             page.wait_for_url(pattern, timeout=15000 if pattern.endswith('/') else 5000)
             break
         except Exception:
             continue
     try:
-        return f'/{username.lower()}/' in (page.url or '').lower()
+        return f'/{username_lower}/' in (page.url or '').lower()
     except Exception:
         return False

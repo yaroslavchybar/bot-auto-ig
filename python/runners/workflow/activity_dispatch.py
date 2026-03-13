@@ -1,3 +1,5 @@
+import hashlib
+import json
 import random
 import time
 from typing import Any, Dict, Optional
@@ -23,8 +25,6 @@ def execute_activity(
             activity_id,
             cfg,
             browser_state,
-            account,
-            profile_data,
             loop_state,
         )
         if control_result is not None:
@@ -53,8 +53,6 @@ def _execute_control_activity(
     activity_id: str,
     cfg: Dict[str, Any],
     browser_state: Dict[str, Any],
-    account,
-    profile_data: Optional[Dict[str, Any]],
     loop_state: Dict[str, int],
 ) -> Optional[str]:
     if activity_id == 'start_browser':
@@ -72,7 +70,7 @@ def _execute_control_activity(
     if activity_id == 'random_branch':
         return _run_random_branch(cfg)
     if activity_id == 'python_script':
-        return _run_python_script(cfg, browser_state.get('page'), account, profile_data, loop_state, node_id)
+        return _run_python_script(cfg)
     return None
 
 
@@ -129,14 +127,22 @@ def _start_browser(runner, cfg: Dict[str, Any], browser_state: Dict[str, Any], *
 
 
 def _close_existing_context(browser_state: Dict[str, Any]) -> None:
-    try:
-        context = browser_state.get('context')
-        if context:
-            context.close()
-    except Exception:
-        pass
+    ctx_mgr = browser_state.get('_ctx_mgr')
+    if ctx_mgr:
+        try:
+            ctx_mgr.__exit__(None, None, None)
+        except Exception:
+            pass
+    else:
+        try:
+            context = browser_state.get('context')
+            if context:
+                context.close()
+        except Exception:
+            pass
     browser_state['context'] = None
     browser_state['page'] = None
+    browser_state['_ctx_mgr'] = None
 
 
 def _close_browser(browser_state: Dict[str, Any]) -> str:
@@ -189,7 +195,22 @@ def _loop_state_key(node_id: Optional[str], cfg: Dict[str, Any]) -> str:
     cleaned_node_id = str(node_id or '').strip()
     if cleaned_node_id:
         return cleaned_node_id
-    return f'loop:{id(cfg)}'
+    payload = json.dumps(_normalize_loop_key_value(cfg), sort_keys=True, separators=(',', ':'), ensure_ascii=True)
+    digest = hashlib.sha1(payload.encode('utf-8')).hexdigest()[:16]
+    return f'loop:{digest}'
+
+
+def _normalize_loop_key_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _normalize_loop_key_value(nested)
+            for key, nested in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_normalize_loop_key_value(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
 
 
 def _run_random_branch(cfg: Dict[str, Any]) -> str:
@@ -197,34 +218,17 @@ def _run_random_branch(cfg: Dict[str, Any]) -> str:
     return compat._choose_weighted(['path_a', 'path_b', 'path_c'], str(cfg.get('weights') or ''))
 
 
-def _run_python_script(
-    cfg: Dict[str, Any],
-    page: Any,
-    account,
-    profile_data: Optional[Dict[str, Any]],
-    loop_state: Dict[str, int],
-    node_id: str,
-) -> str:
+def _run_python_script(cfg: Dict[str, Any]) -> str:
     compat = compat_module()
-    code_snippet = str(cfg.get('code') or '')
-    if not code_snippet.strip():
-        return 'success'
-    exec_globals = {
-        'page': page,
-        'account': account,
-        'profile_data': profile_data,
-        'log': compat.log,
-        'time': time,
-        'random': random,
-        'loop_state': loop_state,
-        'node_id': node_id,
-    }
-    try:
-        exec(code_snippet, exec_globals)
-        return 'success'
-    except Exception as exc:
-        compat.log(f'Ошибка python_script: {exc}')
-        return 'failure'
+    if str(cfg.get('code') or '').strip():
+        compat.log(
+            'python_script workflow activity is disabled for security reasons; remove this node from the workflow.'
+        )
+    else:
+        compat.log(
+            'python_script workflow activity is disabled and no longer supported.'
+        )
+    return 'failure'
 
 
 def _ensure_browser(runner, activity_id: str, cfg: Dict[str, Any], browser_state: Dict[str, Any]) -> Optional[Any]:
@@ -329,11 +333,11 @@ def _run_follow_activity(runner, cfg: Dict[str, Any], page: Any, account, profil
         proxy_string=account.proxy or '',
         usernames=compat.apply_count_limit(usernames, (follow_min, follow_max)),
         account_map={entry['user_name']: entry['id'] for entry in accounts if entry.get('id') and entry.get('user_name')},
+        following_limit=compat._parse_int(cfg.get('following_limit'), 3000),
         interactions_config={
             'highlights_range': highlights_range,
             'likes_percentage': compat._parse_int(cfg.get('likes_percentage'), 0),
             'scroll_percentage': compat._parse_int(cfg.get('scroll_percentage'), 0),
-            'following_limit': compat._parse_int(cfg.get('following_limit'), 3000),
         },
         log=compat.log,
         should_stop=lambda: not runner.running,

@@ -100,8 +100,26 @@ def test_circuit_breaker_trips():
         
     assert proxy_circuit.is_open()
     assert proxy_circuit.global_pause_until > time.time()
+    assert proxy_circuit.consecutive_failures == 0
 
 def test_circuit_breaker_resets_on_success():
     proxy_circuit.consecutive_failures = config.CIRCUIT_THRESHOLD - 1
     proxy_circuit.record_success()
     assert proxy_circuit.consecutive_failures == 0
+
+
+def test_circuit_breaker_allows_recovery_after_cooldown():
+    circuit = ProxyCircuitBreaker()
+
+    for _ in range(config.CIRCUIT_THRESHOLD):
+        circuit.record_failure()
+
+    assert circuit.consecutive_failures == 0
+    assert circuit.is_open()
+
+    circuit.global_pause_until = time.time() - 1
+
+    circuit.record_failure()
+
+    assert circuit.consecutive_failures == 1
+    assert not circuit.is_open()

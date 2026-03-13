@@ -28,14 +28,14 @@
   - feed scrolling: story watch toggle, story view timing, skip behavior, post view timing
   - reels scrolling: watch timing, advance timing, reel follow chance
   - stories: per-story view timing
-  - follow / approve / messaging: per-target pacing and message typing/navigation delays
+  - follow / unfollow / approve / messaging: per-target pacing, with inverted delay ranges normalized before waits or typing/navigation delays are applied
 
 ## Server Orchestration Boundaries
 
 - Server starts Python for manual automation/profile sessions.
 - Workflows API starts `run_workflow.py` with JSON payload over stdin.
 - Multi-account helper flows remain in `python/runners/` and are not mounted as direct server API endpoints.
-- Runtime emits structured `__EVENT__...__EVENT__` messages for WS propagation.
+- Runtime emits structured `__EVENT__`-prefixed JSON lines for WS propagation.
 
 ## Reliability Model
 

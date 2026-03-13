@@ -12,8 +12,7 @@ interface ParsedLog {
     explicitLevel?: boolean
 }
 
-// Event pattern: __EVENT__{"type": "...", ...}__EVENT__
-const EVENT_PATTERN = /__EVENT__(\{.*?\})__EVENT__/
+const EVENT_PREFIX = '__EVENT__'
 
 // Timestamp pattern at start of lines: [2026-01-08T09:47:29+00:00]
 const TIMESTAMP_PATTERN = /^\[?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^\]]*\]?\s*/
@@ -39,6 +38,20 @@ const EVENT_LABELS: Record<string, string> = {
     error: '❌ Error',
 }
 
+function parseStructuredEvent(line: string): Record<string, unknown> | null {
+    if (!line.startsWith(EVENT_PREFIX)) return null
+
+    const payload = line.endsWith(EVENT_PREFIX)
+        ? line.slice(EVENT_PREFIX.length, -EVENT_PREFIX.length)
+        : line.slice(EVENT_PREFIX.length)
+
+    try {
+        return JSON.parse(payload)
+    } catch {
+        return null
+    }
+}
+
 /**
  * Parse a single log line from Python output.
  */
@@ -46,29 +59,23 @@ export function parseLogLine(raw: string): ParsedLog | null {
     const line = raw.trim()
     if (!line) return null
 
-    // Check for structured event
-    const eventMatch = line.match(EVENT_PATTERN)
-    if (eventMatch) {
-        try {
-            const eventData = JSON.parse(eventMatch[1])
-            const eventType = eventData.type || 'unknown'
-            const label = EVENT_LABELS[eventType] || eventType
+    const eventData = parseStructuredEvent(line)
+    if (eventData) {
+        const eventType = String(eventData.type || 'unknown')
+        const label = EVENT_LABELS[eventType] || eventType
 
-            // Build human-readable message
-            let message = label
-            if (eventData.profile) message += `: ${eventData.profile}`
-            if (eventData.task) message += ` - ${eventData.task}`
-            if (eventData.total_accounts) message += ` (${eventData.total_accounts} accounts)`
+        // Build human-readable message
+        let message = label
+        if (eventData.profile) message += `: ${eventData.profile}`
+        if (eventData.task) message += ` - ${eventData.task}`
+        if (eventData.total_accounts) message += ` (${eventData.total_accounts} accounts)`
 
-            return {
-                message,
-                level: eventType === 'error' ? 'error' : 'info',
-                source: 'python',
-                eventType,
-                metadata: eventData,
-            }
-        } catch {
-            // Failed to parse JSON, treat as plain message
+        return {
+            message,
+            level: eventType === 'error' ? 'error' : 'info',
+            source: 'python',
+            eventType,
+            metadata: eventData,
         }
     }
 

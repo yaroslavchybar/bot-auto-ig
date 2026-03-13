@@ -1,6 +1,7 @@
 import random
 from typing import Any, Dict, List, Optional
 
+from python.actions.engagement.follow.types import FollowInteractionsConfig
 from python.runners.multi_account.compat import compat as compat_module
 
 
@@ -94,7 +95,7 @@ def run_follow(runner, page, account, profile_data: Optional[Dict[str, Any]] = N
         compat.log(f'Ошибка Follow: {exc}')
 
 
-def _follow_interactions_config(config) -> Dict[str, Any]:
+def _follow_interactions_config(config) -> FollowInteractionsConfig:
     return {
         'highlights_range': config.highlights_range,
         'likes_percentage': config.likes_percentage,

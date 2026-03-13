@@ -12,7 +12,6 @@ export type ActivityCategory =
   | 'messaging'
   | 'stories'
   | 'control'
-  | 'python'
 
 // Types of inputs an activity can have
 export type InputType =

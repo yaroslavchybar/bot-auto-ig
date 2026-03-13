@@ -86,13 +86,13 @@ def login_session(
     username: str,
     password: str,
     log: Callable[[str], None],
-    two_factor_secret: str = None,
-    user_agent: str = None,
+    two_factor_secret: str | None = None,
+    user_agent: str | None = None,
     headless: bool = False,
     fingerprint_seed: str | None = None,
     fingerprint_os: str | None = None,
 ):
-    log(f'Starting login session for {username} (Profile: {profile_name})')
+    log('Starting login session')
     state = {'success': False}
     try:
         with create_browser_context(
@@ -154,7 +154,7 @@ def _submit_credentials(page, username: str, password: str, log) -> bool:
         log('Could not find login form inputs!')
         return False
     page.wait_for_selector(selectors['username'], state='visible', timeout=20000)
-    _type_credential(page, selectors['username'], username, log, reveal_value=True, label='Filling username')
+    _type_credential(page, selectors['username'], username, log, reveal_value=False, label='Filling username')
     _type_credential(page, selectors['password'], password, log, reveal_value=False, label='Filling password...')
     log('Submitting login form...')
     _click_login_button(page, selectors, log)
@@ -175,6 +175,8 @@ def _type_credential(page, selector: str, value: str, log, *, reveal_value: bool
     log(f'{label}: {value}' if reveal_value else label)
     page.click(selector)
     random_delay(0.5, 1.0)
+    page.fill(selector, '')
+    random_delay(0.1, 0.3)
     page.keyboard.type(value, delay=100)
     random_delay(0.5, 1.5)
 

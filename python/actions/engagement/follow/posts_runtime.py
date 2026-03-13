@@ -3,7 +3,7 @@ from typing import Callable, Set
 
 from python.actions.browsing.utils import human_scroll
 from python.actions.common import random_delay
-from python.actions.engagement.follow.common import _safe
+from python.actions.engagement.follow.common import _find_close_button, _safe
 
 
 def scroll_posts(
@@ -231,13 +231,7 @@ def _click_like_button(page, log) -> bool:
 
 
 def _close_post_modal(page, log) -> None:
-    close_btn = (
-        page.query_selector('button[aria-label="Close"]')
-        or page.query_selector('svg[aria-label="Close"]')
-        or page.query_selector('[role="button"][aria-label*="Close"]')
-        or page.query_selector('button[aria-label*="close" i]')
-        or page.query_selector('div[role="button"] svg[aria-label="Close"]')
-    )
+    close_btn = _find_close_button(page)
     if close_btn:
         try:
             close_btn.click()

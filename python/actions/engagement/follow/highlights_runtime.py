@@ -2,7 +2,7 @@ import random
 from typing import Callable, Optional
 
 from python.actions.common import random_delay
-from python.actions.engagement.follow.common import _safe
+from python.actions.engagement.follow.common import _find_close_button, _safe
 
 
 def _find_story_nav(page, label: str):
@@ -55,13 +55,15 @@ def _target_highlights(highlights_to_watch: Optional[int], log) -> int:
 
 
 def _visible_highlight_buttons(page, log):
-    highlight_buttons = (
-        page.query_selector_all('xpath=//div[@role="button" and contains(@aria-label,"highlight")]')
-        or page.query_selector_all('xpath=//a[contains(@aria-label,"highlight")]')
-        or page.query_selector_all('[aria-label*="highlight"]')
-        or page.query_selector_all('a[href*="/stories/highlights/"]')
-        or page.query_selector_all('xpath=//a[contains(@href,"/highlights/")]')
-    )
+    highlight_buttons = []
+    for selector in (
+        'xpath=//div[@role="button" and contains(@aria-label,"highlight")]',
+        'xpath=//a[contains(@aria-label,"highlight")]',
+        '[aria-label*="highlight"]',
+        'a[href*="/stories/highlights/"]',
+        'xpath=//a[contains(@href,"/highlights/")]',
+    ):
+        highlight_buttons.extend(page.query_selector_all(selector))
     if not highlight_buttons:
         log('Хайлайты не найдены')
         return []
@@ -109,6 +111,7 @@ def _open_highlight_with_retries(page, log, button, max_wait: float) -> bool:
     max_attempts = 8
     for attempt in range(max_attempts):
         try:
+            _scroll_highlight_into_view(page, button)
             _wait_for_highlight_button(page, button)
             random_delay(0.3, 0.8)
             if not _click_highlight(page, log, button):
@@ -148,7 +151,7 @@ def _wait_for_highlight_button(page, button) -> None:
     )
 
 
-def _click_highlight(page, log, button) -> bool:
+def _scroll_highlight_into_view(page, button) -> None:
     try:
         page.evaluate(
             """
@@ -158,6 +161,10 @@ def _click_highlight(page, log, button) -> bool:
         )
     except Exception:
         pass
+
+
+def _click_highlight(page, log, button) -> bool:
+    _scroll_highlight_into_view(page, button)
     random_delay(0.2, 0.5)
     for click in (
         lambda: button.click(),
@@ -225,13 +232,7 @@ def _advance_highlight(page, log, index: int, total: int) -> bool:
 
 
 def _close_highlight(page, log) -> None:
-    close_btn = (
-        page.query_selector('button[aria-label="Close"]')
-        or page.query_selector('svg[aria-label="Close"]')
-        or page.query_selector('[role="button"][aria-label*="Close"]')
-        or page.query_selector('button[aria-label*="close" i]')
-        or page.query_selector('div svg[aria-label="Close"]')
-    )
+    close_btn = _find_close_button(page)
     if _click_close_button(page, log, close_btn):
         log('Жду восстановления страницы после хайлайта...')
         random_delay(3.0, 5.0)

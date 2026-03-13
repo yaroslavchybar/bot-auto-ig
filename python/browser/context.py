@@ -1,6 +1,5 @@
 import time
 from contextlib import contextmanager
-from threading import Thread
 from typing import Optional
 
 from camoufox.exceptions import InvalidProxy
@@ -119,7 +118,14 @@ def _enter_camoufox_context(compat, launch_kwargs: dict):
 def _sync_session_state(compat, context, profile_name: str) -> None:
     try:
         if context:
-            compat.sync_profile_session_state(context, profile_name)
+            compat.sync_profile_session_state(
+                context,
+                profile_name,
+                explicit_logout=bool(
+                    getattr(context, 'explicit_logout', False)
+                    or getattr(context, '_explicit_logout', False)
+                ),
+            )
     except Exception:
         return
 
@@ -130,13 +136,14 @@ def _close_context_manager(compat, cm, context, profile_name: str) -> None:
     try:
         if context:
             try:
-                compat.sync_profile_session_state(context, profile_name)
+                _sync_session_state(compat, context, profile_name)
             except Exception:
                 pass
-            try:
-                context.close()
-            except Exception:
-                pass
+            finally:
+                try:
+                    context.close()
+                except Exception:
+                    pass
         cm.__exit__(None, None, None)
     except Exception:
         return
@@ -146,6 +153,6 @@ def _schedule_cache_cleanup(compat, should_clean: bool, profile_path: str) -> No
     if not should_clean:
         return
     try:
-        Thread(target=compat._clean_cache2, args=(profile_path,), daemon=True).start()
+        compat._clean_cache2(profile_path)
     except Exception:
         return

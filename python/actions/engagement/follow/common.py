@@ -26,3 +26,21 @@ def normalize_range(range_values, default: Tuple[int, int]) -> Tuple[int, int]:
     except Exception:
         return default
 
+
+def _find_close_button(page):
+    close_btn = (
+        page.query_selector('button[aria-label="Close"]')
+        or page.query_selector('[role="button"][aria-label*="Close"]')
+        or page.query_selector('button[aria-label*="close" i]')
+    )
+    if close_btn:
+        return close_btn
+    close_svg = page.query_selector('svg[aria-label="Close"]')
+    if not close_svg:
+        return None
+    return (
+        close_svg.query_selector('xpath=ancestor-or-self::*[self::button or @role="button"][1]')
+        or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
+        or close_svg
+    )
+

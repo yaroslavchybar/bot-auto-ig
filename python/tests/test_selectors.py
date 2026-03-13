@@ -88,3 +88,39 @@ def test_semantic_selector_snapshot_on_failure(mock_save_snapshot):
     args = mock_save_snapshot.call_args
     assert args[0][0] == mock_page
     assert "selector_fail_Test" in args[0][1]
+
+
+def test_semantic_selector_text_fallback_uses_bounded_interactive_scan():
+    mock_page = MagicMock()
+
+    empty_locator = MagicMock()
+    empty_locator.count.return_value = 0
+    empty_locator.locator.return_value = empty_locator
+    mock_page.get_by_role.return_value = empty_locator
+    mock_page.get_by_text.return_value = empty_locator
+
+    fallback_locator = MagicMock()
+    fallback_locator.count.return_value = 20
+    fallback_locator.all.side_effect = AssertionError('text fallback should not materialize all matches')
+
+    candidates = []
+    for index in range(8):
+        candidate = MagicMock(name=f'candidate_{index}')
+        candidate.is_visible.return_value = index == 7
+        candidate.is_enabled.return_value = index == 7
+        candidates.append(candidate)
+    fallback_locator.nth.side_effect = candidates
+
+    filtered_locator = MagicMock()
+    filtered_locator.filter.return_value = fallback_locator
+    mock_page.locator.return_value = filtered_locator
+
+    selector = SemanticSelector(element_name='Test', role='button', text='Hello')
+    result = selector.find(mock_page)
+
+    assert result == candidates[-1]
+    mock_page.locator.assert_called_with(
+        'button, input[type="button"], input[type="submit"], input[type="reset"], [role="button"]'
+    )
+    filtered_locator.filter.assert_called_once_with(has_text='Hello')
+    assert fallback_locator.nth.call_count == 8

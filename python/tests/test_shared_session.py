@@ -203,5 +203,33 @@ class TestWorkflowRunnerSettings(unittest.TestCase):
         )
 
 
+class TestWorkflowActivityDispatch(unittest.TestCase):
+    def test_close_existing_context_exits_ctx_manager(self):
+        from python.runners.workflow.activity_dispatch import _close_existing_context
+
+        calls = []
+
+        class _Context:
+            def close(self):
+                calls.append('close')
+
+        class _CtxMgr:
+            def __exit__(self, exc_type, exc, tb):
+                calls.append((exc_type, exc, tb))
+
+        browser_state = {
+            'context': _Context(),
+            'page': object(),
+            '_ctx_mgr': _CtxMgr(),
+        }
+
+        _close_existing_context(browser_state)
+
+        self.assertEqual(calls, [(None, None, None)])
+        self.assertIsNone(browser_state['context'])
+        self.assertIsNone(browser_state['page'])
+        self.assertIsNone(browser_state['_ctx_mgr'])
+
+
 if __name__ == "__main__":
     unittest.main()

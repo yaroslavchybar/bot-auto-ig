@@ -86,17 +86,18 @@ def _load_workflow_sessions(runner) -> Dict[str, int]:
 def run_automation_session(runner: InstagramAutomationRunner) -> int:
     compat = compat_module()
     compat.emit_event('session_started', total_accounts=len(runner.accounts))
-    if not runner.accounts:
-        compat.log('Нет профилей для запуска.')
-        return 2
+    status = 'failed'
     try:
+        if not runner.accounts:
+            compat.log('Нет профилей для запуска.')
+            return 2
         _run_cycles(runner)
+        status = 'completed' if runner.running else 'cancelled'
+        return 0 if runner.running else 1
     finally:
         _shutdown_executor(runner._executor, wait=True)
-    compat.log('Автоматизация остановлена.')
-    status = 'completed' if runner.running else 'cancelled'
-    compat.emit_event('session_ended', status=status)
-    return 0 if runner.running else 1
+        compat.log('Автоматизация остановлена.')
+        compat.emit_event('session_ended', status=status)
 
 
 def _run_cycles(runner: InstagramAutomationRunner) -> None:

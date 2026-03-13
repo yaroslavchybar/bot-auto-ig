@@ -65,6 +65,7 @@ class ProxyCircuitBreaker:
             self.consecutive_failures += 1
             if self.consecutive_failures >= config.CIRCUIT_THRESHOLD:
                 self.global_pause_until = time.time() + config.CIRCUIT_RECOVERY_TIMEOUT
+                self.consecutive_failures = 0
                 should_log = True
         if should_log:
             logger.error(
@@ -103,23 +104,22 @@ def parse_proxy_string(proxy_string):
 
 
 def _parse_proxy_url_with_auth(scheme: str, proxy_string: str):
-    try:
-        from urllib.parse import urlsplit
+    from urllib.parse import urlsplit
 
-        parsed = urlsplit(f'{scheme}://{proxy_string}')
-        if parsed.hostname:
-            server = f'{scheme}://{parsed.hostname}'
-            if parsed.port is not None:
-                server = f'{server}:{parsed.port}'
-            cfg = {'server': server}
-            if parsed.username is not None:
-                cfg['username'] = parsed.username
-            if parsed.password is not None:
-                cfg['password'] = parsed.password
-            return cfg
-    except Exception:
-        pass
-    return {'server': f'{scheme}://{proxy_string}'}
+    parsed = urlsplit(f'{scheme}://{proxy_string}')
+    if not parsed.hostname:
+        raise ValueError('Proxy URL with credentials is missing a hostname')
+
+    server = f'{scheme}://{parsed.hostname}'
+    if parsed.port is not None:
+        server = f'{server}:{parsed.port}'
+
+    cfg = {'server': server}
+    if parsed.username is not None:
+        cfg['username'] = parsed.username
+    if parsed.password is not None:
+        cfg['password'] = parsed.password
+    return cfg
 
 
 def _parse_proxy_colon_format(scheme: str, proxy_string: str):

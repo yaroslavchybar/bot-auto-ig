@@ -1,10 +1,15 @@
+import logging
 import math
 import random
 import time
 
+from playwright.sync_api import Error as PlaywrightError
+
 from python.actions.browsing.scrolling import ease_in_out_cubic
 from python.actions.browsing.viewport import _get_viewport_size, _pick_point
 from python.actions.common import safe_mouse_move
+
+logger = logging.getLogger(__name__)
 
 
 def _bezier_point(t: float, p0: tuple, p1: tuple, p2: tuple, p3: tuple) -> tuple:
@@ -27,8 +32,11 @@ def human_mouse_move(page, target_x: int | None = None, target_y: int | None = N
         steps = max(12, min(40, int(distance / 15)))
         _move_curve(page, viewport_w, viewport_h, start_x, start_y, end_x, end_y, control_points, steps)
         _final_correction(page, viewport_w, viewport_h, end_x, end_y)
+    except PlaywrightError as exc:
+        logger.warning('Skipping human_mouse_move due to Playwright error: %s', exc)
     except Exception:
-        pass
+        logger.exception('Unexpected error in human_mouse_move')
+        raise
 
 
 def _target_point(viewport_w: int, viewport_h: int, target_x, target_y) -> tuple[int, int]:

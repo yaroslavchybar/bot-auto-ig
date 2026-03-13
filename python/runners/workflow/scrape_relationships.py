@@ -1,8 +1,11 @@
+import logging
 import time
 from typing import Any, Dict, Optional, Tuple
 
 from python.runners.workflow.compat import compat as compat_module
 from python.runners.workflow.scrape_script import RELATIONSHIP_CHUNK_SCRIPT
+
+logger = logging.getLogger(__name__)
 
 
 def open_relationship_view(
@@ -351,8 +354,13 @@ class ScrapeRelationshipsExecutor:
                     self.merged_users,
                 ),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception(
+                'Failed to persist resume snapshot for workflow %s node %s: %s',
+                self.runner.workflow_id,
+                self.node_id,
+                exc,
+            )
 
     def _current_target_username(self) -> Optional[str]:
         if 0 <= self.current_target_index < len(self.targets):
@@ -503,7 +511,7 @@ class ScrapeRelationshipsExecutor:
     ) -> None:
         reported_total = expected_total if expected_total is not None else '?'
         label = 'chunk saved' if has_more else 'final chunk'
-        total_value = self.target_scraped if has_more else next_target_scraped
+        total_value = next_target_scraped
         suffix = ' nextCursor=yes' if has_more else ''
         self.compat.log(
             f'scrape_relationships @{target_username}: {label} '

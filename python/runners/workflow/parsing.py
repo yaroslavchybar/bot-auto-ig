@@ -65,9 +65,20 @@ def _parse_retry_backoff_seconds(value: Any) -> List[int]:
         seconds = max(1, int(value))
         return [seconds]
 
-    parts = _normalize_string_list(value)
+    if isinstance(value, list):
+        raw_values = value
+    elif isinstance(value, str):
+        raw_values = []
+        for line in value.splitlines():
+            raw_values.extend(line.split(','))
+    else:
+        raw_values = []
+
     parsed: List[int] = []
-    for part in parts:
+    for raw in raw_values:
+        part = str(raw or '').strip()
+        if not part:
+            continue
         try:
             parsed.append(max(1, int(float(part))))
         except Exception:

@@ -53,6 +53,7 @@ Protected routes under the authenticated shell:
 - `/scraped-data` is the dedicated artifact-management page for all workflow scrape outputs. It uses Convex-authenticated workflow artifact queries and exposes download/delete actions without replacing the `/accounts` import flow.
 - Existing workflows remain backward compatible with legacy `start_browser` cooldown keys; the editor normalizes them to the current config shape on load/save.
 - `send_dm` node template management stays connected to shared Convex template banks and can switch between `message` and `message_2` from node config.
+- The legacy `python_script` workflow node is no longer available in the block library or accepted by workflow import validation.
 
 Other route behavior:
 - `/` redirects server-side to `/profiles` when signed in and `/sign-in` when signed out.

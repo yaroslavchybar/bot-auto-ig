@@ -152,8 +152,14 @@ def scroll_reels(page, duration_minutes: int, actions_config: dict, should_stop=
             _save_session_progress(profile_name, clock['start'], duration_minutes)
             if _reload_stalled_page(page, clock):
                 continue
-            if _watch_reel(page, actions_config, should_stop):
-                clock['last_action'] = time.time()
+            watched_reel = _watch_reel(page, actions_config, should_stop)
+            clock['last_action'] = time.time()
+            if not watched_reel:
+                logger.info('Stop signal received during reel watch. Ending reels session.')
+                break
+            if should_stop and should_stop():
+                logger.info('Stop signal received. Ending reels session.')
+                break
             _execute_reel_actions(page, actions_config, should_stop, stats)
             if should_stop and should_stop():
                 logger.info('Stop signal received. Ending reels session.')
@@ -180,11 +186,11 @@ def _session_clock(duration_minutes: int) -> dict:
 
 def _session_active(clock: dict, should_stop) -> bool:
     current_time = time.time()
-    if current_time >= clock['end']:
-        logger.info('Expected duration reached. Ending reels session.')
-        return False
     if current_time >= clock['hard_timeout']:
         logger.error('HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.')
+        return False
+    if current_time >= clock['end']:
+        logger.info('Expected duration reached. Ending reels session.')
         return False
     if should_stop and should_stop():
         logger.info('Stop signal received. Ending reels session.')

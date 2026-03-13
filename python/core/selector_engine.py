@@ -7,6 +7,12 @@ from python.core.storage.selector_cache import get_preferred_strategy, record_su
 
 logger = logging.getLogger(__name__)
 
+_ACTIONABLE_SCAN_LIMIT = 8
+_DEFAULT_TEXT_FALLBACK_QUERY = (
+    'button, a, input, textarea, select, label, '
+    '[role="button"], [role="link"], [tabindex], [contenteditable="true"]'
+)
+
 
 def find_semantic_selector(selector, page, *, save_debug_snapshot_fn=None) -> Optional[Locator]:
     preferred = get_preferred_strategy(selector.element_name)
@@ -61,14 +67,14 @@ def _strategy_locator(selector, page, strategy: str):
     return None
 
 
-def _first_actionable(locator: Optional[Locator]) -> Optional[Locator]:
+def _first_actionable(locator: Optional[Locator], *, limit: int = _ACTIONABLE_SCAN_LIMIT) -> Optional[Locator]:
     if not locator:
         return None
     try:
         count = locator.count()
     except Exception:
         return None
-    for index in range(min(count, 8)):
+    for index in range(min(count, limit)):
         candidate = locator.nth(index)
         try:
             if candidate.is_visible() and candidate.is_enabled():
@@ -90,15 +96,24 @@ def _apply_role_constraint(selector, locator: Optional[Locator]) -> Optional[Loc
     return locator.locator(xpath)
 
 
+def _text_fallback_query(selector) -> str:
+    if selector.role == 'button':
+        return 'button, input[type="button"], input[type="submit"], input[type="reset"], [role="button"]'
+    if selector.role == 'link':
+        return 'a, [role="link"]'
+    if selector.role:
+        return f'[role="{selector.role}"]'
+    return _DEFAULT_TEXT_FALLBACK_QUERY
+
+
 def _text_fallback(selector, page) -> Optional[Locator]:
     if not selector.text:
         return None
-    for candidate in page.locator('*').filter(has_text=selector.text).all():
-        constrained = _apply_role_constraint(selector, candidate)
-        result = _first_actionable(constrained)
-        if result:
-            logger.info(f'Discovered {selector.element_name} via text fallback')
-            return result
+    locator = page.locator(_text_fallback_query(selector)).filter(has_text=selector.text)
+    result = _first_actionable(locator)
+    if result:
+        logger.info(f'Discovered {selector.element_name} via text fallback')
+        return result
     return None
 
 

@@ -1,6 +1,5 @@
 import random
 import signal
-import sys
 import time
 import traceback
 from typing import Optional
@@ -152,15 +151,11 @@ def _run_requested_action(
         elif action == 'mixed':
             _run_mixed_session(compat, page, profile_name, feed_duration, reels_duration, feed_config, reels_config)
         if action in ('scroll', 'reels', 'mixed'):
-            _finish_automated_session(context)
+            _finish_automated_session()
         else:
             _keep_manual_session_alive(context)
     except KeyboardInterrupt:
         print('[*] Stopped scrolling - closing browser...')
-        try:
-            context.close()
-        except Exception:
-            pass
         print('Browser closed.')
 
 
@@ -234,13 +229,8 @@ def _run_mixed_session(compat, page, profile_name: str, feed_duration: int, reel
     print('[*] Mixed session finished.')
 
 
-def _finish_automated_session(context) -> None:
-    print('[*] Automated session complete. Force closing browser to proceed...')
-    try:
-        context.close()
-    except Exception:
-        pass
-    sys.exit(0)
+def _finish_automated_session() -> None:
+    print('[*] Automated session complete. Closing browser session...')
 
 
 def _keep_manual_session_alive(context) -> None:

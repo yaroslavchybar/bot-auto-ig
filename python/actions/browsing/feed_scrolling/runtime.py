@@ -221,11 +221,11 @@ def _session_active(clock: dict, should_stop) -> bool:
     if should_stop and should_stop():
         print('[!] Stop signal received. Ending feed session.')
         return False
-    if now >= clock['end']:
-        print(f"[*] Expected duration reached. Ending feed session.")
-        return False
     if now >= clock['hard_timeout']:
         print('[!] HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.')
+        return False
+    if now >= clock['end']:
+        print(f"[*] Expected duration reached. Ending feed session.")
         return False
     return True
 

@@ -1,11 +1,23 @@
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable, Iterable, List, Optional, Tuple, TypedDict
 
 from python.actions.common import random_delay
 from python.actions.engagement.follow.controls import find_follow_control, wait_for_follow_state
 from python.actions.engagement.follow.filter import should_skip_by_following
 from python.actions.engagement.follow.interactions import pre_follow_interactions
+from python.actions.engagement.follow.types import FollowInteractionsConfig
 from python.actions.engagement.follow.utils import call_on_success, clean_usernames, open_profile_via_search_first
 from python.browser.setup import create_browser_context
+
+
+class FollowRuntimeContext(TypedDict):
+    should_stop: Callable[[], bool]
+    following_limit: Optional[int]
+    on_success: Optional[Callable[[str], None]]
+    on_skip: Optional[Callable[[str], None]]
+    highlights_range: Tuple[int, int]
+    likes_percentage: int
+    scroll_percentage: int
+    delay_range: Tuple[int, int]
 
 
 def follow_usernames(
@@ -17,7 +29,7 @@ def follow_usernames(
     following_limit: Optional[int] = None,
     on_success: Optional[Callable[[str], None]] = None,
     on_skip: Optional[Callable[[str], None]] = None,
-    interactions_config: Optional[Dict[str, Tuple[int, int]]] = None,
+    interactions_config: Optional[FollowInteractionsConfig] = None,
     page: Optional[object] = None,
     user_agent: Optional[str] = None,
     delay_range: Tuple[int, int] = (10, 20),
@@ -38,11 +50,20 @@ def follow_usernames(
         proxy_string=proxy_string,
         user_agent=user_agent,
     ) as (_context, session_page):
-        _run_follow_logic(session_page, clean_usernames_list, log, context)
-    log('Сессия завершена.')
+        try:
+            _run_follow_logic(session_page, clean_usernames_list, log, context)
+        finally:
+            log('Сессия завершена.')
 
 
-def _follow_context(should_stop, following_limit, on_success, on_skip, interactions_config, delay_range: Tuple[int, int]) -> Dict:
+def _follow_context(
+    should_stop,
+    following_limit,
+    on_success,
+    on_skip,
+    interactions_config: Optional[FollowInteractionsConfig],
+    delay_range: Tuple[int, int],
+) -> FollowRuntimeContext:
     interactions = interactions_config or {}
     delay_min, delay_max = delay_range
     if delay_max < delay_min:
@@ -59,7 +80,7 @@ def _follow_context(should_stop, following_limit, on_success, on_skip, interacti
     }
 
 
-def _run_follow_logic(current_page, usernames: List[str], log, context: Dict) -> None:
+def _run_follow_logic(current_page, usernames: List[str], log, context: FollowRuntimeContext) -> None:
     if not _ensure_instagram_open(current_page, log):
         return
     for username in usernames:
@@ -81,7 +102,7 @@ def _ensure_instagram_open(current_page, log) -> bool:
         return False
 
 
-def _follow_single_username(current_page, username: str, log, context: Dict) -> None:
+def _follow_single_username(current_page, username: str, log, context: FollowRuntimeContext) -> None:
     try:
         _open_profile(current_page, username, log)
         if _skip_if_following_limit(current_page, username, log, context):
@@ -108,7 +129,7 @@ def _open_profile(current_page, username: str, log) -> None:
     random_delay(1, 2)
 
 
-def _skip_if_following_limit(current_page, username: str, log, context: Dict) -> bool:
+def _skip_if_following_limit(current_page, username: str, log, context: FollowRuntimeContext) -> bool:
     if not should_skip_by_following(current_page, username, context['following_limit'], log):
         return False
     callback = context['on_skip']
@@ -121,7 +142,7 @@ def _skip_if_following_limit(current_page, username: str, log, context: Dict) ->
     return True
 
 
-def _run_pre_follow_interactions(current_page, log, context: Dict) -> None:
+def _run_pre_follow_interactions(current_page, log, context: FollowRuntimeContext) -> None:
     pre_follow_interactions(
         current_page,
         log,
@@ -132,7 +153,7 @@ def _run_pre_follow_interactions(current_page, log, context: Dict) -> None:
     )
 
 
-def _complete_follow_action(current_page, username: str, log, context: Dict) -> None:
+def _complete_follow_action(current_page, username: str, log, context: FollowRuntimeContext) -> None:
     state, button = find_follow_control(current_page)
     if state in ('requested', 'following'):
         log(f'Уже подписаны/запрошено для @{username} ({state}).')
