@@ -1,3 +1,4 @@
+import logging
 import random
 from datetime import datetime, timedelta, timezone
 import time
@@ -108,16 +109,25 @@ def _message_targets_if_only_messages(runner, profile_name: str, profile_data: O
 
 
 def _mark_profile_running(runner, profile_name: str, profile_data: Optional[Dict[str, object]]) -> None:
+    logger = getattr(runner, 'logger', None) or logging.getLogger(__name__)
     try:
         runner.profiles_client.sync_profile_status(profile_name, 'running', True)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception(
+            "Failed runner.profiles_client.sync_profile_status(%r, 'running', True): %s",
+            profile_name,
+            exc,
+        )
     if not profile_data:
         return
     try:
         profile_data['last_opened_at'] = datetime.now(timezone.utc).isoformat()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception(
+            "Failed updating profile_data['last_opened_at'] with datetime.now(timezone.utc).isoformat() for %r: %s",
+            profile_name,
+            exc,
+        )
 
 
 def _run_account_session(
@@ -191,7 +201,22 @@ def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool
 
 
 def _sync_profile_idle(runner, profile_name: str) -> None:
-    try:
-        runner.profiles_client.sync_profile_status(profile_name, 'idle', False)
-    except Exception:
-        pass
+    logger = getattr(runner, 'logger', None) or logging.getLogger(__name__)
+    for attempt in range(2):
+        try:
+            runner.profiles_client.sync_profile_status(profile_name, 'idle', False)
+            return
+        except Exception as exc:
+            if attempt == 0:
+                logger.exception(
+                    "Failed runner.profiles_client.sync_profile_status(%r, 'idle', False); retrying once: %s",
+                    profile_name,
+                    exc,
+                )
+                continue
+            logger.error(
+                "Failed runner.profiles_client.sync_profile_status(%r, 'idle', False) after retry; profile state may remain inconsistent: %s",
+                profile_name,
+                exc,
+                exc_info=True,
+            )

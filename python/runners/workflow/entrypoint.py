@@ -2,6 +2,7 @@ import atexit
 import os
 import signal
 import sys
+from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 from python.core.models import ThreadsAccount
@@ -30,7 +31,7 @@ def main() -> int:
     workflow_id, workflow, nodes, options = _extract_workflow_payload(compat, payload)
     if workflow is None:
         return 2
-    _, start_data, list_ids = _start_node_inputs(nodes)
+    _, start_data, list_ids = _start_node_inputs(compat, nodes)
     start_settings = compat._extract_start_browser_settings(nodes, start_data)
     has_scrape_relationships = compat._workflow_has_activity(nodes, 'scrape_relationships')
     if _should_fail_scrape_start_node(compat, workflow_id, has_scrape_relationships, nodes):
@@ -79,8 +80,7 @@ def _extract_workflow_payload(compat, payload: Dict[str, Any]) -> tuple[str, Opt
     return workflow_id, workflow, nodes, options
 
 
-def _start_node_inputs(nodes: List[Dict[str, Any]]) -> tuple[Optional[Dict[str, Any]], Dict[str, Any], List[str]]:
-    compat = compat_module()
+def _start_node_inputs(compat: ModuleType, nodes: List[Dict[str, Any]]) -> tuple[Optional[Dict[str, Any]], Dict[str, Any], List[str]]:
     start_node = compat._find_start_node(nodes)
     start_data = start_node.get('data') if start_node and isinstance(start_node.get('data'), dict) else {}
     list_ids: List[str] = []

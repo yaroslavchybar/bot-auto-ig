@@ -81,5 +81,5 @@ def emit_event(event_type: str, **data: Any) -> None:
             },
             default=str,
         )
-    sys.stdout.write(f'__EVENT__{payload}\n')
+    sys.stdout.write(f'__EVENT__{payload}__EVENT__\n')
     sys.stdout.flush()

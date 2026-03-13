@@ -38,6 +38,10 @@ const EVENT_LABELS: Record<string, string> = {
     error: '❌ Error',
 }
 
+function isPlainEventPayload(parsed: unknown): parsed is Record<string, unknown> {
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+}
+
 function parseStructuredEvent(line: string): Record<string, unknown> | null {
     if (!line.startsWith(EVENT_PREFIX)) return null
 
@@ -46,9 +50,23 @@ function parseStructuredEvent(line: string): Record<string, unknown> | null {
         : line.slice(EVENT_PREFIX.length)
 
     try {
-        return JSON.parse(payload)
+        const parsed = JSON.parse(payload)
+        return isPlainEventPayload(parsed) ? parsed : null
     } catch {
         return null
+    }
+}
+
+function stripLogPrefixes(line: string): string {
+    let cleaned = line
+
+    while (true) {
+        const next = cleaned
+            .replace(STREAM_PREFIX_PATTERN, '')
+            .replace(TIMESTAMP_PATTERN, '')
+
+        if (next === cleaned) return cleaned
+        cleaned = next
     }
 }
 
@@ -59,7 +77,8 @@ export function parseLogLine(raw: string): ParsedLog | null {
     const line = raw.trim()
     if (!line) return null
 
-    const eventData = parseStructuredEvent(line)
+    const normalized = stripLogPrefixes(line)
+    const eventData = parseStructuredEvent(normalized)
     if (eventData) {
         const eventType = String(eventData.type || 'unknown')
         const label = EVENT_LABELS[eventType] || eventType
@@ -80,8 +99,7 @@ export function parseLogLine(raw: string): ParsedLog | null {
     }
 
     // Remove timestamps from messages (frontend adds its own)
-    let cleaned = line.replace(TIMESTAMP_PATTERN, '')
-    cleaned = cleaned.replace(STREAM_PREFIX_PATTERN, '')
+    let cleaned = normalized
 
     // Check for DEBUG messages - filter or demote
     if (DEBUG_PATTERN.test(cleaned)) {

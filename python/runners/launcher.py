@@ -37,7 +37,7 @@ _profiles_client = None
 def emit_event(event_type: str, **data):
     event = {"type": event_type, **data}
     try:
-        sys.stdout.write(f"__EVENT__{json.dumps(event)}\n")
+        sys.stdout.write(f"__EVENT__{json.dumps(event)}__EVENT__\n")
         sys.stdout.flush()
     except Exception:
         pass

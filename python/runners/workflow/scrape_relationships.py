@@ -7,6 +7,8 @@ from python.runners.workflow.scrape_script import RELATIONSHIP_CHUNK_SCRIPT
 
 logger = logging.getLogger(__name__)
 
+ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS = (1, 2, 4)
+
 
 def open_relationship_view(
     runner,
@@ -561,18 +563,28 @@ class ScrapeRelationshipsExecutor:
         )
 
     def _store_resume_snapshot(self) -> None:
-        self.resume_snapshot_path = self.compat._store_resume_snapshot(
-            self.compat._resume_snapshot_path(self.runner.workflow_id, self.node_id),
-            self.compat._build_scrape_export_payload(
+        self.artifact_storage_id = ''
+        try:
+            self.resume_snapshot_path = self.compat._store_resume_snapshot(
+                self.compat._resume_snapshot_path(self.runner.workflow_id, self.node_id),
+                self.compat._build_scrape_export_payload(
+                    self.runner.workflow_id,
+                    self.node_id,
+                    self.profile_name,
+                    self.kind,
+                    self.targets,
+                    self.merged_users,
+                ),
+            )
+        except Exception as exc:
+            logger.exception(
+                'Failed to store resume snapshot for workflow %s node %s profile %s kind %s: %s',
                 self.runner.workflow_id,
                 self.node_id,
                 self.profile_name,
                 self.kind,
-                self.targets,
-                self.merged_users,
-            ),
-        )
-        self.artifact_storage_id = ''
+                exc,
+            )
 
     def _complete_target(self, target_username: str) -> None:
         self.current_target_index += 1
@@ -602,30 +614,33 @@ class ScrapeRelationshipsExecutor:
                 self.merged_users,
             )
         )
-        artifact_row = self.compat._convex_post_json(
-            '/api/workflow-artifacts/upsert',
-            {
-                'workflowId': self.runner.workflow_id,
-                'workflowName': self.runner.workflow_name,
-                'nodeId': self.node_id,
-                'nodeLabel': (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships',
-                'kind': self.kind,
-                'targets': self.targets,
-                'targetUsername': '\n'.join(self.targets),
-                'status': 'completed',
-                'sourceProfileName': self.profile_name,
-                'lastRunAt': int(time.time() * 1000),
-                'storageId': self.artifact_storage_id,
-                'exportStorageId': self.artifact_storage_id,
-                'stats': {
-                    'scraped': self.total_scraped,
-                    'deduped': len(self.merged_users),
-                    'chunksCompleted': self.chunks_completed,
-                    'targetsCompleted': self.current_target_index,
-                },
-                'metadata': {'activityId': 'scrape_relationships', 'failedTargets': self.failed_targets},
+        artifact_payload = {
+            'workflowId': self.runner.workflow_id,
+            'workflowName': self.runner.workflow_name,
+            'nodeId': self.node_id,
+            'nodeLabel': (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships',
+            'kind': self.kind,
+            'targets': self.targets,
+            'targetUsername': '\n'.join(self.targets),
+            'status': 'completed',
+            'sourceProfileName': self.profile_name,
+            'lastRunAt': int(time.time() * 1000),
+            'storageId': self.artifact_storage_id,
+            'exportStorageId': self.artifact_storage_id,
+            'stats': {
+                'scraped': self.total_scraped,
+                'deduped': len(self.merged_users),
+                'chunksCompleted': self.chunks_completed,
+                'targetsCompleted': self.current_target_index,
             },
-        )
+            'metadata': {'activityId': 'scrape_relationships', 'failedTargets': self.failed_targets},
+        }
+        artifact_row, artifact_upsert_error = self._upsert_artifact_row(artifact_payload)
+        artifact_upsert_context = {
+            'workflowId': self.runner.workflow_id,
+            'nodeId': self.node_id,
+            'activityId': 'scrape_relationships',
+        }
         self.runner._update_node_state(
             self.node_id,
             status='completed',
@@ -636,7 +651,10 @@ class ScrapeRelationshipsExecutor:
             completedTargets=self.current_target_index,
             artifactStorageId=self.artifact_storage_id,
             manifestStorageId=None,
-            artifactId=artifact_row.get('_id'),
+            artifactId=(artifact_row or {}).get('_id'),
+            artifactUpsertFailedAt=int(time.time() * 1000) if artifact_row is None else None,
+            artifactUpsertError=artifact_upsert_error,
+            artifactUpsertPayload=artifact_upsert_context if artifact_row is None else None,
             resumeSnapshotPath=None,
             updatedAt=int(time.time() * 1000),
         )
@@ -645,6 +663,57 @@ class ScrapeRelationshipsExecutor:
             f'(targets={self.current_target_index}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
         return 'success'
+
+    def _upsert_artifact_row(
+        self,
+        payload: Dict[str, Any],
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        log_payload = {
+            'workflowId': payload.get('workflowId'),
+            'nodeId': payload.get('nodeId'),
+            'activityId': (payload.get('metadata') or {}).get('activityId'),
+        }
+        attempts = len(ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS) + 1
+        last_error: Optional[str] = None
+        for attempt_index in range(attempts):
+            try:
+                artifact_row = self.compat._convex_post_json('/api/workflow-artifacts/upsert', payload)
+                if attempt_index:
+                    self.compat.log(
+                        f'scrape_relationships: artifact upsert recovered for node {self.node_id} '
+                        f'on attempt {attempt_index + 1}/{attempts}'
+                    )
+                return artifact_row, None
+            except Exception as exc:
+                last_error = str(exc)
+                logger.exception(
+                    'scrape_relationships artifact upsert failed '
+                    '(attempt %s/%s, payload=%s)',
+                    attempt_index + 1,
+                    attempts,
+                    log_payload,
+                )
+                self.compat.log(
+                    f'scrape_relationships: artifact upsert failed for node {self.node_id} '
+                    f'attempt {attempt_index + 1}/{attempts} '
+                    f'(workflowId={log_payload["workflowId"]}, nodeId={log_payload["nodeId"]}, '
+                    f'activityId={log_payload["activityId"]}): {exc}'
+                )
+                if attempt_index >= attempts - 1:
+                    break
+                delay_seconds = ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS[attempt_index]
+                self.compat.log(
+                    f'scrape_relationships: retrying artifact upsert for node {self.node_id} '
+                    f'in {delay_seconds}s'
+                )
+                time.sleep(delay_seconds)
+        self.compat.log(
+            f'scrape_relationships: artifact upsert exhausted retries for node {self.node_id}; '
+            f'continuing with local artifact storage only '
+            f'(workflowId={log_payload["workflowId"]}, nodeId={log_payload["nodeId"]}, '
+            f'activityId={log_payload["activityId"]})'
+        )
+        return None, last_error
 
     def _maybe_schedule_retry(
         self,

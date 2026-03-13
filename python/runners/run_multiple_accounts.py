@@ -83,7 +83,7 @@ def log(message: str) -> None:
 
 def emit_event(event_type: str, **data: Any) -> None:
     event = {'type': event_type, 'ts': _now_iso(), **data}
-    sys.stdout.write(f"__EVENT__{json.dumps(event)}\n")
+    sys.stdout.write(f"__EVENT__{json.dumps(event)}__EVENT__\n")
     sys.stdout.flush()
 
 
