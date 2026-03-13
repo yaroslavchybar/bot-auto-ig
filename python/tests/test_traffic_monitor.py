@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 from python.browser.traffic import TrafficMonitor
 from python.core.errors.config import config
 from python.browser.setup import (
-    mark_proxy_failure, is_proxy_healthy, ProxyCircuitBreaker, _proxy_health, proxy_circuit
+    mark_proxy_failure, mark_proxy_success, is_proxy_healthy, ProxyCircuitBreaker, _proxy_health, proxy_circuit
 )
 
 # --- Traffic Monitor Tests ---
@@ -60,6 +60,7 @@ def test_proxy_health_tracking():
         
     assert not is_proxy_healthy(proxy)
     assert _proxy_health[proxy]["tainted_until"] > time.time()
+    assert _proxy_health[proxy]["failures"] == 0
 
 def test_proxy_recovery():
     proxy = "http://recovery.test:8080"
@@ -72,6 +73,20 @@ def test_proxy_recovery():
     }
     
     assert is_proxy_healthy(proxy)
+
+def test_proxy_success_clears_stale_failures():
+    proxy = "http://success.test:8080"
+    _proxy_health.clear()
+
+    _proxy_health[proxy] = {
+        "failures": config.PROXY_FAILURE_THRESHOLD - 1,
+        "tainted_until": time.time() + 30,
+    }
+
+    mark_proxy_success(proxy)
+
+    assert _proxy_health[proxy]["failures"] == 0
+    assert _proxy_health[proxy]["tainted_until"] == 0
 
 # --- Circuit Breaker Tests ---
 
