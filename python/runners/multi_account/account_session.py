@@ -148,7 +148,7 @@ def _run_account_session(
             compat.log(f'Все задачи завершены для @{account.username}')
             compat.emit_event('profile_completed', profile=account.username, status='success')
         else:
-            compat.emit_event('profile_completed', profile=account.username, status='success')
+            compat.emit_event('profile_completed', profile=account.username, status='cancelled')
         _sync_profile_idle(runner, account.username)
         return True
 
