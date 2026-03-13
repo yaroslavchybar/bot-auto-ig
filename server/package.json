@@ -10,6 +10,7 @@
     },
     "dependencies": {
         "@clerk/express": "^1.7.60",
+        "@sentry/node": "^10.43.0",
         "dotenv": "^17.2.3",
         "express": "^4.21.0",
         "express-rate-limit": "^8.2.1",

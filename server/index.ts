@@ -2,9 +2,12 @@
  * Backend API Server for Vue Frontend
  * Handles Python subprocess control and WebSocket communication
  */
+import './env.js'
+// Sentry must be initialized before Express app creation
+import { Sentry } from './shared/sentry.js'
+
 import express from 'express'
 import { createServer } from 'http'
-import './env.js'
 
 import { initWebSocket } from './websocket.js'
 import { clerkAuth, requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
@@ -72,6 +75,8 @@ app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRout
 app.use('/api/monitoring', requireApiAuth, apiLimiter, monitoringRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
+// Sentry error handler must be registered after all routes
+Sentry.setupExpressErrorHandler(app)
 
 const PORT = process.env.SERVER_PORT || 3001
 
