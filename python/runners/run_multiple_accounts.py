@@ -24,6 +24,7 @@ from python.actions.messaging.session import send_messages
 from python.actions.stories import watch_stories
 from python.core.config import PROJECT_URL, SECRET_KEY
 from python.core.models import ScrollingConfig, ThreadsAccount
+from python.core.sentry import flush_sentry, init_sentry
 from python.core.utils import (
     apply_count_limit,
     build_action_order,
@@ -143,4 +144,8 @@ def _dedupe_profiles(payload: Any) -> List[Dict[str, Any]]:
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    init_sentry()
+    try:
+        raise SystemExit(main())
+    finally:
+        flush_sentry()

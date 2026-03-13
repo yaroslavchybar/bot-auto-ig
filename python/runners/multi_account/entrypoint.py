@@ -2,10 +2,19 @@ import signal
 import sys
 from typing import Any, Dict, List, Optional
 
+from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
 from python.runners.multi_account.compat import compat as compat_module
 
 
 def main() -> int:
+    init_sentry()
+    try:
+        return _main_inner()
+    finally:
+        flush_sentry()
+
+
+def _main_inner() -> int:
     compat = compat_module()
     payload = _read_payload(compat)
     if payload is None:
@@ -25,6 +34,9 @@ def main() -> int:
     if target_accounts is None:
         return 2
     config = compat._build_config(settings, _message_texts(compat, settings))
+    set_sentry_context(
+        extra={'profile_count': len(target_accounts), 'tasks': _task_names(config)},
+    )
     compat.log(f"Запуск полного цикла ({', '.join(_task_names(config))}) для {len(target_accounts)} профилей...")
     runner = compat.InstagramAutomationRunner(config, target_accounts)
     _register_signal_handlers(runner)

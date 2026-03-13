@@ -6,6 +6,7 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 from python.core.models import ThreadsAccount
+from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
 from python.runners.workflow.compat import compat as compat_module
 from python.runners.workflow.runtime import WorkflowRunner
 
@@ -24,6 +25,14 @@ def _normalize_list_ids(raw_items: Any) -> List[str]:
 
 
 def main() -> int:
+    init_sentry()
+    try:
+        return _main_inner()
+    finally:
+        flush_sentry()
+
+
+def _main_inner() -> int:
     compat = compat_module()
     payload = _read_payload(compat)
     if payload is None:
@@ -42,6 +51,11 @@ def main() -> int:
     accounts = _build_accounts(compat, workflow_id, profiles)
     if accounts is None:
         return 2
+    set_sentry_context(
+        workflow_id=workflow_id,
+        workflow_name=workflow.get('name'),
+        extra={'profile_count': len(accounts)},
+    )
     runner = WorkflowRunner(
         workflow_id,
         nodes,

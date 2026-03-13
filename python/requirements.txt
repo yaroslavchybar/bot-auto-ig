@@ -4,3 +4,4 @@ pyotp
 python-dotenv
 requests
 psutil
+sentry-sdk
