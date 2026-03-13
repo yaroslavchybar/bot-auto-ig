@@ -67,6 +67,14 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
+def _safe_event_summary(event: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'keys': list(event.keys()),
+        'value_types': {key: type(value).__name__ for key, value in event.items()},
+        'has_nested_data': any(isinstance(value, (dict, list, tuple, set)) for value in event.values()),
+    }
+
+
 def emit_event(event_type: str, **data: Any) -> None:
     event = {**data, 'type': event_type, 'ts': _now_iso()}
     try:
@@ -77,7 +85,7 @@ def emit_event(event_type: str, **data: Any) -> None:
                 'type': event_type,
                 'ts': event['ts'],
                 'serialization_error': f'{type(exc).__name__}: {exc}',
-                'raw_event': repr(event),
+                'raw_event': _safe_event_summary(event),
             },
             default=str,
         )

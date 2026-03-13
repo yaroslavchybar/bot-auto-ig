@@ -8,6 +8,7 @@ from python.runners.workflow.scrape_script import RELATIONSHIP_CHUNK_SCRIPT
 logger = logging.getLogger(__name__)
 
 ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS = (1, 2, 4)
+INTERRUPTIBLE_SLEEP_POLL_SECONDS = 0.1
 
 
 def open_relationship_view(
@@ -451,6 +452,8 @@ class ScrapeRelationshipsExecutor:
             )
         if self._maybe_schedule_retry(target_username, outcome, error_code, error_message):
             return None
+        if not self.runner.running:
+            return 'failure'
         return self._fail_target(target_username, outcome, error_code, error_message)
 
     def _normalize_chunk(
@@ -604,8 +607,8 @@ class ScrapeRelationshipsExecutor:
         )
 
     def _complete_node(self) -> str:
-        self.artifact_storage_id = self.compat._store_artifact_payload(
-            self.compat._build_scrape_export_payload(
+        try:
+            artifact_payload = self.compat._build_scrape_export_payload(
                 self.runner.workflow_id,
                 self.node_id,
                 self.profile_name,
@@ -613,7 +616,9 @@ class ScrapeRelationshipsExecutor:
                 self.targets,
                 self.merged_users,
             )
-        )
+            self.artifact_storage_id = self.compat._store_artifact_payload(artifact_payload)
+        except Exception as exc:
+            return self._fail_node_completion('artifact_storage_failed', f'Failed to store scrape artifact: {exc}')
         artifact_payload = {
             'workflowId': self.runner.workflow_id,
             'workflowName': self.runner.workflow_name,
@@ -663,6 +668,47 @@ class ScrapeRelationshipsExecutor:
             f'(targets={self.current_target_index}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
         return 'success'
+
+    def _fail_node_completion(self, error_code: str, error_message: str) -> str:
+        self.artifact_storage_id = ''
+        logger.exception(
+            'Failed to finalize scrape_relationships artifact for workflow %s node %s profile %s kind %s: %s',
+            self.runner.workflow_id,
+            self.node_id,
+            self.profile_name,
+            self.kind,
+            error_message,
+        )
+        self.runner._update_node_state(
+            self.node_id,
+            status='failed',
+            kind=self.kind,
+            targets=self.targets,
+            currentTargetIndex=self.current_target_index,
+            cursor=self.cursor,
+            attempt=self.attempt,
+            scraped=self.total_scraped,
+            deduped=len(self.merged_users),
+            chunksCompleted=self.chunks_completed,
+            targetScraped=self.target_scraped,
+            completedTargets=self.current_target_index,
+            failedTargets=self.failed_targets,
+            lastError=error_message,
+            lastErrorCode=error_code,
+            artifactStorageId=None,
+            manifestStorageId=None,
+            artifactId=None,
+            artifactUpsertFailedAt=None,
+            artifactUpsertError=None,
+            artifactUpsertPayload=None,
+            resumeSnapshotPath=self.resume_snapshot_path or None,
+            updatedAt=int(time.time() * 1000),
+        )
+        self.compat.log(
+            f'scrape_relationships: node {self.node_id} failed during completion '
+            f'({error_code}: {error_message})'
+        )
+        return 'failure'
 
     def _upsert_artifact_row(
         self,
@@ -762,8 +808,13 @@ class ScrapeRelationshipsExecutor:
             retryInSeconds=delay_seconds,
             attempt=self.attempt,
         )
-        time.sleep(delay_seconds)
-        return True
+        deadline = time.time() + delay_seconds
+        while self.runner.running:
+            remaining_seconds = deadline - time.time()
+            if remaining_seconds <= 0:
+                return True
+            time.sleep(min(INTERRUPTIBLE_SLEEP_POLL_SECONDS, remaining_seconds))
+        return False
 
     def _fail_target(
         self,
