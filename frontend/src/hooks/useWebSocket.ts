@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useAuth } from '@clerk/react-router'
 import { env } from '@/lib/env'
+import { addWebSocketBreadcrumb } from '@/lib/sentry'
 
 export interface LogEntry {
   message: string
@@ -275,6 +276,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           }
           reconnectAttemptRef.current = 0 // Reset on successful connect
           setConnected(true)
+          addWebSocketBreadcrumb('open', wsUrl)
         }
 
         ws.onmessage = (event) => {
@@ -286,6 +288,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
           if (cancelled) return
           setConnected(false)
           wsRef.current = null
+          addWebSocketBreadcrumb('close', wsUrl)
 
           // Auto-reconnect with exponential backoff
           if (autoConnect && enabled && (!pauseWhenHidden || isVisible)) {
@@ -299,6 +302,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         }
 
         ws.onerror = () => {
+          addWebSocketBreadcrumb('error', wsUrl)
           ws.close()
         }
 

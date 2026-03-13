@@ -1,4 +1,5 @@
 import { env } from '@/lib/env'
+import { addApiBreadcrumb } from '@/lib/sentry'
 
 // Token getter function - set by useAuthenticatedFetch hook
 let tokenGetter: (() => Promise<string | null>) | null = null
@@ -44,10 +45,12 @@ export async function apiFetch<T>(
     }
   }
 
+  const method = options.method ?? 'GET'
+  const url = resolveApiUrl(path)
   let resp: Response
   try {
-    resp = await fetch(resolveApiUrl(path), {
-      method: options.method ?? 'GET',
+    resp = await fetch(url, {
+      method,
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
@@ -55,6 +58,8 @@ export async function apiFetch<T>(
   } finally {
     clearTimeout(timeoutId)
   }
+
+  addApiBreadcrumb(method, path, resp.status)
 
   if (!resp.ok) {
     const text = await resp.text()
