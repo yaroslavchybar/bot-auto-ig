@@ -1,3 +1,5 @@
+import logger from '../shared/logger.js'
+
 type CleanupFn = () => void | Promise<void>;
 const cleanupFns = new Set<CleanupFn>();
 
@@ -18,7 +20,7 @@ export function initShutdownHandler(): void {
                 await fn();
             } catch (err) {
                 // Prevent errors in cleanup from blocking other cleanups
-                console.error('Cleanup function failed:', err);
+                logger.error({ err }, 'Cleanup function failed');
             }
         }
         process.exit(0);

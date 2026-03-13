@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { profilesCreate, profilesDeleteByName, profilesGetById, profilesList, profilesSyncStatus, profilesUpdateByName } from './convex.js';
+import logger from '../shared/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,7 +49,7 @@ export class ProfileManager {
 				daily_scraping_used: typeof p.daily_scraping_used === 'number' ? p.daily_scraping_used : 0,
 			}));
 		} catch (e) {
-			console.error('Error fetching profiles:', e);
+			logger.error({ err: e }, 'Error fetching profiles');
 			return [];
 		}
 	}
@@ -76,7 +77,7 @@ export class ProfileManager {
 				daily_scraping_used: typeof row.daily_scraping_used === 'number' ? row.daily_scraping_used : 0,
 			};
 		} catch (e) {
-			console.error('Error fetching profile by id:', e);
+			logger.error({ err: e }, 'Error fetching profile by id');
 			return null;
 		}
 	}
@@ -91,7 +92,7 @@ export class ProfileManager {
 				.filter(d => d.isDirectory())
 				.map(d => d.name);
 		} catch (e) {
-			console.error('Error reading local profiles:', e);
+			logger.error({ err: e }, 'Error reading local profiles');
 			return [];
 		}
 	}
@@ -125,10 +126,10 @@ export class ProfileManager {
 					test_ip: false,
 				});
 				created++;
-				console.log(`Auto-created profile in DB: ${name}`);
+				logger.info({ profile: name }, 'Auto-created profile in DB');
 			} catch (e: any) {
 				const msg = `Failed to create profile "${name}": ${e?.message || e}`;
-				console.error(msg);
+				logger.error({ err: e, profile: name }, msg);
 				errors.push(msg);
 			}
 		}
@@ -149,7 +150,7 @@ export class ProfileManager {
 				daily_scraping_limit: profile.daily_scraping_limit,
 			});
 		} catch (e) {
-			console.error('Error creating profile in DB:', e);
+			logger.error({ err: e }, 'Error creating profile in DB');
 			return false;
 		}
 
@@ -173,7 +174,7 @@ export class ProfileManager {
 				daily_scraping_limit: profile.daily_scraping_limit,
 			});
 		} catch (e) {
-			console.error('Error updating profile in DB:', e);
+			logger.error({ err: e }, 'Error updating profile in DB');
 			return false;
 		}
 
@@ -185,7 +186,7 @@ export class ProfileManager {
 				try {
 					fs.renameSync(oldPath, newPath);
 				} catch (e) {
-					console.error('Error renaming profile directory:', e);
+					logger.error({ err: e }, 'Error renaming profile directory');
 					// Non-fatal?
 				}
 			}
@@ -198,7 +199,7 @@ export class ProfileManager {
 		try {
 			await profilesDeleteByName(name);
 		} catch (e) {
-			console.error('Error deleting profile from DB:', e);
+			logger.error({ err: e }, 'Error deleting profile from DB');
 			return false;
 		}
 
@@ -208,7 +209,7 @@ export class ProfileManager {
 			try {
 				fs.rmSync(profilePath, { recursive: true, force: true });
 			} catch (e) {
-				console.error('Error deleting profile directory:', e);
+				logger.error({ err: e }, 'Error deleting profile directory');
 			}
 		}
 
@@ -220,7 +221,7 @@ export class ProfileManager {
 			await profilesSyncStatus(name, status, using);
 			return true;
 		} catch (e) {
-			console.error('Error syncing profile status:', e);
+			logger.error({ err: e }, 'Error syncing profile status');
 			return false;
 		}
 	}
@@ -241,7 +242,7 @@ export class ProfileManager {
 			profiles = await this.getProfiles();
 		} catch (e: any) {
 			const msg = `Failed to load profiles for runtime reconciliation: ${e?.message || e}`;
-			console.error(msg);
+			logger.error({ err: e }, msg);
 			return { cleared: 0, errors: [msg] };
 		}
 
@@ -264,7 +265,7 @@ export class ProfileManager {
 				cleared++;
 			} catch (e: any) {
 				const msg = `Failed to clear stale status for profile "${profile.name}": ${e?.message || e}`;
-				console.error(msg);
+				logger.error({ err: e, profile: profile.name }, msg);
 				errors.push(msg);
 			}
 		}

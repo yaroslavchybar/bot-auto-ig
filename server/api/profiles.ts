@@ -19,6 +19,7 @@ import { activeDisplays, profileProcesses } from '../store.js'
 import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from '../helpers/profile-cookies.js'
+import logger from '../shared/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -238,7 +239,7 @@ router.post('/:name/start', async (req, res) => {
                     profileName: name,
                 })
             } catch (e) {
-                console.error(`Failed to auto-generate fingerprint seed for ${name}:`, e)
+                logger.error({ err: e, profile: name }, 'Failed to auto-generate fingerprint seed')
             }
         }
 
@@ -391,7 +392,7 @@ router.post('/:name/stop', async (req, res) => {
         if (process.platform === 'win32' && proc.pid) {
             await new Promise<void>((resolve) => {
                 execFile('taskkill', ['/pid', String(proc.pid), '/t', '/f'], (err) => {
-                    if (err) console.error('[Taskkill Error]', err)
+                    if (err) logger.error({ err }, 'Taskkill error')
                     resolve()
                 })
             })

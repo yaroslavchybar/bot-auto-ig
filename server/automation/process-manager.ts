@@ -5,6 +5,7 @@
 import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import logger from '../shared/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -28,7 +29,7 @@ function ensureDataDir(): void {
 export function savePid(pid: number): void {
     ensureDataDir()
     fs.writeFileSync(PID_FILE, String(pid), 'utf-8')
-    console.log(`[PID Manager] Saved PID ${pid}`)
+    logger.info({ pid }, 'Saved automation PID')
 }
 
 /**
@@ -38,10 +39,10 @@ export function clearPid(): void {
     try {
         if (fs.existsSync(PID_FILE)) {
             fs.unlinkSync(PID_FILE)
-            console.log('[PID Manager] Cleared PID file')
+            logger.info('Cleared PID file')
         }
     } catch (err) {
-        console.error('[PID Manager] Failed to clear PID file:', err)
+        logger.error({ err }, 'Failed to clear PID file')
     }
 }
 
@@ -77,7 +78,7 @@ function isProcessRunning(pid: number): boolean {
  */
 async function killProcess(pid: number): Promise<boolean> {
     try {
-        console.log(`[PID Manager] Attempting to kill orphaned process ${pid}`)
+        logger.info({ pid }, 'Attempting to kill orphaned process')
 
         // Try graceful termination first
         process.kill(pid, 'SIGTERM')
@@ -88,19 +89,19 @@ async function killProcess(pid: number): Promise<boolean> {
         // Force kill if still running
         if (isProcessRunning(pid)) {
             process.kill(pid, 'SIGKILL')
-            console.log(`[PID Manager] Force killed process ${pid}`)
+            logger.info({ pid }, 'Force killed orphaned process')
         } else {
-            console.log(`[PID Manager] Process ${pid} terminated gracefully`)
+            logger.info({ pid }, 'Process terminated gracefully')
         }
 
         return true
     } catch (err) {
         // ESRCH means process doesn't exist - that's fine
         if ((err as NodeJS.ErrnoException).code === 'ESRCH') {
-            console.log(`[PID Manager] Process ${pid} already dead`)
+            logger.info({ pid }, 'Process already dead')
             return true
         }
-        console.error(`[PID Manager] Failed to kill process ${pid}:`, err)
+        logger.error({ err, pid }, 'Failed to kill process')
         return false
     }
 }
@@ -113,16 +114,16 @@ export async function cleanupOrphanedProcesses(): Promise<void> {
     const pid = getSavedPid()
 
     if (!pid) {
-        console.log('[PID Manager] No orphaned processes to clean up')
+        logger.info('No orphaned processes to clean up')
         return
     }
 
-    console.log(`[PID Manager] Found orphaned PID ${pid}, checking if running...`)
+    logger.info({ pid }, 'Found orphaned PID, checking if running')
 
     if (isProcessRunning(pid)) {
         await killProcess(pid)
     } else {
-        console.log(`[PID Manager] Process ${pid} is not running`)
+        logger.info({ pid }, 'Orphaned process is not running')
     }
 
     // Always clear the PID file after cleanup attempt

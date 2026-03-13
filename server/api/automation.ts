@@ -12,6 +12,7 @@ import { errorResponse, ErrorCodes } from '../helpers/errors.js'
 import { validateSettings } from '../helpers/settings-schema.js'
 import { markStarted, markStopped } from '../automation/state.js'
 import { parseLogOutput } from '../logs/parser.js'
+import logger from '../shared/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -84,7 +85,7 @@ router.post('/start', async (req, res) => {
                     currentProfile = null;
                 }
 
-                console.log(`[Python] ${log.message}`)
+                logger.info({ source: 'python' }, log.message)
                 broadcast({
                     type: log.eventType ? log.eventType : 'log',
                     message: log.message,
@@ -102,7 +103,7 @@ router.post('/start', async (req, res) => {
             const parsed = parseLogOutput(raw)
 
             for (const log of parsed) {
-                console.error(`[Python Error] ${log.message}`)
+                logger.error({ source: 'python' }, log.message)
                 broadcast({
                     type: 'log',
                     message: log.message,
@@ -114,7 +115,7 @@ router.post('/start', async (req, res) => {
 
         // Handle process exit
         automationState.process.on('close', (code) => {
-            console.log(`[Python] Process exited with code ${code}`)
+            logger.info({ code }, 'Python process exited')
             clearPid()
             markStopped()
             automationState.process = null
@@ -129,7 +130,7 @@ router.post('/start', async (req, res) => {
         })
 
         automationState.process.on('error', (err) => {
-            console.error('[Python] Process error:', err)
+            logger.error({ err }, 'Python process error')
             clearPid()
             markStopped()
             automationState.process = null
@@ -173,7 +174,7 @@ router.post('/stop', async (req, res) => {
             await new Promise<void>((resolve) => {
                 execFile('taskkill', ['/pid', String(pid), '/t', '/f'], (err) => {
                     if (err) {
-                        console.error('[Taskkill Error]', err)
+                        logger.error({ err }, 'Taskkill error')
                     }
                     resolve()
                 })
@@ -257,8 +258,8 @@ router.post('/login', async (req, res) => {
                 if (message.includes('__LOGIN_SUCCESS__')) {
                     broadcast({ type: 'log', message: 'Login Successful', level: 'success', source: 'login', profileName })
                     // Auto-mark profile as logged in
-                    profilesSetLoginTrue(profileName).catch(err => {
-                        console.error('[Login Auto-Update Error]', err)
+                    profilesSetLoginTrue(profileName).catch(loginErr => {
+                        logger.error({ err: loginErr, profileName }, 'Login auto-update error')
                     })
                 }
                 broadcast({ type: 'log', message, level: 'info', source: 'login', profileName })

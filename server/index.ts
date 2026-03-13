@@ -23,6 +23,7 @@ import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { profileManager } from './data/profiles.js'
 import { profileProcesses } from './store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
+import logger from './shared/logger.js'
 
 const app = express()
 const server = createServer(app)
@@ -58,6 +59,25 @@ app.use((req, res, next) => {
 
 app.use(express.json())
 
+// HTTP request logging middleware
+let requestCounter = 0
+app.use((req, res, next) => {
+    const reqId = ++requestCounter
+    const start = Date.now()
+    ;(req as any).id = reqId
+
+    res.on('finish', () => {
+        logger.info({
+            reqId,
+            method: req.method,
+            url: req.originalUrl,
+            status: res.statusCode,
+            duration: Date.now() - start,
+        }, 'HTTP request')
+    })
+    next()
+})
+
 // Initialize Clerk middleware (parses auth tokens)
 app.use(clerkAuth)
 
@@ -87,21 +107,21 @@ async function startServer(): Promise<void> {
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
     if (reconciled.cleared > 0) {
-        console.log(`[Server] Cleared stale running status for ${reconciled.cleared} profile(s)`)
+        logger.info({ cleared: reconciled.cleared }, 'Cleared stale running status for profile(s)')
     }
     if (reconciled.errors.length > 0) {
         for (const err of reconciled.errors) {
-            console.error(`[Server] ${err}`)
+            logger.error({ err }, 'Reconciliation error')
         }
     }
 
     server.listen(PORT, () => {
-        console.log(`[Server] API server running on http://localhost:${PORT}`)
-        console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`)
+        logger.info({ port: PORT }, 'API server running')
+        logger.info({ port: PORT }, 'WebSocket available')
     })
 }
 
 startServer().catch((err) => {
-    console.error('[Server] Startup failed:', err)
+    logger.fatal({ err }, 'Startup failed')
     process.exit(1)
 })

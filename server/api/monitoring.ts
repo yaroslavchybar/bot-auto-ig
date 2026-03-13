@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { collectMonitoringSnapshot } from './monitoring-shared.js'
+import logger from '../shared/logger.js'
 
 const router = Router()
 
@@ -8,7 +9,7 @@ router.get('/', async (_req, res) => {
     const snapshot = await collectMonitoringSnapshot()
     res.json(snapshot)
   } catch (err) {
-    console.error('[Monitoring] Error collecting metrics:', err)
+    logger.error({ err }, 'Error collecting monitoring metrics')
     res.status(500).json({ error: 'Failed to collect system metrics' })
   }
 })
