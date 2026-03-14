@@ -1,5 +1,112 @@
-import type { HttpRouter } from 'convex/server';
+import type { ActionCtx, HttpRouter } from 'convex/server';
 import { httpAction } from '../_generated/server';
+
+// ═══════════════════════════════════════════════════════════════════
+// HTTP Error Classes
+// ═══════════════════════════════════════════════════════════════════
+
+/** Base error for HTTP actions with a status code. */
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    public readonly statusCode: number,
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
+/** 400 Bad Request — invalid input or missing required fields. */
+export class ValidationError extends HttpError {
+  constructor(message: string) {
+    super(message, 400);
+    this.name = 'ValidationError';
+  }
+}
+
+/** 404 Not Found — requested resource does not exist. */
+export class NotFoundError extends HttpError {
+  constructor(message: string) {
+    super(message, 404);
+    this.name = 'NotFoundError';
+  }
+}
+
+/** 409 Conflict — operation conflicts with current resource state. */
+export class ConflictError extends HttpError {
+  constructor(message: string) {
+    super(message, 409);
+    this.name = 'ConflictError';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Error Categorization
+// ═══════════════════════════════════════════════════════════════════
+
+const NOT_FOUND_PATTERNS = [
+  'not found',
+  'does not exist',
+  'no such',
+];
+
+const CONFLICT_PATTERNS = [
+  'already running',
+  'already finished',
+  'cannot update running',
+  'cannot delete running',
+  'cannot reset running',
+  'can only pause running',
+  'can only resume paused',
+  'can only retry failed',
+  'daily run limit',
+  'maximum retries',
+];
+
+function categorizeError(err: unknown): { message: string; status: number } {
+  if (err instanceof HttpError) {
+    return { message: err.message, status: err.statusCode };
+  }
+
+  const message = String((err as any)?.message || err);
+  const lower = message.toLowerCase();
+
+  if (NOT_FOUND_PATTERNS.some((p) => lower.includes(p))) {
+    return { message, status: 404 };
+  }
+  if (CONFLICT_PATTERNS.some((p) => lower.includes(p))) {
+    return { message, status: 409 };
+  }
+
+  return { message, status: 500 };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Handler Wrapper
+// ═══════════════════════════════════════════════════════════════════
+
+type HandlerFn = (ctx: ActionCtx, request: Request) => Promise<Response>;
+
+/**
+ * Wraps an HTTP action handler with auth check and error handling.
+ * Replaces inline try/catch + requireAuth boilerplate.
+ */
+export function withErrorHandling(handler: HandlerFn) {
+  return httpAction(async (ctx, request) => {
+    const authError = await requireAuth(request);
+    if (authError) return authError;
+    try {
+      return await handler(ctx, request);
+    } catch (err: unknown) {
+      const { message, status } = categorizeError(err);
+      return jsonResponse({ error: message }, status);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Response & Auth Helpers
+// ═══════════════════════════════════════════════════════════════════
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

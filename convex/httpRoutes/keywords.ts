@@ -1,7 +1,6 @@
 import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
-import { httpAction } from '../_generated/server';
-import { jsonResponse, parseBody, registerPreflight, requireAuth } from './shared';
+import { jsonResponse, parseBody, registerPreflight, withErrorHandling } from './shared';
 
 const keywordPaths = ['/api/keywords', '/api/keywords/delete'];
 
@@ -11,58 +10,40 @@ export function registerKeywordRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/keywords',
     method: 'GET',
-    handler: httpAction(async (ctx, request) => {
-      const authError = await requireAuth(request);
-      if (authError) return authError;
-      try {
-        const url = new URL(request.url);
-        const filename = (url.searchParams.get('filename') || '').trim();
-        if (filename) {
-          const content = await ctx.runQuery(internal.keywords.get, { filename });
-          return jsonResponse(content);
-        }
-        const keywords = await ctx.runQuery(internal.keywords.list, {});
-        return jsonResponse(keywords);
-      } catch (err: any) {
-        return jsonResponse({ error: String(err?.message || err) }, 400);
+    handler: withErrorHandling(async (ctx, request) => {
+      const url = new URL(request.url);
+      const filename = (url.searchParams.get('filename') || '').trim();
+      if (filename) {
+        const content = await ctx.runQuery(internal.keywords.get, { filename });
+        return jsonResponse(content);
       }
+      const keywords = await ctx.runQuery(internal.keywords.list, {});
+      return jsonResponse(keywords);
     }),
   });
 
   http.route({
     path: '/api/keywords',
     method: 'POST',
-    handler: httpAction(async (ctx, request) => {
-      const authError = await requireAuth(request);
-      if (authError) return authError;
-      try {
-        const body = await parseBody(request);
-        const result = await ctx.runMutation(internal.keywords.upsert, {
-          filename: body?.filename,
-          content: body?.content,
-        });
-        return jsonResponse(result);
-      } catch (err: any) {
-        return jsonResponse({ error: String(err?.message || err) }, 400);
-      }
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const result = await ctx.runMutation(internal.keywords.upsert, {
+        filename: body?.filename,
+        content: body?.content,
+      });
+      return jsonResponse(result);
     }),
   });
 
   http.route({
     path: '/api/keywords/delete',
     method: 'POST',
-    handler: httpAction(async (ctx, request) => {
-      const authError = await requireAuth(request);
-      if (authError) return authError;
-      try {
-        const body = await parseBody(request);
-        const result = await ctx.runMutation(internal.keywords.remove, {
-          filename: body?.filename,
-        });
-        return jsonResponse(result);
-      } catch (err: any) {
-        return jsonResponse({ error: String(err?.message || err) }, 400);
-      }
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const result = await ctx.runMutation(internal.keywords.remove, {
+        filename: body?.filename,
+      });
+      return jsonResponse(result);
     }),
   });
 }
