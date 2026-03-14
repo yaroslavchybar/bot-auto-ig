@@ -9,8 +9,10 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useRouteError,
 } from 'react-router'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
+import * as Sentry from '@sentry/react-router'
 import type { Route } from './+types/root'
 import './index.css'
 import { getClerkAppearance } from '@/components/shared/clerk-appearance'
@@ -143,5 +145,11 @@ export default function Root({ loaderData }: Route.ComponentProps) {
 }
 
 export function ErrorBoundary() {
+  const error = useRouteError()
+
+  useEffect(() => {
+    Sentry.captureException(error)
+  }, [error])
+
   return <RouteErrorView title="Application Error" />
 }

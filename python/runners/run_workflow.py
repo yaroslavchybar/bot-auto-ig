@@ -261,4 +261,9 @@ def _choose_weighted(handles: List[str], weights_str: str) -> str:
 
 if __name__ == '__main__':
     setup_logging()
-    raise SystemExit(main())
+    from python.core.sentry import flush_sentry, init_sentry
+    init_sentry()
+    try:
+        raise SystemExit(main())
+    finally:
+        flush_sentry()

@@ -11,7 +11,7 @@ type AsyncRouteHandler = (
   req: Request,
   res: Response,
   next: NextFunction,
-) => Promise<void>
+) => Promise<any>
 
 export function asyncHandler(fn: AsyncRouteHandler) {
   return (req: Request, res: Response, next: NextFunction): void => {

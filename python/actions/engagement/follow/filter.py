@@ -5,6 +5,10 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
     """
     Try to extract the "following" count from an Instagram profile page.
     Uses multiple selectors and aria labels to improve resilience.
+
+    NOTE: The JavaScript evaluate() patterns below contain intentional Cyrillic
+    text-matching strings (подписки, подписок). These match Instagram's
+    Russian-locale UI stats and must be preserved for multi-locale support.
     """
     try:
         try:
@@ -81,6 +85,11 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
 def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
     """
     Try to extract the "posts" count from an Instagram profile page.
+
+    NOTE: The JavaScript evaluate() patterns below contain intentional Cyrillic
+    text-matching strings (публикаций, публикации, публикация). These match
+    Instagram's Russian-locale UI stats and must be preserved for multi-locale
+    support.
     """
     try:
         return page.evaluate(

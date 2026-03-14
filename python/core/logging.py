@@ -62,6 +62,8 @@ def setup_logging(log_file: str = DEFAULT_LOG_FILE):
     logging.root.addHandler(handler)
     logging.root.addHandler(console_handler)
 
-    # Quiet down some noisy libraries
+    # Intentional third-party noise suppression: these hardcoded logger names
+    # target the urllib3 and playwright libraries (not project modules) to reduce
+    # verbose HTTP connection and browser protocol chatter in logs.
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("playwright").setLevel(logging.WARNING)
