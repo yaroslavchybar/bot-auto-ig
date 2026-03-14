@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { activeDisplays } from '../store.js'
+import { activeDisplays } from '../shared/store.js'
 
 const router = Router()
 

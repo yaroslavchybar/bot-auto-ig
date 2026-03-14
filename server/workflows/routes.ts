@@ -2,8 +2,8 @@ import { Router } from 'express'
 import {
   workflowArtifactsGetStorageUrl,
   workflowArtifactsListByWorkflow,
-} from '../data/convex.js'
-import { workflowWorkers } from '../store.js'
+} from '../shared/convexClient.js'
+import { workflowWorkers } from '../shared/store.js'
 import {
   getWorkflowStatus,
   runWorkflow,

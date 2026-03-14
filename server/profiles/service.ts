@@ -7,8 +7,8 @@ import type { Profile } from './data.js'
 import {
   profilesSyncStatus,
   profilesUpdateByName,
-} from '../data/convex.js'
-import { activeDisplays, profileProcesses } from '../store.js'
+} from '../shared/convexClient.js'
+import { activeDisplays, profileProcesses } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'

@@ -8,7 +8,7 @@ import {
   profilesList,
   profilesSyncStatus,
   profilesUpdateByName,
-} from '../data/convex.js'
+} from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)

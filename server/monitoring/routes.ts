@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { collectMonitoringSnapshot } from './monitoring-shared.js'
+import { collectMonitoringSnapshot } from './shared.js'
 import logger from '../shared/logger.js'
 
 const router = Router()

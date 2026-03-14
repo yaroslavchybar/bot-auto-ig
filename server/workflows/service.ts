@@ -1,7 +1,7 @@
 import { spawn, execFile } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import { activeDisplays, workflowWorkers } from '../store.js'
+import { activeDisplays, workflowWorkers } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../shared/mutex.js'
 import { parseLogOutput } from '../logs/parser.js'
@@ -9,7 +9,7 @@ import {
   workflowsGetById,
   workflowsStart,
   workflowsUpdateStatus,
-} from '../data/convex.js'
+} from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)

@@ -8,8 +8,8 @@ import {
   profilesBulkRemoveFromList,
   profilesSyncStatus,
   profilesSetLoginTrue,
-} from '../data/convex.js'
-import { profileProcesses } from '../store.js'
+} from '../shared/convexClient.js'
+import { profileProcesses } from '../shared/store.js'
 import {
   normalizeProfileInput,
   generateFingerprint,

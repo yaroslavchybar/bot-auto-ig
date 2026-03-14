@@ -1,6 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
-import { clients, logsStore, MAX_LOGS, automationState } from './store.js'
+import { clients, logsStore, MAX_LOGS, automationState } from './shared/store.js'
 import { appendLog as appendFileLog } from './logs/store.js'
 import { verifyToken } from '@clerk/express'
 import logger from './shared/logger.js'

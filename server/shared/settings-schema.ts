@@ -1,4 +1,4 @@
-import { InstagramSettings, ACTIONS } from '../types/index.js';
+import { InstagramSettings, ACTIONS } from './types.js';
 
 export function validateSettings(settings: any): InstagramSettings | Error {
 	if (typeof settings !== 'object' || settings === null) {
