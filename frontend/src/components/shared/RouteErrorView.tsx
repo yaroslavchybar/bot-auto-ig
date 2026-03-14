@@ -1,4 +1,6 @@
 import { isRouteErrorResponse, useRouteError } from 'react-router'
+import { useEffect } from 'react'
+import * as Sentry from '@sentry/react-router'
 import { AlertTriangle } from 'lucide-react'
 
 type RouteErrorViewProps = {
@@ -7,6 +9,10 @@ type RouteErrorViewProps = {
 
 export function RouteErrorView({ title }: RouteErrorViewProps) {
   const error = useRouteError()
+
+  useEffect(() => {
+    Sentry.captureException(error)
+  }, [error])
 
   const message = isRouteErrorResponse(error)
     ? `${error.status} ${error.statusText}`
