@@ -172,22 +172,15 @@ function deriveTaskPreviewFields(
   }
 }
 
-function useScrapingHandlers(
+function useScrapingHandlerActions(
   selection: ReturnType<typeof useTaskSelection>,
   refreshScrapingTasks: () => Promise<ScrapingTaskRow[]>,
-  processScrapingTask: ScrapingTasksInput['processScrapingTask'],
-  selectedTaskMissingUsername: boolean,
+  setScrapingResult: React.Dispatch<React.SetStateAction<ProcessingSummary | null>>,
 ) {
-  const [processingTaskId, setProcessingTaskId] = useState<string | null>(
-    null,
-  )
-  const [scrapingResult, setScrapingResult] =
-    useState<ProcessingSummary | null>(null)
-
   const handleScrapingReset = useCallback(() => {
     selection.clearSelection()
     setScrapingResult(null)
-  }, [selection])
+  }, [selection, setScrapingResult])
 
   const handleRefreshScrapingTasks = useCallback(async () => {
     const tasks = await refreshScrapingTasks()
@@ -195,10 +188,7 @@ function useScrapingHandlers(
     const stillExists = tasks.some(
       (task) => String(task._id || '') === selection.selectedTaskId,
     )
-    if (!stillExists) {
-      selection.clearSelection()
-      return
-    }
+    if (!stillExists) { selection.clearSelection(); return }
     await selection.loadSelectedTaskPreview(selection.selectedTaskId)
   }, [selection, refreshScrapingTasks])
 
@@ -210,14 +200,26 @@ function useScrapingHandlers(
       setScrapingResult(null)
       await selection.loadSelectedTaskPreview(taskId)
     },
-    [selection],
+    [selection, setScrapingResult],
   )
+
+  return { handleScrapingReset, handleRefreshScrapingTasks, handleSelectTask }
+}
+
+function useScrapingHandlers(
+  selection: ReturnType<typeof useTaskSelection>,
+  refreshScrapingTasks: () => Promise<ScrapingTaskRow[]>,
+  processScrapingTask: ScrapingTasksInput['processScrapingTask'],
+  selectedTaskMissingUsername: boolean,
+) {
+  const [processingTaskId, setProcessingTaskId] = useState<string | null>(null)
+  const [scrapingResult, setScrapingResult] = useState<ProcessingSummary | null>(null)
+
+  const actions = useScrapingHandlerActions(selection, refreshScrapingTasks, setScrapingResult)
 
   const handleProcessTask = useCallback(async () => {
     const { selectedTaskId, selectedTaskPreview } = selection
-    if (!selectedTaskId || !selectedTaskPreview || selectedTaskMissingUsername) {
-      return
-    }
+    if (!selectedTaskId || !selectedTaskPreview || selectedTaskMissingUsername) return
     setProcessingTaskId(selectedTaskId)
     selection.setSelectedTaskError(null)
     try {
@@ -228,32 +230,20 @@ function useScrapingHandlers(
         environments: DEFAULT_PROCESS_ENVIRONMENTS,
         accountStatus: 'available',
       })
-      setScrapingResult({
-        stats: result.stats,
-        uploaded: result.uploaded,
-        duplicates: result.duplicates,
-      })
+      setScrapingResult({ stats: result.stats, uploaded: result.uploaded, duplicates: result.duplicates })
       await refreshScrapingTasks()
     } catch (error) {
-      selection.setSelectedTaskError(
-        error instanceof Error ? error.message : String(error),
-      )
+      selection.setSelectedTaskError(error instanceof Error ? error.message : String(error))
     } finally {
       setProcessingTaskId(null)
     }
-  }, [
-    processScrapingTask,
-    refreshScrapingTasks,
-    selection,
-    selectedTaskMissingUsername,
-  ])
+  }, [processScrapingTask, refreshScrapingTasks, selection, selectedTaskMissingUsername])
 
   return {
-    processingTaskId,
-    scrapingResult,
-    handleScrapingReset,
-    handleRefreshScrapingTasks,
-    handleSelectTask,
+    processingTaskId, scrapingResult,
+    handleScrapingReset: actions.handleScrapingReset,
+    handleRefreshScrapingTasks: actions.handleRefreshScrapingTasks,
+    handleSelectTask: actions.handleSelectTask,
     handleProcessTask,
   }
 }

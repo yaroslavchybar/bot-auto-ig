@@ -43,6 +43,69 @@ export function NodeSettingsPanel({
 }
 
 // ============================================================================
+// Settings Panel Shell
+// ============================================================================
+
+function SettingsPanelShell({
+  suppressed,
+  children,
+}: {
+  suppressed: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={cn(
+        'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs',
+        suppressed && 'hidden',
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
+// ============================================================================
+// Settings Panel Header
+// ============================================================================
+
+function SettingsPanelHeader({
+  icon,
+  title,
+  subtitle,
+  onClose,
+}: {
+  icon: React.ReactNode
+  title: string
+  subtitle: string
+  onClose: () => void
+}) {
+  return (
+    <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center gap-2">
+        {icon}
+        <div className="flex flex-col gap-0.5">
+          <h3 className="text-ink text-sm leading-none font-semibold">
+            {title}
+          </h3>
+          <p className="text-subtle-copy font-mono text-[10px] leading-none tracking-[0.18em] uppercase">
+            {subtitle}
+          </p>
+        </div>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg"
+        onClick={onClose}
+      >
+        <X className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
+// ============================================================================
 // Start Node Settings
 // ============================================================================
 
@@ -56,36 +119,17 @@ function StartNodeSettings({
   suppressed = false,
 }: StartNodeSettingsProps) {
   return (
-    <div
-      className={cn(
-        'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs',
-        suppressed && 'hidden',
-      )}
-    >
-      <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
+    <SettingsPanelShell suppressed={suppressed}>
+      <SettingsPanelHeader
+        icon={
           <div className="bg-status-success-soft border-status-success-border rounded-lg border p-2">
             <Play className="text-status-success h-4 w-4" />
           </div>
-          <div className="flex flex-col gap-0.5">
-            <h3 className="text-ink text-sm leading-none font-semibold">
-              Start Node
-            </h3>
-            <p className="text-subtle-copy font-mono text-[10px] leading-none tracking-[0.18em] uppercase">
-              Workflow Entry
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
+        }
+        title="Start Node"
+        subtitle="Workflow Entry"
+        onClose={onClose}
+      />
       <ScrollArea className="flex-1 bg-transparent">
         <div className="space-y-3 p-4">
           <p className="text-muted-copy text-sm leading-relaxed">
@@ -98,7 +142,7 @@ function StartNodeSettings({
           </p>
         </div>
       </ScrollArea>
-    </div>
+    </SettingsPanelShell>
   )
 }
 
@@ -113,16 +157,69 @@ interface ActivityNodeSettingsProps {
   suppressed?: boolean
 }
 
-function ActivityNodeSettings({
-  node,
-  onUpdate,
+/* ── Unknown activity fallback ── */
+
+function UnknownActivityPanel({
+  activityId,
+  suppressed,
   onClose,
-  suppressed = false,
+}: {
+  activityId: string
+  suppressed: boolean
+  onClose: () => void
+}) {
+  return (
+    <SettingsPanelShell suppressed={suppressed}>
+      <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center justify-between border-b px-4 py-3">
+        <h3 className="text-ink text-sm leading-none font-semibold">Unknown Activity</h3>
+        <Button
+          variant="ghost" size="icon"
+          className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg"
+          onClick={onClose}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="text-subtle-copy p-4 text-sm">
+        Activity &quot;{activityId}&quot; not found in registry
+      </div>
+    </SettingsPanelShell>
+  )
+}
+
+/* ── Activity settings body ── */
+
+function ActivitySettingsBody({
+  activity,
+  config,
+  onChange,
+}: {
+  activity: { description: string; inputs: { name: string }[] }
+  config: Record<string, unknown>
+  onChange: (name: string, value: unknown) => void
+}) {
+  return (
+    <ScrollArea className="flex-1 bg-transparent">
+      <div className="space-y-4 p-4">
+        <p className="text-subtle-copy border-line-soft border-b pb-3 text-xs leading-relaxed">
+          {activity.description}
+        </p>
+        {activity.inputs.length === 0 ? (
+          <p className="text-subtle-copy text-sm">This activity has no configurable inputs.</p>
+        ) : (
+          <GroupedInputs inputs={activity.inputs} config={config} onChange={onChange} />
+        )}
+      </div>
+    </ScrollArea>
+  )
+}
+
+function ActivityNodeSettings({
+  node, onUpdate, onClose, suppressed = false,
 }: ActivityNodeSettingsProps) {
   const activityId = node.data?.activityId as string
   const activity = getActivityById(activityId)
   const initialConfig = (node.data?.config as Record<string, unknown>) || {}
-
   const [config, setConfig] = useState<Record<string, unknown>>(initialConfig)
 
   const handleChange = useCallback((name: string, value: unknown) => {
@@ -130,109 +227,29 @@ function ActivityNodeSettings({
   }, [])
 
   const handleSave = useCallback(() => {
-    onUpdate(node.id, {
-      ...node.data,
-      config,
-    })
+    onUpdate(node.id, { ...node.data, config })
   }, [node.id, node.data, config, onUpdate])
 
   if (!activity) {
-    return (
-      <div
-        className={cn(
-          'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs',
-          suppressed && 'hidden',
-        )}
-      >
-        <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center justify-between border-b px-4 py-3">
-          <h3 className="text-ink text-sm leading-none font-semibold">
-            Unknown Activity
-          </h3>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="text-subtle-copy p-4 text-sm">
-          Activity "{activityId}" not found in registry
-        </div>
-      </div>
-    )
+    return <UnknownActivityPanel activityId={activityId} suppressed={suppressed} onClose={onClose} />
   }
 
   return (
-    <div
-      className={cn(
-        'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs',
-        suppressed && 'hidden',
-      )}
-    >
-      <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center justify-between border-b px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div
-            className="border-line rounded-lg border p-2"
-            style={{ backgroundColor: `${activity.color}15` }}
-          >
-            <Settings2
-              className="h-4 w-4"
-              style={{ color: activity.color }}
-            />
+    <SettingsPanelShell suppressed={suppressed}>
+      <SettingsPanelHeader
+        icon={
+          <div className="border-line rounded-lg border p-2" style={{ backgroundColor: `${activity.color}15` }}>
+            <Settings2 className="h-4 w-4" style={{ color: activity.color }} />
           </div>
-          <div className="flex flex-col gap-0.5">
-            <h3 className="text-ink text-sm leading-none font-semibold">
-              {activity.name}
-            </h3>
-            <p className="text-subtle-copy font-mono text-[10px] leading-none tracking-[0.18em] uppercase">
-              {activity.category}
-            </p>
-          </div>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg"
-          onClick={onClose}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <ScrollArea className="flex-1 bg-transparent">
-        <div className="space-y-4 p-4">
-          <p className="text-subtle-copy border-line-soft border-b pb-3 text-xs leading-relaxed">
-            {activity.description}
-          </p>
-
-          {activity.inputs.length === 0 ? (
-            <p className="text-subtle-copy text-sm">
-              This activity has no configurable inputs.
-            </p>
-          ) : (
-            <GroupedInputs
-              inputs={activity.inputs}
-              config={config}
-              onChange={handleChange}
-            />
-          )}
-        </div>
-      </ScrollArea>
-
+        }
+        title={activity.name} subtitle={activity.category} onClose={onClose}
+      />
+      <ActivitySettingsBody activity={activity} config={config} onChange={handleChange} />
       <div className="border-line-soft bg-panel-subtle border-t p-3">
-        <Button
-          className="brand-button h-9 w-full rounded-lg text-sm"
-          size="sm"
-          onClick={handleSave}
-        >
+        <Button className="brand-button h-9 w-full rounded-lg text-sm" size="sm" onClick={handleSave}>
           Apply Changes
         </Button>
       </div>
-    </div>
+    </SettingsPanelShell>
   )
 }
-
-
-

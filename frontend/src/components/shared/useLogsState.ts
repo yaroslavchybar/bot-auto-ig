@@ -107,12 +107,9 @@ export function useLogsState({
   }
 }
 
-// --- Fetching hook: data loading, WebSocket, mode switching ---
+// --- Core state for logs fetching ---
 
-function useLogsFetching(
-  liveBufferSize: number,
-  workflowId: string | null | undefined,
-) {
+function useLogsCoreState(liveBufferSize: number) {
   const [mode, setMode] = useState<LogsMode>('live')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -121,15 +118,24 @@ function useLogsFetching(
   const [files, setFiles] = useState<LogFileItem[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-
-  const { logs: wsLogs, connected: wsConnected } = useWebSocket({
-    workflowId,
-    enabled: mode === 'live',
-    pauseWhenHidden: true,
-    maxBuffer: liveBufferSize,
-  })
-
   const processedWsLogsRef = useRef(0)
+
+  return {
+    mode, setMode, logs, setLogs, loading, setLoading,
+    filesLoading, setFilesLoading, refreshing, setRefreshing,
+    files, setFiles, selectedFile, setSelectedFile,
+    error, setError, processedWsLogsRef, liveBufferSize,
+  }
+}
+
+// --- Data loading helpers ---
+
+function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
+  const {
+    liveBufferSize, setLoading, setError, setLogs,
+    processedWsLogsRef, setMode, selectedFile,
+    setFilesLoading, setFiles, setSelectedFile,
+  } = state
 
   const loadLiveLogs = useCallback(async () => {
     setLoading(true)
@@ -144,7 +150,7 @@ function useLogsFetching(
     } finally {
       setLoading(false)
     }
-  }, [liveBufferSize])
+  }, [liveBufferSize, processedWsLogsRef, setError, setLoading, setLogs, setMode])
 
   const loadFiles = useCallback(async () => {
     setFilesLoading(true)
@@ -153,9 +159,7 @@ function useLogsFetching(
       const data = await apiFetch<string[]>('/api/logs/files')
       const items = (data || []).map((f) => ({ label: f, value: f }))
       setFiles(items)
-      if (!selectedFile && items[0]) {
-        setSelectedFile(items[0].value)
-      }
+      if (!selectedFile && items[0]) setSelectedFile(items[0].value)
       return items
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -163,7 +167,7 @@ function useLogsFetching(
     } finally {
       setFilesLoading(false)
     }
-  }, [selectedFile])
+  }, [selectedFile, setError, setFiles, setFilesLoading, setSelectedFile])
 
   const loadFileLogs = useCallback(
     async (filename: string) => {
@@ -182,26 +186,42 @@ function useLogsFetching(
         setLoading(false)
       }
     },
-    [liveBufferSize],
+    [liveBufferSize, setError, setLoading, setLogs, setMode],
   )
+
+  return { loadLiveLogs, loadFiles, loadFileLogs }
+}
+
+// --- Fetching hook: data loading, WebSocket, mode switching ---
+
+function useLogsFetching(
+  liveBufferSize: number,
+  workflowId: string | null | undefined,
+) {
+  const state = useLogsCoreState(liveBufferSize)
+  const {
+    mode, setMode, logs, loading, filesLoading, refreshing, setRefreshing,
+    error, files, selectedFile, setSelectedFile, setLogs, setLoading,
+    setError, processedWsLogsRef,
+  } = state
+  const { loadLiveLogs, loadFiles, loadFileLogs } = useLogsDataLoading(state)
+
+  const { logs: wsLogs, connected: wsConnected } = useWebSocket({
+    workflowId,
+    enabled: mode === 'live',
+    pauseWhenHidden: true,
+    maxBuffer: liveBufferSize,
+  })
 
   const refreshStaticLogs = useCallback(async () => {
     const items = await loadFiles()
     const nextFile = selectedFile
       ? items.find((item) => item.value === selectedFile)?.value ?? null
       : (items[0]?.value ?? null)
-
-    if (!nextFile) {
-      setSelectedFile(null)
-      setLogs([])
-      return
-    }
-    if (nextFile !== selectedFile) {
-      setSelectedFile(nextFile)
-      return
-    }
+    if (!nextFile) { setSelectedFile(null); setLogs([]); return }
+    if (nextFile !== selectedFile) { setSelectedFile(nextFile); return }
     await loadFileLogs(nextFile)
-  }, [loadFileLogs, loadFiles, selectedFile])
+  }, [loadFileLogs, loadFiles, selectedFile, setLogs, setSelectedFile])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
@@ -213,7 +233,7 @@ function useLogsFetching(
     } finally {
       setRefreshing(false)
     }
-  }, [loadLiveLogs, mode, refreshStaticLogs])
+  }, [loadLiveLogs, mode, refreshStaticLogs, setRefreshing])
 
   const handleClearLive = useCallback(async () => {
     setLoading(true)
@@ -226,59 +246,29 @@ function useLogsFetching(
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setError, setLoading, setLogs])
 
-  // Load live logs on mount
-  useEffect(() => {
-    void loadLiveLogs()
-  }, [loadLiveLogs])
-
-  // Merge WebSocket logs in live mode
+  useEffect(() => { void loadLiveLogs() }, [loadLiveLogs])
   useWsLogMerge(mode, wsLogs, processedWsLogsRef, liveBufferSize, setLogs)
 
-  // Load files when switching to static mode
   useEffect(() => {
-    if (mode === 'static' && files.length === 0 && !filesLoading) {
-      void loadFiles()
-    }
+    if (mode === 'static' && files.length === 0 && !filesLoading) void loadFiles()
   }, [files.length, filesLoading, loadFiles, mode])
 
-  // Load file logs when selected file changes
   useEffect(() => {
-    if (mode === 'static' && selectedFile) {
-      void loadFileLogs(selectedFile)
-    }
+    if (mode === 'static' && selectedFile) void loadFileLogs(selectedFile)
   }, [mode, selectedFile, loadFileLogs])
 
-  const switchToLive = useCallback(() => {
-    setMode('live')
-    void loadLiveLogs()
-  }, [loadLiveLogs])
-
-  const switchToStatic = useCallback(() => {
-    setMode('static')
-  }, [])
-
+  const switchToLive = useCallback(() => { setMode('live'); void loadLiveLogs() }, [loadLiveLogs, setMode])
+  const switchToStatic = useCallback(() => { setMode('static') }, [setMode])
   const handleFileChange = useCallback((value: string) => {
-    setSelectedFile(value)
-    setMode('static')
-  }, [])
+    setSelectedFile(value); setMode('static')
+  }, [setMode, setSelectedFile])
 
   return {
-    mode,
-    wsConnected,
-    logs,
-    loading,
-    filesLoading,
-    refreshing,
-    error,
-    files,
-    selectedFile,
-    switchToLive,
-    switchToStatic,
-    handleRefresh,
-    handleClearLive,
-    handleFileChange,
+    mode, wsConnected, logs, loading, filesLoading, refreshing, error,
+    files, selectedFile, switchToLive, switchToStatic,
+    handleRefresh, handleClearLive, handleFileChange,
   }
 }
 
@@ -293,19 +283,13 @@ function useWsLogMerge(
 ) {
   useEffect(() => {
     if (mode !== 'live') return
-    if (wsLogs.length < processedRef.current) {
-      processedRef.current = 0
-    }
-
+    if (wsLogs.length < processedRef.current) processedRef.current = 0
     const newEntries = wsLogs.slice(processedRef.current)
     if (newEntries.length === 0) return
-
     processedRef.current = wsLogs.length
-
     setLogs((prev) => {
       const seen = new Set(prev.map((e) => `${e.ts}-${e.message}`))
       const appended = [...prev]
-
       for (const w of newEntries) {
         const key = `${w.ts}-${w.message}`
         if (!seen.has(key)) {
@@ -313,7 +297,6 @@ function useWsLogMerge(
           appended.push({ ...w, profileName: w.profileName || undefined })
         }
       }
-
       return appended.slice(-bufferSize)
     })
   }, [bufferSize, mode, wsLogs, processedRef, setLogs])
@@ -343,7 +326,6 @@ function useLogsFiltering({
 
   const resetVisibleCount = useCallback(() => setVisibleCount(LOGS_PAGE_SIZE), [])
 
-  // Wrap filter setters to auto-reset visible count
   const setFilterQuery = useCallback(
     (v: string | ((prev: string) => string)) => { setFilterQueryRaw(v); resetVisibleCount() },
     [resetVisibleCount],
@@ -392,9 +374,7 @@ interface FilterOptions {
 
 function filterLogs(logs: LogEntry[], opts: FilterOptions): LogEntry[] {
   const q = opts.filterQuery.trim().toLowerCase()
-  const scopedProfile = String(opts.profileName || '')
-    .trim()
-    .toLowerCase()
+  const scopedProfile = String(opts.profileName || '').trim().toLowerCase()
 
   return logs.filter((log) => {
     if (opts.workflowId) {
@@ -405,37 +385,17 @@ function filterLogs(logs: LogEntry[], opts: FilterOptions): LogEntry[] {
       const logProfile = String(log.profileName || '').trim().toLowerCase()
       if (!logProfile || logProfile !== scopedProfile) return false
     }
-    if (
-      opts.levelFilter !== 'all' &&
-      String(log.level || '').toLowerCase() !== opts.levelFilter
-    ) {
-      return false
-    }
-    if (opts.feedDebugOnly && !isFeedDebugMessage(String(log.message || ''))) {
-      return false
-    }
+    if (opts.levelFilter !== 'all' && String(log.level || '').toLowerCase() !== opts.levelFilter) return false
+    if (opts.feedDebugOnly && !isFeedDebugMessage(String(log.message || ''))) return false
     if (!q) return true
     return matchesQuery(log, q)
   })
 }
 
 function matchesQuery(log: LogEntry, q: string): boolean {
-  const msg = String(log.message || '').toLowerCase()
-  const src = String(log.source || '').toLowerCase()
-  const profile = String(log.profileName || '').toLowerCase()
-  const taskId = String(log.taskId || '').toLowerCase()
-  const target = String(log.targetUsername || '').toLowerCase()
-  const errorCode = String(log.errorCode || '').toLowerCase()
-  const outcome = String(log.outcome || '').toLowerCase()
-  const diagnostics = String(log.diagnostics || '').toLowerCase()
-  return (
-    msg.includes(q) ||
-    src.includes(q) ||
-    profile.includes(q) ||
-    taskId.includes(q) ||
-    target.includes(q) ||
-    errorCode.includes(q) ||
-    outcome.includes(q) ||
-    diagnostics.includes(q)
-  )
+  const fields = [
+    log.message, log.source, log.profileName, log.taskId,
+    log.targetUsername, log.errorCode, log.outcome, log.diagnostics,
+  ]
+  return fields.some((f) => String(f || '').toLowerCase().includes(q))
 }

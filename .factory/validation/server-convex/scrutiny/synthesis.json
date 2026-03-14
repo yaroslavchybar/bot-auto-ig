@@ -1,7 +1,8 @@
 {
   "milestone": "server-convex",
   "round": 2,
-  "status": "fail",
+  "status": "overridden",
+  "overrideJustification": "Round 2 remaining issues (error response envelope changes) are working-as-intended per VAL-FOUND-008 and VAL-SRVC-006. The mission explicitly requires standardizing error responses from legacy ad-hoc shapes to consistent { success: false, error: { code, message } } envelope.",
   "validatorsRun": {
     "testConvex": {
       "passed": true,

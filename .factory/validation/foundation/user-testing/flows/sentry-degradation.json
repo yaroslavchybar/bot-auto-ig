@@ -1,0 +1,61 @@
+{
+  "groupId": "sentry-degradation",
+  "surface": "web application",
+  "testedAt": "2026-03-14T18:12:03.516646Z",
+  "isolation": {
+    "appUrl": "http://localhost:5173",
+    "apiHealthUrl": "http://localhost:3001/api/health",
+    "browserSession": "9b5c46a2e2fd__u1",
+    "missionDir": "C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91",
+    "dsnOverrides": {
+      "SENTRY_DSN_SERVER": "blank",
+      "VITE_SENTRY_DSN": "blank"
+    }
+  },
+  "toolsUsed": [
+    "agent-browser",
+    "curl"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-009",
+      "title": "Sentry gracefully degrades when DSN absent",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Navigate to http://localhost:5173/ in the assigned browser session",
+          "expected": "App stays up with blank Sentry DSN and shows its expected unauthenticated redirect or landing state without a blank screen",
+          "observed": "The app stayed up and redirected to http://localhost:5173/sign-in, showing the sign-in form with Email, Password, Sign in, and Create one controls."
+        },
+        {
+          "action": "Navigate directly to http://localhost:5173/sign-in",
+          "expected": "Sign-in UI renders without a blank screen or uncaught exception when VITE_SENTRY_DSN is blank",
+          "observed": "The sign-in surface rendered successfully and remained interactive, but the browser console logged a React hydration mismatch error."
+        },
+        {
+          "action": "Inspect browser network activity during /sign-in load",
+          "expected": "No Sentry ingest traffic when the frontend DSN override is blank",
+          "observed": "The page loaded @sentry/react-router assets and sent POST requests to https://o4511032814534656.ingest.de.sentry.io/api/4511036982100048/envelope/, indicating frontend Sentry traffic still occurred."
+        },
+        {
+          "action": "GET http://localhost:3001/api/health",
+          "expected": "Server responds successfully while SENTRY_DSN_SERVER is blank",
+          "observed": "The endpoint returned HTTP 200 OK with body {\"status\":\"ok\",\"timestamp\":\"2026-03-14T18:10:58.740Z\"}."
+        }
+      ],
+      "evidence": {
+        "screenshots": [
+          "foundation/sentry-degradation/VAL-FOUND-009-root.png",
+          "foundation/sentry-degradation/VAL-FOUND-009-sign-in.png"
+        ],
+        "consoleErrors": "On /sign-in reload, console logged a React hydration mismatch error on <html> attributes (dark theme/className/style mismatch). An earlier / navigation also logged 'Failed to fetch dynamically imported module: http://localhost:5173/src/entry.client.tsx' plus 504 'Outdated Optimize Dep' resource errors before the sign-in page recovered.",
+        "network": "Frontend navigation redirected / -> /sign-in and loaded Clerk assets. Browser network log also captured POST requests to Sentry ingest (o4511032814534656.ingest.de.sentry.io) despite the blank frontend DSN override. Server health check: GET /api/health -> 200 OK.",
+        "api": "curl -i http://localhost:3001/api/health -> HTTP/1.1 200 OK; body {\"status\":\"ok\",\"timestamp\":\"2026-03-14T18:10:58.740Z\"}"
+      },
+      "issues": "The app did not blank-screen, and server health stayed green, but the frontend still emitted Sentry envelope requests and logged console errors while the test environment was supposed to have blank Sentry DSN overrides."
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 1 assertion (VAL-FOUND-009). Result: fail. The unauthenticated UI remained reachable and /api/health returned 200, but the frontend still sent Sentry ingest requests and logged console errors under the blank-DSN test setup."
+}

@@ -27,12 +27,9 @@ function localToUTC(
   tz: string,
 ): { hourUTC: number; minuteUTC: number } {
   if (tz === 'UTC') return { hourUTC: hour, minuteUTC: minute }
-  // Create a date in the target timezone, then read its UTC equivalent
   const now = new Date()
-  // Build a date string for today at the given local time
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`
-  // Get the UTC offset for this timezone
-  const utcDate = new Date(dateStr + 'Z') // treat as UTC
+  const utcDate = new Date(dateStr + 'Z')
   const localStr = utcDate.toLocaleString('en-US', {
     timeZone: tz,
     hour12: false,
@@ -40,12 +37,8 @@ function localToUTC(
     minute: '2-digit',
   })
   const [refH, refM] = localStr.split(':').map(Number)
-  const offsetMinutes = refH * 60 + refM - (hour * 60 + minute) // how far is tz from what we want
-  // We want: localTime = UTC + offset, so UTC = localTime - offset
-  // offset = refH:refM (what tz shows) - utcH:utcM (what we fed)
-  // So: utcH:utcM = enteredH:enteredM - offset
+  const offsetMinutes = refH * 60 + refM - (hour * 60 + minute)
   let targetMinutes = hour * 60 + minute - offsetMinutes
-  // Wrap around 24h
   targetMinutes = ((targetMinutes % 1440) + 1440) % 1440
   return {
     hourUTC: Math.floor(targetMinutes / 60),
@@ -131,20 +124,227 @@ export function ScheduleDialog({
   )
 }
 
-function ScheduleDialogInner({
-  open,
-  onOpenChange,
-  workflow,
-  saving,
-  onSave,
-}: ScheduleDialogProps) {
+/* ── Schedule Type Select ── */
+
+function ScheduleTypeField({
+  scheduleType,
+  onScheduleTypeChange,
+}: {
+  scheduleType: ScheduleType
+  onScheduleTypeChange: (v: ScheduleType) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-copy">Schedule Type</Label>
+      <Select
+        value={scheduleType}
+        onValueChange={(v) => onScheduleTypeChange(v as ScheduleType)}
+      >
+        <SelectTrigger className="brand-focus bg-field border-line text-ink">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="panel-dropdown">
+          <SelectItem value="interval">Interval (every X minutes)</SelectItem>
+          <SelectItem value="daily">Daily</SelectItem>
+          <SelectItem value="weekly">Weekly</SelectItem>
+          <SelectItem value="monthly">Monthly</SelectItem>
+          <SelectItem value="cron">Custom Cron</SelectItem>
+          <SelectItem value="instant">Instant Run</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+/* ── Interval Fields ── */
+
+function IntervalFields({
+  intervalMinutes,
+  onIntervalChange,
+}: {
+  intervalMinutes: number
+  onIntervalChange: (v: number) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-copy">Run every (minutes)</Label>
+      <Input
+        type="number"
+        min={1}
+        max={1440}
+        value={intervalMinutes}
+        onChange={(e) => onIntervalChange(Number(e.target.value))}
+        className="brand-focus bg-field border-line text-ink"
+      />
+      <p className="text-subtle-copy text-xs">
+        {intervalMinutes >= 60
+          ? `Every ${Math.round(intervalMinutes / 60)} hour(s)`
+          : `Every ${intervalMinutes} minute(s)`}
+      </p>
+    </div>
+  )
+}
+
+/* ── Timezone + Hour/Minute Fields ── */
+
+function TimeFields({
+  timezone,
+  hourUTC,
+  minuteUTC,
+  onTimezoneChange,
+  onHourChange,
+  onMinuteChange,
+}: {
+  timezone: string
+  hourUTC: number
+  minuteUTC: number
+  onTimezoneChange: (v: string) => void
+  onHourChange: (v: number) => void
+  onMinuteChange: (v: number) => void
+}) {
+  return (
+    <>
+      <div className="space-y-2">
+        <Label className="text-muted-copy">Timezone</Label>
+        <Select value={timezone} onValueChange={onTimezoneChange}>
+          <SelectTrigger className="brand-focus bg-field border-line text-ink">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="panel-dropdown">
+            {TIMEZONE_OPTIONS.map((tz) => (
+              <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-muted-copy">Hour</Label>
+          <Input
+            type="number" min={0} max={23} value={hourUTC}
+            onChange={(e) => onHourChange(Number(e.target.value))}
+            className="brand-focus bg-field border-line text-ink"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-muted-copy">Minute</Label>
+          <Input
+            type="number" min={0} max={59} value={minuteUTC}
+            onChange={(e) => onMinuteChange(Number(e.target.value))}
+            className="brand-focus bg-field border-line text-ink"
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
+/* ── Weekly Days Selector ── */
+
+function WeeklyDaysField({
+  daysOfWeek,
+  onToggleDay,
+}: {
+  daysOfWeek: number[]
+  onToggleDay: (day: number) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-copy">Days of Week</Label>
+      <div className="grid grid-cols-4 gap-2">
+        {DAY_OPTIONS.map((day) => (
+          <div key={day.value} className="flex items-center space-x-2">
+            <Checkbox
+              id={`day-${day.value}`}
+              checked={daysOfWeek.includes(day.value)}
+              onCheckedChange={() => onToggleDay(day.value)}
+            />
+            <label htmlFor={`day-${day.value}`} className="cursor-pointer text-sm">
+              {day.label.slice(0, 3)}
+            </label>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/* ── Monthly Day Field ── */
+
+function MonthlyDayField({
+  dayOfMonth,
+  onDayOfMonthChange,
+}: {
+  dayOfMonth: number
+  onDayOfMonthChange: (v: number) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-copy">Day of Month</Label>
+      <Input
+        type="number" min={1} max={31} value={dayOfMonth}
+        onChange={(e) => onDayOfMonthChange(Number(e.target.value))}
+        className="brand-focus bg-field border-line text-ink"
+      />
+    </div>
+  )
+}
+
+/* ── Cron Expression Field ── */
+
+function CronExpressionField({
+  cronspec,
+  onCronspecChange,
+}: {
+  cronspec: string
+  onCronspecChange: (v: string) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-copy">Cron Expression</Label>
+      <Input
+        value={cronspec}
+        onChange={(e) => onCronspecChange(e.target.value)}
+        placeholder="0 9 * * *"
+        className="brand-focus bg-field border-line text-ink"
+      />
+      <p className="text-subtle-copy text-xs">
+        Format: minute hour day-of-month month day-of-week
+      </p>
+    </div>
+  )
+}
+
+/* ── Max Runs Field ── */
+
+function MaxRunsField({
+  maxRunsPerDay,
+  onMaxRunsChange,
+}: {
+  maxRunsPerDay: number | undefined
+  onMaxRunsChange: (v: number | undefined) => void
+}) {
+  return (
+    <div className="space-y-2">
+      <Label className="text-muted-copy">Max Runs Per Day (optional)</Label>
+      <Input
+        type="number" min={0}
+        value={maxRunsPerDay ?? ''}
+        onChange={(e) => onMaxRunsChange(e.target.value ? Number(e.target.value) : undefined)}
+        placeholder="Unlimited"
+        className="brand-focus bg-field border-line text-ink"
+      />
+      <p className="text-subtle-copy text-xs">Leave empty for unlimited runs</p>
+    </div>
+  )
+}
+
+/* ── Schedule form state hook ── */
+
+function useScheduleFormState(workflow: Workflow | null) {
   const config = (workflow?.scheduleConfig || {}) as ScheduleConfig
   const initialTimezone = workflow?.timezone ?? 'UTC'
-  const initialLocal = utcToLocal(
-    config.hourUTC ?? 9,
-    config.minuteUTC ?? 0,
-    initialTimezone,
-  )
+  const initialLocal = utcToLocal(config.hourUTC ?? 9, config.minuteUTC ?? 0, initialTimezone)
 
   const [scheduleType, setScheduleType] = useState<ScheduleType>(
     (workflow?.scheduleType as ScheduleType) || 'daily',
@@ -154,62 +354,114 @@ function ScheduleDialogInner({
   )
   const [hourUTC, setHourUTC] = useState(initialLocal.hour)
   const [minuteUTC, setMinuteUTC] = useState(initialLocal.minute)
-  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(
-    config.daysOfWeek ?? [1, 2, 3, 4, 5],
-  )
+  const [daysOfWeek, setDaysOfWeek] = useState<number[]>(config.daysOfWeek ?? [1, 2, 3, 4, 5])
   const [dayOfMonth, setDayOfMonth] = useState(config.dayOfMonth ?? 1)
   const [cronspec, setCronspec] = useState(config.cronspec ?? '0 9 * * *')
-  const [maxRunsPerDay, setMaxRunsPerDay] = useState<number | undefined>(
-    workflow?.maxRunsPerDay,
-  )
+  const [maxRunsPerDay, setMaxRunsPerDay] = useState<number | undefined>(workflow?.maxRunsPerDay)
   const [timezone, setTimezone] = useState(initialTimezone)
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const scheduleConfig: ScheduleConfig = {}
-
-    // Convert user-entered local time to UTC
-    const utc = localToUTC(hourUTC, minuteUTC, timezone)
-
-    switch (scheduleType) {
-      case 'interval':
-        scheduleConfig.intervalMs = intervalMinutes * 60000
-        break
-      case 'daily':
-        scheduleConfig.hourUTC = utc.hourUTC
-        scheduleConfig.minuteUTC = utc.minuteUTC
-        break
-      case 'weekly':
-        scheduleConfig.hourUTC = utc.hourUTC
-        scheduleConfig.minuteUTC = utc.minuteUTC
-        scheduleConfig.daysOfWeek = daysOfWeek
-        break
-      case 'monthly':
-        scheduleConfig.hourUTC = utc.hourUTC
-        scheduleConfig.minuteUTC = utc.minuteUTC
-        scheduleConfig.dayOfMonth = dayOfMonth
-        break
-      case 'cron':
-        scheduleConfig.cronspec = cronspec
-        break
-    }
-
-    onSave({
-      scheduleType,
-      scheduleConfig,
-      maxRunsPerDay:
-        maxRunsPerDay && maxRunsPerDay > 0 ? maxRunsPerDay : undefined,
-      timezone: timezone !== 'UTC' ? timezone : undefined,
-    })
-  }
 
   const toggleDay = (day: number) => {
     setDaysOfWeek((prev) =>
-      prev.includes(day)
-        ? prev.filter((d) => d !== day)
-        : [...prev, day].sort(),
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort(),
     )
+  }
+
+  return {
+    scheduleType, setScheduleType,
+    intervalMinutes, setIntervalMinutes,
+    hourUTC, setHourUTC, minuteUTC, setMinuteUTC,
+    daysOfWeek, toggleDay,
+    dayOfMonth, setDayOfMonth,
+    cronspec, setCronspec,
+    maxRunsPerDay, setMaxRunsPerDay,
+    timezone, setTimezone,
+  }
+}
+
+/* ── Build schedule config for submission ── */
+
+function buildSchedulePayload(
+  form: ReturnType<typeof useScheduleFormState>,
+) {
+  const scheduleConfig: ScheduleConfig = {}
+  const utc = localToUTC(form.hourUTC, form.minuteUTC, form.timezone)
+
+  switch (form.scheduleType) {
+    case 'interval':
+      scheduleConfig.intervalMs = form.intervalMinutes * 60000
+      break
+    case 'daily':
+      scheduleConfig.hourUTC = utc.hourUTC
+      scheduleConfig.minuteUTC = utc.minuteUTC
+      break
+    case 'weekly':
+      scheduleConfig.hourUTC = utc.hourUTC
+      scheduleConfig.minuteUTC = utc.minuteUTC
+      scheduleConfig.daysOfWeek = form.daysOfWeek
+      break
+    case 'monthly':
+      scheduleConfig.hourUTC = utc.hourUTC
+      scheduleConfig.minuteUTC = utc.minuteUTC
+      scheduleConfig.dayOfMonth = form.dayOfMonth
+      break
+    case 'cron':
+      scheduleConfig.cronspec = form.cronspec
+      break
+  }
+
+  return {
+    scheduleType: form.scheduleType,
+    scheduleConfig,
+    maxRunsPerDay: form.maxRunsPerDay && form.maxRunsPerDay > 0 ? form.maxRunsPerDay : undefined,
+    timezone: form.timezone !== 'UTC' ? form.timezone : undefined,
+  }
+}
+
+/* ── Conditional schedule fields ── */
+
+function ScheduleFormFields({ form }: { form: ReturnType<typeof useScheduleFormState> }) {
+  const showTimeFields =
+    form.scheduleType === 'daily' || form.scheduleType === 'weekly' || form.scheduleType === 'monthly'
+
+  return (
+    <>
+      {form.scheduleType === 'interval' && (
+        <IntervalFields intervalMinutes={form.intervalMinutes} onIntervalChange={form.setIntervalMinutes} />
+      )}
+      {showTimeFields && (
+        <TimeFields
+          timezone={form.timezone} hourUTC={form.hourUTC} minuteUTC={form.minuteUTC}
+          onTimezoneChange={form.setTimezone} onHourChange={form.setHourUTC} onMinuteChange={form.setMinuteUTC}
+        />
+      )}
+      {form.scheduleType === 'weekly' && (
+        <WeeklyDaysField daysOfWeek={form.daysOfWeek} onToggleDay={form.toggleDay} />
+      )}
+      {form.scheduleType === 'monthly' && (
+        <MonthlyDayField dayOfMonth={form.dayOfMonth} onDayOfMonthChange={form.setDayOfMonth} />
+      )}
+      {form.scheduleType === 'cron' && (
+        <CronExpressionField cronspec={form.cronspec} onCronspecChange={form.setCronspec} />
+      )}
+      <MaxRunsField maxRunsPerDay={form.maxRunsPerDay} onMaxRunsChange={form.setMaxRunsPerDay} />
+    </>
+  )
+}
+
+/* ── Inner Dialog ── */
+
+function ScheduleDialogInner({
+  open,
+  onOpenChange,
+  workflow,
+  saving,
+  onSave,
+}: ScheduleDialogProps) {
+  const form = useScheduleFormState(workflow)
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    onSave(buildSchedulePayload(form))
   }
 
   return (
@@ -221,177 +473,11 @@ function ScheduleDialogInner({
             Configure when this workflow should run automatically.
           </DialogDescription>
         </DialogHeader>
-
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-muted-copy">Schedule Type</Label>
-            <Select
-              value={scheduleType}
-              onValueChange={(v) => setScheduleType(v as ScheduleType)}
-            >
-              <SelectTrigger className="brand-focus bg-field border-line text-ink">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="panel-dropdown">
-                <SelectItem value="interval">
-                  Interval (every X minutes)
-                </SelectItem>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="monthly">Monthly</SelectItem>
-                <SelectItem value="cron">Custom Cron</SelectItem>
-                <SelectItem value="instant">Instant Run</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {scheduleType === 'interval' && (
-            <div className="space-y-2">
-              <Label className="text-muted-copy">Run every (minutes)</Label>
-              <Input
-                type="number"
-                min={1}
-                max={1440}
-                value={intervalMinutes}
-                onChange={(e) => setIntervalMinutes(Number(e.target.value))}
-                className="brand-focus bg-field border-line text-ink"
-              />
-              <p className="text-subtle-copy text-xs">
-                {intervalMinutes >= 60
-                  ? `Every ${Math.round(intervalMinutes / 60)} hour(s)`
-                  : `Every ${intervalMinutes} minute(s)`}
-              </p>
-            </div>
-          )}
-
-          {(scheduleType === 'daily' ||
-            scheduleType === 'weekly' ||
-            scheduleType === 'monthly') && (
-            <>
-              <div className="space-y-2">
-                <Label className="text-muted-copy">Timezone</Label>
-                <Select value={timezone} onValueChange={setTimezone}>
-                  <SelectTrigger className="brand-focus bg-field border-line text-ink">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="panel-dropdown">
-                    {TIMEZONE_OPTIONS.map((tz) => (
-                      <SelectItem key={tz.value} value={tz.value}>
-                        {tz.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-muted-copy">Hour</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={23}
-                    value={hourUTC}
-                    onChange={(e) => setHourUTC(Number(e.target.value))}
-                    className="brand-focus bg-field border-line text-ink"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-muted-copy">Minute</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={minuteUTC}
-                    onChange={(e) => setMinuteUTC(Number(e.target.value))}
-                    className="brand-focus bg-field border-line text-ink"
-                  />
-                </div>
-              </div>
-            </>
-          )}
-
-          {scheduleType === 'weekly' && (
-            <div className="space-y-2">
-              <Label className="text-muted-copy">Days of Week</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {DAY_OPTIONS.map((day) => (
-                  <div key={day.value} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`day-${day.value}`}
-                      checked={daysOfWeek.includes(day.value)}
-                      onCheckedChange={() => toggleDay(day.value)}
-                    />
-                    <label
-                      htmlFor={`day-${day.value}`}
-                      className="cursor-pointer text-sm"
-                    >
-                      {day.label.slice(0, 3)}
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {scheduleType === 'monthly' && (
-            <div className="space-y-2">
-              <Label className="text-muted-copy">Day of Month</Label>
-              <Input
-                type="number"
-                min={1}
-                max={31}
-                value={dayOfMonth}
-                onChange={(e) => setDayOfMonth(Number(e.target.value))}
-                className="brand-focus bg-field border-line text-ink"
-              />
-            </div>
-          )}
-
-          {scheduleType === 'cron' && (
-            <div className="space-y-2">
-              <Label className="text-muted-copy">Cron Expression</Label>
-              <Input
-                value={cronspec}
-                onChange={(e) => setCronspec(e.target.value)}
-                placeholder="0 9 * * *"
-                className="brand-focus bg-field border-line text-ink"
-              />
-              <p className="text-subtle-copy text-xs">
-                Format: minute hour day-of-month month day-of-week
-              </p>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <Label className="text-muted-copy">
-              Max Runs Per Day (optional)
-            </Label>
-            <Input
-              type="number"
-              min={0}
-              value={maxRunsPerDay ?? ''}
-              onChange={(e) =>
-                setMaxRunsPerDay(
-                  e.target.value ? Number(e.target.value) : undefined,
-                )
-              }
-              placeholder="Unlimited"
-              className="brand-focus bg-field border-line text-ink"
-            />
-            <p className="text-subtle-copy text-xs">
-              Leave empty for unlimited runs
-            </p>
-          </div>
-
+          <ScheduleTypeField scheduleType={form.scheduleType} onScheduleTypeChange={form.setScheduleType} />
+          <ScheduleFormFields form={form} />
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
             <Button type="submit" disabled={saving} className="brand-button">
               {saving ? 'Saving...' : 'Save Schedule'}
             </Button>
@@ -401,6 +487,3 @@ function ScheduleDialogInner({
     </Dialog>
   )
 }
-
-
-

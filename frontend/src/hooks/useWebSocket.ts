@@ -43,7 +43,6 @@ interface WebSocketMessage {
   status?: string
   workflowId?: string
   workflow_id?: string
-  // Event payloads
   total_accounts?: number
   profile?: string
   profileName?: string
@@ -95,15 +94,177 @@ function getReconnectDelay(attempt: number): number {
   return delay + jitter
 }
 
+/* ── Parse a log entry from WebSocket message ── */
+
+function parseLogEntry(
+  data: WebSocketMessage,
+  currentProfile: string | null,
+): LogEntry {
+  return {
+    message: data.message!,
+    level: data.level || 'info',
+    source: data.source || 'unknown',
+    workflowId: (data.workflowId ?? data.workflow_id) ?? undefined,
+    profileName: data.profileName || currentProfile || undefined,
+    taskId: data.taskId || undefined,
+    targetUsername: data.targetUsername || undefined,
+    errorCode: data.errorCode || undefined,
+    outcome: data.outcome || undefined,
+    attempt: typeof data.attempt === 'number' ? data.attempt : undefined,
+    diagnostics: typeof data.diagnostics === 'string' ? data.diagnostics : undefined,
+    ts: Date.now(),
+  }
+}
+
+/* ── Check if message matches the workflow filter ── */
+
+function matchesWorkflowFilter(
+  data: WebSocketMessage,
+  activeWorkflowId: string | null,
+): boolean {
+  const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
+  if (!activeWorkflowId) return true
+  return msgWorkflowId === activeWorkflowId
+}
+
+/* ── Handle progress-related messages (pure function) ── */
+
+function handleProgressUpdate(
+  data: WebSocketMessage,
+  currentProfileRef: React.MutableRefObject<string | null>,
+  setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>,
+) {
+  if (data.type === 'session_started') {
+    setProgress({ totalAccounts: data.total_accounts || 0, currentProfile: null, currentTask: null })
+  } else if (data.type === 'profile_started') {
+    currentProfileRef.current = data.profile || null
+    setProgress((prev) => ({ ...prev, currentProfile: data.profile || null, currentTask: null }))
+  } else if (data.type === 'task_started') {
+    setProgress((prev) => ({ ...prev, currentTask: data.task || null }))
+  } else if (data.type === 'profile_completed') {
+    currentProfileRef.current = null
+    setProgress((prev) => ({ ...prev, currentProfile: null, currentTask: null }))
+  }
+}
+
+/* ── Visibility tracking ── */
+
+function useVisibility() {
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof document === 'undefined') return true
+    return document.visibilityState !== 'hidden'
+  })
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const onVisibilityChange = () => {
+      setIsVisible(document.visibilityState !== 'hidden')
+    }
+    onVisibilityChange()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [])
+
+  return isVisible
+}
+
+/* ── Message processing (plain fn, no hooks) ── */
+
+function processSocketMessage(
+  rawMessage: string,
+  workflowId: string | null | undefined,
+  maxBuffer: number,
+  onEvent: ((message: WebSocketMessage) => void) | undefined,
+  currentProfileRef: React.MutableRefObject<string | null>,
+  setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>,
+  setStatus: React.Dispatch<React.SetStateAction<'idle' | 'running' | 'stopping'>>,
+  setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>,
+) {
+  try {
+    const data: WebSocketMessage = JSON.parse(rawMessage)
+    try { onEvent?.(data) } catch { /* ignore */ }
+    const activeWorkflowId = workflowId ?? null
+    const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
+    const matches = matchesWorkflowFilter(data, activeWorkflowId)
+
+    if (data.type === 'log' && data.message) {
+      if (!matches) return
+      if (activeWorkflowId && !msgWorkflowId) return
+      const entry = parseLogEntry(data, currentProfileRef.current)
+      setLogs((prev) => {
+        const next = prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
+        return [...next, entry]
+      })
+    } else if (data.type === 'status' && data.status) {
+      if (activeWorkflowId || msgWorkflowId) return
+      setStatus(data.status as 'idle' | 'running' | 'stopping')
+    } else if (data.type === 'workflow_status' && data.status) {
+      if (!matches || (activeWorkflowId && !msgWorkflowId)) return
+      setStatus(data.status as 'idle' | 'running' | 'stopping')
+    } else if (matches && !(activeWorkflowId && !msgWorkflowId)) {
+      handleProgressUpdate(data, currentProfileRef, setProgress)
+    }
+  } catch { /* ignore parse errors */ }
+}
+
+/* ── Connect a WebSocket and wire event handlers ── */
+
+async function connectWebSocket(
+  wsUrl: string,
+  getToken: () => Promise<string | null>,
+  handleSocketMessage: (rawMessage: string) => void,
+  setConnected: (v: boolean) => void,
+  wsRef: React.MutableRefObject<WebSocket | null>,
+  cancelled: { current: boolean },
+) {
+  let tokenParam = ''
+  try {
+    const token = await getToken()
+    if (token) tokenParam = `?token=${encodeURIComponent(token)}`
+  } catch { /* continue */ }
+  if (cancelled.current) return
+  const ws = new WebSocket(`${wsUrl}${tokenParam}`)
+  ws.onopen = () => {
+    if (cancelled.current) { ws.close(); return }
+    setConnected(true)
+    addWebSocketBreadcrumb('open', wsUrl)
+  }
+  ws.onmessage = (event) => {
+    if (!cancelled.current) handleSocketMessage(event.data)
+  }
+  ws.onerror = () => { addWebSocketBreadcrumb('error', wsUrl); ws.close() }
+  wsRef.current = ws
+  return ws
+}
+
+/* ── Schedule reconnection with backoff ── */
+
+function scheduleReconnect(
+  autoConnect: boolean,
+  enabled: boolean,
+  pauseWhenHidden: boolean,
+  isVisible: boolean,
+  cancelled: { current: boolean },
+  reconnectAttemptRef: React.MutableRefObject<number>,
+  reconnectTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  setReconnectCounter: React.Dispatch<React.SetStateAction<number>>,
+) {
+  if (autoConnect && enabled && (!pauseWhenHidden || isVisible) && !cancelled.current) {
+    const delay = getReconnectDelay(reconnectAttemptRef.current++)
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (!cancelled.current) setReconnectCounter((c) => c + 1)
+    }, delay)
+  }
+}
+
+/* ── Main hook ── */
+
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
-    url,
-    autoConnect = true,
-    enabled = true,
-    pauseWhenHidden = false,
-    maxBuffer = 500,
-    workflowId,
-    onEvent,
+    url, autoConnect = true, enabled = true,
+    pauseWhenHidden = false, maxBuffer = 500,
+    workflowId, onEvent,
   } = options
   const wsUrl = url ?? getDefaultWebSocketUrl()
   const { getToken } = useAuth()
@@ -111,253 +272,62 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
   const [progress, setProgress] = useState<AutomationProgress>({
-    totalAccounts: 0,
-    currentProfile: null,
-    currentTask: null,
+    totalAccounts: 0, currentProfile: null, currentTask: null,
   })
-  const [connected, setConnected] = useState(false)
-  const [reconnectCounter, setReconnectCounter] = useState(0)
-  const [isVisible, setIsVisible] = useState(() => {
-    if (typeof document === 'undefined') return true
-    return document.visibilityState !== 'hidden'
-  })
+  const isVisible = useVisibility()
   const wsRef = useRef<WebSocket | null>(null)
   const currentProfileRef = useRef<string | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptRef = useRef(0)
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
-    try {
-      const data: WebSocketMessage = JSON.parse(rawMessage)
-      try {
-        onEvent?.(data)
-      } catch {
-        // ignore callback errors
-      }
-      const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
-      const activeWorkflowId = workflowId ?? null
-      const matchesWorkflow = !activeWorkflowId
-        ? true
-        : msgWorkflowId === activeWorkflowId
-
-      if (data.type === 'log' && data.message) {
-        if (!matchesWorkflow) return
-        if (activeWorkflowId && !msgWorkflowId) return
-        const entry: LogEntry = {
-          message: data.message,
-          level: data.level || 'info',
-          source: data.source || 'unknown',
-          workflowId: msgWorkflowId ?? undefined,
-          profileName:
-            data.profileName || currentProfileRef.current || undefined,
-          taskId: data.taskId || undefined,
-          targetUsername: data.targetUsername || undefined,
-          errorCode: data.errorCode || undefined,
-          outcome: data.outcome || undefined,
-          attempt:
-            typeof data.attempt === 'number' ? data.attempt : undefined,
-          diagnostics:
-            typeof data.diagnostics === 'string' ? data.diagnostics : undefined,
-          ts: Date.now(),
-        }
-        setLogs((prev) => {
-          const next =
-            prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
-          return [...next, entry]
-        })
-      } else if (data.type === 'status' && data.status) {
-        if (activeWorkflowId) return
-        if (msgWorkflowId) return
-        setStatus(data.status as 'idle' | 'running' | 'stopping')
-      } else if (data.type === 'workflow_status' && data.status) {
-        if (!matchesWorkflow) return
-        if (activeWorkflowId && !msgWorkflowId) return
-        setStatus(data.status as 'idle' | 'running' | 'stopping')
-      } else if (data.type === 'session_started') {
-        if (!matchesWorkflow) return
-        if (activeWorkflowId && !msgWorkflowId) return
-        setProgress({
-          totalAccounts: data.total_accounts || 0,
-          currentProfile: null,
-          currentTask: null,
-        })
-      } else if (data.type === 'profile_started') {
-        if (!matchesWorkflow) return
-        if (activeWorkflowId && !msgWorkflowId) return
-        currentProfileRef.current = data.profile || null
-        setProgress((prev) => ({
-          ...prev,
-          currentProfile: data.profile || null,
-          currentTask: null,
-        }))
-      } else if (data.type === 'task_started') {
-        if (!matchesWorkflow) return
-        if (activeWorkflowId && !msgWorkflowId) return
-        setProgress((prev) => ({
-          ...prev,
-          currentTask: data.task || null,
-        }))
-      } else if (data.type === 'profile_completed') {
-        if (!matchesWorkflow) return
-        if (activeWorkflowId && !msgWorkflowId) return
-        currentProfileRef.current = null
-        setProgress((prev) => ({
-          ...prev,
-          currentProfile: null,
-          currentTask: null,
-        }))
-      }
-    } catch {
-      // ignore parse errors
-    }
+    processSocketMessage(
+      rawMessage, workflowId, maxBuffer, onEvent,
+      currentProfileRef, setLogs, setStatus, setProgress,
+    )
   })
 
+  const clearLogs = useCallback(() => { setLogs([]) }, [])
+
+  const [connected, setConnected] = useState(false)
+  const [reconnectCounter, setReconnectCounter] = useState(0)
+
   useEffect(() => {
-    if (typeof document === 'undefined') return
-
-    const onVisibilityChange = () => {
-      setIsVisible(document.visibilityState !== 'hidden')
-    }
-
-    onVisibilityChange()
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () =>
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-  }, [])
-
-  const clearLogs = useCallback(() => {
-    setLogs([])
-  }, [])
-
-  const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current)
-      reconnectTimeoutRef.current = null
-    }
-    wsRef.current?.close()
-    wsRef.current = null
-    setConnected(false)
-  }, [])
-
-  // Connect effect - triggered by reconnectCounter for auto-reconnect
-  useEffect(() => {
-    if (!enabled) {
-      return
-    }
-    if (pauseWhenHidden && !isVisible) {
-      return
-    }
+    if (!enabled || (pauseWhenHidden && !isVisible)) return
     if (!autoConnect && reconnectCounter === 0) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
-
-    let cancelled = false
-
-    // Async IIFE to fetch token before connecting
-    ;(async () => {
-      let tokenParam = ''
-      try {
-        const token = await getToken()
-        if (token) {
-          tokenParam = `?token=${encodeURIComponent(token)}`
-        }
-      } catch {
-        // Continue without token - server will reject if required
+    const cancelled = { current: false }
+    void connectWebSocket(
+      wsUrl, getToken, handleSocketMessage,
+      (v) => { setConnected(v); if (v) reconnectAttemptRef.current = 0 },
+      wsRef, cancelled,
+    ).then((ws) => {
+      if (!ws) return
+      ws.onclose = () => {
+        if (cancelled.current) return
+        setConnected(false); wsRef.current = null
+        addWebSocketBreadcrumb('close', wsUrl)
+        scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
+          reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
       }
-
-      if (cancelled) return
-
-      try {
-        const ws = new WebSocket(`${wsUrl}${tokenParam}`)
-
-        ws.onopen = () => {
-          if (cancelled) {
-            ws.close()
-            return
-          }
-          reconnectAttemptRef.current = 0 // Reset on successful connect
-          setConnected(true)
-          addWebSocketBreadcrumb('open', wsUrl)
-        }
-
-        ws.onmessage = (event) => {
-          if (cancelled) return
-          handleSocketMessage(event.data)
-        }
-
-        ws.onclose = () => {
-          if (cancelled) return
-          setConnected(false)
-          wsRef.current = null
-          addWebSocketBreadcrumb('close', wsUrl)
-
-          // Auto-reconnect with exponential backoff
-          if (autoConnect && enabled && (!pauseWhenHidden || isVisible)) {
-            const delay = getReconnectDelay(reconnectAttemptRef.current++)
-            reconnectTimeoutRef.current = setTimeout(() => {
-              if (!cancelled) {
-                setReconnectCounter((c) => c + 1)
-              }
-            }, delay)
-          }
-        }
-
-        ws.onerror = () => {
-          addWebSocketBreadcrumb('error', wsUrl)
-          ws.close()
-        }
-
-        wsRef.current = ws
-      } catch {
-        // connection failed, schedule retry with exponential backoff
-        if (
-          autoConnect &&
-          enabled &&
-          (!pauseWhenHidden || isVisible) &&
-          !cancelled
-        ) {
-          const delay = getReconnectDelay(reconnectAttemptRef.current++)
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (!cancelled) {
-              setReconnectCounter((c) => c + 1)
-            }
-          }, delay)
-        }
-      }
-    })()
-
+    }).catch(() => {
+      scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
+        reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
+    })
     return () => {
-      cancelled = true
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-        reconnectTimeoutRef.current = null
-      }
-      wsRef.current?.close()
-      wsRef.current = null
+      cancelled.current = true
+      if (reconnectTimeoutRef.current) { clearTimeout(reconnectTimeoutRef.current); reconnectTimeoutRef.current = null }
+      wsRef.current?.close(); wsRef.current = null
     }
-  }, [
-    wsUrl,
-    autoConnect,
-    enabled,
-    pauseWhenHidden,
-    reconnectCounter,
-    getToken,
-    isVisible,
-    maxBuffer,
-  ])
+  }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible,
+    wsRef, reconnectAttemptRef, reconnectTimeoutRef])
 
-  const connect = useCallback(() => {
-    setReconnectCounter((c) => c + 1)
+  const connect = useCallback(() => { setReconnectCounter((c) => c + 1) }, [])
+
+  const disconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current) { clearTimeout(reconnectTimeoutRef.current); reconnectTimeoutRef.current = null }
+    wsRef.current?.close(); wsRef.current = null; setConnected(false)
   }, [])
 
-  return {
-    logs,
-    status,
-    progress,
-    connected,
-    clearLogs,
-    connect,
-    disconnect,
-  }
+  return { logs, status, progress, connected, clearLogs, connect, disconnect }
 }
-
-

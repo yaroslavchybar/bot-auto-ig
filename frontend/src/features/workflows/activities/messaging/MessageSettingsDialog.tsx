@@ -69,6 +69,233 @@ interface MessageSettingsDialogBodyProps {
   saveTemplates: (kind: MessageTemplateKind, templates: string[]) => Promise<void>
 }
 
+/* ── Template Create/Edit Form ── */
+
+function TemplateEditorCard({
+  editValue,
+  onEditValueChange,
+  onCancel,
+  onSave,
+  isNew,
+}: {
+  editValue: string
+  onEditValueChange: (v: string) => void
+  onCancel: () => void
+  onSave: () => void
+  isNew: boolean
+}) {
+  return (
+    <Card className="border-line-strong rounded-[3px] shadow-none">
+      <CardContent className="space-y-2.5 p-2.5">
+        {isNew && (
+          <div className="flex items-center justify-between">
+            <span className="text-copy text-[10px] font-bold tracking-wider uppercase">
+              New Template
+            </span>
+          </div>
+        )}
+        <Textarea
+          value={editValue}
+          onChange={(e) => onEditValueChange(e.target.value)}
+          placeholder={isNew ? 'Enter message template...' : undefined}
+          className="min-h-[88px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-neutral-900"
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+            onClick={onCancel}
+          >
+            {isNew ? 'Cancel' : <><X className="mr-1 h-3 w-3" />Cancel</>}
+          </Button>
+          <Button
+            size="sm"
+            className="h-6 rounded-[3px] px-2.5 text-[11px]"
+            onClick={onSave}
+          >
+            {isNew ? 'Save' : <><Save className="mr-1 h-3 w-3" />Save</>}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ── Read-only Template Card ── */
+
+function TemplateReadCard({
+  template,
+  onEdit,
+  onDelete,
+}: {
+  template: string
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  return (
+    <Card className="border-line hover:border-line-strong group rounded-[3px] shadow-none transition-colors">
+      <CardContent className="p-2.5">
+        <div className="flex items-start gap-3">
+          <p className="flex-1 text-[11px] whitespace-pre-wrap text-neutral-700 dark:text-neutral-300">
+            {template}
+          </p>
+          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 rounded-[2px] text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+              onClick={onEdit}
+            >
+              <Edit2 className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-status-danger h-6 w-6 rounded-[2px] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+              onClick={onDelete}
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/* ── Empty state ── */
+
+function EmptyTemplatesView() {
+  return (
+    <div className="rounded-[3px] border border-dashed border-neutral-300 bg-neutral-50 py-10 text-center text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400">
+      <MessageSquare className="mx-auto mb-2 h-8 w-8 opacity-25" />
+      <p className="text-[11px]">No templates found.</p>
+      <p className="text-[10px]">Create one to get started.</p>
+    </div>
+  )
+}
+
+/* ── Template list ── */
+
+function TemplateList({
+  templates,
+  editingIndex,
+  editValue,
+  isCreating,
+  loading,
+  onEditValueChange,
+  onStartEdit,
+  onDelete,
+  onCancelEdit,
+  onSave,
+}: {
+  templates: string[]
+  editingIndex: number | null
+  editValue: string
+  isCreating: boolean
+  loading: boolean
+  onEditValueChange: (v: string) => void
+  onStartEdit: (index: number) => void
+  onDelete: (index: number) => void
+  onCancelEdit: () => void
+  onSave: () => void
+}) {
+  return (
+    <ScrollArea className="h-full rounded-[3px] border border-neutral-300 bg-white dark:border-neutral-700 dark:bg-[#121212]">
+      <div className="space-y-2 p-2 pb-3">
+        {isCreating && (
+          <TemplateEditorCard
+            editValue={editValue}
+            onEditValueChange={onEditValueChange}
+            onCancel={onCancelEdit}
+            onSave={onSave}
+            isNew
+          />
+        )}
+
+        {templates.length === 0 && !isCreating ? (
+          <EmptyTemplatesView />
+        ) : (
+          templates.map((template, index) => {
+            if (editingIndex === index) {
+              return (
+                <TemplateEditorCard
+                  key={index}
+                  editValue={editValue}
+                  onEditValueChange={onEditValueChange}
+                  onCancel={onCancelEdit}
+                  onSave={onSave}
+                  isNew={false}
+                />
+              )
+            }
+            return (
+              <TemplateReadCard
+                key={index}
+                template={template}
+                onEdit={() => onStartEdit(index)}
+                onDelete={() => onDelete(index)}
+              />
+            )
+          })
+        )}
+      </div>
+
+      {loading && !isCreating && editingIndex === null ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-[#121212]/60">
+          <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
+        </div>
+      ) : null}
+    </ScrollArea>
+  )
+}
+
+/* ── Template editing state hook ── */
+
+function useTemplateEditing(
+  templates: string[],
+  kind: MessageTemplateKind,
+  saveTemplates: (kind: MessageTemplateKind, templates: string[]) => Promise<void>,
+) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [isCreating, setIsCreating] = useState(false)
+
+  const handleSave = async () => {
+    const trimmed = editValue.trim()
+    if (!trimmed) { setEditingIndex(null); setIsCreating(false); return }
+    const next = [...templates]
+    if (isCreating) next.push(trimmed)
+    else if (editingIndex !== null) next[editingIndex] = trimmed
+    try {
+      await saveTemplates(kind, next)
+      setEditingIndex(null); setIsCreating(false); setEditValue('')
+      toast.success('Template saved')
+    } catch { toast.error('Failed to save template') }
+  }
+
+  const handleDelete = async (index: number) => {
+    const next = [...templates]
+    next.splice(index, 1)
+    try { await saveTemplates(kind, next); toast.success('Template deleted') }
+    catch { toast.error('Failed to delete template') }
+  }
+
+  const startEdit = (index: number) => {
+    setEditingIndex(index); setEditValue(templates[index]); setIsCreating(false)
+  }
+  const startCreate = () => { setEditingIndex(null); setEditValue(''); setIsCreating(true) }
+  const cancelEdit = () => { setEditingIndex(null); setEditValue(''); setIsCreating(false) }
+
+  return {
+    editingIndex, editValue, isCreating,
+    setEditValue, handleSave, handleDelete, startEdit, startCreate, cancelEdit,
+  }
+}
+
+/* ── Dialog Body ── */
+
 function MessageSettingsDialogBody({
   open,
   onOpenChange,
@@ -79,64 +306,7 @@ function MessageSettingsDialogBody({
   error,
   saveTemplates,
 }: MessageSettingsDialogBodyProps) {
-  const [editingIndex, setEditingIndex] = useState<number | null>(null)
-  const [editValue, setEditValue] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
-
-  const handleSave = async () => {
-    const trimmed = editValue.trim()
-    if (!trimmed) {
-      setEditingIndex(null)
-      setIsCreating(false)
-      return
-    }
-
-    const next = [...templates]
-    if (isCreating) {
-      next.push(trimmed)
-    } else if (editingIndex !== null) {
-      next[editingIndex] = trimmed
-    }
-
-    try {
-      await saveTemplates(kind, next)
-      setEditingIndex(null)
-      setIsCreating(false)
-      setEditValue('')
-      toast.success('Template saved')
-    } catch {
-      toast.error('Failed to save template')
-    }
-  }
-
-  const handleDelete = async (index: number) => {
-    const next = [...templates]
-    next.splice(index, 1)
-    try {
-      await saveTemplates(kind, next)
-      toast.success('Template deleted')
-    } catch {
-      toast.error('Failed to delete template')
-    }
-  }
-
-  const startEdit = (index: number) => {
-    setEditingIndex(index)
-    setEditValue(templates[index])
-    setIsCreating(false)
-  }
-
-  const startCreate = () => {
-    setEditingIndex(null)
-    setEditValue('')
-    setIsCreating(true)
-  }
-
-  const cancelEdit = () => {
-    setEditingIndex(null)
-    setEditValue('')
-    setIsCreating(false)
-  }
+  const editing = useTemplateEditing(templates, kind, saveTemplates)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -149,172 +319,38 @@ function MessageSettingsDialogBody({
             Manage templates used for automated direct messages.
           </DialogDescription>
         </DialogHeader>
-
         <Tabs
           value={kind}
           onValueChange={(v) => onKindChange(v as MessageTemplateKind)}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <div className="bg-panel-muted0 flex items-center justify-between border-b border-neutral-300 px-2 py-1.5 dark:border-neutral-700 dark:bg-neutral-900/20">
-            <TabsList className="h-6 rounded-[4px] border border-neutral-300 bg-neutral-200/70 p-0.5 dark:border-neutral-700 dark:bg-neutral-900/70">
-              <TabsTrigger
-                value="message"
-                className="h-5 rounded-[3px] px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:dark:bg-neutral-800"
-              >
-                Standard
-              </TabsTrigger>
-              <TabsTrigger
-                value="message_2"
-                className="h-5 rounded-[3px] px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:dark:bg-neutral-800"
-              >
-                Alternative
-              </TabsTrigger>
-            </TabsList>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-              onClick={startCreate}
-              disabled={isCreating || editingIndex !== null || loading}
-            >
-              <Plus className="mr-1.5 h-3 w-3" />
-              Add Template
-            </Button>
-          </div>
-
+          <DialogTabsToolbar
+            isCreating={editing.isCreating}
+            editingIndex={editing.editingIndex}
+            loading={loading}
+            onStartCreate={editing.startCreate}
+          />
           {error && (
             <div className="dark:text-status-danger shrink-0 border-b border-red-200 bg-red-100 px-3 py-1.5 text-[11px] font-medium text-red-800 dark:border-red-900/50 dark:bg-red-950">
               {error}
             </div>
           )}
-
           <TabsContent
             value={kind}
             className="relative mt-0 min-h-0 flex-1 bg-neutral-200 p-1 dark:bg-neutral-900"
           >
-            {loading && !isCreating && editingIndex === null ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/60 dark:bg-[#121212]/60">
-                <Loader2 className="h-5 w-5 animate-spin text-neutral-500" />
-              </div>
-            ) : null}
-
-            <ScrollArea className="h-full rounded-[3px] border border-neutral-300 bg-white dark:border-neutral-700 dark:bg-[#121212]">
-              <div className="space-y-2 p-2 pb-3">
-                {isCreating && (
-                  <Card className="border-line-strong rounded-[3px] shadow-none">
-                    <CardContent className="space-y-2.5 p-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-copy text-[10px] font-bold tracking-wider uppercase">
-                          New Template
-                        </span>
-                      </div>
-                      <Textarea
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        placeholder="Enter message template..."
-                        className="min-h-[88px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-neutral-900"
-                      />
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                          onClick={cancelEdit}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="h-6 rounded-[3px] px-2.5 text-[11px]"
-                          onClick={handleSave}
-                        >
-                          Save
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {templates.length === 0 && !isCreating ? (
-                  <div className="rounded-[3px] border border-dashed border-neutral-300 bg-neutral-50 py-10 text-center text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900/40 dark:text-neutral-400">
-                    <MessageSquare className="mx-auto mb-2 h-8 w-8 opacity-25" />
-                    <p className="text-[11px]">No templates found.</p>
-                    <p className="text-[10px]">Create one to get started.</p>
-                  </div>
-                ) : (
-                  templates.map((template, index) => {
-                    if (editingIndex === index) {
-                      return (
-                        <Card
-                          key={index}
-                          className="border-line-strong rounded-[3px] shadow-none"
-                        >
-                          <CardContent className="space-y-2.5 p-2.5">
-                            <Textarea
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              className="min-h-[88px] rounded-[2px] border-neutral-300 bg-white text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0 dark:border-neutral-700 dark:bg-neutral-900"
-                            />
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-                                onClick={cancelEdit}
-                              >
-                                <X className="mr-1 h-3 w-3" />
-                                Cancel
-                              </Button>
-                              <Button
-                                size="sm"
-                                className="h-6 rounded-[3px] px-2.5 text-[11px]"
-                                onClick={handleSave}
-                              >
-                                <Save className="mr-1 h-3 w-3" />
-                                Save
-                              </Button>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )
-                    }
-
-                    return (
-                      <Card
-                        key={index}
-                        className="border-line hover:border-line-strong group rounded-[3px] shadow-none transition-colors"
-                      >
-                        <CardContent className="p-2.5">
-                          <div className="flex items-start gap-3">
-                            <p className="flex-1 text-[11px] whitespace-pre-wrap text-neutral-700 dark:text-neutral-300">
-                              {template}
-                            </p>
-                            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 rounded-[2px] text-neutral-500 hover:bg-neutral-200 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-                                onClick={() => startEdit(index)}
-                              >
-                                <Edit2 className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-status-danger h-6 w-6 rounded-[2px] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
-                                onClick={() => handleDelete(index)}
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )
-                  })
-                )}
-              </div>
-            </ScrollArea>
+            <TemplateList
+              templates={templates}
+              editingIndex={editing.editingIndex}
+              editValue={editing.editValue}
+              isCreating={editing.isCreating}
+              loading={loading}
+              onEditValueChange={editing.setEditValue}
+              onStartEdit={editing.startEdit}
+              onDelete={editing.handleDelete}
+              onCancelEdit={editing.cancelEdit}
+              onSave={editing.handleSave}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -322,4 +358,45 @@ function MessageSettingsDialogBody({
   )
 }
 
+/* ── Tabs Toolbar ── */
 
+function DialogTabsToolbar({
+  isCreating,
+  editingIndex,
+  loading,
+  onStartCreate,
+}: {
+  isCreating: boolean
+  editingIndex: number | null
+  loading: boolean
+  onStartCreate: () => void
+}) {
+  return (
+    <div className="bg-panel-muted0 flex items-center justify-between border-b border-neutral-300 px-2 py-1.5 dark:border-neutral-700 dark:bg-neutral-900/20">
+      <TabsList className="h-6 rounded-[4px] border border-neutral-300 bg-neutral-200/70 p-0.5 dark:border-neutral-700 dark:bg-neutral-900/70">
+        <TabsTrigger
+          value="message"
+          className="h-5 rounded-[3px] px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:dark:bg-neutral-800"
+        >
+          Standard
+        </TabsTrigger>
+        <TabsTrigger
+          value="message_2"
+          className="h-5 rounded-[3px] px-2 text-[10px] data-[state=active]:bg-white data-[state=active]:shadow-none data-[state=active]:dark:bg-neutral-800"
+        >
+          Alternative
+        </TabsTrigger>
+      </TabsList>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-6 rounded-[3px] border-neutral-300 bg-white px-2 py-0 text-[11px] text-neutral-700 shadow-none transition-none hover:bg-neutral-100 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+        onClick={onStartCreate}
+        disabled={isCreating || editingIndex !== null || loading}
+      >
+        <Plus className="mr-1.5 h-3 w-3" />
+        Add Template
+      </Button>
+    </div>
+  )
+}
