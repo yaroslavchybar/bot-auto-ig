@@ -521,6 +521,21 @@ function TimestampsSection({ workflow }: { workflow: Workflow }) {
   )
 }
 
+/* ── Helpers ── */
+
+function extractScrapeNodeStates(workflow: WorkflowDetailsProps['workflow']) {
+  const raw = workflow.nodeStates && typeof workflow.nodeStates === 'object'
+    ? workflow.nodeStates
+    : {}
+  return Object.entries(raw).filter(([, state]) => {
+    if (!state || typeof state !== 'object') return false
+    const s = state as Record<string, unknown>
+    return s.activityId === 'scrape_relationships' ||
+      typeof s.artifactStorageId === 'string' ||
+      typeof s.manifestStorageId === 'string'
+  })
+}
+
 /* ── Main Component ── */
 
 export function WorkflowDetails({
@@ -540,19 +555,7 @@ export function WorkflowDetails({
   const isActive = workflow.isActive ?? false
   const hasSchedule = !!workflow.scheduleType
   const canToggleActive = hasSchedule && (!isRunning || isActive)
-  const rawNodeStates =
-    workflow.nodeStates && typeof workflow.nodeStates === 'object'
-      ? workflow.nodeStates
-      : {}
-  const scrapeNodeStates = Object.entries(rawNodeStates).filter(([, state]) => {
-    return (
-      state &&
-      typeof state === 'object' &&
-      ((state as Record<string, unknown>).activityId === 'scrape_relationships' ||
-        typeof (state as Record<string, unknown>).artifactStorageId === 'string' ||
-        typeof (state as Record<string, unknown>).manifestStorageId === 'string')
-    )
-  })
+  const scrapeNodeStates = extractScrapeNodeStates(workflow)
 
   return (
     <div className="text-ink space-y-6 p-6">

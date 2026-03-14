@@ -300,6 +300,16 @@ function useWorkflowImportExport(
 
 /* ── Schedule & Active toggle ── */
 
+interface ScheduleUpdateData {
+  scheduleType: 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron' | 'instant'
+  scheduleConfig: {
+    intervalMs?: number; hourUTC?: number; minuteUTC?: number
+    daysOfWeek?: number[]; dayOfMonth?: number; cronspec?: string
+  }
+  maxRunsPerDay?: number
+  timezone?: string
+}
+
 function useWorkflowScheduling(
   dialogState: ReturnType<typeof useWorkflowDialogState>,
   setError: (e: string | null) => void,
@@ -313,10 +323,7 @@ function useWorkflowScheduling(
     try {
       if (workflow.isActive && workflow.status === 'running') {
         try {
-          await apiFetch('/api/workflows/stop', {
-            method: 'POST',
-            body: { workflowId: workflow._id },
-          })
+          await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
         } catch { void 0 }
       }
       await toggleActiveWorkflow({ id: workflow._id })
@@ -328,10 +335,7 @@ function useWorkflowScheduling(
   const handleStopRun = useCallback(async (workflow: Workflow) => {
     setError(null)
     try {
-      await apiFetch('/api/workflows/stop', {
-        method: 'POST',
-        body: { workflowId: workflow._id },
-      })
+      await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -342,22 +346,9 @@ function useWorkflowScheduling(
     setError(null)
   }, [dialogState, setError])
 
-  const handleSaveSchedule = useCallback(async (data: {
-    scheduleType: 'interval' | 'daily' | 'weekly' | 'monthly' | 'cron' | 'instant'
-    scheduleConfig: {
-      intervalMs?: number
-      hourUTC?: number
-      minuteUTC?: number
-      daysOfWeek?: number[]
-      dayOfMonth?: number
-      cronspec?: string
-    }
-    maxRunsPerDay?: number
-    timezone?: string
-  }) => {
+  const handleSaveSchedule = useCallback(async (data: ScheduleUpdateData) => {
     if (!dialogState.scheduleWorkflowId) return
-    setSaving(true)
-    setError(null)
+    setSaving(true); setError(null)
     try {
       await updateSchedule({
         id: dialogState.scheduleWorkflowId,
@@ -369,9 +360,7 @@ function useWorkflowScheduling(
       dialogState.setScheduleWorkflowId(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setSaving(false)
-    }
+    } finally { setSaving(false) }
   }, [dialogState, setError, setSaving, updateSchedule])
 
   return {

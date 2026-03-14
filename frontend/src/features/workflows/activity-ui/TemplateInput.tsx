@@ -198,6 +198,28 @@ function TemplateDisplayItem({
   )
 }
 
+/* ── Macro insertion helper ── */
+
+function applyMacroInsertion(
+  textareaEl: HTMLTextAreaElement,
+  currentValue: string,
+  macroLabel: string,
+  setValue: (v: string) => void,
+  closeMacro: () => void,
+) {
+  const cursorPosition = textareaEl.selectionStart
+  const before = currentValue.slice(0, cursorPosition)
+  const after = currentValue.slice(cursorPosition)
+  const newBefore = before.endsWith('/') ? before.slice(0, -1) : before
+  setValue(newBefore + macroLabel + after)
+  closeMacro()
+  setTimeout(() => {
+    textareaEl.focus()
+    const newPos = newBefore.length + macroLabel.length
+    textareaEl.setSelectionRange(newPos, newPos)
+  }, 0)
+}
+
 /* ── Template editing logic ── */
 
 function useTemplateEditor(
@@ -259,19 +281,7 @@ function useTemplateEditor(
 
   const insertMacro = (macroLabel: string) => {
     if (!textareaRef.current) return
-    const cursorPosition = textareaRef.current.selectionStart
-    const before = editValue.slice(0, cursorPosition)
-    const after = editValue.slice(cursorPosition)
-    const newBefore = before.endsWith('/') ? before.slice(0, -1) : before
-    setEditValue(newBefore + macroLabel + after)
-    setMacroDropdownOpen(false)
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        const newPos = newBefore.length + macroLabel.length
-        textareaRef.current.setSelectionRange(newPos, newPos)
-      }
-    }, 0)
+    applyMacroInsertion(textareaRef.current, editValue, macroLabel, setEditValue, () => setMacroDropdownOpen(false))
   }
 
   return {
