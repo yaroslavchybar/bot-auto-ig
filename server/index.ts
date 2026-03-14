@@ -24,6 +24,8 @@ import { profileManager } from './data/profiles.js'
 import { profileProcesses } from './store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 import logger from './shared/logger.js'
+import { AppError } from './shared/errors.js'
+import type { Request, Response, NextFunction } from 'express'
 
 const app = express()
 const server = createServer(app)
@@ -97,6 +99,26 @@ app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
 // Sentry error handler must be registered after all routes
 Sentry.setupExpressErrorHandler(app)
+
+// Global error-handling middleware (4-argument signature).
+// Registered AFTER the Sentry handler so Sentry captures the error first.
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof AppError) {
+        logger.warn({ err, statusCode: err.statusCode, code: err.code }, err.message)
+        res.status(err.statusCode).json({
+            success: false,
+            error: { code: err.code, message: err.message },
+        })
+        return
+    }
+
+    // Unexpected / untyped errors → 500
+    logger.error({ err }, 'Unhandled error')
+    res.status(500).json({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: 'Internal server error' },
+    })
+})
 
 const PORT = process.env.SERVER_PORT || 3001
 
