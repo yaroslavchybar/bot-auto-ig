@@ -13,7 +13,7 @@ import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
 import logger from '../shared/logger.js'
 import { spawnPython, killByPid } from '../shared/ProcessService.js'
-import { NotFoundError, ConflictError } from '../shared/errors.js'
+import { NotFoundError, ValidationError } from '../shared/errors.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -253,7 +253,7 @@ export async function startProfileBrowser(name: string): Promise<void> {
 export async function stopProfileBrowser(name: string): Promise<void> {
   const proc = profileProcesses.get(name)
   if (!proc) {
-    throw new ConflictError('No browser running for this profile')
+    throw new ValidationError('No browser running for this profile')
   }
 
   broadcast({

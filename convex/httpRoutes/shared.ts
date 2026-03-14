@@ -63,6 +63,15 @@ const CONFLICT_PATTERNS = [
   'maximum retries',
 ];
 
+const VALIDATION_PATTERNS = [
+  'required',
+  'invalid',
+  'must be',
+  'cannot be empty',
+  'too long',
+  'too short',
+];
+
 function categorizeError(err: unknown): { message: string; status: number } {
   if (err instanceof HttpError) {
     return { message: err.message, status: err.statusCode };
@@ -76,6 +85,9 @@ function categorizeError(err: unknown): { message: string; status: number } {
   }
   if (CONFLICT_PATTERNS.some((p) => lower.includes(p))) {
     return { message, status: 409 };
+  }
+  if (VALIDATION_PATTERNS.some((p) => lower.includes(p))) {
+    return { message, status: 400 };
   }
 
   return { message, status: 500 };

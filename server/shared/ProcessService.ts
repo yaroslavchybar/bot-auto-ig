@@ -213,15 +213,22 @@ export async function killProcess(proc: ChildProcess): Promise<void> {
   }
 
   // Unix: kill process group first, fall back to direct kill
+  let usedGroupKill = false
   try {
     process.kill(-pid, 'SIGTERM')
+    usedGroupKill = true
   } catch {
     try { proc.kill('SIGTERM') } catch { return }
   }
 
   if (await waitForExit(proc, EXTENDED_SIGTERM_WAIT_MS)) return
 
-  try { process.kill(-pid, 'SIGKILL') } catch { /* noop */ }
+  // SIGKILL fallback: try process group first, then direct child kill
+  if (usedGroupKill) {
+    try { process.kill(-pid, 'SIGKILL') } catch { /* noop */ }
+  } else {
+    try { proc.kill('SIGKILL') } catch { /* noop */ }
+  }
 }
 
 /**
@@ -238,8 +245,10 @@ export async function killByPid(
   }
 
   // Unix: try process group, fall back to direct proc.kill
+  let usedGroupKill = false
   try {
     process.kill(-pid, 'SIGTERM')
+    usedGroupKill = true
   } catch {
     if (proc) {
       try { proc.kill('SIGTERM') } catch { /* noop */ }
@@ -248,7 +257,12 @@ export async function killByPid(
 
   await new Promise((r) => setTimeout(r, DEFAULT_SIGTERM_WAIT_MS))
 
-  try { process.kill(-pid, 'SIGKILL') } catch { /* noop */ }
+  // SIGKILL fallback: try process group first, then direct child kill
+  if (usedGroupKill) {
+    try { process.kill(-pid, 'SIGKILL') } catch { /* noop */ }
+  } else if (proc) {
+    try { proc.kill('SIGKILL') } catch { /* noop */ }
+  }
 }
 
 /**

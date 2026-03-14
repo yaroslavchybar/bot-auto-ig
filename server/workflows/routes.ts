@@ -13,9 +13,9 @@ import {
 } from './service.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import {
+  AppError,
   ValidationError,
   NotFoundError,
-  ConflictError,
   ExternalServiceError,
 } from '../shared/errors.js'
 
@@ -109,10 +109,11 @@ router.get('/artifacts/download', asyncHandler(async (req, res) => {
 
 router.post('/run', asyncHandler(async (req, res) => {
   const { workflowId, parallelProfiles } = parseRunInput(req.body)
-  validateWorkflowCanStart(workflowId)
 
   const release = await automationMutex.acquire()
   try {
+    // Re-check state inside mutex to prevent race conditions
+    validateWorkflowCanStart(workflowId)
     await runWorkflow({ workflowId, parallelProfiles })
     res.json({ success: true, message: 'Workflow started' })
   } finally {
@@ -129,18 +130,19 @@ router.post('/stop', asyncHandler(async (req, res) => {
     req.body?.workflowId ?? req.body?.workflow_id ?? req.body?.id ?? '',
   ).trim()
 
-  const idsToStop = workflowId
-    ? [workflowId]
-    : Array.from(workflowWorkers.keys())
-  if (idsToStop.length === 0) {
-    throw new ConflictError('No workflow running')
-  }
-
   const release = await automationMutex.acquire()
   try {
+    // Re-check state inside mutex to prevent race conditions
+    const idsToStop = workflowId
+      ? [workflowId]
+      : Array.from(workflowWorkers.keys())
+    if (idsToStop.length === 0) {
+      throw new ValidationError('No workflow running')
+    }
+
     const stopped = await stopWorkflows(workflowId || undefined)
     if (workflowId && stopped.length === 0) {
-      throw new ConflictError('Workflow not running')
+      throw new ValidationError('Workflow not running')
     }
     res.json({ success: true, stopped })
   } finally {
@@ -172,15 +174,17 @@ function parseRunInput(body: any): {
 /** Pre-flight checks before starting a workflow. */
 function validateWorkflowCanStart(workflowId: string): void {
   if (workflowWorkers.has(workflowId)) {
-    throw new ConflictError('Workflow already running')
+    throw new ValidationError('Workflow already running')
   }
   const configuredMax = Number(process.env.WORKFLOW_MAX_CONCURRENCY ?? 3)
   const maxConcurrency = Number.isFinite(configuredMax)
     ? Math.max(1, Math.floor(configuredMax))
     : 3
   if (workflowWorkers.size >= maxConcurrency) {
-    throw new ConflictError(
+    throw new AppError(
       `Too many workflows running (max ${maxConcurrency})`,
+      429,
+      'RATE_LIMITED',
     )
   }
 }

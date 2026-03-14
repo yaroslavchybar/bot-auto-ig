@@ -11,9 +11,9 @@ import { markStarted, markStopped } from './state.js'
 import { parseLogOutput } from '../logs/parser.js'
 import logger from '../shared/logger.js'
 import { spawnPython, killByPid } from '../shared/ProcessService.js'
+import type { ChildProcess } from '../shared/ProcessService.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
-import { ConflictError, ValidationError } from '../shared/errors.js'
-import type { ChildProcess } from 'child_process'
+import { ValidationError } from '../shared/errors.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -34,10 +34,6 @@ router.get('/status', (_req, res) => {
 
 // Start automation
 router.post('/start', asyncHandler(async (req, res) => {
-    if (automationState.process) {
-        throw new ConflictError('Automation already running')
-    }
-
     const validationResult = validateSettings(req.body)
     if (validationResult instanceof Error) {
         throw new ValidationError(validationResult.message)
@@ -46,6 +42,10 @@ router.post('/start', asyncHandler(async (req, res) => {
 
     const release = await automationMutex.acquire()
     try {
+        // Re-check state inside mutex to prevent race conditions
+        if (automationState.process) {
+            throw new ValidationError('Automation already running')
+        }
         spawnAndWireAutomation(settings as Record<string, unknown>)
         res.json({ success: true, message: 'Automation started' })
     } finally {
@@ -55,12 +55,12 @@ router.post('/start', asyncHandler(async (req, res) => {
 
 // Stop automation
 router.post('/stop', asyncHandler(async (_req, res) => {
-    if (!automationState.process) {
-        throw new ConflictError('No automation running')
-    }
-
     const release = await automationMutex.acquire()
     try {
+        // Re-check state inside mutex to prevent race conditions
+        if (!automationState.process) {
+            throw new ValidationError('No automation running')
+        }
         automationState.status = 'stopping'
         broadcast({ type: 'status', status: 'stopping' })
         broadcast({ type: 'log', message: 'Stopping automation...', level: 'warn', source: 'server' })

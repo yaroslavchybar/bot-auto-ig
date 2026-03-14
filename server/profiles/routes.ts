@@ -18,9 +18,9 @@ import {
 } from './service.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import {
+  AppError,
   ValidationError,
   NotFoundError,
-  ConflictError,
 } from '../shared/errors.js'
 
 const router = Router()
@@ -59,7 +59,7 @@ router.post('/', asyncHandler(async (req, res) => {
   }
   const success = await profileManager.createProfile(profile)
   if (!success) {
-    throw new Error('Failed to create profile')
+    throw new AppError('Failed to create profile', 500, 'INTERNAL_ERROR')
   }
   res.json({ success: true })
 }))
@@ -73,7 +73,7 @@ router.put('/:name', asyncHandler(async (req, res) => {
   }
   const success = await profileManager.updateProfile(oldName, profile)
   if (!success) {
-    throw new Error('Failed to update profile')
+    throw new AppError('Failed to update profile', 500, 'INTERNAL_ERROR')
   }
   res.json({ success: true })
 }))
@@ -83,7 +83,7 @@ router.delete('/:name', asyncHandler(async (req, res) => {
   const name = req.params.name
   const success = await profileManager.deleteProfile(name)
   if (!success) {
-    throw new Error('Failed to delete profile')
+    throw new AppError('Failed to delete profile', 500, 'INTERNAL_ERROR')
   }
   res.json({ success: true })
 }))
@@ -92,7 +92,7 @@ router.delete('/:name', asyncHandler(async (req, res) => {
 router.post('/:name/start', asyncHandler(async (req, res) => {
   const { name } = req.params
   if (profileProcesses.has(name)) {
-    throw new ConflictError('Profile browser already running')
+    throw new ValidationError('Profile browser already running')
   }
   await startProfileBrowser(name)
   res.json({ success: true, message: `Browser started for ${name}` })

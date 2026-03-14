@@ -13,7 +13,6 @@ test('tracks the full owned convex module cohort', () => {
     '../../convex/convex.config.ts',
     '../../convex/crons.ts',
     '../../convex/http.ts',
-    '../../convex/httpApi.ts',
     '../../convex/httpRoutes/instagramAccounts.ts',
     '../../convex/httpRoutes/keywords.ts',
     '../../convex/httpRoutes/lists.ts',

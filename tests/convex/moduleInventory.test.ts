@@ -8,7 +8,6 @@ const expectedModules = [
   'convex.config.ts',
   'crons.ts',
   'http.ts',
-  'httpApi.ts',
   'instagramAccounts.ts',
   'keywords.ts',
   'lists.ts',
