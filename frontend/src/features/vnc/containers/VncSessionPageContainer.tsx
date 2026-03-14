@@ -27,7 +27,7 @@ function useVncSessionResolution() {
   const { workflowId: rawWorkflowId, profileName: rawProfileName } = useParams()
   const workflowId = decodeRouteParam(rawWorkflowId)
   const profileName = decodeRouteParam(rawProfileName)
-  const { sessions, loading, error, refresh } = useVncSessions()
+  const { sessions, loading, refresh } = useVncSessions()
   const [refreshing, setRefreshing] = useState(false)
 
   const session = useMemo(
@@ -46,12 +46,12 @@ function useVncSessionResolution() {
     } finally { setRefreshing(false) }
   }, [refresh])
 
-  return { workflowId, profileName, session, loading, error, refreshing, handleBack, handleManualRefresh }
+  return { workflowId, profileName, session, loading, refreshing, handleBack, handleManualRefresh }
 }
 
 export function VncSessionPageContainer() {
   const {
-    workflowId, profileName, session, loading, error,
+    workflowId, profileName, session, loading,
     refreshing, handleBack, handleManualRefresh,
   } = useVncSessionResolution()
 
@@ -72,7 +72,6 @@ export function VncSessionPageContainer() {
       <VncMissingParamsView
         onBack={handleBack}
         message="This live session is no longer active."
-        error={error ? `Failed to refresh displays: ${error}` : undefined}
         onRefresh={() => void handleManualRefresh()}
         refreshDisabled={loading || refreshing}
       />

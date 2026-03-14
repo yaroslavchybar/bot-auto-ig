@@ -32,7 +32,6 @@ export function ProfilesPageContainer() {
       <ProfilesHeader searchQuery={s.searchQuery} onSearchChange={s.setSearchQuery}
         onRefresh={() => void s.handleRefreshProfiles()} onCreate={s.handleCreate}
         loading={s.loading} saving={s.saving} refreshing={s.refreshing} />
-      <ProfilesErrorBanner s={s} />
       <ProfilesContent s={s} />
       <ProfileFormDialogs profiles={s.profiles} isCreateOpen={s.isCreateOpen}
         editProfile={s.editProfile} saving={s.saving}
@@ -41,19 +40,10 @@ export function ProfilesPageContainer() {
         onCloseCreate={s.handleCloseCreate} />
       <ProfileViewDialogs logsProfile={s.logsProfile} detailsProfile={s.detailsProfile}
         deleteProfile={s.deleteProfile} loginProfile={s.loginProfile} saving={s.saving}
-        error={s.error} logs={s.logs} logsLoading={s.logsLoading} wsLogs={s.wsLogs}
+        logs={s.logs} logsLoading={s.logsLoading} wsLogs={s.wsLogs}
         onSetLogsProfileId={s.setLogsProfileId} onSetDetailsProfileId={s.setDetailsProfileId}
         onSetLoginProfileId={s.setLoginProfileId} onDeleteConfirm={s.handleDeleteConfirm}
         onRefreshProfiles={s.refreshProfiles} onLoadLogs={s.loadLogs} />
-    </div>
-  )
-}
-
-function ProfilesErrorBanner({ s }: { s: ReturnType<typeof useProfilesPage> }) {
-  if (!s.error || s.deleteProfile || s.isCreateOpen || s.editProfile || s.logsProfile || s.detailsProfile) return null
-  return (
-    <div className="status-banner-danger flex items-center border-b px-4 py-3 text-sm md:px-6">
-      <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />{s.error}
     </div>
   )
 }
@@ -260,7 +250,7 @@ function ProfileDetailsSheet({
 interface ProfileViewDialogsProps {
   logsProfile: Profile | null; detailsProfile: Profile | null
   deleteProfile: Profile | null; loginProfile: Profile | null
-  saving: boolean; error: string | null
+  saving: boolean
   logs: LogEntry[]; logsLoading: boolean; wsLogs: LogEntry[]
   onSetLogsProfileId: (id: string | null) => void
   onSetDetailsProfileId: (id: string | null) => void
@@ -287,7 +277,7 @@ function ProfileViewDeleteAndLogin(p: ProfileViewDialogsProps) {
       {p.deleteProfile ? (
         <ConfirmDeleteDialog open={Boolean(p.deleteProfile)} title="Delete Profile?"
           entityLabel="and its data" itemName={p.deleteProfile.name} confirmLabel="Delete Profile"
-          saving={p.saving} error={p.error} onConfirm={p.onDeleteConfirm}
+          saving={p.saving} error={null} onConfirm={p.onDeleteConfirm}
           onCancel={() => p.onSetDetailsProfileId(null)} />
       ) : null}
       <LoginDialog key={p.loginProfile?.id ?? 'no-login'} open={Boolean(p.loginProfile)}

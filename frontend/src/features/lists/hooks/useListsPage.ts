@@ -4,6 +4,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useLists } from './useLists'
 import type { List } from '../types'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 /* ── Dialog state ── */
 
@@ -11,7 +12,6 @@ function useListDialogState(lists: List[]) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editListId, setEditListId] = useState<string | null>(null)
   const [deleteListTargetId, setDeleteListTargetId] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
 
   const editList = useMemo(
     () => (editListId ? lists.find((l) => l.id === editListId) ?? null : null),
@@ -22,17 +22,17 @@ function useListDialogState(lists: List[]) {
     [deleteListTargetId, lists],
   )
 
-  const handleCreate = () => { setIsCreateOpen(true); setError(null) }
-  const handleEdit = (list: List) => { setEditListId(list.id); setError(null) }
-  const handleDeleteClick = (list: List) => { setDeleteListTargetId(list.id); setError(null) }
-  const handleCloseCreate = () => { setIsCreateOpen(false); setError(null) }
-  const handleCloseEdit = () => { setEditListId(null); setError(null) }
-  const handleCreateOpenChange = (open: boolean) => { setIsCreateOpen(open); if (!open) setError(null) }
-  const handleEditOpenChange = (open: boolean) => { if (!open) { setEditListId(null); setError(null) } }
+  const handleCreate = () => { setIsCreateOpen(true) }
+  const handleEdit = (list: List) => { setEditListId(list.id) }
+  const handleDeleteClick = (list: List) => { setDeleteListTargetId(list.id) }
+  const handleCloseCreate = () => { setIsCreateOpen(false) }
+  const handleCloseEdit = () => { setEditListId(null) }
+  const handleCreateOpenChange = (open: boolean) => { setIsCreateOpen(open) }
+  const handleEditOpenChange = (open: boolean) => { if (!open) { setEditListId(null) } }
 
   return {
     isCreateOpen, setIsCreateOpen, editList, setEditListId,
-    deleteListTarget, setDeleteListTargetId, error, setError,
+    deleteListTarget, setDeleteListTargetId,
     handleCreate, handleEdit, handleDeleteClick, handleCloseCreate, handleCloseEdit,
     handleCreateOpenChange, handleEditOpenChange,
   }
@@ -43,6 +43,7 @@ function useListDialogState(lists: List[]) {
 function useListMutations(
   dialog: ReturnType<typeof useListDialogState>,
   backgroundRefresh: () => Promise<void>,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const createList = useMutation(api.lists.create)
   const updateList = useMutation(api.lists.update)
@@ -52,7 +53,7 @@ function useListMutations(
   const [saving, setSaving] = useState(false)
 
   const handleSave = useCallback(async (name: string, addedIds: string[], removedIds: string[]) => {
-    setSaving(true); dialog.setError(null)
+    setSaving(true)
     try {
       if (dialog.isCreateOpen) {
         await createList({ name }); await backgroundRefresh(); dialog.setIsCreateOpen(false)
@@ -62,31 +63,31 @@ function useListMutations(
         if (removedIds.length > 0) await bulkRemoveFromList({ profileIds: removedIds as Id<'profiles'>[], listId: dialog.editList.id as Id<'lists'> })
         await backgroundRefresh(); dialog.setEditListId(null)
       }
-    } catch (e) { dialog.setError(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { handleError(e, 'Save list') }
     finally { setSaving(false) }
-  }, [backgroundRefresh, bulkAddToList, bulkRemoveFromList, createList, dialog, updateList])
+  }, [backgroundRefresh, bulkAddToList, bulkRemoveFromList, createList, dialog, handleError, updateList])
 
   const handleDelete = useCallback(async () => {
     if (!dialog.deleteListTarget) return
-    setSaving(true); dialog.setError(null)
+    setSaving(true)
     try {
       await deleteListMut({ id: dialog.deleteListTarget.id as Id<'lists'> })
       await backgroundRefresh(); dialog.setDeleteListTargetId(null)
-    } catch (e) { dialog.setError(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { handleError(e, 'Delete list') }
     finally { setSaving(false) }
-  }, [backgroundRefresh, deleteListMut, dialog])
+  }, [backgroundRefresh, deleteListMut, dialog, handleError])
 
   return { saving, handleSave, handleDelete }
 }
 
 export function useListsPage() {
-  const { lists, loading: listsLoading, error: listsError, refresh, backgroundRefresh } = useLists()
+  const { lists, loading: listsLoading, refresh, backgroundRefresh } = useLists()
   const loading = listsLoading
   const [refreshing, setRefreshing] = useState(false)
+  const { handleError } = useErrorHandler()
 
   const dialog = useListDialogState(lists)
-  const mutations = useListMutations(dialog, backgroundRefresh)
-  const surfacedError = dialog.error ?? listsError
+  const mutations = useListMutations(dialog, backgroundRefresh, handleError)
 
   const handleRefreshLists = useCallback(async () => {
     setRefreshing(true)
@@ -98,7 +99,6 @@ export function useListsPage() {
     lists, loading, saving: mutations.saving, refreshing,
     isCreateOpen: dialog.isCreateOpen, editList: dialog.editList,
     deleteListTarget: dialog.deleteListTarget,
-    error: dialog.error, surfacedError,
     handleCreate: dialog.handleCreate, handleEdit: dialog.handleEdit,
     handleDeleteClick: dialog.handleDeleteClick,
     handleCloseCreate: dialog.handleCloseCreate, handleCloseEdit: dialog.handleCloseEdit,

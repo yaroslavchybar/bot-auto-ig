@@ -3,6 +3,7 @@ import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
 import { apiFetch } from '@/lib/api'
 import { env } from '@/lib/env'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 const POLL_INTERVAL = 5000
 const MOBILE_POLL_INTERVAL = 20000
@@ -51,6 +52,7 @@ export interface MonitoringData {
 export function useMonitoringData() {
   const performanceMode = usePerformanceMode()
   const isVisible = useDocumentVisibility()
+  const { handleError } = useErrorHandler()
   const [data, setData] = useState<MonitoringData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,13 +69,14 @@ export function useMonitoringData() {
       setLastUpdate(new Date())
       setError(null)
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to fetch monitoring data',
-      )
+      const msg = err instanceof Error ? err.message : 'Failed to fetch monitoring data'
+      setError(msg)
+      // Only report to Sentry on first failure (not on every poll)
+      if (!data) handleError(err, 'Monitoring data')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [data, handleError])
 
   const handleRetry = useCallback(async () => {
     setRetrying(true)

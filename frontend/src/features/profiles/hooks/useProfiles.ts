@@ -4,32 +4,32 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
 import { getCache, setCache } from '@/lib/cache'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 const STORAGE_KEY = 'cached_profiles'
 
 export function useProfiles() {
   const convex = useConvex()
+  const { handleError } = useErrorHandler()
   const liveProfiles = useQuery(api.profiles.queries.list, {})
   const [profiles, setProfiles] = useState<Profile[]>(() => {
     return getCache<Profile[]>(STORAGE_KEY) ?? []
   })
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const fetchProfiles = useCallback(async (background = false) => {
     if (!background) setLoading(true)
-    setError(null)
     try {
       const data = await convex.query(api.profiles.queries.list, {})
       const mapped = data.map(mapProfileRecord)
       setProfiles(mapped)
       setCache(STORAGE_KEY, mapped)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Profiles fetch')
     } finally {
       if (!background) setLoading(false)
     }
-  }, [convex])
+  }, [convex, handleError])
 
   useEffect(() => {
     if (!liveProfiles) return
@@ -55,12 +55,11 @@ export function useProfiles() {
     () => ({
       profiles,
       loading, // Mostly false unless manual refresh is triggered
-      error,
       refresh, // Manual refresh shows loading state
       backgroundRefresh, // Background refresh doesn't show loading state
       setProfiles, // Exposed for optimistic updates if needed
     }),
-    [profiles, loading, error, refresh, backgroundRefresh],
+    [profiles, loading, refresh, backgroundRefresh],
   )
 }
 

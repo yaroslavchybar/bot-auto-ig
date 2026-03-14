@@ -41,7 +41,7 @@ export function MessageSettingsDialog({
   onOpenChange,
 }: MessageSettingsDialogProps) {
   const [kind, setKind] = useState<MessageTemplateKind>('message')
-  const { templates, loading, error, saveTemplates } = useMessageTemplates(kind)
+  const { templates, loading, saveTemplates } = useMessageTemplates(kind)
 
   return (
     <MessageSettingsDialogBody
@@ -52,7 +52,6 @@ export function MessageSettingsDialog({
       onKindChange={setKind}
       templates={templates}
       loading={loading}
-      error={error}
       saveTemplates={saveTemplates}
     />
   )
@@ -65,7 +64,6 @@ interface MessageSettingsDialogBodyProps {
   onKindChange: (kind: MessageTemplateKind) => void
   templates: string[]
   loading: boolean
-  error: string | null
   saveTemplates: (kind: MessageTemplateKind, templates: string[]) => Promise<void>
 }
 
@@ -303,7 +301,6 @@ function MessageSettingsDialogBody({
   onKindChange,
   templates,
   loading,
-  error,
   saveTemplates,
 }: MessageSettingsDialogBodyProps) {
   const editing = useTemplateEditing(templates, kind, saveTemplates)
@@ -330,11 +327,6 @@ function MessageSettingsDialogBody({
             loading={loading}
             onStartCreate={editing.startCreate}
           />
-          {error && (
-            <div className="dark:text-status-danger shrink-0 border-b border-red-200 bg-red-100 px-3 py-1.5 text-[11px] font-medium text-red-800 dark:border-red-900/50 dark:bg-red-950">
-              {error}
-            </div>
-          )}
           <TabsContent
             value={kind}
             className="relative mt-0 min-h-0 flex-1 bg-neutral-200 p-1 dark:bg-neutral-900"

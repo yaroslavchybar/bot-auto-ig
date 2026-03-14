@@ -7,6 +7,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
 import { WorkflowFlowEditor } from '../components/WorkflowFlowEditor'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 function buildUnavailableMessage(workflowId: string | undefined) {
   if (!workflowId) {
@@ -65,12 +66,12 @@ export function WorkflowEditorPageContainer() {
   const navigate = useNavigate()
   const { workflowId } = useParams()
   const updateWorkflow = useMutation(api.workflows.mutations.update)
+  const { handleError } = useErrorHandler()
   const workflow = useQuery(
     api.workflows.queries.get,
     workflowId ? { id: workflowId as Id<'workflows'> } : 'skip',
   )
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleBack = useCallback(() => {
     navigate('/workflows')
@@ -80,7 +81,6 @@ export function WorkflowEditorPageContainer() {
     async (nodes: Node[], edges: Edge[]) => {
       if (!workflowId) return
       setSaving(true)
-      setError(null)
       try {
         await updateWorkflow({
           id: workflowId as Id<'workflows'>,
@@ -89,12 +89,12 @@ export function WorkflowEditorPageContainer() {
         })
         navigate('/workflows')
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause))
+        handleError(cause, 'Save workflow')
       } finally {
         setSaving(false)
       }
     },
-    [navigate, updateWorkflow, workflowId],
+    [handleError, navigate, updateWorkflow, workflowId],
   )
 
   if (!workflowId || !workflow) {
@@ -106,12 +106,6 @@ export function WorkflowEditorPageContainer() {
 
   return (
     <div className="bg-shell flex h-full flex-col overflow-hidden">
-      {error ? (
-        <div className="bg-status-danger-soft text-status-danger border-status-danger-border border-b px-4 py-3 text-sm">
-          {error}
-        </div>
-      ) : null}
-
       <div className="min-h-0 flex-1">
         <WorkflowFlowEditor
           workflow={workflow}

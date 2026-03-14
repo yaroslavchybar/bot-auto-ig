@@ -9,7 +9,7 @@ import { buildVncSessionPath, sessionKey } from '../utils/liveSessions'
 
 export function VncPageContainer() {
   const navigate = useNavigate()
-  const { sessions, loading, error, connected, refresh } = useVncSessions()
+  const { sessions, loading, connected, refresh } = useVncSessions()
   const [refreshing, setRefreshing] = useState(false)
 
   const handleSelect = useCallback(
@@ -38,7 +38,6 @@ export function VncPageContainer() {
       />
       <VncSessionGrid
         sessions={sessions}
-        error={error}
         onSelect={handleSelect}
       />
     </div>
@@ -79,19 +78,13 @@ function VncHeader({
 /* ── Session grid ── */
 
 function VncSessionGrid({
-  sessions, error, onSelect,
+  sessions, onSelect,
 }: {
   sessions: ReturnType<typeof useVncSessions>['sessions']
-  error: string | null
   onSelect: (workflowId: string, profileName: string) => void
 }) {
   return (
     <div className="z-10 min-h-0 flex-1 overflow-auto p-2">
-      {error ? (
-        <div className="border-status-danger-border bg-status-danger-soft text-status-danger mb-2 rounded-[3px] border px-3 py-2 text-xs">
-          Failed to load displays: {error}
-        </div>
-      ) : null}
       {sessions.length === 0 ? (
         <div className="border-line bg-panel-subtle text-subtle-copy flex h-full min-h-[260px] flex-col items-center justify-center gap-2 rounded-[4px] border backdrop-blur-xs">
           <LayoutGrid className="h-6 w-6" />

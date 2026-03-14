@@ -8,27 +8,26 @@ import {
   normalizeSessions,
   type DisplaySession,
 } from '../utils/liveSessions'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 export function useVncSessions() {
   const isMobile = useIsMobile()
   const isVisible = useDocumentVisibility()
+  const { handleError } = useErrorHandler()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
-    setError(null)
-
     try {
       const data = await apiFetch<DisplaySession[]>('/api/displays')
       setSessions(normalizeSessions(data))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      handleError(cause, 'VNC sessions')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [handleError])
 
   const handleSocketEvent = useCallback((event: unknown) => {
     setSessions((current) => applyDisplayEvent(current, event))
@@ -64,7 +63,6 @@ export function useVncSessions() {
   return {
     sessions,
     loading,
-    error,
     connected,
     refresh,
   }

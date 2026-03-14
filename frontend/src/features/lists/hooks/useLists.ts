@@ -3,21 +3,21 @@ import { useConvex, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { List } from '../types'
 import { getCache, setCache } from '@/lib/cache'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 const STORAGE_KEY = 'cached_lists'
 
 export function useLists() {
   const convex = useConvex()
+  const { handleError } = useErrorHandler()
   const liveLists = useQuery(api.lists.list, {})
   const [lists, setLists] = useState<List[]>(() => {
     return getCache<List[]>(STORAGE_KEY) ?? []
   })
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const refreshLists = useCallback(async (background = false) => {
     if (!background) setLoading(true)
-    setError(null)
     try {
       const data = await convex.query(api.lists.list, {})
       const mapped = data.map((list) => ({
@@ -28,12 +28,12 @@ export function useLists() {
       setCache(STORAGE_KEY, mapped)
       return mapped
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Lists fetch')
       throw e
     } finally {
       if (!background) setLoading(false)
     }
-  }, [convex])
+  }, [convex, handleError])
 
   useEffect(() => {
     if (!liveLists) return
@@ -55,7 +55,6 @@ export function useLists() {
   return {
     lists,
     loading,
-    error,
     refresh: () => refreshLists(false),
     backgroundRefresh: () => refreshLists(true),
     setLists,

@@ -32,11 +32,6 @@ export function WorkflowsPageContainer() {
         refreshing={s.refreshing} importInputRef={s.importInputRef}
         onCreate={s.handleCreate} onRefresh={() => void s.handleRefresh()}
         onImportClick={s.handleImportClick} onImportFile={s.handleImportFile} />
-      {s.error && (
-        <div className="bg-status-danger-soft text-status-danger border-status-danger-border relative z-10 flex-none border-b p-4 text-sm">
-          {s.error}
-        </div>
-      )}
       <WorkflowsContent s={s} />
       <WorkflowCrudDialogs isCreateOpen={s.isCreateOpen} editWorkflow={s.editWorkflow}
         saving={s.saving} onSetIsCreateOpen={s.setIsCreateOpen}

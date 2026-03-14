@@ -22,13 +22,6 @@ export function ListsPageContainer() {
         refreshing={state.refreshing} onCreate={state.handleCreate}
         onRefresh={() => void state.handleRefreshLists()} />
 
-      {state.surfacedError && !state.deleteListTarget && !state.isCreateOpen && !state.editList && (
-        <div className="status-banner-danger relative z-10 flex items-center border-b px-6 py-3 text-sm">
-          <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />
-          {state.surfacedError}
-        </div>
-      )}
-
       <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="mx-auto max-w-[2000px]">
           <ListsList lists={state.lists} loading={state.loading}
@@ -74,7 +67,7 @@ function ListsDialogs({ state }: { state: ReturnType<typeof useListsPage> }) {
             <DialogTitle className="page-title-gradient">Create List</DialogTitle>
           </DialogHeader>
           <ListsForm key={state.isCreateOpen ? 'create-open' : 'create-closed'}
-            mode="create" saving={state.saving} error={state.error}
+            mode="create" saving={state.saving}
             onSave={(name) => state.handleSave(name, [], [])}
             onCancel={state.handleCloseCreate} />
         </DialogContent>
@@ -85,7 +78,7 @@ function ListsDialogs({ state }: { state: ReturnType<typeof useListsPage> }) {
           className="bg-panel border-line text-ink max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
           {state.editList ? (
             <ListsForm key={state.editList.id} mode="edit" initialData={state.editList}
-              saving={state.saving} error={state.error}
+              saving={state.saving}
               onSave={state.handleSave} onCancel={state.handleCloseEdit} />
           ) : (
             <div className="text-subtle-copy p-4 text-sm">List unavailable.</div>
@@ -96,7 +89,7 @@ function ListsDialogs({ state }: { state: ReturnType<typeof useListsPage> }) {
       {state.deleteListTarget ? (
         <ConfirmDeleteDialog open={Boolean(state.deleteListTarget)}
           title="Delete List?" entityLabel="" itemName={state.deleteListTarget.name}
-          confirmLabel="Delete List" saving={state.saving} error={state.error}
+          confirmLabel="Delete List" saving={state.saving} error={null}
           onConfirm={state.handleDelete} onCancel={() => state.setDeleteListTargetId(null)} />
       ) : null}
     </>

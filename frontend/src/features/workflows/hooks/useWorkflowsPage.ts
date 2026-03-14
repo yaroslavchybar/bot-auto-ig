@@ -18,6 +18,7 @@ import {
   buildWorkflowExportEnvelope,
   validateWorkflowImport,
 } from '../utils/workflowImportExport'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 type WorkflowArtifact = {
   _id: string
@@ -74,11 +75,13 @@ function useWorkflowDialogState(workflowsList: Workflow[]) {
 
 /* ── Artifact fetching ── */
 
-function useWorkflowArtifacts(detailsWorkflowId: Id<'workflows'> | null) {
+function useWorkflowArtifacts(
+  detailsWorkflowId: Id<'workflows'> | null,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
+) {
   const [workflowArtifacts, setWorkflowArtifacts] = useState<
     Record<string, WorkflowArtifact[]>
   >({})
-  const [error, setError] = useState<string | null>(null)
   const [fetchedIds, setFetchedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -98,16 +101,16 @@ function useWorkflowArtifacts(detailsWorkflowId: Id<'workflows'> | null) {
       })
       .catch((cause) => {
         if (cancelled) return
-        setError(cause instanceof Error ? cause.message : String(cause))
+        handleError(cause, 'Workflow artifacts')
         setFetchedIds((prev) => new Set(prev).add(id))
       })
     return () => { cancelled = true }
-  }, [detailsWorkflowId])
+  }, [detailsWorkflowId, handleError])
 
   const artifactsLoading = detailsWorkflowId !== null
     && !fetchedIds.has(String(detailsWorkflowId))
 
-  return { artifactsLoading, workflowArtifacts, artifactError: error, setArtifactError: setError }
+  return { artifactsLoading, workflowArtifacts }
 }
 
 /* ── CRUD operations ── */
@@ -116,25 +119,24 @@ function useWorkflowArtifacts(detailsWorkflowId: Id<'workflows'> | null) {
 
 function useWorkflowSimpleActions(
   dialogState: ReturnType<typeof useWorkflowDialogState>,
-  setError: (e: string | null) => void,
 ) {
   const navigate = useNavigate()
 
   const handleCreate = useCallback(() => {
-    dialogState.setIsCreateOpen(true); setError(null)
-  }, [dialogState, setError])
+    dialogState.setIsCreateOpen(true)
+  }, [dialogState])
 
   const handleEdit = useCallback((workflow: Workflow) => {
-    dialogState.setEditWorkflowId(workflow._id); setError(null)
-  }, [dialogState, setError])
+    dialogState.setEditWorkflowId(workflow._id)
+  }, [dialogState])
 
   const handleViewDetails = useCallback((workflow: Workflow) => {
-    dialogState.setDetailsWorkflowId(workflow._id); setError(null)
-  }, [dialogState, setError])
+    dialogState.setDetailsWorkflowId(workflow._id)
+  }, [dialogState])
 
   const handleEditFlow = useCallback((workflow: Workflow) => {
-    navigate(`/workflows/${workflow._id}/editor`); setError(null)
-  }, [navigate, setError])
+    navigate(`/workflows/${workflow._id}/editor`)
+  }, [navigate])
 
   const handleDelete = useCallback((workflow: Workflow) => {
     dialogState.setDeleteWorkflowId(workflow._id)
@@ -147,7 +149,7 @@ function useWorkflowSimpleActions(
 
 function useWorkflowMutations(
   dialogState: ReturnType<typeof useWorkflowDialogState>,
-  setError: (e: string | null) => void,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const [saving, setSaving] = useState(false)
   const createWorkflow = useMutation(api.workflows.mutations.create)
@@ -157,45 +159,44 @@ function useWorkflowMutations(
   const resetWorkflow = useMutation(api.workflows.mutations.reset)
 
   const handleSaveCreate = useCallback(async (data: { name: string }) => {
-    setSaving(true); setError(null)
+    setSaving(true)
     try { await createWorkflow({ name: data.name, nodes: [], edges: [] }); dialogState.setIsCreateOpen(false) }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    catch (e) { handleError(e, 'Create workflow') }
     finally { setSaving(false) }
-  }, [createWorkflow, dialogState, setError])
+  }, [createWorkflow, dialogState, handleError])
 
   const handleSaveEdit = useCallback(async (data: { name: string }) => {
     if (!dialogState.editWorkflowId) return
-    setSaving(true); setError(null)
+    setSaving(true)
     try { await updateWorkflow({ id: dialogState.editWorkflowId, name: data.name }); dialogState.setEditWorkflowId(null) }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    catch (e) { handleError(e, 'Update workflow') }
     finally { setSaving(false) }
-  }, [dialogState, setError, updateWorkflow])
+  }, [dialogState, handleError, updateWorkflow])
 
   const handleConfirmDelete = useCallback(async () => {
     if (!dialogState.deleteWorkflowId) return
-    setSaving(true); setError(null)
+    setSaving(true)
     try {
       await removeWorkflow({ id: dialogState.deleteWorkflowId })
       if (dialogState.editWorkflowId === dialogState.deleteWorkflowId) dialogState.setEditWorkflowId(null)
       if (dialogState.detailsWorkflowId === dialogState.deleteWorkflowId) dialogState.setDetailsWorkflowId(null)
       if (dialogState.scheduleWorkflowId === dialogState.deleteWorkflowId) dialogState.setScheduleWorkflowId(null)
       dialogState.setDeleteWorkflowId(null)
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { handleError(e, 'Delete workflow') }
     finally { setSaving(false) }
-  }, [dialogState, removeWorkflow, setError])
+  }, [dialogState, removeWorkflow, handleError])
 
   const handleDuplicate = useCallback(async (workflow: Workflow) => {
-    setSaving(true); setError(null)
+    setSaving(true)
     try { await duplicateWorkflow({ id: workflow._id }) }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    catch (e) { handleError(e, 'Duplicate workflow') }
     finally { setSaving(false) }
-  }, [duplicateWorkflow, setError])
+  }, [duplicateWorkflow, handleError])
 
   const handleReset = useCallback(async (workflow: Workflow) => {
-    setError(null)
     try { await resetWorkflow({ id: workflow._id }) }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)) }
-  }, [resetWorkflow, setError])
+    catch (e) { handleError(e, 'Reset workflow') }
+  }, [resetWorkflow, handleError])
 
   return { saving, setSaving, createWorkflow, handleSaveCreate, handleSaveEdit, handleConfirmDelete, handleDuplicate, handleReset }
 }
@@ -204,10 +205,10 @@ function useWorkflowMutations(
 
 function useWorkflowCrud(
   dialogState: ReturnType<typeof useWorkflowDialogState>,
-  setError: (e: string | null) => void,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
-  const actions = useWorkflowSimpleActions(dialogState, setError)
-  const mutations = useWorkflowMutations(dialogState, setError)
+  const actions = useWorkflowSimpleActions(dialogState)
+  const mutations = useWorkflowMutations(dialogState, handleError)
 
   return {
     saving: mutations.saving,
@@ -228,7 +229,7 @@ function useWorkflowImportExport(
   workflowsList: Workflow[],
   createWorkflow: ReturnType<typeof useMutation<typeof api.workflows.mutations.create>>,
   setSaving: (s: boolean) => void,
-  setError: (e: string | null) => void,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const lists = useQuery(api.lists.list, {})
@@ -256,9 +257,9 @@ function useWorkflowImportExport(
       URL.revokeObjectURL(url)
       toast.success(`Exported "${workflow.name}"`)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Export workflow')
     }
-  }, [setError])
+  }, [handleError])
 
   const handleImportClick = useCallback(() => {
     importInputRef.current?.click()
@@ -269,7 +270,6 @@ function useWorkflowImportExport(
     event.target.value = ''
     if (!file) return
     setSaving(true)
-    setError(null)
     try {
       const rawText = await file.text()
       const imported = validateWorkflowImport({
@@ -284,13 +284,11 @@ function useWorkflowImportExport(
       imported.warnings.forEach((warning) => toast.warning(warning))
       toast.success(`Imported "${imported.workflow.name}"`)
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-      setError(message)
-      toast.error(message)
+      handleError(e, 'Import workflow')
     } finally {
       setSaving(false)
     }
-  }, [createWorkflow, lists, workflowsList, setError, setSaving])
+  }, [createWorkflow, lists, workflowsList, handleError, setSaving])
 
   return {
     importInputRef, lists,
@@ -312,14 +310,13 @@ interface ScheduleUpdateData {
 
 function useWorkflowScheduling(
   dialogState: ReturnType<typeof useWorkflowDialogState>,
-  setError: (e: string | null) => void,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
   setSaving: (s: boolean) => void,
 ) {
   const toggleActiveWorkflow = useMutation(api.workflows.scheduling.toggleActive)
   const updateSchedule = useMutation(api.workflows.scheduling.updateSchedule)
 
   const handleToggleActive = useCallback(async (workflow: Workflow) => {
-    setError(null)
     try {
       if (workflow.isActive && workflow.status === 'running') {
         try {
@@ -328,27 +325,25 @@ function useWorkflowScheduling(
       }
       await toggleActiveWorkflow({ id: workflow._id })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Toggle workflow')
     }
-  }, [setError, toggleActiveWorkflow])
+  }, [handleError, toggleActiveWorkflow])
 
   const handleStopRun = useCallback(async (workflow: Workflow) => {
-    setError(null)
     try {
       await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Stop workflow')
     }
-  }, [setError])
+  }, [handleError])
 
   const handleEditSchedule = useCallback((workflow: Workflow) => {
     dialogState.setScheduleWorkflowId(workflow._id)
-    setError(null)
-  }, [dialogState, setError])
+  }, [dialogState])
 
   const handleSaveSchedule = useCallback(async (data: ScheduleUpdateData) => {
     if (!dialogState.scheduleWorkflowId) return
-    setSaving(true); setError(null)
+    setSaving(true)
     try {
       await updateSchedule({
         id: dialogState.scheduleWorkflowId,
@@ -359,9 +354,9 @@ function useWorkflowScheduling(
       })
       dialogState.setScheduleWorkflowId(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Save schedule')
     } finally { setSaving(false) }
-  }, [dialogState, setError, setSaving, updateSchedule])
+  }, [dialogState, handleError, setSaving, updateSchedule])
 
   return {
     handleToggleActive, handleStopRun,
@@ -388,43 +383,41 @@ function useWorkflowsData() {
 export function useWorkflowsPage() {
   const convex = useConvex()
   const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { handleError } = useErrorHandler()
 
   const { workflowsList, workflowsLoading, setWorkflowsData } = useWorkflowsData()
   const dialogState = useWorkflowDialogState(workflowsList)
-  const { artifactsLoading, workflowArtifacts, artifactError, setArtifactError } =
-    useWorkflowArtifacts(dialogState.detailsWorkflowId)
+  const { artifactsLoading, workflowArtifacts } =
+    useWorkflowArtifacts(dialogState.detailsWorkflowId, handleError)
 
-  useEffect(() => {
-    if (artifactError) { setError(artifactError); setArtifactError(null) }
-  }, [artifactError, setArtifactError])
-
-  const crud = useWorkflowCrud(dialogState, setError)
-  const importExport = useWorkflowImportExport(workflowsList, crud.createWorkflow, crud.setSaving, setError)
-  const scheduling = useWorkflowScheduling(dialogState, setError, crud.setSaving)
+  const crud = useWorkflowCrud(dialogState, handleError)
+  const importExport = useWorkflowImportExport(workflowsList, crud.createWorkflow, crud.setSaving, handleError)
+  const scheduling = useWorkflowScheduling(dialogState, handleError, crud.setSaving)
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true); setError(null)
+    setRefreshing(true)
     try {
       const [latest] = await Promise.all([
         convex.query(api.workflows.queries.list, {}),
         new Promise((resolve) => setTimeout(resolve, 400)),
       ])
       setWorkflowsData(latest as Workflow[])
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
+    } catch (e) { handleError(e, 'Refresh workflows') }
     finally { setRefreshing(false) }
-  }, [convex, setWorkflowsData])
+  }, [convex, handleError, setWorkflowsData])
 
   const handleDownloadArtifact = useCallback(async (storageId: string, fileName: string) => {
-    await apiDownload(
-      `/api/workflows/artifacts/download?storageId=${encodeURIComponent(storageId)}&fileName=${encodeURIComponent(fileName)}`,
-      fileName,
-    )
-  }, [])
+    try {
+      await apiDownload(
+        `/api/workflows/artifacts/download?storageId=${encodeURIComponent(storageId)}&fileName=${encodeURIComponent(fileName)}`,
+        fileName,
+      )
+    } catch (e) { handleError(e, 'Download artifact') }
+  }, [handleError])
 
   return {
     importInputRef: importExport.importInputRef,
-    workflowsList, workflowsLoading, saving: crud.saving, refreshing, error,
+    workflowsList, workflowsLoading, saving: crud.saving, refreshing,
     isCreateOpen: dialogState.isCreateOpen, editWorkflow: dialogState.editWorkflow,
     detailsWorkflow: dialogState.detailsWorkflow, scheduleWorkflow: dialogState.scheduleWorkflow,
     deleteWorkflowId: dialogState.deleteWorkflowId, artifactsLoading, workflowArtifacts,

@@ -9,6 +9,7 @@ import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 /* ── Dialog state management ── */
 
@@ -73,14 +74,12 @@ function useProfileSearch(profiles: Profile[]) {
 
 /* ── Logs fetching ── */
 
-function useProfileLogs() {
+function useProfileLogs(handleError: ReturnType<typeof useErrorHandler>['handleError']) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
-  const [logsError, setLogsError] = useState<string | null>(null)
 
   const loadLogs = useCallback(async (profileName?: string) => {
     setLogsLoading(true)
-    setLogsError(null)
     try {
       const data = await apiFetch<LogEntry[]>('/api/logs')
       const filtered = profileName
@@ -93,13 +92,13 @@ function useProfileLogs() {
         : data
       setLogs(filtered.slice(-500))
     } catch (e) {
-      setLogsError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Profile logs')
     } finally {
       setLogsLoading(false)
     }
-  }, [])
+  }, [handleError])
 
-  return { logs, logsLoading, logsError, loadLogs }
+  return { logs, logsLoading, loadLogs }
 }
 
 /* ── CRUD: Save handler ── */
@@ -107,16 +106,15 @@ function useProfileLogs() {
 function useProfileSave(
   dialogState: ReturnType<typeof useProfileDialogState>,
   refreshProfiles: () => Promise<void>,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const createProfile = useMutation(api.profiles.mutations.create)
   const updateProfile = useMutation(api.profiles.mutations.updateById)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const handleSaveProfile = useCallback(async (data: Partial<Profile>) => {
     const name = String(data.name ?? '').trim()
     setSaving(true)
-    setError(null)
     try {
       const payload = {
         name,
@@ -142,13 +140,13 @@ function useProfileSave(
         dialogState.setEditProfile(null)
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Save profile')
     } finally {
       setSaving(false)
     }
-  }, [createProfile, dialogState, refreshProfiles, updateProfile])
+  }, [createProfile, dialogState, handleError, refreshProfiles, updateProfile])
 
-  return { saving, setSaving, error, setError, handleSaveProfile }
+  return { saving, setSaving, handleSaveProfile }
 }
 
 /* ── CRUD: Delete + Toggle ── */
@@ -157,28 +155,26 @@ function useProfileCrud(
   dialogState: ReturnType<typeof useProfileDialogState>,
   refreshProfiles: () => Promise<void>,
   setSaving: (v: boolean) => void,
-  setError: (v: string | null) => void,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const removeProfile = useMutation(api.profiles.mutations.removeById)
 
   const handleDeleteConfirm = useCallback(async () => {
     if (!dialogState.deleteProfile) return
     setSaving(true)
-    setError(null)
     try {
       await removeProfile({ profileId: dialogState.deleteProfile.id as Id<'profiles'> })
       await refreshProfiles()
       dialogState.setDeleteProfileId(null)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Delete profile')
     } finally {
       setSaving(false)
     }
-  }, [dialogState, refreshProfiles, removeProfile, setError, setSaving])
+  }, [dialogState, refreshProfiles, removeProfile, handleError, setSaving])
 
   const toggleUsing = useCallback(async (profile: Profile) => {
     setSaving(true)
-    setError(null)
     try {
       if (profile.using) {
         try {
@@ -195,11 +191,11 @@ function useProfileCrud(
       }
       await refreshProfiles()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Toggle profile')
     } finally {
       setSaving(false)
     }
-  }, [refreshProfiles, setError, setSaving])
+  }, [refreshProfiles, handleError, setSaving])
 
   return { handleDeleteConfirm, toggleUsing }
 }
@@ -209,7 +205,8 @@ function useProfileCrud(
 function useProfilePageActions(
   convex: ReturnType<typeof useConvex>,
   dialogState: ReturnType<typeof useProfileDialogState>,
-  crud: { setSaving: (v: boolean) => void; setError: (v: string | null) => void },
+  setSaving: (v: boolean) => void,
+  handleError: ReturnType<typeof useErrorHandler>['handleError'],
   clearWsLogs: () => void,
   refreshProfiles: () => Promise<void>,
 ) {
@@ -227,58 +224,50 @@ function useProfilePageActions(
   const handleCreate = useCallback(() => {
     dialogState.setEditProfile(null)
     dialogState.setIsCreateOpen(true)
-    crud.setError(null)
-  }, [crud, dialogState])
+  }, [dialogState])
 
   const handleEdit = useCallback(async (profile: Profile) => {
     dialogState.setDetailsProfileId(null)
-    crud.setSaving(true)
-    crud.setError(null)
+    setSaving(true)
     try {
       const fullProfile = await convex.query(api.profiles.queries.getById, {
         profileId: profile.id as Id<'profiles'>,
       })
       dialogState.setEditProfile(fullProfile ? mapProfileRecord(fullProfile) : null)
     } catch (e) {
-      crud.setError(e instanceof Error ? e.message : String(e))
+      handleError(e, 'Load profile')
     } finally {
-      crud.setSaving(false)
+      setSaving(false)
     }
-  }, [convex, crud, dialogState])
+  }, [convex, dialogState, handleError, setSaving])
 
   const handleDeleteClick = useCallback((profile: Profile) => {
     dialogState.setDeleteProfileId(profile.id)
     dialogState.setDetailsProfileId(null)
-    crud.setError(null)
-  }, [crud, dialogState])
+  }, [dialogState])
 
   const handleLogs = useCallback((profile: Profile) => {
     dialogState.setLogsProfileId(profile.id)
     dialogState.setDetailsProfileId(null)
-    crud.setError(null)
-  }, [crud, dialogState])
+  }, [dialogState])
 
   const handleDetails = useCallback((profile: Profile) => {
     dialogState.setDetailsProfileId(profile.id)
-    crud.setError(null)
-  }, [crud, dialogState])
+  }, [dialogState])
 
   const handleCloseCreate = useCallback(() => {
     dialogState.setIsCreateOpen(false)
-    crud.setError(null)
-  }, [crud, dialogState])
+  }, [dialogState])
 
   const handleCloseEdit = useCallback(() => {
     dialogState.setEditProfile(null)
-    crud.setError(null)
-  }, [crud, dialogState])
+  }, [dialogState])
 
   const handleLogin = useCallback((profile: Profile) => {
     dialogState.setLoginProfileId(profile.id)
     dialogState.setDetailsProfileId(null)
     clearWsLogs()
-    crud.setError(null)
-  }, [clearWsLogs, crud, dialogState])
+  }, [clearWsLogs, dialogState])
 
   return {
     refreshing, handleRefreshProfiles,
@@ -311,10 +300,11 @@ export function useProfilesPage() {
   const convex = useConvex()
   const { profiles, loading: profilesLoading, refresh: refreshProfiles } = useProfiles()
   const isMobile = useIsMobile()
+  const { handleError } = useErrorHandler()
 
   const dialogState = useProfileDialogState(profiles)
   const { searchQuery, setSearchQuery, filteredProfiles } = useProfileSearch(profiles)
-  const { logs, logsLoading, logsError, loadLogs } = useProfileLogs()
+  const { logs, logsLoading, loadLogs } = useProfileLogs(handleError)
 
   const { logs: wsLogs, clearLogs: clearWsLogs } = useWebSocket({
     enabled: dialogState.loginProfileId !== null,
@@ -322,8 +312,8 @@ export function useProfilesPage() {
     maxBuffer: isMobile ? 250 : 500,
   })
 
-  const save = useProfileSave(dialogState, refreshProfiles)
-  const crud = useProfileCrud(dialogState, refreshProfiles, save.setSaving, save.setError)
+  const save = useProfileSave(dialogState, refreshProfiles, handleError)
+  const crud = useProfileCrud(dialogState, refreshProfiles, save.setSaving, handleError)
 
   useRuntimeReconciliation(refreshProfiles)
 
@@ -332,8 +322,7 @@ export function useProfilesPage() {
   }, [dialogState.logsProfile?.name, loadLogs])
 
   const actions = useProfilePageActions(
-    convex, dialogState,
-    { setSaving: save.setSaving, setError: save.setError },
+    convex, dialogState, save.setSaving, handleError,
     clearWsLogs, refreshProfiles,
   )
 
@@ -341,7 +330,6 @@ export function useProfilesPage() {
     profiles, filteredProfiles, loading: profilesLoading,
     saving: save.saving, refreshing: actions.refreshing,
     isCreateOpen: dialogState.isCreateOpen,
-    error: save.error ?? logsError,
     logs, logsLoading, searchQuery, wsLogs,
     editProfile: dialogState.editProfile,
     detailsProfile: dialogState.detailsProfile,

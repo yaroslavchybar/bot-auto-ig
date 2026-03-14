@@ -57,13 +57,6 @@ export function LogsViewer({
         />
       </div>
 
-      {state.error && (
-        <div className="status-banner-danger flex shrink-0 items-center border-b px-3 py-1.5 text-[11px] font-medium">
-          <div className="status-dot-danger mr-2 h-2 w-2 rounded-full" />
-          {state.error}
-        </div>
-      )}
-
       {/* Main Data Grid */}
       <LogsEntryList
         visibleLogs={state.visibleLogs}
