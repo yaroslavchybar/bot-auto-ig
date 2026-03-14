@@ -66,6 +66,7 @@ export function useLogsState({
     switchToStatic: doSwitchToStatic,
     handleRefresh, handleClearLive,
     handleFileChange: doHandleFileChange,
+    inlineError, dismissError,
   } = useLogsFetching(liveBufferSize, workflowId, handleError)
 
   const {
@@ -102,6 +103,7 @@ export function useLogsState({
     loading, filesLoading, refreshing,
     files, selectedFile, handleFileChange,
     handleRefresh, handleClearLive,
+    inlineError, dismissError,
     filterQuery, setFilterQuery, levelFilter, setLevelFilter,
     showTime, setShowTime, showSource, setShowSource,
     showProfile, setShowProfile, autoScroll, setAutoScroll,
@@ -122,13 +124,24 @@ function useLogsCoreState(
   const [refreshing, setRefreshing] = useState(false)
   const [files, setFiles] = useState<LogFileItem[]>([])
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [inlineError, setInlineError] = useState<string | null>(null)
   const processedWsLogsRef = useRef(0)
+
+  /** Report to toast + Sentry AND surface in the panel */
+  const handleErrorWithInline = useCallback(
+    (error: unknown, context?: string) => {
+      const msg = handleError(error, context)
+      setInlineError(msg)
+    },
+    [handleError],
+  )
 
   return {
     mode, setMode, logs, setLogs, loading, setLoading,
     filesLoading, setFilesLoading, refreshing, setRefreshing,
     files, setFiles, selectedFile, setSelectedFile,
-    handleError, processedWsLogsRef, liveBufferSize,
+    handleError: handleErrorWithInline, inlineError, setInlineError,
+    processedWsLogsRef, liveBufferSize,
   }
 }
 
@@ -136,7 +149,7 @@ function useLogsCoreState(
 
 function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
   const {
-    liveBufferSize, setLoading, handleError, setLogs,
+    liveBufferSize, setLoading, handleError, setInlineError, setLogs,
     processedWsLogsRef, setMode, selectedFile,
     setFilesLoading, setFiles, setSelectedFile,
   } = state
@@ -148,12 +161,13 @@ function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
       setLogs(data.slice(-liveBufferSize))
       processedWsLogsRef.current = 0
       setMode('live')
+      setInlineError(null)
     } catch (e) {
       handleError(e, 'Load logs')
     } finally {
       setLoading(false)
     }
-  }, [liveBufferSize, processedWsLogsRef, handleError, setLoading, setLogs, setMode])
+  }, [liveBufferSize, processedWsLogsRef, handleError, setInlineError, setLoading, setLogs, setMode])
 
   const loadFiles = useCallback(async () => {
     setFilesLoading(true)
@@ -162,6 +176,7 @@ function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
       const items = (data || []).map((f) => ({ label: f, value: f }))
       setFiles(items)
       if (!selectedFile && items[0]) setSelectedFile(items[0].value)
+      setInlineError(null)
       return items
     } catch (e) {
       handleError(e, 'Load log files')
@@ -169,7 +184,7 @@ function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
     } finally {
       setFilesLoading(false)
     }
-  }, [selectedFile, handleError, setFiles, setFilesLoading, setSelectedFile])
+  }, [selectedFile, handleError, setInlineError, setFiles, setFilesLoading, setSelectedFile])
 
   const loadFileLogs = useCallback(
     async (filename: string) => {
@@ -181,13 +196,14 @@ function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
         )
         setLogs(data.slice(-liveBufferSize))
         setMode('static')
+        setInlineError(null)
       } catch (e) {
         handleError(e, 'Load file logs')
       } finally {
         setLoading(false)
       }
     },
-    [liveBufferSize, handleError, setLoading, setLogs, setMode],
+    [liveBufferSize, handleError, setInlineError, setLoading, setLogs, setMode],
   )
 
   return { loadLiveLogs, loadFiles, loadFileLogs }
@@ -204,7 +220,7 @@ function useLogsFetching(
   const {
     mode, setMode, logs, loading, filesLoading, refreshing, setRefreshing,
     files, selectedFile, setSelectedFile, setLogs, setLoading,
-    processedWsLogsRef,
+    processedWsLogsRef, inlineError, setInlineError,
   } = state
   const { loadLiveLogs, loadFiles, loadFileLogs } = useLogsDataLoading(state)
 
@@ -242,12 +258,13 @@ function useLogsFetching(
     try {
       await apiFetch('/api/logs', { method: 'DELETE' })
       setLogs([])
+      setInlineError(null)
     } catch (e) {
       handleError(e, 'Clear logs')
     } finally {
       setLoading(false)
     }
-  }, [handleError, setLoading, setLogs])
+  }, [handleError, setInlineError, setLoading, setLogs])
 
   useEffect(() => { void loadLiveLogs() }, [loadLiveLogs])
   useWsLogMerge(mode, wsLogs, processedWsLogsRef, liveBufferSize, setLogs)
@@ -266,10 +283,13 @@ function useLogsFetching(
     setSelectedFile(value); setMode('static')
   }, [setMode, setSelectedFile])
 
+  const dismissError = useCallback(() => setInlineError(null), [setInlineError])
+
   return {
     mode, wsConnected, logs, loading, filesLoading, refreshing,
     files, selectedFile, switchToLive, switchToStatic,
     handleRefresh, handleClearLive, handleFileChange,
+    inlineError, dismissError,
   }
 }
 

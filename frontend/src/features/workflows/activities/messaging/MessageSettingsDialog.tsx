@@ -270,14 +270,14 @@ function useTemplateEditing(
       await saveTemplates(kind, next)
       setEditingIndex(null); setIsCreating(false); setEditValue('')
       toast.success('Template saved')
-    } catch { toast.error('Failed to save template') }
+    } catch { /* useMessageTemplates.handleError already shows a toast */ }
   }
 
   const handleDelete = async (index: number) => {
     const next = [...templates]
     next.splice(index, 1)
     try { await saveTemplates(kind, next); toast.success('Template deleted') }
-    catch { toast.error('Failed to delete template') }
+    catch { /* useMessageTemplates.handleError already shows a toast */ }
   }
 
   const startEdit = (index: number) => {

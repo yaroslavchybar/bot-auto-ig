@@ -1,3 +1,4 @@
+import { AlertTriangle, X } from 'lucide-react'
 import { useLogsState } from './useLogsState'
 import { LogsStreamControls } from './LogsStreamControls'
 import { LogsFilterBar } from './LogsFilterBar'
@@ -57,6 +58,14 @@ export function LogsViewer({
         />
       </div>
 
+      {/* Inline error banner for load/archive/clear failures */}
+      {state.inlineError && (
+        <LogsErrorBanner
+          message={state.inlineError}
+          onDismiss={state.dismissError}
+        />
+      )}
+
       {/* Main Data Grid */}
       <LogsEntryList
         visibleLogs={state.visibleLogs}
@@ -77,6 +86,29 @@ export function LogsViewer({
         levelFilter={state.levelFilter}
         mode={state.mode}
       />
+    </div>
+  )
+}
+
+function LogsErrorBanner({
+  message,
+  onDismiss,
+}: {
+  message: string
+  onDismiss: () => void
+}) {
+  return (
+    <div className="bg-status-danger-soft border-status-danger-border text-status-danger flex shrink-0 items-center gap-2 border-b px-2 py-1.5 text-[11px]">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{message}</span>
+      <button
+        type="button"
+        onClick={onDismiss}
+        className="hover:bg-status-danger-strong shrink-0 rounded p-0.5"
+        aria-label="Dismiss error"
+      >
+        <X className="h-3 w-3" />
+      </button>
     </div>
   )
 }

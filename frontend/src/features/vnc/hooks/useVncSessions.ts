@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { useDocumentVisibility } from '@/hooks/use-document-visibility'
+import { useRouteActive } from '@/hooks/useRouteActive'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   applyDisplayEvent,
@@ -12,7 +12,7 @@ import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 export function useVncSessions() {
   const isMobile = useIsMobile()
-  const isVisible = useDocumentVisibility()
+  const isVisible = useRouteActive('/vnc')
   const { handleError } = useErrorHandler()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
