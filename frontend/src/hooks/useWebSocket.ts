@@ -2,21 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useAuth } from '@clerk/react-router'
 import { env } from '@/lib/env'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
-
-export interface LogEntry {
-  message: string
-  level: string
-  source: string
-  workflowId?: string
-  profileName?: string
-  taskId?: string
-  targetUsername?: string
-  errorCode?: string
-  outcome?: string
-  attempt?: number
-  diagnostics?: string
-  ts: number
-}
+import type { LogEntry } from '@/lib/logs'
 
 export interface AutomationProgress {
   totalAccounts: number
