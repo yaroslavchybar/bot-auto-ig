@@ -1,4 +1,3 @@
-import { spawn, execFile } from 'child_process'
 import path from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
@@ -13,6 +12,7 @@ import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
 import logger from '../shared/logger.js'
+import { spawnPython, killByPid } from '../shared/ProcessService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -57,14 +57,11 @@ function clearManualDisplay(profileName: string): boolean {
 }
 
 export async function generateFingerprint(os: string): Promise<any> {
-  const python = process.env.PYTHON || 'python'
-
   const result = await new Promise<string>((resolve, reject) => {
     const args = [FINGERPRINT_GENERATOR_SCRIPT, '--os', os]
-    const child = spawn(python, args, {
-      cwd: PROJECT_ROOT,
+    const child = spawnPython({
+      args,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
     })
 
     let stdout = ''
@@ -222,7 +219,6 @@ export async function startProfileBrowser(name: string): Promise<void> {
 
   await ensureFingerprintSeed(profile)
 
-  const python = process.env.PYTHON || 'python'
   const args = [LAUNCHER_SCRIPT, '--name', name, '--action', 'manual', '--workflow-id', 'manual']
 
   if (profile.proxy) args.push('--proxy', profile.proxy)
@@ -237,11 +233,10 @@ export async function startProfileBrowser(name: string): Promise<void> {
     profileName: name,
   })
 
-  const child = spawn(python, args, {
-    cwd: PROJECT_ROOT,
+  const child = spawnPython({
+    args,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform === 'win32',
-    env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
   })
 
   child.stdout?.on('data', (data) => handleChildStdout(name, data))
@@ -268,20 +263,8 @@ export async function stopProfileBrowser(name: string): Promise<void> {
     profileName: name,
   })
 
-  if (process.platform === 'win32' && proc.pid) {
-    await new Promise<void>((resolve) => {
-      execFile('taskkill', ['/pid', String(proc.pid), '/t', '/f'], (err) => {
-        if (err) logger.error({ err }, 'Taskkill error')
-        resolve()
-      })
-    })
-  } else {
-    proc.kill('SIGTERM')
-    setTimeout(() => {
-      if (proc.exitCode === null) {
-        proc.kill('SIGKILL')
-      }
-    }, 2000)
+  if (proc.pid) {
+    await killByPid(proc.pid, proc)
   }
 
   profileProcesses.delete(name)

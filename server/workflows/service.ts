@@ -1,4 +1,3 @@
-import { spawn, execFile } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { activeDisplays, workflowWorkers } from '../shared/store.js'
@@ -11,6 +10,12 @@ import {
   workflowsUpdateStatus,
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
+import {
+  spawnPython,
+  killProcess,
+  getPid,
+  waitForExit,
+} from '../shared/ProcessService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -18,61 +23,13 @@ const PROJECT_ROOT = path.resolve(__dirname, '../../..')
 const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_workflow.py')
 
 // ---------------------------------------------------------------------------
-// Utility helpers
+// Utility helpers (re-exported from ProcessService)
 // ---------------------------------------------------------------------------
 
-export function getPid(proc: any): number | null {
-  const pid = proc?.pid
-  return typeof pid === 'number' && Number.isFinite(pid) ? pid : null
-}
+export { getPid, waitForExit }
 
-export function waitForExit(proc: any, ms: number): Promise<boolean> {
-  if (proc?.exitCode !== null && proc?.exitCode !== undefined) {
-    return Promise.resolve(true)
-  }
-  return new Promise<boolean>((resolve) => {
-    let done = false
-    const timer = setTimeout(() => {
-      if (done) return
-      done = true
-      proc?.off?.('exit', onExit)
-      resolve(proc?.exitCode !== null && proc?.exitCode !== undefined)
-    }, ms)
-    const onExit = () => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      resolve(true)
-    }
-    proc?.once?.('exit', onExit)
-  })
-}
-
-export async function stopProcess(proc: any): Promise<void> {
-  const pid = getPid(proc)
-  if (!pid) return
-
-  if (process.platform === 'win32') {
-    try { proc.kill('SIGBREAK') } catch { /* noop */ }
-    const exited = await waitForExit(proc, 2000)
-    if (exited) return
-    await new Promise<void>((resolve) => {
-      execFile('taskkill', ['/pid', String(pid), '/t', '/f'], () => resolve())
-    })
-    return
-  }
-
-  try {
-    process.kill(-pid, 'SIGTERM')
-  } catch {
-    try { proc.kill('SIGTERM') } catch { return }
-  }
-
-  const exited = await waitForExit(proc, 5000)
-  if (exited) return
-
-  try { process.kill(-pid, 'SIGKILL') } catch { /* noop */ }
-}
+/** Alias for ProcessService.killProcess — used by stopWorkflows. */
+const stopProcess = killProcess
 
 export function isStopNoiseLog(message: string): boolean {
   const m = String(message || '')
@@ -366,11 +323,8 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<void> {
     source: 'server',
   })
 
-  const proc = spawn('python', ['-u', PYTHON_RUNNER], {
-    cwd: PROJECT_ROOT,
-    detached: process.platform !== 'win32',
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
+  const proc = spawnPython({
+    args: ['-u', PYTHON_RUNNER],
   })
   workflowWorkers.set(workflowId, { process: proc, status: 'running', startedAt: Date.now() })
 

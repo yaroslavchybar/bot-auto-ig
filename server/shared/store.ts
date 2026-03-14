@@ -1,6 +1,6 @@
 
 import { WebSocket } from 'ws'
-import { ChildProcess } from 'child_process'
+import type { ChildProcess } from './ProcessService.js'
 
 // Store connected WebSocket clients
 export const clients: Set<WebSocket> = new Set()

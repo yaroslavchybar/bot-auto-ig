@@ -1,5 +1,4 @@
 import { Router } from 'express'
-import { spawn, execFile } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { automationState } from '../shared/store.js'
@@ -12,6 +11,7 @@ import { validateSettings } from '../shared/settings-schema.js'
 import { markStarted, markStopped } from './state.js'
 import { parseLogOutput } from '../logs/parser.js'
 import logger from '../shared/logger.js'
+import { spawnPython, killByPid } from '../shared/ProcessService.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -50,13 +50,9 @@ router.post('/start', async (req, res) => {
         broadcast({ type: 'log', message: 'Starting automation...', level: 'info', source: 'server' })
 
         // Spawn Python process with stdin for settings
-        // Use detached on Linux to create a process group we can kill
         // -u flag disables output buffering so logs stream in real-time
-        automationState.process = spawn('python', ['-u', PYTHON_RUNNER], {
-            cwd: PROJECT_ROOT,
-            detached: process.platform !== 'win32',
-            stdio: ['pipe', 'pipe', 'pipe'],
-            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
+        automationState.process = spawnPython({
+            args: ['-u', PYTHON_RUNNER],
         })
 
         // Send settings via stdin
@@ -168,33 +164,8 @@ router.post('/stop', async (req, res) => {
 
         const pid = automationState.process.pid;
 
-        // On Windows, we need to use taskkill to kill the process tree
-        if (process.platform === 'win32' && pid) {
-            await new Promise<void>((resolve) => {
-                execFile('taskkill', ['/pid', String(pid), '/t', '/f'], (err) => {
-                    if (err) {
-                        logger.error({ err }, 'Taskkill error')
-                    }
-                    resolve()
-                })
-            })
-        } else if (pid) {
-            // On Linux, kill the entire process group using negative PID
-            try {
-                process.kill(-pid, 'SIGTERM')
-            } catch {
-                // Process group might not exist, try killing just the process
-                automationState.process.kill('SIGTERM')
-            }
-
-            // Wait a bit then force kill if still running
-            await new Promise((resolve) => setTimeout(resolve, 2000))
-
-            try {
-                process.kill(-pid, 'SIGKILL')
-            } catch {
-                // Already dead
-            }
+        if (pid) {
+            await killByPid(pid, automationState.process)
         }
 
         automationState.process = null
@@ -234,11 +205,9 @@ router.post('/login', async (req, res) => {
             args.push('--headless')
         }
 
-        const loginProcess = spawn('python', args, {
-            cwd: PROJECT_ROOT,
+        const loginProcess = spawnPython({
+            args,
             shell: true,
-            stdio: ['pipe', 'pipe', 'pipe'],
-            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONPATH: PROJECT_ROOT },
         })
 
         // Send credentials via stdin
@@ -247,8 +216,8 @@ router.post('/login', async (req, res) => {
             password,
             two_factor_secret: twoFactorSecret || null
         })
-        loginProcess.stdin.write(credentials)
-        loginProcess.stdin.end()
+        loginProcess.stdin?.write(credentials)
+        loginProcess.stdin?.end()
 
         loginProcess.stdout?.on('data', (data) => {
             const message = data.toString().trim()
