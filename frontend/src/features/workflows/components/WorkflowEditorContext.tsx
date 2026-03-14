@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, use, type ReactNode } from 'react'
 import type { BlockInsertionContext } from './workflowEditorUtils'
 
 export interface WorkflowEditorContextValue {
@@ -32,7 +32,7 @@ export function WorkflowEditorProvider({
 }
 
 export function useWorkflowEditor() {
-  const context = useContext(WorkflowEditorContext)
+  const context = use(WorkflowEditorContext)
 
   if (!context) {
     throw new Error('useWorkflowEditor must be used inside WorkflowEditorProvider')
