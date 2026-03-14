@@ -1,4 +1,3 @@
-
 import { Router } from 'express'
 import { spawn, execFile } from 'child_process'
 import path from 'path'
@@ -6,17 +5,17 @@ import { fileURLToPath } from 'url'
 import { automationState } from '../store.js'
 import { broadcast } from '../websocket.js'
 import { profilesSetLoginTrue } from '../data/convex.js'
-import { automationMutex } from '../helpers/mutex.js'
-import { savePid, clearPid } from '../automation/process-manager.js'
+import { automationMutex } from '../shared/mutex.js'
+import { savePid, clearPid } from './process-manager.js'
 import { errorResponse, ErrorCodes } from '../helpers/errors.js'
 import { validateSettings } from '../helpers/settings-schema.js'
-import { markStarted, markStopped } from '../automation/state.js'
+import { markStarted, markStopped } from './state.js'
 import { parseLogOutput } from '../logs/parser.js'
 import logger from '../shared/logger.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-// From dist/routes/ we need to go up to server/, then up to project root
+// From dist/automation/ we need to go up to server/, then up to project root
 const PROJECT_ROOT = path.resolve(__dirname, '../../..')
 const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_multiple_accounts.py')
 const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'actions', 'login', 'session.py')

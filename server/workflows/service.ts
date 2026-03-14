@@ -3,7 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { activeDisplays, workflowWorkers } from '../store.js'
 import { broadcast } from '../websocket.js'
-import { automationMutex } from '../helpers/mutex.js'
+import { automationMutex } from '../shared/mutex.js'
 import { parseLogOutput } from '../logs/parser.js'
 import {
   workflowsGetById,

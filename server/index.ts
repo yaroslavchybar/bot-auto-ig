@@ -12,7 +12,7 @@ import { createServer } from 'http'
 import { initWebSocket } from './websocket.js'
 import { clerkAuth, requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
 
-import automationRouter from './api/automation.js'
+import { automationRouter } from './automation/index.js'
 import logsRouter from './api/logs.js'
 import { profilesRouter } from './profiles/index.js'
 import listsRouter from './api/lists.js'
