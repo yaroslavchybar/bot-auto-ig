@@ -17,6 +17,7 @@ Testing surface, resource cost classification per surface, and validation approa
 
 **Auth:** Clerk sign-in page at /sign-in (email + password)
 - May need test credentials or Clerk dev mode bypass for smoke tests
+- Shared state currently does not include Clerk smoke-test credentials or a documented auth-bypass path for protected routes. Redirect-only checks validate the auth guard, but they do not prove that post-auth pages like `/accounts` or `/workflows` actually rendered.
 
 **Key pages to validate:**
 - /sign-in (auth page)

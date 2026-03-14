@@ -1,0 +1,34 @@
+{
+  "featureId": "frontend-error-handling",
+  "reviewedAt": "2026-03-15T01:42:05.956195+02:00",
+  "commitId": "a00c06c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Commit `a00c06c` does most of the requested refactor: it introduces a shared `useErrorHandler` hook, routes API failures through sonner + Sentry in the major frontend containers/hooks, and reduces remaining direct `setError` state in `frontend/src/features` down to auth/login/monitoring-specific cases. However, the new global-toast behavior is not fully behavior-preserving for keep-alive routes, so the feature does not completely satisfy the navigation-clearing requirement.",
+    "issues": [
+      {
+        "file": "frontend/src/features/vnc/hooks/useVncSessions.ts",
+        "line": 26,
+        "severity": "blocking",
+        "description": "`useVncSessions()` now sends poll failures to the global `useErrorHandler`, but the `/vnc` page is kept mounted in hidden mode by `frontend/src/components/layout/ProtectedLayoutShell.tsx:29-69` and this hook only gates on document visibility, not route visibility. The hidden VNC page therefore keeps polling with `setInterval(...)` and can recreate `VNC sessions` toasts after the user has navigated away, which breaks the feature requirement that errors be cleared on navigation and changes behavior from page-local error state to cross-route global noise."
+      },
+      {
+        "file": "frontend/src/features/workflows/activities/messaging/MessageSettingsDialog.tsx",
+        "line": 273,
+        "severity": "non_blocking",
+        "description": "`useMessageTemplates.saveTemplates()` now already calls `handleError(err, 'Save templates')` and rethrows in `frontend/src/features/workflows/activities/messaging/useMessageTemplates.ts:27-28`, but the dialog still catches the rejection here and shows its own generic `toast.error(...)` for save/delete failures. A single template persistence failure now produces two user-facing error toasts (one detailed, one generic), which is noisy and undermines the goal of centralizing error presentation."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared architecture library does not document the frontend React `Activity` keep-alive cache as an integration seam, even though it materially affects whether polling hooks and global toasts keep running after navigation.",
+      "evidence": "`.factory/library/architecture.md:62-67` only lists backend-oriented seams, while `frontend/src/components/layout/ProtectedLayoutShell.tsx:29-69` keeps `/workflows`, `/accounts`, `/logs`, and `/vnc` mounted via `keepAliveCache` + `<Activity mode=...>`; that interaction is directly relevant to refactors like this one that replace page-local errors with global toasts."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the feature entry, handoff, transcript skeleton, shared-state files, and `git show` for commit `a00c06c`. The centralized hook refactor is broad and mostly on target, but the review fails because hidden keep-alive VNC polling can still emit global error toasts after navigation, so the implementation does not fully preserve the intended error-clearing behavior."
+}

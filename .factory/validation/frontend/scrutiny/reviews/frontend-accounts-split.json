@@ -1,0 +1,33 @@
+{
+  "featureId": "frontend-accounts-split",
+  "reviewedAt": "2026-03-15T01:40:42.6977258+02:00",
+  "commitId": "8872c0b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Commit 8872c0b meaningfully decomposes the accounts container into smaller hooks and UI pieces, keeps `AccountsPageContainer.tsx` under the size/useState targets, and the reviewed code paths appear to preserve the CSV upload and workflow-artifact import behavior. However, the implementation does not fully satisfy the feature contract because the requested `AccountsProcessingView.tsx` extraction never happened; the processing flow remains split across other components instead of being isolated in the explicit component the milestone called for.",
+    "issues": [
+      {
+        "file": "frontend/src/features/accounts/components/AccountsUploadSection.tsx",
+        "line": 236,
+        "severity": "blocking",
+        "description": "The feature description explicitly required extracting an `AccountsProcessingView.tsx` component for the processing flow, but no such file exists under `frontend/src/features/accounts/components/`. The CSV processing UI is still implemented inline as `CsvProcessing()` here, while the completed/import-result processing UI is split across `frontend/src/features/accounts/components/AccountsTaskDetails.tsx:134` and `frontend/src/features/accounts/components/AccountsShared.tsx:160`. That leaves the requested refactor structurally incomplete even though the page was otherwise decomposed."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared frontend knowledge does not document the React Compiler `preserve-manual-memoization` constraint that hook return objects must often be destructured before being referenced inside `useCallback` dependencies during refactors.",
+      "evidence": "The worker handoff for this feature records `handoff.skillFeedback.suggestedChanges[0]`: 'The React Compiler's preserve-manual-memoization rule requires destructuring hook return values before using them in useCallback dependencies — this was a non-obvious constraint that caused lint failures during initial implementation', but `.factory/library/architecture.md` and `docs/frontend/guide.md` do not mention this React-Compiler-specific rule."
+    },
+    {
+      "area": "skills",
+      "observation": "`refactor-worker` still prescribes running all five global validators for every refactor, but this frontend-only feature followed the mission's narrower frontend guidance (build + lint) and still reported `followedProcedure: true`, so the skill procedure no longer matches how milestone-scoped frontend refactors are actually executed.",
+      "evidence": "`.factory/skills/refactor-worker/SKILL.md:72-76` requires `npm run test:convex`, `python -m pytest python/tests -q`, `npm --prefix server run build`, `npm --prefix frontend run build`, and `npm --prefix frontend run lint`, while the handoff verification block for `frontend-accounts-split` only lists frontend build/lint plus local size scans and the handoff sets `skillFeedback.followedProcedure` to true."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the mission feature entry, worker transcript skeleton, handoff, shared-state docs, and `git show` for commit 8872c0b. The accounts page refactor substantially reduces container complexity and appears behavior-preserving, but the review fails because the explicit `AccountsProcessingView.tsx` extraction was not delivered."
+}

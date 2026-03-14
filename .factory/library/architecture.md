@@ -59,6 +59,10 @@ python/
 - Python: runners → actions → (core|browser), runners → database → core
 - No circular imports allowed
 
+## Frontend Refactor Gotchas
+- `frontend/src/components/layout/ProtectedLayoutShell.tsx` keeps `/workflows`, `/accounts`, `/logs`, and `/vnc` mounted through `keepAliveCache` + React `Activity` even when those pages are hidden. Polling hooks, timers, and global toasts in those pages continue running unless they also gate on route visibility, not just document visibility.
+- React Compiler / eslint `preserve-manual-memoization` can require destructuring values returned from hooks before referencing them inside `useCallback` dependency arrays. Keeping a whole returned object in the dependency list may trigger lint/compiler failures during refactors even when the code is otherwise type-safe.
+
 ## Integration Seams (CRITICAL)
 - ~55 Convex HTTP route paths called by server, Python, and datauploader
 - WebSocket message protocol (11 message types)

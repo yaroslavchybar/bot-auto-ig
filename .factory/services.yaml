@@ -8,6 +8,8 @@ commands:
   lint_frontend: npm --prefix frontend run lint
   test_convex: npm run test:convex
   test_python: python -m pytest python/tests -q
+  stop_server_exec_safe: "powershell -Command '$connections = Get-NetTCPConnection -LocalPort 3001 -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }; exit 0'"
+  stop_frontend_exec_safe: "powershell -Command '$connections = Get-NetTCPConnection -LocalPort 5173 -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }; exit 0'"
   test_all: npm run test:convex && python -m pytest python/tests -q && npm --prefix server run build && npm --prefix frontend run build && npm --prefix frontend run lint
 
 services:
