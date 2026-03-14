@@ -40,6 +40,8 @@ python/
 └── tests/
 ```
 
+- The server launches workflow subprocesses through `python/runners/run_workflow.py`; that wrapper then calls into `python.runners.workflow.entrypoint.main()`.
+
 ### Import Direction Rules
 - Server: routes → services → data access (never reverse)
 - Python: runners → actions → (core|browser), runners → database → core

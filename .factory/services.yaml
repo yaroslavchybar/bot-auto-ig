@@ -1,7 +1,7 @@
 commands:
   install_root: npm install
-  install_frontend: npm --prefix frontend install
-  install_server: npm --prefix server install
+  install_frontend: cd frontend && npm install
+  install_server: cd server && npm install
   install_python: pip install -r python/requirements.txt
   build_server: npm --prefix server run build
   build_frontend: npm --prefix frontend run build

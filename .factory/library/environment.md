@@ -15,6 +15,7 @@ Environment variables, external dependencies, and setup notes.
 - SENTRY_DSN_FRONTEND, VITE_SENTRY_DSN — Frontend Sentry
 - SENTRY_DSN_SERVER — Server Sentry
 - SENTRY_DSN_PYTHON — Python Sentry
+- SENTRY_ORG, SENTRY_PROJECT, SENTRY_AUTH_TOKEN — Frontend source-map upload via the Vite Sentry plugin
 
 ## Platform Notes
 
@@ -22,3 +23,7 @@ Environment variables, external dependencies, and setup notes.
 - Docker Desktop available but resource-constrained (~2.5GB free RAM)
 - Node.js, Python 3.12, npm available globally
 - Process kill uses `taskkill` on Windows (not SIGTERM)
+
+## Bootstrap Notes
+
+- Server Sentry bootstrap must load `server/env.ts` before `server/shared/sentry.ts` so dotenv populates `SENTRY_DSN_SERVER`, while `server/shared/sentry.ts` still needs to run before Express/HTTP imports for instrumentation.
