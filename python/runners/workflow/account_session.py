@@ -98,7 +98,7 @@ def _run_account_nodes(runner, account, browser_state: Dict[str, Any], profile_d
     compat = compat_module()
     start_node = compat._find_start_node(runner.nodes)
     if not start_node:
-        compat.log('Не найден start node')
+        compat.log('Start node not found')
         return False
     current = compat._next_node(runner.edge_index, str(start_node.get('id')), '')
     loop_state: Dict[str, int] = {}
@@ -110,7 +110,7 @@ def _run_account_nodes(runner, account, browser_state: Dict[str, Any], profile_d
     while runner.running and current:
         visited_steps += 1
         if visited_steps > 500:
-            compat.log('Превышен лимит шагов workflow')
+            compat.log('Workflow step limit exceeded')
             return False
         current, completed_steps, last_handle = _run_single_node(
             runner,
@@ -219,10 +219,10 @@ def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool
     if 'Target page, context or browser has been closed' in str(exc):
         compat.emit_event('profile_completed', profile=profile_name, status='cancelled', workflow_id=runner.workflow_id)
         _sync_profile_status(runner, profile_name, 'idle', False)
-        compat.log(f'Остановлено @{profile_name}')
+        compat.log(f'Stopped @{profile_name}')
         return False
     compat.emit_event('profile_completed', profile=profile_name, status='failed', workflow_id=runner.workflow_id)
-    compat.log(f'Ошибка @{profile_name}: {exc}')
+    compat.log(f'Error @{profile_name}: {exc}')
     _sync_profile_status(runner, profile_name, 'idle', False)
     return False
 

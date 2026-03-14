@@ -183,7 +183,7 @@ def run_workflow_session(runner: WorkflowRunner) -> int:
     compat = compat_module()
     compat.emit_event('session_started', total_accounts=len(runner.accounts), workflow_id=runner.workflow_id)
     if not runner.accounts:
-        compat.log('Нет профилей для запуска.')
+        compat.log('No profiles to run.')
         compat.emit_event('session_ended', status='failed', workflow_id=runner.workflow_id)
         return 2
     had_failures = _run_accounts(runner)
@@ -227,7 +227,7 @@ def _process_runner_account(runner: WorkflowRunner, account, had_failures: bool)
             had_failures = True
     except Exception as exc:
         had_failures = True
-        compat.log(f'Ошибка профиля: {exc}')
+        compat.log(f'Profile error: {exc}')
     return had_failures
 
 
@@ -265,7 +265,7 @@ def _run_parallel_accounts(runner: WorkflowRunner) -> bool:
                 had_failures = True
         except Exception as exc:
             had_failures = True
-            compat.log(f'Ошибка профиля: {exc}')
+            compat.log(f'Profile error: {exc}')
     return had_failures
 
 

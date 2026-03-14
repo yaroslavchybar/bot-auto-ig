@@ -23,6 +23,7 @@ from python.actions.engagement.unfollow.session import unfollow_usernames
 from python.actions.messaging.session import send_messages
 from python.actions.stories import watch_stories
 from python.core.config import PROJECT_URL, SECRET_KEY
+from python.core.logging import setup_logging
 from python.core.models import ScrollingConfig, ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry
 from python.core.utils import (
@@ -59,14 +60,7 @@ def _configure_stdio() -> None:
 
 _configure_stdio()
 
-_log_stream_handler = logging.StreamHandler(sys.stdout)
-_log_stream_handler.setFormatter(logging.Formatter('%(message)s'))
-
-_logger = logging.getLogger('instagram_automation')
-_logger.handlers.clear()
-_logger.addHandler(_log_stream_handler)
-_logger.setLevel(logging.INFO)
-_logger.propagate = False
+_logger = logging.getLogger(__name__)
 
 
 def log(message: str) -> None:
@@ -74,7 +68,7 @@ def log(message: str) -> None:
     level = logging.INFO
     try:
         normalized = str(message).lstrip().lower()
-        if normalized.startswith(('ошибка', 'error', 'exception')):
+        if normalized.startswith(('error', 'exception')):
             level = logging.ERROR
     except Exception:
         level = logging.INFO
@@ -144,6 +138,7 @@ def _dedupe_profiles(payload: Any) -> List[Dict[str, Any]]:
 
 
 if __name__ == '__main__':
+    setup_logging()
     init_sentry()
     try:
         raise SystemExit(main())

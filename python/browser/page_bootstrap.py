@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any
 
@@ -7,6 +8,8 @@ from python.browser.compat import compat as compat_module
 from python.core.errors.exceptions import AccountBannedException
 from python.core.errors.retry import jitter, retry_with_backoff
 from python.core.snapshot_debugger import save_debug_snapshot
+
+logger = logging.getLogger(__name__)
 
 
 @retry_with_backoff(exceptions=(PlaywrightTimeoutError,))
@@ -101,7 +104,7 @@ def initialize_browser_page(context, profile_name: str):
     try:
         loaded_count = compat._preload_profile_cookies(context, profile_name)
         if loaded_count:
-            print(f'[*] Preloaded {loaded_count} cookies from database for {profile_name}')
+            logger.info('Preloaded %d cookies from database for %s', loaded_count, profile_name)
     except Exception as exc:
         compat.logger.warning('Cookie preload failed for %s: %s', profile_name, exc)
 
@@ -123,13 +126,13 @@ def bootstrap_instagram_session(page, monitor, profile_name: str, proxy_string: 
         compat.mark_proxy_success(proxy_string)
         compat.proxy_circuit.record_success()
     except PlaywrightTimeoutError:
-        print('[!] Timeout navigating to Instagram')
+        logger.warning('Timeout navigating to Instagram')
         compat.mark_proxy_failure(proxy_string)
         compat.proxy_circuit.record_failure()
     except AccountBannedException:
         raise
     except Exception as exc:
-        print(f'[!] Error navigating to Instagram: {exc}')
+        logger.error('Error navigating to Instagram: %s', exc)
         compat.mark_proxy_failure(proxy_string)
         compat.proxy_circuit.record_failure()
 
@@ -138,7 +141,7 @@ def _wait_for_monitor_cooldown(monitor) -> None:
     if not monitor.should_pause():
         return
     wait_time = max(0.0, monitor.cooldown_until - time.time())
-    print(f'[!] Traffic monitor triggered cooldown. Waiting {wait_time:.1f}s...')
+    logger.warning('Traffic monitor triggered cooldown. Waiting %.1fs...', wait_time)
     time.sleep(wait_time)
 
 

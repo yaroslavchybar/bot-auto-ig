@@ -33,11 +33,11 @@ def run_approve_follow_requests(
 
         opened_panel = open_follow_requests_list(page, log)
         if not opened_panel:
-            log("Не удалось открыть список заявок, продолжаю поиск Confirm.")
+            log("Could not open requests list, continuing search for Confirm.")
 
         confirm_buttons = find_confirm_buttons(page)
         if confirm_buttons:
-            log(f"Найдено {len(confirm_buttons)} кнопок Confirm. Подтверждаю...")
+            log(f"Found {len(confirm_buttons)} Confirm buttons. Approving...")
             for btn in confirm_buttons:
                 if should_stop():
                     break
@@ -54,18 +54,18 @@ def run_approve_follow_requests(
                     if username:
                         mark_account_approved(client, username, log)
 
-                    log("Подтверждена заявка")
+                    log("Request approved")
                     random_delay(delay_min, delay_max)
                 except Exception as e:
-                    log(f"Ошибка при подтверждении: {e}")
+                    log(f"Error during approval: {e}")
         else:
-            log("Кнопки Confirm не найдены.")
+            log("No Confirm buttons found.")
 
         close_notifications(page, log)
 
-        log(f"Ожидание {finish_delay_seconds} секунды перед закрытием сессии...")
+        log(f"Waiting {finish_delay_seconds} seconds before closing session...")
         random_delay(finish_delay_seconds, finish_delay_seconds)
 
-        log("Обработка уведомлений завершена.")
+        log("Notification processing complete.")
     except Exception as e:
-        log(f"Ошибка в процессе подтверждения: {e}")
+        log(f"Error during approval process: {e}")

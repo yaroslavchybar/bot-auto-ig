@@ -205,8 +205,8 @@ class InstagramAccountsClient:
                 return False
             if not self.is_profile_busy(profile_id):
                 return True
-            log(f"Профиль занят, жду освобождения... ({int(time.monotonic() - start)}s)")
+            log(f"Profile is busy, waiting for release... ({int(time.monotonic() - start)}s)")
             time.sleep(poll_interval)
 
-        log("Ожидание профиля истекло, продолжаю.")
+        log("Profile wait timed out, continuing.")
         return False

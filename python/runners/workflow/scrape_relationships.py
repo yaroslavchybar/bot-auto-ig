@@ -377,7 +377,7 @@ class ScrapeRelationshipsExecutor:
         try:
             self._open_target_profile(target_username)
         except Exception as exc:
-            self.compat.log(f'Ошибка открытия @{target_username}: {exc}')
+            self.compat.log(f'Error opening @{target_username}: {exc}')
             return ('profile_open_failed', str(exc))
         relationship_error = self.runner._open_relationship_view(
             self.page,
@@ -853,7 +853,7 @@ class ScrapeRelationshipsExecutor:
             updatedAt=int(time.time() * 1000),
         )
         self.compat.log(
-            f"Ошибка scrape_relationships @{target_username}: "
+            f"Error scrape_relationships @{target_username}: "
             f"{error_code or outcome or 'unknown_error'} {error_message or ''}".strip()
         )
         return 'failure'

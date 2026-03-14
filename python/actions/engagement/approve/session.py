@@ -34,11 +34,11 @@ def approve_follow_requests(
         )
 
     if page:
-        log(f"Использую существующую сессию для подтверждения заявок.")
+        log(f"Using existing session for approving requests.")
         _run_approve_logic(page)
         return
 
-    log(f"[Approve] Запуск браузера для профиля: {profile_name}")
+    log(f"[Approve] Starting browser for profile: {profile_name}")
 
     with create_browser_context(
         profile_name=profile_name,

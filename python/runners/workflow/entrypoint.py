@@ -5,6 +5,7 @@ import sys
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
+from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
 from python.runners.workflow.compat import compat as compat_module
@@ -25,6 +26,7 @@ def _normalize_list_ids(raw_items: Any) -> List[str]:
 
 
 def main() -> int:
+    setup_logging()
     init_sentry()
     try:
         return _main_inner()
@@ -70,15 +72,15 @@ def _main_inner() -> int:
 def _read_payload(compat) -> Optional[Dict[str, Any]]:
     raw = sys.stdin.read()
     if not raw.strip():
-        compat.log('Не получены входные данные.')
+        compat.log('No input data received.')
         return None
     try:
         payload = compat.json.loads(raw)
     except Exception as exc:
-        compat.log(f'Некорректный JSON: {exc}')
+        compat.log(f'Invalid JSON: {exc}')
         return None
     if not isinstance(payload, dict):
-        compat.log('payload должен быть объектом')
+        compat.log('payload must be an object')
         return None
     return payload
 
@@ -87,7 +89,7 @@ def _extract_workflow_payload(compat, payload: Dict[str, Any]) -> tuple[str, Opt
     workflow_id = str(payload.get('workflowId') or payload.get('workflow_id') or '').strip()
     workflow = payload.get('workflow') if isinstance(payload.get('workflow'), dict) else None
     if not workflow_id or not workflow:
-        compat.log('workflowId и workflow обязательны')
+        compat.log('workflowId and workflow are required')
         return workflow_id, None, [], {}
     nodes = workflow.get('nodes') if isinstance(workflow.get('nodes'), list) else []
     options = payload.get('options') if isinstance(payload.get('options'), dict) else {}
@@ -125,7 +127,7 @@ def _resolve_profiles(
     has_scrape_relationships: bool,
 ) -> Optional[List[Dict[str, Any]]]:
     if not list_ids:
-        compat.log('Выберите список профилей!')
+        compat.log('Please select a profile list!')
         compat.emit_event('session_ended', status='failed', workflow_id=workflow_id)
         return None
     profiles = compat._fetch_profiles_for_lists(
@@ -137,7 +139,7 @@ def _resolve_profiles(
         profiles = _filter_scrape_profiles(compat, profiles)
     if profiles:
         return profiles
-    compat.log('В выбранном списке нет профилей!')
+    compat.log('No profiles found in the selected list!')
     compat.emit_event('session_ended', status='failed', workflow_id=workflow_id)
     return None
 
@@ -166,7 +168,7 @@ def _build_accounts(compat, workflow_id: str, profiles: List[Dict[str, Any]]) ->
         accounts.append(ThreadsAccount(username=name, password='', proxy=profile.get('proxy')))
     if accounts:
         return accounts
-    compat.log('В выбранном списке нет валидных профилей!')
+    compat.log('No valid profiles found in the selected list!')
     compat.emit_event('session_ended', status='failed', workflow_id=workflow_id)
     return None
 

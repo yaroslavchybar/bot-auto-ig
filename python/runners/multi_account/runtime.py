@@ -45,7 +45,7 @@ class InstagramAutomationRunner:
     def stop(self) -> None:
         compat = compat_module()
         self.running = False
-        compat.log('Остановка автоматизации...')
+        compat.log('Stopping automation...')
         _shutdown_executor(self._executor, wait=False)
 
     def run(self) -> int:
@@ -89,14 +89,14 @@ def run_automation_session(runner: InstagramAutomationRunner) -> int:
     status = 'failed'
     try:
         if not runner.accounts:
-            compat.log('Нет профилей для запуска.')
+            compat.log('No profiles to start.')
             return 2
         _run_cycles(runner)
         status = 'completed' if runner.running else 'cancelled'
         return 0 if runner.running else 1
     finally:
         _shutdown_executor(runner._executor, wait=True)
-        compat.log('Автоматизация остановлена.')
+        compat.log('Automation stopped.')
         compat.emit_event('session_ended', status=status)
 
 
@@ -109,7 +109,7 @@ def _run_cycles(runner: InstagramAutomationRunner) -> None:
         if work_done:
             _sleep_seconds(runner, 5)
             continue
-        compat.log('Все профили достигли лимита или пропущены. Жду 60 сек...')
+        compat.log('All profiles reached limit or skipped. Waiting 60 sec...')
         _sleep_seconds(runner, 60)
 
 
@@ -128,7 +128,7 @@ def _run_cycle(runner: InstagramAutomationRunner) -> bool:
             if future.result():
                 work_done = True
         except Exception as exc:
-            compat.log(f'Ошибка профиля: {exc}')
+            compat.log(f'Profile error: {exc}')
     return work_done
 
 

@@ -14,7 +14,7 @@ def process_account(runner, account) -> bool:
     allowed, message_targets = _preflight_account(runner, account, profile_data)
     if not allowed:
         return False
-    compat.log(f'Запуск браузера для @{profile_name}...')
+    compat.log(f'Starting browser for @{profile_name}...')
     compat.emit_event('profile_started', profile=profile_name)
     try:
         _mark_profile_running(runner, profile_name, profile_data)
@@ -45,18 +45,18 @@ def _preflight_account(
     profile_name = account.username
     try:
         if _is_busy_profile(runner, profile_data):
-            compat.log(f'Пропуск @{profile_name}: профиль занят.')
+            compat.log(f'Skipping @{profile_name}: profile is busy.')
             return False, None
         if _is_reopen_cooldown_active(runner, profile_data):
             cooldown_min = int(getattr(runner.config, 'profile_reopen_cooldown_minutes', 30) or 0)
-            compat.log(f'Пропуск @{profile_name}: недавно открыт (<{cooldown_min} мин).')
+            compat.log(f'Skipping @{profile_name}: recently opened (<{cooldown_min} min).')
             return False, None
         message_targets = _message_targets_if_only_messages(runner, profile_name, profile_data)
         if message_targets == []:
             return False, None
         return True, message_targets
     except Exception as exc:
-        compat.log(f'Ошибка проверки сессий для @{profile_name}: {exc}')
+        compat.log(f'Session check error for @{profile_name}: {exc}')
         return False, None
 
 
@@ -99,11 +99,11 @@ def _message_targets_if_only_messages(runner, profile_name: str, profile_data: O
         return None
     profile_id = profile_data.get('profile_id') if profile_data else None
     if not profile_id:
-        compat.log(f'@{profile_name}: профиль не найден в БД, пропуск запуска браузера.')
+        compat.log(f'@{profile_name}: profile not found in DB, skipping browser launch.')
         return []
     targets = runner.accounts_client.get_accounts_to_message(profile_id)
     if not targets:
-        compat.log(f'@{profile_name}: нет целей для сообщений (message=true), не открываю браузер.')
+        compat.log(f'@{profile_name}: no message targets (message=true), not opening browser.')
         return []
     return targets
 
@@ -145,7 +145,7 @@ def _run_account_session(
     ) as (_context, page):
         _run_enabled_actions(runner, page, account, profile_data, message_targets)
         if runner.running:
-            compat.log(f'Все задачи завершены для @{account.username}')
+            compat.log(f'All tasks completed for @{account.username}')
             compat.emit_event('profile_completed', profile=account.username, status='success')
         else:
             compat.emit_event('profile_completed', profile=account.username, status='cancelled')
@@ -193,11 +193,11 @@ def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool
         return False
     if 'Target page, context or browser has been closed' in str(exc):
         compat.emit_event('profile_completed', profile=profile_name, status='cancelled')
-        compat.log(f'Остановлено @{profile_name}')
+        compat.log(f'Stopped @{profile_name}')
         _sync_profile_idle(runner, profile_name)
         return False
     compat.emit_event('profile_completed', profile=profile_name, status='failed')
-    compat.log(f'Ошибка @{profile_name}: {exc}')
+    compat.log(f'Error @{profile_name}: {exc}')
     _sync_profile_idle(runner, profile_name)
     return False
 

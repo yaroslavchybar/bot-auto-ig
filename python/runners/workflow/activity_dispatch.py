@@ -43,7 +43,7 @@ def execute_activity(
             profile_data,
         )
     except Exception as exc:
-        compat.log(f'Ошибка activity {activity_id}: {exc}')
+        compat.log(f'Error in activity {activity_id}: {exc}')
         return 'failure'
 
 
@@ -386,7 +386,7 @@ def _mark_unfollow_done(runner, account_map: Dict[str, Any], username: str, log,
     except Exception as exc:
         if isinstance(status_sync_failed, dict):
             status_sync_failed['value'] = True
-        log(f'Не удалось сохранить статус отписки для @{username}: {exc}')
+        log(f'Failed to save unfollow status for @{username}: {exc}')
         raise
 
 

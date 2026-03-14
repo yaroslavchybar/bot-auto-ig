@@ -1,3 +1,4 @@
+import logging
 import time
 from contextlib import contextmanager
 from typing import Optional
@@ -7,6 +8,8 @@ from camoufox.exceptions import InvalidProxy
 from python.browser.compat import compat as compat_module
 from python.browser.fingerprint_config import load_or_generate_fingerprint_config
 from python.core.errors.exceptions import ProxyError
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -56,13 +59,13 @@ def _wait_for_circuit_breaker(compat) -> None:
     if not compat.proxy_circuit.is_open():
         return
     wait_time = max(0.0, compat.proxy_circuit.global_pause_until - time.time())
-    print(f'[!] Circuit breaker open. Waiting {wait_time:.1f}s...')
+    logger.warning('Circuit breaker open. Waiting %.1fs...', wait_time)
     time.sleep(wait_time)
 
 
 def _assert_proxy_is_healthy(compat, proxy_string: Optional[str]) -> None:
     if proxy_string and not compat.is_proxy_healthy(proxy_string):
-        print(f'[!] Proxy {proxy_string} is tainted. Skipping...')
+        logger.warning('Proxy %s is tainted. Skipping...', proxy_string)
         raise ProxyError(f'Proxy {proxy_string} is currently tainted due to previous failures.')
 
 
@@ -110,7 +113,7 @@ def _enter_camoufox_context(compat, launch_kwargs: dict):
     except InvalidProxy:
         if not launch_kwargs.get('proxy'):
             raise
-        print('[!] Proxy GeoIP check failed. Retrying with geoip=False...')
+        logger.warning('Proxy GeoIP check failed. Retrying with geoip=False...')
         cm = compat.Camoufox(geoip=False, **launch_kwargs)
         return cm, cm.__enter__()
 

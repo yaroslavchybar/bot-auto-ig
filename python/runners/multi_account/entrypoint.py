@@ -2,11 +2,13 @@ import signal
 import sys
 from typing import Any, Dict, List, Optional
 
+from python.core.logging import setup_logging
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
 from python.runners.multi_account.compat import compat as compat_module
 
 
 def main() -> int:
+    setup_logging()
     init_sentry()
     try:
         return _main_inner()
@@ -25,7 +27,7 @@ def _main_inner() -> int:
     selected_list_ids = _selected_list_ids(payload, settings)
     _log_debug_context(compat, selected_list_ids)
     if not _has_enabled_activity(settings):
-        compat.log('Выберите хотя бы один тип активности!')
+        compat.log('Select at least one activity type!')
         return 2
     profiles = _load_profiles(compat, selected_list_ids)
     if profiles is None:
@@ -37,7 +39,7 @@ def _main_inner() -> int:
     set_sentry_context(
         extra={'profile_count': len(target_accounts), 'tasks': _task_names(config)},
     )
-    compat.log(f"Запуск полного цикла ({', '.join(_task_names(config))}) для {len(target_accounts)} профилей...")
+    compat.log(f"Starting full cycle ({', '.join(_task_names(config))}) for {len(target_accounts)} profiles...")
     runner = compat.InstagramAutomationRunner(config, target_accounts)
     _register_signal_handlers(runner)
     return runner.run()
@@ -46,16 +48,16 @@ def _main_inner() -> int:
 def _read_payload(compat) -> Optional[Dict[str, Any]]:
     raw = sys.stdin.read()
     if not raw.strip():
-        compat.log('Не получены входные данные.')
+        compat.log('No input data received.')
         return None
     try:
         payload = compat.json.loads(raw)
     except Exception as exc:
-        compat.log(f'Некорректный JSON: {exc}')
+        compat.log(f'Invalid JSON: {exc}')
         return None
     if isinstance(payload, dict):
         return payload
-    compat.log('payload должен быть объектом.')
+    compat.log('payload must be an object.')
     return None
 
 
@@ -63,7 +65,7 @@ def _settings_payload(compat, payload: Dict[str, Any]) -> Optional[Dict[str, Any
     settings = payload.get('settings')
     if isinstance(settings, dict):
         return settings
-    compat.log('settings должен быть объектом.')
+    compat.log('settings must be an object.')
     return None
 
 
@@ -95,13 +97,13 @@ def _has_enabled_activity(settings: Dict[str, Any]) -> bool:
 
 def _load_profiles(compat, selected_list_ids: List[str]):
     if not selected_list_ids:
-        compat.log('Выберите список профилей!')
+        compat.log('Please select a profile list!')
         return None
     profiles = compat._fetch_profiles_for_lists(selected_list_ids)
     compat.log(f'DEBUG: fetched profiles count={len(profiles or [])}')
     if profiles:
         return profiles
-    compat.log('В выбранном списке нет профилей!')
+    compat.log('No profiles found in the selected list!')
     return None
 
 
@@ -114,7 +116,7 @@ def _build_target_accounts(compat, profiles: List[Dict[str, Any]]):
         target_accounts.append(compat.ThreadsAccount(username=name, password='', proxy=profile.get('proxy')))
     if target_accounts:
         return target_accounts
-    compat.log('В выбранном списке нет валидных профилей!')
+    compat.log('No valid profiles found in the selected list!')
     return None
 
 

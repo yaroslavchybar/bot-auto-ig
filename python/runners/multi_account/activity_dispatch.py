@@ -13,13 +13,13 @@ def run_scrolling(runner, page, mode: str) -> None:
             return
         config = _scroll_config(runner.config, mode)
         if mode == 'feed':
-            compat.log(f'Feed: {duration} мин')
+            compat.log(f'Feed: {duration} min')
             compat.scroll_feed(page, duration, config, should_stop=lambda: not runner.running)
             return
-        compat.log(f'Reels: {duration} мин')
+        compat.log(f'Reels: {duration} min')
         compat.scroll_reels(page, duration, config, should_stop=lambda: not runner.running)
     except Exception as exc:
-        compat.log(f'Ошибка скроллинга: {exc}')
+        compat.log(f'Scrolling error: {exc}')
 
 
 def _scroll_duration(runner, mode: str) -> int:
@@ -63,7 +63,7 @@ def run_stories(runner, page) -> None:
         compat.log(f'Stories (max {max_stories})')
         compat.watch_stories(page, max_stories=max_stories, log=compat.log)
     except Exception as exc:
-        compat.log(f'Ошибка Stories: {exc}')
+        compat.log(f'Stories error: {exc}')
 
 
 def run_follow(runner, page, account, profile_data: Optional[Dict[str, Any]] = None) -> None:
@@ -72,12 +72,12 @@ def run_follow(runner, page, account, profile_data: Optional[Dict[str, Any]] = N
         compat.log('Follow...')
         profile_id = _resolve_profile_id(runner, account, profile_data)
         if not profile_id:
-            compat.log('Не найден профиль в БД.')
+            compat.log('Profile not found in DB.')
             return
         accounts = runner.accounts_client.get_accounts_for_profile(profile_id)
         usernames = _apply_session_limit(compat, _usernames(accounts), runner.config.follow_count_range, 'Follow')
         if not usernames:
-            compat.log('Нет целей для подписки.')
+            compat.log('No targets for follow.')
             return
         compat.follow_usernames(
             profile_name=account.username,
@@ -92,7 +92,7 @@ def run_follow(runner, page, account, profile_data: Optional[Dict[str, Any]] = N
             on_skip=_follow_skip_callback(compat, runner, _account_map(accounts)),
         )
     except Exception as exc:
-        compat.log(f'Ошибка Follow: {exc}')
+        compat.log(f'Follow error: {exc}')
 
 
 def _follow_interactions_config(config) -> FollowInteractionsConfig:
@@ -109,7 +109,7 @@ def _follow_success_callback(compat, runner, account_map: Dict[str, str]):
         account_map,
         compat.log,
         'subscribed',
-        success_message="Статус @{username} -> 'subscribed'.",
+        success_message="Status @{username} -> 'subscribed'.",
     )
 
 
@@ -120,7 +120,7 @@ def _follow_skip_callback(compat, runner, account_map: Dict[str, str]):
         compat.log,
         'skipped',
         clear_assigned=True,
-        success_message="Пропуск @{username}: 'skipped', снято назначение.",
+        success_message="Skipping @{username}: 'skipped', assignment cleared.",
     )
 
 
@@ -130,12 +130,12 @@ def run_unfollow(runner, page, account, profile_data: Optional[Dict[str, Any]] =
         compat.log('Unfollow...')
         profile_id = _resolve_profile_id(runner, account, profile_data, status='unsubscribed')
         if not profile_id:
-            compat.log('Нет данных профиля для отписки.')
+            compat.log('No profile data for unfollow.')
             return
         accounts = runner.accounts_client.get_accounts_for_profile(profile_id, status='unsubscribed')
         usernames = _apply_session_limit(compat, _usernames(accounts), runner.config.unfollow_count_range, 'Unfollow')
         if not usernames:
-            compat.log('Нет назначенных аккаунтов для отписки.')
+            compat.log('No assigned accounts for unfollow.')
             return
         compat.unfollow_usernames(
             profile_name=account.username,
@@ -154,7 +154,7 @@ def run_unfollow(runner, page, account, profile_data: Optional[Dict[str, Any]] =
             page=page,
         )
     except Exception as exc:
-        compat.log(f'Ошибка Unfollow: {exc}')
+        compat.log(f'Unfollow error: {exc}')
 
 
 def run_approve(runner, page, account) -> None:
@@ -169,7 +169,7 @@ def run_approve(runner, page, account) -> None:
             page=page,
         )
     except Exception as exc:
-        compat.log(f'Ошибка Approve: {exc}')
+        compat.log(f'Approve error: {exc}')
 
 
 def run_messages(
@@ -184,11 +184,11 @@ def run_messages(
         compat.log('Messaging...')
         profile_id = _resolve_profile_id(runner, account, profile_data)
         if not profile_id:
-            compat.log('Не найден профиль для сообщений.')
+            compat.log('Profile not found for messaging.')
             return
         eligible = cached_targets if cached_targets is not None else runner.accounts_client.get_accounts_to_message(profile_id)
         if not eligible:
-            compat.log('Нет целей для сообщений.')
+            compat.log('No targets for messaging.')
             return
         compat.send_messages(
             profile_name=account.username,
@@ -200,7 +200,7 @@ def run_messages(
             page=page,
         )
     except Exception as exc:
-        compat.log(f'Ошибка Messaging: {exc}')
+        compat.log(f'Messaging error: {exc}')
 
 
 def _resolve_profile_id(runner, account, profile_data: Optional[Dict[str, Any]], status: Optional[str] = None) -> Optional[str]:
@@ -229,5 +229,5 @@ def _account_map(accounts: List[Dict[str, Any]]) -> Dict[str, str]:
 def _apply_session_limit(compat, usernames: List[str], count_range, label: str) -> List[str]:
     limited = compat.apply_count_limit(usernames, count_range)
     if count_range:
-        compat.log(f'Лимит {label} за сессию: {len(limited)}')
+        compat.log(f'{label} session limit: {len(limited)}')
     return limited

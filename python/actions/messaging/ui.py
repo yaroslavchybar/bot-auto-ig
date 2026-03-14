@@ -20,10 +20,10 @@ def navigate_to_profile(page, username: str, log: Callable[[str], None]) -> bool
         # Increased timeouts for very slow proxies
         page.goto(url, timeout=45000)
         page.wait_for_load_state("networkidle", timeout=30000)
-        log(f"Перешёл на профиль: {username}")
+        log(f"Navigated to profile: {username}")
         return True
     except Exception as e:
-        log(f"Ошибка перехода на профиль {username}: {e}")
+        log(f"Error navigating to profile {username}: {e}")
         return False
 
 
@@ -44,7 +44,7 @@ def click_message_button(page, log: Callable[[str], None]) -> bool:
             btn = page.locator(selector).first
             if btn.is_visible(timeout=8000):
                 btn.click()
-                log("Нажал кнопку Message")
+                log("Clicked Message button")
                 random_delay(2, 4)
                 return True
         except Exception:
@@ -65,7 +65,7 @@ def click_follow_button(page, log: Callable[[str], None]) -> bool:
                 text = btn.inner_text().strip().lower()
                 if text == "follow":
                     btn.click()
-                    log("Нажал кнопку Follow")
+                    log("Clicked Follow button")
                     random_delay(3, 5)
                     return True
         except Exception:
@@ -86,7 +86,7 @@ def find_message_box(page, log: Callable[[str], None]):
         try:
             msg_box = page.locator(selector).first
             if msg_box.is_visible(timeout=10000):
-                log(f"Найдено поле ввода сообщения: {selector}")
+                log(f"Found message input field: {selector}")
                 return msg_box
         except Exception:
             continue
@@ -107,7 +107,7 @@ def find_send_button(page):
 def cleanup_return_home(page, log: Callable[[str], None]) -> None:
     """Navigate back to Instagram home page."""
     try:
-        log("Messages: возвращаюсь домой")
+        log("Messages: returning home")
         try:
             svg = page.query_selector('svg[aria-label="Home"]')
             if svg:
@@ -131,7 +131,7 @@ def cleanup_return_home(page, log: Callable[[str], None]) -> None:
                     'xpath=ancestor-or-self::*[self::button or @role="button"][1]'
                 ) or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
                 (close_btn or close_svg).click()
-                log("Messages: закрыл всплывающее окно")
+                log("Messages: closed popup")
             else:
                 page.keyboard.press("Escape")
         except Exception:
@@ -141,4 +141,4 @@ def cleanup_return_home(page, log: Callable[[str], None]) -> None:
                 pass
         random_delay(0.6, 1.2)
     except Exception as e:
-        log(f"Messages: ошибка очистки: {e}")
+        log(f"Messages: cleanup error: {e}")

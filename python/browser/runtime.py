@@ -1,3 +1,4 @@
+import logging
 import random
 import signal
 import time
@@ -5,6 +6,8 @@ import traceback
 from typing import Optional
 
 from python.browser.compat import compat as compat_module
+
+logger = logging.getLogger(__name__)
 
 
 def run_browser(
@@ -62,25 +65,24 @@ def run_browser(
                 reels_match_follows,
             )
     except KeyboardInterrupt:
-        print('[*] Stopped.')
+        logger.info('Stopped.')
     except Exception as exc:
-        print(f'[!] Error occurred: {exc}')
-        print(f'[!] Error type: {type(exc).__name__}')
-        print('[!] Full traceback:')
-        traceback.print_exc()
+        logger.error('Error occurred: %s', exc)
+        logger.error('Error type: %s', type(exc).__name__)
+        logger.error('Full traceback:', exc_info=True)
         time.sleep(10)
 
 
 def _print_run_header(profile_name, proxy_string, action, fingerprint_seed, fingerprint_os, os_name, user_agent, headless) -> None:
-    print(f'[*] Starting Profile: {profile_name}')
-    print(f'[*] Action: {action}')
+    logger.info('Starting Profile: %s', profile_name)
+    logger.info('Action: %s', action)
     if proxy_string and proxy_string.lower() not in ['none', '']:
-        print(f'[*] Using Proxy: {proxy_string}')
+        logger.info('Using Proxy: %s', proxy_string)
     if fingerprint_seed:
-        print(f"[*] Using fingerprint seed: {fingerprint_seed[:8]}... (OS: {fingerprint_os or os_name or 'windows'})")
+        logger.info("Using fingerprint seed: %s... (OS: %s)", fingerprint_seed[:8], fingerprint_os or os_name or 'windows')
     elif user_agent:
-        print(f'[*] Using User Agent: {user_agent}')
-    print(f"[*] Headless mode: {'ON' if headless else 'OFF'}")
+        logger.info('Using User Agent: %s', user_agent)
+    logger.info("Headless mode: %s", 'ON' if headless else 'OFF')
 
 
 def _register_signal_handlers() -> None:
@@ -97,7 +99,7 @@ def _register_signal_handlers() -> None:
 
 def _open_browser_session(profile_name, proxy_string, user_agent, headless, os_name, fingerprint_seed, fingerprint_os, display):
     compat = compat_module()
-    print('[*] Initializing Camoufox browser...')
+    logger.info('Initializing Camoufox browser...')
     return compat.create_browser_context(
         profile_name=profile_name,
         proxy_string=proxy_string,
@@ -130,8 +132,8 @@ def _run_requested_action(
     reels_match_follows,
 ) -> None:
     compat = compat_module()
-    print('[*] Camoufox initialized successfully')
-    print('[*] Browser is running...')
+    logger.info('Camoufox initialized successfully')
+    logger.info('Browser is running...')
     feed_config, reels_config = _build_scroll_configs(
         match_likes,
         match_comments,
@@ -155,8 +157,8 @@ def _run_requested_action(
         else:
             _keep_manual_session_alive(context)
     except KeyboardInterrupt:
-        print('[*] Stopped scrolling - closing browser...')
-        print('Browser closed.')
+        logger.info('Stopped scrolling - closing browser...')
+        logger.info('Browser closed.')
 
 
 def _build_scroll_configs(
@@ -195,20 +197,20 @@ def _build_scroll_configs(
 
 
 def _run_feed_session(compat, page, profile_name: str, duration: int, feed_config: dict) -> None:
-    print(f'[*] Starting scrolling session for {duration} minutes...')
-    print(f'[*] Config: {feed_config}')
+    logger.info('Starting scrolling session for %d minutes...', duration)
+    logger.info('Config: %s', feed_config)
     compat.scroll_feed(page, duration, feed_config, profile_name=profile_name)
-    print('[*] Scrolling session finished.')
+    logger.info('Scrolling session finished.')
 
 
 def _run_reels_session(compat, page, profile_name: str, duration: int, reels_config: dict) -> None:
-    print(f'[*] Starting REELS session for {duration} minutes...')
+    logger.info('Starting REELS session for %d minutes...', duration)
     compat.scroll_reels(page, duration, reels_config, profile_name=profile_name)
-    print('[*] Reels session finished.')
+    logger.info('Reels session finished.')
 
 
 def _run_mixed_session(compat, page, profile_name: str, feed_duration: int, reels_duration: int, feed_config: dict, reels_config: dict) -> None:
-    print(f'[*] Starting MIXED session (Feed: {feed_duration}m, Reels: {reels_duration}m)...')
+    logger.info('Starting MIXED session (Feed: %dm, Reels: %dm)...', feed_duration, reels_duration)
     tasks = []
     if feed_duration > 0:
         tasks.append(('feed', feed_duration))
@@ -217,23 +219,23 @@ def _run_mixed_session(compat, page, profile_name: str, feed_duration: int, reel
     random.shuffle(tasks)
     for idx, (task_type, task_duration) in enumerate(tasks, 1):
         if task_type == 'feed':
-            print(f'[*] [{idx}/{len(tasks)}] Running Feed scroll for {task_duration} mins...')
+            logger.info('[%d/%d] Running Feed scroll for %d mins...', idx, len(tasks), task_duration)
             compat.scroll_feed(page, task_duration, feed_config, profile_name=profile_name)
-            print('Feed part complete.')
+            logger.info('Feed part complete.')
         else:
-            print(f'[*] [{idx}/{len(tasks)}] Running Reels scroll for {task_duration} mins...')
+            logger.info('[%d/%d] Running Reels scroll for %d mins...', idx, len(tasks), task_duration)
             compat.scroll_reels(page, task_duration, reels_config, profile_name=profile_name)
-            print('Reels part complete.')
+            logger.info('Reels part complete.')
         if idx < len(tasks):
             time.sleep(random.randint(5, 10))
-    print('[*] Mixed session finished.')
+    logger.info('Mixed session finished.')
 
 
 def _finish_automated_session() -> None:
-    print('[*] Automated session complete. Closing browser session...')
+    logger.info('Automated session complete. Closing browser session...')
 
 
 def _keep_manual_session_alive(context) -> None:
-    print('[*] Manual mode active. Keep window open.')
+    logger.info('Manual mode active. Keep window open.')
     while len(context.pages) > 0:
         time.sleep(0.5)

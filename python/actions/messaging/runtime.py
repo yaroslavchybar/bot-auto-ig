@@ -80,7 +80,7 @@ def run_messaging_flow(
     processed_count = 0
     behavior = _behavior_config(behavior_config or {})
     if not message_texts:
-        log('Нет текстов сообщений для рассылки.')
+        log('No message texts for sending.')
         return 0
     try:
         ensure_instagram_open(page)
@@ -90,9 +90,9 @@ def run_messaging_flow(
                 break
             if _process_target(page, target, message_texts, log, client, behavior):
                 processed_count += 1
-        log(f'Рассылка завершена. Отправлено: {processed_count}')
+        log(f'Messaging completed. Sent: {processed_count}')
     except Exception as exc:
-        log(f'Критическая ошибка браузера: {exc}')
+        log(f'Critical browser error: {exc}')
     _close_message_popup(page, log)
     return processed_count
 
@@ -127,20 +127,20 @@ def _process_target(page, target: Dict, message_texts: List[str], log, client, b
     username = target.get('user_name')
     if not username:
         return False
-    log(f'Обработка сообщения для: {username}')
+    log(f'Processing message for: {username}')
     try:
         if not navigate_to_profile(page, username, log):
             return False
         random_delay(*behavior['navigation_delay_range'])
         if not _ensure_message_composer(page, target, log, client, behavior):
-            log(f'Не удалось найти кнопку Message для {username}, пропускаю')
+            log(f'Could not find Message button for {username}, skipping')
             return False
         random_delay(*behavior['composer_delay_range'])
         sent = _compose_and_send(page, target, message_texts, log, client, behavior)
         random_delay(*behavior['between_targets_delay_range'])
         return sent
     except Exception as exc:
-        log(f'Ошибка в процессе отправки для {username}: {exc}')
+        log(f'Error during send for {username}: {exc}')
         return False
 
 
@@ -150,7 +150,7 @@ def _ensure_message_composer(page, target: Dict, log, client, behavior: Dict) ->
     if not behavior['follow_if_missing']:
         return False
     username = target.get('user_name')
-    log(f'Кнопка Message не найдена для {username}, пробую Follow...')
+    log(f'Message button not found for {username}, trying Follow...')
     if not click_follow_button(page, log):
         return False
     _mark_followed_target(client, target, log)
@@ -165,9 +165,9 @@ def _mark_followed_target(client, target: Dict, log) -> None:
         return
     try:
         client.update_account_status(account_id, status='subscribed')
-        log(f'{username}: статус обновлён на subscribed')
+        log(f'{username}: status updated to subscribed')
     except Exception as exc:
-        log(f'Ошибка обновления статуса {username}: {exc}')
+        log(f'Error updating status for {username}: {exc}')
 
 
 def _compose_and_send(page, target: Dict, message_texts: List[str], log, client, behavior: Dict) -> bool:
@@ -175,23 +175,23 @@ def _compose_and_send(page, target: Dict, message_texts: List[str], log, client,
     try:
         msg_box = find_message_box(page, log)
         if not msg_box:
-            log(f'Не удалось найти поле ввода сообщения для {username}')
+            log(f'Could not find message input field for {username}')
             return False
         msg_box.click()
         random_delay(0.5, 1)
         if not message_texts:
-            log('Нет текстов сообщений для отправки.')
+            log('No message texts for sending.')
             return False
         selected_message = random.choice(message_texts)
-        log(f'Набираю сообщение: {str(selected_message)[:80]}')
+        log(f'Typing message: {str(selected_message)[:80]}')
         _type_message(page, msg_box, selected_message, target, behavior['typing_delay_range_ms'])
         random_delay(*behavior['composer_delay_range'])
         _send_current_message(page)
-        log(f'Отправил сообщение для {username}')
+        log(f'Sent message for {username}')
         mark_sent(client, username, log)
         return True
     except Exception as exc:
-        log(f'Не удалось отправить сообщение {username}: {str(exc)[:50]}')
+        log(f'Failed to send message to {username}: {str(exc)[:50]}')
         return False
 
 
@@ -203,7 +203,7 @@ def _close_message_popup(page, log) -> None:
                 'xpath=ancestor-or-self::*[self::button or @role="button"][1]'
             ) or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
             (close_btn or close_svg).click()
-            log('Закрыл окно сообщений')
+            log('Closed message window')
         else:
             page.keyboard.press('Escape')
         random_delay(0.5, 1.0)

@@ -18,13 +18,13 @@ def scroll_posts(
 ):
     _safe(
         log,
-        'пролистывание постов',
+        'post scrolling',
         lambda: _scroll_posts_impl(page, log, scroll_count, like_between, like_probability, max_likes, liked_posts, should_stop),
     )
 
 
 def _scroll_posts_impl(page, log, scroll_count, like_between, like_probability, max_likes, liked_posts, should_stop) -> None:
-    log('Просматриваю посты профиля...')
+    log('Viewing profile posts...')
     planned_scrolls = scroll_count if scroll_count is not None else random.randint(2, 5)
     likes_used = 0
     seen = liked_posts if liked_posts is not None else set()
@@ -34,7 +34,7 @@ def _scroll_posts_impl(page, log, scroll_count, like_between, like_probability, 
         human_scroll(page, should_stop=should_stop)
         if _stop_requested(should_stop, log):
             return
-        log(f'Прокрутка {index + 1}/{planned_scrolls} (human-like)')
+        log(f'Scroll {index + 1}/{planned_scrolls} (human-like)')
         random_delay(1.0, 2.5)
         likes_used = _maybe_like_between_scrolls(page, log, like_between, like_probability, max_likes, likes_used, seen, should_stop)
     _return_to_page_top(page, log)
@@ -42,7 +42,7 @@ def _scroll_posts_impl(page, log, scroll_count, like_between, like_probability, 
 
 def _stop_requested(should_stop, log) -> bool:
     if should_stop and should_stop():
-        log('Остановка по запросу пользователя.')
+        log('Stopping at user request.')
         return True
     return False
 
@@ -59,7 +59,7 @@ def _maybe_like_between_scrolls(page, log, like_between: bool, like_probability:
 
 def _return_to_page_top(page, log) -> None:
     page.mouse.wheel(0, -800)
-    log('Возвращаюсь немного вверх')
+    log('Scrolling back up')
     random_delay(0.5, 1.0)
     current_scroll = _scroll_position(page)
     while current_scroll > 0:
@@ -71,7 +71,7 @@ def _return_to_page_top(page, log) -> None:
             break
         current_scroll = next_scroll
     _smooth_scroll_top_fallback(page)
-    log('Вернулся в начало страницы')
+    log('Returned to top of page')
     random_delay(0.5, 1.0)
 
 
@@ -104,30 +104,30 @@ def like_some_posts(
     should_stop: Callable[[], bool] | None = None,
 ):
     if max_posts <= 0:
-        log('Пропускаю лайки (настроено 0).')
+        log('Skipping likes (configured 0).')
         return
     liked = liked_posts if liked_posts is not None else set()
-    _safe(log, 'лайки постов', lambda: _like_some_posts_impl(page, log, max_posts, liked, should_stop))
+    _safe(log, 'post likes', lambda: _like_some_posts_impl(page, log, max_posts, liked, should_stop))
 
 
 def _like_some_posts_impl(page, log, max_posts: int, liked: Set[str], should_stop) -> None:
     post_links = _collect_post_links(page, log, max_posts, liked)
     if not post_links:
-        log('Посты не найдены для лайка')
+        log('No posts found for liking')
         return
     available_posts = [link for link in post_links if _is_visible(page, link)]
     if not available_posts:
-        log('Нет видимых постов для лайка')
+        log('No visible posts for liking')
         return
     selected_posts = random.sample(available_posts, min(max_posts, len(available_posts)))
-    log(f'Выбрано {len(selected_posts)} случайных постов из {len(available_posts)} видимых')
+    log(f'Selected {len(selected_posts)} random posts from {len(available_posts)} visible')
     processed = 0
     for link in selected_posts:
         if _stop_requested(should_stop, log):
             return
         if _like_single_post(page, link, log, liked):
             processed += 1
-    log(f'Обработано {processed} постов')
+    log(f'Processed {processed} posts')
 
 
 def _collect_post_links(page, log, max_posts: int, liked: Set[str]):
@@ -147,7 +147,7 @@ def _collect_post_links(page, log, max_posts: int, liked: Set[str]):
     for selector in post_selectors:
         added = _collect_selector_links(page, selector, seen_hrefs, post_links)
         if added:
-            log(f'Найдено {added} постов с селектором: {selector}')
+            log(f'Found {added} posts with selector: {selector}')
     return post_links[: max_posts * 4] if max_posts else post_links
 
 
@@ -186,12 +186,12 @@ def _is_visible(page, element) -> bool:
 def _like_single_post(page, link, log, liked: Set[str]) -> bool:
     href = link.get_attribute('href') or ''
     if href and href in liked:
-        log('Пропускаю уже лайкнутый пост')
+        log('Skipping already liked post')
         return False
     if not _is_visible(page, link):
         return False
     try:
-        log('Открываю пост для лайка...')
+        log('Opening post for liking...')
         link.click()
         random_delay(1.5, 2.5)
         did_like = _click_like_button(page, log)
@@ -201,7 +201,7 @@ def _like_single_post(page, link, log, liked: Set[str]) -> bool:
         random_delay(1.0, 2.0)
         return did_like
     except Exception as err:
-        log(f'Пропускаю пост: {err}')
+        log(f'Skipping post: {err}')
         try:
             page.keyboard.press('Escape')
         except Exception:
@@ -219,13 +219,13 @@ def _click_like_button(page, log) -> bool:
         or page.query_selector('[aria-label*="like" i]')
     )
     if not like_btn:
-        log('Кнопка лайка не найдена')
+        log('Like button not found')
         return False
     if not _is_visible(page, like_btn):
-        log('Кнопка лайка не видна')
+        log('Like button not visible')
         return False
     like_btn.click()
-    log('Лайк поставлен')
+    log('Like placed')
     random_delay(0.5, 1.0)
     return True
 
@@ -235,12 +235,12 @@ def _close_post_modal(page, log) -> None:
     if close_btn:
         try:
             close_btn.click()
-            log('Пост закрыт кнопкой')
+            log('Post closed by button')
             return
         except Exception as close_err:
-            log(f'Не удалось закрыть кнопкой: {close_err}')
+            log(f'Failed to close by button: {close_err}')
     try:
         page.keyboard.press('Escape')
-        log('Пост закрыт клавишей Escape')
+        log('Post closed by Escape key')
     except Exception:
-        log('Не удалось закрыть пост')
+        log('Failed to close post')

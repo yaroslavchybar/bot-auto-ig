@@ -112,9 +112,9 @@ def main():
     
     try:
         fingerprint = generate_fingerprint(args.os)
-        print(json.dumps(fingerprint, ensure_ascii=False))
+        sys.stdout.write(json.dumps(fingerprint, ensure_ascii=False) + '\n')
     except Exception as e:
-        print(json.dumps({'error': str(e)}), file=sys.stderr)
+        sys.stderr.write(json.dumps({'error': str(e)}) + '\n')
         sys.exit(1)
 
 

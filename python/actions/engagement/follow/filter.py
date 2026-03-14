@@ -62,6 +62,7 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
                 for (const el of all) {
                     const t = (el.innerText || el.textContent || '').toLowerCase().trim();
                     if (!t) continue;
+                    // Cyrillic "подписки"/"подписок" matches Instagram Russian UI for "following" count
                     const m = t.match(/([\\d.,kmb]+)[\\s\\n]+(following|подписки|подписок)/i);
                     if (m) {
                         const num = parseCount(m[1]);
@@ -73,7 +74,7 @@ def get_following_count(page, log: Callable[[str], None]) -> Optional[int]:
             """
         )
     except Exception as err:
-        log(f"Не удалось получить число подписок: {err}")
+        log(f"Failed to get following count: {err}")
         return None
 
 
@@ -101,7 +102,8 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
                 };
 
                 // Strategy 1: Specific structure seen in modern React layout
-                // Look for elements containing "posts" or "публикаций" with a number prefix
+                // Look for elements containing "posts" or Cyrillic equivalents with a number prefix
+                // Cyrillic "публикаций"/"публикации"/"публикация" matches Instagram Russian UI for "posts" count
                 const keywords = ["posts", "post", "публикаций", "публикации", "публикация"];
                 const candidates = Array.from(document.querySelectorAll('span, div, li, a'));
                 
@@ -116,6 +118,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
 
                     // Strict regex: Number followed by keyword (e.g. "19 posts", "1,234 posts", "10k posts")
                     // Allow optional newline or space
+                    // Cyrillic variants match Instagram Russian UI for post counts
                     const match = text.match(/([\\d.,kmb]+)[\\s\\n]+(posts|post|публикаций|публикации|публикация)/i);
                     if (match) {
                         const num = parseCount(match[1]);
@@ -131,6 +134,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
                          const firstLi = ul.children[0];
                          // Sometimes the text is "19 posts" with newline
                          const text = firstLi.innerText.toLowerCase();
+                         // Cyrillic "публикац" matches Instagram Russian UI for "posts"
                          if (text.includes('post') || text.includes('публикац')) {
                              const match = text.match(/([\\d.,kmb]+)/);
                              if (match) {
@@ -146,7 +150,7 @@ def get_posts_count(page, log: Callable[[str], None]) -> Optional[int]:
             """
         )
     except Exception as err:
-        log(f"Не удалось получить число постов: {err}")
+        log(f"Failed to get post count: {err}")
         return None
 
 
@@ -162,7 +166,7 @@ def should_skip_by_following(
     try:
         limit_val = int(limit)
     except Exception:
-        log(f"Некорректный лимит подписок: {limit}, пропускаю фильтр.")
+        log(f"Invalid following limit: {limit}, skipping filter.")
         return False
 
     if limit_val <= 0:
@@ -174,12 +178,12 @@ def should_skip_by_following(
         pass
     count = get_following_count(page, log)
     if count is None:
-        log("Не удалось определить число подписок, продолжаю без фильтра.")
+        log("Could not determine following count, continuing without filter.")
         return False
 
-    log(f"@{username}: подписок {count}, лимит {limit_val}.")
+    log(f"@{username}: following {count}, limit {limit_val}.")
     if count > limit_val:
-        log(f"Пропускаю @{username}: слишком много подписок ({count} > {limit_val}).")
+        log(f"Skipping @{username}: too many following ({count} > {limit_val}).")
         return True
     return False
 
