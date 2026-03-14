@@ -26,15 +26,3 @@ export const automationLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 })
-
-/**
- * Stricter limit for write operations - 30 per minute.
- * Applies to profile/list creation, updates, deletes.
- */
-export const writeLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: 30,
-    message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many write requests' } },
-    standardHeaders: true,
-    legacyHeaders: false,
-})
