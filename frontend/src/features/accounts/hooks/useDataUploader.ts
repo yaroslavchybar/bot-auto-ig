@@ -14,115 +14,171 @@ import type {
   UploadState,
 } from '../types'
 
-export function useDataUploader() {
-  const [state, setState] = useState<UploadState>({ step: 'idle' })
+async function handleErrorResponse(
+  response: Response,
+  fallbackMessage: string,
+) {
+  const error = await response
+    .json()
+    .catch(() => ({ detail: fallbackMessage }))
+  throw new Error(error.detail || fallbackMessage)
+}
 
+async function fetchScrapingTasks(
+  environment: 'dev' | 'prod',
+  kind?: string,
+) {
+  const params = new URLSearchParams()
+  params.set('env', environment)
+  if (kind) params.set('kind', kind)
+  const response = await fetch(
+    `${appEnv.dataUploaderUrl}/scraping-tasks?${params.toString()}`,
+    { method: 'GET' },
+  )
+  if (!response.ok) {
+    await handleErrorResponse(
+      response,
+      'Failed to load workflow scrape artifacts',
+    )
+  }
+  const data: ListScrapingTasksResponse = await response.json()
+  return Array.isArray(data.tasks) ? (data.tasks as ScrapingTaskRow[]) : []
+}
+
+async function fetchImportScrapingTask(
+  taskId: string,
+  req: ImportScrapingTaskRequest,
+) {
+  const response = await fetch(
+    `${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/import`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    },
+  )
+  if (!response.ok) {
+    await handleErrorResponse(response, 'Import failed')
+  }
+  const data: ImportScrapingTaskResponse = await response.json()
+  return data
+}
+
+async function fetchScrapingTaskFields(
+  taskId: string,
+  environment: 'dev' | 'prod',
+) {
+  const params = new URLSearchParams()
+  params.set('env', environment)
+  const response = await fetch(
+    `${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/fields?${params.toString()}`,
+    { method: 'GET' },
+  )
+  if (!response.ok) {
+    await handleErrorResponse(response, 'Failed to load task fields')
+  }
+  const data: ScrapingTaskFieldsResponse = await response.json()
+  return data
+}
+
+async function fetchProcessScrapingTask(
+  taskId: string,
+  req: ProcessScrapingTaskRequest,
+) {
+  const response = await fetch(
+    `${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/process`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    },
+  )
+  if (!response.ok) {
+    await handleErrorResponse(response, 'Processing failed')
+  }
+  const data: ProcessScrapingTaskResponse = await response.json()
+  return data
+}
+
+async function fetchUploadFile(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch(`${appEnv.dataUploaderUrl}/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    await handleErrorResponse(response, 'Upload failed')
+  }
+
+  const data: UploadResponse = await response.json()
+  return data
+}
+
+async function fetchProcessFile(
+  jobId: string,
+  keepFields: string[],
+  uploadToConvex: boolean,
+  environments: string[],
+) {
+  const request: ProcessRequest = { keepFields, uploadToConvex, environments }
+
+  const response = await fetch(
+    `${appEnv.dataUploaderUrl}/upload/${jobId}/process`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  )
+
+  if (!response.ok) {
+    await handleErrorResponse(response, 'Processing failed')
+  }
+
+  const data: ProcessResponse = await response.json()
+  return data
+}
+
+function useScrapingApis() {
   const listScrapingTasks = useCallback(
-    async (environment: 'dev' | 'prod', kind?: string) => {
-      const params = new URLSearchParams()
-      params.set('env', environment)
-      if (kind) params.set('kind', kind)
-      const response = await fetch(
-        `${appEnv.dataUploaderUrl}/scraping-tasks?${params.toString()}`,
-        { method: 'GET' },
-      )
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ detail: 'Failed to load workflow scrape artifacts' }))
-        throw new Error(error.detail || 'Failed to load workflow scrape artifacts')
-      }
-      const data: ListScrapingTasksResponse = await response.json()
-      return Array.isArray(data.tasks) ? (data.tasks as ScrapingTaskRow[]) : []
-    },
+    async (environment: 'dev' | 'prod', kind?: string) =>
+      fetchScrapingTasks(environment, kind),
     [],
   )
-
   const importScrapingTask = useCallback(
-    async (taskId: string, req: ImportScrapingTaskRequest) => {
-      const response = await fetch(
-        `${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/import`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req),
-        },
-      )
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ detail: 'Import failed' }))
-        throw new Error(error.detail || 'Import failed')
-      }
-      const data: ImportScrapingTaskResponse = await response.json()
-      return data
-    },
+    async (taskId: string, req: ImportScrapingTaskRequest) =>
+      fetchImportScrapingTask(taskId, req),
     [],
   )
-
   const getScrapingTaskFields = useCallback(
-    async (taskId: string, environment: 'dev' | 'prod') => {
-      const params = new URLSearchParams()
-      params.set('env', environment)
-      const response = await fetch(
-        `${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/fields?${params.toString()}`,
-        { method: 'GET' },
-      )
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ detail: 'Failed to load task fields' }))
-        throw new Error(error.detail || 'Failed to load task fields')
-      }
-      const data: ScrapingTaskFieldsResponse = await response.json()
-      return data
-    },
+    async (taskId: string, environment: 'dev' | 'prod') =>
+      fetchScrapingTaskFields(taskId, environment),
+    [],
+  )
+  const processScrapingTask = useCallback(
+    async (taskId: string, req: ProcessScrapingTaskRequest) =>
+      fetchProcessScrapingTask(taskId, req),
     [],
   )
 
-  const processScrapingTask = useCallback(
-    async (taskId: string, req: ProcessScrapingTaskRequest) => {
-      const response = await fetch(
-        `${appEnv.dataUploaderUrl}/scraping-tasks/${encodeURIComponent(taskId)}/process`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req),
-        },
-      )
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ detail: 'Processing failed' }))
-        throw new Error(error.detail || 'Processing failed')
-      }
-      const data: ProcessScrapingTaskResponse = await response.json()
-      return data
-    },
-    [],
-  )
+  return {
+    listScrapingTasks,
+    importScrapingTask,
+    getScrapingTaskFields,
+    processScrapingTask,
+  }
+}
+
+function useUploadFlow() {
+  const [state, setState] = useState<UploadState>({ step: 'idle' })
 
   const uploadFile = useCallback(async (file: File) => {
     setState({ step: 'uploading' })
-
     try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch(`${appEnv.dataUploaderUrl}/upload`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ detail: 'Upload failed' }))
-        throw new Error(error.detail || 'Upload failed')
-      }
-
-      const data: UploadResponse = await response.json()
-
+      const data = await fetchUploadFile(file)
       setState({
         step: 'selecting',
         jobId: data.jobId,
@@ -131,7 +187,6 @@ export function useDataUploader() {
         sampleRow: data.sampleRow,
         rowCount: data.rowCount,
       })
-
       return data
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Upload failed'
@@ -148,32 +203,13 @@ export function useDataUploader() {
       environments: string[],
     ) => {
       setState({ step: 'processing', jobId })
-
       try {
-        const request: ProcessRequest = {
+        const data = await fetchProcessFile(
+          jobId,
           keepFields,
           uploadToConvex,
           environments,
-        }
-
-        const response = await fetch(
-          `${appEnv.dataUploaderUrl}/upload/${jobId}/process`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(request),
-          },
         )
-
-        if (!response.ok) {
-          const error = await response
-            .json()
-            .catch(() => ({ detail: 'Processing failed' }))
-          throw new Error(error.detail || 'Processing failed')
-        }
-
-        const data: ProcessResponse = await response.json()
-
         setState({
           step: 'completed',
           jobId,
@@ -181,7 +217,6 @@ export function useDataUploader() {
           uploaded: data.uploaded,
           duplicates: data.duplicates,
         })
-
         return data
       } catch (error) {
         const message =
@@ -197,17 +232,12 @@ export function useDataUploader() {
     setState({ step: 'idle' })
   }, [])
 
-  return {
-    state,
-    uploadFile,
-    processFile,
-    reset,
-    listScrapingTasks,
-    importScrapingTask,
-    getScrapingTaskFields,
-    processScrapingTask,
-  }
+  return { state, uploadFile, processFile, reset }
 }
 
+export function useDataUploader() {
+  const { state, uploadFile, processFile, reset } = useUploadFlow()
+  const scrapingApis = useScrapingApis()
 
-
+  return { state, uploadFile, processFile, reset, ...scrapingApis }
+}
