@@ -12,7 +12,12 @@ import {
   automationMutex,
 } from './service.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
-import logger from '../shared/logger.js'
+import {
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+  ExternalServiceError,
+} from '../shared/errors.js'
 
 const router = Router()
 
@@ -40,7 +45,7 @@ router.get('/artifacts', asyncHandler(async (req, res) => {
     (req.query as any)?.id ?? '',
   ).trim()
   if (!workflowId) {
-    return res.status(400).json({ error: 'workflowId is required' })
+    throw new ValidationError('workflowId is required')
   }
   const artifacts = await workflowArtifactsListByWorkflow(workflowId)
   res.json(artifacts)
@@ -53,11 +58,11 @@ router.get('/artifacts', asyncHandler(async (req, res) => {
 router.get('/artifacts/storage-url', asyncHandler(async (req, res) => {
   const storageId = String((req.query as any)?.storageId ?? '').trim()
   if (!storageId) {
-    return res.status(400).json({ error: 'storageId is required' })
+    throw new ValidationError('storageId is required')
   }
   const url = await workflowArtifactsGetStorageUrl(storageId)
   if (!url) {
-    return res.status(404).json({ error: 'Artifact URL is not ready' })
+    throw new NotFoundError('Artifact URL is not ready')
   }
   res.json({ url })
 }))
@@ -72,19 +77,19 @@ router.get('/artifacts/download', asyncHandler(async (req, res) => {
     (req.query as any)?.fileName ?? 'artifact.json',
   ).trim() || 'artifact.json'
   if (!storageId) {
-    return res.status(400).json({ error: 'storageId is required' })
+    throw new ValidationError('storageId is required')
   }
 
   const url = await workflowArtifactsGetStorageUrl(storageId)
   if (!url) {
-    return res.status(404).json({ error: 'Artifact URL is not ready' })
+    throw new NotFoundError('Artifact URL is not ready')
   }
 
   const upstream = await fetch(url)
   if (!upstream.ok) {
-    return res
-      .status(502)
-      .json({ error: `Failed to download artifact (${upstream.status})` })
+    throw new ExternalServiceError(
+      `Failed to download artifact (${upstream.status})`,
+    )
   }
 
   const contentType =
@@ -99,45 +104,17 @@ router.get('/artifacts/download', asyncHandler(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------
-// POST /run
+// POST /run — validates input, acquires mutex, delegates to runWorkflow
 // ---------------------------------------------------------------------------
 
 router.post('/run', asyncHandler(async (req, res) => {
+  const { workflowId, parallelProfiles } = parseRunInput(req.body)
+  validateWorkflowCanStart(workflowId)
+
   const release = await automationMutex.acquire()
   try {
-    const workflowId = String(
-      req.body?.workflowId ?? req.body?.workflow_id ?? req.body?.id ?? '',
-    ).trim()
-    if (!workflowId) {
-      return res.status(400).json({ error: 'workflowId is required' })
-    }
-
-    if (workflowWorkers.has(workflowId)) {
-      return res.status(400).json({ error: 'Workflow already running' })
-    }
-
-    const configuredMax = Number(process.env.WORKFLOW_MAX_CONCURRENCY ?? 3)
-    const maxConcurrency = Number.isFinite(configuredMax)
-      ? Math.max(1, Math.floor(configuredMax))
-      : 3
-    if (workflowWorkers.size >= maxConcurrency) {
-      return res
-        .status(429)
-        .json({ error: `Too many workflows running (max ${maxConcurrency})` })
-    }
-
-    const parallelProfiles = normalizeOptionalParallelProfiles(
-      req.body?.parallelProfiles ??
-      req.body?.parallel_profiles ??
-      req.body?.parallel,
-    )
-
     await runWorkflow({ workflowId, parallelProfiles })
     res.json({ success: true, message: 'Workflow started' })
-  } catch (error: any) {
-    const statusCode = error?.statusCode || 500
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    res.status(statusCode).json({ error: message })
   } finally {
     release()
   }
@@ -148,30 +125,64 @@ router.post('/run', asyncHandler(async (req, res) => {
 // ---------------------------------------------------------------------------
 
 router.post('/stop', asyncHandler(async (req, res) => {
+  const workflowId = String(
+    req.body?.workflowId ?? req.body?.workflow_id ?? req.body?.id ?? '',
+  ).trim()
+
+  const idsToStop = workflowId
+    ? [workflowId]
+    : Array.from(workflowWorkers.keys())
+  if (idsToStop.length === 0) {
+    throw new ConflictError('No workflow running')
+  }
+
   const release = await automationMutex.acquire()
   try {
-    const workflowId = String(
-      req.body?.workflowId ?? req.body?.workflow_id ?? req.body?.id ?? '',
-    ).trim()
-
-    const idsToStop = workflowId
-      ? [workflowId]
-      : Array.from(workflowWorkers.keys())
-    if (idsToStop.length === 0) {
-      return res.status(400).json({ error: 'No workflow running' })
-    }
-
     const stopped = await stopWorkflows(workflowId || undefined)
     if (workflowId && stopped.length === 0) {
-      return res.status(400).json({ error: 'Workflow not running' })
+      throw new ConflictError('Workflow not running')
     }
     res.json({ success: true, stopped })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    res.status(500).json({ error: message })
   } finally {
     release()
   }
 }))
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Parse and validate the POST /run request body. */
+function parseRunInput(body: any): {
+  workflowId: string
+  parallelProfiles: number | undefined
+} {
+  const workflowId = String(
+    body?.workflowId ?? body?.workflow_id ?? body?.id ?? '',
+  ).trim()
+  if (!workflowId) {
+    throw new ValidationError('workflowId is required')
+  }
+  const parallelProfiles = normalizeOptionalParallelProfiles(
+    body?.parallelProfiles ?? body?.parallel_profiles ?? body?.parallel,
+  )
+  return { workflowId, parallelProfiles }
+}
+
+/** Pre-flight checks before starting a workflow. */
+function validateWorkflowCanStart(workflowId: string): void {
+  if (workflowWorkers.has(workflowId)) {
+    throw new ConflictError('Workflow already running')
+  }
+  const configuredMax = Number(process.env.WORKFLOW_MAX_CONCURRENCY ?? 3)
+  const maxConcurrency = Number.isFinite(configuredMax)
+    ? Math.max(1, Math.floor(configuredMax))
+    : 3
+  if (workflowWorkers.size >= maxConcurrency) {
+    throw new ConflictError(
+      `Too many workflows running (max ${maxConcurrency})`,
+    )
+  }
+}
 
 export default router

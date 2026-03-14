@@ -6,92 +6,64 @@ import {
     listsUpdate,
     listsDelete
 } from '../shared/convexClient.js'
+import { asyncHandler } from '../shared/asyncHandler.js'
+import { ValidationError } from '../shared/errors.js'
 
 const router = Router()
 
 // Get all lists
-router.get('/', async (req, res) => {
-    try {
-        const lists = await listsList()
-        res.json(lists)
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
-    }
-})
+router.get('/', asyncHandler(async (_req, res) => {
+    const lists = await listsList()
+    res.json(lists)
+}))
 
 // Create a list
-router.post('/', async (req, res) => {
-    try {
-        const { name } = req.body
-        if (!name) {
-            return res.status(400).json({ error: 'name is required' })
-        }
-        const list = await listsCreate(name)
-        res.json(list)
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
+router.post('/', asyncHandler(async (req, res) => {
+    const { name } = req.body
+    if (!name) {
+        throw new ValidationError('name is required')
     }
-})
+    const list = await listsCreate(name)
+    res.json(list)
+}))
 
-router.post('/update', async (req, res) => {
-    try {
-        const { id, name } = req.body || {}
-        if (!id) {
-            return res.status(400).json({ error: 'id is required' })
-        }
-        if (!name) {
-            return res.status(400).json({ error: 'name is required' })
-        }
-        const list = await listsUpdate(String(id), String(name))
-        res.json(list)
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
+router.post('/update', asyncHandler(async (req, res) => {
+    const { id, name } = req.body || {}
+    if (!id) {
+        throw new ValidationError('id is required')
     }
-})
+    if (!name) {
+        throw new ValidationError('name is required')
+    }
+    const list = await listsUpdate(String(id), String(name))
+    res.json(list)
+}))
 
-router.post('/delete', async (req, res) => {
-    try {
-        const { id } = req.body || {}
-        if (!id) {
-            return res.status(400).json({ error: 'id is required' })
-        }
-        await listsDelete(String(id))
-        res.json({ success: true })
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
+router.post('/delete', asyncHandler(async (req, res) => {
+    const { id } = req.body || {}
+    if (!id) {
+        throw new ValidationError('id is required')
     }
-})
+    await listsDelete(String(id))
+    res.json({ success: true })
+}))
 
 // Update a list (Route param version)
-router.put('/:id', async (req, res) => {
-    try {
-        const { id } = req.params
-        const { name } = req.body
-        if (!name) {
-            return res.status(400).json({ error: 'name is required' })
-        }
-        const list = await listsUpdate(id, name)
-        res.json(list)
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
+router.put('/:id', asyncHandler(async (req, res) => {
+    const { id } = req.params
+    const { name } = req.body
+    if (!name) {
+        throw new ValidationError('name is required')
     }
-})
+    const list = await listsUpdate(id, name)
+    res.json(list)
+}))
 
 // Delete a list (Route param version)
-router.delete('/:id', async (req, res) => {
-    try {
-        const { id } = req.params
-        await listsDelete(id)
-        res.json({ success: true })
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        res.status(500).json({ error: message })
-    }
-})
+router.delete('/:id', asyncHandler(async (req, res) => {
+    const { id } = req.params
+    await listsDelete(id)
+    res.json({ success: true })
+}))
 
 export default router

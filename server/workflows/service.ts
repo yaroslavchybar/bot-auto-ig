@@ -16,6 +16,7 @@ import {
   getPid,
   waitForExit,
 } from '../shared/ProcessService.js'
+import { NotFoundError } from '../shared/errors.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -307,9 +308,7 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<void> {
 
   const workflow = await workflowsGetById(workflowId)
   if (!workflow) {
-    const err: any = new Error('Workflow not found')
-    err.statusCode = 404
-    throw err
+    throw new NotFoundError('Workflow not found')
   }
 
   await workflowsStart(workflowId)
