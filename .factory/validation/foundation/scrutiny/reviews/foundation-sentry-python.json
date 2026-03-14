@@ -1,0 +1,33 @@
+{
+  "featureId": "foundation-sentry-python",
+  "reviewedAt": "2026-03-14T17:13:52.819558Z",
+  "commitId": "0d3d8a5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds `sentry-sdk`, introduces `python/core/sentry.py`, and wires `init_sentry()` / `flush_sentry()` into the three files named in the feature description. However, the actual workflow subprocess entry point that the server launches is still `python/runners/run_workflow.py`, and that script was left without direct Sentry init/flush at its process boundary, so workflow startup and import-time failures can still escape Sentry capture.",
+    "issues": [
+      {
+        "file": "python/runners/run_workflow.py",
+        "line": 262,
+        "severity": "blocking",
+        "description": "`run_workflow.py` remains the real workflow runner entry point (`server/api/workflows.ts:20,242` spawns it), but this feature did not add `init_sentry()` / `flush_sentry()` there. The script still just does `setup_logging(); raise SystemExit(main())`, so Sentry is only initialized later inside the imported `python.runners.workflow.entrypoint.main()`. Any failures during `run_workflow.py` startup or top-level imports happen before Sentry is active, which leaves the workflow runner incompletely covered by the integration."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared state disagrees about what the workflow runner entry point actually is. The foundation assertions describe `python/runners/workflow/entrypoint.py` as the entry point, but runtime docs and the server route show that workflows are launched via `python/runners/run_workflow.py`.",
+      "evidence": "`docs/validation/foundation-assertions.md:63-67` names `python/runners/workflow/entrypoint.py` in VAL-FOUND-013/014; `docs/python/automation.md:11,36` says `run_workflow.py` is the workflow executor and is started by the Workflows API; `docs/server/guide.md:52` and `server/api/workflows.ts:20,242` show the server spawning `python/runners/run_workflow.py`."
+    },
+    {
+      "area": "skills",
+      "observation": "The `refactor-worker` skill says workers should read `.factory/library/architecture.md` and identify all affected files before editing, but this worker's transcript skeleton does not show either step even though the handoff still reports `followedProcedure: true`.",
+      "evidence": "`.factory/skills/refactor-worker/SKILL.md:24-29` requires reading `architecture.md` and listing all affected files. The extracted transcript skeleton for worker session `eb9fd5f8-cbad-4651-baa4-566eee2dfaa3` shows reads of mission, validation, requirements, runner files, research, services, AGENTS, and `python/core/logging.py`, but no read of `.factory/library/architecture.md` and no explicit affected-file inventory before implementation."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the handoff, transcript skeleton, skill, and commit `0d3d8a5`. I marked the feature as failing because the true workflow subprocess wrapper, `python/runners/run_workflow.py`, was not instrumented directly, leaving workflow startup/import failures outside Sentry coverage; I also noted shared-state mismatches around entry-point documentation and skill-procedure tracking."
+}

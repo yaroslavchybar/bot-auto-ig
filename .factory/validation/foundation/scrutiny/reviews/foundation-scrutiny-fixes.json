@@ -1,0 +1,52 @@
+{
+  "featureId": "foundation-scrutiny-fixes",
+  "reviewedAt": "2026-03-14T17:32:18.977998Z",
+  "commitId": "c275834f5eeac57a71c8bdfd7adb4f7a21b56f00",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix commit adds the requested changes in `run_workflow.py`, `root.tsx`, `filter.py`, `asyncHandler.ts`, and the regression test, but it does not fully clear the round-1 failures: route/module error-boundary reporting is still incomplete, the Python logging contract mismatch remains unresolved, and the stale verification log still records an impossible pytest result.",
+    "issues": [
+      {
+        "file": "frontend/src/components/shared/RouteErrorView.tsx",
+        "line": 8,
+        "severity": "blocking",
+        "description": "`frontend/src/root.tsx:147-154` now captures the root route error, but the route-module `ErrorBoundary()` exports still just render `RouteErrorView` (for example `frontend/src/routes/accounts.tsx:13-14`, `frontend/src/routes/lists.tsx:13-14`, and `frontend/src/routes/workflows.tsx:13-14`). `RouteErrorView` already calls `useRouteError()` at line 9 yet never calls `Sentry.captureException`, so loader and route-boundary failures outside the root boundary are still dropped instead of being reported."
+      },
+      {
+        "file": "python/core/logging.py",
+        "line": 68,
+        "severity": "blocking",
+        "description": "The fix only adds explanatory comments, but the implementation still uses `logging.getLogger(\"urllib3\")` and `logging.getLogger(\"playwright\")` at lines 68-69 while the mission contract still says all `getLogger()` calls must use `__name__` (`validation-contract.md:24` and `validation-contract.md:188`). The original contract/code conflict from `foundation-python-unified-logging` therefore remains unresolved."
+      },
+      {
+        "file": "docs/validation/foundation-verify-log.md",
+        "line": 11,
+        "severity": "blocking",
+        "description": "`python/tests/test_runner_regressions.py:514-515` now marks the known cooperative-stop regression as `xfail`, but the persisted verification artifact still says `python -m pytest python/tests -q` exited 0 while reporting `221 passed, 1 failed`. Because that contradictory log remains in the working tree, the original `foundation-verify` evidence failure is still present."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The shared validation contract still conflicts with the intended third-party logger suppression pattern in `python/core/logging.py`.",
+      "evidence": "`validation-contract.md:24` and `validation-contract.md:188` require all `getLogger()` calls to use `__name__`, while `python/core/logging.py:65-69` now explicitly documents and keeps named `urllib3` / `playwright` loggers. The round-1 synthesis already flagged this gap at `.factory/validation/foundation/scrutiny/synthesis.json:107-109`, but the shared rule remains unchanged."
+    },
+    {
+      "area": "skills",
+      "observation": "The `refactor-worker` procedure tracking still does not match worker reality for this fix feature.",
+      "evidence": "`.factory/skills/refactor-worker/SKILL.md:27-29` requires reading `.factory/library/architecture.md` and explicitly listing affected files before editing, but the transcript skeleton entry in `C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\worker-transcripts.jsonl` (line 12, session `73c7748f-bf55-4d5f-a9a2-35102d7effba`) shows reads of `mission.md`, `validation-contract.md`, `features.json`, the target source files, `.factory/services.yaml`, and `AGENTS.md` with no `architecture.md` read, while the handoff still reports `followedProcedure: true`."
+    }
+  ],
+  "addressesFailureFrom": [
+    "foundation-sentry-python",
+    "foundation-sentry-frontend",
+    "foundation-python-unified-logging",
+    "foundation-russian-translation",
+    "foundation-server-error-utilities",
+    "foundation-verify"
+  ],
+  "summary": "Reviewed the handoff, transcript skeleton, commit `c275834f5eeac57a71c8bdfd7adb4f7a21b56f00`, and current working tree. The fix resolves the targeted `run_workflow.py`, `filter.py`, `asyncHandler.ts`, and pytest-marker changes, but the feature still fails because route-module Sentry capture is incomplete, the Python logging rule mismatch was only commented rather than resolved, and the stale foundation verification log still contradicts its claimed pytest exit code."
+}

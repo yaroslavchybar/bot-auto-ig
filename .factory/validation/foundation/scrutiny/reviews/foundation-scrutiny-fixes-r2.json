@@ -1,0 +1,33 @@
+{
+  "featureId": "foundation-scrutiny-fixes-r2",
+  "reviewedAt": "2026-03-14T17:47:46.602404Z",
+  "commitId": "5a1b3834034d9c07fca60f0d4d53528c5b3da76c",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The round-2 fix does resolve the route-boundary Sentry reporting gap and the stale foundation verify log, but it does not fully clear the prior Python logging contract failure because the validation contract still contains a contradictory `getLogger(__name__)` requirement under `VAL-PY-002`.",
+    "issues": [
+      {
+        "file": "C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\validation-contract.md",
+        "line": 188,
+        "severity": "blocking",
+        "description": "`VAL-FOUND-005` was updated at `validation-contract.md:24`, but `VAL-PY-002` still says `All getLogger() uses __name__.` at line 188. That leaves the same contract/code contradiction called out in the prior review, because `python/core/logging.py:68-69` intentionally keeps `logging.getLogger(\"urllib3\")` and `logging.getLogger(\"playwright\")` for third-party noise suppression."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The validation contract duplicates the Python logger naming rule in multiple sections, and only one copy was updated. That duplication let the same scrutiny issue survive the fix feature.",
+      "evidence": "`C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\validation-contract.md:24` now allows named third-party suppression, while `validation-contract.md:188` still says `All getLogger() uses __name__.`"
+    },
+    {
+      "area": "skills",
+      "observation": "The completed worker session reported `followedProcedure: true`, but the transcript skeleton does not show the required `.factory/library/architecture.md` read from the `refactor-worker` procedure, and the handoff itself suggests the skill needs guidance for already-committed work.",
+      "evidence": "`C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\skills\\refactor-worker\\SKILL.md:27-29` requires reading `.factory/library/architecture.md` and listing affected files up front. `C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\worker-transcripts.jsonl:15` shows reads of mission files, `RouteErrorView.tsx`, `root.tsx`, and `foundation-verify-log.md`, but no `architecture.md` read; the handoff at `...__foundation-scrutiny-fixes-r2__cd2ef706-0695-4efa-a303-be5fa270b03d.json:53-56` still marks `followedProcedure: true` and asks for skill guidance on already-committed fixes."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/foundation/scrutiny/reviews/foundation-scrutiny-fixes.json",
+  "summary": "Reviewed prior failure `foundation-scrutiny-fixes` (commit `c275834f5eeac57a71c8bdfd7adb4f7a21b56f00`), the fix feature handoff/transcript, and fix commit `5a1b3834034d9c07fca60f0d4d53528c5b3da76c`. The Sentry reporting change in `frontend/src/components/shared/RouteErrorView.tsx`, the `root.tsx` cleanup, and the corrected `docs/validation/foundation-verify-log.md` all look good, but the review still fails because `validation-contract.md` keeps a conflicting `VAL-PY-002` rule at line 188, so the original logging-contract blocker is only partially resolved."
+}

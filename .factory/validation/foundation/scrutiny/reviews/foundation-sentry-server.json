@@ -1,0 +1,26 @@
+{
+  "featureId": "foundation-sentry-server",
+  "reviewedAt": "2026-03-14T17:12:33.667958+00:00",
+  "commitId": "e4f1688",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The feature satisfies VAL-FOUND-002: `@sentry/node` was added to `server/package.json`, `server/shared/sentry.ts` initializes Sentry from `process.env.SENTRY_DSN_SERVER` behind a DSN guard, and `server/index.ts` loads `env.js` then the Sentry module before Express app creation and registers `Sentry.setupExpressErrorHandler(app)` after all routes.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "`.factory/services.yaml` still recommends `npm --prefix frontend install` and `npm --prefix server install`, but the mission AGENTS explicitly say those commands add a spurious `anti: file:..` dependency and require running installs from inside each package directory instead.",
+      "evidence": "`.factory/services.yaml:3-4` defines `install_frontend: npm --prefix frontend install` and `install_server: npm --prefix server install`; `C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\AGENTS.md:79-82` says to use `cd frontend && npm install` / `cd server && npm install`; the reviewed transcript shows the worker used `cd \"C:\\Users\\yaros\\Downloads\\bot-auto-ig\\server\" && npm install @sentry/node` to avoid that gotcha."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The shared state does not document the server bootstrap nuance for Sentry on this repo's ESM setup: `env.js` must load before the Sentry module so dotenv populates `SENTRY_DSN_SERVER`, while Sentry still needs to load before Express/HTTP imports for instrumentation.",
+      "evidence": "`.factory/research/sentry-integration.md:248` says the instrumentation file should load before all other imports; `server/env.ts:9-10` shows dotenv is loaded there; the reviewed transcript explicitly records the worker reconciling this and choosing `env.ts -> shared/sentry.ts -> everything else`; `.factory/library/environment.md` lists `SENTRY_DSN_SERVER` but not this import-order requirement."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the handoff, transcript skeleton, skill, and commit `e4f1688`. The implementation meets the feature requirements with no blocking or non-blocking code issues found; I recorded two shared-state follow-ups about stale install commands in `services.yaml` and the undocumented env-before-Sentry bootstrap nuance."
+}

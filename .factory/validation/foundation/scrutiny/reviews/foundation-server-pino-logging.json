@@ -1,0 +1,33 @@
+{
+  "featureId": "foundation-server-pino-logging",
+  "reviewedAt": "2026-03-14T17:13:28.666430+00:00",
+  "commitId": "f961d19",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. Commit `f961d19` satisfies VAL-FOUND-004: `pino` and `pino-pretty` are present in `server/package.json`, `server/shared/logger.ts` exports a production/dev-configured pino instance, the reviewed commit removes `console.log/error/warn` usage from `server/**/*.ts` (excluding tests), and `server/index.ts` adds HTTP request logging with request id, method, URL, status, and duration. One non-blocking observability gap remains: the request-logging middleware is mounted after `express.json()`, so malformed JSON requests bypass the logger and never receive `req.id`. ",
+    "issues": [
+      {
+        "file": "server/index.ts",
+        "line": 62,
+        "severity": "non_blocking",
+        "description": "`express.json()` runs before the request-logging middleware, so requests rejected by the JSON parser never receive `req.id` and are missing from the HTTP request log. Mount the request logger before body parsing if the intent is to log every HTTP request, including malformed JSON requests."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "`.factory/services.yaml` still recommends `npm --prefix frontend install` and `npm --prefix server install`, but the mission AGENTS explicitly say those commands add a spurious `anti: file:..` dependency and require running installs from inside each package directory instead.",
+      "evidence": "`.factory/services.yaml:3-4` defines `install_frontend: npm --prefix frontend install` and `install_server: npm --prefix server install`; `C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\AGENTS.md:79-82` says to use `cd frontend && npm install` / `cd server && npm install` instead."
+    },
+    {
+      "area": "skills",
+      "observation": "The `refactor-worker` skill still hard-requires the full repo validation suite even for narrowly-scoped server-only changes; the reviewed handoff explicitly called that out as wasteful for this feature.",
+      "evidence": "`C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\skills\\refactor-worker\\SKILL.md:68-72` says to run ALL verification commands; `C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\handoffs\\2026-03-13T13-01-10-406Z__foundation-server-pino-logging__925a0b54-1f2f-4982-9cd6-a1f53f93d26e.json:57-59` records the worker's suggested change to allow scoped verification for narrowly-scoped features."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the feature handoff, transcript skeleton, skill, and commit `f961d19`. The implementation meets the logging feature requirements and VAL-FOUND-004, with one non-blocking request-logging coverage gap and two shared-state follow-ups for stale install commands in `services.yaml` and over-broad validation requirements in `refactor-worker`."
+}
