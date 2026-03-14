@@ -89,7 +89,7 @@ export function WorkflowsPageContainer() {
     Record<string, WorkflowArtifact[]>
   >({})
 
-  const workflows = useQuery(api.workflows.list, {})
+  const workflows = useQuery(api.workflows.queries.list, {})
   const lists = useQuery(api.lists.list, {})
   const workflowsLoading = workflows === undefined && workflowsData === null
   const workflowsList = useMemo(() => workflowsData ?? [], [workflowsData])
@@ -131,13 +131,13 @@ export function WorkflowsPageContainer() {
     }
   }, [detailsWorkflowId])
 
-  const createWorkflow = useMutation(api.workflows.create)
-  const updateWorkflow = useMutation(api.workflows.update)
-  const removeWorkflow = useMutation(api.workflows.remove)
-  const duplicateWorkflow = useMutation(api.workflows.duplicate)
-  const toggleActiveWorkflow = useMutation(api.workflows.toggleActive)
-  const updateSchedule = useMutation(api.workflows.updateSchedule)
-  const resetWorkflow = useMutation(api.workflows.reset)
+  const createWorkflow = useMutation(api.workflows.mutations.create)
+  const updateWorkflow = useMutation(api.workflows.mutations.update)
+  const removeWorkflow = useMutation(api.workflows.mutations.remove)
+  const duplicateWorkflow = useMutation(api.workflows.mutations.duplicate)
+  const toggleActiveWorkflow = useMutation(api.workflows.scheduling.toggleActive)
+  const updateSchedule = useMutation(api.workflows.scheduling.updateSchedule)
+  const resetWorkflow = useMutation(api.workflows.mutations.reset)
 
   const editWorkflow =
     workflowsList.find((workflow) => workflow._id === editWorkflowId) ?? null
@@ -183,7 +183,7 @@ export function WorkflowsPageContainer() {
     setError(null)
     try {
       const [latest] = await Promise.all([
-        convex.query(api.workflows.list, {}),
+        convex.query(api.workflows.queries.list, {}),
         new Promise((resolve) => setTimeout(resolve, 400)),
       ])
       setWorkflowsData(latest as Workflow[])

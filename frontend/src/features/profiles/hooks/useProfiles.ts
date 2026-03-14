@@ -46,7 +46,7 @@ function setCache<T>(key: string, data: T): void {
 
 export function useProfiles() {
   const convex = useConvex()
-  const liveProfiles = useQuery(api.profiles.list, {})
+  const liveProfiles = useQuery(api.profiles.queries.list, {})
   const [profiles, setProfiles] = useState<Profile[]>(() => {
     return getCache<Profile[]>(STORAGE_KEY) ?? []
   })
@@ -57,7 +57,7 @@ export function useProfiles() {
     if (!background) setLoading(true)
     setError(null)
     try {
-      const data = await convex.query(api.profiles.list, {})
+      const data = await convex.query(api.profiles.queries.list, {})
       const mapped = data.map(mapProfileRecord)
       setProfiles(mapped)
       setCache(STORAGE_KEY, mapped)

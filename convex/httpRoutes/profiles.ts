@@ -49,7 +49,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       const authError = await requireAuth(request);
       if (authError) return authError;
       try {
-        const profiles = await ctx.runQuery(internal.profiles.listInternal, {});
+        const profiles = await ctx.runQuery(internal.profiles.queries.listInternal, {});
         return jsonResponse(profiles.map(mapProfileToPython));
       } catch (err: any) {
         return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -66,7 +66,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       try {
         const url = new URL(request.url);
         const name = url.searchParams.get('name') || '';
-        const profile = await ctx.runQuery(internalApi.profiles.getByNameInternal, { name });
+        const profile = await ctx.runQuery(internalApi.profiles.queries.getByNameInternal, { name });
         return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
       } catch (err: any) {
         return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -85,7 +85,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
         const profileId =
           url.searchParams.get('profileId') || url.searchParams.get('profile_id') || '';
         const profile = profileId
-          ? await ctx.runQuery(internal.profiles.getByIdInternal, { profileId: profileId as any })
+          ? await ctx.runQuery(internal.profiles.queries.getByIdInternal, { profileId: profileId as any })
           : null;
         return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
       } catch (err: any) {
@@ -104,7 +104,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
         const body = await parseBody(request);
         const listIds = (body?.listIds ?? body?.list_ids ?? []) as any[];
         const cooldownMinutes = body?.cooldownMinutes ?? body?.cooldown_minutes ?? 0;
-        const profiles = await ctx.runQuery(internalApi.profiles.getAvailableForListsInternal, {
+        const profiles = await ctx.runQuery(internalApi.profiles.queries.getAvailableForListsInternal, {
           listIds,
           cooldownMinutes,
         });
@@ -124,7 +124,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       try {
         const body = await parseBody(request);
         const listIds = (body?.listIds ?? body?.list_ids ?? []) as any[];
-        const profiles = await ctx.runQuery(internalApi.profiles.getByListIdsInternal, {
+        const profiles = await ctx.runQuery(internalApi.profiles.queries.getByListIdsInternal, {
           listIds,
         });
         return jsonResponse(profiles.map(mapProfileToPython));
@@ -142,7 +142,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const created = await ctx.runMutation(internalApi.profiles.createInternal, {
+        const created = await ctx.runMutation(internalApi.profiles.mutations.createInternal, {
           name: body?.name,
           proxy: body?.proxy ?? undefined,
           proxyType: body?.proxyType ?? body?.proxy_type ?? undefined,
@@ -169,7 +169,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const updated = await ctx.runMutation(internalApi.profiles.updateByNameInternal, {
+        const updated = await ctx.runMutation(internalApi.profiles.mutations.updateByNameInternal, {
           oldName: body?.oldName ?? body?.old_name,
           name: body?.name,
           proxy: body?.proxy ?? undefined,
@@ -197,7 +197,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const updated = await ctx.runMutation(internalApi.profiles.updateByIdInternal, {
+        const updated = await ctx.runMutation(internalApi.profiles.mutations.updateByIdInternal, {
           profileId: (body?.profileId ?? body?.profile_id) as any,
           name: body?.name,
           proxy: body?.proxy ?? undefined,
@@ -225,7 +225,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const ok = await ctx.runMutation(internalApi.profiles.removeByIdInternal, {
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.removeByIdInternal, {
           profileId: (body?.profileId ?? body?.profile_id) as any,
         });
         return jsonResponse({ ok });
@@ -243,7 +243,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const ok = await ctx.runMutation(internalApi.profiles.removeByNameInternal, body as any);
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.removeByNameInternal, body as any);
         return jsonResponse({ ok });
       } catch (err: any) {
         return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -260,7 +260,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const ok = await ctx.runMutation(internalApi.profiles.removeByNameInternal, body as any);
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.removeByNameInternal, body as any);
         return jsonResponse({ ok });
       } catch (err: any) {
         return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -277,7 +277,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       try {
         const body = await parseBody(request);
         const listIds = body?.listIds ?? body?.list_ids ?? [];
-        const ok = await ctx.runMutation(internalApi.profiles.clearBusyForListsInternal, {
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.clearBusyForListsInternal, {
           listIds: listIds as any[],
         });
         return jsonResponse({ ok });
@@ -295,7 +295,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const ok = await ctx.runMutation(internalApi.profiles.syncStatusInternal, body as any);
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.syncStatusInternal, body as any);
         return jsonResponse({ ok });
       } catch (err: any) {
         return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -311,7 +311,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const ok = await ctx.runMutation(internalApi.profiles.setLoginTrueInternal, body as any);
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.setLoginTrueInternal, body as any);
         return jsonResponse({ ok });
       } catch (err: any) {
         return jsonResponse({ error: String(err?.message || err) }, 400);
@@ -328,7 +328,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       try {
         const body = await parseBody(request);
         const ok = await ctx.runMutation(
-          internal.profiles.incrementDailyScrapingUsedInternal,
+          internal.profiles.mutations.incrementDailyScrapingUsedInternal,
           body as any,
         );
         return jsonResponse({ ok });
@@ -346,7 +346,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const profile = await ctx.runMutation(internal.profiles.claimBestScrapeLeaseInternal, {
+        const profile = await ctx.runMutation(internal.profiles.scraping.claimBestScrapeLeaseInternal, {
           workerId: body?.workerId,
           leaseMs: body?.leaseMs,
           now: body?.now ?? Date.now(),
@@ -367,7 +367,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const profile = await ctx.runMutation(internal.profiles.refreshScrapeLeaseInternal, {
+        const profile = await ctx.runMutation(internal.profiles.scraping.refreshScrapeLeaseInternal, {
           profileId: body?.profileId,
           workerId: body?.workerId,
           leaseMs: body?.leaseMs,
@@ -388,7 +388,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const ok = await ctx.runMutation(internal.profiles.releaseScrapeLeaseInternal, {
+        const ok = await ctx.runMutation(internal.profiles.scraping.releaseScrapeLeaseInternal, {
           profileId: body?.profileId,
           workerId: body?.workerId,
         });
@@ -407,7 +407,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const profile = await ctx.runMutation(internal.profiles.markScrapeSuccessInternal, {
+        const profile = await ctx.runMutation(internal.profiles.scraping.markScrapeSuccessInternal, {
           profileId: body?.profileId,
           workerId: body?.workerId,
           amount: body?.amount,
@@ -428,7 +428,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       if (authError) return authError;
       try {
         const body = await parseBody(request);
-        const profile = await ctx.runMutation(internal.profiles.markScrapeFailureInternal, {
+        const profile = await ctx.runMutation(internal.profiles.scraping.markScrapeFailureInternal, {
           profileId: body?.profileId,
           workerId: body?.workerId,
           now: body?.now ?? Date.now(),
@@ -449,7 +449,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       try {
         const body = await parseBody(request);
         const result = await ctx.runMutation(
-          internal.profiles.sweepExpiredScrapeLeasesInternal,
+          internal.profiles.scraping.sweepExpiredScrapeLeasesInternal,
           { now: body?.now ?? Date.now() },
         );
         return jsonResponse(result);
@@ -469,7 +469,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
         const url = new URL(request.url);
         const listId = url.searchParams.get('list_id');
         if (!listId) return jsonResponse({ error: 'list_id is required' }, 400);
-        const profiles = await ctx.runQuery(internalApi.profiles.listAssignedInternal, {
+        const profiles = await ctx.runQuery(internalApi.profiles.queries.listAssignedInternal, {
           listId: listId as any,
         });
         return jsonResponse(
@@ -488,7 +488,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
       const authError = await requireAuth(request);
       if (authError) return authError;
       try {
-        const profiles = await ctx.runQuery(internalApi.profiles.listUnassignedInternal, {});
+        const profiles = await ctx.runQuery(internalApi.profiles.queries.listUnassignedInternal, {});
         return jsonResponse(
           profiles.map((p: any) => ({ profile_id: p.profileId, name: p.name })),
         );
@@ -508,7 +508,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
         const body = await parseBody(request);
         const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
         const listId = body?.listId ?? body?.list_id;
-        const ok = await ctx.runMutation(internalApi.profiles.bulkSetListIdInternal, {
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.bulkSetListIdInternal, {
           profileIds: profileIds as any[],
           listId: listId === null ? null : (listId as any),
         });
@@ -529,7 +529,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
         const body = await parseBody(request);
         const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
         const listId = body?.listId ?? body?.list_id;
-        const ok = await ctx.runMutation(internalApi.profiles.bulkAddToListInternal, {
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.bulkAddToListInternal, {
           profileIds: profileIds as any[],
           listId: listId as any,
         });
@@ -550,7 +550,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
         const body = await parseBody(request);
         const profileIds = body?.profileIds ?? body?.profile_ids ?? [];
         const listId = body?.listId ?? body?.list_id;
-        const ok = await ctx.runMutation(internalApi.profiles.bulkRemoveFromListInternal, {
+        const ok = await ctx.runMutation(internalApi.profiles.mutations.bulkRemoveFromListInternal, {
           profileIds: profileIds as any[],
           listId: listId as any,
         });

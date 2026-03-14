@@ -7,8 +7,8 @@ test('rejects unauthenticated public queries', async () => {
   const t = createUnauthenticatedConvexTest()
 
   await expect(t.query(api.lists.list, {})).rejects.toThrow('Unauthorized')
-  await expect(t.query(api.profiles.list, {})).rejects.toThrow('Unauthorized')
-  await expect(t.query(api.workflows.list, {})).rejects.toThrow('Unauthorized')
+  await expect(t.query(api.profiles.queries.list, {})).rejects.toThrow('Unauthorized')
+  await expect(t.query(api.workflows.queries.list, {})).rejects.toThrow('Unauthorized')
 })
 
 test('rejects unauthenticated public mutations', async () => {
@@ -22,7 +22,7 @@ test('rejects unauthenticated public mutations', async () => {
   ).rejects.toThrow('Unauthorized')
 
   await expect(
-    t.mutation(api.workflows.create, {
+    t.mutation(api.workflows.mutations.create, {
       name: 'Workflow A',
       nodes: [],
       edges: [],

@@ -19,9 +19,9 @@ function buildUnavailableMessage(workflowId: string | undefined) {
 export function WorkflowEditorPageContainer() {
   const navigate = useNavigate()
   const { workflowId } = useParams()
-  const updateWorkflow = useMutation(api.workflows.update)
+  const updateWorkflow = useMutation(api.workflows.mutations.update)
   const workflow = useQuery(
-    api.workflows.get,
+    api.workflows.queries.get,
     workflowId ? { id: workflowId as Id<'workflows'> } : 'skip',
   )
   const [saving, setSaving] = useState(false)

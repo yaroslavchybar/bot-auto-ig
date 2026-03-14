@@ -28,12 +28,12 @@ test('registers the expected daily cron jobs', async () => {
     return {
       ...actual,
       internal: {
-        profiles: { resetDailyScrapingUsed: 'profiles.resetDailyScrapingUsed' },
+        profiles: { scraping: { resetDailyScrapingUsed: 'profiles.scraping.resetDailyScrapingUsed' } },
         instagramAccounts: {
           autoUnsubscribe: 'instagramAccounts.autoUnsubscribe',
           assignAvailableAccountsDaily: 'instagramAccounts.assignAvailableAccountsDaily',
         },
-        workflows: { resetDailyRuns: 'workflows.resetDailyRuns' },
+        workflows: { scheduling: { resetDailyRuns: 'workflows.scheduling.resetDailyRuns' } },
       },
     }
   })
@@ -41,10 +41,10 @@ test('registers the expected daily cron jobs', async () => {
   await import('../../convex/crons')
 
   expect(daily.mock.calls).toEqual([
-    ['reset daily scraping', { hourUTC: 0, minuteUTC: 1 }, 'profiles.resetDailyScrapingUsed'],
+    ['reset daily scraping', { hourUTC: 0, minuteUTC: 1 }, 'profiles.scraping.resetDailyScrapingUsed'],
     ['auto unsubscribe', { hourUTC: 3, minuteUTC: 0 }, 'instagramAccounts.autoUnsubscribe'],
     ['assign accounts', { hourUTC: 3, minuteUTC: 15 }, 'instagramAccounts.assignAvailableAccountsDaily'],
-    ['reset workflow daily runs', { hourUTC: 0, minuteUTC: 2 }, 'workflows.resetDailyRuns'],
+    ['reset workflow daily runs', { hourUTC: 0, minuteUTC: 2 }, 'workflows.scheduling.resetDailyRuns'],
   ])
 })
 
@@ -62,7 +62,7 @@ describe('cron targets', () => {
       dailyScrapingUsed: 12,
     })
 
-    await t.mutation(internal.profiles.resetDailyScrapingUsed, {})
+    await t.mutation(internal.profiles.scraping.resetDailyScrapingUsed, {})
 
     const updated = await t.run(async (ctx) => ctx.db.get(profile!._id))
     expect(updated?.dailyScrapingUsed).toBe(0)
@@ -99,7 +99,7 @@ describe('cron targets', () => {
       updatedAt: Date.now(),
     })
 
-    const result = await t.mutation(internal.workflows.resetDailyRuns, {})
+    const result = await t.mutation(internal.workflows.scheduling.resetDailyRuns, {})
     const updated = await t.run(async (ctx) => ctx.db.get(workflow!._id))
 
     expect(result).toEqual({ reset: 1 })

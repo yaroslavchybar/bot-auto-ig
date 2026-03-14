@@ -22,7 +22,7 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
       try {
         const url = new URL(request.url);
         const status = url.searchParams.get('status') || undefined;
-        const rows = await ctx.runQuery(internal.workflows.listInternal, {
+        const rows = await ctx.runQuery(internal.workflows.queries.listInternal, {
           status: status as any,
         });
         return jsonResponse(rows);
@@ -43,7 +43,7 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
         const workflowId =
           url.searchParams.get('workflowId') || url.searchParams.get('id') || '';
         if (!workflowId) return jsonResponse({ error: 'workflowId is required' }, 400);
-        const row = await ctx.runQuery(internal.workflows.getInternal, {
+        const row = await ctx.runQuery(internal.workflows.queries.getInternal, {
           id: workflowId as any,
         });
         return jsonResponse(row);
@@ -63,7 +63,7 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
         const body = await parseBody(request);
         const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
         if (!id) return jsonResponse({ error: 'id is required' }, 400);
-        const row = await ctx.runMutation(internal.workflows.startInternal, {
+        const row = await ctx.runMutation(internal.workflows.mutations.startInternal, {
           id: id as any,
         });
         return jsonResponse(row);
@@ -83,7 +83,7 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
         const body = await parseBody(request);
         const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
         if (!id) return jsonResponse({ error: 'id is required' }, 400);
-        const row = await ctx.runMutation(internal.workflows.updateStatusInternal, {
+        const row = await ctx.runMutation(internal.workflows.mutations.updateStatusInternal, {
           id: id as any,
           status: body?.status,
           currentNodeId: body?.currentNodeId ?? body?.current_node_id,

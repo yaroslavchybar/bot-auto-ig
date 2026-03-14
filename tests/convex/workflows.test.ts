@@ -13,21 +13,21 @@ test('creates workflows, deduplicates list ids, and transitions status', async (
   const t = createConvexTest()
   const list = await seedList(t, 'List A')
 
-  const created = await t.mutation(api.workflows.create, {
+  const created = await t.mutation(api.workflows.mutations.create, {
     name: '  Workflow A  ',
     description: 'workflow',
     nodes: [],
     edges: [],
     listIds: [list!._id, list!._id],
   })
-  const started = await t.mutation(api.workflows.start, { id: created!._id })
-  const running = await t.mutation(api.workflows.updateStatus, {
+  const started = await t.mutation(api.workflows.mutations.start, { id: created!._id })
+  const running = await t.mutation(api.workflows.mutations.updateStatus, {
     id: created!._id,
     status: 'running',
     currentNodeId: 'node-1',
     nodeStates: { 'node-1': 'running' },
   })
-  const completed = await t.mutation(api.workflows.updateStatus, {
+  const completed = await t.mutation(api.workflows.mutations.updateStatus, {
     id: created!._id,
     status: 'completed',
   })
@@ -53,15 +53,15 @@ test('allows pending-running-paused-running transitions for active runs', async 
     status: 'pending',
   })
 
-  const running = await t.mutation(api.workflows.updateStatus, {
+  const running = await t.mutation(api.workflows.mutations.updateStatus, {
     id: workflow!._id,
     status: 'running',
   })
-  const paused = await t.mutation(api.workflows.updateStatus, {
+  const paused = await t.mutation(api.workflows.mutations.updateStatus, {
     id: workflow!._id,
     status: 'paused',
   })
-  const resumed = await t.mutation(api.workflows.updateStatus, {
+  const resumed = await t.mutation(api.workflows.mutations.updateStatus, {
     id: workflow!._id,
     status: 'running',
   })
@@ -91,12 +91,12 @@ test('executes instant workflows through scheduler and mocked fetch boundaries',
     scheduleConfig: {},
   })
 
-  const executed = await t.mutation(internal.workflows.executeScheduledWorkflow, {
+  const executed = await t.mutation(internal.workflows.scheduling.executeScheduledWorkflow, {
     workflowId: workflow!._id,
   })
   vi.runAllTimers()
   await t.finishInProgressScheduledFunctions()
-  const updated = await t.query(api.workflows.get, { id: workflow!._id })
+  const updated = await t.query(api.workflows.queries.get, { id: workflow!._id })
 
   expect(executed).toEqual({ success: true })
   expect(updated).toMatchObject({
@@ -130,8 +130,8 @@ test('resets daily runs for active workflows', async () => {
     updatedAt: Date.now(),
   })
 
-  const result = await t.mutation(internal.workflows.resetDailyRuns, {})
-  const rows = await t.query(api.workflows.list, {})
+  const result = await t.mutation(internal.workflows.scheduling.resetDailyRuns, {})
+  const rows = await t.query(api.workflows.queries.list, {})
 
   expect(result).toEqual({ reset: 1 })
   expect(rows[0]?.runsToday).toBe(0)
@@ -157,7 +157,7 @@ test('deleting a workflow also removes its stored artifacts', async () => {
     exportStorageId: stored.storageId,
   })
 
-  const removed = await t.mutation(api.workflows.remove, { id: workflow!._id })
+  const removed = await t.mutation(api.workflows.mutations.remove, { id: workflow!._id })
   const artifactAfterDelete = await t.query(api.workflowArtifacts.getById, {
     id: artifact!._id,
   })

@@ -34,9 +34,9 @@ import { mapProfileRecord } from '../utils/mapProfile'
 
 export function ProfilesPageContainer() {
   const convex = useConvex()
-  const createProfile = useMutation(api.profiles.create)
-  const updateProfile = useMutation(api.profiles.updateById)
-  const removeProfile = useMutation(api.profiles.removeById)
+  const createProfile = useMutation(api.profiles.mutations.create)
+  const updateProfile = useMutation(api.profiles.mutations.updateById)
+  const removeProfile = useMutation(api.profiles.mutations.removeById)
   const {
     profiles,
     loading: profilesLoading,
@@ -205,7 +205,7 @@ export function ProfilesPageContainer() {
     setSaving(true)
     setError(null)
     try {
-      const fullProfile = await convex.query(api.profiles.getById, {
+      const fullProfile = await convex.query(api.profiles.queries.getById, {
         profileId: profile.id as Id<'profiles'>,
       })
       setEditProfile(fullProfile ? mapProfileRecord(fullProfile) : null)

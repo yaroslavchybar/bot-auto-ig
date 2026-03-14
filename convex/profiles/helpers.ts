@@ -1,13 +1,9 @@
-import { v } from "convex/values";
-import { internalMutation, internalQuery } from "./_generated/server";
-import { mutation, query } from "./auth";
-
-function computeProfileMode(proxy: unknown): "proxy" | "direct" {
+export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	const s = typeof proxy === "string" ? proxy.trim() : "";
 	return s ? "proxy" : "direct";
 }
 
-function getProfileListIds(profile: any): any[] {
+export function getProfileListIds(profile: any): any[] {
 	const merged = Array.isArray(profile?.listIds) ? profile.listIds : [];
 	const seen = new Set<string>();
 	const deduped: any[] = [];
@@ -20,44 +16,44 @@ function getProfileListIds(profile: any): any[] {
 	return deduped;
 }
 
-function buildListPatch(listIds: any[]): { listIds: any[] } {
+export function buildListPatch(listIds: any[]): { listIds: any[] } {
 	return {
 		listIds,
 	};
 }
 
-function normalizeDailyScrapingLimit(limit: unknown): number | undefined {
+export function normalizeDailyScrapingLimit(limit: unknown): number | undefined {
 	if (limit === null || typeof limit === "undefined") return undefined;
 	const numeric = Number(limit);
 	if (!Number.isFinite(numeric)) return undefined;
 	return Math.max(0, Math.floor(numeric));
 }
 
-function normalizeScrapeHealth(value: unknown): number {
+export function normalizeScrapeHealth(value: unknown): number {
 	const numeric = Number(value);
 	if (!Number.isFinite(numeric)) return 100;
 	return Math.max(0, Math.min(100, Math.floor(numeric)));
 }
 
-function hasRemainingDailyCapacity(profile: any): boolean {
+export function hasRemainingDailyCapacity(profile: any): boolean {
 	const limit = typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null;
 	const used = typeof profile.dailyScrapingUsed === "number" ? profile.dailyScrapingUsed : 0;
 	return limit === null || used < limit;
 }
 
-function hasActiveScrapeLease(profile: any, now: number): boolean {
+export function hasActiveScrapeLease(profile: any, now: number): boolean {
 	const owner = typeof profile.scrapeLeaseOwner === "string" ? profile.scrapeLeaseOwner.trim() : "";
 	const expiresAt = typeof profile.scrapeLeaseExpiresAt === "number" ? profile.scrapeLeaseExpiresAt : 0;
 	return Boolean(owner) && expiresAt > now;
 }
 
-async function listProfileRows(ctx: any) {
+export async function listProfileRows(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	rows.sort((a: any, b: any) => a.createdAt - b.createdAt);
 	return rows;
 }
 
-async function incrementDailyScrapingUsedByName(ctx: any, name: string, amountRaw: number) {
+export async function incrementDailyScrapingUsedByName(ctx: any, name: string, amountRaw: number) {
 	const cleanedName = String(name || "").trim();
 	if (!cleanedName) throw new Error("name is required");
 	const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
@@ -71,7 +67,7 @@ async function incrementDailyScrapingUsedByName(ctx: any, name: string, amountRa
 	return true;
 }
 
-async function getProfileByNameRow(ctx: any, name: string) {
+export async function getProfileByNameRow(ctx: any, name: string) {
 	const cleaned = String(name || "").trim();
 	if (!cleaned) return null;
 	const row = await ctx.db
@@ -81,7 +77,7 @@ async function getProfileByNameRow(ctx: any, name: string) {
 	return row ?? null;
 }
 
-async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[], cooldownMinutesRaw: number) {
+export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[], cooldownMinutesRaw: number) {
 	const cleanIds = (listIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
 	if (cleanIds.length === 0) return [];
 	const cooldownMs = Math.max(0, (Number.isFinite(cooldownMinutesRaw) ? cooldownMinutesRaw : 0) * 60 * 1000);
@@ -98,7 +94,7 @@ async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[], cool
 	return filtered;
 }
 
-async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
+export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 	const cleanIds = (listIdsRaw || []).map((v) => String(v || "").trim()).filter(Boolean);
 	if (cleanIds.length === 0) return [];
 	const allowed = new Set(cleanIds);
@@ -111,7 +107,7 @@ async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 	return filtered;
 }
 
-async function createProfileRow(ctx: any, args: any) {
+export async function createProfileRow(ctx: any, args: any) {
 	const name = String(args.name || "").trim();
 	if (!name) throw new Error("name is required");
 	const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
@@ -145,7 +141,7 @@ async function createProfileRow(ctx: any, args: any) {
 	return await ctx.db.get(id);
 }
 
-async function updateProfileByNameRow(ctx: any, args: any) {
+export async function updateProfileByNameRow(ctx: any, args: any) {
 	const oldClean = String(args.oldName || "").trim();
 	if (!oldClean) throw new Error("old_name is required");
 	const existing = await ctx.db
@@ -194,7 +190,7 @@ async function updateProfileByNameRow(ctx: any, args: any) {
 	return await ctx.db.get(existing._id);
 }
 
-async function updateProfileByIdRow(ctx: any, args: any) {
+export async function updateProfileByIdRow(ctx: any, args: any) {
 	const name = String(args.name || "").trim();
 	if (!name) throw new Error("name is required");
 	const existing = await ctx.db.get(args.profileId);
@@ -237,7 +233,7 @@ async function updateProfileByIdRow(ctx: any, args: any) {
 	return await ctx.db.get(args.profileId);
 }
 
-async function removeProfileByNameRow(ctx: any, name: string) {
+export async function removeProfileByNameRow(ctx: any, name: string) {
 	const cleaned = String(name || "").trim();
 	if (!cleaned) throw new Error("name is required");
 	const existing = await ctx.db
@@ -254,7 +250,7 @@ async function removeProfileByNameRow(ctx: any, name: string) {
 	return true;
 }
 
-async function removeProfileByIdRow(ctx: any, profileId: any) {
+export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) return true;
 	const accounts = await ctx.db
@@ -266,7 +262,7 @@ async function removeProfileByIdRow(ctx: any, profileId: any) {
 	return true;
 }
 
-async function syncProfileStatusRow(ctx: any, name: string, status: string, using?: boolean) {
+export async function syncProfileStatusRow(ctx: any, name: string, status: string, using?: boolean) {
 	const cleanedName = String(name || "").trim();
 	const cleanedStatus = String(status || "").trim();
 	if (!cleanedName || !cleanedStatus) throw new Error("name and status are required");
@@ -283,7 +279,7 @@ async function syncProfileStatusRow(ctx: any, name: string, status: string, usin
 	return true;
 }
 
-async function setProfileLoginTrueRow(ctx: any, name: string) {
+export async function setProfileLoginTrueRow(ctx: any, name: string) {
 	const cleanedName = String(name || "").trim();
 	if (!cleanedName) throw new Error("name is required");
 	const existing = await ctx.db
@@ -295,7 +291,7 @@ async function setProfileLoginTrueRow(ctx: any, name: string) {
 	return true;
 }
 
-async function listAssignedProfilesRow(ctx: any, listId: any) {
+export async function listAssignedProfilesRow(ctx: any, listId: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	const result = rows
 		.filter((r: any) => r.login && getProfileListIds(r).some((id) => String(id) === String(listId)))
@@ -305,7 +301,7 @@ async function listAssignedProfilesRow(ctx: any, listId: any) {
 	return result;
 }
 
-async function listUnassignedProfilesRow(ctx: any) {
+export async function listUnassignedProfilesRow(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	const result = rows
 		.filter((r: any) => r.login && getProfileListIds(r).length === 0)
@@ -315,14 +311,14 @@ async function listUnassignedProfilesRow(ctx: any) {
 	return result;
 }
 
-async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listId: any) {
+export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	const nextListIds = listId === null || typeof listId === "undefined" ? [] : [listId];
 	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildListPatch(nextListIds))));
 	return true;
 }
 
-async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], listId: any) {
+export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], listId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	await Promise.all(
 		profileIds.map(async (id) => {
@@ -338,7 +334,7 @@ async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], listId: any
 	return true;
 }
 
-async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[], listId: any) {
+export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[], listId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	await Promise.all(
 		profileIds.map(async (id) => {
@@ -351,7 +347,7 @@ async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[], listId
 	return true;
 }
 
-async function clearBusyProfilesForListsRow(ctx: any, listIds: any[]) {
+export async function clearBusyProfilesForListsRow(ctx: any, listIds: any[]) {
 	if (!Array.isArray(listIds) || listIds.length === 0) return true;
 	const allowed = new Set(listIds.map((id) => String(id)));
 	const rows = (await ctx.db.query("profiles").collect()).filter((profile: any) =>
@@ -362,7 +358,7 @@ async function clearBusyProfilesForListsRow(ctx: any, listIds: any[]) {
 	return true;
 }
 
-async function claimBestScrapeLeaseRow(
+export async function claimBestScrapeLeaseRow(
 	ctx: any,
 	workerId: string,
 	leaseMsRaw: number,
@@ -404,7 +400,7 @@ async function claimBestScrapeLeaseRow(
 	return await ctx.db.get(selected._id);
 }
 
-async function refreshScrapeLeaseRow(ctx: any, profileId: any, workerId: string, leaseMsRaw: number, nowRaw: number) {
+export async function refreshScrapeLeaseRow(ctx: any, profileId: any, workerId: string, leaseMsRaw: number, nowRaw: number) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) throw new Error("Profile not found");
 	const worker = String(workerId || "").trim();
@@ -420,7 +416,7 @@ async function refreshScrapeLeaseRow(ctx: any, profileId: any, workerId: string,
 	return await ctx.db.get(profileId);
 }
 
-async function releaseScrapeLeaseRow(ctx: any, profileId: any, workerId?: string | null) {
+export async function releaseScrapeLeaseRow(ctx: any, profileId: any, workerId?: string | null) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) return true;
 	const worker = typeof workerId === "string" ? workerId.trim() : "";
@@ -434,7 +430,7 @@ async function releaseScrapeLeaseRow(ctx: any, profileId: any, workerId?: string
 	return true;
 }
 
-async function markScrapeSuccessRow(ctx: any, profileId: any, amountRaw: number, workerId: string, nowRaw: number) {
+export async function markScrapeSuccessRow(ctx: any, profileId: any, amountRaw: number, workerId: string, nowRaw: number) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) throw new Error("Profile not found");
 	const worker = String(workerId || "").trim();
@@ -453,7 +449,7 @@ async function markScrapeSuccessRow(ctx: any, profileId: any, amountRaw: number,
 	return await ctx.db.get(profileId);
 }
 
-async function markScrapeFailureRow(ctx: any, profileId: any, workerId: string, nowRaw: number) {
+export async function markScrapeFailureRow(ctx: any, profileId: any, workerId: string, nowRaw: number) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) throw new Error("Profile not found");
 	const worker = String(workerId || "").trim();
@@ -470,7 +466,7 @@ async function markScrapeFailureRow(ctx: any, profileId: any, workerId: string, 
 	return await ctx.db.get(profileId);
 }
 
-async function sweepExpiredScrapeLeasesRow(ctx: any, nowRaw: number) {
+export async function sweepExpiredScrapeLeasesRow(ctx: any, nowRaw: number) {
 	const now = Number.isFinite(nowRaw) ? Math.floor(nowRaw) : Date.now();
 	const rows = await ctx.db.query("profiles").collect();
 	const expired = rows.filter((profile: any) => hasActiveScrapeLease(profile, now) === false && Boolean(profile.scrapeLeaseOwner));
@@ -484,442 +480,3 @@ async function sweepExpiredScrapeLeasesRow(ctx: any, nowRaw: number) {
 	);
 	return { released: expired.length };
 }
-
-export const listInternal = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		return await listProfileRows(ctx);
-	},
-});
-
-export const getByIdInternal = internalQuery({
-	args: { profileId: v.id("profiles") },
-	handler: async (ctx, args) => {
-		return (await ctx.db.get(args.profileId)) ?? null;
-	},
-});
-
-export const list = query({
-	args: {},
-	handler: async (ctx) => {
-		return await listProfileRows(ctx);
-	},
-});
-
-export const getByName = query({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await getProfileByNameRow(ctx, args.name);
-	},
-});
-
-export const getByNameInternal = internalQuery({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await getProfileByNameRow(ctx, args.name);
-	},
-});
-
-export const getById = query({
-	args: { profileId: v.id("profiles") },
-	handler: async (ctx, args) => {
-		return (await ctx.db.get(args.profileId)) ?? null;
-	},
-});
-
-export const getAvailableForLists = query({
-	args: {
-		listIds: v.array(v.string()),
-		cooldownMinutes: v.number(),
-	},
-	handler: async (ctx, args) => {
-		return await getAvailableProfilesForLists(ctx, args.listIds, args.cooldownMinutes);
-	},
-});
-
-export const getAvailableForListsInternal = internalQuery({
-	args: {
-		listIds: v.array(v.string()),
-		cooldownMinutes: v.number(),
-	},
-	handler: async (ctx, args) => {
-		return await getAvailableProfilesForLists(ctx, args.listIds, args.cooldownMinutes);
-	},
-});
-
-export const getByListIds = query({
-	args: {
-		listIds: v.array(v.string()),
-	},
-	handler: async (ctx, args) => {
-		return await getProfilesByListIds(ctx, args.listIds);
-	},
-});
-
-export const getByListIdsInternal = internalQuery({
-	args: {
-		listIds: v.array(v.string()),
-	},
-	handler: async (ctx, args) => {
-		return await getProfilesByListIds(ctx, args.listIds);
-	},
-});
-
-export const create = mutation({
-	args: {
-		name: v.string(),
-		proxy: v.optional(v.string()),
-		proxyType: v.optional(v.string()),
-		testIp: v.optional(v.boolean()),
-		fingerprintSeed: v.optional(v.string()),
-		fingerprintOs: v.optional(v.string()),
-		cookiesJson: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
-		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	},
-	handler: async (ctx, args) => {
-		return await createProfileRow(ctx, args);
-	},
-});
-
-export const createInternal = internalMutation({
-	args: {
-		name: v.string(),
-		proxy: v.optional(v.string()),
-		proxyType: v.optional(v.string()),
-		testIp: v.optional(v.boolean()),
-		fingerprintSeed: v.optional(v.string()),
-		fingerprintOs: v.optional(v.string()),
-		cookiesJson: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
-		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	},
-	handler: async (ctx, args) => {
-		return await createProfileRow(ctx, args);
-	},
-});
-
-export const updateByName = mutation({
-	args: {
-		oldName: v.string(),
-		name: v.string(),
-		proxy: v.optional(v.string()),
-		proxyType: v.optional(v.string()),
-		testIp: v.optional(v.boolean()),
-		fingerprintSeed: v.optional(v.string()),
-		fingerprintOs: v.optional(v.string()),
-		cookiesJson: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
-		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	},
-	handler: async (ctx, args) => {
-		return await updateProfileByNameRow(ctx, args);
-	},
-});
-
-export const updateByNameInternal = internalMutation({
-	args: {
-		oldName: v.string(),
-		name: v.string(),
-		proxy: v.optional(v.string()),
-		proxyType: v.optional(v.string()),
-		testIp: v.optional(v.boolean()),
-		fingerprintSeed: v.optional(v.string()),
-		fingerprintOs: v.optional(v.string()),
-		cookiesJson: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
-		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	},
-	handler: async (ctx, args) => {
-		return await updateProfileByNameRow(ctx, args);
-	},
-});
-
-export const updateById = mutation({
-	args: {
-		profileId: v.id("profiles"),
-		name: v.string(),
-		proxy: v.optional(v.string()),
-		proxyType: v.optional(v.string()),
-		testIp: v.optional(v.boolean()),
-		fingerprintSeed: v.optional(v.string()),
-		fingerprintOs: v.optional(v.string()),
-		cookiesJson: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
-		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	},
-	handler: async (ctx, args) => {
-		return await updateProfileByIdRow(ctx, args);
-	},
-});
-
-export const updateByIdInternal = internalMutation({
-	args: {
-		profileId: v.id("profiles"),
-		name: v.string(),
-		proxy: v.optional(v.string()),
-		proxyType: v.optional(v.string()),
-		testIp: v.optional(v.boolean()),
-		fingerprintSeed: v.optional(v.string()),
-		fingerprintOs: v.optional(v.string()),
-		cookiesJson: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
-		dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	},
-	handler: async (ctx, args) => {
-		return await updateProfileByIdRow(ctx, args);
-	},
-});
-
-export const removeByName = mutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await removeProfileByNameRow(ctx, args.name);
-	},
-});
-
-export const removeByNameInternal = internalMutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await removeProfileByNameRow(ctx, args.name);
-	},
-});
-
-export const removeById = mutation({
-	args: { profileId: v.id("profiles") },
-	handler: async (ctx, args) => {
-		return await removeProfileByIdRow(ctx, args.profileId);
-	},
-});
-
-export const removeByIdInternal = internalMutation({
-	args: { profileId: v.id("profiles") },
-	handler: async (ctx, args) => {
-		return await removeProfileByIdRow(ctx, args.profileId);
-	},
-});
-
-export const syncStatus = mutation({
-	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
-	handler: async (ctx, args) => {
-		return await syncProfileStatusRow(ctx, args.name, args.status, args.using);
-	},
-});
-
-export const syncStatusInternal = internalMutation({
-	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
-	handler: async (ctx, args) => {
-		return await syncProfileStatusRow(ctx, args.name, args.status, args.using);
-	},
-});
-
-export const setLoginTrue = mutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await setProfileLoginTrueRow(ctx, args.name);
-	},
-});
-
-export const setLoginTrueInternal = internalMutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await setProfileLoginTrueRow(ctx, args.name);
-	},
-});
-
-export const listAssigned = query({
-	args: { listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await listAssignedProfilesRow(ctx, args.listId);
-	},
-});
-
-export const listAssignedInternal = internalQuery({
-	args: { listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await listAssignedProfilesRow(ctx, args.listId);
-	},
-});
-
-export const listUnassigned = query({
-	args: {},
-	handler: async (ctx) => {
-		return await listUnassignedProfilesRow(ctx);
-	},
-});
-
-export const listUnassignedInternal = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		return await listUnassignedProfilesRow(ctx);
-	},
-});
-
-export const bulkSetListId = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.optional(v.union(v.null(), v.id("lists"))) },
-	handler: async (ctx, args) => {
-		return await bulkSetProfileListIdRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const bulkSetListIdInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.optional(v.union(v.null(), v.id("lists"))) },
-	handler: async (ctx, args) => {
-		return await bulkSetProfileListIdRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const bulkAddToList = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await bulkAddProfilesToListRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const bulkAddToListInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await bulkAddProfilesToListRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const bulkRemoveFromList = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await bulkRemoveProfilesFromListRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const bulkRemoveFromListInternal = internalMutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await bulkRemoveProfilesFromListRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const clearBusyForLists = mutation({
-	args: { listIds: v.array(v.id("lists")) },
-	handler: async (ctx, args) => {
-		return await clearBusyProfilesForListsRow(ctx, args.listIds);
-	},
-});
-
-export const clearBusyForListsInternal = internalMutation({
-	args: { listIds: v.array(v.id("lists")) },
-	handler: async (ctx, args) => {
-		return await clearBusyProfilesForListsRow(ctx, args.listIds);
-	},
-});
-
-export const incrementDailyScrapingUsed = mutation({
-	args: { name: v.string(), amount: v.number() },
-	handler: async (ctx, args) => {
-		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount);
-	},
-});
-
-export const incrementDailyScrapingUsedInternal = internalMutation({
-	args: { name: v.string(), amount: v.number() },
-	handler: async (ctx, args) => {
-		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount);
-	},
-});
-
-export const incrementDailyScrapingUsedById = mutation({
-	args: { profileId: v.id("profiles"), amount: v.number() },
-	handler: async (ctx, args) => {
-		const amount = Number.isFinite(args.amount) ? Math.max(0, Math.floor(args.amount)) : 0;
-		if (amount === 0) return true;
-		const existing = await ctx.db.get(args.profileId);
-		if (!existing) return true;
-		await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
-		return true;
-	},
-});
-
-export const updateDailyScrapingLimit = mutation({
-	args: { profileId: v.id("profiles"), limit: v.union(v.number(), v.null()) },
-	handler: async (ctx, args) => {
-		const existing = await ctx.db.get(args.profileId);
-		if (!existing) throw new Error("Profile not found");
-		const limit = normalizeDailyScrapingLimit(args.limit);
-		await ctx.db.patch(args.profileId, { dailyScrapingLimit: limit });
-		return await ctx.db.get(args.profileId);
-	},
-});
-
-export const claimBestScrapeLeaseInternal = internalMutation({
-	args: {
-		workerId: v.string(),
-		leaseMs: v.number(),
-		now: v.number(),
-		minHealth: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		return await claimBestScrapeLeaseRow(ctx, args.workerId, args.leaseMs, args.now, args.minHealth ?? 25);
-	},
-});
-
-export const refreshScrapeLeaseInternal = internalMutation({
-	args: {
-		profileId: v.id("profiles"),
-		workerId: v.string(),
-		leaseMs: v.number(),
-		now: v.number(),
-	},
-	handler: async (ctx, args) => {
-		return await refreshScrapeLeaseRow(ctx, args.profileId, args.workerId, args.leaseMs, args.now);
-	},
-});
-
-export const releaseScrapeLeaseInternal = internalMutation({
-	args: {
-		profileId: v.id("profiles"),
-		workerId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		return await releaseScrapeLeaseRow(ctx, args.profileId, args.workerId);
-	},
-});
-
-export const markScrapeSuccessInternal = internalMutation({
-	args: {
-		profileId: v.id("profiles"),
-		workerId: v.string(),
-		amount: v.number(),
-		now: v.number(),
-	},
-	handler: async (ctx, args) => {
-		return await markScrapeSuccessRow(ctx, args.profileId, args.amount, args.workerId, args.now);
-	},
-});
-
-export const markScrapeFailureInternal = internalMutation({
-	args: {
-		profileId: v.id("profiles"),
-		workerId: v.string(),
-		now: v.number(),
-	},
-	handler: async (ctx, args) => {
-		return await markScrapeFailureRow(ctx, args.profileId, args.workerId, args.now);
-	},
-});
-
-export const sweepExpiredScrapeLeasesInternal = internalMutation({
-	args: { now: v.number() },
-	handler: async (ctx, args) => {
-		return await sweepExpiredScrapeLeasesRow(ctx, args.now);
-	},
-});
-
-export const resetDailyScrapingUsed = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const rows = await ctx.db.query("profiles").collect();
-		const toUpdate = rows.filter((r) => (r.dailyScrapingUsed || 0) !== 0);
-		await Promise.all(toUpdate.map((p) => ctx.db.patch(p._id, { dailyScrapingUsed: 0 })));
-		return true;
-	},
-});
-
-

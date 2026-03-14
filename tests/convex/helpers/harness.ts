@@ -31,7 +31,7 @@ export async function createProfile(
   t: any,
   overrides: Record<string, unknown> = {}
 ) {
-  return await t.mutation(api.profiles.create, {
+  return await t.mutation(api.profiles.mutations.create, {
     name: 'profile-1',
     testIp: false,
     ...overrides,
@@ -42,7 +42,7 @@ export async function createWorkflow(
   t: any,
   overrides: Record<string, unknown> = {}
 ) {
-  return await t.mutation(api.workflows.create, {
+  return await t.mutation(api.workflows.mutations.create, {
     name: 'Workflow',
     nodes: [],
     edges: [],

@@ -36,7 +36,7 @@ export function ListsForm({
   >({})
   const [localError, setLocalError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const liveProfiles = useQuery(api.profiles.list, {})
+  const liveProfiles = useQuery(api.profiles.queries.list, {})
   const loadingProfiles =
     mode === 'edit' && Boolean(initialData) && liveProfiles === undefined
 

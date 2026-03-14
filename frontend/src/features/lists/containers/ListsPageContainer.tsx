@@ -21,8 +21,8 @@ export function ListsPageContainer() {
   const createList = useMutation(api.lists.create)
   const updateList = useMutation(api.lists.update)
   const deleteList = useMutation(api.lists.remove)
-  const bulkAddToList = useMutation(api.profiles.bulkAddToList)
-  const bulkRemoveFromList = useMutation(api.profiles.bulkRemoveFromList)
+  const bulkAddToList = useMutation(api.profiles.mutations.bulkAddToList)
+  const bulkRemoveFromList = useMutation(api.profiles.mutations.bulkRemoveFromList)
   const {
     lists,
     loading: listsLoading,

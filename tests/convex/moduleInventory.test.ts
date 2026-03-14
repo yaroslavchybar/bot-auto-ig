@@ -13,10 +13,8 @@ const expectedModules = [
   'keywords.ts',
   'lists.ts',
   'messageTemplates.ts',
-  'profiles.ts',
   'schema.ts',
   'workflowArtifacts.ts',
-  'workflows.ts',
 ]
 
 test('matches the owned top-level convex module cohort', () => {
