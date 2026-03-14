@@ -1,0 +1,28 @@
+{
+  "featureId": "convex-profiles-workflows-split",
+  "reviewedAt": "2026-03-14T19:57:17.461554Z",
+  "commitId": "3ea8f592500fe0abbdcfa7a14bf917e81a133764",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The split preserves the profiles/workflows behavior required by the feature: all legacy exports were re-homed into focused submodules, the Convex-internal and cron call sites were updated to the nested module paths, and the updated Convex/frontend test surface matches those new paths. I found no blocking defects in the reviewed commit.",
+    "issues": [
+      {
+        "file": "test.mjs",
+        "line": 4,
+        "severity": "non_blocking",
+        "description": "The root smoke script still calls api.profiles.list even though the split moved that query to api.profiles.queries.list. Running this script against the regenerated API will fail with a missing function path, so this leftover consumer should be updated if the script is still meant to be usable."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The refactor-worker skill should explicitly state that splitting a Convex top-level module into a directory changes generated api.* and internal.* paths (for example api.workflows.create -> api.workflows.mutations.create), so workers must audit frontend, tests, scripts, and httpRoutes for nested-path updates.",
+      "evidence": ".factory/skills/refactor-worker/SKILL.md:34-35,56,59 only gives generic API-path guidance; this feature had to update frontend/src/features/*, convex/httpRoutes/*.ts, tests/convex/*, and the handoff repeats the same suggested skill change at C:/Users/yaros/.factory/missions/c159f8a2-f42a-48c7-bea6-166e5c18ca91/handoffs/2026-03-14T19-36-52-432Z__convex-profiles-workflows-split__83b917ed-681e-49cb-8afc-39fc9d49af35.json:89."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the worker transcript skeleton, handoff, and commit 3ea8f592500fe0abbdcfa7a14bf917e81a133764 for convex-profiles-workflows-split. The module split itself is sound and satisfies the feature goals; I found one non-blocking leftover consumer (test.mjs) that still uses the removed top-level profiles API path."
+}

@@ -1,0 +1,40 @@
+{
+  "featureId": "server-error-handling-routes",
+  "reviewedAt": "2026-03-14T22:03:00+02:00",
+  "commitId": "7224da664311d5d19d6267a44c3139975b6ae078",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. The diff does replace inline route error responses with asyncHandler/custom errors and the handoff records passing build/lint/test evidence, but it also moves critical automation/workflow admission checks outside their mutex-protected sections. That breaks the behavior-preservation requirement by reintroducing request races: duplicate starts can slip through, and a second stop can now fall through to an untyped 500.",
+    "issues": [
+      {
+        "file": "server/automation/routes.ts",
+        "line": 36,
+        "severity": "blocking",
+        "description": "The /start handler now checks automationState.process before acquiring automationMutex. Two concurrent start requests can both observe an idle state, then acquire the mutex one after the other and both call spawnAndWireAutomation(), so the second request can start a duplicate process and overwrite automationState.process. The previous implementation performed the already-running check inside the critical section."
+      },
+      {
+        "file": "server/automation/routes.ts",
+        "line": 57,
+        "severity": "blocking",
+        "description": "The /stop handler likewise validates automationState.process before acquiring automationMutex. If two stop requests race, both can pass the pre-check; after the first request clears automationState.process, the second request reaches const pid = automationState.process.pid and throws, which the global middleware converts to a 500 instead of the intended conflict response. This regression comes from moving the not-running check out of the locked section."
+      },
+      {
+        "file": "server/workflows/routes.ts",
+        "line": 110,
+        "severity": "blocking",
+        "description": "parseRunInput()/validateWorkflowCanStart() now run before automationMutex.acquire(). Two concurrent /run requests can therefore both pass the duplicate-workflow and max-concurrency checks before either holds the mutex, after which both proceed to runWorkflow(). The prior version performed these checks inside the critical section, so this refactor breaks the concurrency guard for duplicate starts and WORKFLOW_MAX_CONCURRENCY enforcement."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "The shared guidance documents mention the shared mutex module and singleton state, but they do not document the stronger invariant that start/stop admission checks must remain inside the mutex-protected critical section. That gap made it easy for a refactor to move validation ahead of acquire() and silently reintroduce races.",
+      "evidence": ".factory/library/architecture.md only lists shared/mutex and store.ts as architectural elements. Commit 7224da moved the state checks ahead of acquire() in server/automation/routes.ts:36-49 and 57-73 and server/workflows/routes.ts:110-118 without any shared-state guidance flagging that as unsafe."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed features.json, the worker handoff, transcript skeleton, refactor-worker skill, .factory/services.yaml, .factory/library/architecture.md, and git show for commit 7224da664311d5d19d6267a44c3139975b6ae078. The feature meets the stylistic error-handling goals, but it introduces blocking concurrency regressions in automation/workflow route locking, so the review result is fail."
+}

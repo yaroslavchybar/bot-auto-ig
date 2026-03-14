@@ -24,6 +24,12 @@ server/
 └── index.ts           # App bootstrap
 ```
 
+### Canonical Shared Server Modules
+- `server/shared/convexClient.ts` is the canonical Convex HTTP client path; the old `server/data/convex.ts` path is deleted.
+- `server/shared/store.ts` is the only shared state module. All server domains should import `clients`, `logsStore`, `automationState`, `workflowWorkers`, `activeDisplays`, and `profileProcesses` from this path.
+- Shared cross-cutting utilities now live under `server/shared/`, including `ProcessService.ts`, `types.ts`, `settings-schema.ts`, `user-agents.ts`, `mutex.ts`, `logger.ts`, and `errors.ts`.
+- Route admission checks that read and mutate `automationState` or `workflowWorkers` must stay inside `automationMutex` critical sections; moving those checks ahead of `acquire()` can reintroduce duplicate-start and stop races.
+
 ### Python
 ```
 python/
@@ -41,6 +47,12 @@ python/
 ```
 
 - The server launches workflow subprocesses through `python/runners/run_workflow.py`; that wrapper then calls into `python.runners.workflow.entrypoint.main()`.
+
+### Convex Module Split Notes
+- Splitting a top-level Convex module into a directory changes generated `api.*` and `internal.*` paths. Example: `api.profiles.list` becomes `api.profiles.queries.list`, and `api.workflows.create` becomes `api.workflows.mutations.create`.
+- `tests/convex/moduleInventory.test.ts` inventories only top-level `convex/*.ts` entries, while `tests/convex/inventory.test.ts` inventories the full `convex/**/*.ts` tree.
+- Many Convex domain helpers still signal validation or conflict cases via plain `Error` message strings. Shared HTTP wrappers must preserve a central 4xx mapping for those messages or convert them to typed errors before responding.
+- Repository tracking is uneven under `tests/convex/`: `.gitignore` ignores `tests/`, but some Convex tests are force-tracked while others on disk remain untracked. When editing a currently untracked Convex test, workers must use `git add -f tests/convex/<file>` or the change will stay out of the commit.
 
 ### Import Direction Rules
 - Server: routes → services → data access (never reverse)

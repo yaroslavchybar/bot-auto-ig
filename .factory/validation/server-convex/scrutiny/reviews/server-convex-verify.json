@@ -1,0 +1,21 @@
+{
+  "featureId": "server-convex-verify",
+  "reviewedAt": "2026-03-14T19:55:03.115543Z",
+  "commitId": "1c51faed8b6db0fa4c5046ad7371ab816238bf04",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. Commit 1c51faed8b6db0fa4c5046ad7371ab816238bf04 is verification/documentation-only: it changes .factory shared-state files (.factory/library/architecture.md, .factory/library/environment.md, .factory/library/user-testing.md, .factory/services.yaml) and docs/validation assertion pages, but no runtime server/convex/frontend source. I cross-checked the feature scope in mission metadata, the handoff/transcript evidence, and the existing server code that backs the milestone claims. The handoff records successful runs of `npm --prefix server run build`, `npm run test:convex`, `npm --prefix frontend run build`, `npm --prefix frontend run lint`, plus targeted parser tests; the current server code still preserves the claimed WebSocket event types (`server/websocket.ts:32`, `server/workflows/service.ts:133-206`, `server/profiles/service.ts:129-276`, `server/logs/parser.ts:29-38,94`) and the shared store singleton imports all resolve to `server/shared/store.ts` (`server/websocket.ts:3`, `server/workflows/service.ts:3`, `server/workflows/routes.ts:6`, `server/profiles/service.ts:10`, `server/profiles/routes.ts:12`, `server/logs/routes.ts:3`, `server/index.ts:24`, `server/displays/routes.ts:2`, `server/automation/routes.ts:4`). `convex/schema.ts` is untouched by the reviewed commit and the handoff records an empty schema diff. I found no blocking or non-blocking product-code regressions in the reviewed feature.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The current verify task used the refactor-worker skill even though the skill is written for restructuring/refactoring work, and its validation procedure conflicts with how verify-only features are actually executed here. A dedicated verify-worker procedure, or an explicit scoped-validation exception in the existing skill/mission guidance, would better match reality.",
+      "evidence": "The feature scope is verification-only in mission features.json:1225-1244. `.factory/skills/refactor-worker/SKILL.md:12-20` says the skill is for restructuring/refactoring work, and `SKILL.md:70+` requires the full five-command suite including `python -m pytest python/tests -q`. Mission AGENTS.md:58-63 repeats that full-suite rule, but the handoff for this feature only records `npm --prefix server run build`, `npm run test:convex`, `npm --prefix frontend run build`, and `npm --prefix frontend run lint` at `handoffs/2026-03-14T19-49-50-756Z__server-convex-verify__472bb812-83c7-4041-bff9-d46de6aefead.json:16-31`. The same handoff explicitly suggests a verify-worker template at lines 72-75."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature server-convex-verify via mission metadata, handoff, transcript skeleton, refactor-worker skill guidance, and git show for commit 1c51faed8b6db0fa4c5046ad7371ab816238bf04. The commit does not introduce product-code changes, and the recorded verification evidence plus current server code support the milestone claims, so the feature passes review. Recorded one shared-state observation about verify-only task procedure guidance."
+}

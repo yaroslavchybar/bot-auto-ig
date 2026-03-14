@@ -1,0 +1,146 @@
+{
+  "milestone": "server-convex",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "testConvex": {
+      "passed": true,
+      "command": "npm run test:convex",
+      "exitCode": 0
+    },
+    "testPython": {
+      "passed": true,
+      "command": "python -m pytest C:\\Users\\yaros\\Downloads\\bot-auto-ig\\python\\tests -q",
+      "exitCode": 0
+    },
+    "buildServer": {
+      "passed": true,
+      "command": "npm --prefix server run build",
+      "exitCode": 0
+    },
+    "buildFrontend": {
+      "passed": true,
+      "command": "npm --prefix frontend run build",
+      "exitCode": 0
+    },
+    "lintFrontend": {
+      "passed": true,
+      "command": "npm --prefix frontend run lint",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 10,
+    "passed": 5,
+    "failed": 5,
+    "failedFeatures": [
+      "server-ddd-profiles",
+      "server-ddd-workflows",
+      "server-process-service",
+      "server-error-handling-routes",
+      "convex-error-handling"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "server-ddd-profiles",
+      "severity": "blocking",
+      "description": "Multiple /api/profiles endpoints no longer preserve the legacy route-local 500 `{ error: message }` failure behavior and now fall through to the global error envelope instead.",
+      "evidence": "Review: .factory/validation/server-convex/scrutiny/reviews/server-ddd-profiles.json"
+    },
+    {
+      "featureId": "server-ddd-workflows",
+      "severity": "blocking",
+      "description": "`POST /api/workflows/run` and `POST /api/workflows/stop` moved critical state checks outside `automationMutex`, reintroducing duplicate-start and stop races that the pre-refactor handler avoided.",
+      "evidence": "Reviews: .factory/validation/server-convex/scrutiny/reviews/server-ddd-workflows.json and server-error-handling-routes.json"
+    },
+    {
+      "featureId": "server-error-handling-routes",
+      "severity": "blocking",
+      "description": "`POST /api/automation/start` and `POST /api/automation/stop` now validate process state before taking `automationMutex`, allowing duplicate starts and potential 500s on concurrent stops.",
+      "evidence": "Review: .factory/validation/server-convex/scrutiny/reviews/server-error-handling-routes.json"
+    },
+    {
+      "featureId": "server-ddd-workflows",
+      "severity": "blocking",
+      "description": "Workflow endpoints changed their public error contract from legacy `{ error: string }` responses with 400/429/502 codes to the shared `{ success: false, error: { code, message } }` envelope with 409/503 semantics.",
+      "evidence": "Review: .factory/validation/server-convex/scrutiny/reviews/server-ddd-workflows.json"
+    },
+    {
+      "featureId": "server-process-service",
+      "severity": "blocking",
+      "description": "`server/shared/ProcessService.ts` lost the direct `SIGKILL` fallback for non-detached Unix child processes in both `killProcess()` and `killByPid()`, so stubborn profile/manual processes may no longer be force-stopped.",
+      "evidence": "Review: .factory/validation/server-convex/scrutiny/reviews/server-process-service.json"
+    },
+    {
+      "featureId": "convex-error-handling",
+      "severity": "blocking",
+      "description": "The shared Convex HTTP error categorizer still maps many existing plain validation errors like `name is required` to HTTP 500 instead of 400-class responses.",
+      "evidence": "Review: .factory/validation/server-convex/scrutiny/reviews/convex-error-handling.json"
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Updated .factory/library/architecture.md with the canonical `server/shared/*` module paths plus the invariant that automation/workflow admission checks must remain inside `automationMutex` critical sections.",
+      "sourceFeatures": [
+        "server-ddd-remaining-domains",
+        "server-error-handling-routes"
+      ]
+    },
+    {
+      "target": "library",
+      "description": "Updated .factory/library/architecture.md with Convex module-split API path notes, the distinction between the two Convex inventory tests, and the need to preserve 4xx mapping for plain-string validation errors in HTTP wrappers.",
+      "sourceFeatures": [
+        "convex-http-split",
+        "convex-profiles-workflows-split",
+        "convex-error-handling"
+      ]
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "refactor-worker skill",
+      "suggestion": "When preserving public APIs during refactors, explicitly require preservation of HTTP status codes and response-body shape, not just route paths and function signatures.",
+      "evidence": "`server-ddd-profiles` and `server-ddd-workflows` both preserved route mounts but still regressed API failure semantics after adopting shared error handling.",
+      "isSystemic": true
+    },
+    {
+      "target": "refactor-worker skill + mission guidance",
+      "suggestion": "Define when scoped validation is allowed versus when the full five-command suite is mandatory, and add a dedicated verify-only procedure/skill for validation features that do not change runtime code.",
+      "evidence": "`server-ddd-automation` and `server-convex-verify` both marked `followedProcedure=true` despite not following the documented full validation sequence; the mismatch appeared in multiple reviews.",
+      "isSystemic": true
+    },
+    {
+      "target": "handoff rubric / skill procedure",
+      "suggestion": "Do not allow `followedProcedure=true` when mandatory startup reads or required verification steps were skipped; make the check explicit in the worker handoff contract.",
+      "evidence": "`server-ddd-profiles` skipped the documented architecture.md read, and multiple reviewed features skipped required validation steps while still reporting full procedure compliance.",
+      "isSystemic": true
+    },
+    {
+      "target": "refactor-worker skill",
+      "suggestion": "Add Windows-safe command guidance: prefer PowerShell line counts and fixed-string Grep searches for literal import paths instead of POSIX `wc -l` or regex-heavy patterns by default.",
+      "evidence": "`convex-http-split` and `server-ddd-remaining-domains` both hit avoidable Windows command/search failures before switching to PowerShell or fixed-string searches.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Document Convex nested API path changes after directory splits.",
+      "reason": "already-documented via the applied architecture.md update in this scrutiny round"
+    },
+    {
+      "observation": "Document canonical shared-module locations after the remaining-domains refactor.",
+      "reason": "already-documented via the applied architecture.md update in this scrutiny round"
+    },
+    {
+      "observation": "Require feature workers to run each verificationSteps entry verbatim.",
+      "reason": "covered by the broader recommended guidance update clarifying scoped-vs-full validation and handoff procedure accuracy"
+    },
+    {
+      "observation": "Flag `convex/httpApi.ts` and `test.mjs` leftovers as shared-state guidance updates.",
+      "reason": "feature-specific cleanup items, not systemic shared-state guidance"
+    }
+  ],
+  "previousRound": null
+}

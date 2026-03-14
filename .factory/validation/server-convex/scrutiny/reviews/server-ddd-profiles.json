@@ -1,0 +1,28 @@
+{
+  "featureId": "server-ddd-profiles",
+  "reviewedAt": "2026-03-14T19:56:00.580121+00:00",
+  "commitId": "93160d9898be3dfa9efa36d12fc254011290b980",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. Commit 93160d9898be3dfa9efa36d12fc254011290b980 correctly creates the new server/profiles domain files, preserves the /api/profiles mount in server/index.ts, and updates the known imports in server/index.ts and server/automation/manual-actions.ts. However, the refactor does not fully preserve the previous API behavior: several profile endpoints lost their route-local 500 error handling and now fall through to the global Express error middleware instead.",
+    "issues": [
+      {
+        "file": "server/profiles/routes.ts",
+        "line": 37,
+        "severity": "blocking",
+        "description": "The new router only preserves explicit try/catch handling for some endpoints. GET /api/profiles/ (lines 37-40), POST /reconcile-runtime (139-141), POST /sync-status (144-150), POST /set-login-true (153-159), GET /assigned and /unassigned (162-173), and the three bulk list routes (176-206) now rely on the global middleware in server/index.ts:105-120 for unexpected failures. Before the refactor, each of those routes caught thrown errors and returned res.status(500).json({ error: message }) in server/api/profiles.ts:429-536. After this change, the same failures return the generic global error payload instead, so this pure refactor no longer preserves the existing /api/profiles error contract." 
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The refactor-worker skill says Step 1 must read .factory/library/architecture.md before editing, but this worker session never did so and still reported followedProcedure=true. Either the skill should relax that requirement, or the handoff rubric should stop marking the procedure as fully followed when that read is skipped.",
+      "evidence": "refactor-worker/SKILL.md Step 1 explicitly requires reading .factory/library/architecture.md. The transcript skeleton for worker session a61fd994-c444-46ac-8229-0304d1325c9e includes services.yaml and other setup reads, but not architecture.md (string check on the extracted skeleton: architecture.md=False, services.yaml=True). The handoff for this feature still reports skillFeedback.followedProcedure=true."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed server-ddd-profiles via features.json, mission guidance, handoff, transcript skeleton, refactor-worker skill, .factory shared state, and git show for commit 93160d9898be3dfa9efa36d12fc254011290b980. The file split and import updates are mostly sound, but the refactor changes the 500-error response behavior for multiple /api/profiles endpoints, so the feature fails review. Wrote this report to .factory/validation/server-convex/scrutiny/reviews/server-ddd-profiles.json."
+}

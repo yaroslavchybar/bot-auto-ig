@@ -1,0 +1,40 @@
+{
+  "featureId": "server-ddd-workflows",
+  "reviewedAt": "2026-03-14T19:55:38.741243+00:00",
+  "commitId": "3059765",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. Commit 3059765 does create the new `server/workflows/` domain, preserves the `/api/workflows` mount plus `requireApiAuthOrInternalKey`, and keeps the file/function size targets, but it is not behavior-preserving. The refactor moved critical `/run` and `/stop` state checks outside `automationMutex`, which reintroduces race conditions that the original handler avoided, and it changed the existing workflow HTTP error contract from legacy `{ error: string }` responses/status codes to shared `AppError` semantics.",
+    "issues": [
+      {
+        "file": "server/workflows/routes.ts",
+        "line": 112,
+        "severity": "blocking",
+        "description": "`validateWorkflowCanStart()` now runs before `await automationMutex.acquire()`. In the pre-refactor `server/api/workflows.ts`, the duplicate-run and max-concurrency checks were performed after the mutex was acquired; here two concurrent `POST /run` requests can both pass preflight and then each call `runWorkflow()` without rechecking, allowing duplicate runners for the same workflow or exceeding `WORKFLOW_MAX_CONCURRENCY`."
+      },
+      {
+        "file": "server/workflows/routes.ts",
+        "line": 132,
+        "severity": "blocking",
+        "description": "`POST /stop` now snapshots `workflowWorkers` and rejects on an empty set before taking `automationMutex`. If a start request already holds the mutex and is about to register a worker, `/stop` can incorrectly return 'No workflow running' instead of waiting and stopping the just-started workflow, which the original handler did by acquiring the mutex first."
+      },
+      {
+        "file": "server/workflows/routes.ts",
+        "line": 175,
+        "severity": "blocking",
+        "description": "The refactor changed the public error contract for existing workflow endpoints. These routes now throw shared `AppError` types (for example `ConflictError`/`ExternalServiceError`) that the global handler turns into `{ success: false, error: { code, message } }` with shared status codes such as 409 and 503, but the pre-refactor endpoints returned legacy `{ error: string }` bodies and statuses 400/429/502 for the same conditions (`Workflow already running`, max concurrency, `No workflow running`, `Workflow not running`, artifact download upstream failure)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The `refactor-worker` skill should explicitly call out that preserving an existing HTTP API includes status codes and response-body shape when swapping handlers to `asyncHandler`/`AppError` patterns. Its current wording about preserving public APIs was not specific enough to prevent this route refactor from silently changing workflow endpoint error semantics.",
+      "evidence": "`refactor-worker/SKILL.md` Step 4 says to preserve public APIs, but does not mention status codes or JSON envelopes. The transcript skeleton shows the worker intentionally read `server/shared/errors.ts` and adopted `asyncHandler`/typed errors, and commit 3059765 changed workflow error paths from direct `res.status(...).json({ error: ... })` responses in `server/api/workflows.ts` to thrown `ValidationError`/`ConflictError`/`ExternalServiceError` in `server/workflows/routes.ts`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed `server-ddd-workflows` using the mission feature entry, handoff, transcript skeleton, `refactor-worker` skill, shared-state docs, and `git show` for commit 3059765. The structural DDD move is present, but the feature fails review because `/run` and `/stop` no longer guard state transitions under `automationMutex`, and the refactor also changes the legacy workflow HTTP error contract. Wrote this review report to `.factory/validation/server-convex/scrutiny/reviews/server-ddd-workflows.json`."
+}
