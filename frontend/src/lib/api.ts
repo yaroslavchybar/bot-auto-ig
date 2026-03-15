@@ -20,6 +20,25 @@ export function resolveApiUrl(path: string): string {
 
 export async function apiFetch<T>(
   path: string,
+  options: {
+    method?: string
+    body?: unknown
+    timeout?: number
+    maxRetries?: number
+    onRetry?: RetryOptions['onRetry']
+  } = {},
+): Promise<T> {
+  const { maxRetries = 3, onRetry, ...fetchOptions } = options
+
+  return withRetry(
+    () => apiFetchOnce<T>(path, fetchOptions),
+    { maxRetries, onRetry },
+  )
+}
+
+/** Single (non-retried) fetch — used internally by apiFetch's retry loop. */
+async function apiFetchOnce<T>(
+  path: string,
   options: { method?: string; body?: unknown; timeout?: number } = {},
 ): Promise<T> {
   const controller = new AbortController()
@@ -208,7 +227,9 @@ export async function withRetry<T>(
 
 /**
  * API fetch with automatic retry for transient failures.
- * Use this for critical operations that should survive network blips.
+ *
+ * @deprecated Use `apiFetch` directly — it now includes retry logic by default.
+ * Kept for backward compatibility with existing callers.
  */
 export async function apiFetchWithRetry<T>(
   path: string,
@@ -220,9 +241,5 @@ export async function apiFetchWithRetry<T>(
     onRetry?: RetryOptions['onRetry']
   } = {},
 ): Promise<T> {
-  const { maxRetries, onRetry, ...fetchOptions } = options
-  return withRetry(() => apiFetch<T>(path, fetchOptions), {
-    maxRetries,
-    onRetry,
-  })
+  return apiFetch<T>(path, options)
 }

@@ -273,6 +273,7 @@ function cleanupConnection(
   reconnectTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
   wsRef: React.MutableRefObject<WebSocket | null>,
   connectingRef: React.MutableRefObject<boolean>,
+  setConnected?: (v: boolean) => void,
 ) {
   cancelled.current = true
   if (reconnectTimeoutRef.current) {
@@ -282,6 +283,7 @@ function cleanupConnection(
   safeCloseSocket(wsRef.current)
   wsRef.current = null
   connectingRef.current = false
+  setConnected?.(false)
 }
 
 /* ── Main hook ── */
@@ -306,6 +308,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const currentProfileRef = useRef<string | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptRef = useRef(0)
+  // Holds a reference to the effect-scoped cancelled flag so disconnect() can reach it
+  const cancelledRef = useRef<{ current: boolean }>({ current: false })
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
     processSocketMessage(
@@ -327,6 +331,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
     intentionalDisconnectRef.current = false
     const cancelled = { current: false }
+    cancelledRef.current = cancelled
     const reconnectArgs = { autoConnect, enabled, pauseWhenHidden, isVisible }
 
     void connectWebSocket(
@@ -355,15 +360,14 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       }
     })
 
-    return () => cleanupConnection(cancelled, reconnectTimeoutRef, wsRef, connectingRef)
+    return () => cleanupConnection(cancelled, reconnectTimeoutRef, wsRef, connectingRef, setConnected)
   }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible,
     wsRef, reconnectAttemptRef, reconnectTimeoutRef])
 
   const connect = useCallback(() => { setReconnectCounter((c) => c + 1) }, [])
   const disconnect = useCallback(() => {
     intentionalDisconnectRef.current = true
-    cleanupConnection({ current: false }, reconnectTimeoutRef, wsRef, connectingRef)
-    setConnected(false)
+    cleanupConnection(cancelledRef.current, reconnectTimeoutRef, wsRef, connectingRef, setConnected)
   }, [])
 
   return { logs, status, progress, connected, clearLogs, connect, disconnect }
