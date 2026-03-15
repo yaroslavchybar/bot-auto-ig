@@ -1,8 +1,14 @@
 import { useAuth } from '@clerk/react-router'
 import { useCallback, useEffect } from 'react'
-import { setTokenGetter } from '@/lib/api'
-import { env } from '@/lib/env'
+import { setTokenGetter, apiFetchWithRetry, type RetryOptions } from '@/lib/api'
 
+/**
+ * Registers the Clerk token getter so that apiFetch / apiFetchWithRetry
+ * can attach Authorization headers automatically.
+ *
+ * Also returns a convenience `authFetch` that delegates to
+ * `apiFetchWithRetry` with automatic retry for transient failures.
+ */
 export function useAuthenticatedFetch() {
   const { getToken } = useAuth()
 
@@ -14,40 +20,25 @@ export function useAuthenticatedFetch() {
   }, [getToken])
 
   const authFetch = useCallback(
-    async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
-      const token = await getToken()
+    async <T>(
+      endpoint: string,
+      options: RequestInit & {
+        maxRetries?: number
+        onRetry?: RetryOptions['onRetry']
+      } = {},
+    ): Promise<T> => {
+      const { maxRetries, onRetry, method, body, ...rest } = options
 
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      }
-
-      if (token) {
-        ;(headers as Record<string, string>)['Authorization'] =
-          `Bearer ${token}`
-      }
-
-      const url = endpoint.startsWith('http')
-        ? endpoint
-        : `${env.apiUrl}${endpoint}`
-      const response = await fetch(url, {
-        ...options,
-        headers,
+      return apiFetchWithRetry<T>(endpoint, {
+        method: method ?? 'GET',
+        body: body != null ? JSON.parse(body as string) : undefined,
+        maxRetries,
+        onRetry,
+        ...('timeout' in rest ? { timeout: rest.timeout as number } : {}),
       })
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: 'Request failed' }))
-        throw new Error(error.error || `HTTP ${response.status}`)
-      }
-
-      return response.json()
     },
-    [getToken],
+    [],
   )
 
   return authFetch
 }
-
-
