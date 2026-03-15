@@ -266,6 +266,24 @@ function scheduleReconnect(
   }
 }
 
+/* ── Connection effect cleanup helper ── */
+
+function cleanupConnection(
+  cancelled: { current: boolean },
+  reconnectTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  wsRef: React.MutableRefObject<WebSocket | null>,
+  connectingRef: React.MutableRefObject<boolean>,
+) {
+  cancelled.current = true
+  if (reconnectTimeoutRef.current) {
+    clearTimeout(reconnectTimeoutRef.current)
+    reconnectTimeoutRef.current = null
+  }
+  safeCloseSocket(wsRef.current)
+  wsRef.current = null
+  connectingRef.current = false
+}
+
 /* ── Main hook ── */
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
@@ -279,9 +297,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
-  const [progress, setProgress] = useState<AutomationProgress>({
-    totalAccounts: 0, currentProfile: null, currentTask: null,
-  })
+  const [progress, setProgress] = useState<AutomationProgress>(
+    { totalAccounts: 0, currentProfile: null, currentTask: null })
   const isVisible = useVisibility()
   const wsRef = useRef<WebSocket | null>(null)
   const connectingRef = useRef(false)
@@ -298,21 +315,19 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   })
 
   const clearLogs = useCallback(() => { setLogs([]) }, [])
-
   const [connected, setConnected] = useState(false)
   const [reconnectCounter, setReconnectCounter] = useState(0)
 
   useEffect(() => {
     if (!enabled || (pauseWhenHidden && !isVisible)) return
     if (!autoConnect && reconnectCounter === 0) return
-
-    // Prevent duplicate connections: skip if already open or mid-connect
     const rs = wsRef.current?.readyState
     if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return
     if (connectingRef.current) return
 
     intentionalDisconnectRef.current = false
     const cancelled = { current: false }
+    const reconnectArgs = { autoConnect, enabled, pauseWhenHidden, isVisible }
 
     void connectWebSocket(
       wsUrl, getToken, handleSocketMessage,
@@ -326,42 +341,28 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         setConnected(false); wsRef.current = null
         addWebSocketBreadcrumb('close', wsUrl)
         if (!intentionalDisconnectRef.current) {
-          scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
+          scheduleReconnect(reconnectArgs.autoConnect, reconnectArgs.enabled,
+            reconnectArgs.pauseWhenHidden, reconnectArgs.isVisible, cancelled,
             reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
         }
       }
     }).catch(() => {
       connectingRef.current = false
       if (!intentionalDisconnectRef.current) {
-        scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
+        scheduleReconnect(reconnectArgs.autoConnect, reconnectArgs.enabled,
+          reconnectArgs.pauseWhenHidden, reconnectArgs.isVisible, cancelled,
           reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
       }
     })
 
-    return () => {
-      cancelled.current = true
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-        reconnectTimeoutRef.current = null
-      }
-      safeCloseSocket(wsRef.current)
-      wsRef.current = null
-      connectingRef.current = false
-    }
+    return () => cleanupConnection(cancelled, reconnectTimeoutRef, wsRef, connectingRef)
   }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible,
     wsRef, reconnectAttemptRef, reconnectTimeoutRef])
 
   const connect = useCallback(() => { setReconnectCounter((c) => c + 1) }, [])
-
   const disconnect = useCallback(() => {
     intentionalDisconnectRef.current = true
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current)
-      reconnectTimeoutRef.current = null
-    }
-    safeCloseSocket(wsRef.current)
-    wsRef.current = null
-    connectingRef.current = false
+    cleanupConnection({ current: false }, reconnectTimeoutRef, wsRef, connectingRef)
     setConnected(false)
   }, [])
 

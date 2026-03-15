@@ -22,7 +22,13 @@ const instagramAccountPaths = [
 
 export function registerInstagramAccountRoutes(http: HttpRouter): void {
   registerPreflight(http, instagramAccountPaths);
+  registerAccountMutationRoutes(http);
+  registerAccountQueryRoutes(http);
+}
 
+/* ── Mutation routes ── */
+
+function registerAccountMutationRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/instagram-accounts',
     method: 'POST',
@@ -52,6 +58,39 @@ export function registerInstagramAccountRoutes(http: HttpRouter): void {
     }),
   });
 
+  http.route({
+    path: '/api/instagram-accounts/update-status',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const updated = await ctx.runMutation(internal.instagramAccounts.updateStatus, {
+        accountId: (body?.accountId ?? body?.account_id ?? body?.id) as any,
+        status: body?.status,
+        assignedTo:
+          typeof body?.assigned_to !== 'undefined' ? body.assigned_to : body?.assignedTo,
+      });
+      return jsonResponse(mapAccountToPython(updated));
+    }),
+  });
+
+  http.route({
+    path: '/api/instagram-accounts/update-message',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const updated = await ctx.runMutation(internal.instagramAccounts.updateMessage, {
+        userName: body?.userName ?? body?.user_name,
+        message: body?.message,
+        lastMessagedAt: body?.lastMessagedAt ?? body?.last_messaged_at,
+      });
+      return jsonResponse(mapAccountToPython(updated));
+    }),
+  });
+}
+
+/* ── Query routes ── */
+
+function registerAccountQueryRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/instagram-accounts/for-profile',
     method: 'GET',
@@ -84,35 +123,6 @@ export function registerInstagramAccountRoutes(http: HttpRouter): void {
         cooldownHours,
       });
       return jsonResponse(accounts.map(mapAccountToPython));
-    }),
-  });
-
-  http.route({
-    path: '/api/instagram-accounts/update-status',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const updated = await ctx.runMutation(internal.instagramAccounts.updateStatus, {
-        accountId: (body?.accountId ?? body?.account_id ?? body?.id) as any,
-        status: body?.status,
-        assignedTo:
-          typeof body?.assigned_to !== 'undefined' ? body.assigned_to : body?.assignedTo,
-      });
-      return jsonResponse(mapAccountToPython(updated));
-    }),
-  });
-
-  http.route({
-    path: '/api/instagram-accounts/update-message',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const updated = await ctx.runMutation(internal.instagramAccounts.updateMessage, {
-        userName: body?.userName ?? body?.user_name,
-        message: body?.message,
-        lastMessagedAt: body?.lastMessagedAt ?? body?.last_messaged_at,
-      });
-      return jsonResponse(mapAccountToPython(updated));
     }),
   });
 

@@ -22,7 +22,13 @@ const workflowArtifactPaths = [
 
 export function registerWorkflowArtifactRoutes(http: HttpRouter): void {
   registerPreflight(http, workflowArtifactPaths);
+  registerArtifactQueryRoutes(http);
+  registerArtifactMutationRoutes(http);
+}
 
+/* ── Query routes ── */
+
+function registerArtifactQueryRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/workflow-artifacts',
     method: 'GET',
@@ -65,6 +71,24 @@ export function registerWorkflowArtifactRoutes(http: HttpRouter): void {
     }),
   });
 
+  http.route({
+    path: '/api/workflow-artifacts/storage-url',
+    method: 'GET',
+    handler: withErrorHandling(async (ctx, request) => {
+      const url = new URL(request.url);
+      const storageId = url.searchParams.get('storageId') || '';
+      if (!storageId) throw new ValidationError('storageId is required');
+      const result = await ctx.runQuery(internalApi.workflowArtifacts.getStorageUrlInternal, {
+        storageId: storageId as any,
+      });
+      return jsonResponse(result);
+    }),
+  });
+}
+
+/* ── Mutation routes ── */
+
+function registerArtifactMutationRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/workflow-artifacts/upsert',
     method: 'POST',
@@ -120,20 +144,6 @@ export function registerWorkflowArtifactRoutes(http: HttpRouter): void {
         internalApi.workflowArtifacts.storeArtifactInternal,
         { payload: body?.payload },
       );
-      return jsonResponse(result);
-    }),
-  });
-
-  http.route({
-    path: '/api/workflow-artifacts/storage-url',
-    method: 'GET',
-    handler: withErrorHandling(async (ctx, request) => {
-      const url = new URL(request.url);
-      const storageId = url.searchParams.get('storageId') || '';
-      if (!storageId) throw new ValidationError('storageId is required');
-      const result = await ctx.runQuery(internalApi.workflowArtifacts.getStorageUrlInternal, {
-        storageId: storageId as any,
-      });
       return jsonResponse(result);
     }),
   });

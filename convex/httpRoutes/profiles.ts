@@ -41,7 +41,17 @@ const profilePaths = [
 
 export function registerProfileRoutes(http: HttpRouter): void {
   registerPreflight(http, profilePaths);
+  registerProfileQueryRoutes(http);
+  registerProfileCrudRoutes(http);
+  registerProfileStatusRoutes(http);
+  registerProfileScrapingRoutes(http);
+  registerProfileAssignmentRoutes(http);
+  registerProfileBulkRoutes(http);
+}
 
+/* ── Query routes ── */
+
+function registerProfileQueryRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles',
     method: 'GET',
@@ -103,7 +113,16 @@ export function registerProfileRoutes(http: HttpRouter): void {
       return jsonResponse(profiles.map(mapProfileToPython));
     }),
   });
+}
 
+/* ── CRUD routes ── */
+
+function registerProfileCrudRoutes(http: HttpRouter): void {
+  registerProfileCreateUpdateRoutes(http);
+  registerProfileDeleteRoutes(http);
+}
+
+function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles',
     method: 'POST',
@@ -168,7 +187,9 @@ export function registerProfileRoutes(http: HttpRouter): void {
       return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
     }),
   });
+}
 
+function registerProfileDeleteRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles/delete-by-id',
     method: 'POST',
@@ -201,7 +222,11 @@ export function registerProfileRoutes(http: HttpRouter): void {
       return jsonResponse({ ok });
     }),
   });
+}
 
+/* ── Status mutation routes ── */
+
+function registerProfileStatusRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles/clear-busy-for-lists',
     method: 'POST',
@@ -247,7 +272,16 @@ export function registerProfileRoutes(http: HttpRouter): void {
       return jsonResponse({ ok });
     }),
   });
+}
 
+/* ── Scraping lease routes ── */
+
+function registerProfileScrapingRoutes(http: HttpRouter): void {
+  registerScrapeLeaseRoutes(http);
+  registerScrapeResultRoutes(http);
+}
+
+function registerScrapeLeaseRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles/claim-scrape-lease',
     method: 'POST',
@@ -290,7 +324,9 @@ export function registerProfileRoutes(http: HttpRouter): void {
       return jsonResponse({ ok });
     }),
   });
+}
 
+function registerScrapeResultRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles/mark-scrape-success',
     method: 'POST',
@@ -332,7 +368,11 @@ export function registerProfileRoutes(http: HttpRouter): void {
       return jsonResponse(result);
     }),
   });
+}
 
+/* ── Assignment routes ── */
+
+function registerProfileAssignmentRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles/assigned',
     method: 'GET',
@@ -359,7 +399,11 @@ export function registerProfileRoutes(http: HttpRouter): void {
       );
     }),
   });
+}
 
+/* ── Bulk routes ── */
+
+function registerProfileBulkRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/profiles/bulk-set-list-id',
     method: 'POST',

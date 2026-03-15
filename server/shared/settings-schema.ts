@@ -1,36 +1,20 @@
 import { InstagramSettings, ACTIONS } from './types.js';
 
-export function validateSettings(settings: any): InstagramSettings | Error {
-	if (typeof settings !== 'object' || settings === null) {
-		return new Error('Settings must be an object');
+type RangeCheck = (key: string, min: number, max: number) => void;
+
+function validateBooleanFields(settings: any, errors: string[]): void {
+	const booleanFields = [
+		'automation_enabled', 'use_private_profiles', 'headless',
+		'enable_feed', 'enable_reels', 'enable_follow', 'watch_stories',
+		'profile_reopen_cooldown_enabled', 'messaging_cooldown_enabled',
+		'do_unfollow', 'do_approve', 'do_message',
+	];
+	for (const field of booleanFields) {
+		if (typeof settings[field] !== 'boolean') errors.push(`${field} must be boolean`);
 	}
+}
 
-	const errors: string[] = [];
-
-	// Helper for numeric range
-	const checkRange = (key: string, min: number, max: number) => {
-		const val = settings[key];
-		if (typeof val !== 'number') {
-			errors.push(`${key} must be a number`);
-		} else if (val < min || val > max) {
-			errors.push(`${key} must be between ${min} and ${max}`);
-		}
-	};
-
-	// Required fields / type checks
-	if (typeof settings.automation_enabled !== 'boolean') errors.push('automation_enabled must be boolean');
-	if (typeof settings.use_private_profiles !== 'boolean') errors.push('use_private_profiles must be boolean');
-	if (typeof settings.headless !== 'boolean') errors.push('headless must be boolean');
-	if (typeof settings.enable_feed !== 'boolean') errors.push('enable_feed must be boolean');
-	if (typeof settings.enable_reels !== 'boolean') errors.push('enable_reels must be boolean');
-	if (typeof settings.enable_follow !== 'boolean') errors.push('enable_follow must be boolean');
-	if (typeof settings.watch_stories !== 'boolean') errors.push('watch_stories must be boolean');
-	if (typeof settings.profile_reopen_cooldown_enabled !== 'boolean') errors.push('profile_reopen_cooldown_enabled must be boolean');
-	if (typeof settings.messaging_cooldown_enabled !== 'boolean') errors.push('messaging_cooldown_enabled must be boolean');
-	if (typeof settings.do_unfollow !== 'boolean') errors.push('do_unfollow must be boolean');
-	if (typeof settings.do_approve !== 'boolean') errors.push('do_approve must be boolean');
-	if (typeof settings.do_message !== 'boolean') errors.push('do_message must be boolean');
-
+function validateNumericRanges(checkRange: RangeCheck): void {
 	checkRange('max_sessions', 1, 100);
 	checkRange('parallel_profiles', 1, 10);
 	checkRange('like_chance', 0, 100);
@@ -39,23 +23,18 @@ export function validateSettings(settings: any): InstagramSettings | Error {
 	checkRange('reels_like_chance', 0, 100);
 	checkRange('reels_follow_chance', 0, 100);
 	checkRange('reels_skip_chance', 0, 100);
-
 	checkRange('reels_skip_min_time', 0, 120);
 	checkRange('reels_skip_max_time', 0, 120);
 	checkRange('reels_normal_min_time', 0, 600);
 	checkRange('reels_normal_max_time', 0, 600);
-
 	checkRange('carousel_max_slides', 1, 50);
 	checkRange('stories_max', 0, 100);
-
 	checkRange('feed_min_time_minutes', 0, 240);
 	checkRange('feed_max_time_minutes', 0, 240);
 	checkRange('reels_min_time_minutes', 0, 240);
 	checkRange('reels_max_time_minutes', 0, 240);
-
 	checkRange('profile_reopen_cooldown_minutes', 0, 10080);
 	checkRange('messaging_cooldown_hours', 0, 168);
-
 	checkRange('highlights_min', 0, 100);
 	checkRange('highlights_max', 0, 100);
 	checkRange('likes_percentage', 0, 100);
@@ -67,31 +46,45 @@ export function validateSettings(settings: any): InstagramSettings | Error {
 	checkRange('max_delay', 0, 3600);
 	checkRange('unfollow_min_count', 0, 1000);
 	checkRange('unfollow_max_count', 0, 1000);
+}
 
-	if (typeof settings.reels_skip_min_time === 'number' && typeof settings.reels_skip_max_time === 'number') {
-		if (settings.reels_skip_min_time > settings.reels_skip_max_time) errors.push('reels_skip_min_time must be <= reels_skip_max_time');
+function validateMinMaxPairs(settings: any, errors: string[]): void {
+	const pairs: [string, string][] = [
+		['reels_skip_min_time', 'reels_skip_max_time'],
+		['reels_normal_min_time', 'reels_normal_max_time'],
+		['feed_min_time_minutes', 'feed_max_time_minutes'],
+		['reels_min_time_minutes', 'reels_max_time_minutes'],
+		['highlights_min', 'highlights_max'],
+		['follow_min_count', 'follow_max_count'],
+		['unfollow_min_count', 'unfollow_max_count'],
+		['min_delay', 'max_delay'],
+	];
+	for (const [minKey, maxKey] of pairs) {
+		if (typeof settings[minKey] === 'number' && typeof settings[maxKey] === 'number') {
+			if (settings[minKey] > settings[maxKey]) errors.push(`${minKey} must be <= ${maxKey}`);
+		}
 	}
-	if (typeof settings.reels_normal_min_time === 'number' && typeof settings.reels_normal_max_time === 'number') {
-		if (settings.reels_normal_min_time > settings.reels_normal_max_time) errors.push('reels_normal_min_time must be <= reels_normal_max_time');
+}
+
+export function validateSettings(settings: any): InstagramSettings | Error {
+	if (typeof settings !== 'object' || settings === null) {
+		return new Error('Settings must be an object');
 	}
-	if (typeof settings.feed_min_time_minutes === 'number' && typeof settings.feed_max_time_minutes === 'number') {
-		if (settings.feed_min_time_minutes > settings.feed_max_time_minutes) errors.push('feed_min_time_minutes must be <= feed_max_time_minutes');
-	}
-	if (typeof settings.reels_min_time_minutes === 'number' && typeof settings.reels_max_time_minutes === 'number') {
-		if (settings.reels_min_time_minutes > settings.reels_max_time_minutes) errors.push('reels_min_time_minutes must be <= reels_max_time_minutes');
-	}
-	if (typeof settings.highlights_min === 'number' && typeof settings.highlights_max === 'number') {
-		if (settings.highlights_min > settings.highlights_max) errors.push('highlights_min must be <= highlights_max');
-	}
-	if (typeof settings.follow_min_count === 'number' && typeof settings.follow_max_count === 'number') {
-		if (settings.follow_min_count > settings.follow_max_count) errors.push('follow_min_count must be <= follow_max_count');
-	}
-	if (typeof settings.unfollow_min_count === 'number' && typeof settings.unfollow_max_count === 'number') {
-		if (settings.unfollow_min_count > settings.unfollow_max_count) errors.push('unfollow_min_count must be <= unfollow_max_count');
-	}
-	if (typeof settings.min_delay === 'number' && typeof settings.max_delay === 'number') {
-		if (settings.min_delay > settings.max_delay) errors.push('min_delay must be <= max_delay');
-	}
+
+	const errors: string[] = [];
+
+	const checkRange: RangeCheck = (key, min, max) => {
+		const val = settings[key];
+		if (typeof val !== 'number') {
+			errors.push(`${key} must be a number`);
+		} else if (val < min || val > max) {
+			errors.push(`${key} must be between ${min} and ${max}`);
+		}
+	};
+
+	validateBooleanFields(settings, errors);
+	validateNumericRanges(checkRange);
+	validateMinMaxPairs(settings, errors);
 
 	if (!Array.isArray(settings.source_list_ids)) {
 		errors.push('source_list_ids must be an array');

@@ -202,6 +202,78 @@ def _extract_fullname_from_user(user: Any) -> str:
     return ""
 
 
+def _extract_username_from_user(user):
+    """Extract username string from a user dict or raw string."""
+    if isinstance(user, dict):
+        for key in ("userName", "username", "user_name", "login", "User Name"):
+            v = user.get(key)
+            if v is not None:
+                return str(v).strip()
+        return ""
+    if isinstance(user, str):
+        return user.strip()
+    return ""
+
+
+def _filter_and_collect_accounts(users, keyword_sets):
+    """Filter users through keyword sets, return (kept_accounts, total, removed)."""
+    total_processed = 0
+    removed = 0
+    kept = []
+    for u in users:
+        total_processed += 1
+        username = _extract_username_from_user(u)
+        fullname = _extract_fullname_from_user(u)
+        action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
+        if action == "remove":
+            removed += 1
+            continue
+        clean_username = username.lstrip("@").strip()
+        if not clean_username:
+            continue
+        entry = {"userName": clean_username}
+        if fullname:
+            entry["fullName"] = fullname
+        if matched_name:
+            entry["matchedName"] = matched_name
+        kept.append(entry)
+    return kept, total_processed, removed
+
+
+def _deduplicate_accounts(accounts):
+    """Deduplicate accounts by lowercased userName."""
+    seen = set()
+    unique = []
+    for acc in accounts:
+        key = acc["userName"].lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(acc)
+    return unique
+
+
+def _upload_to_convex_envs(accounts, environments, status="available"):
+    """Upload accounts to Convex for each environment, return (uploaded, duplicates)."""
+    uploaded = {}
+    duplicates = {}
+    for out_env in environments:
+        result = upload_accounts_to_convex(accounts, env=out_env, status=status)
+        uploaded[out_env] = int(result.get("inserted", 0))
+        duplicates[out_env] = int(result.get("skipped", 0))
+    return uploaded, duplicates
+
+
+def _read_csv_as_user_dicts(input_path, sep):
+    """Read CSV file and return list of row dicts for filtering."""
+    import csv as _csv
+    rows = []
+    with input_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = _csv.DictReader(f, delimiter=sep)
+        for row in reader:
+            rows.append(row)
+    return rows
+
+
 def _fetch_storage_payload(storage_id: str, env: str) -> dict[str, Any]:
     url = convex_query("workflowArtifacts:getStorageUrl", {"storageId": storage_id}, env=env)
     if not url or not isinstance(url, str):
@@ -348,47 +420,9 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
         if not isinstance(users, list):
             users = extract_users_from_payload(payload)
 
-        # Load keyword sets from DB for filtering
         keyword_sets = load_all_keyword_sets(env=env)
-
-        total_processed = 0
-        removed = 0
-        kept_accounts: list[dict[str, Any]] = []
-        for u in users:
-            total_processed += 1
-            username = ""
-            if isinstance(u, dict):
-                v = u.get("userName") or u.get("username") or u.get("user_name") or u.get("login") or u.get("User Name")
-                if v is not None:
-                    username = str(v).strip()
-            elif isinstance(u, str):
-                username = u.strip()
-
-            fullname = _extract_fullname_from_user(u)
-            action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
-            if action == "remove":
-                removed += 1
-                continue
-
-            # Build account entry with metadata
-            clean_username = username.lstrip("@").strip()
-            if not clean_username:
-                continue
-            account_entry: dict[str, Any] = {"userName": clean_username}
-            if fullname:
-                account_entry["fullName"] = fullname
-            if matched_name:
-                account_entry["matchedName"] = matched_name
-            kept_accounts.append(account_entry)
-
-        # Deduplicate
-        seen: set[str] = set()
-        unique_accounts: list[dict[str, Any]] = []
-        for acc in kept_accounts:
-            key = acc["userName"].lower()
-            if key not in seen:
-                seen.add(key)
-                unique_accounts.append(acc)
+        kept_accounts, total_processed, removed = _filter_and_collect_accounts(users, keyword_sets)
+        unique_accounts = _deduplicate_accounts(kept_accounts)
 
         uploaded: dict[str, int] = {}
         duplicates: dict[str, int] = {}
@@ -397,10 +431,7 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
             envs = [str(e).strip() for e in (request.environments or []) if str(e).strip()]
             if not envs:
                 raise HTTPException(status_code=400, detail="environments is required when uploadToConvex is true")
-            for out_env in envs:
-                result = upload_accounts_to_convex(unique_accounts, env=out_env, status=request.accountStatus)
-                uploaded[out_env] = int(result.get("inserted", 0))
-                duplicates[out_env] = int(result.get("skipped", 0))
+            uploaded, duplicates = _upload_to_convex_envs(unique_accounts, envs, request.accountStatus)
             convex_mutation("workflowArtifacts:setImported", {"id": task_id, "imported": True}, env=env)
 
         return {
@@ -528,60 +559,11 @@ async def process_csv(job_id: str, request: ProcessRequest):
         # Load keyword sets from DB for filtering
         keyword_sets = load_all_keyword_sets()
 
-        # Read CSV and apply filtering inline to capture fullName + matchedName
+        # Read CSV rows and apply filtering
         sep = detect_csv_separator(str(input_path))
-        total_processed = 0
-        removed_count = 0
-        kept_accounts: list[dict[str, Any]] = []
-        seen: set[str] = set()
-
-        with input_path.open("r", encoding="utf-8-sig", newline="") as f:
-            import csv as _csv
-            reader = _csv.DictReader(f, delimiter=sep)
-            username_aliases = ["user_name", "userName", "username", "login", "User Name"]
-            fullname_aliases = ["full_name", "fullName", "name"]
-
-            for row in reader:
-                total_processed += 1
-
-                # Extract username
-                username = ""
-                for alias in username_aliases:
-                    v = row.get(alias)
-                    if v and str(v).strip():
-                        username = str(v).strip().lstrip("@")
-                        break
-
-                # Extract fullname
-                fullname = ""
-                for alias in fullname_aliases:
-                    v = row.get(alias)
-                    if v and str(v).strip():
-                        fullname = str(v).strip()
-                        break
-
-                if not username:
-                    removed_count += 1
-                    continue
-
-                # Apply filtering
-                action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
-                if action == "remove":
-                    removed_count += 1
-                    continue
-
-                # Deduplicate
-                key = username.lower()
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                account_entry: dict[str, Any] = {"userName": username}
-                if fullname:
-                    account_entry["fullName"] = fullname
-                if matched_name:
-                    account_entry["matchedName"] = matched_name
-                kept_accounts.append(account_entry)
+        csv_users = _read_csv_as_user_dicts(input_path, sep)
+        kept_accounts, total_processed, removed_count = _filter_and_collect_accounts(csv_users, keyword_sets)
+        kept_accounts = _deduplicate_accounts(kept_accounts)
 
         stats = {
             "total_processed": total_processed,
@@ -594,10 +576,7 @@ async def process_csv(job_id: str, request: ProcessRequest):
         uploaded = {}
         duplicates = {}
         if request.uploadToConvex and kept_accounts:
-            for env in request.environments:
-                result = upload_accounts_to_convex(kept_accounts, env=env)
-                uploaded[env] = result.get("inserted", 0)
-                duplicates[env] = result.get("skipped", 0)
+            uploaded, duplicates = _upload_to_convex_envs(kept_accounts, request.environments)
         
         job["uploaded"] = uploaded
         job["duplicates"] = duplicates
