@@ -1,0 +1,28 @@
+{
+  "featureId": "reliability-scrutiny-fixes-frontend",
+  "reviewedAt": "2026-03-15T16:24:18.263867Z",
+  "commitId": "fe86cc51eeb67585ca57e0540f6fae321d7da44a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix commit fully addresses the four previously blocking frontend reliability findings. `apiFetch` is now the shared retry path used by the app's real authenticated callers, the dead `useApiCall` hook is removed while `apiFetch` exposes `onRetry`, and the WebSocket hook now mutates the real effect-scoped cancellation ref and clears stale `connected` state during cleanup. I found no remaining blocking issues in the reviewed diff.",
+    "issues": [
+      {
+        "file": "frontend/src/hooks/useAuthenticatedFetch.ts",
+        "line": 34,
+        "severity": "non_blocking",
+        "description": "The convenience `authFetch` wrapper still narrows general `RequestInit` compatibility by JSON-parsing `body` and forwarding only a subset of fetch options (`method`, parsed `body`, optional `timeout`) into `apiFetchWithRetry`. This limitation predates the fix and does not block the reviewed feature because `ProtectedLayoutShell` still mounts `useAuthenticatedFetch()` only for token-registration side effects while the app's real request sites call `apiFetch(...)` directly."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`refactor-worker` still describes a mandatory red-phase failing-test step for new functionality even on frontend-only work in this repo, where mission guidance explicitly says no frontend test infrastructure exists. That mismatch encourages handoffs to report full procedure compliance even when build + lint are the only realistic validators.",
+      "evidence": "`.factory/skills/refactor-worker/SKILL.md:41-45` requires writing failing tests first for new functionality, while mission `AGENTS.md:87` says 'No frontend tests — out of scope'. This worker's handoff for session `6910e654-15e4-4c46-b8cf-67315342d1cd` reports `tests.added: []` and `skillFeedback.followedProcedure: true` after validating only `npm --prefix frontend run build` and `npm --prefix frontend run lint`."
+    }
+  ],
+  "addressesFailureFrom": "C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\validation\\reliability\\scrutiny\\reviews\\reliability-frontend-api-retry.json; C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\validation\\reliability\\scrutiny\\reviews\\reliability-frontend-websocket-reconnect.json",
+  "summary": "Reviewed the feature record, prior failed review reports, worker handoff, transcript skeleton, commit `fe86cc51eeb67585ca57e0540f6fae321d7da44a`, and the current frontend code. The fix now resolves the prior blocking API retry wiring, dead-hook, disconnect-cancellation, and stale-connected-state failures without introducing any new blocking regression; one pre-existing non-blocking `useAuthenticatedFetch` compatibility limitation remains."
+}
