@@ -1,6 +1,5 @@
 import logging
 import random
-import signal
 import time
 import traceback
 from typing import Optional
@@ -35,7 +34,8 @@ def run_browser(
     display: Optional[str] = None,
 ):
     _print_run_header(profile_name, proxy_string, action, fingerprint_seed, fingerprint_os, os, user_agent, headless)
-    _register_signal_handlers()
+    # Signal handlers are registered by the caller (launcher.py / ShutdownManager).
+    # Browser contexts are cleaned up via the context manager below.
     try:
         with _open_browser_session(
             profile_name,
@@ -84,18 +84,6 @@ def _print_run_header(profile_name, proxy_string, action, fingerprint_seed, fing
     elif user_agent:
         logger.info('Using User Agent: %s', user_agent)
     logger.info("Headless mode: %s", 'ON' if headless else 'OFF')
-
-
-def _register_signal_handlers() -> None:
-    def _handle_signal(_sig, _frame):
-        raise SystemExit(0)
-
-    if hasattr(signal, 'SIGINT'):
-        signal.signal(signal.SIGINT, _handle_signal)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, _handle_signal)
-    if hasattr(signal, 'SIGBREAK'):
-        signal.signal(signal.SIGBREAK, _handle_signal)
 
 
 def _open_browser_session(profile_name, proxy_string, user_agent, headless, os_name, fingerprint_seed, fingerprint_os, display):

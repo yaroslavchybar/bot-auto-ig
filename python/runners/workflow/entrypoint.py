@@ -1,7 +1,6 @@
 import atexit
 import json
 import os
-import signal
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -10,6 +9,7 @@ from python.core.config import PROJECT_URL, SECRET_KEY
 from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
+from python.core.shutdown import ShutdownManager
 from python.runners.workflow.bootstrap import (
     _extract_start_browser_settings,
     _find_start_node,
@@ -189,12 +189,14 @@ def _build_accounts(workflow_id: str, profiles: List[Dict[str, Any]]) -> Optiona
 def _register_process_handlers(runner: WorkflowRunner) -> None:
     atexit.register(DisplayManager.cleanup_owner_sessions, os.getpid())
 
-    def _handle_signal(_sig, _frame):
-        runner.stop()
-
-    if hasattr(signal, 'SIGINT'):
-        signal.signal(signal.SIGINT, _handle_signal)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, _handle_signal)
-    if hasattr(signal, 'SIGBREAK'):
-        signal.signal(signal.SIGBREAK, _handle_signal)
+    shutdown_mgr = ShutdownManager()
+    # Track the first account as the active profile for state persistence
+    if runner.accounts:
+        shutdown_mgr.set_state(
+            runner.accounts[0].username,
+            'workflow',
+            0,
+        )
+    shutdown_mgr.add_stop_callback(runner.stop)
+    shutdown_mgr.add_cleanup(lambda: DisplayManager.cleanup_owner_sessions(os.getpid()))
+    shutdown_mgr.register()

@@ -1,5 +1,4 @@
 import json
-import signal
 import sys
 from typing import Any, Dict, List, Optional
 
@@ -7,6 +6,7 @@ from python.core.config import PROJECT_URL
 from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
+from python.core.shutdown import ShutdownManager
 from python.core.clients import MessageTemplatesClient
 from python.runners.multi_account.config import _build_config
 from python.runners.multi_account.io import emit_event, log
@@ -47,7 +47,7 @@ def _main_inner() -> int:
     )
     log(f"Starting full cycle ({', '.join(_task_names(config))}) for {len(target_accounts)} profiles...")
     runner = InstagramAutomationRunner(config, target_accounts)
-    _register_signal_handlers(runner)
+    _register_signal_handlers(runner, target_accounts)
     return runner.run()
 
 
@@ -148,13 +148,14 @@ def _task_names(config) -> List[str]:
     return [label for enabled, label in task_pairs if enabled]
 
 
-def _register_signal_handlers(runner) -> None:
-    def _handle_signal(_sig, _frame):
-        runner.stop()
-
-    if hasattr(signal, 'SIGINT'):
-        signal.signal(signal.SIGINT, _handle_signal)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, _handle_signal)
-    if hasattr(signal, 'SIGBREAK'):
-        signal.signal(signal.SIGBREAK, _handle_signal)
+def _register_signal_handlers(runner, target_accounts) -> None:
+    shutdown_mgr = ShutdownManager()
+    # Track the first account as the active profile for state persistence
+    if target_accounts:
+        shutdown_mgr.set_state(
+            target_accounts[0].username,
+            'multi_account',
+            0,
+        )
+    shutdown_mgr.add_stop_callback(runner.stop)
+    shutdown_mgr.register()

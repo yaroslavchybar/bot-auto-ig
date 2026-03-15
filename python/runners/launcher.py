@@ -7,8 +7,6 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from python.browser.setup import run_browser
-import signal
-import atexit
 import time
 import random
 import logging
@@ -17,6 +15,7 @@ from python.core.process.job_object import WindowsJobObject
 from python.core.process.manager import ProcessManager
 from python.core.logging import setup_logging
 from python.core.process.healthcheck import run_all_checks
+from python.core.shutdown import ShutdownManager
 from python.browser.setup import parse_proxy_string
 from python.browser.display import DisplayManager
 from python.core.clients import ProfilesClient
@@ -25,13 +24,15 @@ from python.core.clients import ProfilesClient
 setup_logging()
 logger = logging.getLogger(__name__)
 
-_cleanup_done = False
 _display_mgr = None
 _display_session = None
 _display_profile = None
 _display_workflow_id = "manual"
 _profile_name = None
 _profiles_client = None
+
+# Centralized shutdown manager — handles signals, atexit, and state persistence
+_shutdown_mgr = ShutdownManager()
 
 
 def emit_event(event_type: str, **data):
@@ -72,27 +73,12 @@ def _release_display():
         pass
     _display_session = None
 
-def _graceful_shutdown():
-    global _cleanup_done
-    if _cleanup_done:
-        return
-    _cleanup_done = True
-    _sync_profile_status("idle", False)
-    _release_display()
-    logger.info("Graceful shutdown initiated...")
-    # Context manager in run_browser handles browser cleanup
 
-def _signal_handler(sig, frame):
-    _graceful_shutdown()
-    raise SystemExit(0)
-
-# Register handlers
-signal.signal(signal.SIGINT, _signal_handler)
-if hasattr(signal, 'SIGTERM'):
-    signal.signal(signal.SIGTERM, _signal_handler)
-if hasattr(signal, 'SIGBREAK'):  # Windows
-    signal.signal(signal.SIGBREAK, _signal_handler)
-atexit.register(_graceful_shutdown)
+# Register cleanup callables with ShutdownManager
+# LIFO order: display released last (registered first), profile status last-executed (registered second)
+_shutdown_mgr.add_cleanup(lambda: _sync_profile_status("idle", False))
+_shutdown_mgr.add_cleanup(_release_display)
+_shutdown_mgr.register()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -103,7 +89,6 @@ if __name__ == "__main__":
     parser.add_argument("--feed-duration", type=int, default=0, help="Duration for feed in mixed mode")
     parser.add_argument("--reels-duration", type=int, default=0, help="Duration for reels in mixed mode")
 
-    
     # Add new arguments for interaction chances
     parser.add_argument("--match-likes", type=int, default=10, help="Chance to like a post (0-100)")
     parser.add_argument("--match-comments", type=int, default=5, help="Chance to comment on a post (0-100)")
@@ -120,23 +105,20 @@ if __name__ == "__main__":
     parser.add_argument("--fingerprint-seed", type=str, default=None, help="Seed for consistent fingerprint generation")
     parser.add_argument("--fingerprint-os", type=str, default=None, help="OS for fingerprint generation: windows, macos, linux")
     parser.add_argument("--workflow-id", type=str, default="manual", help="Workflow identifier for display session tracking")
-    
+
     args = parser.parse_args()
     _profile_name = args.name
+
+    # Track profile/action state for shutdown persistence
+    _shutdown_mgr.set_state(args.name, args.action, 0)
 
     # Pre-flight Health Checks
     proxy_cfg = None
     if args.proxy and args.proxy.lower() not in ["none", ""]:
-        # Convert playwright proxy string to requests format for check
-        # This is a bit tricky since parse_proxy_string returns playwright format dict
-        # We need a requests-compatible dict
-        # Simple heuristic:
         parsed = parse_proxy_string(args.proxy)
         if parsed and 'server' in parsed:
-            # Construct URL from parsed dict
             server = parsed['server']
             if 'username' in parsed and 'password' in parsed:
-                # insert auth
                 scheme, rest = server.split("://", 1)
                 proxy_url = f"{scheme}://{parsed['username']}:{parsed['password']}@{rest}"
             else:
@@ -145,18 +127,14 @@ if __name__ == "__main__":
 
     checks = run_all_checks(proxy_cfg)
     failed_checks = [k for k, v in checks.items() if v is False]
-    
+
     if failed_checks:
         logger.error(f"Health checks failed: {failed_checks}")
-        # In strict production, we might exit. 
-        # But for now, let's just warn if internet works but proxy fails?
-        # If internet fails, definitely exit.
         if checks.get("internet") is False:
              logger.critical("No internet connection. Exiting.")
              sys.exit(1)
         if checks.get("proxy") is False:
              logger.error("Proxy check failed. Proceeding might fail.")
-             # We can choose to exit or continue. Let's exit to be safe as per "Pre-flight validation" goal.
              sys.exit(1)
         if checks.get("disk_space") is False:
              logger.warning("Low disk space. Proceeding with caution.")
@@ -172,7 +150,7 @@ if __name__ == "__main__":
         if cleaned:
             logger.info(f"Cleaned {cleaned} orphaned processes.")
 
-    # Initialize Job Object for process cleanup
+    # Initialize Job Object for process cleanup (Windows: kills child processes on parent exit)
     job = None
     if os.name == 'nt':
         try:
@@ -264,9 +242,6 @@ if __name__ == "__main__":
                 elif decision == ErrorDecision.BACKOFF_AND_SLOW:
                     logger.warning("Rate limit detected. Backing off for 60s...")
                     time.sleep(60 + random.uniform(0, 10))
-                    # Don't increment retry_count for rate limits, or maybe we should?
-                    # If we get rate limited indefinitely, we might want to stop.
-                    # But typically we want to wait it out.
                     continue
     finally:
         _sync_profile_status("idle", False)

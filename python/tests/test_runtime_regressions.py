@@ -581,7 +581,6 @@ def test_run_browser_automated_session_returns_and_context_closes_once(monkeypat
             context.close()
 
     monkeypatch.setattr('python.browser.runtime._print_run_header', lambda *_args, **_kwargs: None)
-    monkeypatch.setattr('python.browser.runtime._register_signal_handlers', lambda: None)
     monkeypatch.setattr('python.browser.runtime._open_browser_session', fake_browser_session)
     monkeypatch.setattr(
         'python.browser.runtime._run_feed_session',
