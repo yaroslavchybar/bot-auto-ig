@@ -29,6 +29,7 @@ server/
 - `server/shared/store.ts` is the only shared state module. All server domains should import `clients`, `logsStore`, `automationState`, `workflowWorkers`, `activeDisplays`, and `profileProcesses` from this path.
 - Shared cross-cutting utilities now live under `server/shared/`, including `ProcessService.ts`, `types.ts`, `settings-schema.ts`, `user-agents.ts`, `mutex.ts`, `logger.ts`, and `errors.ts`.
 - Route admission checks that read and mutate `automationState` or `workflowWorkers` must stay inside `automationMutex` critical sections; moving those checks ahead of `acquire()` can reintroduce duplicate-start and stop races.
+- On Windows, `ProcessService.killProcess()` attempts graceful shutdown first (`SIGBREAK`, then forced termination if needed), while `ProcessService.killByPid()` skips straight to `taskkill /T /F`. Reliability work that depends on Python signal handlers must trace which stop path each caller uses.
 
 ### Python
 ```
@@ -64,6 +65,7 @@ python/
 
 ## Frontend Refactor Gotchas
 - `frontend/src/components/layout/ProtectedLayoutShell.tsx` keeps `/workflows`, `/accounts`, `/logs`, and `/vnc` mounted through `keepAliveCache` + React `Activity` even when those pages are hidden. Polling hooks, timers, and global toasts in those pages continue running unless they also gate on route visibility, not just document visibility.
+- `frontend/src/components/layout/ProtectedLayoutShell.tsx` mounts `useAuthenticatedFetch()` for its token-registration side effect, but most authenticated requests still flow through `frontend/src/lib/api.ts` via the module-level `tokenGetter`. Updating the hook's returned callback alone will not change most frontend API traffic.
 - React Compiler / eslint `preserve-manual-memoization` can require destructuring values returned from hooks before referencing them inside `useCallback` dependency arrays. Keeping a whole returned object in the dependency list may trigger lint/compiler failures during refactors even when the code is otherwise type-safe.
 
 ## Integration Seams (CRITICAL)

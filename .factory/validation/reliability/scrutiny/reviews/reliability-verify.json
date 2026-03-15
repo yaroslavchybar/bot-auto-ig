@@ -1,0 +1,39 @@
+{
+  "featureId": "reliability-verify",
+  "reviewedAt": "2026-03-15T04:03:10.208040+00:00",
+  "commitId": "9fcb594",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The route-registration and settings refactors look structurally safe, but the feature still fails review for two reasons: it never completed the required dev-server app-load verification, and the new datauploader username helper changes behavior by preferring blank aliases over later populated ones.",
+    "issues": [
+      {
+        "file": "C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\handoffs\\2026-03-15T03-46-33-076Z__reliability-verify__b1723422-2671-4ec8-993f-7acc2e427604.json",
+        "line": 76,
+        "severity": "blocking",
+        "description": "The recorded runtime verification stops at `curl http://localhost:3001/api/health`. The transcript skeleton shows the worker failed to keep the frontend dev server running and explicitly fell back to 'builds succeed is strong evidence the app will load', so the feature never actually satisfied the required 'Start dev servers and verify app loads' check from features.json:1531."
+      },
+      {
+        "file": "C:\\Users\\yaros\\Downloads\\bot-auto-ig\\datauploader\\api.py",
+        "line": 210,
+        "severity": "blocking",
+        "description": "`_extract_username_from_user()` now returns the first non-`None` alias even when it is an empty string. The pre-refactor code skipped blank aliases and kept searching (`userName` -> `username` -> `user_name` -> `login` -> `User Name`). With the new helper, inputs like `{\"userName\": \"\", \"login\": \"foo\"}` resolve to an empty username, get dropped at line 232, and can also skew the reported `removed`/`remaining` stats emitted at lines 444-445 and 568-571."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "This feature is a verification-heavy milestone, but it was assigned the `refactor-worker` skill. The worker's own handoff calls out that a dedicated verification-oriented skill would fit these final-pass tasks better.",
+      "evidence": "C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\handoffs\\2026-03-15T03-46-33-076Z__reliability-verify__b1723422-2671-4ec8-993f-7acc2e427604.json:93-98"
+    },
+    {
+      "area": "services",
+      "observation": "The shared services manifest already contains safer Windows stop commands (`stop_server_exec_safe` / `stop_frontend_exec_safe`), but the primary `services.server.stop` and `services.frontend.stop` entries still point at the brittle pipeline form. The transcript shows that form failing repeatedly in this environment, so the manifest should promote the safe commands or document which stop variant validators should prefer.",
+      "evidence": "C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\services.yaml:11-12,18-25; transcript skeleton quote: 'The `$_` variable issue is a PowerShell 7 piping issue in this environment.'"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail. The feature did not complete the required frontend app-load verification, and commit 9fcb594 also introduced a datauploader regression where blank earlier username aliases now mask later populated aliases."
+}

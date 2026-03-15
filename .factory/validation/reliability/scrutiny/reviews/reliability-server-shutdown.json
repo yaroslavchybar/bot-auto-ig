@@ -1,0 +1,45 @@
+{
+  "featureId": "reliability-server-shutdown",
+  "reviewedAt": "2026-03-15T04:01:14.856203Z",
+  "commitId": "ccbf9eeb1dbb048ce7ad6fd645a42728286d30b4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds signal handlers, atomic write-rename persistence, and broader cleanup plumbing, but it still misses two core shutdown guarantees: the server does not stop accepting work immediately on signal, and not every Python subprocess created by the server is actually part of shutdown cleanup.",
+    "issues": [
+      {
+        "file": "server/automation/shutdown.ts",
+        "line": 59,
+        "severity": "blocking",
+        "description": "`registerShutdownHandlers()` waits on `automationMutex` before `performShutdown()` can call `stopAcceptingConnections()` / `closeWebSocketConnections()` (`server/automation/shutdown.ts:79-82`). The same mutex is held by automation and workflow start/stop routes (`server/automation/routes.ts:43-71`, `server/workflows/routes.ts:113-145`), so after SIGTERM/SIGINT the HTTP listener can continue admitting new requests until an in-flight mutation releases the lock. That violates the required ordering to stop accepting new connections first and leaves a race window for new work to enter shutdown."
+      },
+      {
+        "file": "server/automation/shutdown.ts",
+        "line": 153,
+        "severity": "blocking",
+        "description": "`killAllChildProcesses()` only cleans up `automationState.process`, `workflowWorkers`, and `profileProcesses`. Other Python children spawned through `ProcessService` are never registered there, including the login subprocess started by `/api/automation/login` (`server/automation/routes.ts:98-100`, `server/automation/routes.ts:212-217`) and the fingerprint generator subprocess in `server/profiles/service.ts:61-65`. Because `spawnPython()` defaults to detached children on non-Windows platforms (`server/shared/ProcessService.ts:125-128`), those omitted processes can survive server exit, so the implementation does not satisfy “all Python child processes” / “no orphaned processes after server exit”."
+      },
+      {
+        "file": "server/automation/shutdown.ts",
+        "line": 132,
+        "severity": "non_blocking",
+        "description": "`persistAutomationState()` snapshots `status`/`pid` before cleanup, rewrites `startedAt` to the shutdown time, drops `settings`, and the shutdown path never clears or rewrites the state file after `automationState.status` is set back to `'idle'` (`server/automation/shutdown.ts:157-159`). On the next boot, `handleInterruptedRun()` (`server/index.ts:159-177`) will treat a clean signal-driven shutdown of an active run as an interrupted session and immediately clear it. Recovery still works, but the persisted state is not an accurate final snapshot."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`refactor-worker` says new functionality should get tests in the red phase, but this feature changed shutdown orchestration/state persistence without adding any tests and still reported `followedProcedure: true`.",
+      "evidence": "`.factory/skills/refactor-worker/SKILL.md` Step 3 requires tests first for new functionality; the transcript skeleton for worker session `12cf5fef-3925-4eb3-9922-4d28948424dc` shows edits to `server/automation/state.ts`, `server/automation/shutdown.ts`, and `server/index.ts` before any test creation, and the handoff records `tests.added: []` plus `skillFeedback.followedProcedure: true`."
+    },
+    {
+      "area": "services",
+      "observation": "The shared service catalog only exposes force-stop helpers for the server, not a reusable graceful-shutdown exercise for SIGTERM/SIGINT or an orphan-process check, which makes reliability shutdown features easy to under-verify.",
+      "evidence": "`.factory/services.yaml` defines `stop_server_exec_safe` and `services.server.stop` with `Stop-Process -Force` on port 3001, but there is no companion command for sending a graceful signal and then checking that child Python processes are gone."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the feature metadata, handoff, transcript skeleton, skill instructions, shared-state artifacts, and commit `ccbf9eeb1dbb048ce7ad6fd645a42728286d30b4`. The review fails because shutdown still waits on the mutex before closing listeners and leaves some ProcessService-spawned Python children outside the cleanup set, so the implementation does not yet fully meet the graceful-shutdown/no-orphan requirements."
+}

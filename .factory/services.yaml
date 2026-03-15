@@ -4,6 +4,7 @@ commands:
   install_server: cd server && npm install
   install_python: pip install -r python/requirements.txt
   build_server: npm --prefix server run build
+  test_server: "python -c \"import pathlib, subprocess, sys; root=pathlib.Path(r'C:\\\\Users\\\\yaros\\\\Downloads\\\\bot-auto-ig\\\\server'); tests=sorted(str(p.resolve()) for p in root.rglob('*.test.ts') if 'node_modules' not in p.parts and 'dist' not in p.parts); print(tests); rc=0\nfor test in tests:\n    result=subprocess.run(['npm.cmd','--prefix','server','exec','tsx','--test',test])\n    rc=result.returncode\n    if rc:\n        break\nsys.exit(rc)\""
   build_frontend: npm --prefix frontend run build
   lint_frontend: npm --prefix frontend run lint
   test_convex: npm run test:convex

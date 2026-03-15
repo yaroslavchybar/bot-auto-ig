@@ -1,0 +1,45 @@
+{
+  "featureId": "reliability-python-shutdown",
+  "reviewedAt": "2026-03-15T04:01:14.340138+00:00",
+  "commitId": "cc1410c96825d74d1237d6e01d57feb1e43aa4f4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit adds a centralized ShutdownManager and threads it through the Python entry points, but the implementation still misses key parts of the shutdown contract. The saved snapshot is placeholder data instead of the live runner state, workflow/multi-account shutdown does not directly close active browser contexts, and some real Windows stop paths still bypass the new signal handling entirely.",
+    "issues": [
+      {
+        "file": "python/core/shutdown.py",
+        "line": 119,
+        "severity": "blocking",
+        "description": "`ShutdownManager` always persists whatever was last passed to `set_state()`, but the entry points only seed placeholder values once and never update them (`python/runners/launcher.py:113`, `python/runners/workflow/entrypoint.py:195-199`, `python/runners/multi_account/entrypoint.py:155-159`). For scrolling sessions this can overwrite the richer in-flight snapshots already written by `save_state()` in `python/actions/browsing/feed_scrolling/runtime.py:249` and `python/actions/browsing/reels_scrolling/runtime.py:210`, so the final shutdown file is not the current profile/action/progress snapshot required by the feature." 
+      },
+      {
+        "file": "python/runners/multi_account/entrypoint.py",
+        "line": 160,
+        "severity": "blocking",
+        "description": "The signal path only registers `runner.stop()`; it does not register cleanup for active browser contexts. Workflow is the same shape (`python/runners/workflow/entrypoint.py:200-201`). The actual contexts live down in worker-owned state (`python/runners/multi_account/account_session.py:141-147`, `python/runners/workflow/activity_dispatch.py:124-145`) and are only closed when those workers reach their own `with`/`__exit__` cleanup. That is not guaranteed on signal because stop just flips a flag and cancels pending futures (`python/runners/multi_account/runtime.py:46-49`, `python/runners/workflow/runtime.py:60-67`), while several running tasks are not directly stop-aware (`python/runners/multi_account/activity_dispatch.py:69`, `python/runners/workflow/activity_dispatch.py:175-178`, `python/runners/workflow/activity_dispatch.py:304-310`, `python/actions/stories/session.py:63-89`). A termination signal can therefore leave browser contexts open until a later hard kill instead of closing them properly during graceful shutdown." 
+      },
+      {
+        "file": "server/shared/ProcessService.ts",
+        "line": 242,
+        "severity": "blocking",
+        "description": "Real Windows stop flows still bypass the new Python signal handlers. `killByPid()` jumps straight to `taskkill /T /F` on Windows here, and that path is used by automation/profile stops (`server/automation/routes.ts:70`, `server/profiles/service.ts:268`, `server/automation/shutdown.ts:175`). Workflow stop uses `killProcess()` instead and does send `SIGBREAK` first (`server/shared/ProcessService.ts:204-212`, `server/workflows/service.ts:364`). As written, part of the product still hard-kills Python runners on Windows, so `save_state()` and Python-side cleanup do not run consistently on actual shutdown paths." 
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The refactor-worker procedure does not make the server-side stop/kill path explicit for Python shutdown features, so it is easy for workers to validate only the Python entry points and miss whether the product ever delivers those signals in production flows.",
+      "evidence": "`.factory/skills/refactor-worker/SKILL.md` Step 2 only says to catalog integration seams generically. The transcript skeleton for worker session `3122c9db-99fc-44c5-ac6d-c4b171db5f73` contains no `server/` or `ProcessService` reads, while the missed seam lives in `server/shared/ProcessService.ts:204-244` and its callers at `server/automation/routes.ts:70` and `server/profiles/service.ts:268`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Shared repo knowledge does not currently record the important Windows difference between `killProcess()` (graceful `SIGBREAK` attempt first) and `killByPid()` (immediate `taskkill`). That distinction is directly relevant to shutdown and zombie-process reliability work.",
+      "evidence": "`.factory/library/architecture.md` documents the Python runner entry points and integration seams, but not the server-side stop semantics; compare `server/shared/ProcessService.ts:204-212` with `server/shared/ProcessService.ts:242-244`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed the feature metadata, handoff, transcript skeleton, commit `cc1410c96825d74d1237d6e01d57feb1e43aa4f4`, and the surrounding Python/server shutdown paths. Result: fail, because the saved shutdown snapshot is stale, workflow and multi-account runners do not directly close active browser contexts on signal, and some Windows stop flows still hard-kill the Python process instead of exercising the graceful shutdown path."
+}

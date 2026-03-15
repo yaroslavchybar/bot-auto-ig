@@ -1,0 +1,185 @@
+{
+  "milestone": "reliability",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "commands": [
+        {
+          "command": "npm run test:convex",
+          "exitCode": 0
+        },
+        {
+          "command": "python -m pytest python/tests -q",
+          "exitCode": 0,
+          "note": "262 passed, 1 xfailed; pytest also emitted post-run logging ValueError traces from python/core/shutdown.py after the summary."
+        },
+        {
+          "command": "python -c \"import pathlib, subprocess, sys; root=pathlib.Path(r'C:\\\\Users\\\\yaros\\\\Downloads\\\\bot-auto-ig\\\\server'); tests=sorted(str(p.resolve()) for p in root.rglob('*.test.ts') if 'node_modules' not in p.parts and 'dist' not in p.parts); print(tests); rc=0\\nfor test in tests:\\n    result=subprocess.run(['npm.cmd','--prefix','server','exec','tsx','--test',test])\\n    rc=result.returncode\\n    if rc:\\n        break\\nsys.exit(rc)\"",
+          "exitCode": 0,
+          "note": "Validated the newly added services.yaml test_server command by running all tracked server *.test.ts files sequentially."
+        }
+      ]
+    },
+    "typecheck": {
+      "passed": true,
+      "commands": [
+        {
+          "command": "npm --prefix server run build",
+          "exitCode": 0
+        },
+        {
+          "command": "npm --prefix frontend run build",
+          "exitCode": 0
+        }
+      ]
+    },
+    "lint": {
+      "passed": true,
+      "commands": [
+        {
+          "command": "npm --prefix frontend run lint",
+          "exitCode": 0
+        }
+      ]
+    }
+  },
+  "reviewsSummary": {
+    "total": 7,
+    "passed": 0,
+    "failed": 7,
+    "failedFeatures": [
+      "reliability-server-shutdown",
+      "reliability-server-convex-retry",
+      "reliability-frontend-api-retry",
+      "reliability-frontend-websocket-reconnect",
+      "reliability-python-circuit-breaker",
+      "reliability-python-shutdown",
+      "reliability-verify"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "reliability-server-shutdown",
+      "severity": "blocking",
+      "description": "server/automation/shutdown.ts waits on automationMutex before calling server.close() / wss.close(), so the server can still accept fresh requests after SIGTERM/SIGINT while shutdown is blocked behind in-flight automation work."
+    },
+    {
+      "featureId": "reliability-server-shutdown",
+      "severity": "blocking",
+      "description": "server/automation/shutdown.ts exits with code 0 after Promise.allSettled(killPromises) without inspecting failed kill results or verifying that child PIDs are actually gone; on Windows killByPid/taskkill failures are swallowed."
+    },
+    {
+      "featureId": "reliability-server-convex-retry",
+      "severity": "blocking",
+      "description": "server/shared/convexClient.ts treats every non-ConvexHttpError as retryable, so malformed 2xx JSON responses and other local exceptions can be retried even though the contract only allows network errors, HTTP 5xx, and 429."
+    },
+    {
+      "featureId": "reliability-frontend-api-retry",
+      "severity": "blocking",
+      "description": "Changing frontend/src/hooks/useAuthenticatedFetch.ts does not wire retry behavior into most authenticated API calls because the application still mostly calls apiFetch() directly via the module-level tokenGetter path."
+    },
+    {
+      "featureId": "reliability-frontend-api-retry",
+      "severity": "blocking",
+      "description": "frontend/src/hooks/useApiCall.ts is unused, so no UI actually renders loading/retrying state during retry backoff."
+    },
+    {
+      "featureId": "reliability-frontend-websocket-reconnect",
+      "severity": "blocking",
+      "description": "frontend/src/hooks/useWebSocket.ts disconnect() cancels a throwaway object instead of the live cancelled flag, so an in-flight async connect can still open a socket after an intentional disconnect."
+    },
+    {
+      "featureId": "reliability-frontend-websocket-reconnect",
+      "severity": "blocking",
+      "description": "frontend/src/hooks/useWebSocket.ts cleanup closes sockets without clearing connected, so the hook can report connected === true after the socket is already gone."
+    },
+    {
+      "featureId": "reliability-python-circuit-breaker",
+      "severity": "blocking",
+      "description": "python/core/errors/http_client.py does not synchronize OPEN → HALF_OPEN probe admission, so a shared ResilientHttpClient can admit multiple concurrent half-open probes instead of a single probe request."
+    },
+    {
+      "featureId": "reliability-python-shutdown",
+      "severity": "blocking",
+      "description": "python/core/shutdown.py rewrites the state file using placeholder set_state() values from entry points, which can overwrite richer in-session save_state() snapshots and lose current action/progress metadata."
+    },
+    {
+      "featureId": "reliability-python-shutdown",
+      "severity": "blocking",
+      "description": "Workflow and multi-account signal handling only call runner.stop() and do not directly register cleanup for active Playwright contexts, so browser contexts can remain open until long-running tasks unwind."
+    },
+    {
+      "featureId": "reliability-python-shutdown",
+      "severity": "blocking",
+      "description": "Two real Windows stop flows still use killByPid() -> taskkill /T /F (automation stop and manual profile stop), bypassing the new Python signal handlers and skipping graceful save_state()/cleanup entirely."
+    },
+    {
+      "featureId": "reliability-verify",
+      "severity": "blocking",
+      "description": "The reliability-verify transcript never proved the app loaded from the dev servers; it fell back to build success plus /api/health instead of validating the required app-load behavior."
+    },
+    {
+      "featureId": "reliability-verify",
+      "severity": "blocking",
+      "description": "Sentry validation stopped at grep-based init checks and did not prove frontend, server, and Python test events reached Sentry end-to-end."
+    }
+  ],
+  "appliedUpdates": [
+    {
+      "target": "library",
+      "description": "Documented that ProcessService.killProcess() and ProcessService.killByPid() have different Windows shutdown semantics, so reliability work must trace which stop path callers use.",
+      "sourceFeature": "reliability-python-shutdown"
+    },
+    {
+      "target": "library",
+      "description": "Documented that ProtectedLayoutShell mounts useAuthenticatedFetch() for token-registration side effects while most authenticated frontend traffic still flows through apiFetch() + tokenGetter.",
+      "sourceFeature": "reliability-frontend-api-retry"
+    },
+    {
+      "target": "services.yaml",
+      "description": "Added a test_server command that discovers in-repo server *.test.ts files and runs them sequentially via tsx from the repository root.",
+      "sourceFeature": "reliability-server-convex-retry"
+    }
+  ],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "refactor-worker skill",
+      "suggestion": "When a feature has no applicable test harness (for example frontend-only work in this repo), explicitly allow alternative verification and require workers to record a skillFeedback deviation instead of marking the test-first procedure as fully followed.",
+      "evidence": "reliability-frontend-api-retry and reliability-frontend-websocket-reconnect both skipped new tests because AGENTS.md says there is no frontend test infrastructure, yet the handoffs still marked the refactor-worker procedure as fully followed. The same mismatch also appeared in server shutdown/retry handoffs that skipped or delayed red-phase tests.",
+      "isSystemic": true
+    },
+    {
+      "target": "refactor-worker skill",
+      "suggestion": "Extend the integration-seam checklist for signal/shutdown work so Python reliability changes must inspect the server-side process stop and signal-delivery paths, especially on Windows.",
+      "evidence": "reliability-python-shutdown missed that automation stop and manual profile stop still call killByPid() -> taskkill /T /F, bypassing the new Python graceful-shutdown path.",
+      "isSystemic": true
+    },
+    {
+      "target": "refactor-worker skill",
+      "suggestion": "Mark verification-only milestones as a poor fit for refactor-worker, or route them to a dedicated verification-oriented worker/skill instead.",
+      "evidence": "reliability-verify over-reported coverage and its own skill feedback said refactor-worker was a poor procedural fit for a verification-only feature.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Add a targeted shutdown/runtime verification command for server reliability features.",
+      "reason": "ambiguous — no existing canonical runtime shutdown verifier or test harness exists yet, so adding one safely would require new feature work rather than a low-risk shared-state update"
+    },
+    {
+      "observation": "docs/python/components.md still references python/database/settings.py after the file was removed.",
+      "reason": "outside this synthesis pass — the apply-now bucket is limited to services.yaml and .factory/library updates, and no docs change was requested"
+    },
+    {
+      "observation": "Make the safer stop_server_exec_safe / stop_frontend_exec_safe variants the primary service stop entries.",
+      "reason": "non-additive — the safe aliases already exist in services.yaml, but promoting them would require overwriting existing service entries rather than making an additive update"
+    },
+    {
+      "observation": "refactor-worker handoffs claimed the test-first procedure was followed even when tests were skipped or added later.",
+      "reason": "duplicate/systemic — captured by the recommended refactor-worker guidance update about explicit deviation handling when the red phase is skipped"
+    }
+  ],
+  "previousRound": null
+}
