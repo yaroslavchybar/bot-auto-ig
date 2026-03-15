@@ -27,6 +27,8 @@ class InstagramAutomationRunner:
         self.profiles_client = ProfilesClient()
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
         self._profile_cache_lock = Lock()
+        self._active_contexts_lock = Lock()
+        self._active_contexts: list = []
         configured = _parse_int(getattr(self.config, 'parallel_profiles', 1), 1)
         account_count = len(accounts) if accounts else 1
         self._max_workers = max(1, min(account_count, configured))
@@ -42,6 +44,30 @@ class InstagramAutomationRunner:
     def _set_cached_profile(self, profile_name: str, profile_data: Dict[str, Any]) -> None:
         with self._profile_cache_lock:
             self._profile_cache[profile_name] = profile_data
+
+    def register_browser_context(self, ctx_mgr: Any) -> None:
+        """Track an active browser context manager for shutdown cleanup."""
+        with self._active_contexts_lock:
+            self._active_contexts.append(ctx_mgr)
+
+    def unregister_browser_context(self, ctx_mgr: Any) -> None:
+        """Remove a browser context manager after normal cleanup."""
+        with self._active_contexts_lock:
+            try:
+                self._active_contexts.remove(ctx_mgr)
+            except ValueError:
+                pass
+
+    def close_all_browser_contexts(self) -> None:
+        """Force-close all registered browser contexts (shutdown cleanup)."""
+        with self._active_contexts_lock:
+            contexts = list(self._active_contexts)
+            self._active_contexts.clear()
+        for ctx_mgr in contexts:
+            try:
+                ctx_mgr.__exit__(None, None, None)
+            except Exception:
+                pass
 
     def stop(self) -> None:
         self.running = False

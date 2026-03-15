@@ -72,7 +72,7 @@ def _execute_control_activity(
     if activity_id == 'start_browser':
         return _start_browser(runner, cfg, browser_state, auto_started=False)
     if activity_id == 'close_browser':
-        return _close_browser(browser_state)
+        return _close_browser(runner, browser_state)
     if activity_id == 'select_list':
         return 'next'
     if activity_id == 'delay':
@@ -119,7 +119,7 @@ def _execute_browser_activity(
 
 
 def _start_browser(runner, cfg: Dict[str, Any], browser_state: Dict[str, Any], *, auto_started: bool) -> str:
-    _close_existing_context(browser_state)
+    _close_existing_context(runner, browser_state)
     headless_cfg = bool(cfg.get('headlessMode', runner.headless))
     ctx_mgr = create_browser_context(
         browser_state['profile_name'],
@@ -134,13 +134,15 @@ def _start_browser(runner, cfg: Dict[str, Any], browser_state: Dict[str, Any], *
     browser_state['_ctx_mgr'] = ctx_mgr
     browser_state['context'] = context
     browser_state['page'] = page
+    runner.register_browser_context(ctx_mgr)
     log('Browser auto-started.' if auto_started else 'Browser started.')
     return 'next' if not auto_started else 'success'
 
 
-def _close_existing_context(browser_state: Dict[str, Any]) -> None:
+def _close_existing_context(runner, browser_state: Dict[str, Any]) -> None:
     ctx_mgr = browser_state.get('_ctx_mgr')
     if ctx_mgr:
+        runner.unregister_browser_context(ctx_mgr)
         try:
             ctx_mgr.__exit__(None, None, None)
         except Exception:
@@ -157,10 +159,11 @@ def _close_existing_context(browser_state: Dict[str, Any]) -> None:
     browser_state['_ctx_mgr'] = None
 
 
-def _close_browser(browser_state: Dict[str, Any]) -> str:
+def _close_browser(runner, browser_state: Dict[str, Any]) -> str:
     ctx_mgr = browser_state.get('_ctx_mgr')
     if not ctx_mgr:
         return 'next'
+    runner.unregister_browser_context(ctx_mgr)
     try:
         ctx_mgr.__exit__(None, None, None)
     except Exception:

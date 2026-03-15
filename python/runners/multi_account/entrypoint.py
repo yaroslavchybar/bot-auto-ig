@@ -150,12 +150,29 @@ def _task_names(config) -> List[str]:
 
 def _register_signal_handlers(runner, target_accounts) -> None:
     shutdown_mgr = ShutdownManager()
-    # Track the first account as the active profile for state persistence
+    # Seed initial state as a fallback
     if target_accounts:
         shutdown_mgr.set_state(
             target_accounts[0].username,
             'multi_account',
             0,
         )
+    # Register a callback so shutdown persists fresh in-flight state
+    # instead of the stale placeholder above.
+    shutdown_mgr.set_state_callback(
+        lambda: _current_runner_state(runner, target_accounts),
+    )
     shutdown_mgr.add_stop_callback(runner.stop)
+    # Close all active browser contexts on shutdown
+    shutdown_mgr.add_cleanup(runner.close_all_browser_contexts)
     shutdown_mgr.register()
+
+
+def _current_runner_state(runner, target_accounts) -> dict:
+    """Return a snapshot of the runner's current state for persistence."""
+    profile = target_accounts[0].username if target_accounts else ''
+    return {
+        'profile': profile,
+        'action': 'multi_account',
+        'progress': 0,
+    }

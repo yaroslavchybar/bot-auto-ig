@@ -138,20 +138,25 @@ def _run_account_session(
     profile_data: Optional[Dict[str, object]],
     message_targets: Optional[List[Dict[str, object]]],
 ) -> bool:
-    with create_browser_context(
+    ctx_mgr = create_browser_context(
         account.username,
         account.proxy,
         _user_agent(profile_data),
         headless=runner.config.headless,
-    ) as (_context, page):
-        _run_enabled_actions(runner, page, account, profile_data, message_targets)
-        if runner.running:
-            log(f'All tasks completed for @{account.username}')
-            emit_event('profile_completed', profile=account.username, status='success')
-        else:
-            emit_event('profile_completed', profile=account.username, status='cancelled')
-        _sync_profile_idle(runner, account.username)
-        return True
+    )
+    runner.register_browser_context(ctx_mgr)
+    try:
+        with ctx_mgr as (_context, page):
+            _run_enabled_actions(runner, page, account, profile_data, message_targets)
+            if runner.running:
+                log(f'All tasks completed for @{account.username}')
+                emit_event('profile_completed', profile=account.username, status='success')
+            else:
+                emit_event('profile_completed', profile=account.username, status='cancelled')
+            _sync_profile_idle(runner, account.username)
+            return True
+    finally:
+        runner.unregister_browser_context(ctx_mgr)
 
 
 def _user_agent(profile_data: Optional[Dict[str, object]]) -> Optional[str]:

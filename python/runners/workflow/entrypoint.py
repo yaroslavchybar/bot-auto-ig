@@ -190,13 +190,28 @@ def _register_process_handlers(runner: WorkflowRunner) -> None:
     atexit.register(DisplayManager.cleanup_owner_sessions, os.getpid())
 
     shutdown_mgr = ShutdownManager()
-    # Track the first account as the active profile for state persistence
+    # Seed initial state as a fallback
     if runner.accounts:
         shutdown_mgr.set_state(
             runner.accounts[0].username,
             'workflow',
             0,
         )
+    # Register a callback so shutdown persists fresh in-flight state
+    # instead of the stale placeholder above.
+    shutdown_mgr.set_state_callback(lambda: _current_runner_state(runner))
     shutdown_mgr.add_stop_callback(runner.stop)
+    # Close all active browser contexts on shutdown
+    shutdown_mgr.add_cleanup(runner.close_all_browser_contexts)
     shutdown_mgr.add_cleanup(lambda: DisplayManager.cleanup_owner_sessions(os.getpid()))
     shutdown_mgr.register()
+
+
+def _current_runner_state(runner: WorkflowRunner) -> dict:
+    """Return a snapshot of the runner's current state for persistence."""
+    profile = runner.accounts[0].username if runner.accounts else ''
+    return {
+        'profile': profile,
+        'action': 'workflow',
+        'progress': 0,
+    }

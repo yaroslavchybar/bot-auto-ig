@@ -207,8 +207,10 @@ def _extract_username_from_user(user):
     if isinstance(user, dict):
         for key in ("userName", "username", "user_name", "login", "User Name"):
             v = user.get(key)
-            if v is not None:
-                return str(v).strip()
+            if v:
+                alias = str(v).strip()
+                if alias:
+                    return alias
         return ""
     if isinstance(user, str):
         return user.strip()

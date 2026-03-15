@@ -29,7 +29,7 @@ def process_account(runner, account) -> bool:
     except Exception as exc:
         return _handle_account_exception(runner, profile_name, exc)
     finally:
-        _cleanup_browser_context(browser_state)
+        _cleanup_browser_context(runner, browser_state)
         _release_display(runner, profile_name)
 
 
@@ -223,10 +223,11 @@ def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool
     return False
 
 
-def _cleanup_browser_context(browser_state: Dict[str, Any]) -> None:
+def _cleanup_browser_context(runner, browser_state: Dict[str, Any]) -> None:
     try:
         ctx_mgr = browser_state.get('_ctx_mgr')
         if ctx_mgr:
+            runner.unregister_browser_context(ctx_mgr)
             ctx_mgr.__exit__(None, None, None)
     except Exception:
         pass

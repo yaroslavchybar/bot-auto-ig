@@ -34,6 +34,7 @@ class ShutdownManager:
         self._profile: Optional[str] = None
         self._action: Optional[str] = None
         self._progress: int = 0
+        self._state_callback: Optional[Callable[[], Dict[str, Any]]] = None
         self._cleanup_fns: List[Callable[[], None]] = []
         self._done = False
         self._registered = False
@@ -51,6 +52,20 @@ class ShutdownManager:
         self._profile = profile
         self._action = action
         self._progress = progress
+
+    def set_state_callback(
+        self,
+        callback: Callable[[], Dict[str, Any]],
+    ) -> None:
+        """Register a callback that retrieves current state at shutdown time.
+
+        The callback must return a dict with keys ``profile``, ``action``,
+        and ``progress``.  When set, the callback takes precedence over
+        the static values supplied via :meth:`set_state`, ensuring that
+        the persisted snapshot reflects the in-flight runtime state rather
+        than a stale placeholder.
+        """
+        self._state_callback = callback
 
     def add_cleanup(self, fn: Callable[[], None]) -> None:
         """Register a cleanup callable (e.g. browser close, display release).
@@ -114,14 +129,28 @@ class ShutdownManager:
         logger.info('Graceful shutdown initiated')
 
         # 1. Persist current state iff we have a profile context.
-        if self._profile and self._action:
+        #    Prefer the state callback (fresh in-flight snapshot) over
+        #    the static values seeded via set_state().
+        profile = self._profile
+        action = self._action
+        progress = self._progress
+        if self._state_callback is not None:
             try:
-                save_state(self._profile, self._action, self._progress)
+                fresh = self._state_callback()
+                if isinstance(fresh, dict):
+                    profile = fresh.get('profile', profile)
+                    action = fresh.get('action', action)
+                    progress = fresh.get('progress', progress)
+            except Exception as exc:
+                logger.error('State callback failed, using fallback: %s', exc)
+        if profile and action:
+            try:
+                save_state(profile, action, progress)
                 logger.info(
                     'State persisted: profile=%s action=%s progress=%d',
-                    self._profile,
-                    self._action,
-                    self._progress,
+                    profile,
+                    action,
+                    progress,
                 )
             except Exception as exc:
                 logger.error('Failed to persist state: %s', exc)

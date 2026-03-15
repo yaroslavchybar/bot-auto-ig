@@ -50,12 +50,38 @@ class WorkflowRunner:
         self.profiles_client = ProfilesClient()
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
         self._profile_cache_lock = Lock()
+        self._active_contexts_lock = Lock()
+        self._active_contexts: list = []
         self._node_states_lock = RLock()
         self._max_workers = _max_workers(options, accounts, self._has_scrape_relationships)
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
         self.display_mgr = DisplayManager()
         raw_node_states = options.get('node_states')
         self.node_states: Dict[str, Any] = dict(raw_node_states) if isinstance(raw_node_states, dict) else {}
+
+    def register_browser_context(self, ctx_mgr: Any) -> None:
+        """Track an active browser context manager for shutdown cleanup."""
+        with self._active_contexts_lock:
+            self._active_contexts.append(ctx_mgr)
+
+    def unregister_browser_context(self, ctx_mgr: Any) -> None:
+        """Remove a browser context manager after normal cleanup."""
+        with self._active_contexts_lock:
+            try:
+                self._active_contexts.remove(ctx_mgr)
+            except ValueError:
+                pass
+
+    def close_all_browser_contexts(self) -> None:
+        """Force-close all registered browser contexts (shutdown cleanup)."""
+        with self._active_contexts_lock:
+            contexts = list(self._active_contexts)
+            self._active_contexts.clear()
+        for ctx_mgr in contexts:
+            try:
+                ctx_mgr.__exit__(None, None, None)
+            except Exception:
+                pass
 
     def stop(self) -> None:
         self.running = False
