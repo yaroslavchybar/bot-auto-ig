@@ -50,6 +50,7 @@ python/
 - The server launches workflow subprocesses through `python/runners/run_workflow.py`; that wrapper then calls into `python.runners.workflow.entrypoint.main()`.
 - `python/core/clients.py` is the canonical facade for Convex/database clients outside `python/database/`; files in `python/actions/` and `python/runners/` should import client helpers from this facade instead of importing `python.database.*` directly.
 - `python/browser/context.py` still wraps the synchronous `Camoufox` context manager today. Locator migrations in follow/highlight flows must update helper calls that use `page.evaluate(..., element)` or `page.wait_for_function(..., arg=element)` to locator-native APIs or explicit element handles rather than only swapping collection sites to `loc.nth(i)`.
+- Launcher shutdown persistence, `ShutdownManager`, and the feed/reels scrolling runtimes all share the single `data/session_state.json` file via `python/core/storage/state_persistence.py`; shutdown-related fixes must preserve the richer persisted `profile` / `action` / `progress` snapshot instead of overwriting it with coarser launcher metadata.
 - Repository tracking is uneven under `python/tests/`: `.gitignore` whitelists only selected files, so newly added Python tests may require `git add -f python/tests/<file>` before commit.
 
 ### Convex Module Split Notes

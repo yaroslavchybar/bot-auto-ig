@@ -1,7 +1,7 @@
 {
   "milestone": "reliability",
-  "round": 5,
-  "status": "pass",
+  "round": 4,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -14,12 +14,12 @@
         {
           "command": "python -m pytest python/tests -q",
           "exitCode": 0,
-          "observation": "Pytest completed with 262 passed and 1 xfailed in 7.62s; after the summary, python/core/shutdown.py still emitted the known cosmetic closed-stream ValueError logging noise on stderr during shutdown logging."
+          "observation": "Pytest completed with 262 passed and 1 xfailed in 7.68s; after the summary, python/core/shutdown.py still logged the known cosmetic closed-stream ValueError messages on stderr during shutdown logging."
         },
         {
           "command": "python -c \"import pathlib, subprocess, sys; root=pathlib.Path(r'C:\\\\Users\\\\yaros\\\\Downloads\\\\bot-auto-ig\\\\server'); tests=sorted(str(p.resolve()) for p in root.rglob('*.test.ts') if 'node_modules' not in p.parts and 'dist' not in p.parts); print(tests); rc=0\nfor test in tests:\n    result=subprocess.run(['npm.cmd','--prefix','server','exec','tsx','--test',test])\n    rc=result.returncode\n    if rc:\n        break\nsys.exit(rc)\"",
           "exitCode": 0,
-          "observation": "Server node:test suites ran automation event-parser, logs parser, and shared convexClient tests with 20 passing assertions and no failures."
+          "observation": "Server node:test suites ran event-parser, logs parser, and convexClient tests with 20 passing assertions and no failures."
         }
       ]
     },
@@ -51,26 +51,22 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "reliability-scrutiny-fixes-python-r3"
+    ]
   },
-  "blockingIssues": [],
-  "appliedUpdates": [
+  "blockingIssues": [
     {
-      "target": "library",
-      "description": "Documented the shared `data/session_state.json` persistence seam in `.factory/library/architecture.md` so future shutdown/reliability work knows launcher shutdown, ShutdownManager, and scrolling runtimes coordinate through the same persisted snapshot.",
-      "sourceFeature": "reliability-scrutiny-fixes-python-r4"
+      "featureId": "reliability-scrutiny-fixes-python-r3",
+      "severity": "blocking",
+      "description": "The launcher shutdown callback still overwrites richer scrolling snapshots with the coarser launcher action when the persisted scrolling progress is reused at the same value. That preserves progress but still regresses the saved action from `scroll_feed` / `scroll_reels` back to `args.action`, so the round-3 launcher overwrite failure is not fully fixed.",
+      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python-r3.json; code: python/runners/launcher.py:185-199 returns `{ profile: args.name, action: args.action, progress }`, while scrolling runtimes persist `scroll_feed` / `scroll_reels` in python/actions/browsing/feed_scrolling/runtime.py:242-249 and python/actions/browsing/reels_scrolling/runtime.py:205-212, and python/core/shutdown.py:145-164 only skips save_state() when existing progress is strictly higher, not when equal and richer metadata already exists."
     }
   ],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "refactor-worker skill",
-      "suggestion": "Clarify the refactor-worker verification procedure and handoff expectations for narrow fix features. Either require the full repo-wide validator suite consistently, or explicitly allow scoped validators plus `followedProcedure: false` / deviation reporting when a worker intentionally runs a narrower check.",
-      "evidence": "The review for `reliability-scrutiny-fixes-python-r4` found that `.factory/skills/refactor-worker/SKILL.md` still requires the full validator set, but the feature handoff recorded only Python pytest while still claiming `followedProcedure: true`.",
-      "isSystemic": true
-    }
-  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/reliability/scrutiny/synthesis.round4.json"
+  "previousRound": ".factory/validation/reliability/scrutiny/synthesis.round3.json"
 }

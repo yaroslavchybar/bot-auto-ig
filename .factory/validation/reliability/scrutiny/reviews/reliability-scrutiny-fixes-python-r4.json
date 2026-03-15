@@ -1,0 +1,26 @@
+{
+  "featureId": "reliability-scrutiny-fixes-python-r4",
+  "reviewedAt": "2026-03-15T17:15:43.952544Z",
+  "commitId": "a96a463",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The r4 commit fully addresses the lone blocking issue left by the r3 review. `python/runners/launcher.py` now reuses the persisted scrolling action as well as progress when the saved state for the same profile is at least as rich, and `python/core/shutdown.py` now skips equal-progress writes for the same profile, so shutdown no longer overwrites `scroll_feed` / `scroll_reels` with the coarser launcher action.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`refactor-worker`'s verification procedure does not match how these reliability fix features are actually being executed. The skill still says to run the full repo-wide validator suite, while this worker ran only Python pytest and still reported `followedProcedure: true`.",
+      "evidence": "`C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\skills\\refactor-worker\\SKILL.md:68-76` requires `npm run test:convex`, `python -m pytest python/tests -q`, `npm --prefix server run build`, `npm --prefix frontend run build`, and `npm --prefix frontend run lint`, but the r4 handoff records only `python -m pytest python/tests -q` baseline/after-fix plus `git diff` in `C:\\Users\\yaros\\.factory\\missions\\c159f8a2-f42a-48c7-bea6-166e5c18ca91\\handoffs\\2026-03-15T17-09-38-458Z__reliability-scrutiny-fixes-python-r4__506f8acd-b677-4597-ace0-15135f607530.json:13-38`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The shared-state seam behind these shutdown reviews is still undocumented in the project library: launcher shutdown, shutdown persistence, and feed/reels scrolling all coordinate through one shared `data/session_state.json` file.",
+      "evidence": "`python/core/storage/state_persistence.py:11-30` defines the single `data/session_state.json` store, and the same file is read/written by `python/runners/launcher.py:194`, `python/core/shutdown.py:153`, `python/actions/browsing/feed_scrolling/runtime.py:249`, and `python/actions/browsing/reels_scrolling/runtime.py:210`, but `.factory/library/architecture.md` does not call out this cross-runner persistence seam."
+    }
+  ],
+  "addressesFailureFrom": "C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\validation\\reliability\\scrutiny\\reviews\\reliability-scrutiny-fixes-python-r3.json",
+  "summary": "Pass. I reviewed the prior r3 failure report, both r3/r4 handoffs and diffs, the r4 transcript skeleton, and the current launcher/shutdown/scrolling-state code. Commit `a96a463` closes the remaining launcher overwrite blocker by preserving the persisted scrolling action on equal-progress shutdown, and I did not find a new blocking regression in the reviewed path."
+}
