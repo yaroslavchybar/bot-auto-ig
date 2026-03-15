@@ -1,6 +1,6 @@
 {
   "milestone": "reliability",
-  "round": 3,
+  "round": 4,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -9,17 +9,17 @@
         {
           "command": "npm run test:convex",
           "exitCode": 0,
-          "observation": "Vitest passed all 20 Convex test files with 58 tests green."
+          "observation": "Vitest ran all 20 Convex test files successfully with 58 passing tests."
         },
         {
           "command": "python -m pytest python/tests -q",
           "exitCode": 0,
-          "observation": "Pytest reported 262 passed and 1 xfailed in 6.74s; after the summary, python/core/shutdown.py still emitted the known cosmetic closed-stream logging ValueErrors on stderr."
+          "observation": "Pytest completed with 262 passed and 1 xfailed in 7.68s; after the summary, python/core/shutdown.py still logged the known cosmetic closed-stream ValueError messages on stderr during shutdown logging."
         },
         {
           "command": "python -c \"import pathlib, subprocess, sys; root=pathlib.Path(r'C:\\\\Users\\\\yaros\\\\Downloads\\\\bot-auto-ig\\\\server'); tests=sorted(str(p.resolve()) for p in root.rglob('*.test.ts') if 'node_modules' not in p.parts and 'dist' not in p.parts); print(tests); rc=0\nfor test in tests:\n    result=subprocess.run(['npm.cmd','--prefix','server','exec','tsx','--test',test])\n    rc=result.returncode\n    if rc:\n        break\nsys.exit(rc)\"",
           "exitCode": 0,
-          "observation": "Server node:test coverage ran the event-parser, log parser, and convexClient suites with all 20 tests passing."
+          "observation": "Server node:test suites ran event-parser, logs parser, and convexClient tests with 20 passing assertions and no failures."
         }
       ]
     },
@@ -44,7 +44,7 @@
         {
           "command": "npm --prefix frontend run lint",
           "exitCode": 0,
-          "observation": "ESLint finished with no frontend lint errors."
+          "observation": "ESLint completed with no frontend lint violations."
         }
       ]
     }
@@ -54,25 +54,19 @@
     "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "reliability-scrutiny-fixes-python-r2"
+      "reliability-scrutiny-fixes-python-r3"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "reliability-scrutiny-fixes-python-r2",
+      "featureId": "reliability-scrutiny-fixes-python-r3",
       "severity": "blocking",
-      "description": "The multi-account shutdown callback still persists placeholder progress instead of live in-flight progress. `_current_runner_state()` now reads the live profile and action, but it still hardcodes `progress: 0`, so the shutdown snapshot is not fully fresh once processing has started.",
-      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python-r2.json; code: python/runners/multi_account/entrypoint.py:173-181 with supporting runner state in python/runners/multi_account/runtime.py:40-41 and python/runners/multi_account/account_session.py:21-22,189."
-    },
-    {
-      "featureId": "reliability-scrutiny-fixes-python-r2",
-      "severity": "blocking",
-      "description": "The launcher shutdown callback can still overwrite richer scrolling snapshots with stale manual-run metadata. It now writes `{ profile: args.name, action: args.action, progress: retry_count }`, but scrolling runtimes persist more specific actions (`scroll_feed` / `scroll_reels`) and elapsed progress, so shutdown can still replace the richer snapshot with coarser launcher state.",
-      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python-r2.json; code: python/runners/launcher.py:185-188, python/browser/runtime.py:136-140, python/actions/browsing/feed_scrolling/runtime.py:249, and python/actions/browsing/reels_scrolling/runtime.py:210."
+      "description": "The launcher shutdown callback still overwrites richer scrolling snapshots with the coarser launcher action when the persisted scrolling progress is reused at the same value. That preserves progress but still regresses the saved action from `scroll_feed` / `scroll_reels` back to `args.action`, so the round-3 launcher overwrite failure is not fully fixed.",
+      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python-r3.json; code: python/runners/launcher.py:185-199 returns `{ profile: args.name, action: args.action, progress }`, while scrolling runtimes persist `scroll_feed` / `scroll_reels` in python/actions/browsing/feed_scrolling/runtime.py:242-249 and python/actions/browsing/reels_scrolling/runtime.py:205-212, and python/core/shutdown.py:145-164 only skips save_state() when existing progress is strictly higher, not when equal and richer metadata already exists."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/reliability/scrutiny/synthesis.round2.json"
+  "previousRound": ".factory/validation/reliability/scrutiny/synthesis.round3.json"
 }

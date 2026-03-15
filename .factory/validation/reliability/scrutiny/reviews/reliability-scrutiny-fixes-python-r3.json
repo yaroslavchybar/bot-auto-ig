@@ -1,0 +1,22 @@
+{
+  "featureId": "reliability-scrutiny-fixes-python-r3",
+  "reviewedAt": "2026-03-15T20:00:00Z",
+  "commitId": "d05e680",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The multi-account callback now reuses persisted progress and resolves the first blocker, but the launcher/shutdown path still overwrites richer scrolling snapshots with coarser action metadata, so the round-3 fix does not fully clear the prior failure.",
+    "issues": [
+      {
+        "file": "python/runners/launcher.py",
+        "line": 199,
+        "severity": "blocking",
+        "description": "The launcher callback now preserves persisted progress, but it still returns the coarse launcher action (`args.action`) instead of the richer scrolling action already persisted by the scrolling runtimes. For `scroll`/`reels`/`mixed`, `run_browser()` dispatches into scrolling sessions (`python/browser/runtime.py:136-141`) that save `scroll_feed` / `scroll_reels` snapshots (`python/actions/browsing/feed_scrolling/runtime.py:249`, `python/actions/browsing/reels_scrolling/runtime.py:210`). `_launcher_state_callback()` copies only the progress (`python/runners/launcher.py:189-199`), and `_run_shutdown()` only skips the write when the existing progress is strictly higher (`python/core/shutdown.py:151-164`). When the persisted progress is reused and therefore equal, shutdown still calls `save_state(profile, action, progress)` and overwrites `scroll_feed` / `scroll_reels` with the coarser launcher action, so the richer scrolling snapshot is still not preserved end-to-end."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "C:\\Users\\yaros\\Downloads\\bot-auto-ig\\.factory\\validation\\reliability\\scrutiny\\reviews\\reliability-scrutiny-fixes-python-r2.json",
+  "summary": "Reviewed the prior r2 failure, the r3 handoff/transcript, and the current shutdown-related Python code. Result: fail. The multi-account progress fallback is fixed, but the launcher path still rewrites richer scrolling state because it preserves only progress while shutdown continues to save the coarser launcher action when progress is equal."
+}
