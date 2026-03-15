@@ -1,0 +1,40 @@
+{
+  "featureId": "python-playwright-modernization",
+  "reviewedAt": "2026-03-15T02:05:35.667505+00:00",
+  "commitId": "81c1d912baff5b0524fe495e285e774362a5fe87",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. The commit does remove `query_selector*` calls from production code, but it does not satisfy the feature contract's Camoufox requirement and it introduces runtime regressions in the locator migrations. `python/browser/context.py` still uses synchronous `Camoufox` plus manual `__enter__`/`__exit__` calls instead of an `AsyncCamoufox` context-manager pattern, which directly contradicts `features.json:1385-1396` and `validation-contract.md:207-209`. Separately, two follow flows now collect `Locator` objects (`loc.nth(i)`) and then keep passing them into `page.evaluate()` / `page.wait_for_function()` helpers that were written for element handles; Playwright's own API docs for `Page.evaluate` only document serializable values and `ElementHandle` arguments, with locator-specific work handled by `Locator.evaluate`. That means highlight watching and profile-post liking can now fail at runtime even though the updated mocks still let tests pass.",
+    "issues": [
+      {
+        "file": "python/browser/context.py",
+        "line": 121,
+        "severity": "blocking",
+        "description": "The feature required `async with AsyncCamoufox(...)` and no manual context-manager plumbing, but this file still imports `Camoufox`, calls `cm.__enter__()` at lines 124-131, and later calls `cm.__exit__(...)` at line 163. The change only renamed `_enter_camoufox_context` to `_open_camoufox`; it did not implement the required AsyncCamoufox pattern or remove manual enter/exit management."
+      },
+      {
+        "file": "python/actions/engagement/follow/highlights_runtime.py",
+        "line": 84,
+        "severity": "blocking",
+        "description": "`_visible_highlight_buttons()` now stores `Locator` instances via `loc.nth(i)` (line 70), but `_is_visible()`, `_wait_for_highlight_button()`, `_scroll_highlight_into_view()`, and `_click_highlight()` still pass that locator into `page.evaluate()` / `page.wait_for_function()` (lines 84, 136, 160, 176) as if it were an `ElementHandle`. On real Playwright pages this breaks the highlight-open flow; these helpers need locator-native calls (for example `button.evaluate(...)`) or explicit element handles."
+      },
+      {
+        "file": "python/actions/engagement/follow/posts_runtime.py",
+        "line": 171,
+        "severity": "blocking",
+        "description": "`_collect_selector_links()` now appends `Locator` objects from `loc.nth(i)` (lines 155-164), but `_is_visible()` still calls `page.evaluate(..., element)` at line 171. Because `like_some_posts()` filters candidates through `_is_visible()` before clicking them, the post-liking path can now reject or error on real pages even though the locator-based mocks still pass in tests."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "The shared docs do not clearly record that this Python browser stack currently uses the synchronous Playwright/Camoufox API. That gap made it easy for the worker to reinterpret the explicit AsyncCamoufox contract instead of escalating the mismatch.",
+      "evidence": "`worker-transcripts.jsonl:51` shows the worker web-searched Camoufox docs, concluded the repo is synchronous, and then proceeded with `with Camoufox()` semantics. By contrast, `validation-contract.md:207-209` and mission `AGENTS.md` require an AsyncCamoufox context-manager pattern, while `.factory/library/architecture.md:43-45` only documents the Python browser layer generically and `docs/python/automation.md` contains no sync/async Camoufox guidance."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed mission metadata, handoff, transcript skeleton, the `refactor-worker` skill, and `git show` for commit `81c1d912baff5b0524fe495e285e774362a5fe87`. This feature fails review: it removed `query_selector*` usage, but it did not implement the required AsyncCamoufox pattern and it introduced locator-vs-element-handle regressions in highlight watching and profile-post liking."
+}

@@ -1,0 +1,26 @@
+{
+  "featureId": "python-size-limits",
+  "reviewedAt": "2026-03-15T02:06:48.706789+00:00",
+  "commitId": "63d0d0fe6765a0edd849f5e72d04756733b92de8",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Pass. The implementation matches `features.json:1355-1382`: it splits the scrape-relationships workflow code by moving the navigation/chunk helpers into `python/runners/workflow/scrape_navigation.py`, updates `WorkflowRunner` to call that module via the same wrapper methods (`python/runners/workflow/runtime.py:17-19` and `129-133`), and keeps the scrape executor entrypoint stable in `python/runners/workflow/scrape_relationships.py:26-27`, `37`, and `741`. The oversized tests were also broken up coherently: workflow regressions now live in `python/tests/test_workflow_regressions.py:1` and `28`, scrape-relationships coverage is split across `python/tests/test_workflow_scrape_relationships.py:83` and `python/tests/test_workflow_scrape_relationships_extended.py:42` and `668`, and the cookie-cleanup regression now uses extracted module-scope fakes in `python/tests/test_profile_cookies.py:280`, `295`, and `308`. I did not find blocking or non-blocking correctness issues in the reviewed feature diff.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The worker marked `refactor-worker` as fully followed, but the feature run did not execute the full validator suite that the shared skill currently mandates for refactors.",
+      "evidence": "`C:/Users/yaros/Downloads/bot-auto-ig/.factory/skills/refactor-worker/SKILL.md:68-76` requires `npm run test:convex`, `python -m pytest python/tests -q`, `npm --prefix server run build`, `npm --prefix frontend run build`, and `npm --prefix frontend run lint`. The reviewed handoff records only pytest plus the line-count and AST scans in `C:/Users/yaros/.factory/missions/c159f8a2-f42a-48c7-bea6-166e5c18ca91/handoffs/2026-03-15T01-39-59-375Z__python-size-limits__382fe31e-06c2-41eb-97aa-842baa2c6738.json:13-28`."
+    },
+    {
+      "area": "knowledge",
+      "observation": "The repo has the same force-add gotcha for `python/tests/` that architecture.md already documents for `tests/convex/`, but that Python-specific tracking rule is not captured in shared knowledge even though this worker had to rely on it.",
+      "evidence": "`.gitignore:183-185` ignores `python/tests/*` except an explicit whitelist, and the handoff states `Force-added new test files that were gitignored` in `C:/Users/yaros/.factory/missions/c159f8a2-f42a-48c7-bea6-166e5c18ca91/handoffs/2026-03-15T01-39-59-375Z__python-size-limits__382fe31e-06c2-41eb-97aa-842baa2c6738.json:11`. By contrast, the only existing documentation of this pattern is the Convex-specific note in `C:/Users/yaros/Downloads/bot-auto-ig/.factory/library/architecture.md:53-55`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed mission metadata, handoff, transcript skeleton, commit `63d0d0fe6765a0edd849f5e72d04756733b92de8`, and the affected Python runtime/test files for `python-size-limits`. The feature satisfies the requested size-limit refactor without introducing correctness issues, so it passes review; I noted one skill-procedure mismatch and one missing shared-knowledge note about gitignored Python tests."
+}
