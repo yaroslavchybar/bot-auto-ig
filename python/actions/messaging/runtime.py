@@ -197,12 +197,15 @@ def _compose_and_send(page, target: Dict, message_texts: List[str], log, client,
 
 def _close_message_popup(page, log) -> None:
     try:
-        close_svg = page.query_selector('svg[aria-label="Close"]')
-        if close_svg:
-            close_btn = close_svg.query_selector(
-                'xpath=ancestor-or-self::*[self::button or @role="button"][1]'
-            ) or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
-            (close_btn or close_svg).click()
+        close_svg = page.locator('svg[aria-label="Close"]')
+        if close_svg.count() > 0:
+            first_close = close_svg.first
+            btn_loc = first_close.locator('xpath=ancestor-or-self::*[self::button or @role="button"][1]')
+            div_loc = first_close.locator('xpath=ancestor-or-self::*[self::div][1]')
+            close_target = btn_loc.first if btn_loc.count() > 0 else (
+                div_loc.first if div_loc.count() > 0 else first_close
+            )
+            close_target.click()
             log('Closed message window')
         else:
             page.keyboard.press('Escape')

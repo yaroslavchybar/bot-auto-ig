@@ -17,6 +17,26 @@ OPENED_SELECTOR = '[aria-label="Next"], svg[aria-label="Next"], [aria-label="Clo
 OPENED_DIALOG_SELECTOR = '[role="dialog"] [aria-label="Close"]'
 
 
+class _FakeLocator:
+    """Minimal locator stand-in that records events and drains a shared results list."""
+
+    def __init__(self, selector, results_queue, events):
+        self._selector = selector
+        self._results_queue = results_queue
+        self._events = events
+
+    def count(self):
+        self._events.append(f'select:{self._selector}')
+        result = self._results_queue.pop(0) if self._results_queue else None
+        self._count_val = 1 if result else 0
+        self._result = result
+        return self._count_val
+
+    @property
+    def first(self):
+        return self._result
+
+
 class UrlAwarePage:
     def __init__(self, selector_results, url_values, events):
         self._selector_results = list(selector_results)
@@ -26,19 +46,15 @@ class UrlAwarePage:
         self.events = events
         self.keyboard = MagicMock()
         self.evaluate = MagicMock(side_effect=self._evaluate)
-        self.query_selector = MagicMock(side_effect=self._query_selector)
+
+    def locator(self, selector):
+        return _FakeLocator(selector, self._selector_results, self.events)
 
     def _evaluate(self, script, _button):
         if 'scrollIntoView' in script:
             self.events.append('scroll')
             return None
         self.events.append('evaluate')
-        return None
-
-    def _query_selector(self, selector):
-        self.events.append(f'select:{selector}')
-        if self._selector_results:
-            return self._selector_results.pop(0)
         return None
 
     @property
@@ -77,6 +93,33 @@ def test_target_highlights_logs_skip_when_configured_zero(messages):
     assert messages == ['Skipping highlights (configured 0).']
 
 
+class _MockHighlightLocator:
+    """Locator stub that returns nth elements from a provided list."""
+
+    def __init__(self, items):
+        self._items = items
+
+    def count(self):
+        return len(self._items)
+
+    def nth(self, index):
+        return self._items[index]
+
+
+def _make_locator_page(selector_map, evaluate_fn=None):
+    """Build a MagicMock page whose .locator() returns _MockHighlightLocator per selector."""
+    page = MagicMock()
+
+    def _locator(selector):
+        items = selector_map.get(selector, [])
+        return _MockHighlightLocator(items)
+
+    page.locator = MagicMock(side_effect=_locator)
+    if evaluate_fn:
+        page.evaluate = MagicMock(side_effect=evaluate_fn)
+    return page
+
+
 def test_visible_highlight_buttons_returns_only_visible_matches(monkeypatch, messages):
     hidden_button = MagicMock(name='hidden_button')
     hidden_button.visible = False
@@ -85,20 +128,21 @@ def test_visible_highlight_buttons_returns_only_visible_matches(monkeypatch, mes
     second_visible_button = MagicMock(name='second_visible_button')
     second_visible_button.visible = True
 
-    page = MagicMock()
-    page.query_selector_all.side_effect = lambda selector: {
-        HIGHLIGHT_SELECTORS[0]: [],
-        HIGHLIGHT_SELECTORS[1]: [],
-        HIGHLIGHT_SELECTORS[2]: [hidden_button, visible_button, second_visible_button],
-    }.get(selector, [])
-    page.evaluate.side_effect = lambda _script, button: button.visible
+    page = _make_locator_page(
+        {
+            HIGHLIGHT_SELECTORS[0]: [],
+            HIGHLIGHT_SELECTORS[1]: [],
+            HIGHLIGHT_SELECTORS[2]: [hidden_button, visible_button, second_visible_button],
+        },
+        evaluate_fn=lambda _script, button: button.visible,
+    )
     monkeypatch.setattr(highlights_runtime.random, 'shuffle', lambda buttons: None)
 
     buttons = highlights_runtime._visible_highlight_buttons(page, messages.append)
 
     assert buttons == [visible_button, second_visible_button]
     assert messages == []
-    queried_selectors = [call.args[0] for call in page.query_selector_all.call_args_list]
+    queried_selectors = [c.args[0] for c in page.locator.call_args_list]
     assert queried_selectors[:3] == HIGHLIGHT_SELECTORS[:3]
     assert page.evaluate.call_args_list == [
         call(ANY, hidden_button),
@@ -108,25 +152,29 @@ def test_visible_highlight_buttons_returns_only_visible_matches(monkeypatch, mes
 
 
 def test_visible_highlight_buttons_logs_when_no_matches_found(messages):
-    page = MagicMock()
-    page.query_selector_all.return_value = []
+    page = _make_locator_page({sel: [] for sel in HIGHLIGHT_SELECTORS})
 
     assert highlights_runtime._visible_highlight_buttons(page, messages.append) == []
     assert messages == ['No highlights found']
-    assert [call.args[0] for call in page.query_selector_all.call_args_list] == HIGHLIGHT_SELECTORS
+    assert [c.args[0] for c in page.locator.call_args_list] == HIGHLIGHT_SELECTORS
     page.evaluate.assert_not_called()
 
 
 def test_visible_highlight_buttons_logs_when_all_matches_are_hidden(messages):
     hidden_button = MagicMock(name='hidden_button')
     hidden_button.visible = False
-    page = MagicMock()
-    page.query_selector_all.side_effect = lambda selector: [hidden_button] if selector == HIGHLIGHT_SELECTORS[0] else []
-    page.evaluate.side_effect = lambda _script, button: button.visible
+
+    page = _make_locator_page(
+        {
+            HIGHLIGHT_SELECTORS[0]: [hidden_button],
+            **{sel: [] for sel in HIGHLIGHT_SELECTORS[1:]},
+        },
+        evaluate_fn=lambda _script, button: button.visible,
+    )
 
     assert highlights_runtime._visible_highlight_buttons(page, messages.append) == []
     assert messages == ['No visible highlights found']
-    assert page.query_selector_all.call_args_list[0].args[0] == HIGHLIGHT_SELECTORS[0]
+    assert page.locator.call_args_list[0].args[0] == HIGHLIGHT_SELECTORS[0]
     page.evaluate.assert_called_once_with(ANY, hidden_button)
 
 

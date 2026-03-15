@@ -7,10 +7,12 @@ from python.actions.engagement.follow.common import _find_close_button, _safe
 
 def _find_story_nav(page, label: str):
     try:
-        for svg in page.query_selector_all(f'svg[aria-label*="{label}" i]'):
-            btn = svg.query_selector('xpath=ancestor-or-self::*[@role="button"][1]')
-            if btn:
-                return btn
+        svg_loc = page.locator(f'svg[aria-label*="{label}" i]')
+        for i in range(svg_loc.count()):
+            svg = svg_loc.nth(i)
+            btn_loc = svg.locator('xpath=ancestor-or-self::*[@role="button"][1]')
+            if btn_loc.count() > 0:
+                return btn_loc.first
     except Exception:
         return None
     return None
@@ -63,7 +65,9 @@ def _visible_highlight_buttons(page, log):
         'a[href*="/stories/highlights/"]',
         'xpath=//a[contains(@href,"/highlights/")]',
     ):
-        highlight_buttons.extend(page.query_selector_all(selector))
+        loc = page.locator(selector)
+        for i in range(loc.count()):
+            highlight_buttons.append(loc.nth(i))
     if not highlight_buttons:
         log('No highlights found')
         return []
@@ -182,9 +186,9 @@ def _click_highlight(page, log, button) -> bool:
 
 def _highlight_opened(page) -> bool:
     return bool(
-        page.query_selector('[aria-label="Next"], svg[aria-label="Next"], [aria-label="Close"]')
-        or page.query_selector('[role="dialog"] [aria-label="Close"]')
-        or page.query_selector('video')
+        page.locator('[aria-label="Next"], svg[aria-label="Next"], [aria-label="Close"]').count() > 0
+        or page.locator('[role="dialog"] [aria-label="Close"]').count() > 0
+        or page.locator('video').count() > 0
         or 'stories/highlights' in (page.url or '')
     )
 

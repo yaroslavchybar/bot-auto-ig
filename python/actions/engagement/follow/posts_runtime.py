@@ -152,9 +152,11 @@ def _collect_post_links(page, log, max_posts: int, liked: Set[str]):
 
 
 def _collect_selector_links(page, selector: str, seen_hrefs: Set[str], post_links: list) -> int:
-    links = page.query_selector_all(selector) or []
+    loc = page.locator(selector)
+    count = loc.count()
     added = 0
-    for link in links:
+    for i in range(count):
+        link = loc.nth(i)
         href = link.get_attribute('href') or ''
         if not href or href in seen_hrefs:
             continue
@@ -211,13 +213,19 @@ def _like_single_post(page, link, log, liked: Set[str]) -> bool:
 
 
 def _click_like_button(page, log) -> bool:
-    like_btn = (
-        page.query_selector('svg[aria-label="Like"]')
-        or page.query_selector('button[aria-label="Like"]')
-        or page.query_selector('[role="button"][aria-label*="Like"]')
-        or page.query_selector('button[data-testid*="like"]')
-        or page.query_selector('[aria-label*="like" i]')
-    )
+    like_selectors = [
+        'svg[aria-label="Like"]',
+        'button[aria-label="Like"]',
+        '[role="button"][aria-label*="Like"]',
+        'button[data-testid*="like"]',
+        '[aria-label*="like" i]',
+    ]
+    like_btn = None
+    for sel in like_selectors:
+        loc = page.locator(sel)
+        if loc.count() > 0:
+            like_btn = loc.first
+            break
     if not like_btn:
         log('Like button not found')
         return False

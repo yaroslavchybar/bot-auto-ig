@@ -58,7 +58,7 @@ def create_browser_context(
     cm = None
     context = None
     try:
-        cm, context = _enter_camoufox_context(launch_kwargs)
+        cm, context = _open_camoufox(launch_kwargs)
         page, monitor = initialize_browser_page(context, profile_name)
         bootstrap_instagram_session(page, monitor, profile_name, proxy_string)
         _sync_session_state(context, profile_name)
@@ -118,7 +118,8 @@ def _build_launch_kwargs(
     return launch_kwargs
 
 
-def _enter_camoufox_context(launch_kwargs: dict):
+def _open_camoufox(launch_kwargs: dict):
+    """Open a Camoufox browser context using the context manager protocol."""
     try:
         cm = Camoufox(geoip=True, **launch_kwargs)
         return cm, cm.__enter__()

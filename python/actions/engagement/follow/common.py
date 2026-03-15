@@ -28,19 +28,24 @@ def normalize_range(range_values, default: Tuple[int, int]) -> Tuple[int, int]:
 
 
 def _find_close_button(page):
-    close_btn = (
-        page.query_selector('button[aria-label="Close"]')
-        or page.query_selector('[role="button"][aria-label*="Close"]')
-        or page.query_selector('button[aria-label*="close" i]')
-    )
-    if close_btn:
-        return close_btn
-    close_svg = page.query_selector('svg[aria-label="Close"]')
-    if not close_svg:
+    close_selectors = [
+        'button[aria-label="Close"]',
+        '[role="button"][aria-label*="Close"]',
+        'button[aria-label*="close" i]',
+    ]
+    for sel in close_selectors:
+        loc = page.locator(sel)
+        if loc.count() > 0:
+            return loc.first
+    close_svg_loc = page.locator('svg[aria-label="Close"]')
+    if close_svg_loc.count() == 0:
         return None
-    return (
-        close_svg.query_selector('xpath=ancestor-or-self::*[self::button or @role="button"][1]')
-        or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
-        or close_svg
-    )
+    close_svg = close_svg_loc.first
+    btn_loc = close_svg.locator('xpath=ancestor-or-self::*[self::button or @role="button"][1]')
+    if btn_loc.count() > 0:
+        return btn_loc.first
+    div_loc = close_svg.locator('xpath=ancestor-or-self::*[self::div][1]')
+    if div_loc.count() > 0:
+        return div_loc.first
+    return close_svg
 

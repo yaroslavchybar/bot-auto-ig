@@ -132,13 +132,16 @@ def _ensure_click_safety_zone(
 
 def _find_like_button(post_element):
     """Find the like button SVG and its clickable parent."""
-    like_svg = (
-        post_element.query_selector('svg[aria-label="Like"]')
-        or post_element.query_selector('div[role="button"] svg[aria-label="Like"]')
-    )
-    if not like_svg:
-        return None, None
-    clickable = like_svg.query_selector('xpath=ancestor-or-self::*[@role="button" or self::button][1]')
+    like_loc = post_element.locator('svg[aria-label="Like"]')
+    if like_loc.count() == 0:
+        alt_loc = post_element.locator('div[role="button"] svg[aria-label="Like"]')
+        if alt_loc.count() == 0:
+            return None, None
+        like_svg = alt_loc.first
+    else:
+        like_svg = like_loc.first
+    clickable_loc = like_svg.locator('xpath=ancestor-or-self::*[@role="button" or self::button][1]')
+    clickable = clickable_loc.first if clickable_loc.count() > 0 else None
     return like_svg, clickable
 
 
@@ -154,7 +157,7 @@ def _micro_scroll_to_button(page, post_element, max_attempts: int = 3) -> bool:
             return True
         
         # Already liked? No need to scroll
-        if post_element.query_selector('svg[aria-label="Unlike"]'):
+        if post_element.locator('svg[aria-label="Unlike"]').count() > 0:
             return False
         
         # Smooth scroll to reveal button area (direction chosen by position if available)
@@ -281,7 +284,7 @@ def perform_like(page, post_element) -> bool:
     """Like a feed post, skipping if already liked."""
     try:
         # Skip if already liked
-        if post_element.query_selector('svg[aria-label="Unlike"]'):
+        if post_element.locator('svg[aria-label="Unlike"]').count() > 0:
             _debug_mouse("perform_like: already liked, skipping")
             return False
 

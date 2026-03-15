@@ -52,9 +52,9 @@ def _navigate_reels(page):
         return
     logger.info('Navigating to Reels tab via UI...')
     try:
-        reels_link = page.query_selector('a[href="/reels/"]')
-        if reels_link:
-            _click_reels_link(page, reels_link)
+        reels_loc = page.locator('a[href="/reels/"]')
+        if reels_loc.count() > 0:
+            _click_reels_link(page, reels_loc.first)
             return
         logger.warning('Reels link not found in sidebar')
     except Exception as exc:

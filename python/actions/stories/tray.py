@@ -18,8 +18,11 @@ def find_story_bubble(page, log=None):
     candidates = []
     for sel in selectors:
         try:
-            for el in page.query_selector_all(sel):
+            locator = page.locator(sel)
+            count = locator.count()
+            for i in range(count):
                 try:
+                    el = locator.nth(i)
                     box = el.bounding_box()
                     if not box:
                         continue

@@ -21,11 +21,12 @@ def extract_label(el) -> str:
         if label:
             return label.lower()
 
-        ancestor = el.query_selector('xpath=ancestor-or-self::*[@aria-label][1]')
-        if ancestor and ancestor != el:
-            label = ancestor.get_attribute("aria-label")
-            if label:
-                return label.lower()
+        ancestor = el.locator('xpath=ancestor-or-self::*[@aria-label][1]')
+        if ancestor.count() > 0:
+            first = ancestor.first
+            ancestor_label = first.get_attribute("aria-label")
+            if ancestor_label:
+                return ancestor_label.lower()
     except Exception:
         pass
     return ""

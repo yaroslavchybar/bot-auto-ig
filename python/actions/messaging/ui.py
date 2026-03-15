@@ -109,28 +109,34 @@ def cleanup_return_home(page, log: Callable[[str], None]) -> None:
     try:
         log("Messages: returning home")
         try:
-            svg = page.query_selector('svg[aria-label="Home"]')
-            if svg:
-                btn = svg.query_selector('xpath=ancestor-or-self::*[@role="link"][1]') or svg.query_selector(
-                    'xpath=ancestor-or-self::*[@role="button"][1]'
+            svg = page.locator('svg[aria-label="Home"]')
+            if svg.count() > 0:
+                first_svg = svg.first
+                link_ancestor = first_svg.locator('xpath=ancestor-or-self::*[@role="link"][1]')
+                btn_ancestor = first_svg.locator('xpath=ancestor-or-self::*[@role="button"][1]')
+                target = link_ancestor.first if link_ancestor.count() > 0 else (
+                    btn_ancestor.first if btn_ancestor.count() > 0 else first_svg
                 )
-                (btn or svg).click()
+                target.click()
             else:
-                link = page.query_selector('a[role="link"][href="/"]')
-                if link:
-                    link.click()
+                link = page.locator('a[role="link"][href="/"]')
+                if link.count() > 0:
+                    link.first.click()
                 else:
                     page.goto("https://www.instagram.com/", timeout=20000)
         except Exception:
             page.goto("https://www.instagram.com/", timeout=20000)
         random_delay(1.0, 2.0)
         try:
-            close_svg = page.query_selector('svg[aria-label="Close"]')
-            if close_svg:
-                close_btn = close_svg.query_selector(
-                    'xpath=ancestor-or-self::*[self::button or @role="button"][1]'
-                ) or close_svg.query_selector('xpath=ancestor-or-self::*[self::div][1]')
-                (close_btn or close_svg).click()
+            close_svg = page.locator('svg[aria-label="Close"]')
+            if close_svg.count() > 0:
+                first_close = close_svg.first
+                btn_loc = first_close.locator('xpath=ancestor-or-self::*[self::button or @role="button"][1]')
+                div_loc = first_close.locator('xpath=ancestor-or-self::*[self::div][1]')
+                close_target = btn_loc.first if btn_loc.count() > 0 else (
+                    div_loc.first if div_loc.count() > 0 else first_close
+                )
+                close_target.click()
                 log("Messages: closed popup")
             else:
                 page.keyboard.press("Escape")

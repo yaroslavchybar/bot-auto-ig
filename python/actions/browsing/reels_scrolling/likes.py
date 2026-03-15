@@ -81,11 +81,11 @@ def _active_like_button(page):
 
 
 def _like_skip_reason(active_btn) -> str | None:
-    heart_icon = active_btn.query_selector('svg[aria-label="Like"], svg[aria-label="Unlike"]')
-    if not heart_icon:
+    heart_loc = active_btn.locator('svg[aria-label="Like"], svg[aria-label="Unlike"]')
+    if heart_loc.count() == 0:
         logger.debug('Skipped liking: Reels like icon not found inside button')
         return 'missing_icon'
-    if heart_icon.get_attribute('aria-label') == 'Unlike':
+    if heart_loc.first.get_attribute('aria-label') == 'Unlike':
         return 'already_liked'
     return None
 

@@ -63,10 +63,10 @@ def _home_click_target(element):
             return element
         clickable = element
         for _ in range(4):
-            parent = clickable.query_selector('xpath=..')
-            if not parent:
+            parent_loc = clickable.locator('xpath=..')
+            if parent_loc.count() == 0:
                 return element
-            clickable = parent
+            clickable = parent_loc.first
         if _is_clickable_home_target(clickable):
             return clickable
     except Exception:
@@ -93,9 +93,9 @@ def _is_clickable_home_target(element) -> bool:
 
 def _dismiss_notifications_modal(page) -> None:
     try:
-        not_now = page.query_selector('button:has-text("Not Now")')
-        if not_now:
-            not_now.click()
+        not_now = page.locator('button:has-text("Not Now")')
+        if not_now.count() > 0:
+            not_now.first.click()
             random_delay(1, 2)
     except Exception:
         pass
@@ -263,7 +263,8 @@ def _reload_stalled_page(page, clock: dict) -> bool:
 
 
 def _process_feed_iteration(page, actions_config: dict, stats: dict, should_stop) -> bool:
-    posts = page.query_selector_all('article')
+    posts_locator = page.locator('article')
+    posts = [posts_locator.nth(i) for i in range(posts_locator.count())]
     if not posts:
         human_scroll(page, should_stop=should_stop)
         return False
@@ -361,7 +362,8 @@ def _handle_like(page, target_post, actions_config: dict, stats: dict) -> None:
 
 def _debug_like_button(page, target_post) -> None:
     try:
-        like_area = target_post.query_selector('svg[aria-label="Like"]')
+        like_loc = target_post.locator('svg[aria-label="Like"]')
+        like_area = like_loc.first if like_loc.count() > 0 else None
         like_box = like_area.bounding_box() if like_area else None
         vp_h = _viewport_h(page)
         like_bottom = (like_box['y'] + like_box['height']) if like_box else -1

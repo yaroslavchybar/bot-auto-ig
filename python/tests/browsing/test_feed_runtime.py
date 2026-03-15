@@ -15,10 +15,10 @@ def test_home_click_target_falls_back_to_svg_when_ancestor_is_not_clickable():
     third = _mock_parent()
     fourth = _mock_parent(clickable=False)
 
-    svg.query_selector.return_value = first
-    first.query_selector.return_value = second
-    second.query_selector.return_value = third
-    third.query_selector.return_value = fourth
+    svg._locator_child = first
+    first._locator_child = second
+    second._locator_child = third
+    third._locator_child = fourth
 
     assert _home_click_target(svg) is svg
 
@@ -30,10 +30,10 @@ def test_home_click_target_uses_clickable_ancestor_when_present():
     third = _mock_parent()
     fourth = _mock_parent(clickable=True)
 
-    svg.query_selector.return_value = first
-    first.query_selector.return_value = second
-    second.query_selector.return_value = third
-    third.query_selector.return_value = fourth
+    svg._locator_child = first
+    first._locator_child = second
+    second._locator_child = third
+    third._locator_child = fourth
 
     assert _home_click_target(svg) is fourth
 
@@ -165,7 +165,11 @@ def test_scroll_feed_exits_cleanly_when_stop_fires_during_story_prewatch(monkeyp
 def test_scroll_feed_skips_actions_when_stop_fires_mid_iteration(monkeypatch):
     page = MagicMock()
     page.evaluate.return_value = 900
-    page.query_selector_all.return_value = [_MockPost({'x': 0, 'y': 500, 'width': 100, 'height': 120})]
+    mock_post = _MockPost({'x': 0, 'y': 500, 'width': 100, 'height': 120})
+    mock_articles_locator = MagicMock()
+    mock_articles_locator.count.return_value = 1
+    mock_articles_locator.nth.return_value = mock_post
+    page.locator.return_value = mock_articles_locator
     should_stop = _StopSequence([False, False, True, True])
     focus_calls = []
     view_post = MagicMock()
@@ -232,7 +236,7 @@ class _MockElement:
     def __init__(self, *, svg: bool, clickable: bool | None = None):
         self._svg = svg
         self._clickable = clickable
-        self.query_selector = _QuerySelector()
+        self._locator_child = None
 
     def evaluate(self, script):
         if 'tagName.toLowerCase() === \'svg\'' in script:
@@ -241,13 +245,20 @@ class _MockElement:
             return self._clickable
         raise AssertionError(f'unexpected evaluate call: {script}')
 
+    def locator(self, _selector):
+        return _MockLocator(self._locator_child)
 
-class _QuerySelector:
-    def __init__(self):
-        self.return_value = None
 
-    def __call__(self, _selector):
-        return self.return_value
+class _MockLocator:
+    def __init__(self, child=None):
+        self._child = child
+
+    def count(self):
+        return 1 if self._child is not None else 0
+
+    @property
+    def first(self):
+        return self._child
 
 
 class _MockPost:

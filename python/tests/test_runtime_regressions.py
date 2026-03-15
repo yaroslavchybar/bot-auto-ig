@@ -172,23 +172,54 @@ def test_click_highlight_scrolls_before_click(monkeypatch):
     assert events == ['scroll', 'click']
 
 
-def test_find_close_button_resolves_clickable_ancestor_from_close_svg():
+def _mock_locator(result=None):
+    """Create a mock locator that returns 0/1 count and result as .first."""
+    loc = MagicMock()
+    loc.count.return_value = 1 if result is not None else 0
+    loc.first = result
+    return loc
+
+
+def _make_close_button_page(close_svg, btn_from_svg=None, div_from_svg=None):
+    """Build a mock page for _find_close_button tests using locator API.
+
+    The close button selectors all return empty, then svg selector returns close_svg.
+    close_svg.locator returns btn_from_svg for button ancestor, div_from_svg for div ancestor.
+    """
     page = MagicMock()
-    close_svg = MagicMock()
-    close_div = MagicMock()
-    page.query_selector.side_effect = [None, None, None, close_svg]
-    close_svg.query_selector.side_effect = [None, close_div]
+
+    def page_locator(selector):
+        if selector == 'svg[aria-label="Close"]':
+            return _mock_locator(close_svg)
+        # All other selectors (button close variants) return empty
+        return _mock_locator(None)
+
+    page.locator = MagicMock(side_effect=page_locator)
+
+    def svg_locator(selector):
+        if 'button' in selector:
+            return _mock_locator(btn_from_svg)
+        if 'div' in selector:
+            return _mock_locator(div_from_svg)
+        return _mock_locator(None)
+
+    close_svg.locator = MagicMock(side_effect=svg_locator)
+    return page
+
+
+def test_find_close_button_resolves_clickable_ancestor_from_close_svg():
+    close_svg = MagicMock(name='close_svg')
+    close_div = MagicMock(name='close_div')
+    page = _make_close_button_page(close_svg, btn_from_svg=None, div_from_svg=close_div)
 
     assert _find_close_button(page) is close_div
 
 
 def test_close_highlight_clicks_resolved_close_ancestor(monkeypatch):
-    page = MagicMock()
-    close_svg = MagicMock()
-    close_btn = MagicMock()
+    close_svg = MagicMock(name='close_svg')
+    close_btn = MagicMock(name='close_btn')
     log = MagicMock()
-    page.query_selector.side_effect = [None, None, None, close_svg]
-    close_svg.query_selector.return_value = close_btn
+    page = _make_close_button_page(close_svg, btn_from_svg=close_btn)
     monkeypatch.setattr('python.actions.engagement.follow.highlights_runtime.random_delay', lambda *_args, **_kwargs: None)
 
     _close_highlight(page, log)
@@ -200,12 +231,10 @@ def test_close_highlight_clicks_resolved_close_ancestor(monkeypatch):
 
 
 def test_close_post_modal_clicks_resolved_close_ancestor():
-    page = MagicMock()
-    close_svg = MagicMock()
-    close_btn = MagicMock()
+    close_svg = MagicMock(name='close_svg')
+    close_btn = MagicMock(name='close_btn')
     log = MagicMock()
-    page.query_selector.side_effect = [None, None, None, close_svg]
-    close_svg.query_selector.return_value = close_btn
+    page = _make_close_button_page(close_svg, btn_from_svg=close_btn)
 
     _close_post_modal(page, log)
 
