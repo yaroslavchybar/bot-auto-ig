@@ -44,13 +44,17 @@ function ensureDataDir(): void {
 }
 
 /**
- * Save automation state to file.
+ * Save automation state to file atomically.
+ * Writes to a temp file first, then renames to the target path.
+ * This prevents corruption if the process crashes mid-write.
  */
 export function saveState(state: Partial<PersistedState>): void {
     ensureDataDir()
     const current = loadState()
     const merged: PersistedState = { ...current, ...state }
-    fs.writeFileSync(STATE_FILE, JSON.stringify(merged, null, 2), 'utf-8')
+    const tmpFile = STATE_FILE + '.tmp'
+    fs.writeFileSync(tmpFile, JSON.stringify(merged, null, 2), 'utf-8')
+    fs.renameSync(tmpFile, STATE_FILE)
     logger.info({ status: merged.status }, 'Saved automation state')
 }
 

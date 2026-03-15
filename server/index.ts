@@ -20,8 +20,11 @@ import { workflowsRouter } from './workflows/index.js'
 import monitoringRouter from './monitoring/routes.js'
 import displaysRouter from './displays/routes.js'
 import { cleanupOrphanedProcesses } from './automation/process-manager.js'
+import { detectInterruptedRun, clearState } from './automation/state.js'
+import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { profileProcesses } from './shared/store.js'
+import { isProcessRunning } from './shared/ProcessService.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 import logger from './shared/logger.js'
 import { AppError } from './shared/errors.js'
@@ -31,7 +34,7 @@ const app = express()
 const server = createServer(app)
 
 // Initialize WebSocket
-initWebSocket(server)
+const wss = initWebSocket(server)
 
 // CORS configuration
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(',').map(o => o.trim())
@@ -123,6 +126,12 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 const PORT = process.env.SERVER_PORT || 3001
 
 async function startServer(): Promise<void> {
+    // Register graceful shutdown handlers (SIGTERM/SIGINT)
+    registerShutdownHandlers({ httpServer: server, wss })
+
+    // Detect and recover from interrupted automation runs
+    handleInterruptedRun()
+
     // Clean up any orphaned processes from previous server runs
     await cleanupOrphanedProcesses()
 
@@ -141,6 +150,31 @@ async function startServer(): Promise<void> {
         logger.info({ port: PORT }, 'API server running')
         logger.info({ port: PORT }, 'WebSocket available')
     })
+}
+
+/**
+ * Check for interrupted automation runs from a previous server session.
+ * If found, log the interrupted state and clear it.
+ */
+function handleInterruptedRun(): void {
+    const interrupted = detectInterruptedRun()
+    if (!interrupted) return
+
+    logger.warn(
+        { pid: interrupted.pid, startedAt: interrupted.startedAt, status: interrupted.status },
+        'Detected interrupted automation run from previous session',
+    )
+
+    // Check if the process is still alive (unlikely after server restart)
+    if (interrupted.pid && isProcessRunning(interrupted.pid)) {
+        logger.info({ pid: interrupted.pid }, 'Interrupted process still running — orphan cleanup will handle it')
+    } else {
+        logger.info({ pid: interrupted.pid }, 'Interrupted process is no longer running')
+    }
+
+    // Clear the stale state so we start fresh
+    clearState()
+    logger.info('Cleared interrupted automation state')
 }
 
 startServer().catch((err) => {
