@@ -74,7 +74,76 @@ export type ProfileInput = {
     daily_scraping_limit?: number | null;
 };
 
-// HTTP client for Convex
+// ---------------------------------------------------------------------------
+// Retry configuration
+// ---------------------------------------------------------------------------
+
+export interface ConvexRetryConfig {
+    /** Maximum number of retry attempts (default: 3) */
+    maxRetries: number
+    /** Base delay in milliseconds for exponential backoff (default: 1000) */
+    baseDelay: number
+}
+
+const DEFAULT_RETRY_CONFIG: ConvexRetryConfig = {
+    maxRetries: 3,
+    baseDelay: 1000,
+}
+
+let retryConfig: ConvexRetryConfig = { ...DEFAULT_RETRY_CONFIG }
+
+/**
+ * Override default retry configuration.
+ * Useful for testing or environment-specific tuning.
+ */
+export function setRetryConfig(config: Partial<ConvexRetryConfig>): void {
+    retryConfig = { ...DEFAULT_RETRY_CONFIG, ...config }
+}
+
+/**
+ * Determine whether a failed request should be retried.
+ *
+ * Retryable conditions:
+ *   - Network / fetch errors (no HTTP response)
+ *   - HTTP 429 (Too Many Requests)
+ *   - HTTP 5xx (server errors)
+ *
+ * Non-retryable:
+ *   - HTTP 4xx (client errors) except 429
+ */
+function isRetryable(error: unknown): boolean {
+    if (error instanceof ConvexHttpError) {
+        const status = error.statusCode
+        return status === 429 || status >= 500
+    }
+    // Network failures, DNS errors, timeouts — always retry
+    return true
+}
+
+/**
+ * Compute the delay before the next retry attempt.
+ * Formula: baseDelay × 2^attempt + random jitter (0–baseDelay)
+ */
+function computeBackoff(attempt: number, baseDelay: number): number {
+    const exponential = baseDelay * Math.pow(2, attempt)
+    const jitter = Math.random() * baseDelay
+    return exponential + jitter
+}
+
+/**
+ * Typed error carrying the HTTP status from Convex.
+ */
+export class ConvexHttpError extends Error {
+    public readonly statusCode: number
+    constructor(statusCode: number, body: string) {
+        super(`Convex HTTP error ${statusCode}: ${body}`)
+        this.name = 'ConvexHttpError'
+        this.statusCode = statusCode
+        Object.setPrototypeOf(this, new.target.prototype)
+    }
+}
+
+// HTTP client for Convex with exponential backoff retry
 async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any } = {}): Promise<T> {
     const url = `${convexUrl}${endpoint}`;
     const headers: Record<string, string> = {
@@ -82,16 +151,37 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
         Accept: 'application/json',
     };
     headers['Authorization'] = `Bearer ${convexApiKey}`;
-    const resp = await fetch(url, {
-        method: options.method || 'GET',
-        headers,
-        body: options.body ? JSON.stringify(options.body) : undefined,
-    });
-    if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(`Convex HTTP error ${resp.status}: ${text}`);
+
+    const { maxRetries, baseDelay } = retryConfig
+    let lastError: unknown
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const resp = await fetch(url, {
+                method: options.method || 'GET',
+                headers,
+                body: options.body ? JSON.stringify(options.body) : undefined,
+            });
+            if (!resp.ok) {
+                const text = await resp.text();
+                throw new ConvexHttpError(resp.status, text);
+            }
+            return resp.json() as Promise<T>;
+        } catch (err) {
+            lastError = err
+
+            const canRetry = attempt < maxRetries && isRetryable(err)
+            if (!canRetry) {
+                throw err
+            }
+
+            const delay = computeBackoff(attempt, baseDelay)
+            await new Promise(resolve => setTimeout(resolve, delay))
+        }
     }
-    return resp.json() as Promise<T>;
+
+    // Unreachable in practice, but satisfies the compiler
+    throw lastError
 }
 
 // ==================== LISTS ====================
