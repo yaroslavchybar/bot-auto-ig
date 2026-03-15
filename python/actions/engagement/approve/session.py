@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 from python.browser.setup import create_browser_context
-from python.database.accounts import InstagramAccountsClient
+from python.core.clients import InstagramAccountsClient
 
 from python.actions.engagement.approve.flow import run_approve_follow_requests
 

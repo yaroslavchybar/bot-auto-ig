@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
 from python.browser.setup import create_browser_context
-from python.database.accounts import InstagramAccountsClient
+from python.core.clients import InstagramAccountsClient
 
 from python.actions.messaging.flow import run_messaging_flow
 

@@ -19,7 +19,7 @@ from python.core.logging import setup_logging
 from python.core.process.healthcheck import run_all_checks
 from python.browser.setup import parse_proxy_string
 from python.browser.display import DisplayManager
-from python.database.profiles import ProfilesClient
+from python.core.clients import ProfilesClient
 
 # Setup logging
 setup_logging()

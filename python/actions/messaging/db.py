@@ -1,6 +1,6 @@
 from typing import Callable
 
-from python.database.accounts import InstagramAccountsClient
+from python.core.clients import InstagramAccountsClient
 
 
 def mark_sent(client: InstagramAccountsClient, username: str, log: Callable[[str], None]) -> None:

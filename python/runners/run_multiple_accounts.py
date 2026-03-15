@@ -33,9 +33,11 @@ from python.core.utils import (
     create_status_callback,
     get_action_enabled_map,
 )
-from python.database.accounts import InstagramAccountsClient
-from python.database.messages import MessageTemplatesClient
-from python.database.profiles import ProfilesClient
+from python.core.clients import (
+    InstagramAccountsClient,
+    MessageTemplatesClient,
+    ProfilesClient,
+)
 from python.runners.multi_account.config import _build_config
 from python.runners.multi_account.entrypoint import main
 from python.runners.multi_account.runtime import InstagramAutomationRunner

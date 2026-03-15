@@ -7,7 +7,7 @@ from python.core.config import PROJECT_URL
 from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
-from python.database.messages import MessageTemplatesClient
+from python.core.clients import MessageTemplatesClient
 from python.runners.multi_account.config import _build_config
 from python.runners.multi_account.io import emit_event, log
 from python.runners.multi_account.profiles import _fetch_profiles_for_lists

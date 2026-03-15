@@ -12,8 +12,7 @@ from python.runners.multi_account.activity_dispatch import (
     run_stories,
     run_unfollow,
 )
-from python.database.accounts import InstagramAccountsClient
-from python.database.profiles import ProfilesClient
+from python.core.clients import InstagramAccountsClient, ProfilesClient
 from python.runners.multi_account.io import emit_event, log
 from python.runners.workflow.parsing import _parse_int
 

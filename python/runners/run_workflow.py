@@ -27,9 +27,11 @@ from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.storage.atomic import atomic_write_json
 from python.core.utils import apply_count_limit, create_browser_context
-from python.database.accounts import InstagramAccountsClient
-from python.database.messages import MessageTemplatesClient
-from python.database.profiles import ProfilesClient
+from python.core.clients import (
+    InstagramAccountsClient,
+    MessageTemplatesClient,
+    ProfilesClient,
+)
 from python.runners.workflow.bootstrap import (
     _extract_start_browser_settings,
     _find_start_node,

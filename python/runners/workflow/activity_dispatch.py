@@ -12,7 +12,7 @@ from python.actions.engagement.unfollow.session import unfollow_usernames
 from python.actions.messaging.session import send_messages
 from python.actions.stories import watch_stories
 from python.core.utils import apply_count_limit, create_browser_context
-from python.database.messages import MessageTemplatesClient
+from python.core.clients import MessageTemplatesClient
 from python.runners.workflow.scrape_utils import _choose_weighted
 from python.runners.workflow.io import emit_event, log
 from python.runners.workflow.parsing import (

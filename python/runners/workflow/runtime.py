@@ -4,8 +4,7 @@ from threading import Lock, RLock
 from typing import Any, Dict, List, Optional
 
 from python.browser.display import DisplayManager
-from python.database.accounts import InstagramAccountsClient
-from python.database.profiles import ProfilesClient
+from python.core.clients import InstagramAccountsClient, ProfilesClient
 from python.runners.workflow.account_session import process_account as process_account_impl
 from python.runners.workflow.activity_dispatch import execute_activity as execute_activity_impl
 from python.runners.workflow.graph import _build_edge_index

@@ -5,7 +5,7 @@ import sys
 import traceback
 
 from python.core.logging import setup_logging
-from python.database.profiles import ProfilesClient
+from python.core.clients import ProfilesClient
 
 from python.actions.login.runtime import (
     ALT_SELECTORS,
