@@ -1,6 +1,6 @@
 {
   "milestone": "frontend",
-  "round": 2,
+  "round": 1,
   "status": "fail",
   "validatorsRun": {
     "testConvex": {
@@ -30,19 +30,40 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
-    "passed": 0,
-    "failed": 1,
+    "total": 7,
+    "passed": 3,
+    "failed": 4,
     "failedFeatures": [
-      "frontend-scrutiny-fixes"
+      "frontend-accounts-split",
+      "frontend-logs-viewer-split",
+      "frontend-error-handling",
+      "frontend-verify"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "frontend-scrutiny-fixes",
+      "featureId": "frontend-accounts-split",
       "severity": "blocking",
-      "description": "The rerun fix restores the inline LogsViewer error banner and removes duplicate template toasts, but the VNC visibility gate still uses a prefix-based route match. When users navigate from `/vnc` to `/vnc/session/:workflowId/:profileName`, the cached `/vnc` page is hidden by exact-path keep-alive logic while `useRouteActive('/vnc')` still returns true, so hidden polling/toasts can continue.",
-      "evidence": "Review: .factory/validation/frontend/scrutiny/reviews/frontend-scrutiny-fixes.json"
+      "description": "The accounts refactor is structurally incomplete relative to its feature contract: the requested `AccountsProcessingView.tsx` extraction was never delivered, with processing UI still spread across `AccountsUploadSection.tsx`, `AccountsTaskDetails.tsx`, and `AccountsShared.tsx`.",
+      "evidence": "Review: .factory/validation/frontend/scrutiny/reviews/frontend-accounts-split.json"
+    },
+    {
+      "featureId": "frontend-logs-viewer-split",
+      "severity": "blocking",
+      "description": "The LogsViewer split removed the inline in-panel error banner and now surfaces load/archive/clear failures only through global toasts, changing `/logs` and `ProfileLogs` behavior instead of preserving it unchanged.",
+      "evidence": "Review: .factory/validation/frontend/scrutiny/reviews/frontend-logs-viewer-split.json"
+    },
+    {
+      "featureId": "frontend-error-handling",
+      "severity": "blocking",
+      "description": "Centralized error handling is not behavior-preserving for keep-alive routes: hidden `/vnc` polling continues through `Activity` caching and can emit global error toasts after navigation, so errors are not reliably cleared on route changes.",
+      "evidence": "Review: .factory/validation/frontend/scrutiny/reviews/frontend-error-handling.json"
+    },
+    {
+      "featureId": "frontend-verify",
+      "severity": "blocking",
+      "description": "The verification feature did not actually exercise the protected route UIs. Recorded evidence shows redirects to `/sign-in` for post-auth routes, so the claimed `all primary routes render without errors` requirement remains unverified.",
+      "evidence": "Review: .factory/validation/frontend/scrutiny/reviews/frontend-verify.json"
     }
   ],
   "appliedUpdates": [
@@ -79,7 +100,7 @@
     {
       "target": "AGENTS.md + refactor-worker skill",
       "suggestion": "Reconcile validator expectations for milestone-scoped frontend refactors. Root guidance currently says frontend/server changes without dedicated tests should run build + lint, while mission guidance and `refactor-worker` still require the full Convex + Python + server + frontend suite. Workers are following the narrower path and still marking `followedProcedure: true`, so the guidance should explicitly define which rule wins.",
-      "evidence": "This mismatch was flagged in round 1 by `frontend-accounts-split`, `frontend-logs-viewer-split`, and `frontend-duplicate-elimination`, and it was observed again in the rerun review for `frontend-scrutiny-fixes`.",
+      "evidence": "Review reports for `frontend-accounts-split`, `frontend-logs-viewer-split`, and `frontend-duplicate-elimination` each flagged the same mismatch between root `AGENTS.md`, mission `AGENTS.md`, and `refactor-worker/SKILL.md`.",
       "isSystemic": true
     },
     {
@@ -99,5 +120,5 @@
       "reason": "mission-specific planning drift — useful for the orchestrator, but not durable shared state for `.factory/library/`, `.factory/services.yaml`, `AGENTS.md`, or worker skills."
     }
   ],
-  "previousRound": ".factory/validation/frontend/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }

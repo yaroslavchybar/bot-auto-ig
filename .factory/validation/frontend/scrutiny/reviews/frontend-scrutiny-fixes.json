@@ -1,0 +1,28 @@
+{
+  "featureId": "frontend-scrutiny-fixes",
+  "reviewedAt": "2026-03-15T00:00:11.538724+00:00",
+  "commitId": "2d3ddf4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. Commit `2d3ddf4` restores the inline LogsViewer error banner and removes the duplicate template save/delete toasts, but the VNC visibility fix does not actually follow the keep-alive visibility model. `useRouteActive('/vnc')` uses a prefix match, so the hidden cached `/vnc` page still counts as visible on `/vnc/session/...` routes and can keep polling while hidden.",
+    "issues": [
+      {
+        "file": "frontend/src/hooks/useRouteActive.ts",
+        "line": 16,
+        "severity": "blocking",
+        "description": "`useRouteActive()` returns `pathname.startsWith(routePrefix)`, but `ProtectedLayoutShell` hides cached keep-alive pages with exact-path matching (`pathname === routePath`). The app has distinct `/vnc` and `/vnc/session/:workflowId/:profileName` routes (`frontend/src/routes.ts:17-18`), and `useVncSessions()` is used on the session page too (`frontend/src/features/vnc/containers/VncSessionPageContainer.tsx:30`). When the user navigates to a session route, the cached `/vnc` page is hidden by `ProtectedLayoutShell.tsx:61-69`, yet `useRouteActive('/vnc')` still returns true there, so the hidden page can keep polling and recreate the cross-route keep-alive toast problem the fix was meant to eliminate."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Frontend-only fix work still has conflicting validation guidance across shared state. This feature definition asked only for frontend build + lint, and the worker followed that narrower contract, but the mission AGENTS and `refactor-worker` skill still say to run the full Convex + Python + server + frontend suite and the handoff still marked `followedProcedure: true`.",
+      "evidence": "`features.json:1349-1360` requests only `npm --prefix frontend run build` and `npm --prefix frontend run lint`; root `AGENTS.md:64` says frontend/server changes without dedicated tests should run lint + build; mission `AGENTS.md:58-64` and `.factory/skills/refactor-worker/SKILL.md:68-76` still require all five validators. The handoff `2026-03-14T23-55-13-191Z__frontend-scrutiny-fixes__b2827519-87f2-47a9-9ef7-683c47e32767.json` records only frontend build and lint while `skillFeedback.followedProcedure` remains true."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/frontend/scrutiny/reviews/frontend-logs-viewer-split.json; .factory/validation/frontend/scrutiny/reviews/frontend-error-handling.json",
+  "summary": "Reviewed the fix feature entry, transcript skeleton, handoff, commit `2d3ddf4`, the current frontend code, and both original failing reviews/diffs. The logs inline error and duplicate-template-toast fixes look good, but the VNC route-visibility change is still incorrect for `/vnc/session/...`, so the rerun does not fully resolve the original keep-alive polling/toast failure."
+}
