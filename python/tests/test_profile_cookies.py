@@ -266,6 +266,45 @@ def test_create_browser_context_skips_empty_session_sync_after_bootstrap_timeout
     client.update_profile_by_name.assert_not_called()
 
 
+class _CleanupFakePage:
+    def __init__(self):
+        self.url = "about:blank"
+
+    def on(self, *_args, **_kwargs):
+        return None
+
+    def content(self):
+        return ""
+
+
+class _CleanupFakeContext:
+    def __init__(self):
+        self.pages = []
+        self.page = _CleanupFakePage()
+
+    def new_page(self):
+        return self.page
+
+    def close(self):
+        return None
+
+    def cookies(self):
+        return []
+
+
+def _make_cleanup_camoufox(cleanup_started, cleanup_finished, overlap_detected):
+    class _FakeCamoufox:
+        def __enter__(self):
+            if cleanup_started.is_set() and not cleanup_finished.is_set():
+                overlap_detected.append(True)
+            return _CleanupFakeContext()
+
+        def __exit__(self, *_args):
+            return None
+
+    return _FakeCamoufox
+
+
 def test_create_browser_context_waits_for_cleanup_before_immediate_reopen(monkeypatch):
     cleanup_started = threading.Event()
     cleanup_finished = threading.Event()
@@ -274,38 +313,7 @@ def test_create_browser_context_waits_for_cleanup_before_immediate_reopen(monkey
     cleanup_calls = 0
     overlap_detected: list[bool] = []
 
-    class FakePage:
-        def __init__(self):
-            self.url = "about:blank"
-
-        def on(self, *_args, **_kwargs):
-            return None
-
-        def content(self):
-            return ""
-
-    class FakeContext:
-        def __init__(self):
-            self.pages = []
-            self.page = FakePage()
-
-        def new_page(self):
-            return self.page
-
-        def close(self):
-            return None
-
-        def cookies(self):
-            return []
-
-    class FakeCamoufox:
-        def __enter__(self):
-            if cleanup_started.is_set() and not cleanup_finished.is_set():
-                overlap_detected.append(True)
-            return FakeContext()
-
-        def __exit__(self, *_args):
-            return None
+    CamoufoxCls = _make_cleanup_camoufox(cleanup_started, cleanup_finished, overlap_detected)
 
     def _clean_cache2(_profile_path):
         nonlocal cleanup_calls
@@ -322,7 +330,7 @@ def test_create_browser_context_waits_for_cleanup_before_immediate_reopen(monkey
             pass
         first_context_returned.set()
 
-    monkeypatch.setattr(browser_context_mod, "Camoufox", lambda **_kwargs: FakeCamoufox())
+    monkeypatch.setattr(browser_context_mod, "Camoufox", lambda **_kwargs: CamoufoxCls())
     monkeypatch.setattr(browser_context_mod, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
     monkeypatch.setattr(browser_context_mod, "_should_clean_today", _should_clean_today)
     monkeypatch.setattr(browser_context_mod, "_clean_cache2", _clean_cache2)

@@ -15,10 +15,12 @@ from python.runners.workflow.parsing import (
     _parse_int,
     _profile_daily_scraping_used,
 )
-from python.runners.workflow.scrape_relationships import (
-    execute_scrape_relationships,
+from python.runners.workflow.scrape_navigation import (
     open_relationship_view,
     scrape_relationship_chunk,
+)
+from python.runners.workflow.scrape_relationships import (
+    execute_scrape_relationships,
 )
 
 
