@@ -1,6 +1,6 @@
 {
   "milestone": "reliability",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -9,17 +9,17 @@
         {
           "command": "npm run test:convex",
           "exitCode": 0,
-          "observation": "Vitest passed 20 files and 58 tests."
+          "observation": "Vitest passed all 20 Convex test files with 58 tests green."
         },
         {
           "command": "python -m pytest python/tests -q",
           "exitCode": 0,
-          "observation": "Pytest reported 262 passed and 1 xfailed in 7.41s; after the summary, python/core/shutdown.py still emitted closed-stream logging ValueErrors matching the pre-existing cosmetic stderr issue noted before this rerun."
+          "observation": "Pytest reported 262 passed and 1 xfailed in 6.74s; after the summary, python/core/shutdown.py still emitted the known cosmetic closed-stream logging ValueErrors on stderr."
         },
         {
           "command": "python -c \"import pathlib, subprocess, sys; root=pathlib.Path(r'C:\\\\Users\\\\yaros\\\\Downloads\\\\bot-auto-ig\\\\server'); tests=sorted(str(p.resolve()) for p in root.rglob('*.test.ts') if 'node_modules' not in p.parts and 'dist' not in p.parts); print(tests); rc=0\nfor test in tests:\n    result=subprocess.run(['npm.cmd','--prefix','server','exec','tsx','--test',test])\n    rc=result.returncode\n    if rc:\n        break\nsys.exit(rc)\"",
           "exitCode": 0,
-          "observation": "Server node:test coverage ran 3 event-parser tests, 5 log parser tests, and 12 convexClient tests with all 20 cases passing."
+          "observation": "Server node:test coverage ran the event-parser, log parser, and convexClient suites with all 20 tests passing."
         }
       ]
     },
@@ -29,12 +29,12 @@
         {
           "command": "npm --prefix server run build",
           "exitCode": 0,
-          "observation": "Server TypeScript build completed successfully via tsc."
+          "observation": "Server TypeScript compilation completed successfully via tsc."
         },
         {
           "command": "npm --prefix frontend run build",
           "exitCode": 0,
-          "observation": "React Router/Vite built the client and SSR bundles successfully."
+          "observation": "React Router/Vite built the frontend client and SSR bundles successfully."
         }
       ]
     },
@@ -44,74 +44,35 @@
         {
           "command": "npm --prefix frontend run lint",
           "exitCode": 0,
-          "observation": "ESLint completed with no reported frontend errors."
-        }
-      ]
-    },
-    "runtime": {
-      "passed": true,
-      "commands": [
-        {
-          "command": "curl -i http://localhost:3001/api/health",
-          "exitCode": 0,
-          "observation": "The running Express server returned HTTP 200 with JSON status output, confirming the local API was serving on port 3001 during this rerun."
-        },
-        {
-          "command": "$stdout = Join-Path $env:TEMP 'reliability-frontend-dev.out'; $stderr = Join-Path $env:TEMP 'reliability-frontend-dev.err'; if (Test-Path $stdout) { Remove-Item $stdout -Force }; if (Test-Path $stderr) { Remove-Item $stderr -Force }; $p = Start-Process cmd.exe -ArgumentList '/c','npm --prefix frontend run dev' -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr; Start-Sleep -Seconds 12; try { curl.exe -I http://localhost:5173; if (Test-Path $stdout) { Get-Content $stdout }; if (Test-Path $stderr) { Get-Content $stderr } } finally { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }",
-          "exitCode": 0,
-          "observation": "A scoped frontend dev-server start on port 5173 served the app root and returned an HTTP 302 redirect to /sign-in; captured stdout also showed React Router dev advertising http://localhost:5173/. This independently clears the previously missing app-load verification blocker."
+          "observation": "ESLint finished with no frontend lint errors."
         }
       ]
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 2,
+    "total": 1,
+    "passed": 0,
     "failed": 1,
     "failedFeatures": [
-      "reliability-scrutiny-fixes-python"
+      "reliability-scrutiny-fixes-python-r2"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "reliability-scrutiny-fixes-python",
+      "featureId": "reliability-scrutiny-fixes-python-r2",
       "severity": "blocking",
-      "description": "The new shutdown-state callback path still persists placeholder metadata instead of live in-flight state. workflow/entrypoint.py and multi_account/entrypoint.py now register callbacks, but those callbacks still hardcode the first profile plus progress=0 rather than reporting current runtime progress.",
-      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python.json; code: python/runners/workflow/entrypoint.py:210-216 and python/runners/multi_account/entrypoint.py:171-177."
+      "description": "The multi-account shutdown callback still persists placeholder progress instead of live in-flight progress. `_current_runner_state()` now reads the live profile and action, but it still hardcodes `progress: 0`, so the shutdown snapshot is not fully fresh once processing has started.",
+      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python-r2.json; code: python/runners/multi_account/entrypoint.py:173-181 with supporting runner state in python/runners/multi_account/runtime.py:40-41 and python/runners/multi_account/account_session.py:21-22,189."
     },
     {
-      "featureId": "reliability-scrutiny-fixes-python",
+      "featureId": "reliability-scrutiny-fixes-python-r2",
       "severity": "blocking",
-      "description": "The launcher shutdown path still seeds a static snapshot and never registers a freshness callback, so launcher-driven scrolling runs can still overwrite richer save_state snapshots with stale progress=0 data during shutdown.",
-      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python.json; code: python/runners/launcher.py:113 plus scrolling save_state writers in python/actions/browsing/feed_scrolling/runtime.py:249 and python/actions/browsing/reels_scrolling/runtime.py:210."
+      "description": "The launcher shutdown callback can still overwrite richer scrolling snapshots with stale manual-run metadata. It now writes `{ profile: args.name, action: args.action, progress: retry_count }`, but scrolling runtimes persist more specific actions (`scroll_feed` / `scroll_reels`) and elapsed progress, so shutdown can still replace the richer snapshot with coarser launcher state.",
+      "evidence": "Review: .factory/validation/reliability/scrutiny/reviews/reliability-scrutiny-fixes-python-r2.json; code: python/runners/launcher.py:185-188, python/browser/runtime.py:136-140, python/actions/browsing/feed_scrolling/runtime.py:249, and python/actions/browsing/reels_scrolling/runtime.py:210."
     }
   ],
   "appliedUpdates": [],
-  "suggestedGuidanceUpdates": [
-    {
-      "target": "skill:refactor-worker",
-      "suggestion": "When implementing a scrutiny-fix feature, require the worker to reread each prior blocking review finding line-by-line and explicitly confirm how every cited file/path is addressed before declaring the fix complete.",
-      "evidence": "The python rerun updated entrypoints but still missed the previously cited launcher stale-state path, even though the original reliability-python-shutdown review had already called out python/runners/launcher.py as part of the blocker.",
-      "isSystemic": false
-    },
-    {
-      "target": "skill:refactor-worker",
-      "suggestion": "Clarify that feature descriptions and expected behavior are binding requirements even when verificationSteps are incomplete; workers should not treat verificationSteps as an exhaustive checklist.",
-      "evidence": "The server fix feature description explicitly required 'VERIFY DEV-SERVER', but the worker skipped it because the listed verificationSteps only mentioned build + Convex tests and still reported followedProcedure=true.",
-      "isSystemic": false
-    },
-    {
-      "target": "skill:refactor-worker",
-      "suggestion": "For frontend-only work in repos without frontend tests, require workers to record a justified deviation from red-phase test-first and explain what build, lint, or runtime evidence substituted for tests instead of marking followedProcedure=true with no deviation.",
-      "evidence": "The frontend fix review still surfaced the same mismatch between refactor-worker's mandatory red-phase wording and this mission's 'No frontend tests — out of scope' guidance while the handoff claimed full procedure compliance.",
-      "isSystemic": true
-    }
-  ],
-  "rejectedObservations": [
-    {
-      "observation": "Add a reusable services.yaml command for 'start both dev servers and verify the app loads'.",
-      "reason": "ambiguous command shape for a multi-process interactive workflow; the existing service start commands plus direct validator commands were sufficient to complete the missing runtime verification in this rerun"
-    }
-  ],
-  "previousRound": ".factory/validation/reliability/scrutiny/synthesis.round1.json"
+  "suggestedGuidanceUpdates": [],
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/reliability/scrutiny/synthesis.round2.json"
 }
