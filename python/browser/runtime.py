@@ -5,7 +5,8 @@ import time
 import traceback
 from typing import Optional
 
-from python.browser.compat import compat as compat_module
+from python.actions.browsing import scroll_feed, scroll_reels
+from python.browser.context import create_browser_context
 
 logger = logging.getLogger(__name__)
 
@@ -98,9 +99,8 @@ def _register_signal_handlers() -> None:
 
 
 def _open_browser_session(profile_name, proxy_string, user_agent, headless, os_name, fingerprint_seed, fingerprint_os, display):
-    compat = compat_module()
     logger.info('Initializing Camoufox browser...')
-    return compat.create_browser_context(
+    return create_browser_context(
         profile_name=profile_name,
         proxy_string=proxy_string,
         user_agent=user_agent,
@@ -131,7 +131,6 @@ def _run_requested_action(
     reels_match_likes,
     reels_match_follows,
 ) -> None:
-    compat = compat_module()
     logger.info('Camoufox initialized successfully')
     logger.info('Browser is running...')
     feed_config, reels_config = _build_scroll_configs(
@@ -147,11 +146,11 @@ def _run_requested_action(
     )
     try:
         if action == 'scroll':
-            _run_feed_session(compat, page, profile_name, duration, feed_config)
+            _run_feed_session(page, profile_name, duration, feed_config)
         elif action == 'reels':
-            _run_reels_session(compat, page, profile_name, duration, reels_config)
+            _run_reels_session(page, profile_name, duration, reels_config)
         elif action == 'mixed':
-            _run_mixed_session(compat, page, profile_name, feed_duration, reels_duration, feed_config, reels_config)
+            _run_mixed_session(page, profile_name, feed_duration, reels_duration, feed_config, reels_config)
         if action in ('scroll', 'reels', 'mixed'):
             _finish_automated_session()
         else:
@@ -196,20 +195,20 @@ def _build_scroll_configs(
     return feed_config, reels_config
 
 
-def _run_feed_session(compat, page, profile_name: str, duration: int, feed_config: dict) -> None:
+def _run_feed_session(page, profile_name: str, duration: int, feed_config: dict) -> None:
     logger.info('Starting scrolling session for %d minutes...', duration)
     logger.info('Config: %s', feed_config)
-    compat.scroll_feed(page, duration, feed_config, profile_name=profile_name)
+    scroll_feed(page, duration, feed_config, profile_name=profile_name)
     logger.info('Scrolling session finished.')
 
 
-def _run_reels_session(compat, page, profile_name: str, duration: int, reels_config: dict) -> None:
+def _run_reels_session(page, profile_name: str, duration: int, reels_config: dict) -> None:
     logger.info('Starting REELS session for %d minutes...', duration)
-    compat.scroll_reels(page, duration, reels_config, profile_name=profile_name)
+    scroll_reels(page, duration, reels_config, profile_name=profile_name)
     logger.info('Reels session finished.')
 
 
-def _run_mixed_session(compat, page, profile_name: str, feed_duration: int, reels_duration: int, feed_config: dict, reels_config: dict) -> None:
+def _run_mixed_session(page, profile_name: str, feed_duration: int, reels_duration: int, feed_config: dict, reels_config: dict) -> None:
     logger.info('Starting MIXED session (Feed: %dm, Reels: %dm)...', feed_duration, reels_duration)
     tasks = []
     if feed_duration > 0:
@@ -220,11 +219,11 @@ def _run_mixed_session(compat, page, profile_name: str, feed_duration: int, reel
     for idx, (task_type, task_duration) in enumerate(tasks, 1):
         if task_type == 'feed':
             logger.info('[%d/%d] Running Feed scroll for %d mins...', idx, len(tasks), task_duration)
-            compat.scroll_feed(page, task_duration, feed_config, profile_name=profile_name)
+            scroll_feed(page, task_duration, feed_config, profile_name=profile_name)
             logger.info('Feed part complete.')
         else:
             logger.info('[%d/%d] Running Reels scroll for %d mins...', idx, len(tasks), task_duration)
-            compat.scroll_reels(page, task_duration, reels_config, profile_name=profile_name)
+            scroll_reels(page, task_duration, reels_config, profile_name=profile_name)
             logger.info('Reels part complete.')
         if idx < len(tasks):
             time.sleep(random.randint(5, 10))

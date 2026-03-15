@@ -2,22 +2,23 @@ import random
 import time
 from typing import Any, Dict, Optional
 
-from python.runners.workflow.compat import compat as compat_module
+from python.runners.workflow.bootstrap import _find_start_node
+from python.runners.workflow.graph import _next_node
+from python.runners.workflow.io import emit_event, log
 
 
 def process_account(runner, account) -> bool:
-    compat = compat_module()
     profile_name = account.username
     browser_state = _build_browser_state(account)
     profile_data = _load_profile_data(runner, profile_name)
     _hydrate_browser_identity(browser_state, profile_data)
-    compat.emit_event('profile_started', profile=profile_name, workflow_id=runner.workflow_id)
+    emit_event('profile_started', profile=profile_name, workflow_id=runner.workflow_id)
     try:
         _sync_profile_status(runner, profile_name, 'running', True)
         _allocate_display(runner, profile_name, browser_state)
         succeeded = _run_account_nodes(runner, account, browser_state, profile_data)
         if runner.running:
-            compat.emit_event(
+            emit_event(
                 'profile_completed',
                 profile=profile_name,
                 status='success' if succeeded else 'failed',
@@ -77,13 +78,12 @@ def _sync_profile_status(runner, profile_name: str, status: str, running: bool) 
 
 
 def _allocate_display(runner, profile_name: str, browser_state: Dict[str, Any]) -> None:
-    compat = compat_module()
     try:
         display_session = runner.display_mgr.allocate(runner.workflow_id, profile_name)
         if not display_session:
             return
         browser_state['display'] = display_session.get('display')
-        compat.emit_event(
+        emit_event(
             'display_allocated',
             workflow_id=runner.workflow_id,
             profile=profile_name,
@@ -91,16 +91,15 @@ def _allocate_display(runner, profile_name: str, browser_state: Dict[str, Any]) 
             display_num=display_session.get('display_num'),
         )
     except Exception as exc:
-        compat.log(f'Display allocation failed for @{profile_name}: {exc}')
+        log(f'Display allocation failed for @{profile_name}: {exc}')
 
 
 def _run_account_nodes(runner, account, browser_state: Dict[str, Any], profile_data: Optional[Dict[str, Any]]) -> bool:
-    compat = compat_module()
-    start_node = compat._find_start_node(runner.nodes)
+    start_node = _find_start_node(runner.nodes)
     if not start_node:
-        compat.log('Start node not found')
+        log('Start node not found')
         return False
-    current = compat._next_node(runner.edge_index, str(start_node.get('id')), '')
+    current = _next_node(runner.edge_index, str(start_node.get('id')), '')
     loop_state: Dict[str, int] = {}
     completed_steps = 0
     activity_nodes = [node for node in runner.nodes if node.get('type') == 'activity']
@@ -110,7 +109,7 @@ def _run_account_nodes(runner, account, browser_state: Dict[str, Any], profile_d
     while runner.running and current:
         visited_steps += 1
         if visited_steps > 500:
-            compat.log('Workflow step limit exceeded')
+            log('Workflow step limit exceeded')
             return False
         current, completed_steps, last_handle = _run_single_node(
             runner,
@@ -135,13 +134,12 @@ def _run_single_node(
     completed_steps: int,
     total_steps: int,
 ) -> tuple[Optional[str], int, str]:
-    compat = compat_module()
     node = runner.node_index.get(current)
     if not node:
         return None, completed_steps, ''
     if node.get('type') == 'start':
-        next_node = compat._next_node(runner.edge_index, str(node.get('id')), '')
-        return next_node, completed_steps, ''
+        next_id = _next_node(runner.edge_index, str(node.get('id')), '')
+        return next_id, completed_steps, ''
     node_id = str(node.get('id'))
     activity_id, label, config = _node_metadata(node)
     progress = int(round(100.0 * min(1.0, float(completed_steps) / float(total_steps))))
@@ -149,10 +147,10 @@ def _run_single_node(
     handle = runner._execute_activity(node_id, activity_id, config, browser_state, account, profile_data, loop_state)
     next_completed_steps = completed_steps + (1 if node.get('type') == 'activity' else 0)
     _emit_task_completed(runner, node_id, label, browser_state['profile_name'], handle, next_completed_steps, total_steps)
-    next_node = compat._next_node(runner.edge_index, node_id, str(handle or ''))
-    if runner.running and next_node:
+    next_id = _next_node(runner.edge_index, node_id, str(handle or ''))
+    if runner.running and next_id:
         time.sleep(random.randint(1, 3))
-    return next_node, next_completed_steps, str(handle or '')
+    return next_id, next_completed_steps, str(handle or '')
 
 
 def _node_metadata(node: Dict[str, Any]) -> tuple[str, str, Dict[str, Any]]:
@@ -164,7 +162,6 @@ def _node_metadata(node: Dict[str, Any]) -> tuple[str, str, Dict[str, Any]]:
 
 
 def _emit_task_started(runner, node_id: str, activity_id: str, label: str, profile_name: str, progress: int) -> None:
-    compat = compat_module()
     runner._update_node_state(
         node_id,
         activityId=activity_id,
@@ -174,7 +171,7 @@ def _emit_task_started(runner, node_id: str, activity_id: str, label: str, profi
         progress=progress,
         updatedAt=int(time.time() * 1000),
     )
-    compat.emit_event(
+    emit_event(
         'task_started',
         profile=profile_name,
         task=label,
@@ -211,18 +208,17 @@ def _emit_task_completed(
 
 
 def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool:
-    compat = compat_module()
     if not runner.running:
-        compat.emit_event('profile_completed', profile=profile_name, status='cancelled', workflow_id=runner.workflow_id)
+        emit_event('profile_completed', profile=profile_name, status='cancelled', workflow_id=runner.workflow_id)
         _sync_profile_status(runner, profile_name, 'idle', False)
         return False
     if 'Target page, context or browser has been closed' in str(exc):
-        compat.emit_event('profile_completed', profile=profile_name, status='cancelled', workflow_id=runner.workflow_id)
+        emit_event('profile_completed', profile=profile_name, status='cancelled', workflow_id=runner.workflow_id)
         _sync_profile_status(runner, profile_name, 'idle', False)
-        compat.log(f'Stopped @{profile_name}')
+        log(f'Stopped @{profile_name}')
         return False
-    compat.emit_event('profile_completed', profile=profile_name, status='failed', workflow_id=runner.workflow_id)
-    compat.log(f'Error @{profile_name}: {exc}')
+    emit_event('profile_completed', profile=profile_name, status='failed', workflow_id=runner.workflow_id)
+    log(f'Error @{profile_name}: {exc}')
     _sync_profile_status(runner, profile_name, 'idle', False)
     return False
 
@@ -237,12 +233,11 @@ def _cleanup_browser_context(browser_state: Dict[str, Any]) -> None:
 
 
 def _release_display(runner, profile_name: str) -> None:
-    compat = compat_module()
     try:
         released = runner.display_mgr.release(runner.workflow_id, profile_name)
         if not released:
             return
-        compat.emit_event(
+        emit_event(
             'display_released',
             workflow_id=runner.workflow_id,
             profile=profile_name,

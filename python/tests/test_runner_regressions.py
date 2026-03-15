@@ -22,7 +22,7 @@ from python.runners.multi_account.activity_dispatch import _scroll_duration
 from python.runners.multi_account.config import _action_order
 from python.runners.multi_account.entrypoint import _load_profiles
 from python.runners.multi_account.runtime import InstagramAutomationRunner, run_automation_session
-from python.runners.run_multiple_accounts import _fetch_profiles_for_lists
+from python.runners.multi_account.profiles import _fetch_profiles_for_lists
 from python.runners.workflow.activity_dispatch import (
     _run_follow_activity,
     _run_loop,
@@ -144,7 +144,6 @@ def test_scroll_duration_normalizes_reversed_ranges(monkeypatch):
         )
     )
 
-    monkeypatch.setattr('python.runners.multi_account.activity_dispatch.compat_module', lambda: SimpleNamespace(normalize_range=normalize_range))
     monkeypatch.setattr('python.runners.multi_account.activity_dispatch.random.randint', lambda low, high: seen.append((low, high)) or low)
 
     assert _scroll_duration(runner, 'feed') == 1
@@ -152,21 +151,14 @@ def test_scroll_duration_normalizes_reversed_ranges(monkeypatch):
 
 
 def test_runner_parallel_profiles_uses_safe_int_parse(monkeypatch):
-    class _Compat:
-        @staticmethod
-        def _parse_int(value, default):
-            try:
-                return int(value)
-            except Exception:
-                return default
+    class _FakeAccountsClient:
+        pass
 
-        class InstagramAccountsClient:
-            pass
+    class _FakeProfilesClient:
+        pass
 
-        class ProfilesClient:
-            pass
-
-    monkeypatch.setattr('python.runners.multi_account.runtime.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.multi_account.runtime.InstagramAccountsClient', _FakeAccountsClient)
+    monkeypatch.setattr('python.runners.multi_account.runtime.ProfilesClient', _FakeProfilesClient)
 
     runner = InstagramAutomationRunner(SimpleNamespace(parallel_profiles='oops'), ['a', 'b'])
     try:
@@ -180,19 +172,11 @@ def test_multi_account_session_emits_failed_end_event_when_cycles_raise(monkeypa
     logs = []
     shutdowns = []
 
-    class _Compat:
-        @staticmethod
-        def emit_event(event_type, **data):
-            events.append((event_type, data))
-
-        @staticmethod
-        def log(message):
-            logs.append(message)
-
     def _raise_cycles(_runner):
         raise RuntimeError('boom')
 
-    monkeypatch.setattr('python.runners.multi_account.runtime.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.multi_account.runtime.emit_event', lambda event_type, **data: events.append((event_type, data)))
+    monkeypatch.setattr('python.runners.multi_account.runtime.log', logs.append)
     monkeypatch.setattr('python.runners.multi_account.runtime._run_cycles', _raise_cycles)
     monkeypatch.setattr(
         'python.runners.multi_account.runtime._shutdown_executor',
@@ -221,16 +205,8 @@ def test_multi_account_session_emits_failed_end_event_when_no_accounts(monkeypat
     logs = []
     shutdowns = []
 
-    class _Compat:
-        @staticmethod
-        def emit_event(event_type, **data):
-            events.append((event_type, data))
-
-        @staticmethod
-        def log(message):
-            logs.append(message)
-
-    monkeypatch.setattr('python.runners.multi_account.runtime.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.multi_account.runtime.emit_event', lambda event_type, **data: events.append((event_type, data)))
+    monkeypatch.setattr('python.runners.multi_account.runtime.log', logs.append)
     monkeypatch.setattr(
         'python.runners.multi_account.runtime._shutdown_executor',
         lambda executor, *, wait: shutdowns.append((executor, wait)),
@@ -255,26 +231,21 @@ def test_fetch_profiles_for_lists_ignores_redirect_responses(monkeypatch):
         def json():
             raise AssertionError('redirect response should not be parsed as JSON')
 
-    monkeypatch.setattr('python.runners.run_multiple_accounts.PROJECT_URL', 'https://convex.example')
-    monkeypatch.setattr('python.runners.run_multiple_accounts.SECRET_KEY', '')
-    monkeypatch.setattr('python.runners.run_multiple_accounts.requests.post', lambda *args, **kwargs: _Response())
+    monkeypatch.setattr('python.runners.multi_account.profiles.PROJECT_URL', 'https://convex.example')
+    monkeypatch.setattr('python.runners.multi_account.profiles.SECRET_KEY', '')
+    monkeypatch.setattr('python.runners.multi_account.profiles.requests.post', lambda *args, **kwargs: _Response())
 
     assert _fetch_profiles_for_lists(['list-1']) == []
 
 
-def test_multi_account_load_profiles_tolerates_none_from_fetch():
+def test_multi_account_load_profiles_tolerates_none_from_fetch(monkeypatch):
     logs = []
 
-    class _Compat:
-        @staticmethod
-        def log(message):
-            logs.append(message)
+    monkeypatch.setattr('python.runners.multi_account.entrypoint.log', logs.append)
+    monkeypatch.setattr('python.runners.multi_account.entrypoint._fetch_profiles_for_lists', lambda _list_ids: None)
 
-        @staticmethod
-        def _fetch_profiles_for_lists(_list_ids):
-            return None
 
-    assert _load_profiles(_Compat, ['list-1']) is None
+    assert _load_profiles(['list-1']) is None
     assert logs == [
         'DEBUG: fetched profiles count=0',
         'No profiles found in the selected list!',
@@ -303,7 +274,7 @@ def test_multi_account_action_order_filters_none_and_preserves_default_fallback(
 
 
 def test_workflow_start_node_inputs_ignores_none_in_select_list_source_lists(monkeypatch):
-    start_node = {'id': 'start', 'data': {'sourceLists': ['fallback-list']}}
+    start_node = {'id': 'start', 'type': 'start', 'data': {'sourceLists': ['fallback-list']}}
     nodes = [
         start_node,
         {
@@ -314,19 +285,17 @@ def test_workflow_start_node_inputs_ignores_none_in_select_list_source_lists(mon
             },
         },
     ]
-    compat = SimpleNamespace(_find_start_node=lambda _nodes: start_node)
 
-    _, _, list_ids = _start_node_inputs(compat, nodes)
+    _, _, list_ids = _start_node_inputs(nodes)
 
     assert list_ids == ['list-1', 'list-2']
 
 
 def test_workflow_start_node_inputs_ignores_none_in_start_node_fallback(monkeypatch):
-    start_node = {'id': 'start', 'data': {'sourceLists': [None, '  ', 'legacy-list', ' second-list ']}}
+    start_node = {'id': 'start', 'type': 'start', 'data': {'sourceLists': [None, '  ', 'legacy-list', ' second-list ']}}
     nodes = [start_node]
-    compat = SimpleNamespace(_find_start_node=lambda _nodes: start_node)
 
-    _, _, list_ids = _start_node_inputs(compat, nodes)
+    _, _, list_ids = _start_node_inputs(nodes)
 
     assert list_ids == ['legacy-list', 'second-list']
 
@@ -334,32 +303,8 @@ def test_workflow_start_node_inputs_ignores_none_in_start_node_fallback(monkeypa
 def test_workflow_follow_activity_passes_following_limit_separately(monkeypatch):
     captured = {}
 
-    class _Compat:
-        @staticmethod
-        def _parse_int(value, default):
-            try:
-                return int(value)
-            except Exception:
-                return default
-
-        @staticmethod
-        def normalize_range(values, _default):
-            low, high = values
-            return (min(low, high), max(low, high))
-
-        @staticmethod
-        def apply_count_limit(usernames, _count_range):
-            return usernames
-
-        @staticmethod
-        def log(_message):
-            return None
-
-        @staticmethod
-        def follow_usernames(**kwargs):
-            captured.update(kwargs)
-
-    monkeypatch.setattr('python.runners.workflow.activity_dispatch.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.follow_usernames', lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.log', lambda _message: None)
     monkeypatch.setattr('python.runners.workflow.activity_dispatch._resolve_profile_id', lambda *_args, **_kwargs: 'profile-1')
 
     runner = SimpleNamespace(
@@ -399,24 +344,16 @@ def test_workflow_run_account_nodes_returns_false_for_unhandled_failure(monkeypa
     events = []
     states = []
 
-    class _Compat:
-        @staticmethod
-        def _find_start_node(nodes):
-            return nodes[0]
+    def _fake_next_node(_edge_index, node_id, handle):
+        mapping = {
+            ('start', ''): 'activity',
+            ('activity', 'failure'): None,
+        }
+        return mapping.get((node_id, handle))
 
-        @staticmethod
-        def _next_node(_edge_index, node_id, handle):
-            mapping = {
-                ('start', ''): 'activity',
-                ('activity', 'failure'): None,
-            }
-            return mapping.get((node_id, handle))
-
-        @staticmethod
-        def emit_event(event_type, **data):
-            events.append((event_type, data))
-
-    monkeypatch.setattr('python.runners.workflow.account_session.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.workflow.account_session._find_start_node', lambda nodes: nodes[0])
+    monkeypatch.setattr('python.runners.workflow.account_session._next_node', _fake_next_node)
+    monkeypatch.setattr('python.runners.workflow.account_session.emit_event', lambda event_type, **data: events.append((event_type, data)))
 
     runner = SimpleNamespace(
         running=True,
@@ -437,15 +374,6 @@ def test_workflow_run_account_nodes_returns_false_for_unhandled_failure(monkeypa
 def test_workflow_process_account_emits_failed_completion_when_nodes_fail(monkeypatch):
     events = []
 
-    class _Compat:
-        @staticmethod
-        def emit_event(event_type, **data):
-            events.append((event_type, data))
-
-        @staticmethod
-        def log(_message):
-            return None
-
     runner = SimpleNamespace(
         workflow_id='wf-2',
         running=True,
@@ -453,7 +381,8 @@ def test_workflow_process_account_emits_failed_completion_when_nodes_fail(monkey
         display_mgr=SimpleNamespace(release=lambda *args, **kwargs: None),
     )
 
-    monkeypatch.setattr('python.runners.workflow.account_session.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.workflow.account_session.emit_event', lambda event_type, **data: events.append((event_type, data)))
+    monkeypatch.setattr('python.runners.workflow.account_session.log', lambda _message: None)
     monkeypatch.setattr('python.runners.workflow.account_session._load_profile_data', lambda *args, **kwargs: None)
     monkeypatch.setattr('python.runners.workflow.account_session._hydrate_browser_identity', lambda *args, **kwargs: None)
     monkeypatch.setattr('python.runners.workflow.account_session._allocate_display', lambda *args, **kwargs: None)
@@ -468,16 +397,8 @@ def test_workflow_process_account_emits_failed_completion_when_nodes_fail(monkey
 def test_workflow_general_exception_emits_failed_completion(monkeypatch):
     events = []
 
-    class _Compat:
-        @staticmethod
-        def emit_event(event_type, **data):
-            events.append((event_type, data))
-
-        @staticmethod
-        def log(_message):
-            return None
-
-    monkeypatch.setattr('python.runners.workflow.account_session.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.workflow.account_session.emit_event', lambda event_type, **data: events.append((event_type, data)))
+    monkeypatch.setattr('python.runners.workflow.account_session.log', lambda _message: None)
     monkeypatch.setattr('python.runners.workflow.account_session._sync_profile_status', lambda *args, **kwargs: None)
 
     runner = SimpleNamespace(running=True, workflow_id='wf-3')
@@ -490,20 +411,12 @@ def test_multi_account_general_exception_emits_failed_completion(monkeypatch):
     events = []
     synced = []
 
-    class _Compat:
-        @staticmethod
-        def emit_event(event_type, **data):
-            events.append((event_type, data))
-
-        @staticmethod
-        def log(_message):
-            return None
-
-    monkeypatch.setattr('python.runners.multi_account.account_session.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.multi_account.account_session.emit_event', lambda event_type, **data: events.append((event_type, data)))
+    monkeypatch.setattr('python.runners.multi_account.account_session.log', lambda _message: None)
 
     runner = SimpleNamespace(
         running=True,
-        profiles_client=SimpleNamespace(sync_profile_status=lambda profile_name, status, running: synced.append((profile_name, status, running))),
+        profiles_client=SimpleNamespace(sync_profile_status=lambda profile_name, status, running: synced.append((profile_name, status, running)),),
     )
 
     assert _handle_multi_account_exception(runner, 'alice', RuntimeError('boom')) is False
@@ -541,7 +454,9 @@ def test_multi_account_cooperative_stop_emits_success_before_idle_sync(monkeypat
     def _record_sync(_runner, profile_name):
         order.append(('sync_idle', profile_name))
 
-    monkeypatch.setattr('python.runners.multi_account.account_session.compat_module', lambda: _Compat)
+    monkeypatch.setattr('python.runners.multi_account.account_session.create_browser_context', _BrowserContext)
+    monkeypatch.setattr('python.runners.multi_account.account_session.emit_event', lambda event_type, **data: order.append((event_type, data)))
+    monkeypatch.setattr('python.runners.multi_account.account_session.log', lambda _message: None)
     monkeypatch.setattr('python.runners.multi_account.account_session._run_enabled_actions', _stop_runner)
     monkeypatch.setattr('python.runners.multi_account.account_session._sync_profile_idle', _record_sync)
 
@@ -598,9 +513,8 @@ def test_multi_account_sync_profile_idle_logs_inconsistent_state_after_retry(cap
 
 def test_workflow_unknown_activity_returns_failure_and_logs(monkeypatch):
     messages = []
-    compat = SimpleNamespace(log=messages.append)
 
-    monkeypatch.setattr('python.runners.workflow.activity_dispatch.compat_module', lambda: compat)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.log', messages.append)
 
     result = execute_workflow_activity(
         runner=SimpleNamespace(),
@@ -619,9 +533,8 @@ def test_workflow_unknown_activity_returns_failure_and_logs(monkeypatch):
 
 def test_workflow_python_script_is_disabled(monkeypatch):
     messages = []
-    compat = SimpleNamespace(log=messages.append)
 
-    monkeypatch.setattr('python.runners.workflow.activity_dispatch.compat_module', lambda: compat)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.log', messages.append)
 
     result = execute_workflow_activity(
         runner=SimpleNamespace(),
@@ -642,31 +555,20 @@ def test_workflow_python_script_is_disabled(monkeypatch):
 
 def test_run_python_script_without_code_still_fails(monkeypatch):
     messages = []
-    compat = SimpleNamespace(log=messages.append)
 
-    monkeypatch.setattr('python.runners.workflow.activity_dispatch.compat_module', lambda: compat)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.log', messages.append)
 
     assert _run_python_script({}) == 'failure'
     assert messages == ['python_script workflow activity is disabled and no longer supported.']
 
 
 def test_workflow_loop_state_advances_with_fresh_configs_when_node_id_missing(monkeypatch):
-    monkeypatch.setattr(
-        'python.runners.workflow.activity_dispatch.compat_module',
-        lambda: SimpleNamespace(_parse_int=lambda value, default: int(value) if value is not None else default),
-    )
-
     loop_state = {}
     assert _run_loop(None, {'iterations': 2}, loop_state) == 'loop'
     assert _run_loop(None, {'iterations': 2}, loop_state) == 'done'
 
 
 def test_workflow_loop_state_does_not_collide_for_distinct_missing_node_configs(monkeypatch):
-    monkeypatch.setattr(
-        'python.runners.workflow.activity_dispatch.compat_module',
-        lambda: SimpleNamespace(_parse_int=lambda value, default: int(value) if value is not None else default),
-    )
-
     loop_state = {}
 
     assert _run_loop(None, {'iterations': 2, 'label': 'alpha'}, loop_state) == 'loop'
@@ -684,13 +586,6 @@ def test_workflow_unfollow_activity_fails_when_status_sync_fails(monkeypatch):
         except Exception as exc:
             kwargs['log'](f'Error processing target: {exc}')
 
-    compat = SimpleNamespace(
-        _parse_int=lambda value, default: int(value) if value is not None else default,
-        normalize_range=lambda values, default: normalize_range(values, default),
-        unfollow_usernames=_fake_unfollow_usernames,
-        log=logs.append,
-        apply_count_limit=lambda items, _range: list(items),
-    )
     runner = SimpleNamespace(
         accounts_client=SimpleNamespace(
             get_accounts_for_profile=lambda *_args, **_kwargs: [{'user_name': 'target', 'id': 'account-1'}],
@@ -699,7 +594,9 @@ def test_workflow_unfollow_activity_fails_when_status_sync_fails(monkeypatch):
         running=True,
     )
 
-    monkeypatch.setattr('python.runners.workflow.activity_dispatch.compat_module', lambda: compat)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.unfollow_usernames', _fake_unfollow_usernames)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.log', logs.append)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.apply_count_limit', lambda items, _range: list(items))
 
     result = _run_unfollow_activity(
         runner,

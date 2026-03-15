@@ -464,13 +464,11 @@ def test_wait_for_circuit_breaker_clamps_negative_wait(monkeypatch):
         def is_open():
             return True
 
-    compat = MagicMock()
-    compat.proxy_circuit = _Circuit()
-
+    monkeypatch.setattr('python.browser.context.proxy_circuit', _Circuit())
     monkeypatch.setattr('python.browser.context.time.time', lambda: 2.0)
     monkeypatch.setattr('python.browser.context.time.sleep', slept.append)
 
-    _wait_for_circuit_breaker(compat)
+    _wait_for_circuit_breaker()
 
     assert slept == [0.0]
 
@@ -556,7 +554,6 @@ def test_run_browser_automated_session_returns_and_context_closes_once(monkeypat
     monkeypatch.setattr('python.browser.runtime._print_run_header', lambda *_args, **_kwargs: None)
     monkeypatch.setattr('python.browser.runtime._register_signal_handlers', lambda: None)
     monkeypatch.setattr('python.browser.runtime._open_browser_session', fake_browser_session)
-    monkeypatch.setattr('python.browser.runtime.compat_module', lambda: MagicMock())
     monkeypatch.setattr(
         'python.browser.runtime._run_feed_session',
         lambda *_args, **_kwargs: events.append('feed_ran'),

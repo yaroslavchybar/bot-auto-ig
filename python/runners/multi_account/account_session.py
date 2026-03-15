@@ -4,18 +4,22 @@ from datetime import datetime, timedelta, timezone
 import time
 from typing import Dict, List, Optional, Tuple
 
-from python.runners.multi_account.compat import compat as compat_module
+from python.core.utils import (
+    build_action_order,
+    create_browser_context,
+    get_action_enabled_map,
+)
+from python.runners.multi_account.io import emit_event, log
 
 
 def process_account(runner, account) -> bool:
-    compat = compat_module()
     profile_name = account.username
     profile_data = _load_profile_data(runner, profile_name)
     allowed, message_targets = _preflight_account(runner, account, profile_data)
     if not allowed:
         return False
-    compat.log(f'Starting browser for @{profile_name}...')
-    compat.emit_event('profile_started', profile=profile_name)
+    log(f'Starting browser for @{profile_name}...')
+    emit_event('profile_started', profile=profile_name)
     try:
         _mark_profile_running(runner, profile_name, profile_data)
         return _run_account_session(runner, account, profile_data, message_targets)
@@ -41,22 +45,21 @@ def _preflight_account(
     account,
     profile_data: Optional[Dict[str, object]],
 ) -> Tuple[bool, Optional[List[Dict[str, object]]]]:
-    compat = compat_module()
     profile_name = account.username
     try:
         if _is_busy_profile(runner, profile_data):
-            compat.log(f'Skipping @{profile_name}: profile is busy.')
+            log(f'Skipping @{profile_name}: profile is busy.')
             return False, None
         if _is_reopen_cooldown_active(runner, profile_data):
             cooldown_min = int(getattr(runner.config, 'profile_reopen_cooldown_minutes', 30) or 0)
-            compat.log(f'Skipping @{profile_name}: recently opened (<{cooldown_min} min).')
+            log(f'Skipping @{profile_name}: recently opened (<{cooldown_min} min).')
             return False, None
         message_targets = _message_targets_if_only_messages(runner, profile_name, profile_data)
         if message_targets == []:
             return False, None
         return True, message_targets
     except Exception as exc:
-        compat.log(f'Session check error for @{profile_name}: {exc}')
+        log(f'Session check error for @{profile_name}: {exc}')
         return False, None
 
 
@@ -92,18 +95,17 @@ def _parse_last_opened_at(value) -> Optional[datetime]:
 
 
 def _message_targets_if_only_messages(runner, profile_name: str, profile_data: Optional[Dict[str, object]]):
-    compat = compat_module()
-    enabled_map = compat.get_action_enabled_map(runner.config)
+    enabled_map = get_action_enabled_map(runner.config)
     only_messages = enabled_map.get('Send Messages', False) and sum(1 for enabled in enabled_map.values() if enabled) == 1
     if not only_messages:
         return None
     profile_id = profile_data.get('profile_id') if profile_data else None
     if not profile_id:
-        compat.log(f'@{profile_name}: profile not found in DB, skipping browser launch.')
+        log(f'@{profile_name}: profile not found in DB, skipping browser launch.')
         return []
     targets = runner.accounts_client.get_accounts_to_message(profile_id)
     if not targets:
-        compat.log(f'@{profile_name}: no message targets (message=true), not opening browser.')
+        log(f'@{profile_name}: no message targets (message=true), not opening browser.')
         return []
     return targets
 
@@ -136,8 +138,7 @@ def _run_account_session(
     profile_data: Optional[Dict[str, object]],
     message_targets: Optional[List[Dict[str, object]]],
 ) -> bool:
-    compat = compat_module()
-    with compat.create_browser_context(
+    with create_browser_context(
         account.username,
         account.proxy,
         _user_agent(profile_data),
@@ -145,10 +146,10 @@ def _run_account_session(
     ) as (_context, page):
         _run_enabled_actions(runner, page, account, profile_data, message_targets)
         if runner.running:
-            compat.log(f'All tasks completed for @{account.username}')
-            compat.emit_event('profile_completed', profile=account.username, status='success')
+            log(f'All tasks completed for @{account.username}')
+            emit_event('profile_completed', profile=account.username, status='success')
         else:
-            compat.emit_event('profile_completed', profile=account.username, status='cancelled')
+            emit_event('profile_completed', profile=account.username, status='cancelled')
         _sync_profile_idle(runner, account.username)
         return True
 
@@ -163,7 +164,6 @@ def _user_agent(profile_data: Optional[Dict[str, object]]) -> Optional[str]:
 
 
 def _run_enabled_actions(runner, page, account, profile_data, message_targets) -> None:
-    compat = compat_module()
     actions_map = {
         'Feed Scroll': lambda: runner._run_scrolling(page, mode='feed'),
         'Reels Scroll': lambda: runner._run_scrolling(page, mode='reels'),
@@ -173,31 +173,30 @@ def _run_enabled_actions(runner, page, account, profile_data, message_targets) -
         'Approve Requests': lambda: runner._run_approve_only(page, account),
         'Send Messages': lambda: runner._run_message_only(page, account, profile_data, message_targets),
     }
-    enabled_map = compat.get_action_enabled_map(runner.config)
-    for action_name in compat.build_action_order(runner.config):
+    enabled_map = get_action_enabled_map(runner.config)
+    for action_name in build_action_order(runner.config):
         if not runner.running:
             break
         if action_name not in actions_map or not enabled_map.get(action_name, False):
             continue
-        compat.emit_event('task_started', profile=account.username, task=action_name)
+        emit_event('task_started', profile=account.username, task=action_name)
         actions_map[action_name]()
         if runner.running:
             time.sleep(random.randint(3, 7))
 
 
 def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool:
-    compat = compat_module()
     if not runner.running:
-        compat.emit_event('profile_completed', profile=profile_name, status='cancelled')
+        emit_event('profile_completed', profile=profile_name, status='cancelled')
         _sync_profile_idle(runner, profile_name)
         return False
     if 'Target page, context or browser has been closed' in str(exc):
-        compat.emit_event('profile_completed', profile=profile_name, status='cancelled')
-        compat.log(f'Stopped @{profile_name}')
+        emit_event('profile_completed', profile=profile_name, status='cancelled')
+        log(f'Stopped @{profile_name}')
         _sync_profile_idle(runner, profile_name)
         return False
-    compat.emit_event('profile_completed', profile=profile_name, status='failed')
-    compat.log(f'Error @{profile_name}: {exc}')
+    emit_event('profile_completed', profile=profile_name, status='failed')
+    log(f'Error @{profile_name}: {exc}')
     _sync_profile_idle(runner, profile_name)
     return False
 

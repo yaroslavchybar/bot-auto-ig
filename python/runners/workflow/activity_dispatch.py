@@ -4,7 +4,22 @@ import random
 import time
 from typing import Any, Dict, Optional
 
-from python.runners.workflow.compat import compat as compat_module
+from python.actions.browsing import scroll_feed, scroll_reels
+from python.actions.engagement.approve.session import approve_follow_requests
+from python.actions.engagement.follow.common import normalize_range
+from python.actions.engagement.follow.session import follow_usernames
+from python.actions.engagement.unfollow.session import unfollow_usernames
+from python.actions.messaging.session import send_messages
+from python.actions.stories import watch_stories
+from python.core.utils import apply_count_limit, create_browser_context
+from python.database.messages import MessageTemplatesClient
+from python.runners.workflow.scrape_utils import _choose_weighted
+from python.runners.workflow.io import emit_event, log
+from python.runners.workflow.parsing import (
+    _parse_bool,
+    _parse_float,
+    _parse_int,
+)
 
 
 def execute_activity(
@@ -17,7 +32,6 @@ def execute_activity(
     profile_data: Optional[Dict[str, Any]],
     loop_state: Dict[str, int],
 ) -> str:
-    compat = compat_module()
     try:
         control_result = _execute_control_activity(
             runner,
@@ -43,7 +57,7 @@ def execute_activity(
             profile_data,
         )
     except Exception as exc:
-        compat.log(f'Error in activity {activity_id}: {exc}')
+        log(f'Error in activity {activity_id}: {exc}')
         return 'failure'
 
 
@@ -100,16 +114,14 @@ def _execute_browser_activity(
         return _run_approve_activity(runner, cfg, page, account)
     if activity_id == 'send_dm':
         return _run_send_dm_activity(runner, cfg, page, account, profile_data)
-    compat = compat_module()
-    compat.log(f'Unknown workflow activity: {activity_id}')
+    log(f'Unknown workflow activity: {activity_id}')
     return 'failure'
 
 
 def _start_browser(runner, cfg: Dict[str, Any], browser_state: Dict[str, Any], *, auto_started: bool) -> str:
-    compat = compat_module()
     _close_existing_context(browser_state)
     headless_cfg = bool(cfg.get('headlessMode', runner.headless))
-    ctx_mgr = compat.create_browser_context(
+    ctx_mgr = create_browser_context(
         browser_state['profile_name'],
         browser_state['proxy_str'],
         browser_state.get('user_agent'),
@@ -122,7 +134,7 @@ def _start_browser(runner, cfg: Dict[str, Any], browser_state: Dict[str, Any], *
     browser_state['_ctx_mgr'] = ctx_mgr
     browser_state['context'] = context
     browser_state['page'] = page
-    compat.log('Browser auto-started.' if auto_started else 'Browser started.')
+    log('Browser auto-started.' if auto_started else 'Browser started.')
     return 'next' if not auto_started else 'success'
 
 
@@ -146,7 +158,6 @@ def _close_existing_context(browser_state: Dict[str, Any]) -> None:
 
 
 def _close_browser(browser_state: Dict[str, Any]) -> str:
-    compat = compat_module()
     ctx_mgr = browser_state.get('_ctx_mgr')
     if not ctx_mgr:
         return 'next'
@@ -157,31 +168,28 @@ def _close_browser(browser_state: Dict[str, Any]) -> str:
     browser_state['context'] = None
     browser_state['page'] = None
     browser_state['_ctx_mgr'] = None
-    compat.log('Browser closed.')
+    log('Browser closed.')
     return 'next'
 
 
 def _run_delay(cfg: Dict[str, Any]) -> str:
-    compat = compat_module()
-    min_seconds = max(1, compat._parse_int(cfg.get('minSeconds'), 30))
-    max_seconds = max(min_seconds, compat._parse_int(cfg.get('maxSeconds'), 120))
+    min_seconds = max(1, _parse_int(cfg.get('minSeconds'), 30))
+    max_seconds = max(min_seconds, _parse_int(cfg.get('maxSeconds'), 120))
     time.sleep(random.randint(min_seconds, max_seconds))
     return 'next'
 
 
 def _run_condition(cfg: Dict[str, Any]) -> str:
-    compat = compat_module()
     check = str(cfg.get('check') or 'random').strip().lower()
     value = str(cfg.get('value') or '').strip()
     if check != 'random':
         return 'true'
-    pct = max(0, min(100, compat._parse_int(value, 50)))
+    pct = max(0, min(100, _parse_int(value, 50)))
     return 'true' if random.randint(1, 100) <= pct else 'false'
 
 
 def _run_loop(node_id: str, cfg: Dict[str, Any], loop_state: Dict[str, int]) -> str:
-    compat = compat_module()
-    iterations = max(1, min(100, compat._parse_int(cfg.get('iterations'), 3)))
+    iterations = max(1, min(100, _parse_int(cfg.get('iterations'), 3)))
     key = _loop_state_key(node_id, cfg)
     current_iter = loop_state.get(key, 0) + 1
     loop_state[key] = current_iter
@@ -214,104 +222,97 @@ def _normalize_loop_key_value(value: Any) -> Any:
 
 
 def _run_random_branch(cfg: Dict[str, Any]) -> str:
-    compat = compat_module()
-    return compat._choose_weighted(['path_a', 'path_b', 'path_c'], str(cfg.get('weights') or ''))
+    return _choose_weighted(['path_a', 'path_b', 'path_c'], str(cfg.get('weights') or ''))
 
 
 def _run_python_script(cfg: Dict[str, Any]) -> str:
-    compat = compat_module()
     if str(cfg.get('code') or '').strip():
-        compat.log(
+        log(
             'python_script workflow activity is disabled for security reasons; remove this node from the workflow.'
         )
     else:
-        compat.log(
+        log(
             'python_script workflow activity is disabled and no longer supported.'
         )
     return 'failure'
 
 
 def _ensure_browser(runner, activity_id: str, cfg: Dict[str, Any], browser_state: Dict[str, Any]) -> Optional[Any]:
-    compat = compat_module()
     page = browser_state.get('page')
     if page is not None:
         return page
-    compat.log(f'No browser open for activity {activity_id} – auto-starting browser.')
+    log(f'No browser open for activity {activity_id} – auto-starting browser.')
     try:
         _start_browser(runner, cfg, browser_state, auto_started=True)
         return browser_state.get('page')
     except Exception as exc:
-        compat.log(f'Failed to auto-start browser: {exc}')
+        log(f'Failed to auto-start browser: {exc}')
         return None
 
 
 def _run_browse_feed(runner, cfg: Dict[str, Any], page: Any) -> str:
-    compat = compat_module()
-    min_minutes = compat._parse_int(cfg.get('feed_min_time_minutes'), 1)
-    max_minutes = compat._parse_int(cfg.get('feed_max_time_minutes'), 3)
-    min_minutes, max_minutes = compat.normalize_range((min_minutes, max_minutes), (1, 3))
+    min_minutes = _parse_int(cfg.get('feed_min_time_minutes'), 1)
+    max_minutes = _parse_int(cfg.get('feed_max_time_minutes'), 3)
+    min_minutes, max_minutes = normalize_range((min_minutes, max_minutes), (1, 3))
     duration = random.randint(min_minutes, max_minutes)
-    compat.scroll_feed(page, duration, _build_feed_config(compat, cfg), should_stop=lambda: not runner.running)
+    scroll_feed(page, duration, _build_feed_config(cfg), should_stop=lambda: not runner.running)
     return 'success'
 
 
-def _build_feed_config(compat, cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _build_feed_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        'like_chance': compat._parse_int(cfg.get('like_chance'), 10),
+        'like_chance': _parse_int(cfg.get('like_chance'), 10),
         'comment_chance': 0,
-        'follow_chance': compat._parse_int(cfg.get('follow_chance'), 0),
-        'carousel_watch_chance': compat._parse_int(cfg.get('carousel_watch_chance'), 0),
-        'carousel_max_slides': compat._parse_int(cfg.get('carousel_max_slides'), 3),
-        'watch_stories': compat._parse_bool(cfg.get('watch_stories'), False),
-        'stories_max': compat._parse_int(cfg.get('stories_max'), 3),
-        'stories_min_view_seconds': compat._parse_float(cfg.get('stories_min_view_seconds'), 2.0),
-        'stories_max_view_seconds': compat._parse_float(cfg.get('stories_max_view_seconds'), 5.0),
-        'skip_post_chance': compat._parse_int(cfg.get('skip_post_chance'), 30),
-        'skip_post_max': compat._parse_int(cfg.get('skip_post_max'), 2),
-        'post_view_min_seconds': compat._parse_float(cfg.get('post_view_min_seconds'), 2.0),
-        'post_view_max_seconds': compat._parse_float(cfg.get('post_view_max_seconds'), 5.0),
+        'follow_chance': _parse_int(cfg.get('follow_chance'), 0),
+        'carousel_watch_chance': _parse_int(cfg.get('carousel_watch_chance'), 0),
+        'carousel_max_slides': _parse_int(cfg.get('carousel_max_slides'), 3),
+        'watch_stories': _parse_bool(cfg.get('watch_stories'), False),
+        'stories_max': _parse_int(cfg.get('stories_max'), 3),
+        'stories_min_view_seconds': _parse_float(cfg.get('stories_min_view_seconds'), 2.0),
+        'stories_max_view_seconds': _parse_float(cfg.get('stories_max_view_seconds'), 5.0),
+        'skip_post_chance': _parse_int(cfg.get('skip_post_chance'), 30),
+        'skip_post_max': _parse_int(cfg.get('skip_post_max'), 2),
+        'post_view_min_seconds': _parse_float(cfg.get('post_view_min_seconds'), 2.0),
+        'post_view_max_seconds': _parse_float(cfg.get('post_view_max_seconds'), 5.0),
     }
 
 
 def _run_browse_reels(runner, cfg: Dict[str, Any], page: Any) -> str:
-    compat = compat_module()
-    min_minutes = compat._parse_int(cfg.get('reels_min_time_minutes'), 1)
-    max_minutes = compat._parse_int(cfg.get('reels_max_time_minutes'), 3)
-    min_minutes, max_minutes = compat.normalize_range((min_minutes, max_minutes), (1, 3))
+    min_minutes = _parse_int(cfg.get('reels_min_time_minutes'), 1)
+    max_minutes = _parse_int(cfg.get('reels_max_time_minutes'), 3)
+    min_minutes, max_minutes = normalize_range((min_minutes, max_minutes), (1, 3))
     duration = random.randint(min_minutes, max_minutes)
-    compat.scroll_reels(page, duration, _build_reels_config(compat, cfg), should_stop=lambda: not runner.running)
+    scroll_reels(page, duration, _build_reels_config(cfg), should_stop=lambda: not runner.running)
     return 'success'
 
 
-def _build_reels_config(compat, cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _build_reels_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        'like_chance': compat._parse_int(cfg.get('reels_like_chance'), 10),
+        'like_chance': _parse_int(cfg.get('reels_like_chance'), 10),
         'comment_chance': 0,
-        'follow_chance': compat._parse_int(cfg.get('reels_follow_chance'), 0),
-        'reels_skip_chance': compat._parse_int(cfg.get('reels_skip_chance'), 30),
-        'reels_skip_min_time': compat._parse_float(cfg.get('reels_skip_min_time'), 0.8),
-        'reels_skip_max_time': compat._parse_float(cfg.get('reels_skip_max_time'), 2.0),
-        'reels_normal_min_time': compat._parse_float(cfg.get('reels_normal_min_time'), 5.0),
-        'reels_normal_max_time': compat._parse_float(cfg.get('reels_normal_max_time'), 20.0),
-        'reels_advance_min_seconds': compat._parse_float(cfg.get('reels_advance_min_seconds'), 1.5),
-        'reels_advance_max_seconds': compat._parse_float(cfg.get('reels_advance_max_seconds'), 3.0),
+        'follow_chance': _parse_int(cfg.get('reels_follow_chance'), 0),
+        'reels_skip_chance': _parse_int(cfg.get('reels_skip_chance'), 30),
+        'reels_skip_min_time': _parse_float(cfg.get('reels_skip_min_time'), 0.8),
+        'reels_skip_max_time': _parse_float(cfg.get('reels_skip_max_time'), 2.0),
+        'reels_normal_min_time': _parse_float(cfg.get('reels_normal_min_time'), 5.0),
+        'reels_normal_max_time': _parse_float(cfg.get('reels_normal_max_time'), 20.0),
+        'reels_advance_min_seconds': _parse_float(cfg.get('reels_advance_min_seconds'), 1.5),
+        'reels_advance_max_seconds': _parse_float(cfg.get('reels_advance_max_seconds'), 3.0),
     }
 
 
 def _run_watch_stories(cfg: Dict[str, Any], page: Any) -> str:
-    compat = compat_module()
-    compat.watch_stories(
+    watch_stories(
         page,
-        max_stories=compat._parse_int(cfg.get('stories_max'), 3),
-        min_view_s=compat._parse_float(cfg.get('stories_min_view_seconds'), 2.0),
-        max_view_s=compat._parse_float(cfg.get('stories_max_view_seconds'), 5.0),
-        log=compat.log,
+        max_stories=_parse_int(cfg.get('stories_max'), 3),
+        min_view_s=_parse_float(cfg.get('stories_min_view_seconds'), 2.0),
+        max_view_s=_parse_float(cfg.get('stories_max_view_seconds'), 5.0),
+        log=log,
     )
     return 'success'
 
 
 def _run_follow_activity(runner, cfg: Dict[str, Any], page: Any, account, profile_data: Optional[Dict[str, Any]]) -> str:
-    compat = compat_module()
     profile_id = _resolve_profile_id(runner, account, profile_data)
     if not profile_id:
         return 'failure'
@@ -319,27 +320,27 @@ def _run_follow_activity(runner, cfg: Dict[str, Any], page: Any, account, profil
     usernames = [entry.get('user_name') for entry in accounts if entry.get('user_name')]
     if not usernames:
         return 'failure'
-    follow_min = compat._parse_int(cfg.get('follow_min_count'), 5)
-    follow_max = compat._parse_int(cfg.get('follow_max_count'), 15)
-    follow_min, follow_max = compat.normalize_range((follow_min, follow_max), (5, 15))
-    follow_delay_min = compat._parse_int(cfg.get('follow_min_delay_seconds'), 10)
-    follow_delay_max = compat._parse_int(cfg.get('follow_max_delay_seconds'), 20)
-    follow_delay_min, follow_delay_max = compat.normalize_range((follow_delay_min, follow_delay_max), (10, 20))
-    highlights_min = compat._parse_int(cfg.get('highlights_min'), 0)
-    highlights_max = compat._parse_int(cfg.get('highlights_max'), 2)
-    highlights_range = compat.normalize_range((highlights_min, highlights_max), (0, 2))
-    compat.follow_usernames(
+    follow_min = _parse_int(cfg.get('follow_min_count'), 5)
+    follow_max = _parse_int(cfg.get('follow_max_count'), 15)
+    follow_min, follow_max = normalize_range((follow_min, follow_max), (5, 15))
+    follow_delay_min = _parse_int(cfg.get('follow_min_delay_seconds'), 10)
+    follow_delay_max = _parse_int(cfg.get('follow_max_delay_seconds'), 20)
+    follow_delay_min, follow_delay_max = normalize_range((follow_delay_min, follow_delay_max), (10, 20))
+    highlights_min = _parse_int(cfg.get('highlights_min'), 0)
+    highlights_max = _parse_int(cfg.get('highlights_max'), 2)
+    highlights_range = normalize_range((highlights_min, highlights_max), (0, 2))
+    follow_usernames(
         profile_name=account.username,
         proxy_string=account.proxy or '',
-        usernames=compat.apply_count_limit(usernames, (follow_min, follow_max)),
+        usernames=apply_count_limit(usernames, (follow_min, follow_max)),
         account_map={entry['user_name']: entry['id'] for entry in accounts if entry.get('id') and entry.get('user_name')},
-        following_limit=compat._parse_int(cfg.get('following_limit'), 3000),
+        following_limit=_parse_int(cfg.get('following_limit'), 3000),
         interactions_config={
             'highlights_range': highlights_range,
-            'likes_percentage': compat._parse_int(cfg.get('likes_percentage'), 0),
-            'scroll_percentage': compat._parse_int(cfg.get('scroll_percentage'), 0),
+            'likes_percentage': _parse_int(cfg.get('likes_percentage'), 0),
+            'scroll_percentage': _parse_int(cfg.get('scroll_percentage'), 0),
         },
-        log=compat.log,
+        log=log,
         should_stop=lambda: not runner.running,
         page=page,
         delay_range=(follow_delay_min, follow_delay_max),
@@ -348,7 +349,6 @@ def _run_follow_activity(runner, cfg: Dict[str, Any], page: Any, account, profil
 
 
 def _run_unfollow_activity(runner, cfg: Dict[str, Any], page: Any, account, profile_data: Optional[Dict[str, Any]]) -> str:
-    compat = compat_module()
     profile_id = _resolve_profile_id(runner, account, profile_data)
     if not profile_id:
         return 'failure'
@@ -356,22 +356,22 @@ def _run_unfollow_activity(runner, cfg: Dict[str, Any], page: Any, account, prof
     usernames = [entry.get('user_name') for entry in accounts if entry.get('user_name')]
     if not usernames:
         return 'failure'
-    min_delay = compat._parse_int(cfg.get('min_delay'), 10)
-    max_delay = compat._parse_int(cfg.get('max_delay'), 30)
-    min_delay, max_delay = compat.normalize_range((min_delay, max_delay), (10, 30))
-    min_count = compat._parse_int(cfg.get('unfollow_min_count'), 5)
-    max_count = compat._parse_int(cfg.get('unfollow_max_count'), 15)
-    min_count, max_count = compat.normalize_range((min_count, max_count), (5, 15))
+    min_delay = _parse_int(cfg.get('min_delay'), 10)
+    max_delay = _parse_int(cfg.get('max_delay'), 30)
+    min_delay, max_delay = normalize_range((min_delay, max_delay), (10, 30))
+    min_count = _parse_int(cfg.get('unfollow_min_count'), 5)
+    max_count = _parse_int(cfg.get('unfollow_max_count'), 15)
+    min_count, max_count = normalize_range((min_count, max_count), (5, 15))
     account_map = {entry['user_name']: entry['id'] for entry in accounts if entry.get('id') and entry.get('user_name')}
     status_sync_failed = {'value': False}
-    compat.unfollow_usernames(
+    unfollow_usernames(
         profile_name=account.username,
         proxy_string=account.proxy or '',
-        usernames=compat.apply_count_limit(usernames, (min_count, max_count)),
-        log=compat.log,
+        usernames=apply_count_limit(usernames, (min_count, max_count)),
+        log=log,
         should_stop=lambda: not runner.running,
         delay_range=(min_delay, max_delay),
-        on_success=lambda uname: _mark_unfollow_done(runner, account_map, uname, compat.log, status_sync_failed),
+        on_success=lambda uname: _mark_unfollow_done(runner, account_map, uname, log, status_sync_failed),
         page=page,
     )
     return 'failure' if status_sync_failed['value'] else 'success'
@@ -391,66 +391,64 @@ def _mark_unfollow_done(runner, account_map: Dict[str, Any], username: str, log,
 
 
 def _run_approve_activity(runner, cfg: Dict[str, Any], page: Any, account) -> str:
-    compat = compat_module()
-    min_delay = compat._parse_float(cfg.get('approve_min_delay_seconds'), 1.0)
-    max_delay = compat._parse_float(cfg.get('approve_max_delay_seconds'), 2.0)
+    min_delay = _parse_float(cfg.get('approve_min_delay_seconds'), 1.0)
+    max_delay = _parse_float(cfg.get('approve_max_delay_seconds'), 2.0)
     if max_delay < min_delay:
         min_delay, max_delay = max_delay, min_delay
-    compat.approve_follow_requests(
+    approve_follow_requests(
         profile_name=account.username,
         proxy_string=account.proxy or '',
-        log=compat.log,
+        log=log,
         should_stop=lambda: not runner.running,
         page=page,
         approve_delay_range=(min_delay, max_delay),
-        finish_delay_seconds=compat._parse_float(cfg.get('approve_finish_delay_seconds'), 3.0),
+        finish_delay_seconds=_parse_float(cfg.get('approve_finish_delay_seconds'), 3.0),
     )
     return 'success'
 
 
 def _run_send_dm_activity(runner, cfg: Dict[str, Any], page: Any, account, profile_data: Optional[Dict[str, Any]]) -> str:
-    compat = compat_module()
     profile_id = _resolve_profile_id(runner, account, profile_data)
     if not profile_id:
         return 'failure'
-    message_texts = _resolve_message_texts(compat, cfg)
+    message_texts = _resolve_message_texts(cfg)
     cooldown_hours = runner.messaging_cooldown_hours if runner.messaging_cooldown_enabled else 0
     targets = runner.accounts_client.get_accounts_to_message(profile_id, cooldown_hours=cooldown_hours)
     if not targets:
         return 'failure'
-    compat.send_messages(
+    send_messages(
         profile_name=account.username,
         proxy_string=account.proxy or '',
         targets=targets,
         message_texts=message_texts,
-        log=compat.log,
+        log=log,
         should_stop=lambda: not runner.running,
         page=page,
-        behavior_config=_build_dm_behavior_config(compat, cfg),
+        behavior_config=_build_dm_behavior_config(cfg),
     )
     return 'success'
 
 
-def _resolve_message_texts(compat, cfg: Dict[str, Any]) -> list[str]:
+def _resolve_message_texts(cfg: Dict[str, Any]) -> list[str]:
     template_kind = str(cfg.get('template_kind') or 'message').strip() or 'message'
     try:
-        message_texts = compat.MessageTemplatesClient().get_texts(template_kind) or []
+        message_texts = MessageTemplatesClient().get_texts(template_kind) or []
     except Exception:
         message_texts = []
     return message_texts or ['Hi!']
 
 
-def _build_dm_behavior_config(compat, cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _build_dm_behavior_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return {
-        'follow_if_no_message_button': compat._parse_bool(cfg.get('follow_if_no_message_button'), True),
-        'navigation_delay_min_seconds': compat._parse_float(cfg.get('navigation_delay_min_seconds'), 2.0),
-        'navigation_delay_max_seconds': compat._parse_float(cfg.get('navigation_delay_max_seconds'), 3.0),
-        'composer_delay_min_seconds': compat._parse_float(cfg.get('composer_delay_min_seconds'), 1.0),
-        'composer_delay_max_seconds': compat._parse_float(cfg.get('composer_delay_max_seconds'), 2.0),
-        'typing_delay_min_ms': compat._parse_int(cfg.get('typing_delay_min_ms'), 100),
-        'typing_delay_max_ms': compat._parse_int(cfg.get('typing_delay_max_ms'), 200),
-        'between_targets_min_seconds': compat._parse_float(cfg.get('between_targets_min_seconds'), 3.0),
-        'between_targets_max_seconds': compat._parse_float(cfg.get('between_targets_max_seconds'), 5.0),
+        'follow_if_no_message_button': _parse_bool(cfg.get('follow_if_no_message_button'), True),
+        'navigation_delay_min_seconds': _parse_float(cfg.get('navigation_delay_min_seconds'), 2.0),
+        'navigation_delay_max_seconds': _parse_float(cfg.get('navigation_delay_max_seconds'), 3.0),
+        'composer_delay_min_seconds': _parse_float(cfg.get('composer_delay_min_seconds'), 1.0),
+        'composer_delay_max_seconds': _parse_float(cfg.get('composer_delay_max_seconds'), 2.0),
+        'typing_delay_min_ms': _parse_int(cfg.get('typing_delay_min_ms'), 100),
+        'typing_delay_max_ms': _parse_int(cfg.get('typing_delay_max_ms'), 200),
+        'between_targets_min_seconds': _parse_float(cfg.get('between_targets_min_seconds'), 3.0),
+        'between_targets_max_seconds': _parse_float(cfg.get('between_targets_max_seconds'), 5.0),
     }
 
 

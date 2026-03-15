@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from python.browser import context as browser_context_mod
+from python.browser import page_bootstrap as browser_page_mod
 from python.browser import setup as browser_setup
 from python.browser.cookies import (
     canonical_cookies_json,
@@ -165,24 +167,26 @@ def test_create_browser_context_preloads_cookies_before_navigation(monkeypatch):
         def __exit__(self, *_args):
             return None
 
-    monkeypatch.setattr(browser_setup, "Camoufox", lambda **_kwargs: FakeCamoufox())
-    monkeypatch.setattr(browser_setup, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
-    monkeypatch.setattr(browser_setup, "_should_clean_today", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(browser_setup, "build_proxy_config", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "_attach_error_snapshots", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup.actions, "seed_mouse_cursor", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "_preload_profile_cookies", lambda *_args, **_kwargs: events.append("preload") or 1)
-    monkeypatch.setattr(browser_setup, "safe_goto", lambda *_args, **_kwargs: events.append("goto"))
-    monkeypatch.setattr(browser_setup, "sync_profile_session_state", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(browser_setup, "TrafficMonitor", lambda: SimpleNamespace(
+    monkeypatch.setattr(browser_context_mod, "Camoufox", lambda **_kwargs: FakeCamoufox())
+    monkeypatch.setattr(browser_context_mod, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
+    monkeypatch.setattr(browser_context_mod, "_should_clean_today", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(browser_context_mod, "build_proxy_config", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_page_mod, "_attach_error_snapshots", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_page_mod, "actions", SimpleNamespace(seed_mouse_cursor=lambda *_args, **_kwargs: None))
+    monkeypatch.setattr(browser_page_mod, "_preload_profile_cookies", lambda *_args, **_kwargs: events.append("preload") or 1)
+    monkeypatch.setattr(browser_page_mod, "safe_goto", lambda *_args, **_kwargs: events.append("goto"))
+    monkeypatch.setattr(browser_context_mod, "sync_profile_session_state", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(browser_page_mod, "TrafficMonitor", lambda: SimpleNamespace(
         on_response=lambda *_args, **_kwargs: None,
         should_pause=lambda: False,
         cooldown_until=0,
     ))
-    monkeypatch.setattr(browser_setup.proxy_circuit, "is_open", lambda: False)
-    monkeypatch.setattr(browser_setup.proxy_circuit, "record_success", lambda: None)
+    monkeypatch.setattr(browser_context_mod, "proxy_circuit", SimpleNamespace(is_open=lambda: False, record_success=lambda: None, global_pause_until=0))
+    monkeypatch.setattr(browser_page_mod, "proxy_circuit", SimpleNamespace(record_success=lambda: None))
+    monkeypatch.setattr(browser_page_mod, "mark_proxy_success", lambda *_args: None)
+    monkeypatch.setattr(browser_context_mod, "is_proxy_healthy", lambda *_args: True)
 
-    with browser_setup.create_browser_context("Profile A") as (_context, _page):
+    with browser_context_mod.create_browser_context("Profile A") as (_context, _page):
         pass
 
     assert events == ["preload", "goto"]
@@ -232,28 +236,30 @@ def test_create_browser_context_skips_empty_session_sync_after_bootstrap_timeout
         def __exit__(self, *_args):
             return None
 
-    monkeypatch.setattr(browser_setup, "Camoufox", lambda **_kwargs: FakeCamoufox())
-    monkeypatch.setattr(browser_setup, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
-    monkeypatch.setattr(browser_setup, "_should_clean_today", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(browser_setup, "build_proxy_config", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "_attach_error_snapshots", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup.actions, "seed_mouse_cursor", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "_preload_profile_cookies", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(browser_context_mod, "Camoufox", lambda **_kwargs: FakeCamoufox())
+    monkeypatch.setattr(browser_context_mod, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
+    monkeypatch.setattr(browser_context_mod, "_should_clean_today", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(browser_context_mod, "build_proxy_config", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_page_mod, "_attach_error_snapshots", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_page_mod, "actions", SimpleNamespace(seed_mouse_cursor=lambda *_args, **_kwargs: None))
+    monkeypatch.setattr(browser_page_mod, "_preload_profile_cookies", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(
-        browser_setup,
+        browser_page_mod,
         "safe_goto",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(PlaywrightTimeoutError("timeout")),
     )
-    monkeypatch.setattr(browser_setup, "mark_proxy_failure", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup.proxy_circuit, "is_open", lambda: False)
-    monkeypatch.setattr(browser_setup.proxy_circuit, "record_failure", lambda: None)
-    monkeypatch.setattr(browser_setup, "TrafficMonitor", lambda: SimpleNamespace(
+    monkeypatch.setattr(browser_page_mod, "mark_proxy_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_context_mod, "proxy_circuit", SimpleNamespace(is_open=lambda: False, record_failure=lambda: None, global_pause_until=0))
+    monkeypatch.setattr(browser_page_mod, "proxy_circuit", SimpleNamespace(record_failure=lambda: None))
+    monkeypatch.setattr(browser_page_mod, "mark_proxy_success", lambda *_args: None)
+    monkeypatch.setattr(browser_context_mod, "is_proxy_healthy", lambda *_args: True)
+    monkeypatch.setattr(browser_page_mod, "TrafficMonitor", lambda: SimpleNamespace(
         on_response=lambda *_args, **_kwargs: None,
         should_pause=lambda: False,
         cooldown_until=0,
     ))
 
-    with browser_setup.create_browser_context("Profile A") as (_context, _page):
+    with browser_context_mod.create_browser_context("Profile A") as (_context, _page):
         pass
 
     assert client.get_profile_by_name.call_count == 2
@@ -312,29 +318,20 @@ def test_create_browser_context_waits_for_cleanup_before_immediate_reopen(monkey
         return cleanup_calls == 0
 
     def _run_first_context():
-        with browser_setup.create_browser_context("Profile A") as (_context, _page):
+        with browser_context_mod.create_browser_context("Profile A") as (_context, _page):
             pass
         first_context_returned.set()
 
-    monkeypatch.setattr(browser_setup, "Camoufox", lambda **_kwargs: FakeCamoufox())
-    monkeypatch.setattr(browser_setup, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
-    monkeypatch.setattr(browser_setup, "_should_clean_today", _should_clean_today)
-    monkeypatch.setattr(browser_setup, "_clean_cache2", _clean_cache2)
-    monkeypatch.setattr(browser_setup, "build_proxy_config", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "_attach_error_snapshots", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup.actions, "seed_mouse_cursor", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "_preload_profile_cookies", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(browser_setup, "safe_goto", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup, "sync_profile_session_state", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(browser_setup, "TrafficMonitor", lambda: SimpleNamespace(
-        on_response=lambda *_args, **_kwargs: None,
-        should_pause=lambda: False,
-        cooldown_until=0,
-    ))
-    monkeypatch.setattr(browser_setup, "initialize_browser_page", lambda context, *_args, **_kwargs: (context.new_page(), None))
-    monkeypatch.setattr(browser_setup, "bootstrap_instagram_session", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(browser_setup.proxy_circuit, "is_open", lambda: False)
-    monkeypatch.setattr(browser_setup.proxy_circuit, "record_success", lambda: None)
+    monkeypatch.setattr(browser_context_mod, "Camoufox", lambda **_kwargs: FakeCamoufox())
+    monkeypatch.setattr(browser_context_mod, "ensure_profile_path", lambda *_args, **_kwargs: "data/profiles/test")
+    monkeypatch.setattr(browser_context_mod, "_should_clean_today", _should_clean_today)
+    monkeypatch.setattr(browser_context_mod, "_clean_cache2", _clean_cache2)
+    monkeypatch.setattr(browser_context_mod, "build_proxy_config", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_context_mod, "initialize_browser_page", lambda context, *_args, **_kwargs: (context.new_page(), None))
+    monkeypatch.setattr(browser_context_mod, "bootstrap_instagram_session", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(browser_context_mod, "sync_profile_session_state", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(browser_context_mod, "proxy_circuit", SimpleNamespace(is_open=lambda: False, record_success=lambda: None, global_pause_until=0))
+    monkeypatch.setattr(browser_context_mod, "is_proxy_healthy", lambda *_args: True)
 
     thread = threading.Thread(target=_run_first_context)
     thread.start()
@@ -349,7 +346,7 @@ def test_create_browser_context_waits_for_cleanup_before_immediate_reopen(monkey
     assert first_context_returned.is_set() is True
     assert cleanup_finished.is_set() is True
 
-    with browser_setup.create_browser_context("Profile A") as (_context, _page):
+    with browser_context_mod.create_browser_context("Profile A") as (_context, _page):
         pass
 
     assert cleanup_calls == 1

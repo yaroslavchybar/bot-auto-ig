@@ -1,10 +1,17 @@
+import json
 import signal
 import sys
 from typing import Any, Dict, List, Optional
 
+from python.core.config import PROJECT_URL
 from python.core.logging import setup_logging
+from python.core.models import ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
-from python.runners.multi_account.compat import compat as compat_module
+from python.database.messages import MessageTemplatesClient
+from python.runners.multi_account.config import _build_config
+from python.runners.multi_account.io import emit_event, log
+from python.runners.multi_account.profiles import _fetch_profiles_for_lists
+from python.runners.multi_account.runtime import InstagramAutomationRunner
 
 
 def main() -> int:
@@ -17,55 +24,54 @@ def main() -> int:
 
 
 def _main_inner() -> int:
-    compat = compat_module()
-    payload = _read_payload(compat)
+    payload = _read_payload()
     if payload is None:
         return 2
-    settings = _settings_payload(compat, payload)
+    settings = _settings_payload(payload)
     if settings is None:
         return 2
     selected_list_ids = _selected_list_ids(payload, settings)
-    _log_debug_context(compat, selected_list_ids)
+    _log_debug_context(selected_list_ids)
     if not _has_enabled_activity(settings):
-        compat.log('Select at least one activity type!')
+        log('Select at least one activity type!')
         return 2
-    profiles = _load_profiles(compat, selected_list_ids)
+    profiles = _load_profiles(selected_list_ids)
     if profiles is None:
         return 2
-    target_accounts = _build_target_accounts(compat, profiles)
+    target_accounts = _build_target_accounts(profiles)
     if target_accounts is None:
         return 2
-    config = compat._build_config(settings, _message_texts(compat, settings))
+    config = _build_config(settings, _message_texts(settings))
     set_sentry_context(
         extra={'profile_count': len(target_accounts), 'tasks': _task_names(config)},
     )
-    compat.log(f"Starting full cycle ({', '.join(_task_names(config))}) for {len(target_accounts)} profiles...")
-    runner = compat.InstagramAutomationRunner(config, target_accounts)
+    log(f"Starting full cycle ({', '.join(_task_names(config))}) for {len(target_accounts)} profiles...")
+    runner = InstagramAutomationRunner(config, target_accounts)
     _register_signal_handlers(runner)
     return runner.run()
 
 
-def _read_payload(compat) -> Optional[Dict[str, Any]]:
+def _read_payload() -> Optional[Dict[str, Any]]:
     raw = sys.stdin.read()
     if not raw.strip():
-        compat.log('No input data received.')
+        log('No input data received.')
         return None
     try:
-        payload = compat.json.loads(raw)
+        payload = json.loads(raw)
     except Exception as exc:
-        compat.log(f'Invalid JSON: {exc}')
+        log(f'Invalid JSON: {exc}')
         return None
     if isinstance(payload, dict):
         return payload
-    compat.log('payload must be an object.')
+    log('payload must be an object.')
     return None
 
 
-def _settings_payload(compat, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _settings_payload(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     settings = payload.get('settings')
     if isinstance(settings, dict):
         return settings
-    compat.log('settings must be an object.')
+    log('settings must be an object.')
     return None
 
 
@@ -76,9 +82,9 @@ def _selected_list_ids(payload: Dict[str, Any], settings: Dict[str, Any]) -> Lis
     return [str(item) for item in selected if str(item).strip()]
 
 
-def _log_debug_context(compat, selected_list_ids: List[str]) -> None:
-    compat.log(f'DEBUG: PROJECT_URL={compat.PROJECT_URL}')
-    compat.log(f'DEBUG: selected_list_ids={selected_list_ids}')
+def _log_debug_context(selected_list_ids: List[str]) -> None:
+    log(f'DEBUG: PROJECT_URL={PROJECT_URL}')
+    log(f'DEBUG: selected_list_ids={selected_list_ids}')
 
 
 def _has_enabled_activity(settings: Dict[str, Any]) -> bool:
@@ -95,36 +101,36 @@ def _has_enabled_activity(settings: Dict[str, Any]) -> bool:
     )
 
 
-def _load_profiles(compat, selected_list_ids: List[str]):
+def _load_profiles(selected_list_ids: List[str]):
     if not selected_list_ids:
-        compat.log('Please select a profile list!')
+        log('Please select a profile list!')
         return None
-    profiles = compat._fetch_profiles_for_lists(selected_list_ids)
-    compat.log(f'DEBUG: fetched profiles count={len(profiles or [])}')
+    profiles = _fetch_profiles_for_lists(selected_list_ids)
+    log(f'DEBUG: fetched profiles count={len(profiles or [])}')
     if profiles:
         return profiles
-    compat.log('No profiles found in the selected list!')
+    log('No profiles found in the selected list!')
     return None
 
 
-def _build_target_accounts(compat, profiles: List[Dict[str, Any]]):
+def _build_target_accounts(profiles: List[Dict[str, Any]]):
     target_accounts = []
     for profile in profiles:
         name = profile.get('name')
         if not name:
             continue
-        target_accounts.append(compat.ThreadsAccount(username=name, password='', proxy=profile.get('proxy')))
+        target_accounts.append(ThreadsAccount(username=name, password='', proxy=profile.get('proxy')))
     if target_accounts:
         return target_accounts
-    compat.log('No valid profiles found in the selected list!')
+    log('No valid profiles found in the selected list!')
     return None
 
 
-def _message_texts(compat, settings: Dict[str, Any]) -> List[str]:
+def _message_texts(settings: Dict[str, Any]) -> List[str]:
     if not bool(settings.get('do_message')):
         return []
     try:
-        return compat.MessageTemplatesClient().get_texts('message') or []
+        return MessageTemplatesClient().get_texts('message') or []
     except Exception:
         return []
 
