@@ -13,6 +13,11 @@ Testing surface, resource cost classification per surface, and validation approa
 - Server API: http://localhost:3001
 - WebSocket: ws://localhost:3001/ws
 
+**Additional surface:** Python automation CLI
+- Primary command: `python -m pytest python/tests -q`
+- Supporting commands: `rg` checks for `compat`, `query_selector`, and import-boundary violations; Python line/function scans
+- No app services are required for this surface; validation runs directly against the checked-out source tree
+
 **Testing tool:** agent-browser (v0.17.1, confirmed working)
 
 **Auth:** Clerk sign-in page at /sign-in (email + password)
@@ -42,6 +47,10 @@ Testing surface, resource cost classification per surface, and validation approa
 
 **Rationale:** 2 browsers × 200MB = 400MB + 650MB dev servers = 1050MB total. Leaves ~1.4GB for system. Safe margin given heavy baseline load (Chrome 3GB, Docker 2.2GB, VS Code 900MB).
 
+**Python CLI max concurrent validators: 2**
+
+**Rationale:** Current available physical memory is ~5.5GB. One pytest run plus one read-only static-analysis validator is safe in parallel, but avoid concurrent pytest processes because they share caches and add unnecessary runtime cost.
+
 ## Limitations
 - Datauploader not available in local dev (Docker-only service)
 - VNC sessions not testable locally
@@ -59,3 +68,11 @@ Testing surface, resource cost classification per surface, and validation approa
 - Avoid triggering automation/VNC/datauploader flows; they are outside the safe local validation boundary for this milestone.
 - If Clerk credentials are unavailable, validate unauthenticated surfaces such as `/` and `/sign-in`, plus API health checks and console/network stability.
 - For Sentry-degradation checks, treat blank DSN environment overrides as part of test setup only; do not edit `.env` or `.env.local`.
+
+## Flow Validator Guidance: Python automation CLI
+
+- Stay inside the repo working tree and validate the Python milestone through real CLI entry points and source-tree inspections only.
+- Use a single pytest process at a time. Read-only `rg`/file-inspection commands may run in parallel with pytest.
+- Do not edit application code while validating. Only write the assigned flow report and evidence files.
+- Prefer commands that mirror the mission contract exactly, especially `python -m pytest python/tests -q`.
+- Treat structural assertions (size limits, import boundaries, removed compat proxies, locator API usage) as CLI-observable contract checks using `rg`, Python scripts, and file inspection.

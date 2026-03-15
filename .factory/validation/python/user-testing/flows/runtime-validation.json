@@ -1,0 +1,48 @@
+{
+  "surface": "python automation CLI",
+  "assertions": [
+    {
+      "id": "VAL-PY-008",
+      "title": "All Python tests pass",
+      "status": "pass",
+      "testedAt": "2026-03-15T02:41:00Z",
+      "expected": "`python -m pytest python/tests -q` reports at least 221 passed with no new failures; the documented cooperative-stop issue may appear as an expected xfail.",
+      "observed": "`python -m pytest python/tests -q` exited 0 and reported 221 passed, 1 xfailed in 5.78s. No failures or warnings were reported in the captured output.",
+      "evidence": [
+        "python/runtime/pytest-output.txt"
+      ]
+    }
+  ],
+  "statusByAssertion": {
+    "VAL-PY-008": {
+      "status": "pass",
+      "reason": "Pytest exited 0 with 221 passed and 1 xfailed. The xfailed case is the documented pre-existing cooperative-stop test `test_multi_account_cooperative_stop_emits_success_before_idle_sync`, so there are no new failures."
+    }
+  },
+  "commands": [
+    {
+      "command": "python -m pytest python/tests -q",
+      "workingDirectory": "C:\\Users\\yaros\\Downloads\\bot-auto-ig",
+      "exitCode": 0,
+      "evidence": "python/runtime/pytest-output.txt"
+    },
+    {
+      "command": "rg \"test_multi_account_cooperative_stop_emits_success_before_idle_sync|xfail\" python/tests",
+      "workingDirectory": "C:\\Users\\yaros\\Downloads\\bot-auto-ig",
+      "result": "Found `@pytest.mark.xfail(reason='Pre-existing: cooperative stop emits cancelled instead of success')` immediately above `test_multi_account_cooperative_stop_emits_success_before_idle_sync` in `python/tests/test_runner_regressions.py:274-275`."
+    }
+  ],
+  "observations": [
+    "Pytest summary: 221 passed, 1 xfailed in 5.78s.",
+    "No failures were reported.",
+    "No warning lines or warnings summary appeared in the captured pytest output.",
+    "The only non-pass outcome corresponds to the documented pre-existing cooperative-stop xfail."
+  ],
+  "frictions": [],
+  "blockers": [],
+  "toolsUsed": [
+    "Execute",
+    "Read",
+    "Grep"
+  ]
+}

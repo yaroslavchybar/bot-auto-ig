@@ -1,0 +1,137 @@
+{
+  "surface": "python automation CLI/source-inspection",
+  "assertions": [
+    {
+      "id": "VAL-PY-003",
+      "status": "pass",
+      "reason": "Glob found no remaining python/**/compat.py files, and ripgrep found zero compat() or compat.* references under python/."
+    },
+    {
+      "id": "VAL-PY-004",
+      "status": "pass",
+      "reason": "The structure scan covered 168 Python files and found zero files over 800 lines; the largest file is python/runners/workflow/scrape_relationships.py at 757 lines."
+    },
+    {
+      "id": "VAL-PY-005",
+      "status": "pass",
+      "reason": "The AST scan covered 1,149 Python functions/methods and found zero functions over 80 lines; the longest functions are 79 lines."
+    },
+    {
+      "id": "VAL-PY-006",
+      "status": "pass",
+      "reason": "ripgrep found zero query_selector/query_selector_all usage in production Python files with tests excluded."
+    },
+    {
+      "id": "VAL-PY-007",
+      "status": "pass",
+      "reason": "python/browser/context.py uses synchronous with Camoufox(...) context-manager handling at lines 125 and 132, and no __enter__, __exit__, or compat.Camoufox usage was found."
+    },
+    {
+      "id": "VAL-PY-009",
+      "status": "pass",
+      "reason": "All grep-based import-boundary checks returned zero matches, and a static project import graph across 168 modules found zero circular-import cycles."
+    }
+  ],
+  "statusByAssertion": {
+    "VAL-PY-003": {
+      "status": "pass",
+      "reason": "No compat.py files remain under python/, and rg 'compat\\(\\)|compat\\.' returned zero matches."
+    },
+    "VAL-PY-004": {
+      "status": "pass",
+      "reason": "All scanned Python files are within the 800-line limit; max file length is 757 lines."
+    },
+    "VAL-PY-005": {
+      "status": "pass",
+      "reason": "All scanned Python functions/methods are within the 80-line limit; max function length is 79 lines."
+    },
+    "VAL-PY-006": {
+      "status": "pass",
+      "reason": "rg 'query_selector' over production Python files returned zero matches."
+    },
+    "VAL-PY-007": {
+      "status": "pass",
+      "reason": "browser/context.py uses the accepted synchronous with Camoufox(...) pattern and shows no manual __enter__/__exit__ handling."
+    },
+    "VAL-PY-009": {
+      "status": "pass",
+      "reason": "No import-boundary violations were found for actions/database, runners/database, or non-runners importing runners, and static cycle detection found zero cycles."
+    }
+  },
+  "commands": [
+    {
+      "name": "compat-file-scan",
+      "command": "Glob patterns: python/**/compat.py",
+      "result": "0 matches"
+    },
+    {
+      "name": "compat-usage-scan",
+      "command": "rg 'compat\\(\\)|compat\\.' C:/Users/yaros/Downloads/bot-auto-ig/python --glob '*.py'",
+      "returncode": 1,
+      "result": "0 matches"
+    },
+    {
+      "name": "query-selector-production-scan",
+      "command": "rg 'query_selector' C:/Users/yaros/Downloads/bot-auto-ig/python --glob '*.py' --glob '!tests/**'",
+      "returncode": 1,
+      "result": "0 matches"
+    },
+    {
+      "name": "camoufox-context-scan",
+      "command": "rg -n 'Camoufox|__enter__|__exit__|compat\\.Camoufox' C:/Users/yaros/Downloads/bot-auto-ig/python/browser/context.py",
+      "returncode": 0,
+      "result": [
+        "6:from camoufox import Camoufox",
+        "123:    \"\"\"Open a Camoufox browser context using the with-statement pattern.\"\"\"",
+        "125:        with Camoufox(geoip=True, **launch_kwargs) as browser:",
+        "132:    with Camoufox(geoip=False, **launch_kwargs) as browser:"
+      ]
+    },
+    {
+      "name": "import-boundary-scan-non-runners-to-runners",
+      "command": "rg -n '^(from|import)\\s+python\\.runners\\b' C:/Users/yaros/Downloads/bot-auto-ig/python/actions C:/Users/yaros/Downloads/bot-auto-ig/python/browser C:/Users/yaros/Downloads/bot-auto-ig/python/core C:/Users/yaros/Downloads/bot-auto-ig/python/database",
+      "returncode": 1,
+      "result": "0 matches"
+    },
+    {
+      "name": "import-boundary-scan-actions-to-database",
+      "command": "rg -n '^(from|import)\\s+python\\.database\\b' C:/Users/yaros/Downloads/bot-auto-ig/python/actions",
+      "returncode": 1,
+      "result": "0 matches"
+    },
+    {
+      "name": "import-boundary-scan-runners-to-database",
+      "command": "rg -n '^(from|import)\\s+python\\.database\\b' C:/Users/yaros/Downloads/bot-auto-ig/python/runners",
+      "returncode": 1,
+      "result": "0 matches"
+    },
+    {
+      "name": "structure-and-cycle-scan",
+      "command": "python3 C:/Users/yaros/.factory/missions/c159f8a2-f42a-48c7-bea6-166e5c18ca91/evidence/python/structure/collect_python_structure_evidence.py",
+      "returncode": 0,
+      "result": "Wrote structure evidence JSON with file-size scan, function-length scan, ripgrep outputs, and static import-graph cycle detection."
+    }
+  ],
+  "observations": [
+    "The evidence file at C:/Users/yaros/.factory/missions/c159f8a2-f42a-48c7-bea6-166e5c18ca91/evidence/python/structure/structure-evidence.json records 168 Python files, 1,149 parsed functions/methods, zero file-limit violations, and zero function-length violations.",
+    "The largest Python file is python/runners/workflow/scrape_relationships.py at 757 lines; the longest functions are get_following_count and get_posts_count in python/actions/engagement/follow/filter.py at 79 lines each.",
+    "python/browser/context.py uses the accepted synchronous Camoufox context-manager pattern in _open_camoufox(), with retry fallback on InvalidProxy and no manual __enter__/__exit__ handling.",
+    "Static import-graph analysis found 168 modules, 349 internal import edges, and zero circular-import cycles."
+  ],
+  "frictions": [
+    {
+      "description": "A direct runtime import-smoke attempt failed because the shared Python environment does not have mission dependencies such as camoufox installed.",
+      "resolved": true,
+      "resolution": "Used the required grep-based boundary checks plus a static AST import-graph cycle scan instead; both came back clean."
+    }
+  ],
+  "blockers": [],
+  "toolsUsed": [
+    "Read",
+    "Grep",
+    "Glob",
+    "LS",
+    "Execute",
+    "ApplyPatch"
+  ]
+}
