@@ -1,0 +1,68 @@
+{
+  "milestone": "python",
+  "round": 2,
+  "status": "fail",
+  "validatorsRun": {
+    "testConvex": {
+      "passed": true,
+      "command": "npm run test:convex",
+      "exitCode": 0,
+      "observation": "Vitest completed with 20 test files and 58 tests passed."
+    },
+    "testPython": {
+      "passed": true,
+      "command": "python -m pytest python/tests -q",
+      "exitCode": 0,
+      "observation": "Pytest completed with 221 passed and 1 xfailed, leaving zero failures."
+    },
+    "buildServer": {
+      "passed": true,
+      "command": "npm --prefix server run build",
+      "exitCode": 0,
+      "observation": "TypeScript compilation completed without errors."
+    },
+    "buildFrontend": {
+      "passed": true,
+      "command": "npm --prefix frontend run build",
+      "exitCode": 0,
+      "observation": "React Router build completed for both client and SSR outputs without errors."
+    },
+    "lintFrontend": {
+      "passed": true,
+      "command": "npm --prefix frontend run lint",
+      "exitCode": 0,
+      "observation": "ESLint completed with no reported errors."
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "python-scrutiny-fixes"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "python-scrutiny-fixes",
+      "severity": "blocking",
+      "description": "`python/browser/context.py` still does not satisfy the required AsyncCamoufox pattern: `create_browser_context()` remains a synchronous contextmanager, the module still imports `Camoufox`, and `_open_camoufox()` still uses `with Camoufox(...)` instead of `async with AsyncCamoufox(...)`."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "Mission AGENTS.md / validation-contract.md / planning guidance",
+      "suggestion": "Align the python browser-lifecycle guidance so workers are not asked to satisfy AsyncCamoufox in one source while being told in shared library notes that the current browser layer is synchronous. If AsyncCamoufox is truly required, keep the requirement and spawn another fix feature; if synchronous Camoufox is the intended architecture, update the mission contract accordingly.",
+      "evidence": "The round-2 fix review for `python-scrutiny-fixes` found the locator regressions resolved but the AsyncCamoufox issue still open because the worker followed `.factory/library/architecture.md`, which already documents `python/browser/context.py` as synchronous, while mission AGENTS and `validation-contract.md` still require AsyncCamoufox.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Apply another library update describing the sync-versus-async Camoufox mismatch.",
+      "reason": "already-documented — `.factory/library/architecture.md` already records that `python/browser/context.py` wraps synchronous `Camoufox`, so the remaining problem is guidance alignment rather than missing factual documentation."
+    }
+  ],
+  "previousRound": ".factory/validation/python/scrutiny/synthesis.round1.json"
+}
