@@ -101,23 +101,55 @@ export function setRetryConfig(config: Partial<ConvexRetryConfig>): void {
 }
 
 /**
+ * Known network error codes from Node.js / libuv that indicate a
+ * transient connectivity issue worth retrying.
+ */
+const RETRYABLE_ERROR_CODES = new Set([
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'EPIPE',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'UND_ERR_CONNECT_TIMEOUT',
+])
+
+/**
  * Determine whether a failed request should be retried.
  *
  * Retryable conditions:
- *   - Network / fetch errors (no HTTP response)
  *   - HTTP 429 (Too Many Requests)
  *   - HTTP 5xx (server errors)
+ *   - Network / fetch errors (TypeError from fetch, known error codes)
  *
  * Non-retryable:
  *   - HTTP 4xx (client errors) except 429
+ *   - JSON parse failures on successful responses
+ *   - Any other unknown errors (safe default)
  */
 function isRetryable(error: unknown): boolean {
     if (error instanceof ConvexHttpError) {
         const status = error.statusCode
         return status === 429 || status >= 500
     }
-    // Network failures, DNS errors, timeouts — always retry
-    return true
+
+    // TypeError is thrown by fetch() on network failures
+    if (error instanceof TypeError) {
+        return true
+    }
+
+    // Node.js errors with a known network error code
+    if (error && typeof error === 'object' && 'code' in error) {
+        const code = (error as { code?: string }).code
+        if (typeof code === 'string' && RETRYABLE_ERROR_CODES.has(code)) {
+            return true
+        }
+    }
+
+    // Unknown errors — do NOT retry (safe default)
+    return false
 }
 
 /**
@@ -156,8 +188,9 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
     let lastError: unknown
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        let resp: Response
         try {
-            const resp = await fetch(url, {
+            resp = await fetch(url, {
                 method: options.method || 'GET',
                 headers,
                 body: options.body ? JSON.stringify(options.body) : undefined,
@@ -166,7 +199,6 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
                 const text = await resp.text();
                 throw new ConvexHttpError(resp.status, text);
             }
-            return resp.json() as Promise<T>;
         } catch (err) {
             lastError = err
 
@@ -177,7 +209,12 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
 
             const delay = computeBackoff(attempt, baseDelay)
             await new Promise(resolve => setTimeout(resolve, delay))
+            continue
         }
+
+        // Parse JSON outside the retry try/catch — a parse error on a
+        // 2xx response is a data issue, not a transient network failure.
+        return resp.json() as Promise<T>;
     }
 
     // Unreachable in practice, but satisfies the compiler

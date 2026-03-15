@@ -15,7 +15,7 @@ import type { Server } from 'http'
 import type { WebSocketServer } from 'ws'
 import { automationState, workflowWorkers, profileProcesses, clients } from '../shared/store.js'
 import { automationMutex } from '../shared/mutex.js'
-import { killProcess, killByPid, clearPid } from '../shared/ProcessService.js'
+import { killProcess, clearPid, getTrackedProcesses, getPid } from '../shared/ProcessService.js'
 import { saveState } from './state.js'
 import logger from '../shared/logger.js'
 
@@ -45,8 +45,9 @@ let shutdownInProgress = false
 
 /**
  * Register SIGTERM and SIGINT handlers for graceful shutdown.
- * Acquires the automationMutex to prevent race conditions with
- * concurrent start/stop operations.
+ *
+ * Closes HTTP and WebSocket listeners FIRST (so no new requests arrive),
+ * then acquires automationMutex for cleanup of in-flight operations.
  */
 export function registerShutdownHandlers(deps: ShutdownDeps): void {
   const shutdown = async (signal: string) => {
@@ -55,10 +56,16 @@ export function registerShutdownHandlers(deps: ShutdownDeps): void {
 
     logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown')
 
-    // Acquire mutex to prevent race conditions with in-flight operations
+    // 1. Stop accepting new connections BEFORE acquiring the mutex.
+    //    This prevents new requests from arriving while we wait for
+    //    the mutex (which may be held by an in-flight start/stop op).
+    stopAcceptingConnections(deps.httpServer)
+    closeWebSocketConnections(deps.wss)
+
+    // 2. Acquire mutex to prevent race conditions with in-flight operations
     const release = await automationMutex.acquire()
     try {
-      await performShutdown(deps)
+      await performCleanup()
     } finally {
       release()
     }
@@ -72,25 +79,20 @@ export function registerShutdownHandlers(deps: ShutdownDeps): void {
 }
 
 /**
- * Execute all cleanup steps in order.
+ * Execute cleanup steps that run INSIDE the mutex.
+ * Listeners are already closed before the mutex is acquired.
  */
-async function performShutdown(deps: ShutdownDeps): Promise<void> {
-  // 1. Stop accepting new connections
-  stopAcceptingConnections(deps.httpServer)
-
-  // 2. Close all WebSocket connections
-  closeWebSocketConnections(deps.wss)
-
-  // 3. Persist automation state before killing processes
+async function performCleanup(): Promise<void> {
+  // 1. Persist automation state before killing processes
   persistAutomationState()
 
-  // 4. Kill all Python child processes
+  // 2. Kill all Python child processes
   await killAllChildProcesses()
 
-  // 5. Run registered cleanup functions (runner.ts, manual-actions.ts)
+  // 3. Run registered cleanup functions (runner.ts, manual-actions.ts)
   await runRegisteredCleanups()
 
-  // 6. Clear PID files
+  // 4. Clear PID files
   clearPid()
 }
 
@@ -142,43 +144,29 @@ function persistAutomationState(): void {
 }
 
 /**
- * Kill all tracked Python child processes:
- * - The main automation process
- * - All workflow worker processes
- * - All profile browser processes
+ * Kill ALL tracked Python child processes via the global ProcessService
+ * registry. This catches automation, workflow, profile, login, and
+ * fingerprint subprocesses — nothing is orphaned.
  */
 async function killAllChildProcesses(): Promise<void> {
-  const killPromises: Promise<void>[] = []
-
-  // Kill main automation process
-  if (automationState.process) {
-    const pid = automationState.process.pid
-    logger.info({ pid }, 'Killing automation process')
-    killPromises.push(killProcess(automationState.process))
-    automationState.process = null
-    automationState.status = 'idle'
-  }
-
-  // Kill all workflow worker processes
-  for (const [workflowId, worker] of workflowWorkers.entries()) {
-    const pid = worker.process.pid
-    logger.info({ workflowId, pid }, 'Killing workflow process')
-    killPromises.push(killProcess(worker.process))
-  }
+  // Clear known state maps so the application doesn't reference dead procs
+  automationState.process = null
+  automationState.status = 'idle'
   workflowWorkers.clear()
-
-  // Kill all profile browser processes
-  for (const [profileName, proc] of profileProcesses.entries()) {
-    const pid = proc.pid
-    logger.info({ profileName, pid }, 'Killing profile process')
-    if (pid) {
-      killPromises.push(killByPid(pid, proc))
-    }
-  }
   profileProcesses.clear()
 
+  // Kill every child tracked in the global registry
+  const tracked = getTrackedProcesses()
+  const killPromises: Promise<void>[] = []
+
+  for (const proc of tracked) {
+    const pid = getPid(proc)
+    logger.info({ pid }, 'Killing tracked child process')
+    killPromises.push(killProcess(proc))
+  }
+
   await Promise.allSettled(killPromises)
-  logger.info('All child processes killed')
+  logger.info({ count: tracked.size }, 'All child processes killed')
 }
 
 /** Run all cleanup functions registered via registerCleanup(). */

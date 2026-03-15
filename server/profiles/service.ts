@@ -12,7 +12,7 @@ import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
 import logger from '../shared/logger.js'
-import { spawnPython, killByPid } from '../shared/ProcessService.js'
+import { spawnPython, killProcess } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -264,9 +264,7 @@ export async function stopProfileBrowser(name: string): Promise<void> {
     profileName: name,
   })
 
-  if (proc.pid) {
-    await killByPid(proc.pid, proc)
-  }
+  await killProcess(proc)
 
   profileProcesses.delete(name)
   await profilesSyncStatus(name, 'idle', false)

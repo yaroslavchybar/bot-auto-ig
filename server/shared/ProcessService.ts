@@ -109,6 +109,27 @@ export function isProcessRunning(pid: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Global process registry — tracks ALL spawned children so shutdown can
+// kill every one, including login & fingerprint subprocesses that are
+// not stored in automationState / workflowWorkers / profileProcesses.
+// ---------------------------------------------------------------------------
+
+const processRegistry = new Set<ChildProcess>()
+
+/** Return a snapshot of all currently tracked child processes. */
+export function getTrackedProcesses(): ReadonlySet<ChildProcess> {
+  return processRegistry
+}
+
+/** Register a child process for lifecycle tracking. */
+function trackProcess(proc: ChildProcess): void {
+  processRegistry.add(proc)
+  const cleanup = () => { processRegistry.delete(proc) }
+  proc.once('exit', cleanup)
+  proc.once('error', cleanup)
+}
+
+// ---------------------------------------------------------------------------
 // Spawn helper
 // ---------------------------------------------------------------------------
 
@@ -116,6 +137,8 @@ export function isProcessRunning(pid: number): boolean {
  * Spawn a Python child process with standard env vars & stdio config.
  *
  * Uses `PYTHONUNBUFFERED=1` and `PYTHONPATH=PROJECT_ROOT` by default.
+ * Every spawned child is registered in the global process registry so
+ * that shutdown can terminate all children, not just known categories.
  */
 export function spawnPython(options: SpawnPythonOptions): ChildProcess {
   const python = process.env.PYTHON || 'python'
@@ -141,6 +164,8 @@ export function spawnPython(options: SpawnPythonOptions): ChildProcess {
     shell,
     env,
   })
+
+  trackProcess(child)
 
   if (child.pid) {
     logger.info(

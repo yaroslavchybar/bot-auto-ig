@@ -10,7 +10,7 @@ import { validateSettings } from '../shared/settings-schema.js'
 import { markStarted, markStopped } from './state.js'
 import { parseLogOutput } from '../logs/parser.js'
 import logger from '../shared/logger.js'
-import { spawnPython, killByPid } from '../shared/ProcessService.js'
+import { spawnPython, killProcess } from '../shared/ProcessService.js'
 import type { ChildProcess } from '../shared/ProcessService.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import { ValidationError } from '../shared/errors.js'
@@ -65,10 +65,7 @@ router.post('/stop', asyncHandler(async (_req, res) => {
         broadcast({ type: 'status', status: 'stopping' })
         broadcast({ type: 'log', message: 'Stopping automation...', level: 'warn', source: 'server' })
 
-        const pid = automationState.process.pid
-        if (pid) {
-            await killByPid(pid, automationState.process)
-        }
+        await killProcess(automationState.process)
 
         automationState.process = null
         automationState.status = 'idle'
