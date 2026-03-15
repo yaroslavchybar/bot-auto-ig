@@ -122,11 +122,11 @@ def _make_locator_page(selector_map, evaluate_fn=None):
 
 def test_visible_highlight_buttons_returns_only_visible_matches(monkeypatch, messages):
     hidden_button = MagicMock(name='hidden_button')
-    hidden_button.visible = False
+    hidden_button.evaluate = MagicMock(return_value=False)
     visible_button = MagicMock(name='visible_button')
-    visible_button.visible = True
+    visible_button.evaluate = MagicMock(return_value=True)
     second_visible_button = MagicMock(name='second_visible_button')
-    second_visible_button.visible = True
+    second_visible_button.evaluate = MagicMock(return_value=True)
 
     page = _make_locator_page(
         {
@@ -134,7 +134,6 @@ def test_visible_highlight_buttons_returns_only_visible_matches(monkeypatch, mes
             HIGHLIGHT_SELECTORS[1]: [],
             HIGHLIGHT_SELECTORS[2]: [hidden_button, visible_button, second_visible_button],
         },
-        evaluate_fn=lambda _script, button: button.visible,
     )
     monkeypatch.setattr(highlights_runtime.random, 'shuffle', lambda buttons: None)
 
@@ -144,11 +143,9 @@ def test_visible_highlight_buttons_returns_only_visible_matches(monkeypatch, mes
     assert messages == []
     queried_selectors = [c.args[0] for c in page.locator.call_args_list]
     assert queried_selectors[:3] == HIGHLIGHT_SELECTORS[:3]
-    assert page.evaluate.call_args_list == [
-        call(ANY, hidden_button),
-        call(ANY, visible_button),
-        call(ANY, second_visible_button),
-    ]
+    hidden_button.evaluate.assert_called_once_with(ANY)
+    visible_button.evaluate.assert_called_once_with(ANY)
+    second_visible_button.evaluate.assert_called_once_with(ANY)
 
 
 def test_visible_highlight_buttons_logs_when_no_matches_found(messages):
@@ -162,20 +159,19 @@ def test_visible_highlight_buttons_logs_when_no_matches_found(messages):
 
 def test_visible_highlight_buttons_logs_when_all_matches_are_hidden(messages):
     hidden_button = MagicMock(name='hidden_button')
-    hidden_button.visible = False
+    hidden_button.evaluate = MagicMock(return_value=False)
 
     page = _make_locator_page(
         {
             HIGHLIGHT_SELECTORS[0]: [hidden_button],
             **{sel: [] for sel in HIGHLIGHT_SELECTORS[1:]},
         },
-        evaluate_fn=lambda _script, button: button.visible,
     )
 
     assert highlights_runtime._visible_highlight_buttons(page, messages.append) == []
     assert messages == ['No visible highlights found']
     assert page.locator.call_args_list[0].args[0] == HIGHLIGHT_SELECTORS[0]
-    page.evaluate.assert_called_once_with(ANY, hidden_button)
+    hidden_button.evaluate.assert_called_once_with(ANY)
 
 
 def test_open_random_highlight_stops_before_trying_any_button(monkeypatch, messages):
@@ -213,6 +209,7 @@ def test_open_highlight_with_retries_retries_until_url_reflects_opened_story(mon
     )
     button = MagicMock(name='highlight_button')
     button.click.side_effect = lambda *args, **kwargs: events.append('click')
+    button.evaluate = MagicMock(side_effect=lambda _script: events.append('scroll'))
 
     monkeypatch.setattr(
         highlights_runtime,

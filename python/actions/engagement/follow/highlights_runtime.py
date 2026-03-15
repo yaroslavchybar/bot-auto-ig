@@ -81,7 +81,7 @@ def _visible_highlight_buttons(page, log):
 
 def _is_visible(page, button) -> bool:
     try:
-        return page.evaluate(
+        return button.evaluate(
             """
             (element) => {
                 const rect = element.getBoundingClientRect();
@@ -93,8 +93,7 @@ def _is_visible(page, button) -> bool:
                        rect.top >= 0 &&
                        rect.top <= (window.innerHeight || document.documentElement.clientHeight);
             }
-            """,
-            button,
+            """
         )
     except Exception:
         return False
@@ -133,35 +132,13 @@ def _open_highlight_with_retries(page, log, button, max_wait: float) -> bool:
 
 
 def _wait_for_highlight_button(page, button) -> None:
-    page.wait_for_function(
-        """
-        (element) => {
-            const rect = element.getBoundingClientRect();
-            const style = window.getComputedStyle(element);
-            const isVisible = style.display !== 'none' &&
-                            style.visibility !== 'hidden' &&
-                            style.opacity !== '0' &&
-                            rect.width > 0 &&
-                            rect.height > 0;
-            const isInViewport = rect.top >= 0 &&
-                               rect.left >= 0 &&
-                               rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-                               rect.right <= (window.innerWidth || document.documentElement.clientWidth);
-            return isVisible && isInViewport;
-        }
-        """,
-        arg=button,
-        timeout=2000,
-    )
+    button.wait_for(state='visible', timeout=2000)
 
 
 def _scroll_highlight_into_view(page, button) -> None:
     try:
-        page.evaluate(
-            """
-            (element) => element.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
-            """,
-            button,
+        button.evaluate(
+            "(element) => element.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' })"
         )
     except Exception:
         pass
@@ -173,7 +150,7 @@ def _click_highlight(page, log, button) -> bool:
     for click in (
         lambda: button.click(),
         lambda: button.click(force=True),
-        lambda: page.evaluate('(element) => element.click()', button),
+        lambda: button.evaluate('(element) => element.click()'),
     ):
         try:
             click()

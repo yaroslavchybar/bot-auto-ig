@@ -168,7 +168,7 @@ def _collect_selector_links(page, selector: str, seen_hrefs: Set[str], post_link
 
 def _is_visible(page, element) -> bool:
     try:
-        return page.evaluate(
+        return element.evaluate(
             """
             (element) => {
                 const rect = element.getBoundingClientRect();
@@ -178,8 +178,7 @@ def _is_visible(page, element) -> bool:
                        rect.width > 0 &&
                        rect.height > 0;
             }
-            """,
-            element,
+            """
         )
     except Exception:
         return False

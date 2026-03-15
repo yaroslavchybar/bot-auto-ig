@@ -55,16 +55,16 @@ def create_browser_context(
         fingerprint_os,
         display,
     )
-    cm = None
-    context = None
     try:
-        cm, context = _open_camoufox(launch_kwargs)
-        page, monitor = initialize_browser_page(context, profile_name)
-        bootstrap_instagram_session(page, monitor, profile_name, proxy_string)
-        _sync_session_state(context, profile_name)
-        yield context, page
+        with _open_camoufox(launch_kwargs) as context:
+            page, monitor = initialize_browser_page(context, profile_name)
+            bootstrap_instagram_session(page, monitor, profile_name, proxy_string)
+            _sync_session_state(context, profile_name)
+            try:
+                yield context, page
+            finally:
+                _sync_session_state(context, profile_name)
     finally:
-        _close_context_manager(cm, context, profile_name)
         _schedule_cache_cleanup(should_clean, profile_path)
 
 
@@ -118,17 +118,19 @@ def _build_launch_kwargs(
     return launch_kwargs
 
 
+@contextmanager
 def _open_camoufox(launch_kwargs: dict):
-    """Open a Camoufox browser context using the context manager protocol."""
+    """Open a Camoufox browser context using the with-statement pattern."""
     try:
-        cm = Camoufox(geoip=True, **launch_kwargs)
-        return cm, cm.__enter__()
+        with Camoufox(geoip=True, **launch_kwargs) as browser:
+            yield browser
+            return
     except InvalidProxy:
         if not launch_kwargs.get('proxy'):
             raise
         logger.warning('Proxy GeoIP check failed. Retrying with geoip=False...')
-        cm = Camoufox(geoip=False, **launch_kwargs)
-        return cm, cm.__enter__()
+    with Camoufox(geoip=False, **launch_kwargs) as browser:
+        yield browser
 
 
 def _sync_session_state(context, profile_name: str) -> None:
@@ -145,24 +147,6 @@ def _sync_session_state(context, profile_name: str) -> None:
     except Exception:
         return
 
-
-def _close_context_manager(cm, context, profile_name: str) -> None:
-    if not cm:
-        return
-    try:
-        if context:
-            try:
-                _sync_session_state(context, profile_name)
-            except Exception:
-                pass
-            finally:
-                try:
-                    context.close()
-                except Exception:
-                    pass
-        cm.__exit__(None, None, None)
-    except Exception:
-        return
 
 
 def _schedule_cache_cleanup(should_clean: bool, profile_path: str) -> None:
