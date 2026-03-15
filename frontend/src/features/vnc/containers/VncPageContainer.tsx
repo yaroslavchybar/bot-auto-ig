@@ -5,11 +5,13 @@ import { VncTile } from '../components/VncTile'
 import { Button } from '@/components/ui/button'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useVncSessions } from '../hooks/useVncSessions'
+import { useRouteActive } from '@/hooks/useRouteActive'
 import { buildVncSessionPath, sessionKey } from '../utils/liveSessions'
 
 export function VncPageContainer() {
   const navigate = useNavigate()
-  const { sessions, loading, connected, refresh } = useVncSessions()
+  const isActive = useRouteActive('/vnc')
+  const { sessions, loading, connected, refresh } = useVncSessions(isActive)
   const [refreshing, setRefreshing] = useState(false)
 
   const handleSelect = useCallback(

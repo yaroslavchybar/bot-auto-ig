@@ -27,7 +27,7 @@ function useVncSessionResolution() {
   const { workflowId: rawWorkflowId, profileName: rawProfileName } = useParams()
   const workflowId = decodeRouteParam(rawWorkflowId)
   const profileName = decodeRouteParam(rawProfileName)
-  const { sessions, loading, refresh } = useVncSessions()
+  const { sessions, loading, refresh } = useVncSessions(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const session = useMemo(

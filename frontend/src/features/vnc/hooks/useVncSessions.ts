@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
-import { useRouteActive } from '@/hooks/useRouteActive'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   applyDisplayEvent,
@@ -10,9 +9,17 @@ import {
 } from '../utils/liveSessions'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
-export function useVncSessions() {
+/**
+ * Fetches and live-updates VNC display sessions.
+ *
+ * @param enabled – controls whether polling and WebSocket subscription
+ *   are active. Callers decide when to enable:
+ *   - Grid page passes `useRouteActive('/vnc')` so polling pauses when
+ *     the keep-alive cache hides the route.
+ *   - Session detail page passes `true` so it always fetches.
+ */
+export function useVncSessions(enabled: boolean) {
   const isMobile = useIsMobile()
-  const isVisible = useRouteActive('/vnc')
   const { handleError } = useErrorHandler()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
@@ -35,12 +42,12 @@ export function useVncSessions() {
 
   const { connected } = useWebSocket({
     onEvent: handleSocketEvent,
-    enabled: isVisible,
+    enabled,
     pauseWhenHidden: true,
   })
 
   useEffect(() => {
-    if (!isVisible) {
+    if (!enabled) {
       return
     }
 
@@ -58,7 +65,7 @@ export function useVncSessions() {
     )
 
     return () => clearInterval(interval)
-  }, [connected, isMobile, isVisible, refresh])
+  }, [connected, isMobile, enabled, refresh])
 
   return {
     sessions,
