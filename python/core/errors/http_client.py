@@ -1,52 +1,113 @@
 import time
-import random
 import requests
 import logging
+from enum import Enum
 from typing import Optional, Any
 from requests.exceptions import RequestException, HTTPError, Timeout, ConnectionError
-from python.core.errors.retry import retry_with_backoff, calculate_sleep_time
+from python.core.errors.retry import calculate_sleep_time
 
-# Configure logging
 logger = logging.getLogger(__name__)
+
 
 class CircuitBreakerOpenError(Exception):
     """Raised when the circuit breaker is open."""
     pass
 
+
+class CircuitState(Enum):
+    """Explicit states for the circuit breaker."""
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+
 class CircuitBreaker:
+    """
+    Circuit breaker with three states: closed, open, half-open.
+
+    - CLOSED: requests flow normally; consecutive failures are counted.
+    - OPEN: all requests fail-fast with CircuitBreakerOpenError.
+    - HALF_OPEN: one probe request is allowed after recovery_timeout;
+      success closes the circuit, failure re-opens it immediately.
+    """
+
     def __init__(self, threshold: int = 5, recovery_timeout: int = 60):
         self.threshold = threshold
         self.recovery_timeout = recovery_timeout
         self.failure_count = 0
-        self.last_failure_time = 0
-        self.is_open = False
+        self.last_failure_time: float = 0
+        self._state = CircuitState.CLOSED
 
-    def record_success(self):
-        """Reset failure count on success."""
-        if self.is_open:
+    @property
+    def state(self) -> CircuitState:
+        return self._state
+
+    @property
+    def is_open(self) -> bool:
+        """Backward-compatible property: True when state is OPEN."""
+        return self._state == CircuitState.OPEN
+
+    @is_open.setter
+    def is_open(self, value: bool) -> None:
+        """Backward-compatible setter for legacy test setup."""
+        if value:
+            self._state = CircuitState.OPEN
+        else:
+            self._state = CircuitState.CLOSED
+
+    def record_success(self) -> None:
+        """Reset failure count and close the circuit."""
+        if self._state != CircuitState.CLOSED:
             logger.info("Circuit breaker recovering - closing circuit.")
         self.failure_count = 0
-        self.is_open = False
+        self._state = CircuitState.CLOSED
 
-    def record_failure(self):
+    def record_failure(self) -> None:
         """Record a failure and potentially open the circuit."""
         self.failure_count += 1
         self.last_failure_time = time.time()
-        
-        if self.failure_count >= self.threshold:
-            if not self.is_open:
-                logger.warning(f"Circuit breaker tripped! Open for {self.recovery_timeout}s.")
-            self.is_open = True
 
-    def check_state(self):
-        """Check if request is allowed to proceed."""
-        if self.is_open:
-            elapsed = time.time() - self.last_failure_time
-            if elapsed > self.recovery_timeout:
-                # Half-open state: allow one request to try
-                logger.info("Circuit breaker recovery timeout passed - attempting probe.")
-                return
-            raise CircuitBreakerOpenError(f"Circuit is open. Retry in {int(self.recovery_timeout - elapsed)}s")
+        if self._state == CircuitState.HALF_OPEN:
+            # Probe failed — immediately re-open the circuit
+            logger.warning(
+                f"Circuit breaker probe failed. Re-opening for {self.recovery_timeout}s."
+            )
+            self._state = CircuitState.OPEN
+        elif self.failure_count >= self.threshold:
+            if self._state != CircuitState.OPEN:
+                logger.warning(
+                    f"Circuit breaker tripped after {self.failure_count} failures! "
+                    f"Open for {self.recovery_timeout}s."
+                )
+            self._state = CircuitState.OPEN
+
+    def check_state(self) -> None:
+        """Check if request is allowed to proceed.
+
+        Raises CircuitBreakerOpenError if the circuit is open and
+        recovery_timeout has not elapsed.  Transitions to HALF_OPEN
+        when the timeout passes so that exactly one probe is allowed.
+        """
+        if self._state == CircuitState.CLOSED:
+            return
+
+        if self._state == CircuitState.HALF_OPEN:
+            # Already in half-open — only one probe allowed at a time.
+            # Subsequent callers must wait until the probe resolves.
+            raise CircuitBreakerOpenError(
+                "Circuit is half-open. A probe request is already in progress."
+            )
+
+        # State is OPEN
+        elapsed = time.time() - self.last_failure_time
+        if elapsed > self.recovery_timeout:
+            logger.info("Circuit breaker recovery timeout passed - entering half-open state.")
+            self._state = CircuitState.HALF_OPEN
+            return
+
+        raise CircuitBreakerOpenError(
+            f"Circuit is open. Retry in {int(self.recovery_timeout - elapsed)}s"
+        )
 
 class ResilientHttpClient:
     """
