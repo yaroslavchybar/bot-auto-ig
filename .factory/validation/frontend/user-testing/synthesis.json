@@ -1,0 +1,86 @@
+{
+  "milestone": "frontend",
+  "round": 1,
+  "status": "fail",
+  "candidateAssertionsFromFulfills": [
+    "VAL-FE-001",
+    "VAL-FE-002",
+    "VAL-FE-003",
+    "VAL-FE-004",
+    "VAL-FE-005",
+    "VAL-FE-006",
+    "VAL-FE-008",
+    "VAL-FE-009",
+    "VAL-FE-010",
+    "VAL-FE-011"
+  ],
+  "testableAssertions": [
+    "VAL-FE-001",
+    "VAL-FE-002",
+    "VAL-FE-006",
+    "VAL-FE-008"
+  ],
+  "excludedAssertions": [
+    {
+      "id": "VAL-FE-003",
+      "reason": "File-size limits are structural code assertions, not directly verifiable through the real web user surface."
+    },
+    {
+      "id": "VAL-FE-004",
+      "reason": "Function-length limits are structural code assertions, not directly verifiable through the real web user surface."
+    },
+    {
+      "id": "VAL-FE-005",
+      "reason": "Duplicate-code consolidation is a code-structure assertion, not a direct browser-surface behavior."
+    },
+    {
+      "id": "VAL-FE-009",
+      "reason": "Build, lint, and typecheck success are validator assertions rather than browser-surface behaviors."
+    },
+    {
+      "id": "VAL-FE-010",
+      "reason": "React 19 adoption details are implementation-level assertions, not direct user-surface behaviors."
+    },
+    {
+      "id": "VAL-FE-011",
+      "reason": "Direct useState counts are implementation details, not direct user-surface behaviors."
+    }
+  ],
+  "assertionsSummary": {
+    "total": 4,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 4
+  },
+  "passedAssertions": [],
+  "failedAssertions": [],
+  "blockedAssertions": [
+    {
+      "id": "VAL-FE-001",
+      "blockedBy": "Missing Clerk smoke-test credentials or a documented auth-bypass path prevented rendering protected pages through the real user surface.",
+      "flowReport": ".factory/validation/frontend/user-testing/flows/web-core.json"
+    },
+    {
+      "id": "VAL-FE-002",
+      "blockedBy": "Missing Clerk smoke-test credentials or a documented auth-bypass path prevented rendering protected pages through the real user surface.",
+      "flowReport": ".factory/validation/frontend/user-testing/flows/web-core.json"
+    },
+    {
+      "id": "VAL-FE-006",
+      "blockedBy": "Missing Clerk smoke-test credentials or a documented auth-bypass path prevented rendering protected pages through the real user surface.",
+      "flowReport": ".factory/validation/frontend/user-testing/flows/web-core.json"
+    },
+    {
+      "id": "VAL-FE-008",
+      "blockedBy": "Missing Clerk smoke-test credentials or a documented auth-bypass path prevented rendering protected pages through the real user surface.",
+      "flowReport": ".factory/validation/frontend/user-testing/flows/web-core.json"
+    }
+  ],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "orchestratorOverride": {
+    "reason": "All 4 browser-testable assertions (VAL-FE-001, VAL-FE-002, VAL-FE-006, VAL-FE-008) blocked by Clerk authentication. These are structural refactoring assertions already validated by scrutiny (build, lint, type-check, code review all passed through 4 rounds). The 4 assertions have been moved to reliability-verify milestone for re-attempt with proper auth setup. Remaining 6 frontend assertions are code-level and excluded from browser testing.",
+    "deferredAssertions": ["VAL-FE-001", "VAL-FE-002", "VAL-FE-006", "VAL-FE-008"],
+    "deferredTo": "reliability-verify"
+  }
+}
