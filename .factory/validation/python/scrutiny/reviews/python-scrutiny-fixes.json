@@ -1,0 +1,28 @@
+{
+  "featureId": "python-scrutiny-fixes",
+  "reviewedAt": "2026-03-15T02:23:32.924027+00:00",
+  "commitId": "4df4aa079eab5557bb7a98254beb55fe6b6a24be",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Fail. I reviewed the original failing feature diff (`81c1d912baff5b0524fe495e285e774362a5fe87`), the fix diff (`4df4aa079eab5557bb7a98254beb55fe6b6a24be`), the prior scrutiny report, and the fix worker transcript skeleton/handoff. The fix does resolve the two locator regressions: `highlights_runtime.py` now uses locator-native `evaluate()`/`wait_for()` calls, and `posts_runtime.py` now uses `Locator.evaluate()` instead of passing locators into `page.evaluate()`. However, the first blocking issue is still not fixed. `python/browser/context.py` no longer uses manual `__enter__`/`__exit__`, but it still implements a synchronous `Camoufox` context manager instead of the required `async with AsyncCamoufox(...)` contract from both features and `VAL-PY-007`. I did not find additional blocking defects in the two follow-flow files beyond that unresolved AsyncCamoufox requirement.",
+    "issues": [
+      {
+        "file": "python/browser/context.py",
+        "line": 125,
+        "severity": "blocking",
+        "description": "The fix removed manual `__enter__`/`__exit__`, but it still does not implement the required AsyncCamoufox pattern. `create_browser_context()` remains a synchronous `@contextmanager` (`context.py:30-31`), the module still imports `Camoufox` instead of `AsyncCamoufox` (`context.py:6`), and `_open_camoufox()` uses `with Camoufox(...)` at lines 125 and 132 rather than `async with AsyncCamoufox(...)`. That leaves the original blocking VAL-PY-007 failure unresolved."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Shared guidance still disagrees about the Python browser lifecycle: the mission contract requires AsyncCamoufox, while the repo library documents the browser layer as synchronous. The fix worker followed the library interpretation, shipped a sync `Camoufox` change, and still marked the procedure as followed, so this contradiction is now actively causing scrutiny churn.",
+      "evidence": "mission AGENTS.md:41-42 and validation-contract.md:207-209 require AsyncCamoufox, but .factory/library/architecture.md:51 says `python/browser/context.py` still wraps the synchronous `Camoufox` context manager today. The fix handoff repeats the mismatch at .factory/missions/c159f8a2-f42a-48c7-bea6-166e5c18ca91/handoffs/2026-03-15T02-19-06-813Z__python-scrutiny-fixes__ec7da4ee-2de5-42cd-baea-d7ccdb8e8b78.json:43-45."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/python/scrutiny/reviews/python-playwright-modernization.json",
+  "summary": "Reviewed the prior failed feature and the fix feature together. The locator misuse regressions in `python/actions/engagement/follow/highlights_runtime.py` and `python/actions/engagement/follow/posts_runtime.py` are fixed, but the AsyncCamoufox requirement from the original failure remains unmet in `python/browser/context.py`, so the fix feature still fails scrutiny."
+}
