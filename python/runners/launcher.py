@@ -16,6 +16,7 @@ from python.core.process.manager import ProcessManager
 from python.core.logging import setup_logging
 from python.core.process.healthcheck import run_all_checks
 from python.core.shutdown import ShutdownManager
+from python.core.storage.state_persistence import load_state
 from python.browser.setup import parse_proxy_string
 from python.browser.display import DisplayManager
 from python.core.clients import ProfilesClient
@@ -182,11 +183,22 @@ if __name__ == "__main__":
 
     max_retries = 3
     retry_count = 0
-    # Register a callback so shutdown persists fresh in-flight state
-    # (retry_count may advance during the retry loop below).
-    _shutdown_mgr.set_state_callback(
-        lambda: {'profile': args.name, 'action': args.action, 'progress': retry_count},
-    )
+    # Register a callback so shutdown persists fresh in-flight state.
+    # Prefer the persisted progress written by scrolling runtimes (0-99%)
+    # over retry_count (0-3) to avoid overwriting richer snapshots.
+    def _launcher_state_callback():
+        progress = retry_count
+        persisted = load_state()
+        if (
+            persisted is not None
+            and persisted.get('profile') == args.name
+            and isinstance(persisted.get('progress'), (int, float))
+            and persisted['progress'] > progress
+        ):
+            progress = persisted['progress']
+        return {'profile': args.name, 'action': args.action, 'progress': progress}
+
+    _shutdown_mgr.set_state_callback(_launcher_state_callback)
 
     try:
         while True:

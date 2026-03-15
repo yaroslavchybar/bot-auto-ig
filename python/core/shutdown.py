@@ -14,7 +14,7 @@ import signal
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from python.core.storage.state_persistence import save_state
+from python.core.storage.state_persistence import load_state, save_state
 
 logger = logging.getLogger(__name__)
 
@@ -145,13 +145,29 @@ class ShutdownManager:
                 logger.error('State callback failed, using fallback: %s', exc)
         if profile and action:
             try:
-                save_state(profile, action, progress)
-                logger.info(
-                    'State persisted: profile=%s action=%s progress=%d',
-                    profile,
-                    action,
-                    progress,
-                )
+                # Guard: do not overwrite a higher progress value already
+                # persisted by a scrolling runtime (e.g. 0-99%).  This
+                # prevents shutdown callbacks from regressing progress.
+                existing = load_state()
+                if (
+                    existing is not None
+                    and existing.get('profile') == profile
+                    and isinstance(existing.get('progress'), (int, float))
+                    and existing['progress'] > progress
+                ):
+                    logger.info(
+                        'Skipping state save: persisted progress %d > shutdown progress %d',
+                        existing['progress'],
+                        progress,
+                    )
+                else:
+                    save_state(profile, action, progress)
+                    logger.info(
+                        'State persisted: profile=%s action=%s progress=%d',
+                        profile,
+                        action,
+                        progress,
+                    )
             except Exception as exc:
                 logger.error('Failed to persist state: %s', exc)
 

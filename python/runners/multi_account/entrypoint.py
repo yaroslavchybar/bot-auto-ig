@@ -7,6 +7,7 @@ from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
 from python.core.shutdown import ShutdownManager
+from python.core.storage.state_persistence import load_state
 from python.core.clients import MessageTemplatesClient
 from python.runners.multi_account.config import _build_config
 from python.runners.multi_account.io import emit_event, log
@@ -169,14 +170,30 @@ def _register_signal_handlers(runner, target_accounts) -> None:
 
 
 def _current_runner_state(runner, target_accounts) -> dict:
-    """Return a snapshot of the runner's current state for persistence."""
+    """Return a snapshot of the runner's current state for persistence.
+
+    Reads the persisted state from disk so that scrolling runtimes' real
+    progress (0-99%) is preserved instead of being overwritten with 0.
+    """
     profile = runner._current_profile
     action = runner._current_action
     if not profile:
         # Runner hasn't started processing yet; fall back to placeholder
         profile = target_accounts[0].username if target_accounts else ''
+
+    # Prefer the persisted progress written by scrolling runtimes
+    progress = 0
+    persisted = load_state()
+    if (
+        persisted is not None
+        and persisted.get('profile') == profile
+        and isinstance(persisted.get('progress'), (int, float))
+        and persisted['progress'] > 0
+    ):
+        progress = persisted['progress']
+
     return {
         'profile': profile,
         'action': action or 'multi_account',
-        'progress': 0,
+        'progress': progress,
     }
