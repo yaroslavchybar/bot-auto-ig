@@ -1,7 +1,7 @@
 {
   "milestone": "frontend",
-  "round": 4,
-  "status": "pass",
+  "round": 3,
+  "status": "fail",
   "validatorsRun": {
     "testConvex": {
       "passed": true,
@@ -36,11 +36,20 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "frontend-scrutiny-fixes-r2"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "frontend-scrutiny-fixes-r2",
+      "severity": "blocking",
+      "description": "The exact-match route fix stops the hidden cached `/vnc` grid from polling on `/vnc/session/:workflowId/:profileName`, but `useVncSessions()` still hardcodes `useRouteActive('/vnc')` and is also used by the visible VNC session page. The shared hook now skips both initial loading and websocket/interval refreshes on the session route, so direct session loads can incorrectly fall into the 'This live session is no longer active.' state.",
+      "evidence": "Review: .factory/validation/frontend/scrutiny/reviews/frontend-scrutiny-fixes-r2.json"
+    }
+  ],
   "appliedUpdates": [
     {
       "target": "library",
@@ -101,5 +110,5 @@
       "reason": "mission-specific planning drift — useful for the orchestrator, but not durable shared state for `.factory/library/`, `.factory/services.yaml`, `AGENTS.md`, or worker skills."
     }
   ],
-  "previousRound": ".factory/validation/frontend/scrutiny/synthesis.round3.json"
+  "previousRound": ".factory/validation/frontend/scrutiny/synthesis.round2.json"
 }
