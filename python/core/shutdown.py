@@ -145,18 +145,20 @@ class ShutdownManager:
                 logger.error('State callback failed, using fallback: %s', exc)
         if profile and action:
             try:
-                # Guard: do not overwrite a higher progress value already
-                # persisted by a scrolling runtime (e.g. 0-99%).  This
-                # prevents shutdown callbacks from regressing progress.
+                # Guard: do not overwrite a state already persisted by a
+                # scrolling runtime when it is at least as rich.  Using >=
+                # ensures that equal progress with a more specific persisted
+                # action (e.g. 'scroll_feed') is not overwritten by the
+                # coarser launcher action (e.g. 'scroll_feed_and_reels').
                 existing = load_state()
                 if (
                     existing is not None
                     and existing.get('profile') == profile
                     and isinstance(existing.get('progress'), (int, float))
-                    and existing['progress'] > progress
+                    and existing['progress'] >= progress
                 ):
                     logger.info(
-                        'Skipping state save: persisted progress %d > shutdown progress %d',
+                        'Skipping state save: persisted progress %d >= shutdown progress %d',
                         existing['progress'],
                         progress,
                     )

@@ -184,19 +184,23 @@ if __name__ == "__main__":
     max_retries = 3
     retry_count = 0
     # Register a callback so shutdown persists fresh in-flight state.
-    # Prefer the persisted progress written by scrolling runtimes (0-99%)
+    # Prefer the persisted state written by scrolling runtimes (0-99%)
     # over retry_count (0-3) to avoid overwriting richer snapshots.
+    # Also preserve the persisted *action* (e.g. 'scroll_feed') instead
+    # of the coarser launcher action (e.g. 'scroll_feed_and_reels').
     def _launcher_state_callback():
         progress = retry_count
+        action = args.action
         persisted = load_state()
         if (
             persisted is not None
             and persisted.get('profile') == args.name
             and isinstance(persisted.get('progress'), (int, float))
-            and persisted['progress'] > progress
+            and persisted['progress'] >= progress
         ):
             progress = persisted['progress']
-        return {'profile': args.name, 'action': args.action, 'progress': progress}
+            action = persisted.get('action', action)
+        return {'profile': args.name, 'action': action, 'progress': progress}
 
     _shutdown_mgr.set_state_callback(_launcher_state_callback)
 
