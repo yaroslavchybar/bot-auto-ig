@@ -209,9 +209,14 @@ def _register_process_handlers(runner: WorkflowRunner) -> None:
 
 def _current_runner_state(runner: WorkflowRunner) -> dict:
     """Return a snapshot of the runner's current state for persistence."""
-    profile = runner.accounts[0].username if runner.accounts else ''
+    profile = runner._current_profile
+    progress = runner._current_progress
+    if not profile:
+        # Runner hasn't started processing yet; fall back to placeholder
+        profile = runner.accounts[0].username if runner.accounts else ''
+        progress = 0
     return {
         'profile': profile,
         'action': 'workflow',
-        'progress': 0,
+        'progress': progress,
     }

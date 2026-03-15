@@ -12,6 +12,8 @@ def process_account(runner, account) -> bool:
     browser_state = _build_browser_state(account)
     profile_data = _load_profile_data(runner, profile_name)
     _hydrate_browser_identity(browser_state, profile_data)
+    runner._current_profile = profile_name
+    runner._current_progress = 0
     emit_event('profile_started', profile=profile_name, workflow_id=runner.workflow_id)
     try:
         _sync_profile_status(runner, profile_name, 'running', True)
@@ -162,6 +164,8 @@ def _node_metadata(node: Dict[str, Any]) -> tuple[str, str, Dict[str, Any]]:
 
 
 def _emit_task_started(runner, node_id: str, activity_id: str, label: str, profile_name: str, progress: int) -> None:
+    runner._current_profile = profile_name
+    runner._current_progress = progress
     runner._update_node_state(
         node_id,
         activityId=activity_id,

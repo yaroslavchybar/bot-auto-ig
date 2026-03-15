@@ -170,9 +170,13 @@ def _register_signal_handlers(runner, target_accounts) -> None:
 
 def _current_runner_state(runner, target_accounts) -> dict:
     """Return a snapshot of the runner's current state for persistence."""
-    profile = target_accounts[0].username if target_accounts else ''
+    profile = runner._current_profile
+    action = runner._current_action
+    if not profile:
+        # Runner hasn't started processing yet; fall back to placeholder
+        profile = target_accounts[0].username if target_accounts else ''
     return {
         'profile': profile,
-        'action': 'multi_account',
+        'action': action or 'multi_account',
         'progress': 0,
     }

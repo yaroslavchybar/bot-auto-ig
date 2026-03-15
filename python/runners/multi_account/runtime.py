@@ -36,6 +36,9 @@ class InstagramAutomationRunner:
         self._workflow_sessions: Dict[str, int] = {}
         if self.workflow_id:
             self._workflow_sessions = _load_workflow_sessions(self)
+        # Lightweight shutdown-state tracking (updated by account_session)
+        self._current_profile: Optional[str] = None
+        self._current_action: Optional[str] = None
 
     def _get_cached_profile(self, profile_name: str):
         with self._profile_cache_lock:

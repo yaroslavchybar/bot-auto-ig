@@ -58,6 +58,9 @@ class WorkflowRunner:
         self.display_mgr = DisplayManager()
         raw_node_states = options.get('node_states')
         self.node_states: Dict[str, Any] = dict(raw_node_states) if isinstance(raw_node_states, dict) else {}
+        # Lightweight shutdown-state tracking (updated by account_session)
+        self._current_profile: Optional[str] = None
+        self._current_progress: int = 0
 
     def register_browser_context(self, ctx_mgr: Any) -> None:
         """Track an active browser context manager for shutdown cleanup."""

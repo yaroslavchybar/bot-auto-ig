@@ -18,6 +18,8 @@ def process_account(runner, account) -> bool:
     allowed, message_targets = _preflight_account(runner, account, profile_data)
     if not allowed:
         return False
+    runner._current_profile = profile_name
+    runner._current_action = None
     log(f'Starting browser for @{profile_name}...')
     emit_event('profile_started', profile=profile_name)
     try:
@@ -184,6 +186,7 @@ def _run_enabled_actions(runner, page, account, profile_data, message_targets) -
             break
         if action_name not in actions_map or not enabled_map.get(action_name, False):
             continue
+        runner._current_action = action_name
         emit_event('task_started', profile=account.username, task=action_name)
         actions_map[action_name]()
         if runner.running:

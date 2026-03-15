@@ -182,6 +182,11 @@ if __name__ == "__main__":
 
     max_retries = 3
     retry_count = 0
+    # Register a callback so shutdown persists fresh in-flight state
+    # (retry_count may advance during the retry loop below).
+    _shutdown_mgr.set_state_callback(
+        lambda: {'profile': args.name, 'action': args.action, 'progress': retry_count},
+    )
 
     try:
         while True:
