@@ -194,6 +194,15 @@ function processSocketMessage(
   } catch { /* ignore parse errors */ }
 }
 
+/* ── Safely close a WebSocket if it is not already closed ── */
+
+function safeCloseSocket(ws: WebSocket | null) {
+  if (!ws) return
+  if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+    ws.close()
+  }
+}
+
 /* ── Connect a WebSocket and wire event handlers ── */
 
 async function connectWebSocket(
@@ -202,16 +211,26 @@ async function connectWebSocket(
   handleSocketMessage: (rawMessage: string) => void,
   setConnected: (v: boolean) => void,
   wsRef: React.MutableRefObject<WebSocket | null>,
+  connectingRef: React.MutableRefObject<boolean>,
   cancelled: { current: boolean },
 ) {
+  connectingRef.current = true
   let tokenParam = ''
   try {
     const token = await getToken()
     if (token) tokenParam = `?token=${encodeURIComponent(token)}`
   } catch { /* continue */ }
-  if (cancelled.current) return
+  if (cancelled.current) { connectingRef.current = false; return }
+
+  // Close any lingering socket before creating a new one
+  safeCloseSocket(wsRef.current)
+  wsRef.current = null
+
   const ws = new WebSocket(`${wsUrl}${tokenParam}`)
+  wsRef.current = ws
+
   ws.onopen = () => {
+    connectingRef.current = false
     if (cancelled.current) { ws.close(); return }
     setConnected(true)
     addWebSocketBreadcrumb('open', wsUrl)
@@ -219,8 +238,11 @@ async function connectWebSocket(
   ws.onmessage = (event) => {
     if (!cancelled.current) handleSocketMessage(event.data)
   }
-  ws.onerror = () => { addWebSocketBreadcrumb('error', wsUrl); ws.close() }
-  wsRef.current = ws
+  ws.onerror = () => {
+    connectingRef.current = false
+    addWebSocketBreadcrumb('error', wsUrl)
+    ws.close()
+  }
   return ws
 }
 
@@ -262,6 +284,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   })
   const isVisible = useVisibility()
   const wsRef = useRef<WebSocket | null>(null)
+  const connectingRef = useRef(false)
+  const intentionalDisconnectRef = useRef(false)
   const currentProfileRef = useRef<string | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const reconnectAttemptRef = useRef(0)
@@ -281,29 +305,48 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   useEffect(() => {
     if (!enabled || (pauseWhenHidden && !isVisible)) return
     if (!autoConnect && reconnectCounter === 0) return
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+
+    // Prevent duplicate connections: skip if already open or mid-connect
+    const rs = wsRef.current?.readyState
+    if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return
+    if (connectingRef.current) return
+
+    intentionalDisconnectRef.current = false
     const cancelled = { current: false }
+
     void connectWebSocket(
       wsUrl, getToken, handleSocketMessage,
       (v) => { setConnected(v); if (v) reconnectAttemptRef.current = 0 },
-      wsRef, cancelled,
+      wsRef, connectingRef, cancelled,
     ).then((ws) => {
       if (!ws) return
       ws.onclose = () => {
+        connectingRef.current = false
         if (cancelled.current) return
         setConnected(false); wsRef.current = null
         addWebSocketBreadcrumb('close', wsUrl)
+        if (!intentionalDisconnectRef.current) {
+          scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
+            reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
+        }
+      }
+    }).catch(() => {
+      connectingRef.current = false
+      if (!intentionalDisconnectRef.current) {
         scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
           reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
       }
-    }).catch(() => {
-      scheduleReconnect(autoConnect, enabled, pauseWhenHidden, isVisible, cancelled,
-        reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
     })
+
     return () => {
       cancelled.current = true
-      if (reconnectTimeoutRef.current) { clearTimeout(reconnectTimeoutRef.current); reconnectTimeoutRef.current = null }
-      wsRef.current?.close(); wsRef.current = null
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+        reconnectTimeoutRef.current = null
+      }
+      safeCloseSocket(wsRef.current)
+      wsRef.current = null
+      connectingRef.current = false
     }
   }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible,
     wsRef, reconnectAttemptRef, reconnectTimeoutRef])
@@ -311,8 +354,15 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const connect = useCallback(() => { setReconnectCounter((c) => c + 1) }, [])
 
   const disconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) { clearTimeout(reconnectTimeoutRef.current); reconnectTimeoutRef.current = null }
-    wsRef.current?.close(); wsRef.current = null; setConnected(false)
+    intentionalDisconnectRef.current = true
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+    safeCloseSocket(wsRef.current)
+    wsRef.current = null
+    connectingRef.current = false
+    setConnected(false)
   }, [])
 
   return { logs, status, progress, connected, clearLogs, connect, disconnect }
