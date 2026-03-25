@@ -53,7 +53,7 @@ export async function seedProfile(
   t: ReturnType<typeof createConvexTest>,
   overrides: Record<string, unknown> = {}
 ) {
-  return await t.mutation(api.profiles.create, {
+  return await t.mutation(api.profiles.mutations.create, {
     name: (overrides.name as string | undefined) ?? 'Profile A',
     proxy: overrides.proxy as string | undefined,
     proxyType: overrides.proxyType as string | undefined,

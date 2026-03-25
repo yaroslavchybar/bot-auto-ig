@@ -14,14 +14,14 @@ def ensure_instagram_open(page, log: Callable[[str], None]) -> None:
 
 
 def open_notifications(page, log: Callable[[str], None]) -> bool:
-    log("Перехожу в уведомления...")
+    log("Navigating to notifications...")
 
     try:
         page.locator('svg[aria-label="Notifications"]').click()
         random_delay(3, 5)
         return True
     except Exception as e:
-        log(f"Не нашел кнопку уведомлений: {e}")
+        log(f"Could not find notifications button: {e}")
 
     try:
         page.goto("https://www.instagram.com/accounts/activity/", timeout=15000)
@@ -32,7 +32,7 @@ def open_notifications(page, log: Callable[[str], None]) -> bool:
 
 
 def open_follow_requests_list(page, log: Callable[[str], None]) -> bool:
-    log("Ищу 'Follow request' и открываю список заявок...")
+    log("Looking for 'Follow request' and opening requests list...")
 
     try:
         el = page.locator('text=Follow request').first
@@ -60,7 +60,7 @@ def find_confirm_buttons(page) -> List[object]:
 
 
 def close_notifications(page, log: Callable[[str], None]) -> None:
-    log("Закрываю окно уведомлений...")
+    log("Closing notifications panel...")
 
     try:
         close_btn = page.locator('div[aria-label="Close"][role="button"]').first
@@ -70,10 +70,10 @@ def close_notifications(page, log: Callable[[str], None]) -> None:
     except Exception:
         pass
 
-    log("Кнопка закрытия не найдена, кликаю уведомления для закрытия...")
+    log("Close button not found, clicking notifications to close...")
     try:
         page.locator('svg[aria-label="Notifications"]').click()
         random_delay(1, 2)
     except Exception as e:
-        log(f"Не удалось закрыть уведомления кликом: {e}")
+        log(f"Failed to close notifications by click: {e}")
 

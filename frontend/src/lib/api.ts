@@ -1,4 +1,5 @@
 import { env } from '@/lib/env'
+import { addApiBreadcrumb } from '@/lib/sentry'
 
 // Token getter function - set by useAuthenticatedFetch hook
 let tokenGetter: (() => Promise<string | null>) | null = null
@@ -8,6 +9,9 @@ export function setTokenGetter(getter: () => Promise<string | null>) {
 }
 
 const DEFAULT_TIMEOUT_MS = 30000
+const DEFAULT_RETRY_ATTEMPTS = 3
+const NO_RETRY_ATTEMPTS = 1
+const AUTO_RETRY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//.test(path)) {
@@ -18,6 +22,34 @@ export function resolveApiUrl(path: string): string {
 }
 
 export async function apiFetch<T>(
+  path: string,
+  options: {
+    method?: string
+    body?: unknown
+    timeout?: number
+    maxRetries?: number
+    onRetry?: RetryOptions['onRetry']
+  } = {},
+): Promise<T> {
+  const { maxRetries, onRetry, ...fetchOptions } = options
+  const retryAttempts =
+    maxRetries ?? getDefaultRetryAttempts(fetchOptions.method)
+
+  return withRetry(
+    () => apiFetchOnce<T>(path, fetchOptions),
+    { maxRetries: retryAttempts, onRetry },
+  )
+}
+
+function getDefaultRetryAttempts(method?: string) {
+  const normalizedMethod = (method ?? 'GET').toUpperCase()
+  return AUTO_RETRY_METHODS.has(normalizedMethod)
+    ? DEFAULT_RETRY_ATTEMPTS
+    : NO_RETRY_ATTEMPTS
+}
+
+/** Single (non-retried) fetch — used internally by apiFetch's retry loop. */
+async function apiFetchOnce<T>(
   path: string,
   options: { method?: string; body?: unknown; timeout?: number } = {},
 ): Promise<T> {
@@ -44,10 +76,12 @@ export async function apiFetch<T>(
     }
   }
 
+  const method = options.method ?? 'GET'
+  const url = resolveApiUrl(path)
   let resp: Response
   try {
-    resp = await fetch(resolveApiUrl(path), {
-      method: options.method ?? 'GET',
+    resp = await fetch(url, {
+      method,
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
@@ -55,6 +89,8 @@ export async function apiFetch<T>(
   } finally {
     clearTimeout(timeoutId)
   }
+
+  addApiBreadcrumb(method, path, resp.status)
 
   if (!resp.ok) {
     const text = await resp.text()
@@ -128,15 +164,47 @@ export class ApiError extends Error {
   }
 }
 
-// Retry configuration
-const RETRYABLE_STATUSES = [408, 429, 500, 502, 503, 504]
+// --- Retry logic ---
+
+/** HTTP status codes that are safe to retry (transient server errors + rate limit). */
+const RETRYABLE_STATUSES = [429, 500, 502, 503, 504]
 const MAX_RETRY_DELAY_MS = 10000
+const BASE_DELAY_MS = 1000
+
+/** Return true when an error represents a transient failure worth retrying. */
+export function isRetryableError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return RETRYABLE_STATUSES.includes(error.status)
+  }
+  // Network-level failures (no HTTP response received)
+  if (error instanceof TypeError && error.message.includes('fetch')) {
+    return true
+  }
+  return false
+}
+
+export type RetryOptions = {
+  maxRetries?: number
+  /** Called before each retry attempt with the 1-based attempt number and delay. */
+  onRetry?: (attempt: number, delayMs: number, error: Error) => void
+}
 
 /**
- * Retry wrapper with exponential backoff for transient failures.
- * Retries on network errors and specific HTTP status codes.
+ * Retry wrapper with exponential backoff + jitter for transient failures.
+ *
+ * Retries on:
+ *  - Network errors (TypeError from fetch)
+ *  - HTTP 429, 500, 502, 503, 504
+ *
+ * Does NOT retry:
+ *  - Client errors 4xx (except 429)
+ *  - Abort errors (user-initiated or timeout cancellation)
  */
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  opts: RetryOptions = {},
+): Promise<T> {
+  const maxRetries = opts.maxRetries ?? 3
   let lastError: Error | undefined
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -145,27 +213,24 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e))
 
-      // Check if error is retryable
-      const isNetworkError =
-        lastError.name === 'AbortError' ||
-        lastError.message.includes('fetch failed') ||
-        lastError.message.includes('network')
-      const isRetryableStatus =
-        lastError instanceof ApiError &&
-        RETRYABLE_STATUSES.includes(lastError.status)
-
-      if (!isNetworkError && !isRetryableStatus) {
-        throw lastError // Not retryable, fail immediately
+      if (!isRetryableError(lastError)) {
+        throw lastError
       }
 
       if (attempt === maxRetries - 1) {
-        throw lastError // Last attempt, give up
+        throw lastError
       }
 
-      // Exponential backoff: 1s, 2s, 4s...
-      const delay = Math.min(1000 * Math.pow(2, attempt), MAX_RETRY_DELAY_MS)
+      const delay = Math.min(
+        BASE_DELAY_MS * Math.pow(2, attempt),
+        MAX_RETRY_DELAY_MS,
+      )
       const jitter = delay * 0.2 * Math.random()
-      await new Promise((r) => setTimeout(r, delay + jitter))
+      const totalDelay = delay + jitter
+
+      opts.onRetry?.(attempt + 1, totalDelay, lastError)
+
+      await new Promise((r) => setTimeout(r, totalDelay))
     }
   }
 
@@ -173,8 +238,10 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
 }
 
 /**
- * API fetch with automatic retry for transient failures.
- * Use this for critical operations that should survive network blips.
+ * API fetch with explicit retry semantics for callers that opt in.
+ *
+ * @deprecated Prefer `apiFetch`; it retries read requests automatically and
+ * avoids replaying mutating requests unless the caller opts in.
  */
 export async function apiFetchWithRetry<T>(
   path: string,
@@ -183,10 +250,11 @@ export async function apiFetchWithRetry<T>(
     body?: unknown
     timeout?: number
     maxRetries?: number
+    onRetry?: RetryOptions['onRetry']
   } = {},
 ): Promise<T> {
-  const { maxRetries = 3, ...fetchOptions } = options
-  return withRetry(() => apiFetch<T>(path, fetchOptions), maxRetries)
+  return apiFetch<T>(path, {
+    ...options,
+    maxRetries: options.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
+  })
 }
-
-

@@ -1,9 +1,14 @@
-FROM node:20-bookworm-slim
+﻿# syntax=docker/dockerfile:1.7
+FROM node:20-bookworm-slim AS system-base
 
 WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Layer 1: System dependencies (cached unless apt packages change)
-RUN apt-get update \
+# Stable system dependencies for the browser + VNC runtime.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+  --mount=type=cache,target=/var/lib/apt,sharing=locked \
+  apt-get update \
   && apt-get install -y --no-install-recommends \
   python3 \
   python3-venv \
@@ -38,36 +43,46 @@ RUN apt-get update \
   libva-drm2 \
   && rm -rf /var/lib/apt/lists/*
 
-# Layer 2: Python venv (rarely changes)
 RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
 
-# Layer 3: Python requirements (only rebuilds when requirements.txt changes)
-COPY python/requirements.txt ./python/requirements.txt
-RUN pip install --no-cache-dir -r python/requirements.txt
-
-# Layer 4: Browser downloads (only rebuilds when requirements.txt changes)
-RUN python -m camoufox fetch \
-  && python -m playwright install --with-deps firefox
-
-# Layer 5: Node dependencies (only rebuilds when package.json changes)
-COPY server/package.json server/package-lock.json ./server/
-RUN cd server && npm ci
-
-# Layer 6: Application code (rebuilds on every code change - fast)
-COPY server ./server
-COPY python ./python
-RUN cd server && npm run build
-
-# Layer 7: Config files
-COPY server/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-
-# Setup fluxbox to hide the toolbar and window decorations
 RUN mkdir -p /root/.fluxbox && \
   echo "session.screen0.toolbar.visible: false" > /root/.fluxbox/init && \
   echo "[app] (name=.*)" > /root/.fluxbox/apps && \
   echo "  [Deco] {NONE}" >> /root/.fluxbox/apps && \
   echo "[end]" >> /root/.fluxbox/apps
+
+FROM system-base AS python-deps
+COPY --from=python_src requirements.txt /tmp/python/requirements.txt
+RUN --mount=type=cache,target=/root/.cache \
+  pip install -r /tmp/python/requirements.txt
+
+FROM python-deps AS browser-deps
+RUN --mount=type=cache,target=/root/.cache \
+  python -m camoufox fetch \
+  && python -m playwright install --with-deps firefox
+
+FROM browser-deps AS node-build-deps
+WORKDIR /app/server
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci
+
+FROM browser-deps AS node-runtime-deps
+WORKDIR /app/server
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci --omit=dev
+
+FROM node-build-deps AS app-build
+COPY . ./
+RUN npm run build
+
+FROM browser-deps AS server-runtime
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY --from=node-runtime-deps /app/server/node_modules /app/server/node_modules
+COPY --from=app-build /app/server/dist /app/server/dist
+COPY --from=app-build /app/server/package.json /app/server/package.json
+COPY --from=python_src . /app/python
 
 WORKDIR /app/server
 ENV NODE_ENV=production

@@ -1,8 +1,26 @@
 import { useAuth } from '@clerk/react-router'
 import { useCallback, useEffect } from 'react'
-import { setTokenGetter } from '@/lib/api'
-import { env } from '@/lib/env'
+import { setTokenGetter, apiFetch, type RetryOptions } from '@/lib/api'
 
+function normalizeRequestBody(body: RequestInit['body'] | unknown) {
+  if (typeof body !== 'string') {
+    return body
+  }
+
+  try {
+    return JSON.parse(body)
+  } catch {
+    return body
+  }
+}
+
+/**
+ * Registers the Clerk token getter so that apiFetch / apiFetchWithRetry
+ * can attach Authorization headers automatically.
+ *
+ * Also returns a convenience `authFetch` that delegates to `apiFetch`
+ * while preserving the shared retry policy and auth headers.
+ */
 export function useAuthenticatedFetch() {
   const { getToken } = useAuth()
 
@@ -14,40 +32,26 @@ export function useAuthenticatedFetch() {
   }, [getToken])
 
   const authFetch = useCallback(
-    async <T>(endpoint: string, options: RequestInit = {}): Promise<T> => {
-      const token = await getToken()
+    async <T>(
+      endpoint: string,
+      options: Omit<RequestInit, 'body'> & {
+        body?: unknown
+        maxRetries?: number
+        onRetry?: RetryOptions['onRetry']
+      } = {},
+    ): Promise<T> => {
+      const { maxRetries, onRetry, method, body, ...rest } = options
 
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      }
-
-      if (token) {
-        ;(headers as Record<string, string>)['Authorization'] =
-          `Bearer ${token}`
-      }
-
-      const url = endpoint.startsWith('http')
-        ? endpoint
-        : `${env.apiUrl}${endpoint}`
-      const response = await fetch(url, {
-        ...options,
-        headers,
+      return apiFetch<T>(endpoint, {
+        method: method ?? 'GET',
+        body: normalizeRequestBody(body),
+        maxRetries,
+        onRetry,
+        ...('timeout' in rest ? { timeout: rest.timeout as number } : {}),
       })
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({ error: 'Request failed' }))
-        throw new Error(error.error || `HTTP ${response.status}`)
-      }
-
-      return response.json()
     },
-    [getToken],
+    [],
   )
 
   return authFetch
 }
-
-

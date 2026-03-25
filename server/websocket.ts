@@ -1,8 +1,9 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
-import { clients, logsStore, MAX_LOGS, automationState } from './store.js'
+import { clients, logsStore, MAX_LOGS, automationState } from './shared/store.js'
 import { appendLog as appendFileLog } from './logs/store.js'
 import { verifyToken } from '@clerk/express'
+import logger from './shared/logger.js'
 
 export function initWebSocket(server: Server, path: string = '/ws') {
     const wss = new WebSocketServer({ server, path })
@@ -25,14 +26,14 @@ export function initWebSocket(server: Server, path: string = '/ws') {
         }
 
         clients.add(ws)
-        console.log('[WS] Client connected (authenticated)')
+        logger.info('WebSocket client connected (authenticated)')
 
         // Send current status
         ws.send(JSON.stringify({ type: 'status', status: automationState.status }))
 
         ws.on('close', () => {
             clients.delete(ws)
-            console.log('[WS] Client disconnected')
+            logger.info('WebSocket client disconnected')
         })
     })
 

@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import time
@@ -5,6 +6,8 @@ from playwright.sync_api import Error as PlaywrightError
 from python.core.errors.exceptions import ElementNotFoundError, BotException
 from python.actions.browsing.utils import _smooth_wheel, ease_out_cubic, _pick_point
 from python.actions.common import safe_mouse_move
+
+logger = logging.getLogger(__name__)
 
 _FEED_DEBUG_MOUSE = os.getenv("FEED_DEBUG_MOUSE", "1").strip().lower() in {"1", "true", "yes", "on"}
 _CLICK_EDGE_MARGIN_X = 12.0
@@ -17,7 +20,7 @@ _CLICK_SAFETY_MAX_STEP_RATIO = 0.45
 
 def _debug_mouse(message: str) -> None:
     if _FEED_DEBUG_MOUSE:
-        print(f"[feed-like-debug] {message}")
+        logger.debug("[feed-like-debug] %s", message)
 
 
 def _resolve_effective_viewport(page) -> tuple[float, float, float, float, float, float]:
@@ -129,13 +132,16 @@ def _ensure_click_safety_zone(
 
 def _find_like_button(post_element):
     """Find the like button SVG and its clickable parent."""
-    like_svg = (
-        post_element.query_selector('svg[aria-label="Like"]')
-        or post_element.query_selector('div[role="button"] svg[aria-label="Like"]')
-    )
-    if not like_svg:
-        return None, None
-    clickable = like_svg.query_selector('xpath=ancestor-or-self::*[@role="button" or self::button][1]')
+    like_loc = post_element.locator('svg[aria-label="Like"]')
+    if like_loc.count() == 0:
+        alt_loc = post_element.locator('div[role="button"] svg[aria-label="Like"]')
+        if alt_loc.count() == 0:
+            return None, None
+        like_svg = alt_loc.first
+    else:
+        like_svg = like_loc.first
+    clickable_loc = like_svg.locator('xpath=ancestor-or-self::*[@role="button" or self::button][1]')
+    clickable = clickable_loc.first if clickable_loc.count() > 0 else None
     return like_svg, clickable
 
 
@@ -151,7 +157,7 @@ def _micro_scroll_to_button(page, post_element, max_attempts: int = 3) -> bool:
             return True
         
         # Already liked? No need to scroll
-        if post_element.query_selector('svg[aria-label="Unlike"]'):
+        if post_element.locator('svg[aria-label="Unlike"]').count() > 0:
             return False
         
         # Smooth scroll to reveal button area (direction chosen by position if available)
@@ -278,7 +284,7 @@ def perform_like(page, post_element) -> bool:
     """Like a feed post, skipping if already liked."""
     try:
         # Skip if already liked
-        if post_element.query_selector('svg[aria-label="Unlike"]'):
+        if post_element.locator('svg[aria-label="Unlike"]').count() > 0:
             _debug_mouse("perform_like: already liked, skipping")
             return False
 
@@ -292,7 +298,7 @@ def perform_like(page, post_element) -> bool:
             if clickable and _is_in_viewport(page, clickable):
                 _debug_mouse(f"perform_like: loop={idx + 1} clickable is in viewport, clicking")
                 if _mouse_click_element_center(page, clickable):
-                    print("Liked post")
+                    logger.info("Liked post")
                     return True
                 _debug_mouse(f"perform_like: loop={idx + 1} click attempt failed")
                 return False
@@ -304,9 +310,9 @@ def perform_like(page, post_element) -> bool:
             like_svg, clickable = _find_like_button(post_element)
             _debug_mouse(f"perform_like: loop={idx + 1} after micro-scroll clickable_found={bool(clickable)}")
     except ElementNotFoundError:
-        print(f"[!] Like button not found")
+        logger.warning("Like button not found")
     except (PlaywrightError, BotException) as e:
-        print(f"[!] Error liking post: {type(e).__name__} - {e}")
+        logger.error("Error liking post: %s - %s", type(e).__name__, e)
         _debug_mouse(f"perform_like exception={type(e).__name__}: {e}")
     
     return False

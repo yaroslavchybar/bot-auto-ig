@@ -1,12 +1,30 @@
+import logging
 import time
 from contextlib import contextmanager
 from typing import Optional
 
+from camoufox import Camoufox
 from camoufox.exceptions import InvalidProxy
 
-from python.browser.compat import compat as compat_module
 from python.browser.fingerprint_config import load_or_generate_fingerprint_config
+from python.browser.page_bootstrap import (
+    bootstrap_instagram_session,
+    initialize_browser_page,
+)
+from python.browser.profile_paths import (
+    _clean_cache2,
+    _should_clean_today,
+    ensure_profile_path,
+)
+from python.browser.proxy import (
+    build_proxy_config,
+    is_proxy_healthy,
+    proxy_circuit,
+)
+from python.browser.session_state import sync_profile_session_state
 from python.core.errors.exceptions import ProxyError
+
+logger = logging.getLogger(__name__)
 
 
 @contextmanager
@@ -22,13 +40,11 @@ def create_browser_context(
     fingerprint_os: Optional[str] = None,
     display: Optional[str] = None,
 ):
-    compat = compat_module()
-    _wait_for_circuit_breaker(compat)
-    profile_path = compat.ensure_profile_path(profile_name, base_dir=base_dir)
-    should_clean = compat._should_clean_today(profile_path)
-    _assert_proxy_is_healthy(compat, proxy_string)
+    _wait_for_circuit_breaker()
+    profile_path = ensure_profile_path(profile_name, base_dir=base_dir)
+    should_clean = _should_clean_today(profile_path)
+    _assert_proxy_is_healthy(proxy_string)
     launch_kwargs = _build_launch_kwargs(
-        compat,
         profile_path,
         proxy_string,
         user_agent,
@@ -39,35 +55,34 @@ def create_browser_context(
         fingerprint_os,
         display,
     )
-    cm = None
-    context = None
     try:
-        cm, context = _enter_camoufox_context(compat, launch_kwargs)
-        page, monitor = compat.initialize_browser_page(context, profile_name)
-        compat.bootstrap_instagram_session(page, monitor, profile_name, proxy_string)
-        _sync_session_state(compat, context, profile_name)
-        yield context, page
+        with _open_camoufox(launch_kwargs) as context:
+            page, monitor = initialize_browser_page(context, profile_name)
+            bootstrap_instagram_session(page, monitor, profile_name, proxy_string)
+            _sync_session_state(context, profile_name)
+            try:
+                yield context, page
+            finally:
+                _sync_session_state(context, profile_name)
     finally:
-        _close_context_manager(compat, cm, context, profile_name)
-        _schedule_cache_cleanup(compat, should_clean, profile_path)
+        _schedule_cache_cleanup(should_clean, profile_path)
 
 
-def _wait_for_circuit_breaker(compat) -> None:
-    if not compat.proxy_circuit.is_open():
+def _wait_for_circuit_breaker() -> None:
+    if not proxy_circuit.is_open():
         return
-    wait_time = max(0.0, compat.proxy_circuit.global_pause_until - time.time())
-    print(f'[!] Circuit breaker open. Waiting {wait_time:.1f}s...')
+    wait_time = max(0.0, proxy_circuit.global_pause_until - time.time())
+    logger.warning('Circuit breaker open. Waiting %.1fs...', wait_time)
     time.sleep(wait_time)
 
 
-def _assert_proxy_is_healthy(compat, proxy_string: Optional[str]) -> None:
-    if proxy_string and not compat.is_proxy_healthy(proxy_string):
-        print(f'[!] Proxy {proxy_string} is tainted. Skipping...')
+def _assert_proxy_is_healthy(proxy_string: Optional[str]) -> None:
+    if proxy_string and not is_proxy_healthy(proxy_string):
+        logger.warning('Proxy %s is tainted. Skipping...', proxy_string)
         raise ProxyError(f'Proxy {proxy_string} is currently tainted due to previous failures.')
 
 
 def _build_launch_kwargs(
-    compat,
     profile_path: str,
     proxy_string: Optional[str],
     user_agent: Optional[str],
@@ -78,7 +93,7 @@ def _build_launch_kwargs(
     fingerprint_os: Optional[str],
     display: Optional[str],
 ) -> dict:
-    proxy_config = compat.build_proxy_config(proxy_string)
+    proxy_config = build_proxy_config(proxy_string)
     target_os = fingerprint_os or os_name or 'windows'
     cached_config = load_or_generate_fingerprint_config(profile_path, fingerprint_seed, target_os)
     launch_kwargs = {
@@ -103,22 +118,25 @@ def _build_launch_kwargs(
     return launch_kwargs
 
 
-def _enter_camoufox_context(compat, launch_kwargs: dict):
+@contextmanager
+def _open_camoufox(launch_kwargs: dict):
+    """Open a Camoufox browser context using the with-statement pattern."""
     try:
-        cm = compat.Camoufox(geoip=True, **launch_kwargs)
-        return cm, cm.__enter__()
+        with Camoufox(geoip=True, **launch_kwargs) as browser:
+            yield browser
+            return
     except InvalidProxy:
         if not launch_kwargs.get('proxy'):
             raise
-        print('[!] Proxy GeoIP check failed. Retrying with geoip=False...')
-        cm = compat.Camoufox(geoip=False, **launch_kwargs)
-        return cm, cm.__enter__()
+        logger.warning('Proxy GeoIP check failed. Retrying with geoip=False...')
+    with Camoufox(geoip=False, **launch_kwargs) as browser:
+        yield browser
 
 
-def _sync_session_state(compat, context, profile_name: str) -> None:
+def _sync_session_state(context, profile_name: str) -> None:
     try:
         if context:
-            compat.sync_profile_session_state(
+            sync_profile_session_state(
                 context,
                 profile_name,
                 explicit_logout=bool(
@@ -130,29 +148,11 @@ def _sync_session_state(compat, context, profile_name: str) -> None:
         return
 
 
-def _close_context_manager(compat, cm, context, profile_name: str) -> None:
-    if not cm:
-        return
-    try:
-        if context:
-            try:
-                _sync_session_state(compat, context, profile_name)
-            except Exception:
-                pass
-            finally:
-                try:
-                    context.close()
-                except Exception:
-                    pass
-        cm.__exit__(None, None, None)
-    except Exception:
-        return
 
-
-def _schedule_cache_cleanup(compat, should_clean: bool, profile_path: str) -> None:
+def _schedule_cache_cleanup(should_clean: bool, profile_path: str) -> None:
     if not should_clean:
         return
     try:
-        compat._clean_cache2(profile_path)
+        _clean_cache2(profile_path)
     except Exception:
         return

@@ -19,6 +19,7 @@ import { RouteErrorView } from '@/components/shared/RouteErrorView'
 import { ThemeProvider, useTheme } from '@/hooks/use-theme'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
+import { useNavigationBreadcrumb } from '@/hooks/useNavigationBreadcrumb'
 import { AUTH_ROUTES } from '@/lib/auth-routing'
 import { env } from '@/lib/env'
 import { cn } from '@/lib/utils'
@@ -100,7 +101,7 @@ function RootProviders({
 
 export function Layout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -126,6 +127,8 @@ export function HydrateFallback() {
 }
 
 export default function Root({ loaderData }: Route.ComponentProps) {
+  useNavigationBreadcrumb()
+
   return (
     <ThemeProvider>
       <AppErrorBoundary>

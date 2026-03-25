@@ -26,23 +26,16 @@ def _configure_stdio() -> None:
 
 _configure_stdio()
 
-_log_stream_handler = logging.StreamHandler(sys.stdout)
-_log_stream_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-
-_logger = logging.getLogger('workflow_runner')
-_logger.handlers.clear()
-_logger.addHandler(_log_stream_handler)
-_logger.setLevel(logging.INFO)
-_logger.propagate = False
+_logger = logging.getLogger(__name__)
 
 
 def log(message: str) -> None:
     level = logging.INFO
     try:
         normalized = str(message).lstrip().lower()
-        if normalized.startswith(('ошибка', 'error', 'exception')):
+        if normalized.startswith(('error', 'exception')):
             level = logging.ERROR
-        elif normalized.startswith(('warning', 'warn', 'внимание')):
+        elif normalized.startswith(('warning', 'warn')):
             level = logging.WARNING
     except Exception:
         level = logging.INFO

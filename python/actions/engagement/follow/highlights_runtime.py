@@ -7,10 +7,12 @@ from python.actions.engagement.follow.common import _find_close_button, _safe
 
 def _find_story_nav(page, label: str):
     try:
-        for svg in page.query_selector_all(f'svg[aria-label*="{label}" i]'):
-            btn = svg.query_selector('xpath=ancestor-or-self::*[@role="button"][1]')
-            if btn:
-                return btn
+        svg_loc = page.locator(f'svg[aria-label*="{label}" i]')
+        for i in range(svg_loc.count()):
+            svg = svg_loc.nth(i)
+            btn_loc = svg.locator('xpath=ancestor-or-self::*[@role="button"][1]')
+            if btn_loc.count() > 0:
+                return btn_loc.first
     except Exception:
         return None
     return None
@@ -25,7 +27,7 @@ def watch_highlights(
 ):
     _safe(
         log,
-        'хайлайты',
+        'highlights',
         lambda: _watch_highlights_impl(page, log, highlights_to_watch, max_wait, should_stop),
     )
 
@@ -38,9 +40,9 @@ def _watch_highlights_impl(page, log, highlights_to_watch, max_wait: float, shou
     if not highlight_buttons:
         return
     if not _open_random_highlight(page, log, highlight_buttons, max_wait, should_stop):
-        log('Не удалось открыть ни один хайлайт')
+        log('Failed to open any highlight')
         return
-    log('Хайлайт успешно открыт')
+    log('Highlight opened successfully')
     random_delay(2.0, 4.0)
     _watch_opened_highlights(page, log, target_highlights, should_stop)
     _close_highlight(page, log)
@@ -49,7 +51,7 @@ def _watch_highlights_impl(page, log, highlights_to_watch, max_wait: float, shou
 def _target_highlights(highlights_to_watch: Optional[int], log) -> int:
     target_highlights = highlights_to_watch if highlights_to_watch is not None else random.randint(2, 4)
     if target_highlights <= 0:
-        log('Пропускаю хайлайты (настроено 0).')
+        log('Skipping highlights (configured 0).')
         return 0
     return target_highlights
 
@@ -63,13 +65,15 @@ def _visible_highlight_buttons(page, log):
         'a[href*="/stories/highlights/"]',
         'xpath=//a[contains(@href,"/highlights/")]',
     ):
-        highlight_buttons.extend(page.query_selector_all(selector))
+        loc = page.locator(selector)
+        for i in range(loc.count()):
+            highlight_buttons.append(loc.nth(i))
     if not highlight_buttons:
-        log('Хайлайты не найдены')
+        log('No highlights found')
         return []
     visible_buttons = [button for button in highlight_buttons if _is_visible(page, button)]
     if not visible_buttons:
-        log('Видимых хайлайтов не найдено')
+        log('No visible highlights found')
         return []
     random.shuffle(visible_buttons)
     return visible_buttons
@@ -77,7 +81,7 @@ def _visible_highlight_buttons(page, log):
 
 def _is_visible(page, button) -> bool:
     try:
-        return page.evaluate(
+        return button.evaluate(
             """
             (element) => {
                 const rect = element.getBoundingClientRect();
@@ -89,18 +93,17 @@ def _is_visible(page, button) -> bool:
                        rect.top >= 0 &&
                        rect.top <= (window.innerHeight || document.documentElement.clientHeight);
             }
-            """,
-            button,
+            """
         )
     except Exception:
         return False
 
 
 def _open_random_highlight(page, log, highlight_buttons, max_wait: float, should_stop) -> bool:
-    log('Смотрю хайлайт...')
+    log('Watching highlight...')
     for button in highlight_buttons:
         if should_stop and should_stop():
-            log('Остановка по запросу пользователя.')
+            log('Stopping at user request.')
             return False
         if _open_highlight_with_retries(page, log, button, max_wait):
             return True
@@ -119,45 +122,23 @@ def _open_highlight_with_retries(page, log, button, max_wait: float) -> bool:
             random_delay(1.5, max_wait)
             if _highlight_opened(page):
                 return True
-            log('Хайлайт не открылся, пробую ещё...')
+            log('Highlight did not open, retrying...')
             random_delay(0.6, 1.2)
         except Exception as exc:
             if attempt == max_attempts - 1:
-                log(f'Пропускаю кнопку хайлайта: {exc}')
+                log(f'Skipping highlight button: {exc}')
             random_delay(0.5, 1.0)
     return False
 
 
 def _wait_for_highlight_button(page, button) -> None:
-    page.wait_for_function(
-        """
-        (element) => {
-            const rect = element.getBoundingClientRect();
-            const style = window.getComputedStyle(element);
-            const isVisible = style.display !== 'none' &&
-                            style.visibility !== 'hidden' &&
-                            style.opacity !== '0' &&
-                            rect.width > 0 &&
-                            rect.height > 0;
-            const isInViewport = rect.top >= 0 &&
-                               rect.left >= 0 &&
-                               rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-                               rect.right <= (window.innerWidth || document.documentElement.clientWidth);
-            return isVisible && isInViewport;
-        }
-        """,
-        arg=button,
-        timeout=2000,
-    )
+    button.wait_for(state='visible', timeout=2000)
 
 
 def _scroll_highlight_into_view(page, button) -> None:
     try:
-        page.evaluate(
-            """
-            (element) => element.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
-            """,
-            button,
+        button.evaluate(
+            "(element) => element.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' })"
         )
     except Exception:
         pass
@@ -169,32 +150,32 @@ def _click_highlight(page, log, button) -> bool:
     for click in (
         lambda: button.click(),
         lambda: button.click(force=True),
-        lambda: page.evaluate('(element) => element.click()', button),
+        lambda: button.evaluate('(element) => element.click()'),
     ):
         try:
             click()
             return True
         except Exception:
             continue
-    log('Не удалось кликнуть по хайлайту JS')
+    log('Failed to click highlight via JS')
     return False
 
 
 def _highlight_opened(page) -> bool:
     return bool(
-        page.query_selector('[aria-label="Next"], svg[aria-label="Next"], [aria-label="Close"]')
-        or page.query_selector('[role="dialog"] [aria-label="Close"]')
-        or page.query_selector('video')
+        page.locator('[aria-label="Next"], svg[aria-label="Next"], [aria-label="Close"]').count() > 0
+        or page.locator('[role="dialog"] [aria-label="Close"]').count() > 0
+        or page.locator('video').count() > 0
         or 'stories/highlights' in (page.url or '')
     )
 
 
 def _watch_opened_highlights(page, log, target_highlights: int, should_stop) -> None:
-    log('Смотрю хайлайты...')
+    log('Watching highlights...')
     watched = 0
     while watched < target_highlights:
         if should_stop and should_stop():
-            log('Остановка по запросу пользователя.')
+            log('Stopping at user request.')
             break
         random_delay(*_highlight_watch_delay_range())
         watched += 1
@@ -202,7 +183,7 @@ def _watch_opened_highlights(page, log, target_highlights: int, should_stop) -> 
             break
         if not _advance_highlight(page, log, watched + 1, target_highlights):
             break
-    log(f'Просмотрено {watched} хайлайтов')
+    log(f'Watched {watched} highlights')
 
 
 def _highlight_watch_delay_range() -> tuple[float, float]:
@@ -216,25 +197,25 @@ def _advance_highlight(page, log, index: int, total: int) -> bool:
     if next_btn:
         try:
             next_btn.click()
-            log(f'Переход к следующему хайлайту ({index}/{total})')
+            log(f'Moving to next highlight ({index}/{total})')
             random_delay(1.0, 2.0)
             return True
         except Exception as exc:
-            log(f'Не удалось перейти к следующему хайлайту: {exc}')
+            log(f'Failed to move to next highlight: {exc}')
     try:
         page.keyboard.press('ArrowRight')
-        log(f'Переход стрелкой вправо ({index}/{total})')
+        log(f'Moving via right arrow ({index}/{total})')
         random_delay(1.0, 2.0)
         return True
     except Exception as exc:
-        log(f"Кнопка 'Далее' не найдена и клавиша не сработала: {exc}")
+        log(f"'Next' button not found and key press failed: {exc}")
         return False
 
 
 def _close_highlight(page, log) -> None:
     close_btn = _find_close_button(page)
     if _click_close_button(page, log, close_btn):
-        log('Жду восстановления страницы после хайлайта...')
+        log('Waiting for page recovery after highlight...')
         random_delay(3.0, 5.0)
 
 
@@ -242,14 +223,14 @@ def _click_close_button(page, log, close_btn) -> bool:
     if close_btn:
         try:
             close_btn.click()
-            log('Хайлайт закрыт кнопкой')
+            log('Highlight closed by button')
             return True
         except Exception as exc:
-            log(f'Не удалось закрыть хайлайт кнопкой: {exc}')
+            log(f'Failed to close highlight by button: {exc}')
     try:
         page.keyboard.press('Escape')
-        log('Хайлайт закрыт клавишей Escape')
+        log('Highlight closed by Escape key')
         return True
     except Exception:
-        log('Не удалось закрыть хайлайт')
+        log('Failed to close highlight')
         return False

@@ -1,7 +1,7 @@
 from typing import Callable, Optional, Tuple
 
 from python.browser.setup import create_browser_context
-from python.database.accounts import InstagramAccountsClient
+from python.core.clients import InstagramAccountsClient
 
 from python.actions.engagement.approve.flow import run_approve_follow_requests
 
@@ -34,11 +34,11 @@ def approve_follow_requests(
         )
 
     if page:
-        log(f"Использую существующую сессию для подтверждения заявок.")
+        log(f"Using existing session for approving requests.")
         _run_approve_logic(page)
         return
 
-    log(f"[Approve] Запуск браузера для профиля: {profile_name}")
+    log(f"[Approve] Starting browser for profile: {profile_name}")
 
     with create_browser_context(
         profile_name=profile_name,

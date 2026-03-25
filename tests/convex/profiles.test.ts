@@ -14,12 +14,12 @@ test('creates profiles and selects available profiles by list with cooldown logi
     dailyScrapingLimit: 10,
   })
 
-  await t.mutation(api.profiles.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToList, {
     profileIds: [profile!._id],
     listId: list!._id,
   })
 
-  const available = await t.query(api.profiles.getAvailableForLists, {
+  const available = await t.query(api.profiles.queries.getAvailableForLists, {
     listIds: [String(list!._id)],
     cooldownMinutes: 10,
   })
@@ -40,25 +40,25 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
   const list = await seedList(t, 'List A')
   const profile = await seedProfile(t, { name: 'Profile B' })
 
-  await t.mutation(api.profiles.bulkAddToList, {
+  await t.mutation(api.profiles.mutations.bulkAddToList, {
     profileIds: [profile!._id],
     listId: list!._id,
   })
-  await t.mutation(api.profiles.syncStatus, {
+  await t.mutation(api.profiles.mutations.syncStatus, {
     name: 'Profile B',
     status: 'running',
     using: true,
   })
-  await t.mutation(api.profiles.incrementDailyScrapingUsed, {
+  await t.mutation(api.profiles.mutations.incrementDailyScrapingUsed, {
     name: 'Profile B',
     amount: 5,
   })
-  await t.mutation(api.profiles.clearBusyForLists, {
+  await t.mutation(api.profiles.mutations.clearBusyForLists, {
     listIds: [list!._id],
   })
-  await t.mutation(internal.profiles.resetDailyScrapingUsed, {})
+  await t.mutation(internal.profiles.scraping.resetDailyScrapingUsed, {})
 
-  const updated = await t.query(api.profiles.getById, {
+  const updated = await t.query(api.profiles.queries.getById, {
     profileId: profile!._id,
   })
 
@@ -76,7 +76,7 @@ test('updates profile cookies by id and clears them when empty string is provide
     cookiesJson: '[{"name":"csrftoken","value":"abc","domain":".instagram.com","path":"/"}]',
   })
 
-  const updated = await t.mutation(api.profiles.updateById, {
+  const updated = await t.mutation(api.profiles.mutations.updateById, {
     profileId: profile!._id,
     name: 'Profile C',
     cookiesJson: '[{"name":"sessionid","value":"updated","domain":".instagram.com","path":"/"}]',
@@ -86,7 +86,7 @@ test('updates profile cookies by id and clears them when empty string is provide
     cookiesJson: '[{"name":"sessionid","value":"updated","domain":".instagram.com","path":"/"}]',
   })
 
-  const cleared = await t.mutation(api.profiles.updateById, {
+  const cleared = await t.mutation(api.profiles.mutations.updateById, {
     profileId: profile!._id,
     name: 'Profile C',
     cookiesJson: '   ',

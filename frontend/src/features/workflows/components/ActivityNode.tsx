@@ -11,6 +11,107 @@ interface ActivityNodeData {
   config: Record<string, unknown>
 }
 
+/* ── Node header (icon + label + category) ── */
+
+function ActivityNodeHeader({
+  data,
+  activity,
+  color,
+}: {
+  data: ActivityNodeData
+  activity: ReturnType<typeof getActivityById>
+  color: string
+}) {
+  return (
+    <div className="border-line-soft bg-panel-subtle flex items-center gap-1 border-b px-1 py-1 pr-12">
+      <div
+        className="border-line flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border"
+        style={{ backgroundColor: `${color}18` }}
+      >
+        <ActivityIcon
+          iconName={activity?.icon ?? ''}
+          className="h-2 w-2"
+          style={{ color }}
+          strokeWidth={2}
+        />
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-ink text-[10px] leading-none font-bold tracking-wider uppercase">
+          {data.label || activity?.name || 'Unknown'}
+        </span>
+        {activity && (
+          <span className="text-subtle-copy font-mono text-[8px] leading-none tracking-[0.22em] uppercase">
+            {activity.category}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Single output handle row ── */
+
+function SingleOutputHandle({ id }: { id: string }) {
+  return (
+    <div className="group/output border-line-soft relative flex min-h-[16px] items-center justify-between px-1.5 py-0.5">
+      <span className="text-subtle-copy truncate font-mono text-[9px] tracking-[0.22em] uppercase">
+        Next
+      </span>
+      <QuickAddMenu
+        insertionContext={{ sourceNodeId: id, sourceHandle: null }}
+        className="absolute top-1/2 right-[-11px] z-10 -translate-y-1/2 opacity-0 pointer-events-none group-hover/output:opacity-100 group-hover/output:pointer-events-auto group-focus-within/output:opacity-100 group-focus-within/output:pointer-events-auto"
+        compact
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="workflow-handle !h-2.5 !w-2.5 !rounded-full !border-0"
+        style={{ right: -5, top: '50%', transform: 'translateY(-50%)' }}
+      />
+    </div>
+  )
+}
+
+/* ── Multiple output handles ── */
+
+function MultipleOutputHandles({
+  id,
+  outputs,
+}: {
+  id: string
+  outputs: string[]
+}) {
+  return (
+    <div className="flex flex-col gap-px bg-transparent p-1">
+      {outputs.map((output) => (
+        <div
+          key={output}
+          className="group/output border-line-soft bg-panel-subtle relative flex items-center justify-between rounded px-1.5 py-0.5"
+        >
+          <span className="text-subtle-copy truncate font-mono text-[9px] tracking-[0.22em] uppercase">
+            {output}
+          </span>
+          <div className="relative flex items-center justify-end pr-2">
+            <QuickAddMenu
+              insertionContext={{ sourceNodeId: id, sourceHandle: output }}
+              className="absolute top-1/2 right-[-11px] z-10 -translate-y-1/2 opacity-0 pointer-events-none group-hover/output:opacity-100 group-hover/output:pointer-events-auto group-focus-within/output:opacity-100 group-focus-within/output:pointer-events-auto"
+              compact
+            />
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={output}
+              className="workflow-handle !absolute !top-1/2 !right-[-5px] !h-2.5 !w-2.5 !translate-x-0 !-translate-y-1/2 !rounded-full !border-0"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* ── Main Component ── */
+
 function ActivityNodeComponent({
   id,
   data,
@@ -46,73 +147,12 @@ function ActivityNodeComponent({
         />
 
         <div className="flex w-full flex-col pl-1">
-          <div className="border-line-soft bg-panel-subtle flex items-center gap-1 border-b px-1 py-1 pr-12">
-            <div
-              className="border-line flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[2px] border"
-              style={{ backgroundColor: `${color}18` }}
-            >
-              <ActivityIcon
-                iconName={activity?.icon ?? ''}
-                className="h-2 w-2"
-                style={{ color }}
-                strokeWidth={2}
-              />
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-ink text-[10px] leading-none font-bold tracking-wider uppercase">
-                {data.label || activity?.name || 'Unknown'}
-              </span>
-              {activity && (
-                <span className="text-subtle-copy font-mono text-[8px] leading-none tracking-[0.22em] uppercase">
-                  {activity.category}
-                </span>
-              )}
-            </div>
-          </div>
+          <ActivityNodeHeader data={data} activity={activity} color={color} />
 
           {outputs.length <= 1 ? (
-            <div className="group/output border-line-soft relative flex min-h-[16px] items-center justify-between px-1.5 py-0.5">
-              <span className="text-subtle-copy truncate font-mono text-[9px] tracking-[0.22em] uppercase">
-                Next
-              </span>
-              <QuickAddMenu
-                insertionContext={{ sourceNodeId: id, sourceHandle: null }}
-                className="absolute top-1/2 right-[-11px] z-10 -translate-y-1/2 opacity-0 pointer-events-none group-hover/output:opacity-100 group-hover/output:pointer-events-auto group-focus-within/output:opacity-100 group-focus-within/output:pointer-events-auto"
-                compact
-              />
-              <Handle
-                type="source"
-                position={Position.Right}
-                className="workflow-handle !h-2.5 !w-2.5 !rounded-full !border-0"
-                style={{ right: -5, top: '50%', transform: 'translateY(-50%)' }}
-              />
-            </div>
+            <SingleOutputHandle id={id} />
           ) : (
-            <div className="flex flex-col gap-px bg-transparent p-1">
-              {outputs.map((output) => (
-                <div
-                  key={output}
-                  className="group/output border-line-soft bg-panel-subtle relative flex items-center justify-between rounded px-1.5 py-0.5"
-                >
-                  <span className="text-subtle-copy truncate font-mono text-[9px] tracking-[0.22em] uppercase">
-                    {output}
-                  </span>
-                  <div className="relative flex items-center justify-end pr-2">
-                    <QuickAddMenu
-                      insertionContext={{ sourceNodeId: id, sourceHandle: output }}
-                      className="absolute top-1/2 right-[-11px] z-10 -translate-y-1/2 opacity-0 pointer-events-none group-hover/output:opacity-100 group-hover/output:pointer-events-auto group-focus-within/output:opacity-100 group-focus-within/output:pointer-events-auto"
-                      compact
-                    />
-                    <Handle
-                      type="source"
-                      position={Position.Right}
-                      id={output}
-                      className="workflow-handle !absolute !top-1/2 !right-[-5px] !h-2.5 !w-2.5 !translate-x-0 !-translate-y-1/2 !rounded-full !border-0"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <MultipleOutputHandles id={id} outputs={outputs} />
           )}
         </div>
       </div>
@@ -121,5 +161,3 @@ function ActivityNodeComponent({
 }
 
 export const ActivityNode = memo(ActivityNodeComponent)
-
-

@@ -20,58 +20,43 @@ const VncViewer = lazy(() =>
   })),
 )
 
-export function VncSessionPageContainer() {
+/* ── Session resolution hook ── */
+
+function useVncSessionResolution() {
   const navigate = useNavigate()
   const { workflowId: rawWorkflowId, profileName: rawProfileName } = useParams()
   const workflowId = decodeRouteParam(rawWorkflowId)
   const profileName = decodeRouteParam(rawProfileName)
-  const { sessions, loading, error, refresh } = useVncSessions()
+  const { sessions, loading, refresh } = useVncSessions(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const session = useMemo(
-    () =>
-      sessions.find(
-        (item) =>
-          item.workflowId === workflowId && item.profileName === profileName,
-      ) ?? null,
+    () => sessions.find(
+      (item) => item.workflowId === workflowId && item.profileName === profileName,
+    ) ?? null,
     [profileName, sessions, workflowId],
   )
 
-  const handleBack = useCallback(() => {
-    navigate('/vnc')
-  }, [navigate])
+  const handleBack = useCallback(() => { navigate('/vnc') }, [navigate])
 
   const handleManualRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      await Promise.all([
-        refresh(),
-        new Promise((resolve) => setTimeout(resolve, 300)),
-      ])
-    } finally {
-      setRefreshing(false)
-    }
+      await Promise.all([refresh(), new Promise((resolve) => setTimeout(resolve, 300))])
+    } finally { setRefreshing(false) }
   }, [refresh])
 
+  return { workflowId, profileName, session, loading, refreshing, handleBack, handleManualRefresh }
+}
+
+export function VncSessionPageContainer() {
+  const {
+    workflowId, profileName, session, loading,
+    refreshing, handleBack, handleManualRefresh,
+  } = useVncSessionResolution()
+
   if (!workflowId || !profileName) {
-    return (
-      <div className="bg-shell flex h-full items-center justify-center p-6">
-        <div className="bg-panel border-line flex w-full max-w-lg flex-col gap-4 rounded-2xl border p-6 text-center shadow-xs">
-          <div>
-            <h1 className="text-ink text-lg font-semibold">Session unavailable</h1>
-            <p className="text-subtle-copy mt-2 text-sm">
-              Session information is missing from the URL.
-            </p>
-          </div>
-          <div className="flex justify-center">
-            <Button onClick={handleBack} className="brand-button">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Sessions
-            </Button>
-          </div>
-        </div>
-      </div>
-    )
+    return <VncMissingParamsView onBack={handleBack} message="Session information is missing from the URL." />
   }
 
   if (loading && !session && !refreshing) {
@@ -84,55 +69,69 @@ export function VncSessionPageContainer() {
 
   if (!session) {
     return (
-      <div className="bg-shell flex h-full items-center justify-center p-6">
-        <div className="bg-panel border-line flex w-full max-w-lg flex-col gap-4 rounded-2xl border p-6 text-center shadow-xs">
-          <div>
-            <h1 className="text-ink text-lg font-semibold">Session unavailable</h1>
-            <p className="text-subtle-copy mt-2 text-sm">
-              This live session is no longer active.
-            </p>
-            {error ? (
-              <p className="text-status-danger mt-3 text-sm">
-                Failed to refresh displays: {error}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex justify-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() => void handleManualRefresh()}
-              disabled={loading || refreshing}
-              className="border-line bg-field hover:bg-panel-hover text-copy"
-            >
-              <RefreshCw
-                className={
-                  loading || refreshing
-                    ? 'mr-2 h-4 w-4 animate-spin'
-                    : 'mr-2 h-4 w-4'
-                }
-              />
-              Refresh
-            </Button>
-            <Button onClick={handleBack} className="brand-button">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Sessions
-            </Button>
-          </div>
-        </div>
-      </div>
+      <VncMissingParamsView
+        onBack={handleBack}
+        message="This live session is no longer active."
+        onRefresh={() => void handleManualRefresh()}
+        refreshDisabled={loading || refreshing}
+      />
     )
   }
 
   return (
     <ResolvedVncSessionPage
-      key={sessionKey(session)}
-      session={session}
-      loading={loading || refreshing}
-      onBack={handleBack}
-      onRefresh={handleManualRefresh}
+      key={sessionKey(session)} session={session}
+      loading={loading || refreshing} onBack={handleBack} onRefresh={handleManualRefresh}
     />
   )
 }
+
+/* ── Missing/error view ── */
+
+function VncMissingParamsView({
+  onBack,
+  message,
+  error,
+  onRefresh,
+  refreshDisabled,
+}: {
+  onBack: () => void
+  message: string
+  error?: string
+  onRefresh?: () => void
+  refreshDisabled?: boolean
+}) {
+  return (
+    <div className="bg-shell flex h-full items-center justify-center p-6">
+      <div className="bg-panel border-line flex w-full max-w-lg flex-col gap-4 rounded-2xl border p-6 text-center shadow-xs">
+        <div>
+          <h1 className="text-ink text-lg font-semibold">Session unavailable</h1>
+          <p className="text-subtle-copy mt-2 text-sm">{message}</p>
+          {error ? <p className="text-status-danger mt-3 text-sm">{error}</p> : null}
+        </div>
+        <div className="flex justify-center gap-3">
+          {onRefresh && (
+            <Button
+              variant="outline"
+              onClick={onRefresh}
+              disabled={refreshDisabled}
+              className="border-line bg-field hover:bg-panel-hover text-copy"
+            >
+              <RefreshCw className={refreshDisabled ? 'mr-2 h-4 w-4 animate-spin' : 'mr-2 h-4 w-4'} />
+              Refresh
+            </Button>
+          )}
+          <Button onClick={onBack} className="brand-button">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Sessions
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Resolved page ── */
 
 function ResolvedVncSessionPage({
   session,
@@ -156,279 +155,375 @@ function ResolvedVncSessionPage({
 
   if (isMobile) {
     return (
-      <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
-        <AmbientGlow
-          className="h-[360px] w-[700px]"
-          reducedClassName="w-[480px] h-[220px]"
-        />
-        <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-2 shadow-xs select-none">
-          <div className="flex min-w-0 items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onBack}
-              className="h-8"
-            >
-              <ArrowLeft className="mr-2 h-3.5 w-3.5" />
-              Back
-            </Button>
-            <div className="min-w-0">
-              <h2 className="page-title-gradient truncate text-sm font-bold tracking-wider uppercase">
-                {session.profileName}
-              </h2>
-              <span className="text-subtle-copy font-mono text-[10px]">
-                {session.workflowId} / :{session.displayNum}
-              </span>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowMobileLogs((current) => !current)}
-            className="h-8"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
-          </Button>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-2 p-2">
-          <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
-            <Suspense
-              fallback={<div className="bg-overlay h-full w-full animate-pulse" />}
-            >
-              <VncViewer
-                url={buildVncWebSocketUrl(session.vncPort)}
-                interactive={isInteractive}
-                className="h-full w-full flex-1 object-contain"
-              />
-            </Suspense>
-          </div>
-
-          {!isInteractive ? (
-            <div className="border-line bg-panel rounded-xl border p-3">
-              <p className="text-muted-copy mb-3 text-xs">
-                Taking control will interrupt the agent.
-              </p>
-              <div className="flex gap-2">
-                {isConfirming ? (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => setControlState('locked')}
-                      className="flex-1"
-                    >
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={() => setControlState('unlocked')}
-                      className="mobile-effect-shadow brand-button flex-1 font-medium"
-                    >
-                      Confirm
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => setControlState('confirm')}
-                    className="w-full"
-                  >
-                    Take Control
-                  </Button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => setControlState('locked')}
-            >
-              Return To Agent
-            </Button>
-          )}
-
-          {showMobileLogs ? (
-            <div className="border-line-soft bg-shell h-[42vh] min-h-[260px] overflow-hidden rounded-[4px] border">
-              <Suspense
-                fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}
-              >
-                <LogsViewer
-                  className="h-full border-0"
-                  workflowId={session.workflowId === 'manual' ? null : session.workflowId}
-                  profileName={session.profileName}
-                />
-              </Suspense>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <VncMobileLayout
+        session={session}
+        isInteractive={isInteractive}
+        isConfirming={isConfirming}
+        showMobileLogs={showMobileLogs}
+        onBack={onBack}
+        onToggleLogs={() => setShowMobileLogs((c) => !c)}
+        onSetControl={setControlState}
+      />
     )
   }
 
   return (
+    <VncDesktopLayout
+      session={session}
+      loading={loading}
+      isInteractive={isInteractive}
+      isConfirming={isConfirming}
+      onBack={onBack}
+      onRefresh={onRefresh}
+      onSetControl={setControlState}
+    />
+  )
+}
+
+/* ── Mobile Layout ── */
+
+function VncMobileLayout({
+  session,
+  isInteractive,
+  isConfirming,
+  showMobileLogs,
+  onBack,
+  onToggleLogs,
+  onSetControl,
+}: {
+  session: DisplaySession
+  isInteractive: boolean
+  isConfirming: boolean
+  showMobileLogs: boolean
+  onBack: () => void
+  onToggleLogs: () => void
+  onSetControl: (s: 'locked' | 'confirm' | 'unlocked') => void
+}) {
+  return (
+    <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
+      <AmbientGlow className="h-[360px] w-[700px]" reducedClassName="w-[480px] h-[220px]" />
+      <VncMobileHeader session={session} onBack={onBack} onToggleLogs={onToggleLogs} showMobileLogs={showMobileLogs} />
+
+      <div className="min-h-0 flex-1 space-y-2 p-2">
+        <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
+          <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+            <VncViewer
+              url={buildVncWebSocketUrl(session.vncPort)}
+              interactive={isInteractive}
+              className="h-full w-full flex-1 object-contain"
+            />
+          </Suspense>
+        </div>
+
+        <ControlToggle
+          isInteractive={isInteractive}
+          isConfirming={isConfirming}
+          onSetControl={onSetControl}
+        />
+
+        {showMobileLogs ? (
+          <div className="border-line-soft bg-shell h-[42vh] min-h-[260px] overflow-hidden rounded-[4px] border">
+            <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
+              <LogsViewer
+                className="h-full border-0"
+                workflowId={session.workflowId === 'manual' ? null : session.workflowId}
+                profileName={session.profileName}
+              />
+            </Suspense>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function VncMobileHeader({
+  session,
+  onBack,
+  onToggleLogs,
+  showMobileLogs,
+}: {
+  session: DisplaySession
+  onBack: () => void
+  onToggleLogs: () => void
+  showMobileLogs: boolean
+}) {
+  return (
+    <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-2 shadow-xs select-none">
+      <div className="flex min-w-0 items-center gap-3">
+        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+          <ArrowLeft className="mr-2 h-3.5 w-3.5" />Back
+        </Button>
+        <div className="min-w-0">
+          <h2 className="page-title-gradient truncate text-sm font-bold tracking-wider uppercase">
+            {session.profileName}
+          </h2>
+          <span className="text-subtle-copy font-mono text-[10px]">
+            {session.workflowId} / :{session.displayNum}
+          </span>
+        </div>
+      </div>
+      <Button variant="outline" size="sm" onClick={onToggleLogs} className="h-8">
+        <FileText className="h-3.5 w-3.5" />
+        {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
+      </Button>
+    </div>
+  )
+}
+
+/* ── Control Toggle ── */
+
+function ControlToggle({
+  isInteractive,
+  isConfirming,
+  onSetControl,
+}: {
+  isInteractive: boolean
+  isConfirming: boolean
+  onSetControl: (s: 'locked' | 'confirm' | 'unlocked') => void
+}) {
+  if (isInteractive) {
+    return (
+      <Button variant="outline" onClick={() => onSetControl('locked')}>
+        Return To Agent
+      </Button>
+    )
+  }
+
+  return (
+    <div className="border-line bg-panel rounded-xl border p-3">
+      <p className="text-muted-copy mb-3 text-xs">
+        Taking control will interrupt the agent.
+      </p>
+      <div className="flex gap-2">
+        {isConfirming ? (
+          <>
+            <Button variant="outline" onClick={() => onSetControl('locked')} className="flex-1">Cancel</Button>
+            <Button onClick={() => onSetControl('unlocked')} className="mobile-effect-shadow brand-button flex-1 font-medium">Confirm</Button>
+          </>
+        ) : (
+          <Button variant="outline" onClick={() => onSetControl('confirm')} className="w-full">Take Control</Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Desktop Layout ── */
+
+function VncDesktopLayout({
+  session,
+  loading,
+  isInteractive,
+  isConfirming,
+  onBack,
+  onRefresh,
+  onSetControl,
+}: {
+  session: DisplaySession
+  loading: boolean
+  isInteractive: boolean
+  isConfirming: boolean
+  onBack: () => void
+  onRefresh: () => Promise<void>
+  onSetControl: (s: 'locked' | 'confirm' | 'unlocked') => void
+}) {
+  return (
     <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
-      <AmbientGlow
-        className="h-[400px] w-[800px]"
-        reducedClassName="w-[560px] h-[240px]"
+      <AmbientGlow className="h-[400px] w-[800px]" reducedClassName="w-[560px] h-[240px]" />
+      <VncDesktopHeader session={session} loading={loading} onBack={onBack} onRefresh={onRefresh} />
+      <VncDesktopPanels
+        session={session}
+        isInteractive={isInteractive}
+        isConfirming={isConfirming}
+        onSetControl={onSetControl}
       />
-      <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onBack}
-            className="h-8"
-          >
-            <ArrowLeft className="mr-2 h-3.5 w-3.5" />
-            Back to Grid
+    </div>
+  )
+}
+
+function VncDesktopHeader({
+  session,
+  loading,
+  onBack,
+  onRefresh,
+}: {
+  session: DisplaySession
+  loading: boolean
+  onBack: () => void
+  onRefresh: () => Promise<void>
+}) {
+  return (
+    <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+          <ArrowLeft className="mr-2 h-3.5 w-3.5" />Back to Grid
+        </Button>
+        <div className="flex items-baseline gap-2">
+          <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">
+            {session.profileName}
+          </h2>
+          <span className="text-subtle-copy font-mono text-[10px]">
+            {session.workflowId} / :{session.displayNum}
+          </span>
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        size="icon"
+        onClick={() => void onRefresh()}
+        aria-label="Refresh sessions"
+        title="Refresh sessions"
+        className="h-8 w-8 shrink-0 p-0"
+      >
+        <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+        <span className="sr-only">Refresh</span>
+      </Button>
+    </div>
+  )
+}
+
+function VncDesktopPanels({
+  session,
+  isInteractive,
+  isConfirming,
+  onSetControl,
+}: {
+  session: DisplaySession
+  isInteractive: boolean
+  isConfirming: boolean
+  onSetControl: (s: 'locked' | 'confirm' | 'unlocked') => void
+}) {
+  return (
+    <div className="min-h-0 flex-1 p-1">
+      <Group
+        orientation="horizontal"
+        id={`vnc-session-layout-${sessionKey(session)}`}
+        onLayoutChanged={(layout) => {
+          localStorage.setItem(
+            `vnc-focus-layout-sizes-${sessionKey(session)}`,
+            JSON.stringify(layout),
+          )
+        }}
+        defaultLayout={(() => {
+          try {
+            const stored = localStorage.getItem(`vnc-focus-layout-sizes-${sessionKey(session)}`)
+            return stored ? JSON.parse(stored) : undefined
+          } catch { return undefined }
+        })()}
+      >
+        <Panel id="left-vnc" defaultSize={60} minSize={30}>
+          <VncStreamPanel
+            session={session}
+            isInteractive={isInteractive}
+            isConfirming={isConfirming}
+            onSetControl={onSetControl}
+          />
+        </Panel>
+
+        <Separator className="hover:bg-panel-muted group relative mx-0.5 flex w-2 items-center justify-center rounded-sm transition-colors focus:ring-0 focus:outline-hidden active:outline-hidden">
+          <div className="bg-panel-hover h-8 w-1 rounded-full transition-colors group-hover:bg-white/30" />
+        </Separator>
+
+        <Panel id="right-logs" defaultSize={40} minSize={20}>
+          <div className="flex h-full flex-col overflow-hidden rounded-[3px] shadow-xs">
+            <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
+              <LogsViewer
+                className="h-full border-0"
+                workflowId={session.workflowId === 'manual' ? null : session.workflowId}
+                profileName={session.profileName}
+              />
+            </Suspense>
+          </div>
+        </Panel>
+      </Group>
+    </div>
+  )
+}
+
+/* ── VNC Stream Panel with overlay ── */
+
+function VncStreamPanel({
+  session,
+  isInteractive,
+  isConfirming,
+  onSetControl,
+}: {
+  session: DisplaySession
+  isInteractive: boolean
+  isConfirming: boolean
+  onSetControl: (s: 'locked' | 'confirm' | 'unlocked') => void
+}) {
+  return (
+    <div className="bg-shell border-line-soft group relative flex h-full flex-col overflow-hidden rounded-[3px] border shadow-xs">
+      <div className="pointer-events-none absolute top-0 right-0 left-0 z-10 flex h-6 items-center bg-gradient-to-b from-black/80 to-transparent px-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="text-muted-copy font-mono text-[10px] tracking-widest uppercase">
+          Display Stream :{session.displayNum}
+        </div>
+      </div>
+
+      <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+        <VncViewer
+          url={buildVncWebSocketUrl(session.vncPort)}
+          interactive={isInteractive}
+          className="h-full w-full flex-1 object-contain"
+        />
+      </Suspense>
+
+      {!isInteractive && (
+        <VncControlOverlay isConfirming={isConfirming} onSetControl={onSetControl} />
+      )}
+
+      {isInteractive && (
+        <div className="absolute right-4 bottom-4 z-20">
+          <Button variant="outline" onClick={() => onSetControl('locked')}>
+            Return To Agent
           </Button>
-          <div className="flex items-baseline gap-2">
-            <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">
-              {session.profileName}
-            </h2>
-            <span className="text-subtle-copy font-mono text-[10px]">
-              {session.workflowId} / :{session.displayNum}
-            </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VncControlOverlay({
+  isConfirming,
+  onSetControl,
+}: {
+  isConfirming: boolean
+  onSetControl: (s: 'locked' | 'confirm' | 'unlocked') => void
+}) {
+  return (
+    <div
+      className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-overlay pointer-events-auto backdrop-blur-xs' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
+    >
+      <div className={`${isConfirming ? 'mx-4 w-full max-w-[360px]' : ''}`}>
+        <div
+          className={`bg-panel border-line overflow-hidden rounded-lg border shadow-lg sm:rounded-lg ${isConfirming ? 'opacity-100' : 'pointer-events-auto opacity-0 transition-opacity group-hover:opacity-100'}`}
+        >
+          {isConfirming && (
+            <div className="flex flex-col space-y-1.5 px-6 py-4 text-center sm:text-left">
+              <h2 className="brand-text-gradient text-lg leading-none font-semibold tracking-tight">
+                Control Handoff
+              </h2>
+              <p className="text-subtle-copy text-sm">
+                Taking control will interrupt the agent.
+              </p>
+            </div>
+          )}
+          <div
+            className={`flex flex-col-reverse px-6 sm:flex-row sm:justify-end sm:space-x-2 ${isConfirming ? 'pt-2 pb-6' : 'py-6'}`}
+          >
+            {isConfirming ? (
+              <>
+                <Button variant="outline" onClick={() => onSetControl('locked')} className="mt-2 sm:mt-0">Cancel</Button>
+                <Button onClick={() => onSetControl('unlocked')} className="brand-button font-medium">Confirm</Button>
+              </>
+            ) : (
+              <Button variant="outline" onClick={() => onSetControl('confirm')}>Take Control</Button>
+            )}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => void onRefresh()}
-          aria-label="Refresh sessions"
-          title="Refresh sessions"
-          className="h-8 w-8 shrink-0 p-0"
-        >
-          <RefreshCw
-            className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
-          />
-          <span className="sr-only">Refresh</span>
-        </Button>
       </div>
-
-      <div className="min-h-0 flex-1 p-1">
-        <Group
-          orientation="horizontal"
-          id={`vnc-session-layout-${sessionKey(session)}`}
-          onLayoutChanged={(layout) => {
-            localStorage.setItem(
-              `vnc-focus-layout-sizes-${sessionKey(session)}`,
-              JSON.stringify(layout),
-            )
-          }}
-          defaultLayout={(() => {
-            try {
-              const stored = localStorage.getItem(
-                `vnc-focus-layout-sizes-${sessionKey(session)}`,
-              )
-              return stored ? JSON.parse(stored) : undefined
-            } catch {
-              return undefined
-            }
-          })()}
-        >
-          <Panel id="left-vnc" defaultSize={60} minSize={30}>
-            <div className="bg-shell border-line-soft group relative flex h-full flex-col overflow-hidden rounded-[3px] border shadow-xs">
-              <div className="pointer-events-none absolute top-0 right-0 left-0 z-10 flex h-6 items-center bg-gradient-to-b from-black/80 to-transparent px-2 opacity-0 transition-opacity group-hover:opacity-100">
-                <div className="text-muted-copy font-mono text-[10px] tracking-widest uppercase">
-                  Display Stream :{session.displayNum}
-                </div>
-              </div>
-
-              <Suspense
-                fallback={<div className="bg-overlay h-full w-full animate-pulse" />}
-              >
-                <VncViewer
-                  url={buildVncWebSocketUrl(session.vncPort)}
-                  interactive={isInteractive}
-                  className="h-full w-full flex-1 object-contain"
-                />
-              </Suspense>
-
-              {!isInteractive && (
-                <div
-                  className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${isConfirming ? 'bg-overlay pointer-events-auto backdrop-blur-xs' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
-                >
-                  <div className={`${isConfirming ? 'mx-4 w-full max-w-[360px]' : ''}`}>
-                    <div
-                      className={`bg-panel border-line overflow-hidden rounded-lg border shadow-lg sm:rounded-lg ${isConfirming ? 'opacity-100' : 'pointer-events-auto opacity-0 transition-opacity group-hover:opacity-100'}`}
-                    >
-                      {isConfirming && (
-                        <div className="flex flex-col space-y-1.5 px-6 py-4 text-center sm:text-left">
-                          <h2 className="brand-text-gradient text-lg leading-none font-semibold tracking-tight">
-                            Control Handoff
-                          </h2>
-                          <p className="text-subtle-copy text-sm">
-                            Taking control will interrupt the agent.
-                          </p>
-                        </div>
-                      )}
-                      <div
-                        className={`flex flex-col-reverse px-6 sm:flex-row sm:justify-end sm:space-x-2 ${isConfirming ? 'pt-2 pb-6' : 'py-6'}`}
-                      >
-                        {isConfirming ? (
-                          <>
-                            <Button
-                              variant="outline"
-                              onClick={() => setControlState('locked')}
-                              className="mt-2 sm:mt-0"
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              onClick={() => setControlState('unlocked')}
-                              className="brand-button font-medium"
-                            >
-                              Confirm
-                            </Button>
-                          </>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            onClick={() => setControlState('confirm')}
-                          >
-                            Take Control
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {isInteractive && (
-                <div className="absolute right-4 bottom-4 z-20">
-                  <Button
-                    variant="outline"
-                    onClick={() => setControlState('locked')}
-                  >
-                    Return To Agent
-                  </Button>
-                </div>
-              )}
-            </div>
-          </Panel>
-
-          <Separator className="hover:bg-panel-muted group relative mx-0.5 flex w-2 items-center justify-center rounded-sm transition-colors focus:ring-0 focus:outline-hidden active:outline-hidden">
-            <div className="bg-panel-hover h-8 w-1 rounded-full transition-colors group-hover:bg-white/30" />
-          </Separator>
-
-          <Panel id="right-logs" defaultSize={40} minSize={20}>
-            <div className="flex h-full flex-col overflow-hidden rounded-[3px] shadow-xs">
-              <Suspense
-                fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}
-              >
-                <LogsViewer
-                  className="h-full border-0"
-                  workflowId={session.workflowId === 'manual' ? null : session.workflowId}
-                  profileName={session.profileName}
-                />
-              </Suspense>
-            </div>
-          </Panel>
-        </Group>
-      </div>
-
     </div>
   )
 }

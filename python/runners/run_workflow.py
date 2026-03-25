@@ -23,12 +23,15 @@ from python.actions.messaging.session import send_messages
 from python.actions.stories import watch_stories
 from python.browser.display import DisplayManager
 from python.core.config import PROJECT_URL, SECRET_KEY
+from python.core.logging import setup_logging
 from python.core.models import ThreadsAccount
 from python.core.storage.atomic import atomic_write_json
 from python.core.utils import apply_count_limit, create_browser_context
-from python.database.accounts import InstagramAccountsClient
-from python.database.messages import MessageTemplatesClient
-from python.database.profiles import ProfilesClient
+from python.core.clients import (
+    InstagramAccountsClient,
+    MessageTemplatesClient,
+    ProfilesClient,
+)
 from python.runners.workflow.bootstrap import (
     _extract_start_browser_settings,
     _find_start_node,
@@ -259,4 +262,10 @@ def _choose_weighted(handles: List[str], weights_str: str) -> str:
 
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    setup_logging()
+    from python.core.sentry import flush_sentry, init_sentry
+    init_sentry()
+    try:
+        raise SystemExit(main())
+    finally:
+        flush_sentry()

@@ -1,9 +1,12 @@
 node_modules
 npm-debug.log
 dist
+build
+.react-router
 .git
 .gitignore
 *.md
 .env*
 .vscode
 .idea
+*.log

@@ -22,7 +22,9 @@ import { ScrapedDataDetails } from '../components/ScrapedDataDetails'
 import type { WorkflowArtifact } from '../types'
 import { getArtifactSortTimestamp } from '../utils'
 
-export function ScrapedDataPageContainer() {
+/* ── State + handler hook ── */
+
+function useScrapedDataState() {
   const convex = useConvex()
   const navigate = useNavigate()
   const removeArtifact = useMutation(api.workflowArtifacts.remove)
@@ -57,15 +59,9 @@ export function ScrapedDataPageContainer() {
       .filter((artifact) => {
         if (!query) return true
         const haystack = [
-          artifact.name,
-          artifact.workflowName,
-          artifact.nodeLabel,
-          artifact.sourceProfileName,
-          artifact.targetUsername,
-          artifact.kind,
-        ]
-          .map((value) => String(value || '').toLowerCase())
-          .join(' ')
+          artifact.name, artifact.workflowName, artifact.nodeLabel,
+          artifact.sourceProfileName, artifact.targetUsername, artifact.kind,
+        ].map((value) => String(value || '').toLowerCase()).join(' ')
         return haystack.includes(query)
       })
   }, [visibleArtifacts, searchQuery])
@@ -75,11 +71,26 @@ export function ScrapedDataPageContainer() {
   const deletingArtifact =
     visibleArtifacts.find((artifact) => artifact._id === deletingArtifactId) ?? null
 
+  return {
+    convex, navigate, removeArtifact,
+    searchQuery, setSearchQuery,
+    detailsArtifactId, setDetailsArtifactId,
+    deletingArtifactId, setDeletingArtifactId,
+    savingDelete, setSavingDelete,
+    refreshing, setRefreshing,
+    pageError, setPageError,
+    hiddenArtifactIds, setHiddenArtifactIds,
+    isLoading, visibleArtifacts, filteredArtifacts,
+    detailsArtifact, deletingArtifact,
+  }
+}
+
+/* ── Download handlers ── */
+
+function useArtifactDownload(setPageError: (e: string | null) => void) {
   const downloadArtifact = useCallback(
     async (storageId: Id<'_storage'> | null | undefined, fileName: string) => {
-      if (!storageId) {
-        throw new Error('Artifact file is not available')
-      }
+      if (!storageId) throw new Error('Artifact file is not available')
       await apiDownload(
         `/api/workflows/artifacts/download?storageId=${encodeURIComponent(storageId)}&fileName=${encodeURIComponent(fileName)}`,
         fileName,
@@ -98,11 +109,10 @@ export function ScrapedDataPageContainer() {
         )
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        setPageError(message)
-        toast.error(message)
+        setPageError(message); toast.error(message)
       }
     },
-    [downloadArtifact],
+    [downloadArtifact, setPageError],
   )
 
   const handleDownloadManifest = useCallback(
@@ -115,50 +125,60 @@ export function ScrapedDataPageContainer() {
         )
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        setPageError(message)
-        toast.error(message)
+        setPageError(message); toast.error(message)
       }
     },
-    [downloadArtifact],
+    [downloadArtifact, setPageError],
   )
 
-  const handleViewDetails = useCallback((artifact: WorkflowArtifact) => {
-    setDetailsArtifactId(artifact._id)
-    setPageError(null)
-  }, [])
+  return { handleDownloadData, handleDownloadManifest }
+}
+
+/* ── CRUD handlers ── */
+
+function useArtifactDelete(state: ReturnType<typeof useScrapedDataState>) {
+  const { removeArtifact, setPageError, setSavingDelete,
+    setDetailsArtifactId, setDeletingArtifactId,
+    setHiddenArtifactIds, deletingArtifactId, detailsArtifactId } = state
 
   const handleDeleteClick = useCallback((artifact: WorkflowArtifact) => {
-    setDeletingArtifactId(artifact._id)
-    setPageError(null)
-  }, [])
+    setDeletingArtifactId(artifact._id); setPageError(null)
+  }, [setDeletingArtifactId, setPageError])
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deletingArtifactId) return
-    setSavingDelete(true)
-    setPageError(null)
+    setSavingDelete(true); setPageError(null)
     try {
       const removed = await removeArtifact({ id: deletingArtifactId })
       setHiddenArtifactIds((current) =>
         current.includes(deletingArtifactId) ? current : [...current, deletingArtifactId],
       )
       toast.success(`Deleted "${removed.name}"`)
-      if (detailsArtifactId === deletingArtifactId) {
-        setDetailsArtifactId(null)
-      }
+      if (detailsArtifactId === deletingArtifactId) setDetailsArtifactId(null)
       setDeletingArtifactId(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      setPageError(message)
-      toast.error(message)
-    } finally {
-      setSavingDelete(false)
-    }
-  }, [deletingArtifactId, detailsArtifactId, removeArtifact])
+      setPageError(message); toast.error(message)
+    } finally { setSavingDelete(false) }
+  }, [deletingArtifactId, detailsArtifactId, removeArtifact, setDeletingArtifactId,
+    setDetailsArtifactId, setHiddenArtifactIds, setPageError, setSavingDelete])
+
+  return { handleDeleteClick, handleConfirmDelete }
+}
+
+function useScrapedDataHandlers(state: ReturnType<typeof useScrapedDataState>) {
+  const { convex, navigate, setPageError, setRefreshing,
+    setDetailsArtifactId, setHiddenArtifactIds } = state
+
+  const downloads = useArtifactDownload(setPageError)
+  const deleteHandlers = useArtifactDelete(state)
+
+  const handleViewDetails = useCallback((artifact: WorkflowArtifact) => {
+    setDetailsArtifactId(artifact._id); setPageError(null)
+  }, [setDetailsArtifactId, setPageError])
 
   const handleOpenWorkflow = useCallback(
-    (artifact: WorkflowArtifact) => {
-      navigate(`/workflows/${artifact.workflowId}/editor`)
-    },
+    (artifact: WorkflowArtifact) => { navigate(`/workflows/${artifact.workflowId}/editor`) },
     [navigate],
   )
 
@@ -170,72 +190,139 @@ export function ScrapedDataPageContainer() {
         new Promise((resolve) => setTimeout(resolve, 300)),
       ])
       setHiddenArtifactIds([])
-    } finally {
-      setRefreshing(false)
-    }
-  }, [convex])
+    } finally { setRefreshing(false) }
+  }, [convex, setHiddenArtifactIds, setRefreshing])
+
+  return {
+    ...downloads, ...deleteHandlers, handleViewDetails,
+    handleOpenWorkflow, handleRefresh,
+  }
+}
+
+/* ── Search header ── */
+
+function ScrapedDataHeader({
+  searchQuery,
+  onSearchChange,
+  onRefresh,
+  isLoading,
+  refreshing,
+}: {
+  searchQuery: string
+  onSearchChange: (v: string) => void
+  onRefresh: () => void
+  isLoading: boolean
+  refreshing: boolean
+}) {
+  return (
+    <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+        <div className="flex flex-grow items-center gap-2">
+          <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
+            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
+            <Input
+              value={searchQuery}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search..."
+              className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={onRefresh}
+            disabled={isLoading || refreshing}
+            aria-label="Refresh artifacts"
+            title="Refresh artifacts"
+            className="h-8 w-8 shrink-0 p-0"
+          >
+            <RefreshCw
+              className={isLoading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
+            />
+            <span className="sr-only">Refresh</span>
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Details sheet ── */
+
+function ScrapedDataDetailsSheet({
+  detailsArtifact,
+  onClose,
+  onDownloadData,
+  onDownloadManifest,
+  onDelete,
+  onOpenWorkflow,
+}: {
+  detailsArtifact: WorkflowArtifact | null
+  onClose: () => void
+  onDownloadData: (a: WorkflowArtifact) => void
+  onDownloadManifest: (a: WorkflowArtifact) => void
+  onDelete: (a: WorkflowArtifact) => void
+  onOpenWorkflow: (a: WorkflowArtifact) => void
+}) {
+  return (
+    <Sheet open={Boolean(detailsArtifact)} onOpenChange={(open) => { if (!open) onClose() }}>
+      <SheetContent className="border-line bg-panel text-ink flex w-full max-w-full flex-col gap-0 border-l p-0 shadow-xl sm:w-[540px]">
+        <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
+          <SheetTitle className="page-title-gradient">Artifact Details</SheetTitle>
+        </SheetHeader>
+        {detailsArtifact ? (
+          <ScrapedDataDetails
+            artifact={detailsArtifact}
+            onDownloadData={(a) => void onDownloadData(a)}
+            onDownloadManifest={(a) => void onDownloadManifest(a)}
+            onDelete={onDelete}
+            onOpenWorkflow={onOpenWorkflow}
+          />
+        ) : (
+          <div className="text-muted-foreground p-8 text-center text-sm">Artifact unavailable.</div>
+        )}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+/* ── Main component ── */
+
+export function ScrapedDataPageContainer() {
+  const state = useScrapedDataState()
+  const handlers = useScrapedDataHandlers(state)
 
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
       <AmbientGlow />
 
-      {/* Header */}
-      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-          <div className="flex flex-grow items-center gap-2">
-            <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
-              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
-              <Input
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search..."
-                className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => void handleRefresh()}
-              disabled={isLoading || refreshing}
-              aria-label="Refresh artifacts"
-              title="Refresh artifacts"
-              className="h-8 w-8 shrink-0 p-0"
-            >
-              <RefreshCw
-                className={
-                  isLoading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
-                }
-              />
-              <span className="sr-only">Refresh</span>
-            </Button>
-          </div>
-        </div>
-      </div>
+      <ScrapedDataHeader
+        searchQuery={state.searchQuery}
+        onSearchChange={state.setSearchQuery}
+        onRefresh={() => void handlers.handleRefresh()}
+        isLoading={state.isLoading}
+        refreshing={state.refreshing}
+      />
 
-      {pageError && !deletingArtifact && (
+      {state.pageError && !state.deletingArtifact && (
         <div className="status-banner-danger relative z-10 flex items-center border-b px-6 py-3 text-sm">
           <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />
-          {pageError}
+          {state.pageError}
         </div>
       )}
 
-      {/* Main Content */}
       <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="mx-auto max-w-[2000px]">
           <ScrapedDataList
-            artifacts={filteredArtifacts}
-            loading={isLoading}
-            onViewDetails={handleViewDetails}
-            onDownloadData={(a) => void handleDownloadData(a)}
-            onDownloadManifest={(a) => void handleDownloadManifest(a)}
-            onDelete={handleDeleteClick}
-            emptyTitle={
-              searchQuery.trim()
-                ? 'No matching artifacts'
-                : 'No scraped artifacts'
-            }
+            artifacts={state.filteredArtifacts}
+            loading={state.isLoading}
+            onViewDetails={handlers.handleViewDetails}
+            onDownloadData={(a) => void handlers.handleDownloadData(a)}
+            onDownloadManifest={(a) => void handlers.handleDownloadManifest(a)}
+            onDelete={handlers.handleDeleteClick}
+            emptyTitle={state.searchQuery.trim() ? 'No matching artifacts' : 'No scraped artifacts'}
             emptyDescription={
-              searchQuery.trim()
+              state.searchQuery.trim()
                 ? 'Try a different search term or clear the filter.'
                 : 'Completed workflow scrape results will appear here.'
             }
@@ -243,50 +330,29 @@ export function ScrapedDataPageContainer() {
         </div>
       </div>
 
-      {/* Details Sheet */}
-      <Sheet
-        open={Boolean(detailsArtifact)}
-        onOpenChange={(open) => {
-          if (!open) setDetailsArtifactId(null)
-        }}
-      >
-        <SheetContent className="border-line bg-panel text-ink flex w-full max-w-full flex-col gap-0 border-l p-0 shadow-xl sm:w-[540px]">
-          <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
-            <SheetTitle className="page-title-gradient">
-              Artifact Details
-            </SheetTitle>
-          </SheetHeader>
-          {detailsArtifact ? (
-            <ScrapedDataDetails
-              artifact={detailsArtifact}
-              onDownloadData={(a) => void handleDownloadData(a)}
-              onDownloadManifest={(a) => void handleDownloadManifest(a)}
-              onDelete={handleDeleteClick}
-              onOpenWorkflow={handleOpenWorkflow}
-            />
-          ) : (
-            <div className="text-muted-foreground p-8 text-center text-sm">
-              Artifact unavailable.
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      <ScrapedDataDetailsSheet
+        detailsArtifact={state.detailsArtifact}
+        onClose={() => state.setDetailsArtifactId(null)}
+        onDownloadData={handlers.handleDownloadData}
+        onDownloadManifest={handlers.handleDownloadManifest}
+        onDelete={handlers.handleDeleteClick}
+        onOpenWorkflow={handlers.handleOpenWorkflow}
+      />
 
-      {/* Delete Dialog */}
-      {deletingArtifact ? (
+      {state.deletingArtifact ? (
         <ConfirmDeleteDialog
-          open={Boolean(deletingArtifact)}
+          open={Boolean(state.deletingArtifact)}
           title="Delete Scrape Artifact"
           entityLabel="scrape artifact"
-          itemName={deletingArtifact.name || 'Selected artifact'}
+          itemName={state.deletingArtifact.name || 'Selected artifact'}
           confirmLabel="Delete Artifact"
-          saving={savingDelete}
-          error={pageError}
+          saving={state.savingDelete}
+          error={state.pageError}
           extraDescription="Stored data and manifest files will be removed too."
-          onConfirm={() => void handleConfirmDelete()}
+          onConfirm={() => void handlers.handleConfirmDelete()}
           onCancel={() => {
-            if (savingDelete) return
-            setDeletingArtifactId(null)
+            if (state.savingDelete) return
+            state.setDeletingArtifactId(null)
           }}
         />
       ) : null}

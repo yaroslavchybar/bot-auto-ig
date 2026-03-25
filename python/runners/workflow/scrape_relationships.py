@@ -2,156 +2,36 @@ import logging
 import time
 from typing import Any, Dict, Optional, Tuple
 
-from python.runners.workflow.compat import compat as compat_module
-from python.runners.workflow.scrape_script import RELATIONSHIP_CHUNK_SCRIPT
+from python.runners.workflow.scrape_utils import (
+    _build_scrape_export_payload,
+    _convex_post_json,
+    _dedupe_scraped_users,
+    _delete_resume_snapshot,
+    _load_users_from_resume_snapshot,
+    _load_users_from_storage,
+    _resume_snapshot_path,
+    _store_artifact_payload,
+    _store_resume_snapshot,
+)
+from python.runners.workflow.io import log
+from python.runners.workflow.parsing import (
+    _normalize_string_list,
+    _parse_float,
+    _parse_int,
+    _parse_retry_backoff_seconds,
+    _profile_daily_scraping_limit,
+    _profile_daily_scraping_used,
+    _profile_remaining_daily_scraping_capacity,
+)
+from python.runners.workflow.scrape_navigation import (  # noqa: F401
+    open_relationship_view,
+    scrape_relationship_chunk,
+)
 
 logger = logging.getLogger(__name__)
 
 ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS = (1, 2, 4)
 INTERRUPTIBLE_SLEEP_POLL_SECONDS = 0.1
-
-
-def open_relationship_view(
-    runner,
-    page: Any,
-    *,
-    target_username: str,
-    kind: str,
-) -> Optional[Tuple[str, str]]:
-    compat = compat_module()
-    normalized_target = str(target_username or '').strip().strip('/').lower()
-    compat.log(f'scrape_relationships @{normalized_target}: opening {kind} list')
-    clicked_selector, click_error = _click_relationship_link(page, normalized_target, kind)
-    if not clicked_selector:
-        return _relationship_link_error(compat, normalized_target, kind, click_error)
-    return _wait_for_relationship_ui(compat, page, normalized_target, kind)
-
-
-def _click_relationship_link(page: Any, normalized_target: str, kind: str) -> Tuple[Optional[str], Optional[Exception]]:
-    clicked_selector, click_error = _click_via_selector(page, normalized_target, kind)
-    if clicked_selector:
-        return clicked_selector, None
-    return _click_via_locators(page, kind, click_error)
-
-
-def _click_via_selector(page: Any, normalized_target: str, kind: str) -> Tuple[Optional[str], Optional[Exception]]:
-    selectors = [
-        f'a[href="/{normalized_target}/{kind}/"]',
-        f'a[href="/{normalized_target}/{kind}"]',
-        f'a[href$="/{kind}/"]',
-        f'a[href$="/{kind}"]',
-        f'a[href*="/{kind}/"]',
-        f'a[href*="/{kind}"]',
-    ]
-    try:
-        clicked_selector = page.evaluate(
-            """
-            ({ selectors }) => {
-              for (const selector of selectors) {
-                const el = document.querySelector(selector)
-                if (el instanceof HTMLElement) {
-                  el.click()
-                  return selector
-                }
-              }
-              return null
-            }
-            """,
-            {'selectors': selectors},
-        )
-        return clicked_selector, None
-    except Exception as exc:
-        return None, exc
-
-
-def _click_via_locators(page: Any, kind: str, click_error: Optional[Exception]) -> Tuple[Optional[str], Optional[Exception]]:
-    label = 'Followers' if kind == 'followers' else 'Following'
-    locators = [
-        ('role link', page.get_by_role('link', name=label, exact=True).first),
-        ('header link', page.locator('header a', has_text=label).first),
-        ('header section link', page.locator('header section a', has_text=label).first),
-        ('text link', page.locator('a', has_text=label).first),
-    ]
-    for description, locator in locators:
-        try:
-            locator.click(timeout=2000)
-            return description, None
-        except Exception as exc:
-            click_error = exc
-    return None, click_error
-
-
-def _relationship_link_error(
-    compat,
-    normalized_target: str,
-    kind: str,
-    click_error: Optional[Exception],
-) -> Tuple[str, str]:
-    if click_error is not None:
-        compat.log(
-            f'scrape_relationships @{normalized_target}: failed to resolve {kind} link '
-            f'via in-page click: {click_error}'
-        )
-    return (
-        'relationship_link_not_found',
-        f'Could not find {kind} link on @{normalized_target}',
-    )
-
-
-def _wait_for_relationship_ui(
-    compat,
-    page: Any,
-    normalized_target: str,
-    kind: str,
-) -> Optional[Tuple[str, str]]:
-    try:
-        page.wait_for_function(
-            r"""
-            ({ targetUsername, kind }) => {
-              const normalizedPath = String(window.location.pathname || '')
-                .toLowerCase()
-                .replace(/\/+$/, '/')
-              if (normalizedPath.includes(`/${targetUsername}/${kind}/`)) {
-                return true
-              }
-              if (normalizedPath.endsWith(`/${kind}/`) || normalizedPath.includes(`/${kind}/`)) {
-                return true
-              }
-              return Boolean(document.querySelector('div[role="dialog"]'))
-            }
-            """,
-            arg={'targetUsername': normalized_target, 'kind': kind},
-            timeout=7000,
-        )
-        compat.log(f'scrape_relationships @{normalized_target}: {kind} UI opened')
-        return None
-    except Exception as exc:
-        return (
-            'relationship_open_failed',
-            f'Failed to open {kind} list for @{normalized_target}: {exc}',
-        )
-
-
-def scrape_relationship_chunk(
-    runner,
-    page: Any,
-    *,
-    target_username: str,
-    kind: str,
-    cursor: Optional[str],
-    chunk_limit: int,
-    max_pages: int,
-) -> Dict[str, Any]:
-    return page.evaluate(
-        RELATIONSHIP_CHUNK_SCRIPT,
-        {
-            'targetUsername': target_username,
-            'kind': kind,
-            'cursor': cursor,
-            'chunkLimit': chunk_limit,
-            'maxPages': max_pages,
-        },
-    )
 
 
 class ScrapeRelationshipsExecutor:
@@ -164,20 +44,19 @@ class ScrapeRelationshipsExecutor:
         profile_name: str,
         profile_data: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self.compat = compat_module()
         self.runner = runner
         self.node_id = node_id
         self.cfg = cfg
         self.page = page
         self.profile_name = profile_name
         self.profile_data = profile_data
-        self.targets = self.compat._normalize_string_list(cfg.get('targets'))
+        self.targets = _normalize_string_list(cfg.get('targets'))
         self.kind = 'following' if str(cfg.get('kind') or '').strip().lower() == 'following' else 'followers'
-        self.chunk_limit = max(1, min(5000, self.compat._parse_int(cfg.get('chunkLimit'), 200)))
-        self.max_pages_per_attempt = max(1, min(100, self.compat._parse_int(cfg.get('maxPagesPerAttempt'), 3)))
-        self.max_attempts = max(1, min(20, self.compat._parse_int(cfg.get('maxAttempts'), 4)))
-        self.retry_backoff_seconds = self.compat._parse_retry_backoff_seconds(cfg.get('retryBackoffSeconds'))
-        self.open_delay_seconds = max(0.0, min(60.0, self.compat._parse_float(cfg.get('openDelaySeconds'), 2.0)))
+        self.chunk_limit = max(1, min(5000, _parse_int(cfg.get('chunkLimit'), 200)))
+        self.max_pages_per_attempt = max(1, min(100, _parse_int(cfg.get('maxPagesPerAttempt'), 3)))
+        self.max_attempts = max(1, min(20, _parse_int(cfg.get('maxAttempts'), 4)))
+        self.retry_backoff_seconds = _parse_retry_backoff_seconds(cfg.get('retryBackoffSeconds'))
+        self.open_delay_seconds = max(0.0, min(60.0, _parse_float(cfg.get('openDelaySeconds'), 2.0)))
         self.state: Dict[str, Any] = {}
         self.artifact_storage_id = ''
         self.resume_snapshot_path = ''
@@ -195,12 +74,12 @@ class ScrapeRelationshipsExecutor:
 
     def run(self) -> str:
         if not self.targets:
-            self.compat.log('scrape_relationships requires at least one target username')
+            log('scrape_relationships requires at least one target username')
             return 'failure'
         self._load_state()
         self._prepare_profile_record()
         self._emit_initial_state()
-        if self.compat._profile_remaining_daily_scraping_capacity(self.profile_record) == 0:
+        if _profile_remaining_daily_scraping_capacity(self.profile_record) == 0:
             return self._fail_due_to_daily_limit()
 
         while self.runner.running and self.current_target_index < len(self.targets):
@@ -211,7 +90,7 @@ class ScrapeRelationshipsExecutor:
             if result is not None:
                 return result
 
-        self.compat.log(
+        log(
             f'scrape_relationships: node {self.node_id} finished with running={self.runner.running} '
             f'currentTargetIndex={self.current_target_index} targets={len(self.targets)}'
         )
@@ -220,10 +99,10 @@ class ScrapeRelationshipsExecutor:
     def _load_state(self) -> None:
         existing_state = self.runner._get_node_state(self.node_id)
         self.state = dict(existing_state) if isinstance(existing_state, dict) else {}
-        if self.state.get('kind') != self.kind or self.compat._normalize_string_list(self.state.get('targets')) != self.targets:
-            self.compat._delete_resume_snapshot(self.state.get('resumeSnapshotPath'))
+        if self.state.get('kind') != self.kind or _normalize_string_list(self.state.get('targets')) != self.targets:
+            _delete_resume_snapshot(self.state.get('resumeSnapshotPath'))
             self.state = {}
-        stale_index = max(0, self.compat._parse_int(self.state.get('currentTargetIndex'), 0))
+        stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
         should_reset = self.state.get('done') or str(self.state.get('status') or '').strip().lower() == 'completed'
         if should_reset or stale_index >= len(self.targets):
             self._reset_stale_state(stale_index)
@@ -232,8 +111,8 @@ class ScrapeRelationshipsExecutor:
     def _reset_stale_state(self, stale_index: int) -> None:
         if not self.state:
             return
-        self.compat._delete_resume_snapshot(self.state.get('resumeSnapshotPath'))
-        self.compat.log(
+        _delete_resume_snapshot(self.state.get('resumeSnapshotPath'))
+        log(
             f'scrape_relationships: clearing stale resume state for node {self.node_id} '
             f'(status={self.state.get("status")}, done={self.state.get("done")}, '
             f'currentTargetIndex={stale_index}, targets={len(self.targets)})'
@@ -244,23 +123,23 @@ class ScrapeRelationshipsExecutor:
         self.artifact_storage_id = str(self.state.get('artifactStorageId') or '').strip()
         self.resume_snapshot_path = str(self.state.get('resumeSnapshotPath') or '').strip()
         self.merged_users = self._load_merged_users()
-        self.current_target_index = max(0, self.compat._parse_int(self.state.get('currentTargetIndex'), 0))
+        self.current_target_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
         self.cursor = str(self.state.get('cursor') or '').strip() or None
-        self.attempt = max(0, self.compat._parse_int(self.state.get('attempt'), 0))
-        self.total_scraped = max(0, self.compat._parse_int(self.state.get('scraped'), len(self.merged_users)))
-        self.chunks_completed = max(0, self.compat._parse_int(self.state.get('chunksCompleted'), 0))
-        self.target_scraped = max(0, self.compat._parse_int(self.state.get('targetScraped'), 0))
+        self.attempt = max(0, _parse_int(self.state.get('attempt'), 0))
+        self.total_scraped = max(0, _parse_int(self.state.get('scraped'), len(self.merged_users)))
+        self.chunks_completed = max(0, _parse_int(self.state.get('chunksCompleted'), 0))
+        self.target_scraped = max(0, _parse_int(self.state.get('targetScraped'), 0))
         failed_targets = self.state.get('failedTargets')
         self.failed_targets = failed_targets if isinstance(failed_targets, list) else []
 
     def _load_merged_users(self) -> list[Any]:
         if self.artifact_storage_id:
-            users = self.compat._load_users_from_storage(self.artifact_storage_id)
+            users = _load_users_from_storage(self.artifact_storage_id)
         elif self.resume_snapshot_path:
-            users = self.compat._load_users_from_resume_snapshot(self.resume_snapshot_path)
+            users = _load_users_from_resume_snapshot(self.resume_snapshot_path)
         else:
             users = []
-        return self.compat._dedupe_scraped_users(users)
+        return _dedupe_scraped_users(users)
 
     def _prepare_profile_record(self) -> None:
         profile_record = dict(self.profile_data) if isinstance(self.profile_data, dict) else {}
@@ -292,7 +171,7 @@ class ScrapeRelationshipsExecutor:
             resumeSnapshotPath=self.resume_snapshot_path or None,
             updatedAt=int(time.time() * 1000),
         )
-        self.compat.log(
+        log(
             f'scrape_relationships: starting node {self.node_id} kind={self.kind} '
             f'targets={len(self.targets)} chunkLimit={self.chunk_limit} maxPagesPerAttempt={self.max_pages_per_attempt} '
             f'maxAttempts={self.max_attempts} resumeIndex={self.current_target_index} '
@@ -300,8 +179,8 @@ class ScrapeRelationshipsExecutor:
         )
 
     def _fail_due_to_daily_limit(self) -> str:
-        limit = self.compat._profile_daily_scraping_limit(self.profile_record)
-        used = self.compat._profile_daily_scraping_used(self.profile_record)
+        limit = _profile_daily_scraping_limit(self.profile_record)
+        used = _profile_daily_scraping_used(self.profile_record)
         if limit is None:
             return 'failure'
         self._persist_resume_snapshot_if_needed()
@@ -339,16 +218,16 @@ class ScrapeRelationshipsExecutor:
             resumeSnapshotPath=self.resume_snapshot_path or None,
             updatedAt=int(time.time() * 1000),
         )
-        self.compat.log(message)
+        log(message)
         return 'failure'
 
     def _persist_resume_snapshot_if_needed(self) -> None:
         if not self.merged_users or self.artifact_storage_id or self.resume_snapshot_path:
             return
         try:
-            self.resume_snapshot_path = self.compat._store_resume_snapshot(
-                self.compat._resume_snapshot_path(self.runner.workflow_id, self.node_id),
-                self.compat._build_scrape_export_payload(
+            self.resume_snapshot_path = _store_resume_snapshot(
+                _resume_snapshot_path(self.runner.workflow_id, self.node_id),
+                _build_scrape_export_payload(
                     self.runner.workflow_id,
                     self.node_id,
                     self.profile_name,
@@ -377,7 +256,7 @@ class ScrapeRelationshipsExecutor:
         try:
             self._open_target_profile(target_username)
         except Exception as exc:
-            self.compat.log(f'Ошибка открытия @{target_username}: {exc}')
+            log(f'Error opening @{target_username}: {exc}')
             return ('profile_open_failed', str(exc))
         relationship_error = self.runner._open_relationship_view(
             self.page,
@@ -390,7 +269,7 @@ class ScrapeRelationshipsExecutor:
         return relationship_error
 
     def _open_target_profile(self, target_username: str) -> None:
-        self.compat.log(
+        log(
             f'scrape_relationships @{target_username}: target '
             f'{self.current_target_index + 1}/{len(self.targets)} open profile start'
         )
@@ -401,7 +280,7 @@ class ScrapeRelationshipsExecutor:
         )
         if self.open_delay_seconds > 0:
             self.page.wait_for_timeout(int(self.open_delay_seconds * 1000))
-        self.compat.log(
+        log(
             f'scrape_relationships @{target_username}: profile opened '
             f'(delay={self.open_delay_seconds:.1f}s)'
         )
@@ -411,7 +290,7 @@ class ScrapeRelationshipsExecutor:
             error_code, error_message = relationship_error
             return self._build_error_chunk(error_code, error_message), 0
         chunk_started_at = time.time()
-        remaining_capacity = self.compat._profile_remaining_daily_scraping_capacity(self.profile_record)
+        remaining_capacity = _profile_remaining_daily_scraping_capacity(self.profile_record)
         if remaining_capacity == 0:
             return {'outcome': 'daily_limit'}, 0
         effective_chunk_limit = max(1, min(self.chunk_limit, remaining_capacity)) if remaining_capacity is not None else self.chunk_limit
@@ -498,7 +377,7 @@ class ScrapeRelationshipsExecutor:
             cached_profile = self.runner._get_cached_profile(self.profile_name)
             if isinstance(cached_profile, dict):
                 self.profile_record = dict(cached_profile)
-        self.merged_users = self.compat._dedupe_scraped_users(self.merged_users + chunk_users)
+        self.merged_users = _dedupe_scraped_users(self.merged_users + chunk_users)
         self.total_scraped += len(chunk_users)
         self.chunks_completed += 1
         self.cursor = next_cursor
@@ -518,7 +397,7 @@ class ScrapeRelationshipsExecutor:
         label = 'chunk saved' if has_more else 'final chunk'
         total_value = next_target_scraped
         suffix = ' nextCursor=yes' if has_more else ''
-        self.compat.log(
+        log(
             f'scrape_relationships @{target_username}: {label} '
             f'rows={len(chunk_users)} total={total_value}/{reported_total} '
             f"deduped={len(self.merged_users)} pages={chunk_debug.get('pagesFetched') or '-'} "
@@ -568,9 +447,9 @@ class ScrapeRelationshipsExecutor:
     def _store_resume_snapshot(self) -> None:
         self.artifact_storage_id = ''
         try:
-            self.resume_snapshot_path = self.compat._store_resume_snapshot(
-                self.compat._resume_snapshot_path(self.runner.workflow_id, self.node_id),
-                self.compat._build_scrape_export_payload(
+            self.resume_snapshot_path = _store_resume_snapshot(
+                _resume_snapshot_path(self.runner.workflow_id, self.node_id),
+                _build_scrape_export_payload(
                     self.runner.workflow_id,
                     self.node_id,
                     self.profile_name,
@@ -599,16 +478,16 @@ class ScrapeRelationshipsExecutor:
         if self.current_target_index < len(self.targets):
             self._store_resume_snapshot()
         else:
-            self.compat._delete_resume_snapshot(self.resume_snapshot_path)
+            _delete_resume_snapshot(self.resume_snapshot_path)
             self.resume_snapshot_path = ''
-        self.compat.log(
+        log(
             f'scrape_relationships @{target_username}: target completed '
             f'(totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
 
     def _complete_node(self) -> str:
         try:
-            artifact_payload = self.compat._build_scrape_export_payload(
+            artifact_payload = _build_scrape_export_payload(
                 self.runner.workflow_id,
                 self.node_id,
                 self.profile_name,
@@ -616,7 +495,7 @@ class ScrapeRelationshipsExecutor:
                 self.targets,
                 self.merged_users,
             )
-            self.artifact_storage_id = self.compat._store_artifact_payload(artifact_payload)
+            self.artifact_storage_id = _store_artifact_payload(artifact_payload)
         except Exception as exc:
             return self._fail_node_completion('artifact_storage_failed', f'Failed to store scrape artifact: {exc}')
         artifact_payload = {
@@ -663,7 +542,7 @@ class ScrapeRelationshipsExecutor:
             resumeSnapshotPath=None,
             updatedAt=int(time.time() * 1000),
         )
-        self.compat.log(
+        log(
             f'scrape_relationships: node {self.node_id} completed '
             f'(targets={self.current_target_index}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
@@ -704,7 +583,7 @@ class ScrapeRelationshipsExecutor:
             resumeSnapshotPath=self.resume_snapshot_path or None,
             updatedAt=int(time.time() * 1000),
         )
-        self.compat.log(
+        log(
             f'scrape_relationships: node {self.node_id} failed during completion '
             f'({error_code}: {error_message})'
         )
@@ -723,9 +602,9 @@ class ScrapeRelationshipsExecutor:
         last_error: Optional[str] = None
         for attempt_index in range(attempts):
             try:
-                artifact_row = self.compat._convex_post_json('/api/workflow-artifacts/upsert', payload)
+                artifact_row = _convex_post_json('/api/workflow-artifacts/upsert', payload)
                 if attempt_index:
-                    self.compat.log(
+                    log(
                         f'scrape_relationships: artifact upsert recovered for node {self.node_id} '
                         f'on attempt {attempt_index + 1}/{attempts}'
                     )
@@ -739,7 +618,7 @@ class ScrapeRelationshipsExecutor:
                     attempts,
                     log_payload,
                 )
-                self.compat.log(
+                log(
                     f'scrape_relationships: artifact upsert failed for node {self.node_id} '
                     f'attempt {attempt_index + 1}/{attempts} '
                     f'(workflowId={log_payload["workflowId"]}, nodeId={log_payload["nodeId"]}, '
@@ -748,12 +627,12 @@ class ScrapeRelationshipsExecutor:
                 if attempt_index >= attempts - 1:
                     break
                 delay_seconds = ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS[attempt_index]
-                self.compat.log(
+                log(
                     f'scrape_relationships: retrying artifact upsert for node {self.node_id} '
                     f'in {delay_seconds}s'
                 )
                 time.sleep(delay_seconds)
-        self.compat.log(
+        log(
             f'scrape_relationships: artifact upsert exhausted retries for node {self.node_id}; '
             f'continuing with local artifact storage only '
             f'(workflowId={log_payload["workflowId"]}, nodeId={log_payload["nodeId"]}, '
@@ -774,7 +653,7 @@ class ScrapeRelationshipsExecutor:
         self.attempt += 1
         self.relationship_view_ready = False
         delay_seconds = self.retry_backoff_seconds[min(self.attempt - 1, len(self.retry_backoff_seconds) - 1)]
-        self.compat.log(
+        log(
             f'scrape_relationships @{target_username}: scheduling retry '
             f'{self.attempt}/{self.max_attempts} in {delay_seconds}s '
             f'(errorCode={error_code or "-"}, message={error_message or "-"})'
@@ -852,8 +731,8 @@ class ScrapeRelationshipsExecutor:
             resumeSnapshotPath=self.resume_snapshot_path or None,
             updatedAt=int(time.time() * 1000),
         )
-        self.compat.log(
-            f"Ошибка scrape_relationships @{target_username}: "
+        log(
+            f"Error scrape_relationships @{target_username}: "
             f"{error_code or outcome or 'unknown_error'} {error_message or ''}".strip()
         )
         return 'failure'

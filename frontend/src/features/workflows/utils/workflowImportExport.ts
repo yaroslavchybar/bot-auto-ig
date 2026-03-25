@@ -104,19 +104,13 @@ export function buildWorkflowExportEnvelope(workflow: {
   }
 }
 
-export function validateWorkflowImport(
-  input: ValidateWorkflowImportInput,
-): ValidateWorkflowImportResult {
-  const {
-    fileName,
-    fileSizeBytes,
-    rawText,
-    existingWorkflowNames,
-    existingListIds,
-    resolveActivityById,
-    now = new Date(),
-  } = input
+/* ── Envelope validation helpers ── */
 
+function parseAndValidateEnvelope(
+  fileName: string,
+  fileSizeBytes: number,
+  rawText: string,
+): { parsed: JsonRecord; workflowRaw: JsonRecord } {
   if (!fileName.toLowerCase().endsWith('.json')) {
     throw new Error('Import accepts only .json files')
   }
@@ -178,15 +172,23 @@ export function validateWorkflowImport(
     throw new Error('workflow.edges must be an array')
   }
 
-  const nodes = workflowRaw.nodes as unknown[]
-  const edges = workflowRaw.edges as unknown[]
+  return { parsed, workflowRaw }
+}
 
+/* ── Node validation ── */
+
+function validateNodes(
+  nodes: unknown[],
+  existingListIds: string[],
+  resolveActivityById: (activityId: string) => unknown,
+): {
+  nodeIds: Set<string>
+  hasStartNode: boolean
+  unknownActivityIds: Set<string>
+  missingListIds: Set<string>
+} {
   if (nodes.length > WORKFLOW_IMPORT_MAX_NODES) {
     throw new Error(`workflow.nodes exceeds cap (${WORKFLOW_IMPORT_MAX_NODES})`)
-  }
-
-  if (edges.length > WORKFLOW_IMPORT_MAX_EDGES) {
-    throw new Error(`workflow.edges exceeds cap (${WORKFLOW_IMPORT_MAX_EDGES})`)
   }
 
   const nodeIds = new Set<string>()
@@ -230,32 +232,59 @@ export function validateWorkflowImport(
     }
 
     if (activityId) {
-      if (!resolveActivityById(activityId)) {
-        unknownActivityIds.add(activityId)
-      }
-
-      if (activityId === 'select_list') {
-        const config = isRecord(nodeData?.config) ? nodeData.config : null
-        const sourceLists = Array.isArray(config?.sourceLists)
-          ? config.sourceLists
-          : []
-
-        sourceLists.forEach((listId) => {
-          if (typeof listId !== 'string') return
-          const cleanedId = listId.trim()
-          if (!cleanedId) return
-          if (!availableListIds.has(cleanedId)) {
-            missingListIds.add(cleanedId)
-          }
-        })
-      }
+      validateNodeActivity(
+        activityId,
+        nodeData,
+        availableListIds,
+        resolveActivityById,
+        unknownActivityIds,
+        missingListIds,
+      )
     }
   })
 
-  if (!hasStartNode) {
-    throw new Error(
-      'workflow must include at least one start node (type "start" or id "start_node")',
-    )
+  return { nodeIds, hasStartNode, unknownActivityIds, missingListIds }
+}
+
+/* ── Validate a single node's activity references ── */
+
+function validateNodeActivity(
+  activityId: string,
+  nodeData: JsonRecord | null,
+  availableListIds: Set<string>,
+  resolveActivityById: (activityId: string) => unknown,
+  unknownActivityIds: Set<string>,
+  missingListIds: Set<string>,
+) {
+  if (!resolveActivityById(activityId)) {
+    unknownActivityIds.add(activityId)
+  }
+
+  if (activityId === 'select_list') {
+    const config = isRecord(nodeData?.config) ? nodeData.config : null
+    const sourceLists = Array.isArray(config?.sourceLists)
+      ? config.sourceLists
+      : []
+
+    sourceLists.forEach((listId) => {
+      if (typeof listId !== 'string') return
+      const cleanedId = listId.trim()
+      if (!cleanedId) return
+      if (!availableListIds.has(cleanedId)) {
+        missingListIds.add(cleanedId)
+      }
+    })
+  }
+}
+
+/* ── Edge validation ── */
+
+function validateEdges(
+  edges: unknown[],
+  nodeIds: Set<string>,
+): void {
+  if (edges.length > WORKFLOW_IMPORT_MAX_EDGES) {
+    throw new Error(`workflow.edges exceeds cap (${WORKFLOW_IMPORT_MAX_EDGES})`)
   }
 
   const missingEdgeEndpoints = new Set<string>()
@@ -282,6 +311,42 @@ export function validateWorkflowImport(
       `Edge endpoints reference missing node IDs: ${Array.from(missingEdgeEndpoints).sort().join(', ')}`,
     )
   }
+}
+
+/* ── Main validation function ── */
+
+export function validateWorkflowImport(
+  input: ValidateWorkflowImportInput,
+): ValidateWorkflowImportResult {
+  const {
+    fileName,
+    fileSizeBytes,
+    rawText,
+    existingWorkflowNames,
+    existingListIds,
+    resolveActivityById,
+    now = new Date(),
+  } = input
+
+  const { workflowRaw } = parseAndValidateEnvelope(
+    fileName,
+    fileSizeBytes,
+    rawText,
+  )
+
+  const nodes = workflowRaw.nodes as unknown[]
+  const edges = workflowRaw.edges as unknown[]
+
+  const { nodeIds, hasStartNode, unknownActivityIds, missingListIds } =
+    validateNodes(nodes, existingListIds, resolveActivityById)
+
+  if (!hasStartNode) {
+    throw new Error(
+      'workflow must include at least one start node (type "start" or id "start_node")',
+    )
+  }
+
+  validateEdges(edges, nodeIds)
 
   if (unknownActivityIds.size > 0) {
     throw new Error(
@@ -289,6 +354,7 @@ export function validateWorkflowImport(
     )
   }
 
+  const rawName = (workflowRaw.name as string).trim()
   const workflowName = getImportedWorkflowName(
     rawName,
     existingWorkflowNames,
@@ -321,5 +387,3 @@ export function validateWorkflowImport(
     warnings,
   }
 }
-
-

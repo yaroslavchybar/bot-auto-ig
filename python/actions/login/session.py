@@ -1,9 +1,11 @@
 import argparse
 import json
+import logging
 import sys
 import traceback
 
-from python.database.profiles import ProfilesClient
+from python.core.logging import setup_logging
+from python.core.clients import ProfilesClient
 
 from python.actions.login.runtime import (
     ALT_SELECTORS,
@@ -15,8 +17,11 @@ from python.actions.login.runtime import (
 )
 
 
+_logger = logging.getLogger(__name__)
+
+
 def _log_stdout(message: str) -> None:
-    print(message, flush=True)
+    _logger.info(message)
 
 
 def _read_credentials_from_stdin() -> dict:
@@ -37,6 +42,7 @@ def main() -> int:
     parser.add_argument('--profile', required=True, help='Profile name from database')
     parser.add_argument('--headless', action='store_true', help='Run browser in headless mode')
     args = parser.parse_args()
+    setup_logging()
     try:
         creds = _read_credentials_from_stdin()
         username = str(creds.get('username') or '').strip()
@@ -61,8 +67,7 @@ def main() -> int:
         )
         return 0 if success else 1
     except Exception as exc:
-        print(f'Login script error: {exc}', file=sys.stderr, flush=True)
-        traceback.print_exc()
+        _logger.error('Login script error: %s', exc, exc_info=True)
         return 1
 
 

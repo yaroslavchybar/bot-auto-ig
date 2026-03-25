@@ -37,14 +37,14 @@ def follow_usernames(
     should_stop = should_stop or (lambda: False)
     clean_usernames_list = clean_usernames(usernames)
     if not clean_usernames_list:
-        log('Нет валидных юзернеймов для подписки.')
+        log('No valid usernames for follow.')
         return
     context = _follow_context(should_stop, following_limit, on_success, on_skip, interactions_config, delay_range)
     if page:
-        log(f'Использую существующую сессию для подписки ({len(clean_usernames_list)} чел.)')
+        log(f'Using existing session for follow ({len(clean_usernames_list)} users)')
         _run_follow_logic(page, clean_usernames_list, log, context)
         return
-    log(f'Стартую Camoufox для профиля {profile_name}')
+    log(f'Starting Camoufox for profile {profile_name}')
     with create_browser_context(
         profile_name=profile_name,
         proxy_string=proxy_string,
@@ -53,7 +53,7 @@ def follow_usernames(
         try:
             _run_follow_logic(session_page, clean_usernames_list, log, context)
         finally:
-            log('Сессия завершена.')
+            log('Session completed.')
 
 
 def _follow_context(
@@ -85,7 +85,7 @@ def _run_follow_logic(current_page, usernames: List[str], log, context: FollowRu
         return
     for username in usernames:
         if context['should_stop']():
-            log('Остановка по запросу пользователя.')
+            log('Stopping at user request.')
             break
         _follow_single_username(current_page, username, log, context)
         random_delay(*context['delay_range'])
@@ -98,7 +98,7 @@ def _ensure_instagram_open(current_page, log) -> bool:
         current_page.goto('https://www.instagram.com', timeout=15000)
         return True
     except Exception:
-        log('Не удалось открыть Instagram перед началом подписки.')
+        log('Failed to open Instagram before starting follow.')
         return False
 
 
@@ -109,16 +109,16 @@ def _follow_single_username(current_page, username: str, log, context: FollowRun
             return
         _run_pre_follow_interactions(current_page, log, context)
         if context['should_stop']():
-            log('Остановка по запросу пользователя.')
+            log('Stopping at user request.')
             return
         _complete_follow_action(current_page, username, log, context)
     except Exception as exc:
-        log(f'Ошибка при обработке @{username}: {exc}')
+        log(f'Error processing @{username}: {exc}')
         random_delay(2, 5)
 
 
 def _open_profile(current_page, username: str, log) -> None:
-    log(f'Открываю @{username}')
+    log(f'Opening @{username}')
     opened = open_profile_via_search_first(current_page, username, log)
     if not opened:
         current_page.goto(
@@ -138,7 +138,7 @@ def _skip_if_following_limit(current_page, username: str, log, context: FollowRu
     try:
         callback(username)
     except Exception as callback_err:
-        log(f'Не удалось обновить статус пропуска @{username}: {callback_err}')
+        log(f'Failed to update skip status for @{username}: {callback_err}')
     return True
 
 
@@ -156,18 +156,18 @@ def _run_pre_follow_interactions(current_page, log, context: FollowRuntimeContex
 def _complete_follow_action(current_page, username: str, log, context: FollowRuntimeContext) -> None:
     state, button = find_follow_control(current_page)
     if state in ('requested', 'following'):
-        log(f'Уже подписаны/запрошено для @{username} ({state}).')
+        log(f'Already following/requested for @{username} ({state}).')
         call_on_success(context['on_success'], username, log)
         return
     if not button:
-        log(f'Не нашел кнопку Follow для @{username}')
+        log(f'Follow button not found for @{username}')
         return
-    log(f'Нажимаю Follow на @{username}...')
+    log(f'Clicking Follow on @{username}...')
     button.click()
     random_delay(1, 2)
     state_after = wait_for_follow_state(current_page, timeout_ms=8000)
     if state_after in ('requested', 'following'):
-        log(f'Успешная подписка на @{username}')
+        log(f'Successfully followed @{username}')
         call_on_success(context['on_success'], username, log)
         return
-    log(f'Статус не изменился после клика для @{username} ({state_after})')
+    log(f'Status did not change after click for @{username} ({state_after})')

@@ -37,7 +37,10 @@ def _story_control_xpath(label: str) -> str:
 
 def find_story_nav(page, label: str):
     try:
-        return page.query_selector(f'xpath={_story_control_xpath(label)}')
+        locator = page.locator(f'xpath={_story_control_xpath(label)}')
+        if locator.count() > 0:
+            return locator.first
+        return None
     except Exception:
         return None
 

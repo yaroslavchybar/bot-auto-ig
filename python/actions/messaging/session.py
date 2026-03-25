@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
 from python.browser.setup import create_browser_context
-from python.database.accounts import InstagramAccountsClient
+from python.core.clients import InstagramAccountsClient
 
 from python.actions.messaging.flow import run_messaging_flow
 
@@ -27,7 +27,7 @@ def send_messages(
     should_stop = should_stop or (lambda: False)
     
     if not targets:
-        log("Нет пользователей для рассылки сообщений.")
+        log("No users to send messages to.")
         return
     client = InstagramAccountsClient()
 
@@ -43,11 +43,11 @@ def send_messages(
         )
 
     if page:
-        log(f"Использую существующую сессию для рассылки сообщений.")
+        log(f"Using existing session for messaging.")
         _run_messaging_logic(page)
         return
 
-    log(f"[Messages] Запуск браузера для профиля: {profile_name}")
+    log(f"[Messages] Starting browser for profile: {profile_name}")
 
     with create_browser_context(
         profile_name=profile_name,

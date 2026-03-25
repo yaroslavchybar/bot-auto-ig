@@ -1,0 +1,544 @@
+/**
+ * Convex client for TypeScript using HTTP API.
+ */
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load .env from project root
+dotenv.config({ quiet: true });
+dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
+
+const convexCloudUrl = process.env.CONVEX_URL;
+// Use INTERNAL_API_KEY to call Convex HTTP endpoints (same key as CONVEX_API_KEY in Convex Dashboard)
+const convexApiKey = process.env.INTERNAL_API_KEY?.trim() || '';
+
+if (!convexCloudUrl) {
+    throw new Error('Convex config missing. Set CONVEX_URL in environment.');
+}
+
+if (!convexApiKey) {
+    throw new Error('Convex HTTP auth missing. Set INTERNAL_API_KEY in environment.');
+}
+
+// HTTP Actions are served at .convex.site, not .convex.cloud
+// Convert the URL if needed
+const convexUrl = convexCloudUrl.replace('.convex.cloud', '.convex.site');
+
+// Database types
+export type DbListRow = { id: string; name: string };
+
+export type DbProfileRow = {
+    profile_id: string;
+    created_at?: string;
+    name: string;
+    proxy?: string | null;
+    proxy_type?: string | null;
+    status?: string | null;
+    mode?: string | null;
+    session_id?: string | null;
+    Using: boolean;
+    test_ip: boolean;
+    fingerprint_seed?: string | null;
+    fingerprint_os?: string | null;
+    cookies_json?: string | null;
+    list_ids?: string[] | null;
+    last_opened_at?: string | null;
+    login: boolean;
+    daily_scraping_limit?: number | null;
+    daily_scraping_used?: number | null;
+    scrape_lease_owner?: string | null;
+    scrape_lease_expires_at?: string | null;
+    scrape_health?: number | null;
+    last_scrape_failure_at?: string | null;
+};
+
+export type ScrapingTaskStats = {
+    scraped: number;
+    deduped: number;
+    chunksCompleted: number;
+    targetsCompleted: number;
+};
+
+export type ProfileInput = {
+    name: string;
+    proxy?: string;
+    proxy_type?: string;
+    fingerprint_seed?: string;
+    fingerprint_os?: string;
+    cookies_json?: string;
+    test_ip?: boolean;
+    daily_scraping_limit?: number | null;
+};
+
+// ---------------------------------------------------------------------------
+// Retry configuration
+// ---------------------------------------------------------------------------
+
+export interface ConvexRetryConfig {
+    /** Maximum number of retry attempts (default: 3) */
+    maxRetries: number
+    /** Base delay in milliseconds for exponential backoff (default: 1000) */
+    baseDelay: number
+}
+
+const DEFAULT_RETRY_CONFIG: ConvexRetryConfig = {
+    maxRetries: 3,
+    baseDelay: 1000,
+}
+
+let retryConfig: ConvexRetryConfig = { ...DEFAULT_RETRY_CONFIG }
+
+/**
+ * Override default retry configuration.
+ * Useful for testing or environment-specific tuning.
+ */
+export function setRetryConfig(config: Partial<ConvexRetryConfig>): void {
+    retryConfig = { ...DEFAULT_RETRY_CONFIG, ...config }
+}
+
+/**
+ * Known network error codes from Node.js / libuv that indicate a
+ * transient connectivity issue worth retrying.
+ */
+const RETRYABLE_ERROR_CODES = new Set([
+    'ECONNREFUSED',
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+    'EPIPE',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'UND_ERR_CONNECT_TIMEOUT',
+])
+
+/**
+ * Determine whether a failed request should be retried.
+ *
+ * Retryable conditions:
+ *   - HTTP 429 (Too Many Requests)
+ *   - HTTP 5xx (server errors)
+ *   - Network / fetch errors (TypeError from fetch, known error codes)
+ *
+ * Non-retryable:
+ *   - HTTP 4xx (client errors) except 429
+ *   - JSON parse failures on successful responses
+ *   - Any other unknown errors (safe default)
+ */
+function isRetryable(error: unknown): boolean {
+    if (error instanceof ConvexHttpError) {
+        const status = error.statusCode
+        return status === 429 || status >= 500
+    }
+
+    // TypeError is thrown by fetch() on network failures
+    if (error instanceof TypeError) {
+        return true
+    }
+
+    // Node.js errors with a known network error code
+    if (error && typeof error === 'object' && 'code' in error) {
+        const code = (error as { code?: string }).code
+        if (typeof code === 'string' && RETRYABLE_ERROR_CODES.has(code)) {
+            return true
+        }
+    }
+
+    // Unknown errors — do NOT retry (safe default)
+    return false
+}
+
+/**
+ * Compute the delay before the next retry attempt.
+ * Formula: baseDelay × 2^attempt + random jitter (0–baseDelay)
+ */
+function computeBackoff(attempt: number, baseDelay: number): number {
+    const exponential = baseDelay * Math.pow(2, attempt)
+    const jitter = Math.random() * baseDelay
+    return exponential + jitter
+}
+
+/**
+ * Typed error carrying the HTTP status from Convex.
+ */
+export class ConvexHttpError extends Error {
+    public readonly statusCode: number
+    constructor(statusCode: number, body: string) {
+        super(`Convex HTTP error ${statusCode}: ${body}`)
+        this.name = 'ConvexHttpError'
+        this.statusCode = statusCode
+        Object.setPrototypeOf(this, new.target.prototype)
+    }
+}
+
+// HTTP client for Convex with exponential backoff retry
+async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any } = {}): Promise<T> {
+    const url = `${convexUrl}${endpoint}`;
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+    };
+    headers['Authorization'] = `Bearer ${convexApiKey}`;
+
+    const { maxRetries, baseDelay } = retryConfig
+    let lastError: unknown
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        let resp: Response
+        try {
+            resp = await fetch(url, {
+                method: options.method || 'GET',
+                headers,
+                body: options.body ? JSON.stringify(options.body) : undefined,
+            });
+            if (!resp.ok) {
+                const text = await resp.text();
+                throw new ConvexHttpError(resp.status, text);
+            }
+        } catch (err) {
+            lastError = err
+
+            const canRetry = attempt < maxRetries && isRetryable(err)
+            if (!canRetry) {
+                throw err
+            }
+
+            const delay = computeBackoff(attempt, baseDelay)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+        }
+
+        // Parse JSON outside the retry try/catch — a parse error on a
+        // 2xx response is a data issue, not a transient network failure.
+        return resp.json() as Promise<T>;
+    }
+
+    // Unreachable in practice, but satisfies the compiler
+    throw lastError
+}
+
+// ==================== LISTS ====================
+
+export async function listsList(): Promise<DbListRow[]> {
+    return convexFetch<DbListRow[]>('/api/lists');
+}
+
+export async function listsCreate(name: string): Promise<DbListRow | null> {
+    const cleaned = String(name || '').trim();
+    if (!cleaned) throw new Error('name is required');
+    return convexFetch<DbListRow | null>('/api/lists', { method: 'POST', body: { name: cleaned } });
+}
+
+export async function listsUpdate(id: string, name: string): Promise<DbListRow | null> {
+    const listId = String(id || '').trim();
+    const cleaned = String(name || '').trim();
+    if (!listId || !cleaned) throw new Error('id and name are required');
+    return convexFetch<DbListRow | null>('/api/lists/update', { method: 'POST', body: { id: listId, name: cleaned } });
+}
+
+export async function listsDelete(id: string): Promise<true> {
+    const listId = String(id || '').trim();
+    if (!listId) throw new Error('id is required');
+    await convexFetch<any>('/api/lists/delete', { method: 'POST', body: { id: listId } });
+    return true;
+}
+
+// ==================== PROFILES ====================
+
+export async function profilesList(): Promise<DbProfileRow[]> {
+    return convexFetch<DbProfileRow[]>('/api/profiles');
+}
+
+export async function profilesGetById(profileId: string): Promise<DbProfileRow | null> {
+    const cleaned = String(profileId || '').trim();
+    if (!cleaned) throw new Error('profile_id is required');
+    return convexFetch<DbProfileRow | null>(`/api/profiles/by-id?profileId=${encodeURIComponent(cleaned)}`);
+}
+
+export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRow | null> {
+    const name = String(profile?.name || '').trim();
+    if (!name) throw new Error('name is required');
+    return convexFetch<DbProfileRow | null>('/api/profiles', {
+        method: 'POST',
+        body: {
+            name,
+            proxy: profile.proxy,
+            proxyType: profile.proxy_type,
+            fingerprintSeed: profile.fingerprint_seed,
+            fingerprintOs: profile.fingerprint_os,
+            cookiesJson: profile.cookies_json,
+            testIp: profile.test_ip,
+            dailyScrapingLimit: profile.daily_scraping_limit,
+        },
+    });
+}
+
+export async function profilesUpdateByName(oldName: string, profile: ProfileInput): Promise<DbProfileRow | null> {
+    const oldClean = String(oldName || '').trim();
+    if (!oldClean) throw new Error('old_name is required');
+    const name = String(profile?.name || '').trim();
+    if (!name) throw new Error('name is required');
+    return convexFetch<DbProfileRow | null>('/api/profiles/update-by-name', {
+        method: 'POST',
+        body: {
+            oldName: oldClean,
+            name,
+            proxy: profile.proxy,
+            proxyType: profile.proxy_type,
+            fingerprintSeed: profile.fingerprint_seed,
+            fingerprintOs: profile.fingerprint_os,
+            cookiesJson: profile.cookies_json,
+            testIp: profile.test_ip,
+            dailyScrapingLimit: profile.daily_scraping_limit,
+        },
+    });
+}
+
+export async function profilesDeleteByName(name: string): Promise<true> {
+    const cleaned = String(name || '').trim();
+    if (!cleaned) throw new Error('name is required');
+    await convexFetch<any>('/api/profiles/delete-by-name', { method: 'POST', body: { name: cleaned } });
+    return true;
+}
+
+export async function profilesSyncStatus(name: string, status: string, using: boolean = false): Promise<true> {
+    const cleanedName = String(name || '').trim();
+    const cleanedStatus = String(status || '').trim();
+    if (!cleanedName || !cleanedStatus) throw new Error('name and status are required');
+    await convexFetch<any>('/api/profiles/sync-status', { method: 'POST', body: { name: cleanedName, status: cleanedStatus, using } });
+    return true;
+}
+
+export async function profilesSetLoginTrue(name: string): Promise<true> {
+    const cleanedName = String(name || '').trim();
+    if (!cleanedName) throw new Error('name is required');
+    await convexFetch<any>('/api/profiles/set-login-true', { method: 'POST', body: { name: cleanedName } });
+    return true;
+}
+
+export async function profilesListAssigned(listId: string): Promise<Array<Pick<DbProfileRow, 'profile_id' | 'name'>>> {
+    const cleaned = String(listId || '').trim();
+    if (!cleaned) throw new Error('list_id is required');
+    return convexFetch<Array<Pick<DbProfileRow, 'profile_id' | 'name'>>>(`/api/profiles/assigned?list_id=${encodeURIComponent(cleaned)}`);
+}
+
+export async function profilesListUnassigned(): Promise<Array<Pick<DbProfileRow, 'profile_id' | 'name'>>> {
+    return convexFetch<Array<Pick<DbProfileRow, 'profile_id' | 'name'>>>('/api/profiles/unassigned');
+}
+
+export async function profilesBulkSetListId(profileIds: string[], listId: string | null): Promise<true> {
+    if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+    if (typeof listId === 'undefined') throw new Error('list_id is required (use null to unassign)');
+    const cleanedIds = profileIds.map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanedIds.length === 0) return true;
+    await convexFetch<any>('/api/profiles/bulk-set-list-id', {
+        method: 'POST',
+        body: { profileIds: cleanedIds, listId },
+    });
+    return true;
+}
+
+export async function profilesBulkAddToList(profileIds: string[], listId: string): Promise<true> {
+    if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+    const cleanedListId = String(listId || '').trim();
+    if (!cleanedListId) throw new Error('list_id is required');
+    const cleanedIds = profileIds.map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanedIds.length === 0) return true;
+    await convexFetch<any>('/api/profiles/bulk-add-to-list', {
+        method: 'POST',
+        body: { profileIds: cleanedIds, listId: cleanedListId },
+    });
+    return true;
+}
+
+export async function profilesBulkRemoveFromList(profileIds: string[], listId: string): Promise<true> {
+    if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+    const cleanedListId = String(listId || '').trim();
+    if (!cleanedListId) throw new Error('list_id is required');
+    const cleanedIds = profileIds.map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanedIds.length === 0) return true;
+    await convexFetch<any>('/api/profiles/bulk-remove-from-list', {
+        method: 'POST',
+        body: { profileIds: cleanedIds, listId: cleanedListId },
+    });
+    return true;
+}
+
+export async function profilesClearBusyForLists(listIds: string[]): Promise<true> {
+    if (!Array.isArray(listIds) || listIds.length === 0) return true;
+    const cleanedListIds = listIds.map(v => String(v || '').trim()).filter(Boolean);
+    if (cleanedListIds.length === 0) return true;
+    await convexFetch<any>('/api/profiles/clear-busy-for-lists', { method: 'POST', body: { listIds: cleanedListIds } });
+    return true;
+}
+
+export async function profilesIncrementDailyScrapingUsed(name: string, amount: number): Promise<true> {
+    const cleanedName = String(name || '').trim();
+    if (!cleanedName) throw new Error('name is required');
+    const safeAmount = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
+    if (safeAmount === 0) return true;
+    await convexFetch<any>('/api/profiles/increment-daily-scraping-used', { method: 'POST', body: { name: cleanedName, amount: safeAmount } });
+    return true;
+}
+
+export async function profilesClaimScrapeLease(input: {
+    workerId: string;
+    leaseMs: number;
+    now?: number;
+    minHealth?: number;
+}): Promise<DbProfileRow | null> {
+    return convexFetch<DbProfileRow | null>('/api/profiles/claim-scrape-lease', {
+        method: 'POST',
+        body: input,
+    });
+}
+
+export async function profilesRefreshScrapeLease(input: {
+    profileId: string;
+    workerId: string;
+    leaseMs: number;
+    now?: number;
+}): Promise<DbProfileRow | null> {
+    return convexFetch<DbProfileRow | null>('/api/profiles/refresh-scrape-lease', {
+        method: 'POST',
+        body: input,
+    });
+}
+
+export async function profilesReleaseScrapeLease(input: {
+    profileId: string;
+    workerId?: string;
+}): Promise<true> {
+    await convexFetch<any>('/api/profiles/release-scrape-lease', {
+        method: 'POST',
+        body: input,
+    });
+    return true;
+}
+
+export async function profilesMarkScrapeSuccess(input: {
+    profileId: string;
+    workerId: string;
+    amount: number;
+    now?: number;
+}): Promise<DbProfileRow | null> {
+    return convexFetch<DbProfileRow | null>('/api/profiles/mark-scrape-success', {
+        method: 'POST',
+        body: input,
+    });
+}
+
+export async function profilesMarkScrapeFailure(input: {
+    profileId: string;
+    workerId: string;
+    now?: number;
+}): Promise<DbProfileRow | null> {
+    return convexFetch<DbProfileRow | null>('/api/profiles/mark-scrape-failure', {
+        method: 'POST',
+        body: input,
+    });
+}
+
+export async function profilesSweepExpiredScrapeLeases(now: number = Date.now()): Promise<{ released: number }> {
+    return convexFetch<{ released: number }>('/api/profiles/sweep-expired-scrape-leases', {
+        method: 'POST',
+        body: { now },
+    });
+}
+
+// ==================== MESSAGE TEMPLATES ====================
+
+export async function messageTemplatesGet(kind: string): Promise<string[]> {
+    const cleaned = String(kind || '').trim();
+    if (!cleaned) throw new Error('kind is required');
+    const result = await convexFetch<string[] | null>(`/api/message-templates?kind=${encodeURIComponent(cleaned)}`);
+    return Array.isArray(result) ? result : [];
+}
+
+export async function messageTemplatesUpsert(kind: string, texts: string[]): Promise<true> {
+    const cleanedKind = String(kind || '').trim();
+    if (!cleanedKind) throw new Error('kind is required');
+    if (!Array.isArray(texts)) throw new Error('texts must be an array');
+    const cleanedTexts = texts.map(t => String(t)).filter(t => t.trim());
+    await convexFetch<any>('/api/message-templates', { method: 'POST', body: { kind: cleanedKind, texts: cleanedTexts } });
+    return true;
+}
+
+// ==================== WORKFLOWS ====================
+
+export type DbWorkflowRow = Record<string, any> & { _id: string }
+
+export type DbWorkflowArtifactRow = Record<string, any> & {
+    _id: string
+    workflowId: string
+    workflowName: string
+    nodeId: string
+    nodeLabel?: string | null
+    name: string
+    kind: 'followers' | 'following'
+    targetUsername?: string | null
+    targets?: string[]
+    status?: string | null
+    imported?: boolean
+    sourceProfileName?: string | null
+    lastRunAt?: number | null
+    storageId?: string | null
+    manifestStorageId?: string | null
+    exportStorageId?: string | null
+    stats?: ScrapingTaskStats | null
+}
+
+export async function workflowsGetById(workflowId: string): Promise<DbWorkflowRow | null> {
+    const cleaned = String(workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowRow | null>(`/api/workflows/by-id?workflowId=${encodeURIComponent(cleaned)}`)
+}
+
+export async function workflowsStart(workflowId: string): Promise<DbWorkflowRow | null> {
+    const cleaned = String(workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowRow | null>('/api/workflows/start', { method: 'POST', body: { id: cleaned } })
+}
+
+export async function workflowsUpdateStatus(input: {
+    workflowId: string
+    status: string
+    currentNodeId?: string
+    nodeStates?: any
+    error?: string
+}): Promise<DbWorkflowRow | null> {
+    const cleaned = String(input?.workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowRow | null>('/api/workflows/update-status', {
+        method: 'POST',
+        body: {
+            id: cleaned,
+            status: input.status,
+            currentNodeId: input.currentNodeId,
+            nodeStates: input.nodeStates,
+            error: input.error,
+        },
+    })
+}
+
+export async function workflowArtifactsListByWorkflow(workflowId: string): Promise<DbWorkflowArtifactRow[]> {
+    const cleaned = String(workflowId || '').trim()
+    if (!cleaned) throw new Error('workflowId is required')
+    return convexFetch<DbWorkflowArtifactRow[]>(`/api/workflow-artifacts?workflowId=${encodeURIComponent(cleaned)}`)
+}
+
+export async function workflowArtifactsGetById(id: string): Promise<DbWorkflowArtifactRow | null> {
+    const cleaned = String(id || '').trim()
+    if (!cleaned) throw new Error('id is required')
+    return convexFetch<DbWorkflowArtifactRow | null>(`/api/workflow-artifacts/by-id?id=${encodeURIComponent(cleaned)}`)
+}
+
+export async function workflowArtifactsGetStorageUrl(storageId: string): Promise<string | null> {
+    const cleaned = String(storageId || '').trim()
+    if (!cleaned) throw new Error('storageId is required')
+    return convexFetch<string | null>(`/api/workflow-artifacts/storage-url?storageId=${encodeURIComponent(cleaned)}`)
+}

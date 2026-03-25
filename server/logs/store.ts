@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { LogEntry, LogLevel } from '../types/index.js';
+import { LogEntry, LogLevel } from '../shared/types.js';
 
 const MAX_LOG_ENTRIES = 1000;
 const MAX_LOG_LINES_PER_FILE = 1000;

@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import time
@@ -16,29 +17,31 @@ from .carousel import watch_carousel
 from .following import perform_follow
 from .likes import perform_like
 
+logger = logging.getLogger(__name__)
+
 _FEED_DEBUG_MOUSE = os.getenv('FEED_DEBUG_MOUSE', '1').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def _debug_mouse(message: str) -> None:
     if _FEED_DEBUG_MOUSE:
-        print(f'[feed-scroll-debug] {message}')
+        logger.debug('[feed-scroll-debug] %s', message)
 
 
 def _navigate_home(page):
     try:
         if page.url.rstrip('/') == 'https://www.instagram.com':
             return
-        print('[*] Navigating to Home feed...')
+        logger.info('Navigating to Home feed...')
         if _click_home_button(page):
             random_delay(jitter(3000) / 1000, jitter(5000) / 1000)
             _dismiss_notifications_modal(page)
             return
         page.goto('https://www.instagram.com/', timeout=jitter(30000))
     except (PlaywrightError, BotException) as exc:
-        print(f'[!] Navigation error: {type(exc).__name__} - {exc}')
+        logger.warning('Navigation error: %s - %s', type(exc).__name__, exc)
         _goto_home_fallback(page)
     except Exception as exc:
-        print(f'[!] Unexpected navigation error: {type(exc).__name__} - {exc}')
+        logger.warning('Unexpected navigation error: %s - %s', type(exc).__name__, exc)
         _goto_home_fallback(page)
 
 
@@ -50,7 +53,7 @@ def _click_home_button(page) -> bool:
         _home_click_target(element).click()
         return True
     except (PlaywrightError, BotException) as exc:
-        print(f'[!] Home selector click failed: {type(exc).__name__}')
+        logger.warning('Home selector click failed: %s', type(exc).__name__)
         return False
 
 
@@ -60,10 +63,10 @@ def _home_click_target(element):
             return element
         clickable = element
         for _ in range(4):
-            parent = clickable.query_selector('xpath=..')
-            if not parent:
+            parent_loc = clickable.locator('xpath=..')
+            if parent_loc.count() == 0:
                 return element
-            clickable = parent
+            clickable = parent_loc.first
         if _is_clickable_home_target(clickable):
             return clickable
     except Exception:
@@ -90,9 +93,9 @@ def _is_clickable_home_target(element) -> bool:
 
 def _dismiss_notifications_modal(page) -> None:
     try:
-        not_now = page.query_selector('button:has-text("Not Now")')
-        if not_now:
-            not_now.click()
+        not_now = page.locator('button:has-text("Not Now")')
+        if not_now.count() > 0:
+            not_now.first.click()
             random_delay(1, 2)
     except Exception:
         pass
@@ -163,7 +166,7 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
         if _should_end_session(clock, should_stop):
             return stats
         _watch_stories_if_enabled(page, actions_config, should_stop)
-        print(f'[*] Starting {duration_minutes} minute scroll session on Instagram...')
+        logger.info('Starting %d minute scroll session on Instagram...', duration_minutes)
         while _session_active(clock, should_stop):
             _report_time_remaining(clock['end'])
             _save_session_progress(profile_name, clock['start'], duration_minutes)
@@ -172,13 +175,13 @@ def scroll_feed(page, duration_minutes: int, actions_config: dict, should_stop=N
             if not _process_feed_iteration(page, actions_config, stats, should_stop):
                 continue
             clock['last_action'] = time.time()
-        print(f'Scroll session complete: {stats}')
+        logger.info('Scroll session complete: %s', stats)
         return stats
     except (PlaywrightError, BotException) as exc:
-        print(f'[!] Error during scrolling: {type(exc).__name__} - {exc}')
+        logger.error('Error during scrolling: %s - %s', type(exc).__name__, exc)
         return stats
     except Exception as exc:
-        print(f'[!] Unexpected error during scrolling: {type(exc).__name__} - {exc}')
+        logger.error('Unexpected error during scrolling: %s - %s', type(exc).__name__, exc)
         return stats
 
 
@@ -211,21 +214,21 @@ def _watch_stories_if_enabled(page, actions_config: dict, should_stop) -> None:
             max_view_s=story_view_max,
         )
     except (PlaywrightError, BotException) as exc:
-        print(f'[!] Story watch skipped: {type(exc).__name__} - {exc}')
+        logger.warning('Story watch skipped: %s - %s', type(exc).__name__, exc)
     except Exception as exc:
-        print(f'[!] Story watch skipped (unexpected): {type(exc).__name__} - {exc}')
+        logger.warning('Story watch skipped (unexpected): %s - %s', type(exc).__name__, exc)
 
 
 def _session_active(clock: dict, should_stop) -> bool:
     now = time.time()
     if should_stop and should_stop():
-        print('[!] Stop signal received. Ending feed session.')
+        logger.info('Stop signal received. Ending feed session.')
         return False
     if now >= clock['hard_timeout']:
-        print('[!] HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.')
+        logger.warning('HARD TIMEOUT REACHED. Playwright may have hung. Force breaking.')
         return False
     if now >= clock['end']:
-        print(f"[*] Expected duration reached. Ending feed session.")
+        logger.info('Expected duration reached. Ending feed session.')
         return False
     return True
 
@@ -236,7 +239,7 @@ def _should_end_session(clock: dict, should_stop) -> bool:
 
 def _report_time_remaining(end_time: float) -> None:
     minutes_left = (end_time - time.time()) / 60
-    print(f'[*] Time remaining in session: {minutes_left:.1f} minutes')
+    logger.info('Time remaining in session: %.1f minutes', minutes_left)
 
 
 def _save_session_progress(profile_name: str, start_time: float, duration_minutes: int) -> None:
@@ -249,18 +252,19 @@ def _save_session_progress(profile_name: str, start_time: float, duration_minute
 def _reload_stalled_page(page, clock: dict) -> bool:
     if time.time() - clock['last_action'] < 180:
         return False
-    print('[!] No actions or posts processed in the last 3 minutes. Auto-reloading page...')
+    logger.warning('No actions or posts processed in the last 3 minutes. Auto-reloading page...')
     try:
         page.reload(timeout=15000)
     except Exception as exc:
-        print(f'[!] Failed to reload page: {exc}')
+        logger.error('Failed to reload page: %s', exc)
     clock['last_action'] = time.time()
     random_delay(3, 6)
     return True
 
 
 def _process_feed_iteration(page, actions_config: dict, stats: dict, should_stop) -> bool:
-    posts = page.query_selector_all('article')
+    posts_locator = page.locator('article')
+    posts = [posts_locator.nth(i) for i in range(posts_locator.count())]
     if not posts:
         human_scroll(page, should_stop=should_stop)
         return False
@@ -334,7 +338,7 @@ def _view_post(actions_config: dict) -> None:
         (2.0, 5.0),
     )
     view_time = random.uniform(post_view_min, post_view_max)
-    print(f'[*] Viewing feed post for {view_time:.1f}s')
+    logger.info('Viewing feed post for %.1fs', view_time)
     time.sleep(view_time)
 
 
@@ -358,7 +362,8 @@ def _handle_like(page, target_post, actions_config: dict, stats: dict) -> None:
 
 def _debug_like_button(page, target_post) -> None:
     try:
-        like_area = target_post.query_selector('svg[aria-label="Like"]')
+        like_loc = target_post.locator('svg[aria-label="Like"]')
+        like_area = like_loc.first if like_loc.count() > 0 else None
         like_box = like_area.bounding_box() if like_area else None
         vp_h = _viewport_h(page)
         like_bottom = (like_box['y'] + like_box['height']) if like_box else -1

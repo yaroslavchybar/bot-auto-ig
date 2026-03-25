@@ -3,6 +3,10 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import { reactRouter } from '@react-router/dev/vite'
+import {
+  sentryReactRouter,
+  type SentryReactRouterBuildOptions,
+} from '@sentry/react-router'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -89,10 +93,22 @@ function getManualChunk(id: string): string | undefined {
   return undefined
 }
 
-export default defineConfig({
+const sentryConfig: SentryReactRouterBuildOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+}
+
+export default defineConfig((config) => ({
   envDir: path.resolve(rootDir, '..'),
   envPrefix: ['VITE_'],
-  plugins: [tailwindcss(), reactRouter()],
+  plugins: [
+    tailwindcss(),
+    reactRouter(),
+    ...(sentryConfig.authToken
+      ? [sentryReactRouter(sentryConfig, config)]
+      : []),
+  ],
   build: {
     rollupOptions: {
       output: {
@@ -117,4 +133,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

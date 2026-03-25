@@ -333,6 +333,122 @@ function ModalEditor({
   )
 }
 
+/* ── Modal Editor Dialog ── */
+
+function ModalEditorDialog({
+  open,
+  onOpenChange,
+  input,
+  displayValue,
+  lineCount,
+  charCount,
+  onChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  input: ActivityInput
+  displayValue: string
+  lineCount: number
+  charCount: number
+  onChange: (v: string) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        hideClose
+        className="flex h-[80vh] w-[85vw] max-w-[85vw] flex-col gap-0 overflow-hidden rounded-[4px] border-neutral-700 bg-neutral-900 p-0"
+      >
+        <ModalEditorHeader
+          input={input}
+          lineCount={lineCount}
+          charCount={charCount}
+          onClose={() => onOpenChange(false)}
+        />
+        <div className="flex-1 overflow-hidden">
+          <ModalEditor value={displayValue} onChange={onChange} />
+        </div>
+        <ModalEditorStatusBar lineCount={lineCount} charCount={charCount} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── Modal Editor Header ── */
+
+function ModalEditorHeader({
+  input,
+  lineCount,
+  charCount,
+  onClose,
+}: {
+  input: ActivityInput
+  lineCount: number
+  charCount: number
+  onClose: () => void
+}) {
+  return (
+    <DialogHeader className="shrink-0 flex-row items-center justify-between space-y-0 border-b border-neutral-700 bg-neutral-800 px-4 py-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="inline-flex items-center rounded-[2px] bg-yellow-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider text-yellow-500">
+          PYTHON
+        </span>
+        <DialogTitle className="text-[12px] font-semibold tracking-wide text-neutral-300">
+          {input.label}
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Edit Python code in full-screen mode
+        </DialogDescription>
+        <span className="font-mono text-[10px] text-neutral-600">
+          {lineCount} lines · {charCount} chars
+        </span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-status-success dark:text-status-success h-6 gap-1 rounded-[2px] border-neutral-600 bg-neutral-900 px-2.5 text-[10px] font-medium hover:bg-neutral-700"
+          onClick={onClose}
+        >
+          <Check className="h-3 w-3" />
+          Done
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 rounded-[2px] text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          onClick={onClose}
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </DialogHeader>
+  )
+}
+
+/* ── Modal Editor Status Bar ── */
+
+function ModalEditorStatusBar({
+  lineCount,
+  charCount,
+}: {
+  lineCount: number
+  charCount: number
+}) {
+  return (
+    <div className="flex shrink-0 items-center justify-between border-t border-neutral-700 bg-neutral-800 px-4 py-1.5 font-mono text-[10px] text-neutral-500">
+      <div className="flex items-center gap-3">
+        <span>Python</span>
+        <span>UTF-8</span>
+        <span>Spaces: 4</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span>{lineCount} lines</span>
+        <span>{charCount} characters</span>
+      </div>
+    </div>
+  )
+}
+
 /* ── Main Component ── */
 interface PythonCodeFieldProps {
   input: ActivityInput
@@ -385,10 +501,8 @@ export function PythonCodeField({
           </Button>
         </Label>
 
-        {/* Inline compact editor */}
         <InlineEditor value={displayValue} onChange={handleChange} />
 
-        {/* Footer bar */}
         <div className="flex items-center justify-between px-0.5">
           {input.helpText && (
             <p className="text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
@@ -404,70 +518,15 @@ export function PythonCodeField({
         </div>
       </div>
 
-      {/* ── Expanded modal editor ── */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent
-          hideClose
-          className="flex h-[80vh] w-[85vw] max-w-[85vw] flex-col gap-0 overflow-hidden rounded-[4px] border-neutral-700 bg-neutral-900 p-0"
-        >
-          <DialogHeader className="shrink-0 flex-row items-center justify-between space-y-0 border-b border-neutral-700 bg-neutral-800 px-4 py-2.5">
-            <div className="flex items-center gap-2.5">
-              <span className="inline-flex items-center rounded-[2px] bg-yellow-500/15 px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-wider text-yellow-500">
-                PYTHON
-              </span>
-              <DialogTitle className="text-[12px] font-semibold tracking-wide text-neutral-300">
-                {input.label}
-              </DialogTitle>
-              <DialogDescription className="sr-only">
-                Edit Python code in full-screen mode
-              </DialogDescription>
-              <span className="font-mono text-[10px] text-neutral-600">
-                {lineCount} lines · {charCount} chars
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-status-success dark:text-status-success h-6 gap-1 rounded-[2px] border-neutral-600 bg-neutral-900 px-2.5 text-[10px] font-medium hover:bg-neutral-700"
-                onClick={() => setModalOpen(false)}
-              >
-                <Check className="h-3 w-3" />
-                Done
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 rounded-[2px] text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
-                onClick={() => setModalOpen(false)}
-              >
-                <X className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </DialogHeader>
-
-          {/* Full-size editor area */}
-          <div className="flex-1 overflow-hidden">
-            <ModalEditor value={displayValue} onChange={handleChange} />
-          </div>
-
-          {/* Status bar */}
-          <div className="flex shrink-0 items-center justify-between border-t border-neutral-700 bg-neutral-800 px-4 py-1.5 font-mono text-[10px] text-neutral-500">
-            <div className="flex items-center gap-3">
-              <span>Python</span>
-              <span>UTF-8</span>
-              <span>Spaces: 4</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <span>{lineCount} lines</span>
-              <span>{charCount} characters</span>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <ModalEditorDialog
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        input={input}
+        displayValue={displayValue}
+        lineCount={lineCount}
+        charCount={charCount}
+        onChange={handleChange}
+      />
     </>
   )
 }
-
-
-

@@ -7,6 +7,9 @@ From repository root:
 - `npm run build` (server build via root script)
 - `npm run start` (server start via root script)
 - `npm run test:convex` (Convex self-test harness via Vitest + convex-test)
+- `docker compose build server` (targeted server image rebuild)
+- `docker compose build frontend` (targeted frontend image rebuild)
+- `docker compose build datauploader` (targeted uploader image rebuild)
 - `docker compose up --build` (full stack)
 
 Module-level:
@@ -50,5 +53,6 @@ PR descriptions should include:
 ## Verified Against
 
 - `package.json`, `frontend/package.json`, `server/package.json`
+- `docker-compose.yml`
 - `python/tests/*`
 - `AGENTS.md`

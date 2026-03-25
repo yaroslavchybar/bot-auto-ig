@@ -1,57 +1,78 @@
-import signal
+import json
 import sys
 from typing import Any, Dict, List, Optional
 
-from python.runners.multi_account.compat import compat as compat_module
+from python.core.config import PROJECT_URL
+from python.core.logging import setup_logging
+from python.core.models import ThreadsAccount
+from python.core.sentry import flush_sentry, init_sentry, set_sentry_context
+from python.core.shutdown import ShutdownManager
+from python.core.storage.state_persistence import load_state
+from python.core.clients import MessageTemplatesClient
+from python.runners.multi_account.config import _build_config
+from python.runners.multi_account.io import emit_event, log
+from python.runners.multi_account.profiles import _fetch_profiles_for_lists
+from python.runners.multi_account.runtime import InstagramAutomationRunner
 
 
 def main() -> int:
-    compat = compat_module()
-    payload = _read_payload(compat)
+    setup_logging()
+    init_sentry()
+    try:
+        return _main_inner()
+    finally:
+        flush_sentry()
+
+
+def _main_inner() -> int:
+    payload = _read_payload()
     if payload is None:
         return 2
-    settings = _settings_payload(compat, payload)
+    settings = _settings_payload(payload)
     if settings is None:
         return 2
     selected_list_ids = _selected_list_ids(payload, settings)
-    _log_debug_context(compat, selected_list_ids)
+    _log_debug_context(selected_list_ids)
     if not _has_enabled_activity(settings):
-        compat.log('Выберите хотя бы один тип активности!')
+        log('Select at least one activity type!')
         return 2
-    profiles = _load_profiles(compat, selected_list_ids)
+    profiles = _load_profiles(selected_list_ids)
     if profiles is None:
         return 2
-    target_accounts = _build_target_accounts(compat, profiles)
+    target_accounts = _build_target_accounts(profiles)
     if target_accounts is None:
         return 2
-    config = compat._build_config(settings, _message_texts(compat, settings))
-    compat.log(f"Запуск полного цикла ({', '.join(_task_names(config))}) для {len(target_accounts)} профилей...")
-    runner = compat.InstagramAutomationRunner(config, target_accounts)
-    _register_signal_handlers(runner)
+    config = _build_config(settings, _message_texts(settings))
+    set_sentry_context(
+        extra={'profile_count': len(target_accounts), 'tasks': _task_names(config)},
+    )
+    log(f"Starting full cycle ({', '.join(_task_names(config))}) for {len(target_accounts)} profiles...")
+    runner = InstagramAutomationRunner(config, target_accounts)
+    _register_signal_handlers(runner, target_accounts)
     return runner.run()
 
 
-def _read_payload(compat) -> Optional[Dict[str, Any]]:
+def _read_payload() -> Optional[Dict[str, Any]]:
     raw = sys.stdin.read()
     if not raw.strip():
-        compat.log('Не получены входные данные.')
+        log('No input data received.')
         return None
     try:
-        payload = compat.json.loads(raw)
+        payload = json.loads(raw)
     except Exception as exc:
-        compat.log(f'Некорректный JSON: {exc}')
+        log(f'Invalid JSON: {exc}')
         return None
     if isinstance(payload, dict):
         return payload
-    compat.log('payload должен быть объектом.')
+    log('payload must be an object.')
     return None
 
 
-def _settings_payload(compat, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _settings_payload(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     settings = payload.get('settings')
     if isinstance(settings, dict):
         return settings
-    compat.log('settings должен быть объектом.')
+    log('settings must be an object.')
     return None
 
 
@@ -62,9 +83,9 @@ def _selected_list_ids(payload: Dict[str, Any], settings: Dict[str, Any]) -> Lis
     return [str(item) for item in selected if str(item).strip()]
 
 
-def _log_debug_context(compat, selected_list_ids: List[str]) -> None:
-    compat.log(f'DEBUG: PROJECT_URL={compat.PROJECT_URL}')
-    compat.log(f'DEBUG: selected_list_ids={selected_list_ids}')
+def _log_debug_context(selected_list_ids: List[str]) -> None:
+    log(f'DEBUG: PROJECT_URL={PROJECT_URL}')
+    log(f'DEBUG: selected_list_ids={selected_list_ids}')
 
 
 def _has_enabled_activity(settings: Dict[str, Any]) -> bool:
@@ -81,36 +102,36 @@ def _has_enabled_activity(settings: Dict[str, Any]) -> bool:
     )
 
 
-def _load_profiles(compat, selected_list_ids: List[str]):
+def _load_profiles(selected_list_ids: List[str]):
     if not selected_list_ids:
-        compat.log('Выберите список профилей!')
+        log('Please select a profile list!')
         return None
-    profiles = compat._fetch_profiles_for_lists(selected_list_ids)
-    compat.log(f'DEBUG: fetched profiles count={len(profiles or [])}')
+    profiles = _fetch_profiles_for_lists(selected_list_ids)
+    log(f'DEBUG: fetched profiles count={len(profiles or [])}')
     if profiles:
         return profiles
-    compat.log('В выбранном списке нет профилей!')
+    log('No profiles found in the selected list!')
     return None
 
 
-def _build_target_accounts(compat, profiles: List[Dict[str, Any]]):
+def _build_target_accounts(profiles: List[Dict[str, Any]]):
     target_accounts = []
     for profile in profiles:
         name = profile.get('name')
         if not name:
             continue
-        target_accounts.append(compat.ThreadsAccount(username=name, password='', proxy=profile.get('proxy')))
+        target_accounts.append(ThreadsAccount(username=name, password='', proxy=profile.get('proxy')))
     if target_accounts:
         return target_accounts
-    compat.log('В выбранном списке нет валидных профилей!')
+    log('No valid profiles found in the selected list!')
     return None
 
 
-def _message_texts(compat, settings: Dict[str, Any]) -> List[str]:
+def _message_texts(settings: Dict[str, Any]) -> List[str]:
     if not bool(settings.get('do_message')):
         return []
     try:
-        return compat.MessageTemplatesClient().get_texts('message') or []
+        return MessageTemplatesClient().get_texts('message') or []
     except Exception:
         return []
 
@@ -128,13 +149,51 @@ def _task_names(config) -> List[str]:
     return [label for enabled, label in task_pairs if enabled]
 
 
-def _register_signal_handlers(runner) -> None:
-    def _handle_signal(_sig, _frame):
-        runner.stop()
+def _register_signal_handlers(runner, target_accounts) -> None:
+    shutdown_mgr = ShutdownManager()
+    # Seed initial state as a fallback
+    if target_accounts:
+        shutdown_mgr.set_state(
+            target_accounts[0].username,
+            'multi_account',
+            0,
+        )
+    # Register a callback so shutdown persists fresh in-flight state
+    # instead of the stale placeholder above.
+    shutdown_mgr.set_state_callback(
+        lambda: _current_runner_state(runner, target_accounts),
+    )
+    shutdown_mgr.add_stop_callback(runner.stop)
+    # Close all active browser contexts on shutdown
+    shutdown_mgr.add_cleanup(runner.close_all_browser_contexts)
+    shutdown_mgr.register()
 
-    if hasattr(signal, 'SIGINT'):
-        signal.signal(signal.SIGINT, _handle_signal)
-    if hasattr(signal, 'SIGTERM'):
-        signal.signal(signal.SIGTERM, _handle_signal)
-    if hasattr(signal, 'SIGBREAK'):
-        signal.signal(signal.SIGBREAK, _handle_signal)
+
+def _current_runner_state(runner, target_accounts) -> dict:
+    """Return a snapshot of the runner's current state for persistence.
+
+    Reads the persisted state from disk so that scrolling runtimes' real
+    progress (0-99%) is preserved instead of being overwritten with 0.
+    """
+    profile = runner._current_profile
+    action = runner._current_action
+    if not profile:
+        # Runner hasn't started processing yet; fall back to placeholder
+        profile = target_accounts[0].username if target_accounts else ''
+
+    # Prefer the persisted progress written by scrolling runtimes
+    progress = 0
+    persisted = load_state()
+    if (
+        persisted is not None
+        and persisted.get('profile') == profile
+        and isinstance(persisted.get('progress'), (int, float))
+        and persisted['progress'] > 0
+    ):
+        progress = persisted['progress']
+
+    return {
+        'profile': profile,
+        'action': action or 'multi_account',
+        'progress': progress,
+    }

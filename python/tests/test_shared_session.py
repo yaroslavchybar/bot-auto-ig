@@ -217,13 +217,17 @@ class TestWorkflowActivityDispatch(unittest.TestCase):
             def __exit__(self, exc_type, exc, tb):
                 calls.append((exc_type, exc, tb))
 
+        class _FakeRunner:
+            def unregister_browser_context(self, ctx_mgr):
+                pass
+
         browser_state = {
             'context': _Context(),
             'page': object(),
             '_ctx_mgr': _CtxMgr(),
         }
 
-        _close_existing_context(browser_state)
+        _close_existing_context(_FakeRunner(), browser_state)
 
         self.assertEqual(calls, [(None, None, None)])
         self.assertIsNone(browser_state['context'])

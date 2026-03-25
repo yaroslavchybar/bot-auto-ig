@@ -20,20 +20,20 @@ def unfollow_usernames(
     delay_range = _normalize_delay_range(delay_range)
     targets = [username.strip() for username in usernames if username.strip()]
     if not targets:
-        log('Нет юзернеймов для отписки.')
+        log('No usernames for unfollow.')
         return
     if page is not None:
-        log('Использую существующую сессию для отписки...')
+        log('Using existing session for unfollow...')
         _run_unfollow_logic(page, targets, log, should_stop, delay_range, on_success)
         return
-    log(f'Запуск браузера для профиля: {profile_name}')
+    log(f'Starting browser for profile: {profile_name}')
     with create_browser_context(
         profile_name=profile_name,
         proxy_string=proxy_string,
         user_agent=user_agent,
     ) as (_context, session_page):
         _run_unfollow_logic(session_page, targets, log, should_stop, delay_range, on_success)
-    log('Сессия завершена.')
+    log('Session completed.')
 
 
 def _run_unfollow_logic(current_page, target_usernames, log, should_stop, delay_range, on_success) -> None:
@@ -52,7 +52,7 @@ def _run_unfollow_logic(current_page, target_usernames, log, should_stop, delay_
         finally:
             _close_following_modal(current_page, log)
     except Exception as exc:
-        log(f'Критическая ошибка сессии: {exc}')
+        log(f'Critical session error: {exc}')
 
 
 def _ensure_instagram_open(current_page, log) -> bool:
@@ -62,12 +62,12 @@ def _ensure_instagram_open(current_page, log) -> bool:
         current_page.goto('https://www.instagram.com', timeout=15000)
         return True
     except Exception as exc:
-        log(f'Не удалось открыть Instagram перед началом отписки: {exc}')
+        log(f'Failed to open Instagram before unfollow: {exc}')
         return False
 
 
 def _open_own_profile(current_page, log) -> bool:
-    log('Ищу ссылку на свой профиль...')
+    log('Looking for own profile link...')
     if _click_profile_avatar(current_page, log):
         current_page.wait_for_load_state('domcontentloaded')
         return True
@@ -75,7 +75,7 @@ def _open_own_profile(current_page, log) -> bool:
         current_page.locator('a[role="link"] >> text=Profile').click(force=True, timeout=5000)
         return True
     except Exception as exc:
-        log(f'Не удалось перейти в профиль: {exc}')
+        log(f'Failed to navigate to profile: {exc}')
         return False
 
 
@@ -84,11 +84,11 @@ def _click_profile_avatar(current_page, log) -> bool:
         profile_pic = current_page.locator('a[role="link"]').filter(has_text='Profile').locator('img').first
         profile_pic.wait_for(state='visible', timeout=10000)
         _move_to_avatar(current_page, profile_pic, log)
-        log('Кликаю на аватар...')
+        log('Clicking on avatar...')
         profile_pic.click(force=True)
         return True
     except Exception as exc:
-        log(f'Не смог найти ссылку через аватар ({exc}). Пробую запасной вариант...')
+        log(f'Could not find link via avatar ({exc}). Trying fallback...')
         return False
 
 
@@ -96,58 +96,58 @@ def _move_to_avatar(current_page, profile_pic, log) -> None:
     box = profile_pic.bounding_box()
     if not box:
         return
-    log('Двигаю курсор к аватару...')
+    log('Moving cursor to avatar...')
     safe_mouse_move(current_page, box['x'] + box['width'] / 2, box['y'] + box['height'] / 2)
     random_delay(0.5, 1.5)
 
 
 def _open_following_modal(current_page, log) -> bool:
-    log('Открываю список подписок...')
+    log('Opening following list...')
     try:
         current_page.click('a[href*="/following/"]', timeout=5000)
         random_delay(2, 4)
         modal = current_page.wait_for_selector('div[role="dialog"]', timeout=5000)
         if modal:
             return True
-        log('Модальное окно не появилось.')
+        log('Modal window did not appear.')
         return False
     except Exception:
-        log("Не нашел кнопку 'Following'.")
+        log("Could not find 'Following' button.")
         return False
 
 
 def _process_unfollow_targets(current_page, target_usernames, log, should_stop, delay_range, on_success) -> None:
     for username in target_usernames:
         if should_stop():
-            log('Остановка...')
+            log('Stopping...')
             break
         _unfollow_single_target(current_page, username, log, on_success)
         if not _clear_search(current_page, log, username):
-            log(f'Не удалось сбросить поиск после {username}. Прерываю batch, чтобы не продолжать с устаревшим состоянием.')
+            log(f'Failed to clear search after {username}. Aborting batch to avoid stale state.')
             break
         _wait_before_next_target(delay_range, log)
 
 
 def _unfollow_single_target(current_page, username: str, log, on_success) -> None:
-    log(f'Ищу {username}...')
+    log(f'Searching for {username}...')
     if not _search_username(current_page, username, log):
         return
     random_delay(2, 4)
     try:
         unfollow_btn = _user_row_button(current_page, username)
         if unfollow_btn.count() <= 0:
-            log(f"Не нашел кнопку 'Following' для {username}. Возможно уже отписан.")
+            log(f"Could not find 'Following' button for {username}. Possibly already unfollowed.")
             return
-        log(f'Нашел кнопку Following для {username}. Кликаю...')
+        log(f'Found Following button for {username}. Clicking...')
         unfollow_btn.click()
         random_delay(1, 2)
         if _confirm_unfollow(current_page, username, log):
             if on_success:
                 on_success(username)
             return
-        log(f'Подтверждение не появилось или ошибка клика для {username}')
+        log(f'Confirmation did not appear or click error for {username}')
     except Exception as exc:
-        log(f'Ошибка при обработке {username}: {exc}')
+        log(f'Error processing {username}: {exc}')
 
 
 def _search_username(current_page, username: str, log) -> bool:
@@ -157,7 +157,7 @@ def _search_username(current_page, username: str, log) -> bool:
         current_page.type('input[placeholder="Search"]', username, delay=100)
         return True
     except Exception:
-        log('Не нашел поле поиска.')
+        log('Could not find search field.')
         return False
 
 
@@ -173,9 +173,9 @@ def _confirm_unfollow(current_page, username: str, log) -> bool:
     try:
         confirm_btn = current_page.locator('button').filter(has_text='Unfollow').last
         confirm_btn.wait_for(state='visible', timeout=5000)
-        log('Подтверждаю отписку...')
+        log('Confirming unfollow...')
         confirm_btn.click()
-        log(f'Отписался от {username}')
+        log(f'Unfollowed {username}')
         return True
     except Exception:
         return False
@@ -187,8 +187,8 @@ def _clear_search(current_page, log, username: str) -> bool:
         current_page.fill('input[placeholder="Search"]', '')
     except Exception as exc:
         log(
-            f"Не удалось очистить поиск после {username}: {exc}. "
-            f'Текущее значение поиска: {previous_value!r}. Пробую запасную очистку.'
+            f"Failed to clear search after {username}: {exc}. "
+            f'Current search value: {previous_value!r}. Trying fallback clear.'
         )
         return _clear_search_with_keyboard(current_page, log, username, previous_value)
 
@@ -197,8 +197,8 @@ def _clear_search(current_page, log, username: str) -> bool:
         return True
 
     log(
-        f"Поле поиска после {username} осталось заполненным значением {current_value!r} "
-        'после прямой очистки. Пробую запасную очистку.'
+        f"Search field after {username} still has value {current_value!r} "
+        'after direct clear. Trying fallback clear.'
     )
     return _clear_search_with_keyboard(current_page, log, username, current_value)
 
@@ -212,19 +212,19 @@ def _clear_search_with_keyboard(current_page, log, username: str, previous_value
     except Exception as exc:
         current_value = _search_input_value(current_page)
         log(
-            f"Запасная очистка поиска после {username} не сработала: {exc}. "
-            f'Текущее значение поиска: {current_value!r} (было {previous_value!r}).'
+            f"Fallback search clear after {username} failed: {exc}. "
+            f'Current search value: {current_value!r} (was {previous_value!r}).'
         )
         return False
 
     current_value = _search_input_value(current_page)
     if current_value in ('', '<unavailable>'):
-        log(f'Очистил поиск запасным способом после {username}.')
+        log(f'Cleared search via fallback after {username}.')
         return True
 
     log(
-        f"Запасная очистка поиска после {username} не очистила поле. "
-        f'Текущее значение поиска: {current_value!r} (было {previous_value!r}).'
+        f"Fallback search clear after {username} did not clear the field. "
+        f'Current search value: {current_value!r} (was {previous_value!r}).'
     )
     return False
 
@@ -246,7 +246,7 @@ def _normalize_delay_range(delay_range: Tuple[int, int]) -> Tuple[int, int]:
 def _wait_before_next_target(delay_range: Tuple[int, int], log) -> None:
     min_delay, max_delay = _normalize_delay_range(delay_range)
     wait_time = random.randint(min_delay, max_delay)
-    log(f'Жду {wait_time}сек...')
+    log(f'Waiting {wait_time}s...')
     random_delay(wait_time, wait_time)
 
 

@@ -8,6 +8,14 @@ From repository root:
 docker compose up --build
 ```
 
+Targeted rebuilds:
+
+```bash
+docker compose build server
+docker compose build frontend
+docker compose build datauploader
+```
+
 ## Services and Ports
 
 - `server`: `http://localhost:3001`
@@ -33,6 +41,9 @@ docker compose up --build
 - Frontend still builds client and server bundles from the React Router SSR build output.
 - Backend routes and WebSocket remain on server service.
 - Datauploader runs as a separate FastAPI service.
+- `server` builds from `./server` with `./python` as an additional build context so Python/browser layers stay cached when only server code changes.
+- `frontend` builds from `./frontend` with additional contexts for repo-root manifests and `./convex` so unrelated root files do not invalidate the build.
+- `server/Dockerfile` exposes named stages with `server-runtime` as the Compose/CI target; `frontend/Dockerfile` exposes `frontend-runtime`.
 - Non-local deployments must provide `VITE_API_URL` and `VITE_DATAUPLOADER_URL` at image build time so browser requests do not fall back to localhost.
 - Non-local deployments should terminate TLS at the reverse proxy and route `/ws` to `server:3001` before the frontend catch-all.
 - Non-local deployments should proxy `/vnc/<port>/websockify` to `server:<port>/websockify` so browser VNC traffic stays on the main HTTPS origin instead of connecting directly to plain `websockify` ports.
@@ -48,6 +59,8 @@ docker compose up --build
 
 ```bash
 docker compose build server frontend datauploader
+docker compose build server
+docker compose build frontend
 docker compose up server
 docker compose up frontend
 docker compose ps

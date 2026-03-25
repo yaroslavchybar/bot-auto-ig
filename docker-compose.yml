@@ -1,8 +1,11 @@
 services:
   server:
     build:
-      context: .
-      dockerfile: server/Dockerfile
+      context: ./server
+      dockerfile: Dockerfile
+      target: server-runtime
+      additional_contexts:
+        python_src: ./python
     ports:
       - "3001:3001"
       - "6080:6080"
@@ -33,8 +36,12 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: frontend-runtime
+      additional_contexts:
+        repo_root: .
+        convex_src: ./convex
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
         VITE_CONVEX_URL: ${VITE_CONVEX_URL}

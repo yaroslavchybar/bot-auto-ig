@@ -13,14 +13,14 @@ def generate_totp_code(secret):
         ValueError: If the secret is invalid.
     """
     if not secret:
-        raise ValueError("Введите секретный ключ Base32!")
+        raise ValueError("Provide a Base32 secret key!")
         
     secret = secret.strip().replace(" ", "").upper()
     if not secret:
-        raise ValueError("Введите секретный ключ Base32!")
+        raise ValueError("Provide a Base32 secret key!")
     
     try:
         totp = pyotp.TOTP(secret)
         return totp.now()
     except Exception as e:
-        raise ValueError(f"Неверный формат ключа: {e}")
+        raise ValueError(f"Invalid key format: {e}")

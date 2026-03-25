@@ -3,14 +3,23 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock, RLock
 from typing import Any, Dict, List, Optional
 
+from python.browser.display import DisplayManager
+from python.core.clients import InstagramAccountsClient, ProfilesClient
 from python.runners.workflow.account_session import process_account as process_account_impl
 from python.runners.workflow.activity_dispatch import execute_activity as execute_activity_impl
-from python.runners.workflow.compat import compat as compat_module
 from python.runners.workflow.graph import _build_edge_index
-from python.runners.workflow.scrape_relationships import (
-    execute_scrape_relationships,
+from python.runners.workflow.io import emit_event, log
+from python.runners.workflow.parsing import (
+    _parse_bool,
+    _parse_int,
+    _profile_daily_scraping_used,
+)
+from python.runners.workflow.scrape_navigation import (
     open_relationship_view,
     scrape_relationship_chunk,
+)
+from python.runners.workflow.scrape_relationships import (
+    execute_scrape_relationships,
 )
 
 
@@ -23,7 +32,6 @@ class WorkflowRunner:
         accounts: List[Any],
         options: Dict[str, Any],
     ) -> None:
-        compat = compat_module()
         self.workflow_id = workflow_id
         self.nodes = nodes
         self.edges = edges
@@ -34,20 +42,49 @@ class WorkflowRunner:
         self.options = options
         self._scrape_node_ids = _scrape_node_ids(nodes)
         self._has_scrape_relationships = bool(self._scrape_node_ids)
-        self.headless = compat._parse_bool(options.get('headless'), False)
-        self.messaging_cooldown_enabled = compat._parse_bool(options.get('messaging_cooldown_enabled'), False)
-        self.messaging_cooldown_hours = max(0, compat._parse_int(options.get('messaging_cooldown_hours'), 2))
+        self.headless = _parse_bool(options.get('headless'), False)
+        self.messaging_cooldown_enabled = _parse_bool(options.get('messaging_cooldown_enabled'), False)
+        self.messaging_cooldown_hours = max(0, _parse_int(options.get('messaging_cooldown_hours'), 2))
         self.workflow_name = str(options.get('workflow_name') or workflow_id).strip() or workflow_id
-        self.accounts_client = compat.InstagramAccountsClient()
-        self.profiles_client = compat.ProfilesClient()
+        self.accounts_client = InstagramAccountsClient()
+        self.profiles_client = ProfilesClient()
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
         self._profile_cache_lock = Lock()
+        self._active_contexts_lock = Lock()
+        self._active_contexts: list = []
         self._node_states_lock = RLock()
-        self._max_workers = _max_workers(compat, options, accounts, self._has_scrape_relationships)
+        self._max_workers = _max_workers(options, accounts, self._has_scrape_relationships)
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
-        self.display_mgr = compat.DisplayManager()
+        self.display_mgr = DisplayManager()
         raw_node_states = options.get('node_states')
         self.node_states: Dict[str, Any] = dict(raw_node_states) if isinstance(raw_node_states, dict) else {}
+        # Lightweight shutdown-state tracking (updated by account_session)
+        self._current_profile: Optional[str] = None
+        self._current_progress: int = 0
+
+    def register_browser_context(self, ctx_mgr: Any) -> None:
+        """Track an active browser context manager for shutdown cleanup."""
+        with self._active_contexts_lock:
+            self._active_contexts.append(ctx_mgr)
+
+    def unregister_browser_context(self, ctx_mgr: Any) -> None:
+        """Remove a browser context manager after normal cleanup."""
+        with self._active_contexts_lock:
+            try:
+                self._active_contexts.remove(ctx_mgr)
+            except ValueError:
+                pass
+
+    def close_all_browser_contexts(self) -> None:
+        """Force-close all registered browser contexts (shutdown cleanup)."""
+        with self._active_contexts_lock:
+            contexts = list(self._active_contexts)
+            self._active_contexts.clear()
+        for ctx_mgr in contexts:
+            try:
+                ctx_mgr.__exit__(None, None, None)
+            except Exception:
+                pass
 
     def stop(self) -> None:
         self.running = False
@@ -70,14 +107,13 @@ class WorkflowRunner:
             self._profile_cache[name] = data
 
     def _record_daily_scraping_usage(self, profile_name: str, amount: int) -> None:
-        compat = compat_module()
         safe_amount = max(0, int(amount)) if isinstance(amount, (int, float)) else 0
         if safe_amount <= 0:
             return
         self.profiles_client.increment_daily_scraping_used(profile_name, safe_amount)
         cached = self._get_cached_profile(profile_name)
         next_profile = dict(cached) if isinstance(cached, dict) else {'name': profile_name}
-        next_profile['daily_scraping_used'] = compat._profile_daily_scraping_used(next_profile) + safe_amount
+        next_profile['daily_scraping_used'] = _profile_daily_scraping_used(next_profile) + safe_amount
         self._set_cached_profile(profile_name, next_profile)
 
     def _sanitize_node_states(self) -> Dict[str, Any]:
@@ -98,8 +134,7 @@ class WorkflowRunner:
             return dict(existing) if isinstance(existing, dict) else None
 
     def _emit_node_state(self, event_type: str, node_id: str, profile_name: str, **extra: Any) -> None:
-        compat = compat_module()
-        compat.emit_event(
+        emit_event(
             event_type,
             workflow_id=self.workflow_id,
             node_id=node_id,
@@ -172,24 +207,23 @@ def _scrape_node_ids(nodes: List[Dict[str, Any]]) -> List[str]:
     ]
 
 
-def _max_workers(compat, options: Dict[str, Any], accounts: List[Any], has_scrape_relationships: bool) -> int:
-    configured = compat._parse_int(options.get('parallel_profiles', options.get('parallelProfiles')), 1)
+def _max_workers(options: Dict[str, Any], accounts: List[Any], has_scrape_relationships: bool) -> int:
+    configured = _parse_int(options.get('parallel_profiles', options.get('parallelProfiles')), 1)
     account_count = len(accounts) if accounts else 1
     configured_workers = max(1, min(account_count, configured))
     return 1 if has_scrape_relationships else configured_workers
 
 
 def run_workflow_session(runner: WorkflowRunner) -> int:
-    compat = compat_module()
-    compat.emit_event('session_started', total_accounts=len(runner.accounts), workflow_id=runner.workflow_id)
+    emit_event('session_started', total_accounts=len(runner.accounts), workflow_id=runner.workflow_id)
     if not runner.accounts:
-        compat.log('Нет профилей для запуска.')
-        compat.emit_event('session_ended', status='failed', workflow_id=runner.workflow_id)
+        log('No profiles to run.')
+        emit_event('session_ended', status='failed', workflow_id=runner.workflow_id)
         return 2
     had_failures = _run_accounts(runner)
     _shutdown_runner_resources(runner)
     status, exit_code = _session_outcome(runner, had_failures)
-    compat.emit_event('session_ended', status=status, workflow_id=runner.workflow_id)
+    emit_event('session_ended', status=status, workflow_id=runner.workflow_id)
     return exit_code
 
 
@@ -200,10 +234,9 @@ def _run_accounts(runner: WorkflowRunner) -> bool:
 
 
 def _run_scrape_queue(runner: WorkflowRunner) -> bool:
-    compat = compat_module()
     had_failures = False
     if len(runner.accounts) > 1:
-        compat.log(
+        log(
             f'scrape_relationships: queueing {len(runner.accounts)} auth profiles '
             f'with sequential execution'
         )
@@ -214,43 +247,41 @@ def _run_scrape_queue(runner: WorkflowRunner) -> bool:
         had_failures = _process_runner_account(runner, account, had_failures)
         if runner._scrape_work_complete():
             scrape_completed = True
-            _log_skipped_profiles(compat, account.username, len(runner.accounts) - index - 1)
+            _log_skipped_profiles(account.username, len(runner.accounts) - index - 1)
             break
-        _log_next_scrape_profile(compat, account.username, len(runner.accounts) - index - 1)
+        _log_next_scrape_profile(account.username, len(runner.accounts) - index - 1)
     return had_failures or (runner.running and not scrape_completed)
 
 
 def _process_runner_account(runner: WorkflowRunner, account, had_failures: bool) -> bool:
-    compat = compat_module()
     try:
         if not runner.process_account(account):
             had_failures = True
     except Exception as exc:
         had_failures = True
-        compat.log(f'Ошибка профиля: {exc}')
+        log(f'Profile error: {exc}')
     return had_failures
 
 
-def _log_skipped_profiles(compat, username: str, remaining: int) -> None:
+def _log_skipped_profiles(username: str, remaining: int) -> None:
     if remaining <= 0:
         return
-    compat.log(
+    log(
         f'scrape_relationships: completed with @{username}; '
         f'skipping {remaining} queued profile(s)'
     )
 
 
-def _log_next_scrape_profile(compat, username: str, remaining: int) -> None:
+def _log_next_scrape_profile(username: str, remaining: int) -> None:
     if remaining <= 0:
         return
-    compat.log(
+    log(
         f'scrape_relationships: @{username} finished without completing '
         f'the scrape node; moving to next queued profile ({remaining} remaining)'
     )
 
 
 def _run_parallel_accounts(runner: WorkflowRunner) -> bool:
-    compat = compat_module()
     had_failures = False
     futures = []
     for account in runner.accounts:
@@ -265,7 +296,7 @@ def _run_parallel_accounts(runner: WorkflowRunner) -> bool:
                 had_failures = True
         except Exception as exc:
             had_failures = True
-            compat.log(f'Ошибка профиля: {exc}')
+            log(f'Profile error: {exc}')
     return had_failures
 
 

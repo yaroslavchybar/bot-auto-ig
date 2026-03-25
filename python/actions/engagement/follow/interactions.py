@@ -24,7 +24,7 @@ def pre_follow_interactions(
     random.shuffle(actions)
     for action in actions:
         if should_stop and should_stop():
-            log('Остановка по запросу пользователя.')
+            log('Stopping at user request.')
             break
         action()
 
@@ -42,17 +42,18 @@ def _interaction_counts(page, log, likes_percentage: int, scroll_percentage: int
     _wait_for_posts_counter(page)
     total_posts = get_posts_count(page, log)
     if not total_posts:
-        log('Не удалось определить число постов для процентного расчета. Использую случайные значения.')
+        log('Could not determine post count for percentage calculation. Using random values.')
         return likes_to_put, scroll_count
     effective_posts = min(total_posts, 10)
-    log(f'Найдено постов: {total_posts}')
+    log(f'Posts found: {total_posts}')
     if effective_posts < total_posts:
-        log(f'Для расчётов использую максимум: {effective_posts}')
+        log(f'Using max for calculations: {effective_posts}')
     return _count_from_percentages(log, effective_posts, likes_percentage, scroll_percentage, scroll_count)
 
 
 def _wait_for_posts_counter(page) -> None:
     try:
+        # Cyrillic "публикац" matches Instagram Russian UI for "posts" count (CSS selector exception)
         page.wait_for_selector(
             'span:has-text("posts"), div:has-text("posts"), a:has-text("posts"), '
             'span:has-text("публикац"), div:has-text("публикац"), a:has-text("публикац")',
@@ -67,11 +68,11 @@ def _count_from_percentages(log, effective_posts: int, likes_percentage: int, sc
     scroll_count = default_scroll_count
     if likes_percentage > 0:
         likes_to_put = int(round(effective_posts * (likes_percentage / 100.0)))
-        log(f'Лайки по проценту ({likes_percentage}%): {likes_to_put}')
+        log(f'Likes by percentage ({likes_percentage}%): {likes_to_put}')
     if scroll_percentage > 0:
         posts_to_scroll = int(round(effective_posts * (scroll_percentage / 100.0)))
         scroll_count = max(1, int(posts_to_scroll / 5))
-        log(f'Скролл по проценту ({scroll_percentage}% от {effective_posts} постов): {scroll_count} скроллов')
+        log(f'Scroll by percentage ({scroll_percentage}% of {effective_posts} posts): {scroll_count} scrolls')
     return likes_to_put, scroll_count
 
 
@@ -80,12 +81,12 @@ def _interaction_actions(page, log, highlights_to_watch: int, likes_to_put: int,
     if highlights_to_watch > 0:
         actions.append(lambda: _run_highlights(page, log, highlights_to_watch, should_stop))
     else:
-        log('Пропускаю хайлайты (настроено 0).')
+        log('Skipping highlights (configured 0).')
     if likes_to_put > 0:
         actions.append(lambda: _run_scroll_with_likes(page, log, scroll_count, likes_to_put, liked_posts, should_stop))
     else:
         actions.append(lambda: _run_scroll(page, log, scroll_count, liked_posts, should_stop))
-        log('Пропускаю лайки (настроено 0).')
+        log('Skipping likes (configured 0).')
     return actions
 
 

@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _fingerprint_cache_path(profile_path: str, _seed: str, _os_name: str) -> str:
@@ -26,7 +29,7 @@ def _save_fingerprint_cache(cache_path: str, seed: str, os_name: str, fp_dict: d
         with open(cache_path, 'w', encoding='utf-8') as file_obj:
             json.dump({'seed': seed, 'os': os_name, 'fingerprint': fp_dict}, file_obj, ensure_ascii=False, indent=2)
     except Exception as exc:
-        print(f'[!] Failed to save fingerprint cache: {exc}')
+        logger.error('Failed to save fingerprint cache: %s', exc)
 
 
 def _apply_cached_properties(fingerprint_obj, cached: dict) -> None:
@@ -63,17 +66,14 @@ def load_or_generate_fingerprint_config(profile_path: str, fingerprint_seed: Opt
         cache_path = _fingerprint_cache_path(profile_path, fingerprint_seed, target_os)
         cached_config = _load_cached_fingerprint(cache_path, fingerprint_seed, target_os)
         if cached_config is not None:
-            print(f'[*] Loaded cached fingerprint config for {target_os} (seed: {fingerprint_seed[:8]}...)')
+            logger.info('Loaded cached fingerprint config for %s (seed: %s...)', target_os, fingerprint_seed[:8])
             return cached_config
         generated = _generate_fingerprint_config(target_os)
         _save_fingerprint_cache(cache_path, fingerprint_seed, target_os, generated)
-        print(f'[*] Generated and cached new fingerprint config for {target_os} (seed: {fingerprint_seed[:8]}...)')
+        logger.info('Generated and cached new fingerprint config for %s (seed: %s...)', target_os, fingerprint_seed[:8])
         return generated
     except Exception as exc:
-        print(f'[!] Failed to generate/load fingerprint config: {exc}')
-        import traceback as _tb
-
-        _tb.print_exc()
+        logger.error('Failed to generate/load fingerprint config: %s', exc, exc_info=True)
         return None
 
 

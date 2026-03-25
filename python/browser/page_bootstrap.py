@@ -1,12 +1,18 @@
+import logging
 import time
 from typing import Any
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
-from python.browser.compat import compat as compat_module
+from python.actions import common as actions
+from python.browser.proxy import mark_proxy_failure, mark_proxy_success, proxy_circuit
+from python.browser.session_state import _load_profile_cookies
+from python.browser.traffic import TrafficMonitor
 from python.core.errors.exceptions import AccountBannedException
 from python.core.errors.retry import jitter, retry_with_backoff
 from python.core.snapshot_debugger import save_debug_snapshot
+
+logger = logging.getLogger(__name__)
 
 
 @retry_with_backoff(exceptions=(PlaywrightTimeoutError,))
@@ -97,48 +103,54 @@ def _capture_console_error(msg, capture) -> None:
 
 
 def initialize_browser_page(context, profile_name: str):
-    compat = compat_module()
     try:
-        loaded_count = compat._preload_profile_cookies(context, profile_name)
+        loaded_count = _preload_profile_cookies(context, profile_name)
         if loaded_count:
-            print(f'[*] Preloaded {loaded_count} cookies from database for {profile_name}')
+            logger.info('Preloaded %d cookies from database for %s', loaded_count, profile_name)
     except Exception as exc:
-        compat.logger.warning('Cookie preload failed for %s: %s', profile_name, exc)
+        logger.warning('Cookie preload failed for %s: %s', profile_name, exc)
 
     page = context.pages[0] if context.pages else context.new_page()
-    monitor = compat.TrafficMonitor()
+    monitor = TrafficMonitor()
     page.on('response', monitor.on_response)
-    compat._attach_error_snapshots(page)
-    compat.actions.seed_mouse_cursor(page)
+    _attach_error_snapshots(page)
+    actions.seed_mouse_cursor(page)
     return page, monitor
 
 
+def _preload_profile_cookies(context, profile_name: str) -> int:
+    cookies = _load_profile_cookies(profile_name)
+    if not cookies:
+        return 0
+    context.add_cookies(cookies)
+    return len(cookies)
+
+
 def bootstrap_instagram_session(page, monitor, profile_name: str, proxy_string: str | None):
-    compat = compat_module()
     try:
         if page.url == 'about:blank':
-            compat.safe_goto(page, 'https://www.instagram.com', timeout=jitter(45000))
+            safe_goto(page, 'https://www.instagram.com', timeout=jitter(45000))
             _wait_for_monitor_cooldown(monitor)
             _raise_if_account_banned(page)
-        compat.mark_proxy_success(proxy_string)
-        compat.proxy_circuit.record_success()
+        mark_proxy_success(proxy_string)
+        proxy_circuit.record_success()
     except PlaywrightTimeoutError:
-        print('[!] Timeout navigating to Instagram')
-        compat.mark_proxy_failure(proxy_string)
-        compat.proxy_circuit.record_failure()
+        logger.warning('Timeout navigating to Instagram')
+        mark_proxy_failure(proxy_string)
+        proxy_circuit.record_failure()
     except AccountBannedException:
         raise
     except Exception as exc:
-        print(f'[!] Error navigating to Instagram: {exc}')
-        compat.mark_proxy_failure(proxy_string)
-        compat.proxy_circuit.record_failure()
+        logger.error('Error navigating to Instagram: %s', exc)
+        mark_proxy_failure(proxy_string)
+        proxy_circuit.record_failure()
 
 
 def _wait_for_monitor_cooldown(monitor) -> None:
     if not monitor.should_pause():
         return
     wait_time = max(0.0, monitor.cooldown_until - time.time())
-    print(f'[!] Traffic monitor triggered cooldown. Waiting {wait_time:.1f}s...')
+    logger.warning('Traffic monitor triggered cooldown. Waiting %.1fs...', wait_time)
     time.sleep(wait_time)
 
 

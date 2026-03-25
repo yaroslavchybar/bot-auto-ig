@@ -1,17 +1,20 @@
-FROM node:20-bookworm-slim AS build
+﻿# syntax=docker/dockerfile:1.7
+FROM node:20-bookworm-slim AS frontend-build
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+COPY --from=repo_root package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci --omit=dev
 
 WORKDIR /app/frontend
 
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci
 
-COPY frontend/ ./
-COPY convex/ /app/convex/
+COPY . ./
+COPY --from=convex_src . /app/convex/
 
 ARG VITE_CONVEX_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
@@ -27,17 +30,17 @@ ENV VITE_DATAUPLOADER_URL=$VITE_DATAUPLOADER_URL
 
 RUN npm run build
 
-FROM node:20-bookworm-slim AS runtime
+FROM node:20-bookworm-slim AS frontend-runtime
 
 WORKDIR /app/frontend
 
 ENV NODE_ENV=production
 ENV PORT=80
 
-COPY --from=build /app/frontend/package.json ./package.json
-COPY --from=build /app/frontend/package-lock.json ./package-lock.json
-COPY --from=build /app/frontend/node_modules ./node_modules
-COPY --from=build /app/frontend/build ./build
+COPY --from=frontend-build /app/frontend/package.json ./package.json
+COPY --from=frontend-build /app/frontend/package-lock.json ./package-lock.json
+COPY --from=frontend-build /app/frontend/node_modules ./node_modules
+COPY --from=frontend-build /app/frontend/build ./build
 
 EXPOSE 80
 

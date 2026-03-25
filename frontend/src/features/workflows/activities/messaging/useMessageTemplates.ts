@@ -7,7 +7,8 @@
 
 import { useQuery, useMutation } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
-import { useState, useCallback } from 'react'
+import { useCallback } from 'react'
+import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 export type MessageTemplateKind = 'message' | 'message_2'
 
@@ -16,28 +17,23 @@ export function useMessageTemplates(kind: MessageTemplateKind) {
     | string[]
     | undefined
   const upsertMutation = useMutation(api.messageTemplates.upsert)
-
-  const [error, setError] = useState<string | null>(null)
+  const { handleError } = useErrorHandler()
 
   const saveTemplates = useCallback(
     async (currentKind: MessageTemplateKind, newTemplates: string[]) => {
-      setError(null)
       try {
         await upsertMutation({ kind: currentKind, texts: newTemplates })
       } catch (err) {
-        setError(
-          err instanceof Error ? err.message : 'Failed to save templates',
-        )
+        handleError(err, 'Save templates')
         throw err
       }
     },
-    [upsertMutation],
+    [handleError, upsertMutation],
   )
 
   return {
     templates: templates || [],
     loading: templates === undefined,
-    error,
     saveTemplates,
   }
 }

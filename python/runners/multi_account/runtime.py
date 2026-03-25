@@ -12,27 +12,33 @@ from python.runners.multi_account.activity_dispatch import (
     run_stories,
     run_unfollow,
 )
-from python.runners.multi_account.compat import compat as compat_module
+from python.core.clients import InstagramAccountsClient, ProfilesClient
+from python.runners.multi_account.io import emit_event, log
+from python.runners.workflow.parsing import _parse_int
 
 
 class InstagramAutomationRunner:
     def __init__(self, config, accounts, workflow_id: Optional[str] = None):
-        compat = compat_module()
         self.config = config
         self.accounts = accounts
         self.workflow_id = workflow_id
         self.running = True
-        self.accounts_client = compat.InstagramAccountsClient()
-        self.profiles_client = compat.ProfilesClient()
+        self.accounts_client = InstagramAccountsClient()
+        self.profiles_client = ProfilesClient()
         self._profile_cache: Dict[str, Dict[str, Any]] = {}
         self._profile_cache_lock = Lock()
-        configured = compat._parse_int(getattr(self.config, 'parallel_profiles', 1), 1)
+        self._active_contexts_lock = Lock()
+        self._active_contexts: list = []
+        configured = _parse_int(getattr(self.config, 'parallel_profiles', 1), 1)
         account_count = len(accounts) if accounts else 1
         self._max_workers = max(1, min(account_count, configured))
         self._executor = ThreadPoolExecutor(max_workers=self._max_workers)
         self._workflow_sessions: Dict[str, int] = {}
         if self.workflow_id:
             self._workflow_sessions = _load_workflow_sessions(self)
+        # Lightweight shutdown-state tracking (updated by account_session)
+        self._current_profile: Optional[str] = None
+        self._current_action: Optional[str] = None
 
     def _get_cached_profile(self, profile_name: str):
         with self._profile_cache_lock:
@@ -42,10 +48,33 @@ class InstagramAutomationRunner:
         with self._profile_cache_lock:
             self._profile_cache[profile_name] = profile_data
 
+    def register_browser_context(self, ctx_mgr: Any) -> None:
+        """Track an active browser context manager for shutdown cleanup."""
+        with self._active_contexts_lock:
+            self._active_contexts.append(ctx_mgr)
+
+    def unregister_browser_context(self, ctx_mgr: Any) -> None:
+        """Remove a browser context manager after normal cleanup."""
+        with self._active_contexts_lock:
+            try:
+                self._active_contexts.remove(ctx_mgr)
+            except ValueError:
+                pass
+
+    def close_all_browser_contexts(self) -> None:
+        """Force-close all registered browser contexts (shutdown cleanup)."""
+        with self._active_contexts_lock:
+            contexts = list(self._active_contexts)
+            self._active_contexts.clear()
+        for ctx_mgr in contexts:
+            try:
+                ctx_mgr.__exit__(None, None, None)
+            except Exception:
+                pass
+
     def stop(self) -> None:
-        compat = compat_module()
         self.running = False
-        compat.log('Остановка автоматизации...')
+        log('Stopping automation...')
         _shutdown_executor(self._executor, wait=False)
 
     def run(self) -> int:
@@ -84,24 +113,22 @@ def _load_workflow_sessions(runner) -> Dict[str, int]:
 
 
 def run_automation_session(runner: InstagramAutomationRunner) -> int:
-    compat = compat_module()
-    compat.emit_event('session_started', total_accounts=len(runner.accounts))
+    emit_event('session_started', total_accounts=len(runner.accounts))
     status = 'failed'
     try:
         if not runner.accounts:
-            compat.log('Нет профилей для запуска.')
+            log('No profiles to start.')
             return 2
         _run_cycles(runner)
         status = 'completed' if runner.running else 'cancelled'
         return 0 if runner.running else 1
     finally:
         _shutdown_executor(runner._executor, wait=True)
-        compat.log('Автоматизация остановлена.')
-        compat.emit_event('session_ended', status=status)
+        log('Automation stopped.')
+        emit_event('session_ended', status=status)
 
 
 def _run_cycles(runner: InstagramAutomationRunner) -> None:
-    compat = compat_module()
     while runner.running:
         work_done = _run_cycle(runner)
         if not runner.running:
@@ -109,12 +136,11 @@ def _run_cycles(runner: InstagramAutomationRunner) -> None:
         if work_done:
             _sleep_seconds(runner, 5)
             continue
-        compat.log('Все профили достигли лимита или пропущены. Жду 60 сек...')
+        log('All profiles reached limit or skipped. Waiting 60 sec...')
         _sleep_seconds(runner, 60)
 
 
 def _run_cycle(runner: InstagramAutomationRunner) -> bool:
-    compat = compat_module()
     futures = []
     for account in runner.accounts:
         if not runner.running:
@@ -128,7 +154,7 @@ def _run_cycle(runner: InstagramAutomationRunner) -> bool:
             if future.result():
                 work_done = True
         except Exception as exc:
-            compat.log(f'Ошибка профиля: {exc}')
+            log(f'Profile error: {exc}')
     return work_done
 
 

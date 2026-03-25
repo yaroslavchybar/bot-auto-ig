@@ -28,21 +28,24 @@ def _go_home(page, log=None) -> bool:
 
     try:
         log("Stories: opening Home")
-        svg = page.query_selector('svg[aria-label="Home"]')
-        if svg:
-            btn = svg.query_selector('xpath=ancestor-or-self::*[@role="link"][1]') or svg.query_selector(
-                'xpath=ancestor-or-self::*[@role="button"][1]'
+        svg = page.locator('svg[aria-label="Home"]')
+        if svg.count() > 0:
+            first_svg = svg.first
+            link_ancestor = first_svg.locator('xpath=ancestor-or-self::*[@role="link"][1]')
+            btn_ancestor = first_svg.locator('xpath=ancestor-or-self::*[@role="button"][1]')
+            target = link_ancestor.first if link_ancestor.count() > 0 else (
+                btn_ancestor.first if btn_ancestor.count() > 0 else first_svg
             )
-            (btn or svg).click()
+            target.click()
             random_delay(1.5, 3.0)
             return True
     except Exception:
         pass
 
     try:
-        link = page.query_selector('a[role="link"][href="/"]')
-        if link:
-            link.click()
+        link = page.locator('a[role="link"][href="/"]')
+        if link.count() > 0:
+            link.first.click()
             random_delay(1.5, 3.0)
             return True
     except Exception:

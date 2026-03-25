@@ -1,7 +1,10 @@
 import datetime
+import logging
 import os
 import shutil
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def ensure_profile_path(profile_name: str, base_dir: Optional[str] = None) -> str:
@@ -46,7 +49,7 @@ def _maybe_migrate_legacy_profile(
     try:
         shutil.move(legacy_path, profile_path)
     except Exception as exc:
-        print(f"[!] Failed to migrate profile '{profile_name}': {exc}")
+        logger.error("Failed to migrate profile '%s': %s", profile_name, exc)
 
 
 def _read_text(path: str) -> Optional[str]:

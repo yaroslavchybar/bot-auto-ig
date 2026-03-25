@@ -23,7 +23,7 @@ def call_on_success(on_success: Optional[Callable[[str], None]], username: str, 
     try:
         on_success(username)
     except Exception as callback_err:
-        log(f'Не удалось обновить статус @{username}: {callback_err}')
+        log(f'Failed to update status for @{username}: {callback_err}')
 
 
 def _pick_visible(locator_candidates, timeout_ms: int = 3500):
@@ -68,13 +68,13 @@ def _find_user_result_link(page, dialog, username: str, log: Callable[[str], Non
     time.sleep(1.5)
     links = _search_result_links(page, dialog, log)
     if not links:
-        log(f'Профиль @{username} не найден в результатах поиска')
+        log(f'Profile @{username} not found in search results')
         return None
     for strategy in (_match_span_text, _match_link_headline, _match_dialog_href, _match_page_href, _match_list_href):
         result = strategy(page, dialog, links, username_lower, log)
         if result:
             return result
-    log(f'Профиль @{username} не найден в результатах поиска')
+    log(f'Profile @{username} not found in search results')
     return None
 
 
@@ -84,7 +84,7 @@ def _search_result_links(page, dialog, log) -> List:
         return links
     try:
         links = page.locator('a[role="link"]').all()
-        log(f'Найдено {len(links)} ссылок на странице')
+        log(f'Found {len(links)} links on page')
         return links
     except Exception:
         return []
@@ -93,10 +93,10 @@ def _search_result_links(page, dialog, log) -> List:
 def _dialog_links(dialog, log) -> List:
     try:
         links = dialog.locator('a[role="link"]').all()
-        log(f'Найдено {len(links)} ссылок в диалоге поиска')
+        log(f'Found {len(links)} links in search dialog')
         return links
     except Exception as exc:
-        log(f'Ошибка поиска ссылок в диалоге: {exc}')
+        log(f'Error searching links in dialog: {exc}')
         return []
 
 
@@ -110,7 +110,7 @@ def _match_span_text(page, dialog, links, username_lower: str, log):
             try:
                 span_text = (span.inner_text() or '').strip().lstrip('@').lower()
                 if span_text == username_lower and link.is_visible(timeout=500):
-                    log(f'Найден профиль по тексту span: {username_lower}')
+                    log(f'Found profile by span text: {username_lower}')
                     return link
             except Exception:
                 continue
@@ -123,7 +123,7 @@ def _match_link_headline(page, dialog, links, username_lower: str, log):
             lines = (link.inner_text() or '').strip().splitlines()
             head = (lines[0] if lines else '').strip().lstrip('@').lower()
             if head == username_lower and link.is_visible(timeout=500):
-                log(f'Найден профиль по первой строке: {username_lower}')
+                log(f'Found profile by first line: {username_lower}')
                 return link
         except Exception:
             continue
@@ -131,18 +131,18 @@ def _match_link_headline(page, dialog, links, username_lower: str, log):
 
 
 def _match_dialog_href(page, dialog, links, username_lower: str, log):
-    return _direct_href_match(dialog, username_lower, 'в диалоге', log)
+    return _direct_href_match(dialog, username_lower, 'in dialog', log)
 
 
 def _match_page_href(page, dialog, links, username_lower: str, log):
-    return _direct_href_match(page, username_lower, 'на странице', log)
+    return _direct_href_match(page, username_lower, 'on page', log)
 
 
 def _direct_href_match(scope, username_lower: str, label: str, log):
     try:
         direct = scope.locator(f'a[href="/{username_lower}/"]').first
         if direct.count() > 0 and direct.is_visible(timeout=500):
-            log(f'Найден профиль по href {label}: {username_lower}')
+            log(f'Found profile by href {label}: {username_lower}')
             return direct
     except Exception:
         return None
@@ -154,7 +154,7 @@ def _match_list_href(page, dialog, links, username_lower: str, log):
         try:
             href = (link.get_attribute('href') or '').strip().lower()
             if href == f'/{username_lower}/' and link.is_visible(timeout=500):
-                log(f'Найден профиль по href в списке: {username_lower}')
+                log(f'Found profile by href in list: {username_lower}')
                 return link
         except Exception:
             continue
@@ -186,7 +186,7 @@ def open_profile_via_search_first(page, username: str, log: Callable[[str], None
         result.click()
         return _wait_for_profile_url(page, username)
     except Exception as exc:
-        log(f'Поиск не сработал для @{username}: {exc}')
+        log(f'Search failed for @{username}: {exc}')
         try:
             page.keyboard.press('Escape')
         except Exception:
