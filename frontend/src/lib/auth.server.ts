@@ -7,7 +7,7 @@ export async function requireSignedIn(args: LoaderFunctionArgs) {
   const { userId } = await getAuth(args)
 
   if (!userId) {
-    buildSignInRedirect(args.request.url)
+    return buildSignInRedirect(args.request.url)
   }
 
   return { userId }

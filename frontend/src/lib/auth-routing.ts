@@ -8,7 +8,7 @@ export const AUTH_ROUTES = {
 
 export const REDIRECT_URL_PARAM = 'redirect_url'
 
-export function buildSignInRedirect(requestUrl: string) {
+export function buildSignInRedirect(requestUrl: string): never {
   const signInUrl = new URL(AUTH_ROUTES.signIn, requestUrl)
   signInUrl.searchParams.set(REDIRECT_URL_PARAM, requestUrl)
   throw redirect(`${signInUrl.pathname}${signInUrl.search}`)

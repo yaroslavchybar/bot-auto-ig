@@ -9,6 +9,9 @@ export function setTokenGetter(getter: () => Promise<string | null>) {
 }
 
 const DEFAULT_TIMEOUT_MS = 30000
+const DEFAULT_RETRY_ATTEMPTS = 3
+const NO_RETRY_ATTEMPTS = 1
+const AUTO_RETRY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//.test(path)) {
@@ -28,12 +31,21 @@ export async function apiFetch<T>(
     onRetry?: RetryOptions['onRetry']
   } = {},
 ): Promise<T> {
-  const { maxRetries = 3, onRetry, ...fetchOptions } = options
+  const { maxRetries, onRetry, ...fetchOptions } = options
+  const retryAttempts =
+    maxRetries ?? getDefaultRetryAttempts(fetchOptions.method)
 
   return withRetry(
     () => apiFetchOnce<T>(path, fetchOptions),
-    { maxRetries, onRetry },
+    { maxRetries: retryAttempts, onRetry },
   )
+}
+
+function getDefaultRetryAttempts(method?: string) {
+  const normalizedMethod = (method ?? 'GET').toUpperCase()
+  return AUTO_RETRY_METHODS.has(normalizedMethod)
+    ? DEFAULT_RETRY_ATTEMPTS
+    : NO_RETRY_ATTEMPTS
 }
 
 /** Single (non-retried) fetch — used internally by apiFetch's retry loop. */
@@ -226,10 +238,10 @@ export async function withRetry<T>(
 }
 
 /**
- * API fetch with automatic retry for transient failures.
+ * API fetch with explicit retry semantics for callers that opt in.
  *
- * @deprecated Use `apiFetch` directly — it now includes retry logic by default.
- * Kept for backward compatibility with existing callers.
+ * @deprecated Prefer `apiFetch`; it retries read requests automatically and
+ * avoids replaying mutating requests unless the caller opts in.
  */
 export async function apiFetchWithRetry<T>(
   path: string,
@@ -241,5 +253,8 @@ export async function apiFetchWithRetry<T>(
     onRetry?: RetryOptions['onRetry']
   } = {},
 ): Promise<T> {
-  return apiFetch<T>(path, options)
+  return apiFetch<T>(path, {
+    ...options,
+    maxRetries: options.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
+  })
 }
