@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
 import { apiFetch } from '@/lib/api'
@@ -58,6 +58,7 @@ export function useMonitoringData() {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [retrying, setRetrying] = useState(false)
+  const hasLoadedDataRef = useRef(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -65,6 +66,7 @@ export function useMonitoringData() {
         ? `${env.apiUrl}/api/monitoring`
         : '/api/monitoring'
       const result = await apiFetch<MonitoringData>(endpoint)
+      hasLoadedDataRef.current = true
       setData(result)
       setLastUpdate(new Date())
       setError(null)
@@ -72,11 +74,11 @@ export function useMonitoringData() {
       const msg = err instanceof Error ? err.message : 'Failed to fetch monitoring data'
       setError(msg)
       // Only report to Sentry on first failure (not on every poll)
-      if (!data) handleError(err, 'Monitoring data')
+      if (!hasLoadedDataRef.current) handleError(err, 'Monitoring data')
     } finally {
       setLoading(false)
     }
-  }, [data, handleError])
+  }, [handleError])
 
   const handleRetry = useCallback(async () => {
     setRetrying(true)

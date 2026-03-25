@@ -23,6 +23,7 @@ Testing surface, resource cost classification per surface, and validation approa
 **Auth:** Clerk sign-in page at /sign-in (email + password)
 - May need test credentials or Clerk dev mode bypass for smoke tests
 - Shared state currently does not include Clerk smoke-test credentials or a documented auth-bypass path for protected routes. Redirect-only checks validate the auth guard, but they do not prove that post-auth pages like `/accounts` or `/workflows` actually rendered.
+- Clerk's documented test-email flow can unblock local validation on development instances: any email address with a `+clerk_test` subaddress can be verified with code `424242`. Use a unique alias per validator run to avoid collisions.
 
 **Key pages to validate:**
 - /sign-in (auth page)
@@ -60,14 +61,22 @@ Testing surface, resource cost classification per surface, and validation approa
 ## Setup Notes
 - In this Windows Exec environment, `.factory/init.sh` is not directly runnable because `sh` is unavailable.
 - Repository dependencies are already installed; use manifest validators and service commands directly instead of relying on the shell script.
+- If `http://localhost:3001/api/health` and `http://localhost:5173` already return `200`, you can reuse the running local services instead of restarting them.
 
 ## Flow Validator Guidance: Web application
 
 - Reuse the shared local services only at `http://localhost:5173` and `http://localhost:3001`; do not start alternate ports.
 - Stay within read-only smoke coverage unless the assigned assertions explicitly require mutation.
 - Avoid triggering automation/VNC/datauploader flows; they are outside the safe local validation boundary for this milestone.
-- If Clerk credentials are unavailable, validate unauthenticated surfaces such as `/` and `/sign-in`, plus API health checks and console/network stability.
+- If Clerk credentials are unavailable, first try a disposable Clerk test email using the documented `+clerk_test` alias flow and verification code `424242`; if that still fails, fall back to unauthenticated surfaces such as `/` and `/sign-in`, plus API health checks and console/network stability.
 - For Sentry-degradation checks, treat blank DSN environment overrides as part of test setup only; do not edit `.env` or `.env.local`.
+
+## Flow Validator Guidance: Server reliability CLI
+
+- Use repo-local scripts or one-off CLI harnesses only; do not modify application source files while validating.
+- If a validation step needs to stop or restart the server/frontend, serialize that flow with any browser-based validation because both share ports `3001` and `5173`.
+- Keep all temporary evidence under the assigned mission evidence directory, and clean up any helper processes you start by explicit PID.
+- Prefer exercising exported modules (`automation/shutdown`, `automation/state`, `shared/ProcessService`, `shared/mutex`, `shared/convexClient`) and real manifest services over ad-hoc mocks of the application's own code.
 
 ## Flow Validator Guidance: Python automation CLI
 
