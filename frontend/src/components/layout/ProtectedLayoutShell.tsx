@@ -11,6 +11,7 @@ import { ThemeToggle } from '@/components/layout/theme-toggle'
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarTrigger,
 } from '@/components/ui/sidebar'
 import {
   AppSidebar,
@@ -140,6 +141,7 @@ export function ProtectedLayoutShell({
           <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-transparent">
             <header className="border-line-soft bg-panel-subtle relative z-10 flex h-16 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
               <div className="flex min-w-0 items-center gap-2 px-4">
+                <SidebarTrigger className="text-muted-copy hover:text-ink -ml-1 size-8 md:hidden" />
                 <Breadcrumb className="min-w-0">
                   <BreadcrumbList>
                     <BreadcrumbItem>

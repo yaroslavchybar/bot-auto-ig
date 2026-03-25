@@ -211,7 +211,7 @@ function spawnLoginProcess(profileName: string, headless?: boolean): ChildProces
     if (headless) {
         args.push('--headless')
     }
-    return spawnPython({ args, shell: true })
+    return spawnPython({ args })
 }
 
 /** Send login credentials via stdin. */
