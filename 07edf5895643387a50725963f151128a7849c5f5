@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.19",
+  "base_commit_sha": "07edf5895643387a50725963f151128a7849c5f5",
+  "prompts": {
+    "667039ee9f402bc7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d25cf-c02c-7e90-ad09-447450450d9d",
+        "model": "unknown"
+      },
+      "human_author": "Yaroslav <yroslavchybar@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 70,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
