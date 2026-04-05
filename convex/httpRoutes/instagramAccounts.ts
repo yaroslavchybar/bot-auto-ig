@@ -13,6 +13,7 @@ const instagramAccountPaths = [
   '/api/instagram-accounts',
   '/api/instagram-accounts/batch',
   '/api/instagram-accounts/for-profile',
+  '/api/instagram-accounts/by-status',
   '/api/instagram-accounts/to-message',
   '/api/instagram-accounts/update-status',
   '/api/instagram-accounts/update-message',
@@ -121,6 +122,19 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
       const accounts = await ctx.runQuery(internal.instagramAccounts.getToMessage, {
         profileId: profileId as any,
         cooldownHours,
+      });
+      return jsonResponse(accounts.map(mapAccountToPython));
+    }),
+  });
+
+  http.route({
+    path: '/api/instagram-accounts/by-status',
+    method: 'GET',
+    handler: withErrorHandling(async (ctx, request) => {
+      const url = new URL(request.url);
+      const status = url.searchParams.get('status') || '';
+      const accounts = await ctx.runQuery(internal.instagramAccounts.listByStatus, {
+        status,
       });
       return jsonResponse(accounts.map(mapAccountToPython));
     }),

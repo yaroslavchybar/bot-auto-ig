@@ -188,6 +188,20 @@ export const listUserNames = internalQuery({
 	},
 });
 
+export const listByStatus = internalQuery({
+	args: { status: v.string() },
+	handler: async (ctx, args) => {
+		const status = String(args.status || "").trim();
+		if (!status) throw new Error("status is required");
+		const rows = await ctx.db
+			.query("instagramAccounts")
+			.withIndex("by_status", (q) => q.eq("status", status))
+			.collect();
+		rows.sort((a, b) => a.createdAt - b.createdAt);
+		return rows;
+	},
+});
+
 export const getProfilesWithAssignedAccounts = internalQuery({
 	args: { status: v.optional(v.union(v.null(), v.string())) },
 	handler: async (ctx, args) => {

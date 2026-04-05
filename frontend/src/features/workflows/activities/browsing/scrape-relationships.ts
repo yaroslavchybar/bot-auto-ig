@@ -31,6 +31,15 @@ export const scrapeRelationships: ActivityDefinition = {
       group: 'Targets',
     },
     {
+      name: 'useAccountUsernames',
+      type: 'boolean',
+      label: 'Use Account Usernames',
+      default: false,
+      helpText:
+        'Use all instagramAccounts currently in status "scraping" as runtime targets and mark each one "done" after a successful scrape. When enabled, the manual target list is ignored.',
+      group: 'Targets',
+    },
+    {
       name: 'chunkLimit',
       type: 'number',
       label: 'Chunk Limit',

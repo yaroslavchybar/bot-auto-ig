@@ -6,9 +6,24 @@ from python.runners.workflow import runtime as workflow_runtime_mod
 class DummyClient:
     def __init__(self):
         self.increment_calls = []
+        self.status_updates = []
+        self.accounts_by_status = []
 
     def increment_daily_scraping_used(self, name, amount):
         self.increment_calls.append((name, amount))
+        return True
+
+    def list_accounts_by_status(self, status):
+        return list(self.accounts_by_status) if status == 'scraping' else []
+
+    def update_account_status(self, account_id, status='subscribed', assigned_to='__NOT_SET__'):
+        self.status_updates.append(
+            {
+                'account_id': account_id,
+                'status': status,
+                'assigned_to': assigned_to,
+            }
+        )
         return True
 
 

@@ -16,6 +16,7 @@ from python.runners.workflow.scrape_utils import (
 from python.runners.workflow.io import log
 from python.runners.workflow.parsing import (
     _normalize_string_list,
+    _parse_bool,
     _parse_float,
     _parse_int,
     _parse_retry_backoff_seconds,
@@ -50,7 +51,9 @@ class ScrapeRelationshipsExecutor:
         self.page = page
         self.profile_name = profile_name
         self.profile_data = profile_data
-        self.targets = _normalize_string_list(cfg.get('targets'))
+        self.configured_targets = _normalize_string_list(cfg.get('targets'))
+        self.use_account_usernames = _parse_bool(cfg.get('useAccountUsernames'), False)
+        self.targets = list(self.configured_targets)
         self.kind = 'following' if str(cfg.get('kind') or '').strip().lower() == 'following' else 'followers'
         self.chunk_limit = max(1, min(5000, _parse_int(cfg.get('chunkLimit'), 200)))
         self.max_pages_per_attempt = max(1, min(100, _parse_int(cfg.get('maxPagesPerAttempt'), 3)))
@@ -71,10 +74,15 @@ class ScrapeRelationshipsExecutor:
         self.profile_record: Dict[str, Any] = {}
         self.active_target_username: Optional[str] = None
         self.relationship_view_ready = False
+        self.target_account_ids: Dict[str, str] = {}
 
     def run(self) -> str:
+        self._prepare_targets()
         if not self.targets:
-            log('scrape_relationships requires at least one target username')
+            if self.use_account_usernames:
+                log('scrape_relationships could not resolve any account usernames in status scraping')
+            else:
+                log('scrape_relationships requires at least one target username')
             return 'failure'
         self._load_state()
         self._prepare_profile_record()
@@ -96,10 +104,63 @@ class ScrapeRelationshipsExecutor:
         )
         return 'failure' if not self.runner.running else 'success'
 
+    def _prepare_targets(self) -> None:
+        if not self.use_account_usernames:
+            self.targets = list(self.configured_targets)
+            self.target_account_ids = {}
+            return
+        existing_state = self.runner._get_node_state(self.node_id)
+        scraping_accounts = self.runner.accounts_client.list_accounts_by_status('scraping')
+        self.target_account_ids = self._build_target_account_ids(scraping_accounts)
+        if self._should_resume_account_targets(existing_state):
+            self.targets = _normalize_string_list(existing_state.get('targets'))
+            return
+        self.targets = []
+        seen: set[str] = set()
+        for account in scraping_accounts:
+            username = self._normalize_account_username(account.get('user_name'))
+            if not username or username in seen:
+                continue
+            seen.add(username)
+            self.targets.append(username)
+
+    def _should_resume_account_targets(self, state: Optional[Dict[str, Any]]) -> bool:
+        if not isinstance(state, dict):
+            return False
+        if not _parse_bool(state.get('useAccountUsernames'), False):
+            return False
+        if state.get('done') or str(state.get('status') or '').strip().lower() == 'completed':
+            return False
+        return bool(_normalize_string_list(state.get('targets')))
+
+    def _build_target_account_ids(self, accounts: Any) -> Dict[str, str]:
+        mapping: Dict[str, str] = {}
+        rows = accounts if isinstance(accounts, list) else []
+        for account in rows:
+            if not isinstance(account, dict):
+                continue
+            username = self._normalize_account_username(account.get('user_name'))
+            account_id = str(account.get('id') or '').strip()
+            if not username or not account_id or username in mapping:
+                continue
+            mapping[username] = account_id
+        return mapping
+
+    def _normalize_account_username(self, value: Any) -> str:
+        cleaned = str(value or '').strip()
+        if cleaned.startswith('@'):
+            cleaned = cleaned[1:]
+        cleaned = cleaned.strip().strip('/')
+        return cleaned.lower()
+
     def _load_state(self) -> None:
         existing_state = self.runner._get_node_state(self.node_id)
         self.state = dict(existing_state) if isinstance(existing_state, dict) else {}
-        if self.state.get('kind') != self.kind or _normalize_string_list(self.state.get('targets')) != self.targets:
+        if (
+            self.state.get('kind') != self.kind
+            or _parse_bool(self.state.get('useAccountUsernames'), False) != self.use_account_usernames
+            or _normalize_string_list(self.state.get('targets')) != self.targets
+        ):
             _delete_resume_snapshot(self.state.get('resumeSnapshotPath'))
             self.state = {}
         stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
@@ -155,6 +216,7 @@ class ScrapeRelationshipsExecutor:
         self.runner._update_node_state(
             self.node_id,
             activityId='scrape_relationships',
+            useAccountUsernames=self.use_account_usernames,
             kind=self.kind,
             targets=self.targets,
             currentTargetIndex=self.current_target_index,
@@ -174,7 +236,7 @@ class ScrapeRelationshipsExecutor:
         log(
             f'scrape_relationships: starting node {self.node_id} kind={self.kind} '
             f'targets={len(self.targets)} chunkLimit={self.chunk_limit} maxPagesPerAttempt={self.max_pages_per_attempt} '
-            f'maxAttempts={self.max_attempts} resumeIndex={self.current_target_index} '
+            f'maxAttempts={self.max_attempts} accountTargets={self.use_account_usernames} resumeIndex={self.current_target_index} '
             f"resumeCursor={'yes' if self.cursor else 'no'}"
         )
 
@@ -201,6 +263,7 @@ class ScrapeRelationshipsExecutor:
         self.runner._update_node_state(
             self.node_id,
             status='failed',
+            useAccountUsernames=self.use_account_usernames,
             kind=self.kind,
             targets=self.targets,
             currentTargetIndex=self.current_target_index,
@@ -363,7 +426,9 @@ class ScrapeRelationshipsExecutor:
             return self._fail_target(target_username, 'fatal_error', 'unexpected_empty_result', message)
         self._record_success_progress(chunk_users, next_cursor, next_target_scraped)
         self._log_success_chunk(target_username, chunk_users, chunk_debug, elapsed_ms, has_more, expected_total, next_target_scraped)
-        self._update_after_success(target_username, has_more)
+        result = self._update_after_success(target_username, has_more)
+        if result is not None:
+            return result
         if self.current_target_index >= len(self.targets):
             return self._complete_node()
         return None
@@ -404,14 +469,18 @@ class ScrapeRelationshipsExecutor:
             f'elapsedMs={elapsed_ms}{suffix}'
         )
 
-    def _update_after_success(self, target_username: str, has_more: bool) -> None:
+    def _update_after_success(self, target_username: str, has_more: bool) -> Optional[str]:
         if has_more:
             self._store_resume_snapshot()
         else:
-            self._complete_target(target_username)
+            completion_error = self._complete_target(target_username)
+            if completion_error is not None:
+                error_code, error_message = completion_error
+                return self._fail_target(target_username, 'fatal_error', error_code, error_message)
         self.runner._update_node_state(
             self.node_id,
             activityId='scrape_relationships',
+            useAccountUsernames=self.use_account_usernames,
             kind=self.kind,
             targets=self.targets,
             currentTargetIndex=self.current_target_index,
@@ -443,6 +512,7 @@ class ScrapeRelationshipsExecutor:
             completedTargets=self.current_target_index,
             progress=min(99, int(round(100.0 * (self.current_target_index / max(1, len(self.targets)))))),
         )
+        return None
 
     def _store_resume_snapshot(self) -> None:
         self.artifact_storage_id = ''
@@ -468,7 +538,12 @@ class ScrapeRelationshipsExecutor:
                 exc,
             )
 
-    def _complete_target(self, target_username: str) -> None:
+    def _complete_target(self, target_username: str) -> Optional[Tuple[str, str]]:
+        if self.use_account_usernames:
+            try:
+                self._mark_target_account_done(target_username)
+            except Exception as exc:
+                return ('account_status_update_failed', f'Failed to mark @{target_username} done after scrape: {exc}')
         self.current_target_index += 1
         self.cursor = None
         self.attempt = 0
@@ -484,6 +559,15 @@ class ScrapeRelationshipsExecutor:
             f'scrape_relationships @{target_username}: target completed '
             f'(totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
+        return None
+
+    def _mark_target_account_done(self, target_username: str) -> None:
+        normalized = self._normalize_account_username(target_username)
+        account_id = self.target_account_ids.get(normalized)
+        if not account_id:
+            raise RuntimeError('target account id not found in scraping pool')
+        self.runner.accounts_client.update_account_status(account_id, status='done')
+        self.target_account_ids.pop(normalized, None)
 
     def _complete_node(self) -> str:
         try:
@@ -517,7 +601,11 @@ class ScrapeRelationshipsExecutor:
                 'chunksCompleted': self.chunks_completed,
                 'targetsCompleted': self.current_target_index,
             },
-            'metadata': {'activityId': 'scrape_relationships', 'failedTargets': self.failed_targets},
+            'metadata': {
+                'activityId': 'scrape_relationships',
+                'failedTargets': self.failed_targets,
+                'useAccountUsernames': self.use_account_usernames,
+            },
         }
         artifact_row, artifact_upsert_error = self._upsert_artifact_row(artifact_payload)
         artifact_upsert_context = {
@@ -528,6 +616,7 @@ class ScrapeRelationshipsExecutor:
         self.runner._update_node_state(
             self.node_id,
             status='completed',
+            useAccountUsernames=self.use_account_usernames,
             attempt=0,
             cursor=None,
             done=True,
@@ -561,6 +650,7 @@ class ScrapeRelationshipsExecutor:
         self.runner._update_node_state(
             self.node_id,
             status='failed',
+            useAccountUsernames=self.use_account_usernames,
             kind=self.kind,
             targets=self.targets,
             currentTargetIndex=self.current_target_index,
@@ -660,6 +750,7 @@ class ScrapeRelationshipsExecutor:
         )
         self.runner._update_node_state(
             self.node_id,
+            useAccountUsernames=self.use_account_usernames,
             kind=self.kind,
             targets=self.targets,
             currentTargetIndex=self.current_target_index,
@@ -714,6 +805,7 @@ class ScrapeRelationshipsExecutor:
         self.runner._update_node_state(
             self.node_id,
             status='failed',
+            useAccountUsernames=self.use_account_usernames,
             kind=self.kind,
             targets=self.targets,
             currentTargetIndex=self.current_target_index,

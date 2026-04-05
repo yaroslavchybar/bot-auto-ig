@@ -89,6 +89,13 @@ class InstagramAccountsClient:
         }
         return self._request("GET", f"{self.accounts_url}/to-message", params=params) or []
 
+    def list_accounts_by_status(self, status: str) -> List[Dict]:
+        """Fetch accounts with the given status."""
+        params = {
+            "status": status,
+        }
+        return self._request("GET", f"{self.accounts_url}/by-status", params=params) or []
+
     def update_account_status(
         self,
         account_id: str,

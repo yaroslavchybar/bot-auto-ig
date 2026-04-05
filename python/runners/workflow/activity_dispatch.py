@@ -385,7 +385,7 @@ def _mark_unfollow_done(runner, account_map: Dict[str, Any], username: str, log,
     if not account_id:
         return
     try:
-        runner.accounts_client.update_account_status(account_id, status='done')
+        runner.accounts_client.update_account_status(account_id, status='scraping')
     except Exception as exc:
         if isinstance(status_sync_failed, dict):
             status_sync_failed['value'] = True

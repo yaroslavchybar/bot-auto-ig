@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 
 import pytest
 
@@ -707,3 +708,150 @@ def test_scrape_relationships_logs_updated_total_for_each_saved_chunk(monkeypatc
     chunk_logs = [message for message in logs if "scrape_relationships @alpha:" in message]
     assert any("chunk saved rows=1 total=1/2" in message for message in chunk_logs)
     assert any("final chunk rows=1 total=2/2" in message for message in chunk_logs)
+
+
+def test_scrape_relationships_uses_scraping_accounts_as_targets(monkeypatch):
+    runner = _build_runner(monkeypatch)
+    runner.accounts_client = SimpleNamespace(
+        list_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
+            {'id': 'acct-2', 'user_name': 'beta', 'status': 'scraping'},
+        ] if status == 'scraping' else [],
+        update_account_status=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: "storage_scraping_targets",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_scraping_targets"},
+    )
+    visited_targets = []
+
+    def fake_scrape(*args, **kwargs):
+        visited_targets.append(kwargs["target_username"])
+        return {
+            "outcome": "success",
+            "users": [{"username": kwargs["target_username"], "id": kwargs["target_username"]}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-account-targets",
+        scrape_config("followers", ["manual-target"], useAccountUsernames=True),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert visited_targets == ["alpha", "beta"]
+    state = runner.node_states["node-account-targets"]
+    assert state["useAccountUsernames"] is True
+    assert state["targets"] == ["alpha", "beta"]
+
+
+def test_scrape_relationships_marks_scraping_account_done_after_success(monkeypatch):
+    status_updates = []
+    runner = _build_runner(monkeypatch)
+    runner.accounts_client = SimpleNamespace(
+        list_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
+        ] if status == 'scraping' else [],
+        update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
+            {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+        ),
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: "storage_scraping_done",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_scraping_done"},
+    )
+    monkeypatch.setattr(
+        runner,
+        "_scrape_relationship_chunk",
+        lambda *args, **kwargs: {
+            "outcome": "success",
+            "users": [{"username": "alpha", "id": "1"}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        },
+    )
+
+    result = runner._execute_scrape_relationships(
+        "node-account-done",
+        scrape_config("followers", [], useAccountUsernames=True),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert status_updates == [
+        {'account_id': 'acct-1', 'status': 'done', 'assigned_to': '__NOT_SET__'}
+    ]
+
+
+def test_scrape_relationships_leaves_scraping_account_unchanged_on_failure(monkeypatch):
+    status_updates = []
+    runner = _build_runner(monkeypatch)
+    runner.accounts_client = SimpleNamespace(
+        list_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
+        ] if status == 'scraping' else [],
+        update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
+            {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+        ),
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner,
+        "_scrape_relationship_chunk",
+        lambda *args, **kwargs: {
+            "outcome": "fatal_error",
+            "users": [],
+            "nextCursor": None,
+            "hasMore": False,
+            "errorCode": "profile_unavailable",
+            "errorMessage": "broken target",
+        },
+    )
+
+    result = runner._execute_scrape_relationships(
+        "node-account-failure",
+        scrape_config("followers", [], useAccountUsernames=True),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "failure"
+    assert status_updates == []
+
+
+def test_scrape_relationships_fails_when_scraping_pool_is_empty(monkeypatch):
+    logs = []
+    runner = _build_runner(monkeypatch)
+    runner.accounts_client = SimpleNamespace(
+        list_accounts_by_status=lambda status: [],
+        update_account_status=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships.log", logs.append)
+
+    result = runner._execute_scrape_relationships(
+        "node-empty-scraping-pool",
+        scrape_config("followers", ["manual-target"], useAccountUsernames=True),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "failure"
+    assert logs == ['scrape_relationships could not resolve any account usernames in status scraping']

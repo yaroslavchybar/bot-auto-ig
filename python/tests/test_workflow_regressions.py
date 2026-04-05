@@ -258,6 +258,40 @@ def test_workflow_unfollow_activity_fails_when_status_sync_fails(monkeypatch):
     assert logs == ['Failed to save unfollow status for @target: db down', 'Error processing target: db down']
 
 
+def test_workflow_unfollow_activity_marks_targets_as_scraping(monkeypatch):
+    status_updates = []
+
+    def _fake_unfollow_usernames(**kwargs):
+        kwargs['on_success']('target')
+
+    runner = SimpleNamespace(
+        accounts_client=SimpleNamespace(
+            get_accounts_for_profile=lambda *_args, **_kwargs: [{'user_name': 'target', 'id': 'account-1'}],
+            update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
+                {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+            ),
+        ),
+        running=True,
+    )
+
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.unfollow_usernames', _fake_unfollow_usernames)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.log', lambda _message: None)
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.apply_count_limit', lambda items, _range: list(items))
+
+    result = _run_unfollow_activity(
+        runner,
+        {'unfollow_min_count': 1, 'unfollow_max_count': 1},
+        object(),
+        SimpleNamespace(username='alice', proxy=''),
+        {'profile_id': 'profile-1'},
+    )
+
+    assert result == 'success'
+    assert status_updates == [
+        {'account_id': 'account-1', 'status': 'scraping', 'assigned_to': '__NOT_SET__'}
+    ]
+
+
 def test_workflow_fetch_profiles_ignores_redirect_responses(monkeypatch):
     class _Response:
         status_code = 302

@@ -50,6 +50,7 @@ Protected routes under the authenticated shell:
 - The right-side node settings panel renders grouped inputs directly from activity metadata; there is no separate modal/settings framework for workflow nodes.
 - `start_browser` is the workflow-wide execution settings node for headless mode, parallel profile count, profile reopen cooldown, and messaging cooldown.
 - `scrape_relationships` is the workflow-owned follower/following scraping node. It stores resumable runtime progress in workflow node state and exposes downloadable artifacts from workflow details.
+- `scrape_relationships` supports a boolean toggle that replaces the manual username list with the current global pool of `instagramAccounts` in status `scraping`; successful scrape completion moves those accounts to `done`.
 - `/scraped-data` is the dedicated artifact-management page for all workflow scrape outputs. It uses Convex-authenticated workflow artifact queries and exposes download/delete actions without replacing the `/accounts` import flow.
 - Existing workflows remain backward compatible with legacy `start_browser` cooldown keys; the editor normalizes them to the current config shape on load/save.
 - `send_dm` node template management stays connected to shared Convex template banks and can switch between `message` and `message_2` from node config.

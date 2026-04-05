@@ -99,3 +99,42 @@ test('filters message targets by cooldown window', async () => {
     'never-messaged',
   ])
 })
+
+test('lists accounts by status and preserves scraping updates', async () => {
+  const t = createConvexTest()
+  const profile = await seedProfile(t, { name: 'Profile C' })
+  const now = Date.UTC(2026, 2, 12, 14, 0, 0)
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+
+  const created = await t.mutation(internal.instagramAccounts.insert, {
+    userName: 'scrape-me',
+    status: 'unsubscribed',
+    message: false,
+    createdAt: now - 5_000,
+  })
+
+  await t.mutation(internal.instagramAccounts.updateStatus, {
+    accountId: created.id,
+    status: 'scraping',
+    assignedTo: profile!._id,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'still-unsubscribed',
+    status: 'unsubscribed',
+    assignedTo: profile!._id,
+    message: false,
+    createdAt: now - 4_000,
+  })
+
+  const scrapingAccounts = await t.query(internal.instagramAccounts.listByStatus, {
+    status: 'scraping',
+  })
+
+  expect(scrapingAccounts).toHaveLength(1)
+  expect(scrapingAccounts[0]).toMatchObject({
+    userName: 'scrape-me',
+    status: 'scraping',
+    assignedTo: profile!._id,
+  })
+})
