@@ -1,0 +1,54 @@
+dev-local.ps1
+  1ed809f8b83178c9 5,81,87-88,95-135,161-174,188,194-199,204-217,226
+  67de48d3cb6e0e0d 43-52
+  e7676318faf822d2 1-4,6-42,53-80,82-86,89-94,136-160,175-187,189-193,200-203,218-225,227
+package.json
+  1ed809f8b83178c9 10-11
+  e7676318faf822d2 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "7a556e1170671a2799a8bf587e58396badfeb84f",
+  "prompts": {
+    "1ed809f8b83178c9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3b21-48fb-7422-99a7-8af6235b0342",
+        "model": "unknown"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 83,
+      "total_deletions": 6,
+      "accepted_lines": 83,
+      "overriden_lines": 0
+    },
+    "67de48d3cb6e0e0d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3b1f-5cb6-7492-a872-5a01665828f7",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 1,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    },
+    "e7676318faf822d2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3ae7-7244-7a91-b7d2-8644bf8abcb7",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 160,
+      "total_deletions": 15,
+      "accepted_lines": 153,
+      "overriden_lines": 0
+    }
+  }
+}
