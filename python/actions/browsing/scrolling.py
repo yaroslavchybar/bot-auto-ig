@@ -66,6 +66,10 @@ def scroll_to_element(
         viewport_w, viewport_h, box = _scroll_context(page, element)
         if not box:
             return False
+        if viewport_h <= 0:
+            viewport_h = 900
+        if viewport_w <= 0:
+            viewport_w = 1200
         delta = _scroll_delta(box, viewport_h, target_y_ratio, ensure_full_visible)
         if abs(delta) <= 6:
             return True
@@ -82,7 +86,7 @@ def scroll_to_element(
 def _scroll_context(page, element):
     viewport_w, viewport_h = _get_viewport_size(page)
     box = element.bounding_box() if element else None
-    return max(viewport_w, 1200), max(viewport_h, 900), box
+    return viewport_w, viewport_h, box
 
 
 def _scroll_delta(box, viewport_h: int, target_y_ratio: float, ensure_full_visible: bool) -> int:
