@@ -4,6 +4,10 @@
 
 From repository root:
 - `npm run dev` (server dev mode)
+- `npm run dev:local` (Windows PowerShell launcher for server + frontend in separate shells)
+- `npm run dev:local:full` (same launcher plus `datauploader` and `npx convex dev`)
+- `npm run dev:local:tabs` (same stack as `dev:local` but opened in Windows Terminal tabs)
+- `npm run dev:local:full:tabs` (full local stack in Windows Terminal tabs)
 - `npm run build` (server build via root script)
 - `npm run start` (server start via root script)
 - `npm run test:convex` (Convex self-test harness via Vitest + convex-test)
@@ -21,6 +25,15 @@ Module-level:
 - `npm --prefix server run build`
 - `npm --prefix server run start`
 - `python -m pytest python/tests -q`
+
+## Windows Local Launcher
+
+- `dev-local.ps1` is the shared Windows bootstrap used by the root `dev:local*` scripts.
+- It starts from the repository root, opens `server` and `frontend` by default, and can optionally add `datauploader` plus `npx convex dev`.
+- Default local ports remain `frontend` `5173`, `server` `3001`, and `datauploader` `3002` when enabled.
+- Python resolution order is explicit: passed `-PythonPath`, then `.venv\Scripts\python.exe`, then `python`, then `py -3.11`.
+- `-UseTabs` requires `wt.exe` on `PATH`; otherwise the launcher opens separate PowerShell windows.
+- `-NoNewWindows` runs each target in background PowerShell jobs instead of opening new windows.
 
 ## Coding Conventions
 
@@ -53,6 +66,7 @@ PR descriptions should include:
 ## Verified Against
 
 - `package.json`, `frontend/package.json`, `server/package.json`
+- `dev-local.ps1`
 - `docker-compose.yml`
 - `python/tests/*`
 - `AGENTS.md`

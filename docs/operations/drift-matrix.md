@@ -47,4 +47,5 @@ Status legend:
 
 - All `stale` and `partial` items found in the March 9, 2026 canonical-docs refresh are resolved in this cycle.
 - March 12, 2026 follow-up: `docs/python/components.md` briefly omitted `python/core/selectors.py`, `python/core/totp.py`, `python/core/snapshot_debugger.py`, and `python/core/storage/profile_manager.py` during a manual refresh; the canonical component inventory is now realigned.
+- April 5, 2026 follow-up: `docs/overview/developer-workflow.md`, `docs/server/guide.md`, and `docs/operations/troubleshooting.md` were refreshed for the Windows `dev-local.ps1` launcher and the shared server project-root resolver introduced in uncommitted runtime changes.
 - New drift findings should be appended here with owner, risk, action, and final status.

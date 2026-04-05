@@ -9,8 +9,8 @@
 import { spawn as nodeSpawn, execFile, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import logger from './logger.js'
+import { resolveProjectRoot } from './utils.js'
 
 export type { ChildProcess }
 
@@ -18,14 +18,10 @@ export type { ChildProcess }
 // Constants
 // ---------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-/** Resolve from dist/shared/ → project root. */
-const PROJECT_ROOT = path.resolve(__dirname, '../../..')
+const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 
 /** Directory for PID file persistence. */
-const DATA_DIR = path.resolve(__dirname, '../data')
+const DATA_DIR = path.join(PROJECT_ROOT, 'data')
 const PID_FILE = path.join(DATA_DIR, 'automation.pid')
 
 const DEFAULT_SIGTERM_WAIT_MS = 2000

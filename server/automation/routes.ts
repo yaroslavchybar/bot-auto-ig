@@ -1,6 +1,5 @@
 import { Router } from 'express'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { automationState } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { profilesSetLoginTrue } from '../shared/convexClient.js'
@@ -14,11 +13,9 @@ import { spawnPython, killProcess } from '../shared/ProcessService.js'
 import type { ChildProcess } from '../shared/ProcessService.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import { ValidationError } from '../shared/errors.js'
+import { resolveProjectRoot } from '../shared/utils.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-// From dist/automation/ we need to go up to server/, then up to project root
-const PROJECT_ROOT = path.resolve(__dirname, '../../..')
+const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_multiple_accounts.py')
 const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'actions', 'login', 'session.py')
 

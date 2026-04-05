@@ -1,6 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import { fileURLToPath } from 'url'
 import {
   profilesCreate,
   profilesDeleteByName,
@@ -10,10 +9,9 @@ import {
   profilesUpdateByName,
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
+import { resolveProjectRoot } from '../shared/utils.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, '../../..')
+const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PROFILES_DIR = path.join(PROJECT_ROOT, 'data', 'profiles')
 
 export type Profile = {

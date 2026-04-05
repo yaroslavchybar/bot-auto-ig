@@ -1,5 +1,4 @@
 import path from 'path'
-import { fileURLToPath } from 'url'
 import { activeDisplays, workflowWorkers } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../shared/mutex.js'
@@ -17,10 +16,9 @@ import {
   waitForExit,
 } from '../shared/ProcessService.js'
 import { NotFoundError } from '../shared/errors.js'
+import { resolveProjectRoot } from '../shared/utils.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, '../../..')
+const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_workflow.py')
 
 // ---------------------------------------------------------------------------

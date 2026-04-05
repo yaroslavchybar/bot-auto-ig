@@ -21,6 +21,7 @@ Mounted under `/api/*`:
 - Initializes the WebSocket server before listening.
 - Cleans up orphaned Python processes left by previous runs.
 - Reconciles stale profile runtime flags against the in-memory process registry before opening the HTTP listener.
+- Uses a shared project-root resolver so server modules can locate `python/` runners and repo-root `data/` consistently from either source files or compiled `dist/` output.
 - Clerk auth middleware is applied globally before protected route mounting.
 - In development, CORS reflects the request origin or `*`.
 - In production, CORS only allows origins listed in `ALLOWED_ORIGINS`.
@@ -75,6 +76,13 @@ Mounted under `/api/*`:
 - `CLERK_SECRET_KEY`
 - `INTERNAL_API_KEY` (required anywhere the server calls Convex HTTP action routes)
 
+## Runtime Path Resolution
+
+- `server/shared/utils.ts` owns `resolveProjectRoot(import.meta.url)` for server modules that need repository-root paths.
+- Source execution resolves from `server/*` back to the repo root; built execution resolves from `server/dist/*` back to the same root.
+- Automation, manual actions, profiles, workflows, and the shared process service all derive Python script paths from that shared resolver instead of each module maintaining its own `fileURLToPath` logic.
+- Process PID persistence lives at repo-root `data/automation.pid`, matching the rest of the runtime artifact layout under `data/`.
+
 ## Commands
 
 ```bash
@@ -93,6 +101,13 @@ npm --prefix server run start
 - `server/api/workflows.ts`
 - `server/api/monitoring.ts`
 - `server/api/displays.ts`
+- `server/automation/manual-actions.ts`
+- `server/automation/routes.ts`
+- `server/profiles/data.ts`
+- `server/profiles/service.ts`
+- `server/shared/ProcessService.ts`
+- `server/shared/utils.ts`
+- `server/workflows/service.ts`
 - `server/automation/process-manager.ts`
 - `server/data/profiles.ts`
 - `server/data/convex.ts`

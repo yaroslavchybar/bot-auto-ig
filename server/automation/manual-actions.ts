@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { Profile, profileManager } from '../profiles/index.js';
 import { registerCleanup } from './shutdown.js';
 import {
@@ -9,10 +8,9 @@ import {
   waitForExit,
   type ChildProcess,
 } from '../shared/ProcessService.js';
+import { resolveProjectRoot } from '../shared/utils.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '../../');
+const PROJECT_ROOT = resolveProjectRoot(import.meta.url);
 
 class ManualAutomationService extends EventEmitter {
     private _processes = new Map<string, ChildProcess>();

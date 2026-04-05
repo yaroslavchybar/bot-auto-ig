@@ -5,6 +5,10 @@
   "scripts": {
     "build": "npm --prefix server run build",
     "dev": "npm --prefix server run dev",
+    "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1",
+    "dev:local:full": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -WithUploader -WithConvex",
+    "dev:local:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs",
+    "dev:local:full:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs -WithUploader -WithConvex",
     "start": "npm --prefix server run start",
     "test:convex": "vitest run --config vitest.convex.config.ts"
   },

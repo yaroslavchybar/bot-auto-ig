@@ -1,6 +1,5 @@
 import path from 'path'
 import crypto from 'crypto'
-import { fileURLToPath } from 'url'
 import { profileManager } from './data.js'
 import type { Profile } from './data.js'
 import {
@@ -14,10 +13,9 @@ import { normalizeProfileCookiesJson } from './cookies.js'
 import logger from '../shared/logger.js'
 import { spawnPython, killProcess } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
+import { resolveProjectRoot } from '../shared/utils.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const PROJECT_ROOT = path.resolve(__dirname, '../../..')
+const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'runners', 'launcher.py')
 const FINGERPRINT_GENERATOR_SCRIPT = path.join(
   PROJECT_ROOT,
