@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "21243eff81c6e0267d19e9f4ebc3645f28978add",
+  "prompts": {
+    "dbe4627581e4d76d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d5e98-b67a-7b70-8c83-303ec74692bb",
+        "model": "gpt-5.2"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
