@@ -1,0 +1,31 @@
+docs/frontend/guide.md
+  a0beb7c5645ed071 53
+frontend/src/features/workflows/activities/browsing/scrape-relationships.ts
+  a0beb7c5645ed071 7,20,22-23
+docs/python/automation.md
+  a0beb7c5645ed071 26
+python/tests/test_workflow_scrape_relationships.py
+  a0beb7c5645ed071 441,860,862,867-871,875,878,881,883-884,886,889,892,897,899-900,906-908,910-912,914-920,923-924,926-943,945,948,953,956,959,964,966-968,973-978,981-993,995-996,1000-1007,1009-1010,1013-1014,1020-1022,1026-1040,1044,1058,1062,1064-1066,1068,1073-1074,1077-1079
+python/runners/workflow/scrape_relationships.py
+  a0beb7c5645ed071 57-59,80-81,107,112-181,234,236,244,260-271,306-310,313-317,343-347,494,529,542-549,562-564,566,568-569,597,615,627-628,634,646,664,668-774,782-796,800-801,817-827,843,869,883,903,907-910,922-924,952-957
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "396881562f1d866bcd3176b341216b1820ce0947",
+  "prompts": {
+    "a0beb7c5645ed071": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d5f7e-0c9d-7d52-af5b-79119b6c8e24",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1432,
+      "total_deletions": 1065,
+      "accepted_lines": 1207,
+      "overriden_lines": 8
+    }
+  }
+}
