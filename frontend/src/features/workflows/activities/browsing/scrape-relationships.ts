@@ -4,7 +4,7 @@ export const scrapeRelationships: ActivityDefinition = {
   id: 'scrape_relationships',
   name: 'Scrape Relationships',
   description:
-    'Open each target profile, click followers or following in the logged-in browser session, then inject JavaScript to scrape the selected relationship list.',
+    'Open each target profile, click followers, following, or both in the logged-in browser session, then inject JavaScript to scrape the selected relationship list.',
   category: 'browsing',
   icon: 'Search',
   color: '#F59E0B',
@@ -17,7 +17,10 @@ export const scrapeRelationships: ActivityDefinition = {
       options: [
         { label: 'Followers', value: 'followers' },
         { label: 'Following', value: 'following' },
+        { label: 'Both (Queue)', value: 'both' },
       ],
+      helpText:
+        'Choose one relationship list or queue both. "Both" runs followers first, then following, and creates one artifact per relationship type.',
       group: 'Targets',
     },
     {

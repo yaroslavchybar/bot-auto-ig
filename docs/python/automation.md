@@ -23,6 +23,7 @@
 - Workflow profile selection uses the cooldown-aware Convex profiles availability route when profile reopen cooldown is enabled.
 - Workflow DM targeting uses `instagramAccounts.lastMessagedAt` plus node/runtime cooldown settings to skip recently messaged accounts.
 - Workflow scrape nodes execute in the logged-in browser context, persist retry/resume state in workflow `nodeStates`, and publish downloadable workflow artifacts.
+- Workflow scrape nodes can run `followers`, `following`, or `both`; `both` queues a full followers pass first, then a following pass, and stores separate artifacts per relationship kind.
 - Workflow scrape nodes can optionally replace manual target usernames with the global pool of `instagramAccounts` currently in status `scraping`; successful scrape completion moves those target accounts to `done`, while failed or interrupted targets remain `scraping`.
 - Workflow scrape nodes honor per-profile `dailyScrapingLimit` / `dailyScrapingUsed` counters, skip exhausted auth profiles, increment usage after each successful scrape chunk, and queue multiple auth profiles sequentially until the scrape work completes.
 - Activity nodes now drive behavior-facing action timing directly in the workflow runner:

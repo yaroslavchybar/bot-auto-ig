@@ -438,7 +438,7 @@ def test_scrape_relationships_keeps_success_when_artifact_upsert_exhausts_retrie
         "nodeId": "node-artifact-fallback",
         "activityId": "scrape_relationships",
     }
-    assert "payload={'workflowId': 'wf_123', 'nodeId': 'node-artifact-fallback', 'activityId': 'scrape_relationships'}" in caplog.text
+    assert "payload={'workflowId': 'wf_123', 'nodeId': 'node-artifact-fallback', 'activityId': 'scrape_relationships', 'kind': 'followers'}" in caplog.text
 
 
 def test_scrape_relationships_marks_node_failed_when_artifact_storage_raises(monkeypatch):
@@ -855,3 +855,232 @@ def test_scrape_relationships_fails_when_scraping_pool_is_empty(monkeypatch):
 
     assert result == "failure"
     assert logs == ['scrape_relationships could not resolve any account usernames in status scraping']
+
+
+def test_scrape_relationships_both_mode_runs_followers_then_following(monkeypatch):
+    saved_payloads = []
+    upsert_payloads = []
+
+    def fake_store(payload):
+        saved_payloads.append(payload)
+        return f"storage_{len(saved_payloads)}"
+
+    def fake_post(path, payload):
+        assert path == "/api/workflow-artifacts/upsert"
+        upsert_payloads.append(payload)
+        return {"_id": f"artifact_{payload['kind']}"}
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store)
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._convex_post_json", fake_post)
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    scrape_calls = []
+
+    def fake_scrape(*args, **kwargs):
+        scrape_calls.append(
+            {
+                "kind": kwargs["kind"],
+                "target": kwargs["target_username"],
+            }
+        )
+        return {
+            "outcome": "success",
+            "users": [{"username": f"{kwargs['kind']}_{kwargs['target_username']}", "id": kwargs["kind"]}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    page = _FakePage(available_kinds={"followers", "following"})
+    result = runner._execute_scrape_relationships(
+        "node-both",
+        scrape_config("both", ["alpha"]),
+        page,
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert scrape_calls == [
+        {"kind": "followers", "target": "alpha"},
+        {"kind": "following", "target": "alpha"},
+    ]
+    assert [click["selector"] for click in page.clicks] == [
+        'a[href="/alpha/followers/"]',
+        'a[href="/alpha/following/"]',
+    ]
+    assert [payload["kind"] for payload in saved_payloads] == ["followers", "following"]
+    assert [payload["kind"] for payload in upsert_payloads] == ["followers", "following"]
+    state = runner.node_states["node-both"]
+    assert state["done"] is True
+    assert state["kindMode"] == "both"
+    assert state["completedKinds"] == ["followers", "following"]
+    assert state["artifactId"] == "artifact_following"
+
+
+def test_scrape_relationships_both_mode_resume_skips_completed_pass(monkeypatch):
+    saved_payloads = []
+
+    def fake_store(payload):
+        saved_payloads.append(payload)
+        return f"storage_{len(saved_payloads)}"
+
+    scrape_kinds = []
+
+    runner = _build_runner(
+        monkeypatch,
+        node_states={
+            "node-both-resume": {
+                "activityId": "scrape_relationships",
+                "kind": "followers",
+                "kindMode": "both",
+                "completedKinds": ["followers"],
+                "targets": ["alpha"],
+                "currentTargetIndex": 0,
+            }
+        },
+    )
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_following_resume"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        scrape_kinds.append(kwargs["kind"])
+        return {
+            "outcome": "success",
+            "users": [{"username": "alpha_following", "id": "following"}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    page = _FakePage(available_kinds={"followers", "following"})
+    result = runner._execute_scrape_relationships(
+        "node-both-resume",
+        scrape_config("both", ["alpha"]),
+        page,
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert scrape_kinds == ["following"]
+    assert [click["selector"] for click in page.clicks] == ['a[href="/alpha/following/"]']
+    assert [payload["kind"] for payload in saved_payloads] == ["following"]
+    state = runner.node_states["node-both-resume"]
+    assert state["completedKinds"] == ["followers", "following"]
+    assert state["done"] is True
+
+
+def test_scrape_relationships_both_mode_keeps_first_artifact_when_second_pass_fails(monkeypatch):
+    saved_payloads = []
+    upsert_payloads = []
+
+    def fake_store(payload):
+        saved_payloads.append(payload)
+        return f"storage_{len(saved_payloads)}"
+
+    def fake_post(path, payload):
+        assert path == "/api/workflow-artifacts/upsert"
+        upsert_payloads.append(payload)
+        return {"_id": f"artifact_{payload['kind']}"}
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store)
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._convex_post_json", fake_post)
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        if kwargs["kind"] == "followers":
+            return {
+                "outcome": "success",
+                "users": [{"username": "alpha_follower", "id": "followers"}],
+                "nextCursor": None,
+                "hasMore": False,
+                "total": 1,
+            }
+        return {
+            "outcome": "fatal_error",
+            "users": [],
+            "nextCursor": None,
+            "hasMore": False,
+            "errorCode": "profile_unavailable",
+            "errorMessage": "broken following view",
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-both-failure",
+        scrape_config("both", ["alpha"]),
+        _FakePage(available_kinds={"followers", "following"}),
+        "session_profile",
+    )
+
+    assert result == "failure"
+    assert [payload["kind"] for payload in saved_payloads] == ["followers"]
+    assert [payload["kind"] for payload in upsert_payloads] == ["followers"]
+    state = runner.node_states["node-both-failure"]
+    assert state["status"] == "failed"
+    assert state["kindMode"] == "both"
+    assert state["kind"] == "following"
+    assert state["completedKinds"] == ["followers"]
+    assert state["completedArtifacts"] == [
+        {
+            "kind": "followers",
+            "storageId": "storage_1",
+            "artifactId": "artifact_followers",
+            "artifactUpsertError": None,
+        }
+    ]
+
+
+def test_scrape_relationships_both_mode_marks_account_done_only_after_final_pass(monkeypatch):
+    status_updates = []
+    runner = _build_runner(monkeypatch)
+    runner.accounts_client = SimpleNamespace(
+        list_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
+        ] if status == 'scraping' else [],
+        update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
+            {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+        ),
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: f"storage_{payload['kind']}",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_test"},
+    )
+
+    def fake_scrape(*args, **kwargs):
+        return {
+            "outcome": "success",
+            "users": [{"username": f"{kwargs['kind']}_user", "id": kwargs["kind"]}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-both-account-done",
+        scrape_config("both", [], useAccountUsernames=True),
+        _FakePage(available_kinds={"followers", "following"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert status_updates == [
+        {'account_id': 'acct-1', 'status': 'done', 'assigned_to': '__NOT_SET__'}
+    ]

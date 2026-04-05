@@ -54,7 +54,9 @@ class ScrapeRelationshipsExecutor:
         self.configured_targets = _normalize_string_list(cfg.get('targets'))
         self.use_account_usernames = _parse_bool(cfg.get('useAccountUsernames'), False)
         self.targets = list(self.configured_targets)
-        self.kind = 'following' if str(cfg.get('kind') or '').strip().lower() == 'following' else 'followers'
+        self.kind_mode = self._parse_kind_mode(cfg.get('kind'))
+        self.kind_queue = self._build_kind_queue(self.kind_mode)
+        self.kind = self.kind_queue[0]
         self.chunk_limit = max(1, min(5000, _parse_int(cfg.get('chunkLimit'), 200)))
         self.max_pages_per_attempt = max(1, min(100, _parse_int(cfg.get('maxPagesPerAttempt'), 3)))
         self.max_attempts = max(1, min(20, _parse_int(cfg.get('maxAttempts'), 4)))
@@ -75,6 +77,8 @@ class ScrapeRelationshipsExecutor:
         self.active_target_username: Optional[str] = None
         self.relationship_view_ready = False
         self.target_account_ids: Dict[str, str] = {}
+        self.completed_kinds: list[str] = []
+        self.completed_artifacts: list[Dict[str, Any]] = []
 
     def run(self) -> str:
         self._prepare_targets()
@@ -100,9 +104,80 @@ class ScrapeRelationshipsExecutor:
 
         log(
             f'scrape_relationships: node {self.node_id} finished with running={self.runner.running} '
+            f'kindMode={self.kind_mode} activeKind={self.kind} completedKinds={self.completed_kinds} '
             f'currentTargetIndex={self.current_target_index} targets={len(self.targets)}'
         )
         return 'failure' if not self.runner.running else 'success'
+
+    def _parse_kind_mode(self, value: Any) -> str:
+        lowered = str(value or '').strip().lower()
+        if lowered == 'following':
+            return 'following'
+        if lowered == 'both':
+            return 'both'
+        return 'followers'
+
+    def _build_kind_queue(self, kind_mode: str) -> list[str]:
+        if kind_mode == 'both':
+            return ['followers', 'following']
+        return [kind_mode]
+
+    def _normalize_kind(self, value: Any) -> str:
+        return 'following' if str(value or '').strip().lower() == 'following' else 'followers'
+
+    def _normalize_completed_kinds(self, kinds: Any) -> list[str]:
+        values = kinds if isinstance(kinds, list) else []
+        normalized: list[str] = []
+        for raw in values:
+            kind = self._normalize_kind(raw)
+            if kind not in self.kind_queue or kind in normalized:
+                continue
+            normalized.append(kind)
+        return [kind for kind in self.kind_queue if kind in normalized]
+
+    def _normalize_completed_artifacts(self, artifacts: Any) -> list[Dict[str, Any]]:
+        rows = artifacts if isinstance(artifacts, list) else []
+        normalized: list[Dict[str, Any]] = []
+        for row in rows:
+            if isinstance(row, dict):
+                normalized.append(dict(row))
+        return normalized
+
+    def _next_pending_kind(self) -> Optional[str]:
+        completed = set(self.completed_kinds)
+        for kind in self.kind_queue:
+            if kind not in completed:
+                return kind
+        return None
+
+    def _is_final_kind(self) -> bool:
+        return self.kind == self.kind_queue[-1]
+
+    def _node_state_patch(self, **extra: Any) -> Dict[str, Any]:
+        patch: Dict[str, Any] = {
+            'activityId': 'scrape_relationships',
+            'useAccountUsernames': self.use_account_usernames,
+            'kindMode': self.kind_mode,
+            'kind': self.kind,
+            'activeKind': self.kind,
+            'completedKinds': list(self.completed_kinds),
+            'completedArtifacts': list(self.completed_artifacts),
+            'targets': self.targets,
+            'currentTargetIndex': self.current_target_index,
+            'cursor': self.cursor,
+            'attempt': self.attempt,
+            'scraped': self.total_scraped,
+            'deduped': len(self.merged_users),
+            'chunksCompleted': self.chunks_completed,
+            'targetScraped': self.target_scraped,
+            'completedTargets': self.current_target_index,
+            'failedTargets': self.failed_targets,
+            'artifactStorageId': self.artifact_storage_id or None,
+            'resumeSnapshotPath': self.resume_snapshot_path or None,
+            'updatedAt': int(time.time() * 1000),
+        }
+        patch.update(extra)
+        return patch
 
     def _prepare_targets(self) -> None:
         if not self.use_account_usernames:
@@ -156,8 +231,9 @@ class ScrapeRelationshipsExecutor:
     def _load_state(self) -> None:
         existing_state = self.runner._get_node_state(self.node_id)
         self.state = dict(existing_state) if isinstance(existing_state, dict) else {}
+        state_kind_mode = self._parse_kind_mode(self.state.get('kindMode') or self.state.get('kind'))
         if (
-            self.state.get('kind') != self.kind
+            state_kind_mode != self.kind_mode
             or _parse_bool(self.state.get('useAccountUsernames'), False) != self.use_account_usernames
             or _normalize_string_list(self.state.get('targets')) != self.targets
         ):
@@ -165,7 +241,7 @@ class ScrapeRelationshipsExecutor:
             self.state = {}
         stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
         should_reset = self.state.get('done') or str(self.state.get('status') or '').strip().lower() == 'completed'
-        if should_reset or stale_index >= len(self.targets):
+        if should_reset or stale_index > len(self.targets):
             self._reset_stale_state(stale_index)
         self._hydrate_resume_state()
 
@@ -181,6 +257,18 @@ class ScrapeRelationshipsExecutor:
         self.state = {}
 
     def _hydrate_resume_state(self) -> None:
+        self.completed_kinds = self._normalize_completed_kinds(self.state.get('completedKinds'))
+        self.completed_artifacts = self._normalize_completed_artifacts(self.state.get('completedArtifacts'))
+        active_kind = str(self.state.get('activeKind') or self.state.get('kind') or '').strip().lower()
+        active_kind = self._normalize_kind(active_kind) if active_kind else ''
+        next_kind = self._next_pending_kind()
+        if active_kind and active_kind in self.kind_queue and active_kind not in self.completed_kinds:
+            self.kind = active_kind
+        elif next_kind is not None:
+            self.kind = next_kind
+        else:
+            self.kind = self.kind_queue[-1]
+
         self.artifact_storage_id = str(self.state.get('artifactStorageId') or '').strip()
         self.resume_snapshot_path = str(self.state.get('resumeSnapshotPath') or '').strip()
         self.merged_users = self._load_merged_users()
@@ -215,28 +303,18 @@ class ScrapeRelationshipsExecutor:
     def _emit_initial_state(self) -> None:
         self.runner._update_node_state(
             self.node_id,
-            activityId='scrape_relationships',
-            useAccountUsernames=self.use_account_usernames,
-            kind=self.kind,
-            targets=self.targets,
-            currentTargetIndex=self.current_target_index,
-            cursor=self.cursor,
-            attempt=self.attempt,
-            scraped=self.total_scraped,
-            deduped=len(self.merged_users),
-            chunksCompleted=self.chunks_completed,
-            targetScraped=self.target_scraped,
-            completedTargets=self.current_target_index,
-            failedTargets=self.failed_targets,
-            artifactStorageId=self.artifact_storage_id or None,
-            manifestStorageId=self.state.get('manifestStorageId'),
-            resumeSnapshotPath=self.resume_snapshot_path or None,
-            updatedAt=int(time.time() * 1000),
+            **self._node_state_patch(
+                manifestStorageId=self.state.get('manifestStorageId'),
+                lastError=None,
+                lastErrorCode=None,
+            ),
         )
         log(
-            f'scrape_relationships: starting node {self.node_id} kind={self.kind} '
-            f'targets={len(self.targets)} chunkLimit={self.chunk_limit} maxPagesPerAttempt={self.max_pages_per_attempt} '
-            f'maxAttempts={self.max_attempts} accountTargets={self.use_account_usernames} resumeIndex={self.current_target_index} '
+            f'scrape_relationships: starting node {self.node_id} kindMode={self.kind_mode} '
+            f'activeKind={self.kind} completedKinds={self.completed_kinds} '
+            f'targets={len(self.targets)} chunkLimit={self.chunk_limit} '
+            f'maxPagesPerAttempt={self.max_pages_per_attempt} maxAttempts={self.max_attempts} '
+            f'accountTargets={self.use_account_usernames} resumeIndex={self.current_target_index} '
             f"resumeCursor={'yes' if self.cursor else 'no'}"
         )
 
@@ -262,24 +340,11 @@ class ScrapeRelationshipsExecutor:
             ]
         self.runner._update_node_state(
             self.node_id,
-            status='failed',
-            useAccountUsernames=self.use_account_usernames,
-            kind=self.kind,
-            targets=self.targets,
-            currentTargetIndex=self.current_target_index,
-            cursor=self.cursor,
-            attempt=self.attempt,
-            scraped=self.total_scraped,
-            deduped=len(self.merged_users),
-            chunksCompleted=self.chunks_completed,
-            targetScraped=self.target_scraped,
-            completedTargets=self.current_target_index,
-            failedTargets=self.failed_targets,
-            lastError=message,
-            lastErrorCode='daily_scraping_limit_reached',
-            artifactStorageId=self.artifact_storage_id or None,
-            resumeSnapshotPath=self.resume_snapshot_path or None,
-            updatedAt=int(time.time() * 1000),
+            **self._node_state_patch(
+                status='failed',
+                lastError=message,
+                lastErrorCode='daily_scraping_limit_reached',
+            ),
         )
         log(message)
         return 'failure'
@@ -426,12 +491,7 @@ class ScrapeRelationshipsExecutor:
             return self._fail_target(target_username, 'fatal_error', 'unexpected_empty_result', message)
         self._record_success_progress(chunk_users, next_cursor, next_target_scraped)
         self._log_success_chunk(target_username, chunk_users, chunk_debug, elapsed_ms, has_more, expected_total, next_target_scraped)
-        result = self._update_after_success(target_username, has_more)
-        if result is not None:
-            return result
-        if self.current_target_index >= len(self.targets):
-            return self._complete_node()
-        return None
+        return self._update_after_success(target_username, has_more)
 
     def _is_unexpected_empty_result(self, has_more: bool, expected_total: Optional[int], next_target_scraped: int) -> bool:
         return not has_more and expected_total is not None and expected_total > 0 and next_target_scraped == 0
@@ -466,7 +526,7 @@ class ScrapeRelationshipsExecutor:
             f'scrape_relationships @{target_username}: {label} '
             f'rows={len(chunk_users)} total={total_value}/{reported_total} '
             f"deduped={len(self.merged_users)} pages={chunk_debug.get('pagesFetched') or '-'} "
-            f'elapsedMs={elapsed_ms}{suffix}'
+            f'elapsedMs={elapsed_ms} kind={self.kind}{suffix}'
         )
 
     def _update_after_success(self, target_username: str, has_more: bool) -> Optional[str]:
@@ -479,24 +539,14 @@ class ScrapeRelationshipsExecutor:
                 return self._fail_target(target_username, 'fatal_error', error_code, error_message)
         self.runner._update_node_state(
             self.node_id,
-            activityId='scrape_relationships',
-            useAccountUsernames=self.use_account_usernames,
-            kind=self.kind,
-            targets=self.targets,
-            currentTargetIndex=self.current_target_index,
-            cursor=self.cursor,
-            attempt=self.attempt,
-            scraped=self.total_scraped,
-            deduped=len(self.merged_users),
-            chunksCompleted=self.chunks_completed,
-            targetScraped=self.target_scraped,
-            completedTargets=self.current_target_index,
-            failedTargets=self.failed_targets,
-            lastError=None,
-            lastErrorCode=None,
-            artifactStorageId=self.artifact_storage_id or None,
-            updatedAt=int(time.time() * 1000),
-            resumeSnapshotPath=self.resume_snapshot_path or None,
+            **self._node_state_patch(
+                lastError=None,
+                lastErrorCode=None,
+            ),
+        )
+        progress = 100 if not has_more and self.current_target_index >= len(self.targets) else min(
+            99,
+            int(round(100.0 * (self.current_target_index / max(1, len(self.targets))))),
         )
         self.runner._emit_node_state(
             'task_progress',
@@ -509,9 +559,14 @@ class ScrapeRelationshipsExecutor:
             deduped=len(self.merged_users),
             hasMore=has_more,
             nextCursor=self.cursor,
+            kind=self.kind,
+            kindMode=self.kind_mode,
+            completedKinds=list(self.completed_kinds),
             completedTargets=self.current_target_index,
-            progress=min(99, int(round(100.0 * (self.current_target_index / max(1, len(self.targets)))))),
+            progress=progress,
         )
+        if self.current_target_index >= len(self.targets):
+            return self._complete_active_kind()
         return None
 
     def _store_resume_snapshot(self) -> None:
@@ -539,7 +594,7 @@ class ScrapeRelationshipsExecutor:
             )
 
     def _complete_target(self, target_username: str) -> Optional[Tuple[str, str]]:
-        if self.use_account_usernames:
+        if self.use_account_usernames and self._is_final_kind():
             try:
                 self._mark_target_account_done(target_username)
             except Exception as exc:
@@ -557,7 +612,7 @@ class ScrapeRelationshipsExecutor:
             self.resume_snapshot_path = ''
         log(
             f'scrape_relationships @{target_username}: target completed '
-            f'(totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
+            f'(kind={self.kind}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
         return None
 
@@ -569,13 +624,14 @@ class ScrapeRelationshipsExecutor:
         self.runner.accounts_client.update_account_status(account_id, status='done')
         self.target_account_ids.pop(normalized, None)
 
-    def _complete_node(self) -> str:
+    def _complete_active_kind(self) -> Optional[str]:
+        completed_kind = self.kind
         try:
             artifact_payload = _build_scrape_export_payload(
                 self.runner.workflow_id,
                 self.node_id,
                 self.profile_name,
-                self.kind,
+                completed_kind,
                 self.targets,
                 self.merged_users,
             )
@@ -587,7 +643,7 @@ class ScrapeRelationshipsExecutor:
             'workflowName': self.runner.workflow_name,
             'nodeId': self.node_id,
             'nodeLabel': (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships',
-            'kind': self.kind,
+            'kind': completed_kind,
             'targets': self.targets,
             'targetUsername': '\n'.join(self.targets),
             'status': 'completed',
@@ -605,9 +661,117 @@ class ScrapeRelationshipsExecutor:
                 'activityId': 'scrape_relationships',
                 'failedTargets': self.failed_targets,
                 'useAccountUsernames': self.use_account_usernames,
+                'kindMode': self.kind_mode,
             },
         }
         artifact_row, artifact_upsert_error = self._upsert_artifact_row(artifact_payload)
+        artifact_record = {
+            'kind': completed_kind,
+            'storageId': self.artifact_storage_id,
+            'artifactId': (artifact_row or {}).get('_id'),
+            'artifactUpsertError': artifact_upsert_error,
+        }
+        self.completed_artifacts = [*self.completed_artifacts, artifact_record]
+        if completed_kind not in self.completed_kinds:
+            self.completed_kinds = [*self.completed_kinds, completed_kind]
+
+        next_kind = self._next_pending_kind()
+        if next_kind is None:
+            return self._complete_node(artifact_row, artifact_upsert_error)
+        return self._start_next_kind(next_kind, artifact_record)
+
+    def _start_next_kind(self, next_kind: str, artifact_record: Dict[str, Any]) -> Optional[str]:
+        self.kind = next_kind
+        self.artifact_storage_id = ''
+        self.resume_snapshot_path = ''
+        self.merged_users = []
+        self.current_target_index = 0
+        self.cursor = None
+        self.attempt = 0
+        self.total_scraped = 0
+        self.chunks_completed = 0
+        self.target_scraped = 0
+        self.failed_targets = []
+        self.active_target_username = None
+        self.relationship_view_ready = False
+        self.runner._update_node_state(
+            self.node_id,
+            **self._node_state_patch(
+                status='running',
+                done=False,
+                manifestStorageId=None,
+                artifactId=None,
+                artifactUpsertFailedAt=None,
+                artifactUpsertError=None,
+                artifactUpsertPayload=None,
+                lastCompletedKind=artifact_record.get('kind'),
+                lastError=None,
+                lastErrorCode=None,
+            ),
+        )
+        self.runner._emit_node_state(
+            'task_progress',
+            self.node_id,
+            self.profile_name,
+            task=f'Starting {next_kind} pass',
+            kind=self.kind,
+            kindMode=self.kind_mode,
+            completedKinds=list(self.completed_kinds),
+            completedTargets=0,
+            progress=0,
+        )
+        log(
+            f'scrape_relationships: node {self.node_id} continuing with next pass '
+            f'kind={next_kind} completedKinds={self.completed_kinds}'
+        )
+        return None
+
+    def _complete_node(
+        self,
+        artifact_row: Optional[Dict[str, Any]] = None,
+        artifact_upsert_error: Optional[str] = None,
+    ) -> str:
+        if artifact_row is None and artifact_upsert_error is None:
+            if not self.artifact_storage_id:
+                try:
+                    artifact_payload = _build_scrape_export_payload(
+                        self.runner.workflow_id,
+                        self.node_id,
+                        self.profile_name,
+                        self.kind,
+                        self.targets,
+                        self.merged_users,
+                    )
+                    self.artifact_storage_id = _store_artifact_payload(artifact_payload)
+                except Exception as exc:
+                    return self._fail_node_completion('artifact_storage_failed', f'Failed to store scrape artifact: {exc}')
+            upsert_payload = {
+                'workflowId': self.runner.workflow_id,
+                'workflowName': self.runner.workflow_name,
+                'nodeId': self.node_id,
+                'nodeLabel': (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships',
+                'kind': self.kind,
+                'targets': self.targets,
+                'targetUsername': '\n'.join(self.targets),
+                'status': 'completed',
+                'sourceProfileName': self.profile_name,
+                'lastRunAt': int(time.time() * 1000),
+                'storageId': self.artifact_storage_id,
+                'exportStorageId': self.artifact_storage_id,
+                'stats': {
+                    'scraped': self.total_scraped,
+                    'deduped': len(self.merged_users),
+                    'chunksCompleted': self.chunks_completed,
+                    'targetsCompleted': self.current_target_index,
+                },
+                'metadata': {
+                    'activityId': 'scrape_relationships',
+                    'failedTargets': self.failed_targets,
+                    'useAccountUsernames': self.use_account_usernames,
+                    'kindMode': self.kind_mode,
+                },
+            }
+            artifact_row, artifact_upsert_error = self._upsert_artifact_row(upsert_payload)
         artifact_upsert_context = {
             'workflowId': self.runner.workflow_id,
             'nodeId': self.node_id,
@@ -615,25 +779,26 @@ class ScrapeRelationshipsExecutor:
         }
         self.runner._update_node_state(
             self.node_id,
-            status='completed',
-            useAccountUsernames=self.use_account_usernames,
-            attempt=0,
-            cursor=None,
-            done=True,
-            targetScraped=0,
-            completedTargets=self.current_target_index,
-            artifactStorageId=self.artifact_storage_id,
-            manifestStorageId=None,
-            artifactId=(artifact_row or {}).get('_id'),
-            artifactUpsertFailedAt=int(time.time() * 1000) if artifact_row is None else None,
-            artifactUpsertError=artifact_upsert_error,
-            artifactUpsertPayload=artifact_upsert_context if artifact_row is None else None,
-            resumeSnapshotPath=None,
-            updatedAt=int(time.time() * 1000),
+            **self._node_state_patch(
+                status='completed',
+                attempt=0,
+                cursor=None,
+                done=True,
+                targetScraped=0,
+                artifactStorageId=self.artifact_storage_id,
+                manifestStorageId=None,
+                artifactId=(artifact_row or {}).get('_id'),
+                artifactUpsertFailedAt=int(time.time() * 1000) if artifact_row is None else None,
+                artifactUpsertError=artifact_upsert_error,
+                artifactUpsertPayload=artifact_upsert_context if artifact_row is None else None,
+                resumeSnapshotPath=None,
+                lastCompletedKind=self.kind,
+            ),
         )
         log(
             f'scrape_relationships: node {self.node_id} completed '
-            f'(targets={self.current_target_index}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
+            f'(kindMode={self.kind_mode}, completedKinds={self.completed_kinds}, '
+            f'targets={len(self.targets)}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
         )
         return 'success'
 
@@ -649,29 +814,17 @@ class ScrapeRelationshipsExecutor:
         )
         self.runner._update_node_state(
             self.node_id,
-            status='failed',
-            useAccountUsernames=self.use_account_usernames,
-            kind=self.kind,
-            targets=self.targets,
-            currentTargetIndex=self.current_target_index,
-            cursor=self.cursor,
-            attempt=self.attempt,
-            scraped=self.total_scraped,
-            deduped=len(self.merged_users),
-            chunksCompleted=self.chunks_completed,
-            targetScraped=self.target_scraped,
-            completedTargets=self.current_target_index,
-            failedTargets=self.failed_targets,
-            lastError=error_message,
-            lastErrorCode=error_code,
-            artifactStorageId=None,
-            manifestStorageId=None,
-            artifactId=None,
-            artifactUpsertFailedAt=None,
-            artifactUpsertError=None,
-            artifactUpsertPayload=None,
-            resumeSnapshotPath=self.resume_snapshot_path or None,
-            updatedAt=int(time.time() * 1000),
+            **self._node_state_patch(
+                status='failed',
+                lastError=error_message,
+                lastErrorCode=error_code,
+                artifactStorageId=None,
+                manifestStorageId=None,
+                artifactId=None,
+                artifactUpsertFailedAt=None,
+                artifactUpsertError=None,
+                artifactUpsertPayload=None,
+            ),
         )
         log(
             f'scrape_relationships: node {self.node_id} failed during completion '
@@ -687,6 +840,7 @@ class ScrapeRelationshipsExecutor:
             'workflowId': payload.get('workflowId'),
             'nodeId': payload.get('nodeId'),
             'activityId': (payload.get('metadata') or {}).get('activityId'),
+            'kind': payload.get('kind'),
         }
         attempts = len(ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS) + 1
         last_error: Optional[str] = None
@@ -712,7 +866,7 @@ class ScrapeRelationshipsExecutor:
                     f'scrape_relationships: artifact upsert failed for node {self.node_id} '
                     f'attempt {attempt_index + 1}/{attempts} '
                     f'(workflowId={log_payload["workflowId"]}, nodeId={log_payload["nodeId"]}, '
-                    f'activityId={log_payload["activityId"]}): {exc}'
+                    f'activityId={log_payload["activityId"]}, kind={log_payload["kind"]}): {exc}'
                 )
                 if attempt_index >= attempts - 1:
                     break
@@ -726,7 +880,7 @@ class ScrapeRelationshipsExecutor:
             f'scrape_relationships: artifact upsert exhausted retries for node {self.node_id}; '
             f'continuing with local artifact storage only '
             f'(workflowId={log_payload["workflowId"]}, nodeId={log_payload["nodeId"]}, '
-            f'activityId={log_payload["activityId"]})'
+            f'activityId={log_payload["activityId"]}, kind={log_payload["kind"]})'
         )
         return None, last_error
 
@@ -746,26 +900,14 @@ class ScrapeRelationshipsExecutor:
         log(
             f'scrape_relationships @{target_username}: scheduling retry '
             f'{self.attempt}/{self.max_attempts} in {delay_seconds}s '
-            f'(errorCode={error_code or "-"}, message={error_message or "-"})'
+            f'(kind={self.kind}, errorCode={error_code or "-"}, message={error_message or "-"})'
         )
         self.runner._update_node_state(
             self.node_id,
-            useAccountUsernames=self.use_account_usernames,
-            kind=self.kind,
-            targets=self.targets,
-            currentTargetIndex=self.current_target_index,
-            cursor=self.cursor,
-            attempt=self.attempt,
-            scraped=self.total_scraped,
-            deduped=len(self.merged_users),
-            chunksCompleted=self.chunks_completed,
-            targetScraped=self.target_scraped,
-            completedTargets=self.current_target_index,
-            failedTargets=self.failed_targets,
-            lastError=error_message,
-            lastErrorCode=error_code,
-            updatedAt=int(time.time() * 1000),
-            resumeSnapshotPath=self.resume_snapshot_path or None,
+            **self._node_state_patch(
+                lastError=error_message,
+                lastErrorCode=error_code,
+            ),
         )
         self.runner._emit_node_state(
             'task_progress',
@@ -777,6 +919,9 @@ class ScrapeRelationshipsExecutor:
             errorCode=error_code,
             retryInSeconds=delay_seconds,
             attempt=self.attempt,
+            kind=self.kind,
+            kindMode=self.kind_mode,
+            completedKinds=list(self.completed_kinds),
         )
         deadline = time.time() + delay_seconds
         while self.runner.running:
@@ -804,24 +949,12 @@ class ScrapeRelationshipsExecutor:
         ]
         self.runner._update_node_state(
             self.node_id,
-            status='failed',
-            useAccountUsernames=self.use_account_usernames,
-            kind=self.kind,
-            targets=self.targets,
-            currentTargetIndex=self.current_target_index,
-            cursor=self.cursor,
-            attempt=self.attempt + (1 if retryable else 0),
-            scraped=self.total_scraped,
-            deduped=len(self.merged_users),
-            chunksCompleted=self.chunks_completed,
-            targetScraped=self.target_scraped,
-            completedTargets=self.current_target_index,
-            failedTargets=self.failed_targets,
-            lastError=error_message,
-            lastErrorCode=error_code,
-            artifactStorageId=self.artifact_storage_id or None,
-            resumeSnapshotPath=self.resume_snapshot_path or None,
-            updatedAt=int(time.time() * 1000),
+            **self._node_state_patch(
+                status='failed',
+                attempt=self.attempt + (1 if retryable else 0),
+                lastError=error_message,
+                lastErrorCode=error_code,
+            ),
         )
         log(
             f"Error scrape_relationships @{target_username}: "
