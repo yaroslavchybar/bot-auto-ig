@@ -1,0 +1,25 @@
+frontend/tsconfig.json
+  47b39776af30e296 3
+frontend/tsconfig.app.json
+  47b39776af30e296 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "75e8d9da995462239958c90be8abfb72c5b08c1d",
+  "prompts": {
+    "47b39776af30e296": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d5f7e-8f74-7650-96ed-be2bd4d9feb1",
+        "model": "unknown"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
