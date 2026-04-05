@@ -27,7 +27,7 @@ export function SelectInput({ input, value, onChange }: SelectInputProps) {
         {input.required && <span className="text-status-danger ml-1">*</span>}
       </Label>
       <Select value={String(displayValue)} onValueChange={(v) => onChange(v)}>
-        <SelectTrigger className="border-line-soft bg-field-alt h-9 rounded-lg text-sm focus:ring-2 focus:ring-offset-0">
+        <SelectTrigger className="border-line-soft bg-field-alt h-9 rounded-lg text-sm transition-colors duration-100 focus:ring-2 focus:ring-offset-0">
           <SelectValue placeholder={input.placeholder || 'Select...'} />
         </SelectTrigger>
         <SelectContent className="text-sm">

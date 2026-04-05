@@ -38,7 +38,7 @@ export function ListSelectInput({
   }
 
   return (
-    <div className="mt-2 space-y-1.5">
+    <div className="space-y-1.5">
       <Label className="text-copy text-[11px] font-medium">
         {input.label}
       </Label>
@@ -47,7 +47,7 @@ export function ListSelectInput({
           {input.helpText}
         </p>
       )}
-      <div className="border-line-soft bg-panel-subtle/80 mt-1 max-h-40 space-y-1.5 overflow-auto rounded-xl border p-3">
+      <div className="bg-field-alt mt-1 max-h-40 space-y-0.5 overflow-auto rounded-lg p-2">
         {!lists ? (
           <p className="text-subtle-copy py-2 text-center text-[10px]">
             Loading lists...
@@ -60,13 +60,13 @@ export function ListSelectInput({
           availableLists.map((list) => (
             <div
               key={list._id}
-              className="hover:bg-panel-hover/70 flex items-center space-x-2 rounded-lg border border-transparent px-2 py-1 transition-colors"
+              className="hover:bg-panel-hover/70 flex items-center space-x-2 rounded-md px-2 py-1.5 transition-colors duration-100"
             >
               <Checkbox
                 id={`list-${list._id}`}
                 checked={selectedLists.includes(list._id)}
                 onCheckedChange={() => toggleList(list._id)}
-                className="h-3.5 w-3.5"
+                className="brand-checkbox h-3.5 w-3.5"
               />
               <Label
                 htmlFor={`list-${list._id}`}
@@ -86,6 +86,3 @@ export function ListSelectInput({
     </div>
   )
 }
-
-
-

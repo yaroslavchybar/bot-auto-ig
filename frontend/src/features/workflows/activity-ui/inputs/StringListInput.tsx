@@ -47,7 +47,7 @@ export function StringListInput({
         value={displayValue}
         onChange={(event) => onChange(normalizeValues(event.target.value))}
         placeholder={input.placeholder}
-        className="border-line-soft bg-field-alt min-h-[140px] rounded-lg px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
+        className="border-line-soft bg-field-alt min-h-[140px] rounded-lg px-3 py-2 text-sm transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-offset-0"
       />
       {input.helpText && (
         <p className="text-subtle-copy text-[10px] leading-tight">

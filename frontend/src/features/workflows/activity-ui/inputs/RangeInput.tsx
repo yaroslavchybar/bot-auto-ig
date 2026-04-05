@@ -20,7 +20,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
   const valueLabel = `${clampedValue}${input.unit || ''}`
 
   return (
-    <div className="border-line-soft bg-panel-subtle/80 space-y-3 rounded-xl border p-3">
+    <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
           <Label
@@ -36,7 +36,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
             </p>
           )}
         </div>
-        <div className="border-line-soft bg-field-alt text-ink min-w-[64px] rounded-lg border px-2.5 py-1 text-right font-mono text-xs shadow-xs">
+        <div className="border-line-soft bg-field-alt text-ink min-w-[64px] rounded-lg border px-2.5 py-1 text-right font-mono text-xs tabular-nums shadow-xs">
           {valueLabel}
         </div>
       </div>
@@ -45,7 +45,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
         <div className="relative">
           <div className="bg-panel-soft h-3 rounded-full" />
           <div
-            className="from-status-info to-status-info-strong pointer-events-none absolute inset-y-0 left-0 rounded-full bg-linear-to-r"
+            className="from-status-info to-status-info-strong pointer-events-none absolute inset-y-0 left-0 rounded-full bg-linear-to-r transition-[width] duration-100"
             style={{ width: `${progress}%` }}
           />
           <input

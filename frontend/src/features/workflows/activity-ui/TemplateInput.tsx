@@ -107,12 +107,12 @@ function TemplateEditItem(props: SharedEditorProps) {
       <TemplateTextarea {...props} placeholder="Enter message... (type / for macros)" />
       <div className="flex justify-end gap-1">
         <Button variant="ghost" size="sm"
-          className="h-5 rounded-[2px] px-1.5 text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+          className="h-5 rounded-[2px] px-1.5 text-subtle-copy hover:bg-panel-hover"
           onClick={props.onCancel}>
           <X className="h-[10px] w-[10px]" />
         </Button>
         <Button size="sm"
-          className="h-5 rounded-[2px] bg-neutral-700 px-1.5 hover:bg-neutral-800 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
+          className="h-5 rounded-[2px] bg-primary px-1.5 text-primary-foreground hover:bg-primary/90"
           onClick={props.onSave}>
           <Save className="h-[10px] w-[10px]" />
         </Button>
@@ -178,17 +178,17 @@ function TemplateDisplayItem({
   return (
     <div className="border-line bg-panel-subtle hover:border-line-strong group rounded-[3px] border p-1.5 transition-colors">
       <div className="flex items-start gap-1.5">
-        <p className="flex-1 text-[11px] font-medium break-words whitespace-pre-wrap text-neutral-600 dark:text-neutral-300">
+        <p className="flex-1 text-[11px] font-medium break-words whitespace-pre-wrap text-muted-copy">
           {template.length > 80 ? template.slice(0, 80) + '...' : template}
         </p>
         <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           <Button variant="ghost" size="icon"
-            className="h-5 w-5 rounded-[2px] text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+            className="h-5 w-5 rounded-[2px] text-subtle-copy hover:bg-panel-hover hover:text-ink"
             onClick={() => onStartEdit(index)}>
             <Edit2 className="h-3 w-3" />
           </Button>
           <Button variant="ghost" size="icon"
-            className="text-status-danger h-5 w-5 rounded-[2px] hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30"
+            className="text-status-danger h-5 w-5 rounded-[2px] hover:bg-status-danger-soft hover:text-status-danger"
             onClick={() => onDelete(index)}>
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -313,7 +313,7 @@ export function TemplateInput({ input, config }: TemplateInputProps) {
   return (
     <div className="space-y-1">
       <div className="mt-1 mb-0.5 flex items-center justify-between">
-        <Label className="text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
+        <Label className="text-copy text-[11px] font-medium">
           {input.label}
         </Label>
         <Button variant="outline" size="sm"
@@ -336,7 +336,7 @@ export function TemplateInput({ input, config }: TemplateInputProps) {
       />
 
       {input.helpText && (
-        <p className="pt-1 text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
+        <p className="text-subtle-copy pt-1 text-[10px] leading-tight">
           {input.helpText}
         </p>
       )}

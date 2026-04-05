@@ -1,4 +1,3 @@
-import { Label } from '@/components/ui/label'
 import type { ActivityInput } from '@/features/workflows/activities/types'
 import { InputField } from './InputField'
 
@@ -13,7 +12,6 @@ export function GroupedInputs({
   config,
   onChange,
 }: GroupedInputsProps) {
-  // Separate grouped and ungrouped inputs
   const groups: Record<string, ActivityInput[]> = {}
   const ungrouped: ActivityInput[] = []
 
@@ -28,7 +26,7 @@ export function GroupedInputs({
 
   return (
     <>
-      {/* Ungrouped inputs first */}
+      {/* Ungrouped inputs — flat vertical stack */}
       {ungrouped.map((input) => (
         <InputField
           key={input.name}
@@ -39,32 +37,52 @@ export function GroupedInputs({
         />
       ))}
 
-      {/* Grouped inputs */}
-      {Object.entries(groups).map(([groupName, groupInputs]) => (
-        <div
-          key={groupName}
-          className="border-line-soft bg-panel-subtle/80 mt-3 rounded-xl border p-3"
-        >
-          <Label className="text-muted-copy mb-3 block font-mono text-[10px] font-semibold tracking-[0.18em] uppercase">
-            {groupName}
-          </Label>
-          <div className="grid grid-cols-2 gap-2">
-            {groupInputs.map((input) => (
-              <InputField
-                key={input.name}
-                input={input}
-                value={config[input.name]}
-                onChange={(value) => onChange(input.name, value)}
-                compact
-                config={config}
-              />
-            ))}
+      {/* Grouped inputs — section dividers */}
+      {Object.entries(groups).map(([groupName, groupInputs]) => {
+        const isInlinePair =
+          groupInputs.length === 2 &&
+          groupInputs.every((i) => i.type === 'number')
+
+        return (
+          <div key={groupName} className="pt-1">
+            {/* Section divider + label */}
+            <div className="border-line-soft mb-3 flex items-center gap-2 border-t pt-3">
+              <span className="text-subtle-copy font-mono text-[10px] font-medium tracking-[0.18em] uppercase">
+                {groupName}
+              </span>
+            </div>
+
+            {/* Inputs: inline pair or vertical stack */}
+            {isInlinePair ? (
+              <div className="flex gap-3">
+                {groupInputs.map((input) => (
+                  <div key={input.name} className="flex-1">
+                    <InputField
+                      input={input}
+                      value={config[input.name]}
+                      onChange={(value) => onChange(input.name, value)}
+                      compact
+                      config={config}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {groupInputs.map((input) => (
+                  <InputField
+                    key={input.name}
+                    input={input}
+                    value={config[input.name]}
+                    onChange={(value) => onChange(input.name, value)}
+                    config={config}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </>
   )
 }
-
-
-

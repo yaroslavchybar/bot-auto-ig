@@ -3,7 +3,7 @@ import type { Node } from 'reactflow'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getActivityById } from '@/features/workflows/activities/index'
-import { X, Play, Settings2 } from 'lucide-react'
+import { X, Play, Settings2, Info } from 'lucide-react'
 import { GroupedInputs } from '@/features/workflows/activity-ui/GroupedInputs'
 import { cn } from '@/lib/utils'
 
@@ -20,7 +20,6 @@ export function NodeSettingsPanel({
   onClose,
   suppressed = false,
 }: NodeSettingsPanelProps) {
-  // Hide panel when no node selected
   if (!selectedNode) {
     return null
   }
@@ -56,7 +55,8 @@ function SettingsPanelShell({
   return (
     <div
       className={cn(
-        'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs',
+        'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-sm',
+        'animate-in slide-in-from-right-2 fade-in duration-200',
         suppressed && 'hidden',
       )}
     >
@@ -73,18 +73,20 @@ function SettingsPanelHeader({
   icon,
   title,
   subtitle,
+  accentColor,
   onClose,
 }: {
   icon: React.ReactNode
   title: string
   subtitle: string
+  accentColor?: string
   onClose: () => void
 }) {
   return (
-    <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center justify-between border-b px-4 py-3">
-      <div className="flex items-center gap-2">
+    <div className="border-line-soft bg-panel-subtle relative flex shrink-0 items-center justify-between border-b px-4 py-3">
+      <div className="flex items-center gap-2.5">
         {icon}
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-1">
           <h3 className="text-ink text-sm leading-none font-semibold">
             {title}
           </h3>
@@ -96,11 +98,19 @@ function SettingsPanelHeader({
       <Button
         variant="ghost"
         size="icon"
-        className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg"
+        className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg transition-colors duration-150"
         onClick={onClose}
       >
         <X className="h-4 w-4" />
       </Button>
+      {accentColor && (
+        <div
+          className="absolute right-0 bottom-0 left-0 h-px"
+          style={{
+            background: `linear-gradient(to right, color-mix(in srgb, ${accentColor} 25%, transparent), transparent 80%)`,
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -122,24 +132,30 @@ function StartNodeSettings({
     <SettingsPanelShell suppressed={suppressed}>
       <SettingsPanelHeader
         icon={
-          <div className="bg-status-success-soft border-status-success-border rounded-lg border p-2">
+          <div className="bg-status-success-soft border-status-success-border rounded-lg border p-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]">
             <Play className="text-status-success h-4 w-4" />
           </div>
         }
         title="Start Node"
         subtitle="Workflow Entry"
+        accentColor="#22c55e"
         onClose={onClose}
       />
       <ScrollArea className="flex-1 bg-transparent">
         <div className="space-y-3 p-4">
-          <p className="text-muted-copy text-sm leading-relaxed">
-            This is the entry point for your workflow. Connect this node to the
-            first action you want to perform.
-          </p>
-          <p className="text-muted-copy text-sm leading-relaxed">
-            Use the "Start Browser" and "Select List" nodes from the Control
-            Flow category to set up your workflow appropriately.
-          </p>
+          <div className="bg-status-success-soft/20 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
+            <Info className="text-status-success mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />
+            <div className="space-y-2">
+              <p className="text-muted-copy text-[11px] leading-relaxed">
+                This is the entry point for your workflow. Connect this node to the
+                first action you want to perform.
+              </p>
+              <p className="text-muted-copy text-[11px] leading-relaxed">
+                Use the "Start Browser" and "Select List" nodes from the Control
+                Flow category to set up your workflow appropriately.
+              </p>
+            </div>
+          </div>
         </div>
       </ScrollArea>
     </SettingsPanelShell>
@@ -187,6 +203,19 @@ function UnknownActivityPanel({
   )
 }
 
+/* ── Activity description callout ── */
+
+function ActivityDescription({ description }: { description: string }) {
+  return (
+    <div className="bg-panel-subtle/50 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
+      <Info className="text-subtle-copy mt-0.5 h-3.5 w-3.5 shrink-0 opacity-50" />
+      <p className="text-subtle-copy text-[11px] leading-relaxed">
+        {description}
+      </p>
+    </div>
+  )
+}
+
 /* ── Activity settings body ── */
 
 function ActivitySettingsBody({
@@ -200,10 +229,8 @@ function ActivitySettingsBody({
 }) {
   return (
     <ScrollArea className="flex-1 bg-transparent">
-      <div className="space-y-4 p-4">
-        <p className="text-subtle-copy border-line-soft border-b pb-3 text-xs leading-relaxed">
-          {activity.description}
-        </p>
+      <div className="space-y-5 p-4">
+        <ActivityDescription description={activity.description} />
         {activity.inputs.length === 0 ? (
           <p className="text-subtle-copy text-sm">This activity has no configurable inputs.</p>
         ) : (
@@ -238,15 +265,28 @@ function ActivityNodeSettings({
     <SettingsPanelShell suppressed={suppressed}>
       <SettingsPanelHeader
         icon={
-          <div className="border-line rounded-lg border p-2" style={{ backgroundColor: `${activity.color}15` }}>
+          <div
+            className="rounded-lg border p-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
+            style={{
+              backgroundColor: `color-mix(in srgb, ${activity.color} 8%, transparent)`,
+              borderColor: `color-mix(in srgb, ${activity.color} 19%, transparent)`,
+            }}
+          >
             <Settings2 className="h-4 w-4" style={{ color: activity.color }} />
           </div>
         }
-        title={activity.name} subtitle={activity.category} onClose={onClose}
+        title={activity.name}
+        subtitle={activity.category}
+        accentColor={activity.color}
+        onClose={onClose}
       />
       <ActivitySettingsBody activity={activity} config={config} onChange={handleChange} />
-      <div className="border-line-soft bg-panel-subtle border-t p-3">
-        <Button className="brand-button h-9 w-full rounded-lg text-sm" size="sm" onClick={handleSave}>
+      <div className="border-line-soft bg-panel-subtle border-t p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]">
+        <Button
+          className="brand-button h-9 w-full rounded-lg text-sm transition-all duration-150"
+          size="sm"
+          onClick={handleSave}
+        >
           Apply Changes
         </Button>
       </div>

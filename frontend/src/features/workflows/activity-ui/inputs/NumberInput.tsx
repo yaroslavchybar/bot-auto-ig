@@ -43,7 +43,7 @@ export function NumberInput({
           value={displayValue as number}
           onChange={(e) => onChange(Number(e.target.value))}
           placeholder={input.placeholder}
-          className="border-line-soft bg-field-alt h-9 rounded-lg px-3 text-sm focus-visible:ring-2 focus-visible:ring-offset-0"
+          className="border-line-soft bg-field-alt h-9 rounded-lg px-3 text-sm transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-offset-0"
         />
         {compact && input.unit && (
           <span className="text-subtle-copy w-8 shrink-0 font-mono text-[10px]">
