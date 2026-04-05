@@ -1,0 +1,23 @@
+python/actions/browsing/scrolling.py
+  f5829e6ee5c37866 69-72,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b4a9787879a225431fb843afa2f71530ee90430d",
+  "prompts": {
+    "f5829e6ee5c37866": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d5e59-3742-7511-9059-9b369e116591",
+        "model": "gpt-5.2"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 153,
+      "total_deletions": 149,
+      "accepted_lines": 121,
+      "overriden_lines": 0
+    }
+  }
+}
