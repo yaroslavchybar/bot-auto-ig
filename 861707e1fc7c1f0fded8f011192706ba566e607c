@@ -1,0 +1,25 @@
+python/core/snapshot_debugger.py
+  f0858ca785548ed8 1,7-8,22-41,44-46,55-61,68-74
+python/browser/session_state.py
+  f0858ca785548ed8 4-5,16,18-22,28-35,105-111,148-154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "861707e1fc7c1f0fded8f011192706ba566e607c",
+  "prompts": {
+    "f0858ca785548ed8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6328-bdaf-7111-9dc9-87363ef86ae1",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 173,
+      "total_deletions": 90,
+      "accepted_lines": 154,
+      "overriden_lines": 0
+    }
+  }
+}
