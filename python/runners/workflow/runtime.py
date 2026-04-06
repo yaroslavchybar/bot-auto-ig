@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from python.browser.display import DisplayManager
 from python.core.clients import InstagramAccountsClient, ProfilesClient
+from python.runners.workflow.browser_cleanup import close_tracked_browser_entry
 from python.runners.workflow.account_session import process_account as process_account_impl
 from python.runners.workflow.activity_dispatch import execute_activity as execute_activity_impl
 from python.runners.workflow.graph import _build_edge_index
@@ -62,27 +63,32 @@ class WorkflowRunner:
         self._current_profile: Optional[str] = None
         self._current_progress: int = 0
 
-    def register_browser_context(self, ctx_mgr: Any) -> None:
+    def register_browser_context(self, ctx_mgr: Any, context: Any, profile_name: str) -> None:
         """Track an active browser context manager for shutdown cleanup."""
         with self._active_contexts_lock:
-            self._active_contexts.append(ctx_mgr)
+            self._active_contexts.append({
+                'ctx_mgr': ctx_mgr,
+                'context': context,
+                'profile_name': str(profile_name or '').strip(),
+            })
 
     def unregister_browser_context(self, ctx_mgr: Any) -> None:
         """Remove a browser context manager after normal cleanup."""
         with self._active_contexts_lock:
-            try:
-                self._active_contexts.remove(ctx_mgr)
-            except ValueError:
-                pass
+            self._active_contexts = [
+                entry
+                for entry in self._active_contexts
+                if entry.get('ctx_mgr') is not ctx_mgr
+            ]
 
     def close_all_browser_contexts(self) -> None:
         """Force-close all registered browser contexts (shutdown cleanup)."""
         with self._active_contexts_lock:
             contexts = list(self._active_contexts)
             self._active_contexts.clear()
-        for ctx_mgr in contexts:
+        for entry in contexts:
             try:
-                ctx_mgr.__exit__(None, None, None)
+                close_tracked_browser_entry(self, entry)
             except Exception:
                 pass
 

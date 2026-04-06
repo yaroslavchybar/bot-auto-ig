@@ -2,6 +2,7 @@ import random
 import time
 from typing import Any, Dict, Optional
 
+from python.runners.workflow.browser_cleanup import close_browser_state
 from python.runners.workflow.bootstrap import _find_start_node
 from python.runners.workflow.graph import _next_node
 from python.runners.workflow.io import emit_event, log
@@ -229,10 +230,7 @@ def _handle_account_exception(runner, profile_name: str, exc: Exception) -> bool
 
 def _cleanup_browser_context(runner, browser_state: Dict[str, Any]) -> None:
     try:
-        ctx_mgr = browser_state.get('_ctx_mgr')
-        if ctx_mgr:
-            runner.unregister_browser_context(ctx_mgr)
-            ctx_mgr.__exit__(None, None, None)
+        close_browser_state(runner, browser_state)
     except Exception:
         pass
 

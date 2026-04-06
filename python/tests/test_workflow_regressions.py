@@ -6,11 +6,14 @@ import logging
 from datetime import datetime, timezone
 from enum import Enum
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
 
+from python.runners.workflow import browser_cleanup as workflow_browser_cleanup
 from python.runners.workflow.activity_dispatch import (
+    _close_browser,
     _run_follow_activity,
     _run_loop,
     _run_python_script,
@@ -455,3 +458,210 @@ def test_workflow_runner_get_node_state_returns_copy():
 def test_relationship_chunk_script_accepts_numeric_next_cursor():
     assert 'const rawNextMaxId = payload?.next_max_id' in RELATIONSHIP_CHUNK_SCRIPT
     assert 'String(rawNextMaxId).trim() || null' in RELATIONSHIP_CHUNK_SCRIPT
+
+
+def test_workflow_close_browser_syncs_cookies_before_exit(monkeypatch):
+    order = []
+    ctx_mgr = SimpleNamespace(__exit__=lambda *_args: order.append('exit'))
+    context = SimpleNamespace()
+    browser_state = {
+        '_ctx_mgr': ctx_mgr,
+        'context': context,
+        'page': object(),
+        'profile_name': 'alice',
+    }
+    runner = SimpleNamespace(unregister_browser_context=lambda mgr: order.append(('unregister', mgr)))
+
+    monkeypatch.setattr(
+        workflow_browser_cleanup,
+        'sync_profile_session_state',
+        lambda current_context, profile_name, **_kwargs: order.append(('sync', current_context, profile_name)) or True,
+    )
+
+    assert _close_browser(runner, browser_state) == 'next'
+    assert order == [('unregister', ctx_mgr), ('sync', context, 'alice'), 'exit']
+    assert browser_state['_ctx_mgr'] is None
+    assert browser_state['context'] is None
+    assert browser_state['page'] is None
+
+
+def test_workflow_cleanup_browser_context_syncs_before_exit(monkeypatch):
+    order = []
+    ctx_mgr = SimpleNamespace(__exit__=lambda *_args: order.append('exit'))
+    context = SimpleNamespace()
+    browser_state = {
+        '_ctx_mgr': ctx_mgr,
+        'context': context,
+        'page': object(),
+        'profile_name': 'alice',
+    }
+    runner = SimpleNamespace(unregister_browser_context=lambda mgr: order.append(('unregister', mgr)))
+
+    monkeypatch.setattr(
+        workflow_browser_cleanup,
+        'sync_profile_session_state',
+        lambda current_context, profile_name, **_kwargs: order.append(('sync', current_context, profile_name)) or True,
+    )
+
+    process_cleanup = __import__('python.runners.workflow.account_session', fromlist=['_cleanup_browser_context'])
+    process_cleanup._cleanup_browser_context(runner, browser_state)
+
+    assert order == [('unregister', ctx_mgr), ('sync', context, 'alice'), 'exit']
+    assert browser_state['_ctx_mgr'] is None
+    assert browser_state['context'] is None
+    assert browser_state['page'] is None
+
+
+def test_workflow_close_all_browser_contexts_syncs_before_exit(monkeypatch):
+    order = []
+    runner = WorkflowRunner('wf-1', [], [], [], {})
+    try:
+        ctx_mgr = SimpleNamespace(__exit__=lambda *_args: order.append('exit'))
+        context = SimpleNamespace()
+
+        monkeypatch.setattr(
+            workflow_browser_cleanup,
+            'sync_profile_session_state',
+            lambda current_context, profile_name, **_kwargs: order.append(('sync', current_context, profile_name)) or True,
+        )
+
+        runner.register_browser_context(ctx_mgr, context, 'alice')
+        runner.close_all_browser_contexts()
+
+        assert order == [('sync', context, 'alice'), 'exit']
+        assert runner._active_contexts == []
+    finally:
+        runner._executor.shutdown(wait=True)
+
+
+def test_workflow_browser_close_retries_cookie_sync_once(monkeypatch):
+    messages = []
+    ctx_mgr = SimpleNamespace(__exit__=lambda *_args: None)
+    context = SimpleNamespace()
+    browser_state = {
+        '_ctx_mgr': ctx_mgr,
+        'context': context,
+        'page': object(),
+        'profile_name': 'alice',
+    }
+    runner = SimpleNamespace(unregister_browser_context=lambda _mgr: None)
+    calls = []
+
+    monkeypatch.setattr(
+        workflow_browser_cleanup,
+        'sync_profile_session_state',
+        lambda *_args, **_kwargs: calls.append('sync') or len(calls) > 1,
+    )
+    monkeypatch.setattr(workflow_browser_cleanup, 'log', messages.append)
+    monkeypatch.setattr(workflow_browser_cleanup.time, 'sleep', lambda delay: messages.append(f'sleep:{delay}'))
+
+    workflow_browser_cleanup.close_browser_state(runner, browser_state)
+
+    assert calls == ['sync', 'sync']
+    assert 'Cookie sync failed for @alice before browser close; retrying once...' in messages
+    assert any(message.startswith('sleep:') for message in messages)
+
+
+def test_workflow_browser_close_logs_cookie_save_outcome(monkeypatch):
+    messages = []
+    ctx_mgr = SimpleNamespace(__exit__=lambda *_args: None)
+    context = SimpleNamespace()
+    browser_state = {
+        '_ctx_mgr': ctx_mgr,
+        'context': context,
+        'page': object(),
+        'profile_name': 'alice',
+    }
+    runner = SimpleNamespace(unregister_browser_context=lambda _mgr: None)
+
+    monkeypatch.setattr(
+        workflow_browser_cleanup,
+        'sync_profile_session_state',
+        lambda *_args, log=None, **_kwargs: (log and log('Saved browser cookies and Instagram sessionid to database')) or True,
+    )
+    monkeypatch.setattr(workflow_browser_cleanup, 'log', messages.append)
+
+    workflow_browser_cleanup.close_browser_state(runner, browser_state)
+
+    assert 'Cookie sync saved latest cookies for @alice before browser close.' in messages
+
+
+def test_workflow_browser_close_logs_cookie_skip_outcome(monkeypatch):
+    messages = []
+    ctx_mgr = SimpleNamespace(__exit__=lambda *_args: None)
+    context = SimpleNamespace()
+    browser_state = {
+        '_ctx_mgr': ctx_mgr,
+        'context': context,
+        'page': object(),
+        'profile_name': 'alice',
+    }
+    runner = SimpleNamespace(unregister_browser_context=lambda _mgr: None)
+
+    monkeypatch.setattr(
+        workflow_browser_cleanup,
+        'sync_profile_session_state',
+        lambda *_args, log=None, **_kwargs: (log and log('Skipped saving browser session state because no authenticated Instagram session was available')) or True,
+    )
+    monkeypatch.setattr(workflow_browser_cleanup, 'log', messages.append)
+
+    workflow_browser_cleanup.close_browser_state(runner, browser_state)
+
+    assert 'Cookie sync skipped for @alice before browser close: no authenticated Instagram session was available.' in messages
+
+
+def test_workflow_browser_close_continues_after_final_cookie_sync_failure(monkeypatch):
+    order = []
+    messages = []
+    ctx_mgr = SimpleNamespace(__exit__=lambda *_args: order.append('exit'))
+    context = SimpleNamespace()
+    browser_state = {
+        '_ctx_mgr': ctx_mgr,
+        'context': context,
+        'page': object(),
+        'profile_name': 'alice',
+    }
+    runner = SimpleNamespace(unregister_browser_context=lambda _mgr: order.append('unregister'))
+
+    monkeypatch.setattr(
+        workflow_browser_cleanup,
+        'sync_profile_session_state',
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(workflow_browser_cleanup, 'log', messages.append)
+    monkeypatch.setattr(workflow_browser_cleanup.time, 'sleep', lambda _delay: None)
+
+    workflow_browser_cleanup.close_browser_state(runner, browser_state)
+
+    assert order == ['unregister', 'exit']
+    assert messages[-1] == 'Cookie sync failed for @alice before browser close; continuing with browser shutdown.'
+    assert browser_state['_ctx_mgr'] is None
+    assert browser_state['context'] is None
+    assert browser_state['page'] is None
+
+
+def test_workflow_browser_close_does_not_double_close_when_shutdown_races_profile_cleanup(monkeypatch):
+    runner = WorkflowRunner('wf-1', [], [], [], {})
+    try:
+        ctx_mgr = MagicMock()
+        context = SimpleNamespace()
+        browser_state = {
+            '_ctx_mgr': ctx_mgr,
+            'context': context,
+            'page': object(),
+            'profile_name': 'alice',
+        }
+
+        monkeypatch.setattr(workflow_browser_cleanup, 'sync_profile_session_state', lambda *_args, **_kwargs: True)
+
+        runner.register_browser_context(ctx_mgr, context, 'alice')
+        runner.close_all_browser_contexts()
+
+        process_cleanup = __import__('python.runners.workflow.account_session', fromlist=['_cleanup_browser_context'])
+        process_cleanup._cleanup_browser_context(runner, browser_state)
+
+        ctx_mgr.__exit__.assert_called_once_with(None, None, None)
+        assert runner._active_contexts == []
+        assert browser_state['_ctx_mgr'] is None
+    finally:
+        runner._executor.shutdown(wait=True)
