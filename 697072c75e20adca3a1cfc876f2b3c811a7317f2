@@ -1,0 +1,31 @@
+python/actions/messaging/runtime.py
+  a0beb7c5645ed071 101-103,126,139-140,145-146,154,156,158,162,165,180-184,186-187,189-190,192
+python/tests/test_workflow_regressions.py
+  a0beb7c5645ed071 17,296-319
+docs/python/automation.md
+  a0beb7c5645ed071 25
+python/tests/test_runtime_regressions.py
+  a0beb7c5645ed071 486,488,490-501,503-504,507-514,517-519,522,524,526-534,536-537,539-542,544-545,548-555,558-560,563,565-578,580-581,584-588,590,593-595,598,600,602-609,613-614,617-618,622
+python/runners/workflow/activity_dispatch.py
+  a0beb7c5645ed071 447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "697072c75e20adca3a1cfc876f2b3c811a7317f2",
+  "prompts": {
+    "a0beb7c5645ed071": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d5f7e-0c9d-7d52-af5b-79119b6c8e24",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1414,
+      "total_deletions": 1224,
+      "accepted_lines": 1062,
+      "overriden_lines": 2
+    }
+  }
+}
