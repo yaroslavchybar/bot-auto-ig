@@ -444,6 +444,7 @@ def _resolve_message_texts(cfg: Dict[str, Any]) -> list[str]:
 def _build_dm_behavior_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return {
         'follow_if_no_message_button': _parse_bool(cfg.get('follow_if_no_message_button'), True),
+        'direct_message_success_status': 'scraping',
         'navigation_delay_min_seconds': _parse_float(cfg.get('navigation_delay_min_seconds'), 2.0),
         'navigation_delay_max_seconds': _parse_float(cfg.get('navigation_delay_max_seconds'), 3.0),
         'composer_delay_min_seconds': _parse_float(cfg.get('composer_delay_min_seconds'), 1.0),

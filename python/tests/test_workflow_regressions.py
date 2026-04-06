@@ -14,6 +14,7 @@ from python.runners.workflow.activity_dispatch import (
     _run_follow_activity,
     _run_loop,
     _run_python_script,
+    _run_send_dm_activity,
     _run_unfollow_activity,
     execute_activity as execute_workflow_activity,
 )
@@ -290,6 +291,32 @@ def test_workflow_unfollow_activity_marks_targets_as_scraping(monkeypatch):
     assert status_updates == [
         {'account_id': 'account-1', 'status': 'scraping', 'assigned_to': '__NOT_SET__'}
     ]
+
+
+def test_workflow_send_dm_activity_requests_scraping_status_for_direct_messages(monkeypatch):
+    captured = {}
+
+    monkeypatch.setattr('python.runners.workflow.activity_dispatch.send_messages', lambda **kwargs: captured.update(kwargs))
+
+    runner = SimpleNamespace(
+        accounts_client=SimpleNamespace(
+            get_accounts_to_message=lambda *_args, **_kwargs: [{'id': 'account-1', 'user_name': 'target'}],
+        ),
+        messaging_cooldown_enabled=False,
+        messaging_cooldown_hours=0,
+        running=True,
+    )
+
+    result = _run_send_dm_activity(
+        runner,
+        {'follow_if_no_message_button': True},
+        object(),
+        SimpleNamespace(username='alice', proxy=''),
+        {'profile_id': 'profile-1'},
+    )
+
+    assert result == 'success'
+    assert captured['behavior_config']['direct_message_success_status'] == 'scraping'
 
 
 def test_workflow_fetch_profiles_ignores_redirect_responses(monkeypatch):

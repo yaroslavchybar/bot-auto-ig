@@ -483,6 +483,145 @@ def test_run_messaging_flow_returns_zero_when_message_texts_missing():
     log.assert_called_with('No message texts for sending.')
 
 
+def test_run_messaging_flow_marks_direct_message_targets_as_scraping_when_configured(monkeypatch):
+    page = MagicMock()
+    page.keyboard = MagicMock()
+    log = MagicMock()
+    client = MagicMock()
+    msg_box = MagicMock()
+    send_button = MagicMock()
+    mark_sent_calls = []
+
+    monkeypatch.setattr('python.actions.messaging.runtime.ensure_instagram_open', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.random_delay', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.navigate_to_profile', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.click_message_button', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_message_box', lambda *_args, **_kwargs: msg_box)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_send_button', lambda *_args, **_kwargs: send_button)
+    monkeypatch.setattr('python.actions.messaging.runtime.random.choice', lambda texts: texts[0])
+    monkeypatch.setattr(
+        'python.actions.messaging.runtime.mark_sent',
+        lambda _client, username, _log: mark_sent_calls.append(username),
+    )
+
+    processed = run_messaging_flow(
+        page=page,
+        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        message_texts=['Hi'],
+        log=log,
+        should_stop=lambda: False,
+        client=client,
+        behavior_config={'direct_message_success_status': 'scraping'},
+    )
+
+    assert processed == 1
+    client.update_account_status.assert_called_once_with('acct-1', status='scraping')
+    assert mark_sent_calls == ['demo']
+
+
+def test_run_messaging_flow_does_not_mark_scraping_after_follow_fallback(monkeypatch):
+    page = MagicMock()
+    page.keyboard = MagicMock()
+    log = MagicMock()
+    client = MagicMock()
+    msg_box = MagicMock()
+    send_button = MagicMock()
+    click_results = iter([False, True])
+    mark_sent_calls = []
+
+    monkeypatch.setattr('python.actions.messaging.runtime.ensure_instagram_open', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.random_delay', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.navigate_to_profile', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(
+        'python.actions.messaging.runtime.click_message_button',
+        lambda *_args, **_kwargs: next(click_results),
+    )
+    monkeypatch.setattr('python.actions.messaging.runtime.click_follow_button', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_message_box', lambda *_args, **_kwargs: msg_box)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_send_button', lambda *_args, **_kwargs: send_button)
+    monkeypatch.setattr('python.actions.messaging.runtime.random.choice', lambda texts: texts[0])
+    monkeypatch.setattr(
+        'python.actions.messaging.runtime.mark_sent',
+        lambda _client, username, _log: mark_sent_calls.append(username),
+    )
+
+    processed = run_messaging_flow(
+        page=page,
+        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        message_texts=['Hi'],
+        log=log,
+        should_stop=lambda: False,
+        client=client,
+        behavior_config={'direct_message_success_status': 'scraping'},
+    )
+
+    assert processed == 1
+    assert client.update_account_status.call_args_list == [(( 'acct-1',), {'status': 'subscribed'})]
+    assert mark_sent_calls == ['demo']
+
+
+def test_run_messaging_flow_default_behavior_does_not_mark_direct_message_targets(monkeypatch):
+    page = MagicMock()
+    page.keyboard = MagicMock()
+    log = MagicMock()
+    client = MagicMock()
+    msg_box = MagicMock()
+    send_button = MagicMock()
+    mark_sent_calls = []
+
+    monkeypatch.setattr('python.actions.messaging.runtime.ensure_instagram_open', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.random_delay', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.navigate_to_profile', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.click_message_button', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_message_box', lambda *_args, **_kwargs: msg_box)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_send_button', lambda *_args, **_kwargs: send_button)
+    monkeypatch.setattr('python.actions.messaging.runtime.random.choice', lambda texts: texts[0])
+    monkeypatch.setattr(
+        'python.actions.messaging.runtime.mark_sent',
+        lambda _client, username, _log: mark_sent_calls.append(username),
+    )
+
+    processed = run_messaging_flow(
+        page=page,
+        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        message_texts=['Hi'],
+        log=log,
+        should_stop=lambda: False,
+        client=client,
+    )
+
+    assert processed == 1
+    client.update_account_status.assert_not_called()
+    assert mark_sent_calls == ['demo']
+
+
+def test_run_messaging_flow_does_not_mark_scraping_when_send_fails(monkeypatch):
+    page = MagicMock()
+    page.keyboard = MagicMock()
+    log = MagicMock()
+    client = MagicMock()
+
+    monkeypatch.setattr('python.actions.messaging.runtime.ensure_instagram_open', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.random_delay', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.navigate_to_profile', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.click_message_button', lambda *_args, **_kwargs: True)
+    monkeypatch.setattr('python.actions.messaging.runtime.find_message_box', lambda *_args, **_kwargs: None)
+    monkeypatch.setattr('python.actions.messaging.runtime.mark_sent', lambda *_args, **_kwargs: None)
+
+    processed = run_messaging_flow(
+        page=page,
+        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        message_texts=['Hi'],
+        log=log,
+        should_stop=lambda: False,
+        client=client,
+        behavior_config={'direct_message_success_status': 'scraping'},
+    )
+
+    assert processed == 0
+    client.update_account_status.assert_not_called()
+
+
 def test_wait_for_circuit_breaker_clamps_negative_wait(monkeypatch):
     slept: list[float] = []
 
