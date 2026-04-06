@@ -1,0 +1,65 @@
+tests/convex/instagramAccounts.test.ts
+  95bc1ff6f07a98b8 141-340,342-352
+docs/convex/backend.md
+  95bc1ff6f07a98b8 29,56
+frontend/src/features/profiles/types/index.ts
+  95bc1ff6f07a98b8 14
+tests/convex/http.test.ts
+  95bc1ff6f07a98b8 69,82,104,140,150,182
+frontend/src/features/profiles/utils/mapProfile.ts
+  95bc1ff6f07a98b8 16,43-46
+convex/profiles/queries.ts
+  95bc1ff6f07a98b8 11,24,52
+tests/convex/redteam-profiles-negative-limit.test.ts
+  95bc1ff6f07a98b8 16,19,30,33,39,42,48,51
+convex/httpRoutes/profiles.ts
+  95bc1ff6f07a98b8 142-143,166-167,190-191
+frontend/src/features/profiles/components/ProfileForm.tsx
+  95bc1ff6f07a98b8 16,396,409,415,418,421,425,430,437,441-442,510,529-532,569
+convex/httpRoutes/shared.ts
+  95bc1ff6f07a98b8 196-197
+server/profiles/service.ts
+  95bc1ff6f07a98b8 106
+server/profiles/data.ts
+  95bc1ff6f07a98b8 31,53-54,79-80,165,190
+tests/convex/httpApi.test.ts
+  95bc1ff6f07a98b8 15,25,43,54,66,73,78-79
+convex/instagramAccounts.ts
+  95bc1ff6f07a98b8 4,243,252-255,259,266-267,289-290,292-293,301-309,311-312
+server/shared/convexClient.ts
+  95bc1ff6f07a98b8 52,76,278,300
+convex/profiles/mutations.ts
+  95bc1ff6f07a98b8 6,31,234-238
+convex/schema.ts
+  95bc1ff6f07a98b8 27
+tests/convex/profiles.test.ts
+  95bc1ff6f07a98b8 31,69,74,76,78-79,81-83,86
+convex/profiles/helpers.ts
+  95bc1ff6f07a98b8 6-7,34-37,39-46,70,94,111,124,134,153,160,206-208,212,252-253,258,386-395,437,453,486,503
+tests/convex/helpers.ts
+  95bc1ff6f07a98b8 66
+frontend/src/features/profiles/hooks/useProfilesPage.ts
+  95bc1ff6f07a98b8 129-130
+docs/frontend/guide.md
+  95bc1ff6f07a98b8 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b512c38f0c985e2ef2e1b4df42590740328b65ea",
+  "prompts": {
+    "95bc1ff6f07a98b8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d5fd9-c86f-74d3-a47b-fa6422291a87",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1863,
+      "total_deletions": 1451,
+      "accepted_lines": 1189,
+      "overriden_lines": 19
+    }
+  }
+}
