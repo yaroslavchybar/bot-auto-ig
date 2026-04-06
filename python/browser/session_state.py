@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Callable, Optional
 
+from playwright.sync_api import Error as PlaywrightError
+
 from python.browser.cookies import (
     canonical_cookies_json,
     extract_instagram_session_id,
@@ -9,6 +11,28 @@ from python.browser.cookies import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _context_is_closed(context) -> bool:
+    try:
+        is_closed = getattr(context, 'is_closed', None)
+        if callable(is_closed):
+            result = is_closed()
+            if isinstance(result, bool):
+                return result
+    except Exception:
+        return True
+    return False
+
+
+def _is_closed_target_error(exc: BaseException) -> bool:
+    if not isinstance(exc, PlaywrightError):
+        return False
+    message = str(exc).lower()
+    return (
+        'target page, context or browser has been closed' in message
+        or 'browser has been closed' in message
+    )
 
 
 def _load_profile_cookies(profile_name: str) -> list[dict]:
@@ -78,6 +102,13 @@ def sync_profile_session_state(
     *,
     explicit_logout: bool = False,
 ) -> bool:
+    if not context or _context_is_closed(context):
+        logger.debug(
+            'Skipping browser session state sync for %s because the browser context is already closed',
+            profile_name,
+        )
+        return True
+
     try:
         cookies = normalize_profile_cookies(context.cookies(), drop_invalid=True)
         session_id = extract_instagram_session_id(cookies)
@@ -114,6 +145,18 @@ def sync_profile_session_state(
             else:
                 log('Saved browser cookies and Instagram sessionid to database' if session_id else 'Saved browser cookies to database')
         return True
+    except PlaywrightError as exc:
+        if _is_closed_target_error(exc):
+            logger.debug(
+                'Skipping browser session state sync for %s because the browser target is already closed',
+                profile_name,
+            )
+            return True
+        if log:
+            log(f'Failed saving browser cookies: {exc}')
+        else:
+            logger.warning('Failed saving browser cookies for %s: %s', profile_name, exc)
+        return False
     except Exception as exc:
         if log:
             log(f'Failed saving browser cookies: {exc}')
