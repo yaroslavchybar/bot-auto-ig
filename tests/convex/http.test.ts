@@ -66,6 +66,7 @@ test('parses snake_case profile payloads and maps the response back to Python fi
       session_id: 'session-1',
       cookies_json: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
       daily_scraping_limit: 25,
+      assigned_accounts_limit: 6,
       test_ip: true,
       proxy_type: 'http',
     }),
@@ -78,6 +79,7 @@ test('parses snake_case profile payloads and maps the response back to Python fi
     session_id: 'session-1',
     cookies_json: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
     daily_scraping_limit: 25,
+    assigned_accounts_limit: 6,
     daily_scraping_used: 0,
     test_ip: true,
     proxy_type: 'http',
@@ -99,6 +101,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
       listIds: [],
       login: false,
       dailyScrapingUsed: 0,
+      assignedAccountsLimit: 10,
     }),
   )
 
@@ -134,6 +137,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     name: 'Profile Start',
     fingerprint_seed: 'seed-123',
     fingerprint_os: 'windows',
+    assigned_accounts_limit: 10,
   })
   expect(syncResponse.status).toBe(200)
   await expect(syncResponse.json()).resolves.toEqual({ ok: true })
@@ -143,6 +147,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     fingerprintOs: 'windows',
     status: 'running',
     using: true,
+    assignedAccountsLimit: 10,
   })
   expect(typeof updated?.lastOpenedAt).toBe('number')
 })
@@ -174,6 +179,7 @@ test('omits cookies from list responses but includes them on profile detail resp
   expect(detailBody).toMatchObject({
     profile_id: profile!._id,
     cookies_json: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
+    assigned_accounts_limit: 10,
   })
 })
 

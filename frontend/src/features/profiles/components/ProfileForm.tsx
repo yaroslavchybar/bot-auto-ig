@@ -13,7 +13,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { Fingerprint, RefreshCw, Globe, Shield, Target } from 'lucide-react'
+import { Fingerprint, RefreshCw, Globe, Shield, Target, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizeCookiesJsonForForm } from '../utils/cookieJson'
 
@@ -393,6 +393,60 @@ function DailyLimitField({
   )
 }
 
+function AssignedAccountsLimitField({
+  draft,
+  saving,
+  setDraft,
+}: {
+  draft: Partial<Profile>
+  saving: boolean
+  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
+}) {
+  return (
+    <div className="grid gap-4">
+      <div className="flex items-center justify-between">
+        <Label className="text-copy flex items-center gap-2 text-sm font-medium">
+          <Users className="h-4 w-4" /> Assigned Accounts Limit
+        </Label>
+      </div>
+      <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
+        <div className="grid gap-1.5">
+          <Label
+            htmlFor="assigned_accounts_limit"
+            className="text-muted-copy text-xs"
+          >
+            Maximum assigned accounts for this profile
+          </Label>
+          <Input
+            id="assigned_accounts_limit"
+            type="number"
+            min="0"
+            step="1"
+            value={draft.assigned_accounts_limit ?? ''}
+            onChange={(e) => {
+              const val = e.target.value.trim()
+              setDraft((prev) => ({
+                ...prev,
+                assigned_accounts_limit:
+                  val === ''
+                    ? null
+                    : Math.max(0, Math.floor(Number(val))),
+              }))
+            }}
+            disabled={saving}
+            placeholder="10"
+            className="brand-focus bg-field border-line h-9 text-ink"
+          />
+          <p className="text-subtle-copy ml-1 text-[10px]">
+            Hard cap for how many accounts can stay assigned to this profile at
+            once. Empty saves as the default limit of 10.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ── Form Actions ── */
 
 function FormActions({
@@ -453,6 +507,7 @@ export function ProfileForm({
     status: 'idle',
     proxy_type: 'http',
     fingerprint_os: 'windows',
+    assigned_accounts_limit: 10,
     ...initialData,
   }))
 
@@ -471,6 +526,10 @@ export function ProfileForm({
     const finalData = {
       ...draft,
       name,
+      assigned_accounts_limit:
+        typeof draft.assigned_accounts_limit === 'number'
+          ? Math.max(0, Math.floor(draft.assigned_accounts_limit))
+          : 10,
       fingerprint_seed:
         draft.fingerprint_seed ||
         (mode === 'create' ? generateSeed() : draft.fingerprint_seed),
@@ -506,6 +565,8 @@ export function ProfileForm({
           <ProxyFields {...fieldProps} connection={connection} setConnection={setConnection} />
           <Separator className="bg-panel-muted" />
           <FingerprintFields draft={draft} saving={saving} setDraft={setDraft} />
+          <Separator className="bg-panel-muted" />
+          <AssignedAccountsLimitField draft={draft} saving={saving} setDraft={setDraft} />
           <Separator className="bg-panel-muted" />
           <DailyLimitField draft={draft} saving={saving} setDraft={setDraft} />
         </div>

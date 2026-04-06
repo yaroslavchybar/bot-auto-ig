@@ -12,6 +12,7 @@ test('keeps internal HTTP-facing profile queries available without Clerk identit
     cookiesJson:
       '[{"name":"sessionid","value":"cookie-a","domain":".instagram.com","path":"/"}]',
     dailyScrapingLimit: 12,
+    assignedAccountsLimit: 5,
   })
 
   const profiles = await t.query(internal.profiles.queries.listInternal, {})
@@ -21,6 +22,7 @@ test('keeps internal HTTP-facing profile queries available without Clerk identit
     name: 'Profile A',
     sessionId: 'session-a',
     dailyScrapingLimit: 12,
+    assignedAccountsLimit: 5,
   })
   await expect(t.query(api.profiles.queries.list, {})).rejects.toThrow('Unauthorized')
 })
@@ -38,6 +40,7 @@ test('keeps name-based profile maintenance on the internal HTTP surface', async 
     name: 'Profile B',
     proxyType: 'socks5',
     dailyScrapingLimit: 7,
+    assignedAccountsLimit: 3,
   })
   const removed = await t.mutation(internal.profiles.mutations.removeByNameInternal, {
     name: 'Profile B',
@@ -48,6 +51,7 @@ test('keeps name-based profile maintenance on the internal HTTP surface', async 
     name: 'Profile B',
     proxyType: 'socks5',
     dailyScrapingLimit: 7,
+    assignedAccountsLimit: 3,
   })
   expect(removed).toBe(true)
   expect(profiles).toEqual([])
@@ -59,16 +63,20 @@ test('normalizes negative scraping limits on the internal HTTP surface', async (
   const created = await t.mutation(internal.profiles.mutations.createInternal, {
     name: 'Negative HTTP Profile',
     dailyScrapingLimit: -5,
+    assignedAccountsLimit: -2,
   })
 
   const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
     oldName: 'Negative HTTP Profile',
     name: 'Negative HTTP Profile',
     dailyScrapingLimit: -9,
+    assignedAccountsLimit: -4,
   })
 
   expect(created?.dailyScrapingLimit).toBe(0)
   expect(updated?.dailyScrapingLimit).toBe(0)
+  expect(created?.assignedAccountsLimit).toBe(0)
+  expect(updated?.assignedAccountsLimit).toBe(0)
 })
 
 test('keeps list and workflow HTTP-facing queries callable without public auth wrappers', async () => {

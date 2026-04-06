@@ -28,6 +28,7 @@ export type Profile = {
   login?: boolean
   list_ids?: string[]
   daily_scraping_limit?: number | null
+  assigned_accounts_limit?: number | null
   daily_scraping_used?: number
 }
 
@@ -49,6 +50,8 @@ function mapDbRowToProfile(p: any): Profile {
       : [],
     daily_scraping_limit:
       typeof p.daily_scraping_limit === 'number' ? p.daily_scraping_limit : null,
+    assigned_accounts_limit:
+      typeof p.assigned_accounts_limit === 'number' ? p.assigned_accounts_limit : 10,
     daily_scraping_used:
       typeof p.daily_scraping_used === 'number' ? p.daily_scraping_used : 0,
   }
@@ -73,6 +76,8 @@ function mapDbRowToProfileWithCookies(row: any): Profile | null {
       : [],
     daily_scraping_limit:
       typeof row.daily_scraping_limit === 'number' ? row.daily_scraping_limit : null,
+    assigned_accounts_limit:
+      typeof row.assigned_accounts_limit === 'number' ? row.assigned_accounts_limit : 10,
     daily_scraping_used:
       typeof row.daily_scraping_used === 'number' ? row.daily_scraping_used : 0,
   }
@@ -157,6 +162,7 @@ export class ProfileManager {
         cookies_json: profile.cookies_json,
         test_ip: profile.test_ip,
         daily_scraping_limit: profile.daily_scraping_limit,
+        assigned_accounts_limit: profile.assigned_accounts_limit,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error creating profile in DB')
@@ -181,6 +187,7 @@ export class ProfileManager {
         cookies_json: profile.cookies_json,
         test_ip: profile.test_ip,
         daily_scraping_limit: profile.daily_scraping_limit,
+        assigned_accounts_limit: profile.assigned_accounts_limit,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error updating profile in DB')

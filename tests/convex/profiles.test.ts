@@ -28,6 +28,7 @@ test('creates profiles and selects available profiles by list with cooldown logi
     mode: 'proxy',
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
     sessionId: 'session-1',
+    assignedAccountsLimit: 10,
     dailyScrapingLimit: 10,
     dailyScrapingUsed: 0,
   })
@@ -65,8 +66,24 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
   expect(updated).toMatchObject({
     status: 'idle',
     using: false,
+    assignedAccountsLimit: 10,
     dailyScrapingUsed: 0,
   })
+})
+
+test('defaults assigned accounts limit to 10 and persists explicit updates including 0', async () => {
+  const t = createConvexTest()
+  const created = await seedProfile(t, { name: 'Profile Assigned Limit Default' })
+
+  expect(created?.assignedAccountsLimit).toBe(10)
+
+  const updated = await t.mutation(api.profiles.mutations.updateById, {
+    profileId: created!._id,
+    name: 'Profile Assigned Limit Default',
+    assignedAccountsLimit: 0,
+  })
+
+  expect(updated?.assignedAccountsLimit).toBe(0)
 })
 
 test('updates profile cookies by id and clears them when empty string is provided', async () => {

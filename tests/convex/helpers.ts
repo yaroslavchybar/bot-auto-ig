@@ -63,6 +63,7 @@ export async function seedProfile(
     cookiesJson: overrides.cookiesJson as string | undefined,
     sessionId: overrides.sessionId as string | undefined,
     dailyScrapingLimit: overrides.dailyScrapingLimit as number | null | undefined,
+    assignedAccountsLimit: overrides.assignedAccountsLimit as number | null | undefined,
   })
 }
 

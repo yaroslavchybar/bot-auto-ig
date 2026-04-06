@@ -103,6 +103,7 @@ async function ensureFingerprintSeed(profile: Profile): Promise<void> {
       fingerprint_os: defaultOs,
       test_ip: profile.test_ip,
       daily_scraping_limit: profile.daily_scraping_limit,
+      assigned_accounts_limit: profile.assigned_accounts_limit,
     })
     profile.fingerprint_seed = newSeed
     profile.fingerprint_os = defaultOs

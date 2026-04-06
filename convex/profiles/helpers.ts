@@ -3,6 +3,8 @@ export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	return s ? "proxy" : "direct";
 }
 
+export const DEFAULT_ASSIGNED_ACCOUNTS_LIMIT = 10;
+
 export function getProfileListIds(profile: any): any[] {
 	const merged = Array.isArray(profile?.listIds) ? profile.listIds : [];
 	const seen = new Set<string>();
@@ -29,6 +31,21 @@ export function normalizeDailyScrapingLimit(limit: unknown): number | undefined 
 	return Math.max(0, Math.floor(numeric));
 }
 
+export function normalizeAssignedAccountsLimit(limit: unknown): number {
+	if (limit === null || typeof limit === "undefined") return DEFAULT_ASSIGNED_ACCOUNTS_LIMIT;
+	const numeric = Number(limit);
+	if (!Number.isFinite(numeric)) return DEFAULT_ASSIGNED_ACCOUNTS_LIMIT;
+	return Math.max(0, Math.floor(numeric));
+}
+
+export function normalizeProfileRow(profile: any) {
+	if (!profile) return profile;
+	return {
+		...profile,
+		assignedAccountsLimit: normalizeAssignedAccountsLimit(profile.assignedAccountsLimit),
+	};
+}
+
 export function normalizeScrapeHealth(value: unknown): number {
 	const numeric = Number(value);
 	if (!Number.isFinite(numeric)) return 100;
@@ -50,7 +67,7 @@ export function hasActiveScrapeLease(profile: any, now: number): boolean {
 export async function listProfileRows(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	rows.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return rows;
+	return rows.map((row: any) => normalizeProfileRow(row));
 }
 
 export async function incrementDailyScrapingUsedByName(ctx: any, name: string, amountRaw: number) {
@@ -74,7 +91,7 @@ export async function getProfileByNameRow(ctx: any, name: string) {
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
 		.first();
-	return row ?? null;
+	return normalizeProfileRow(row ?? null);
 }
 
 export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[], cooldownMinutesRaw: number) {
@@ -91,7 +108,7 @@ export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[
 		return p.lastOpenedAt < cutoffMs;
 	});
 	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return filtered;
+	return filtered.map((row: any) => normalizeProfileRow(row));
 }
 
 export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
@@ -104,7 +121,7 @@ export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 		return listIds.some((listId) => allowed.has(String(listId)));
 	});
 	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return filtered;
+	return filtered.map((row: any) => normalizeProfileRow(row));
 }
 
 export async function createProfileRow(ctx: any, args: any) {
@@ -114,6 +131,7 @@ export async function createProfileRow(ctx: any, args: any) {
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 	const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 	const dailyLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
+	const assignedAccountsLimit = normalizeAssignedAccountsLimit(args.assignedAccountsLimit);
 
 	const id = await ctx.db.insert("profiles", {
 		createdAt: Date.now(),
@@ -132,13 +150,14 @@ export async function createProfileRow(ctx: any, args: any) {
 		lastOpenedAt: undefined,
 		login: false,
 		dailyScrapingLimit: dailyLimit,
+		assignedAccountsLimit,
 		dailyScrapingUsed: 0,
 		scrapeLeaseOwner: undefined,
 		scrapeLeaseExpiresAt: undefined,
 		scrapeHealth: 100,
 		lastScrapeFailureAt: undefined,
 	});
-	return await ctx.db.get(id);
+	return normalizeProfileRow(await ctx.db.get(id));
 }
 
 export async function updateProfileByNameRow(ctx: any, args: any) {
@@ -184,10 +203,13 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	} else if (args.dailyScrapingLimit === null) {
 		next.dailyScrapingLimit = undefined;
 	}
+	if (typeof args.assignedAccountsLimit === "number" || args.assignedAccountsLimit === null) {
+		next.assignedAccountsLimit = normalizeAssignedAccountsLimit(args.assignedAccountsLimit);
+	}
 	await ctx.db.patch(existing._id, {
 		...(next as any),
 	});
-	return await ctx.db.get(existing._id);
+	return normalizeProfileRow(await ctx.db.get(existing._id));
 }
 
 export async function updateProfileByIdRow(ctx: any, args: any) {
@@ -227,10 +249,13 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	} else if (args.dailyScrapingLimit === null) {
 		next.dailyScrapingLimit = undefined;
 	}
+	if (typeof args.assignedAccountsLimit === "number" || args.assignedAccountsLimit === null) {
+		next.assignedAccountsLimit = normalizeAssignedAccountsLimit(args.assignedAccountsLimit);
+	}
 	await ctx.db.patch(args.profileId, {
 		...(next as any),
 	});
-	return await ctx.db.get(args.profileId);
+	return normalizeProfileRow(await ctx.db.get(args.profileId));
 }
 
 export async function removeProfileByNameRow(ctx: any, name: string) {
@@ -358,6 +383,18 @@ export async function clearBusyProfilesForListsRow(ctx: any, listIds: any[]) {
 	return true;
 }
 
+export async function backfillAssignedAccountsLimitRow(ctx: any) {
+	const rows = await ctx.db.query("profiles").collect();
+	let updated = 0;
+	for (const row of rows) {
+		const normalized = normalizeAssignedAccountsLimit(row.assignedAccountsLimit);
+		if (row.assignedAccountsLimit === normalized) continue;
+		await ctx.db.patch(row._id, { assignedAccountsLimit: normalized });
+		updated++;
+	}
+	return { updated };
+}
+
 export async function claimBestScrapeLeaseRow(
 	ctx: any,
 	workerId: string,
@@ -397,7 +434,7 @@ export async function claimBestScrapeLeaseRow(
 		scrapeLeaseExpiresAt: now + leaseMs,
 		lastOpenedAt: now,
 	});
-	return await ctx.db.get(selected._id);
+	return normalizeProfileRow(await ctx.db.get(selected._id));
 }
 
 export async function refreshScrapeLeaseRow(ctx: any, profileId: any, workerId: string, leaseMsRaw: number, nowRaw: number) {
@@ -413,7 +450,7 @@ export async function refreshScrapeLeaseRow(ctx: any, profileId: any, workerId: 
 	await ctx.db.patch(profileId, {
 		scrapeLeaseExpiresAt: now + leaseMs,
 	});
-	return await ctx.db.get(profileId);
+	return normalizeProfileRow(await ctx.db.get(profileId));
 }
 
 export async function releaseScrapeLeaseRow(ctx: any, profileId: any, workerId?: string | null) {
@@ -446,7 +483,7 @@ export async function markScrapeSuccessRow(ctx: any, profileId: any, amountRaw: 
 		scrapeLeaseExpiresAt: undefined,
 		lastOpenedAt: now,
 	});
-	return await ctx.db.get(profileId);
+	return normalizeProfileRow(await ctx.db.get(profileId));
 }
 
 export async function markScrapeFailureRow(ctx: any, profileId: any, workerId: string, nowRaw: number) {
@@ -463,7 +500,7 @@ export async function markScrapeFailureRow(ctx: any, profileId: any, workerId: s
 		scrapeLeaseOwner: undefined,
 		scrapeLeaseExpiresAt: undefined,
 	});
-	return await ctx.db.get(profileId);
+	return normalizeProfileRow(await ctx.db.get(profileId));
 }
 
 export async function sweepExpiredScrapeLeasesRow(ctx: any, nowRaw: number) {

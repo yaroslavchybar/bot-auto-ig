@@ -3,6 +3,7 @@ import { internalMutation } from "../_generated/server";
 import { mutation } from "../auth";
 import {
 	normalizeDailyScrapingLimit,
+	backfillAssignedAccountsLimitRow,
 	createProfileRow,
 	updateProfileByNameRow,
 	updateProfileByIdRow,
@@ -27,6 +28,7 @@ const profileArgsShape = {
 	cookiesJson: v.optional(v.string()),
 	sessionId: v.optional(v.string()),
 	dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
+	assignedAccountsLimit: v.optional(v.union(v.number(), v.null())),
 };
 
 export const create = mutation({
@@ -227,5 +229,12 @@ export const updateDailyScrapingLimit = mutation({
 		const limit = normalizeDailyScrapingLimit(args.limit);
 		await ctx.db.patch(args.profileId, { dailyScrapingLimit: limit });
 		return await ctx.db.get(args.profileId);
+	},
+});
+
+export const backfillAssignedAccountsLimitDefaults = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		return await backfillAssignedAccountsLimitRow(ctx);
 	},
 });

@@ -193,6 +193,8 @@ export function mapProfileToPython(
     login: Boolean(profile.login),
     daily_scraping_limit:
       typeof profile.dailyScrapingLimit === 'number' ? profile.dailyScrapingLimit : null,
+    assigned_accounts_limit:
+      typeof profile.assignedAccountsLimit === 'number' ? profile.assignedAccountsLimit : 10,
     daily_scraping_used:
       typeof profile.dailyScrapingUsed === 'number' ? profile.dailyScrapingUsed : 0,
     scrape_lease_owner:

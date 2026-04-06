@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import { normalizeAssignedAccountsLimit } from "./profiles/helpers";
 
 function normalizeUserName(userName: string): string {
 	let normalized = String(userName || "").trim();
@@ -239,7 +240,7 @@ export const autoUnsubscribe = internalAction({
 	},
 });
 
-export const _listProfileIds = internalQuery({
+export const _listAssignableProfiles = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const profiles = await ctx.db.query("profiles").collect();
@@ -248,18 +249,22 @@ export const _listProfileIds = internalQuery({
 				const listIds = Array.isArray(p.listIds) ? p.listIds : [];
 				return listIds.length > 0;
 			})
-			.map((p) => p._id);
+			.map((p) => ({
+				profileId: p._id,
+				assignedAccountsLimit: normalizeAssignedAccountsLimit(p.assignedAccountsLimit),
+			}));
 	},
 });
 
-export const _countAssignedAccountsForProfile = internalQuery({
+export const _listAssignedAccountsForProfile = internalQuery({
 	args: { profileId: v.id("profiles") },
 	handler: async (ctx, args) => {
 		const rows = await ctx.db
 			.query("instagramAccounts")
 			.withIndex("by_assignedTo_status", (q) => q.eq("assignedTo", args.profileId).eq("status", "assigned"))
 			.collect();
-		return rows.length;
+		rows.sort((a, b) => b.createdAt - a.createdAt);
+		return rows.map((row) => ({ _id: row._id, createdAt: row.createdAt }));
 	},
 });
 
@@ -281,14 +286,30 @@ export const _bulkAssignAccounts = internalMutation({
 	},
 });
 
+export const _bulkUnassignAccounts = internalMutation({
+	args: { accountIds: v.array(v.id("instagramAccounts")) },
+	handler: async (ctx, args) => {
+		if (args.accountIds.length === 0) return true;
+		await Promise.all(args.accountIds.map((id) => ctx.db.patch(id, { assignedTo: undefined, status: "available" })));
+		return true;
+	},
+});
+
 export const assignAvailableAccountsDaily = internalAction({
 	args: {},
 	handler: async (ctx) => {
-		const profileIds = await ctx.runQuery(internal.instagramAccounts._listProfileIds, {});
-		for (const profileId of profileIds) {
-			const targetAssigned = 30 + Math.floor(Math.random() * 11);
-			const existingAssigned = await ctx.runQuery(internal.instagramAccounts._countAssignedAccountsForProfile, { profileId });
-			const toAssign = Math.max(0, targetAssigned - existingAssigned);
+		await ctx.runMutation(internal.profiles.mutations.backfillAssignedAccountsLimitDefaults, {});
+		const profiles = await ctx.runQuery(internal.instagramAccounts._listAssignableProfiles, {});
+		for (const profile of profiles) {
+			const profileId = profile.profileId;
+			const targetAssigned = normalizeAssignedAccountsLimit(profile.assignedAccountsLimit);
+			const existingAssigned = await ctx.runQuery(internal.instagramAccounts._listAssignedAccountsForProfile, { profileId });
+			if (existingAssigned.length > targetAssigned) {
+				const overflow = existingAssigned.slice(0, existingAssigned.length - targetAssigned).map((row) => row._id);
+				await ctx.runMutation(internal.instagramAccounts._bulkUnassignAccounts, { accountIds: overflow });
+			}
+			const currentAssigned = Math.min(existingAssigned.length, targetAssigned);
+			const toAssign = Math.max(0, targetAssigned - currentAssigned);
 			if (toAssign <= 0) continue;
 			const available = await ctx.runQuery(internal.instagramAccounts._listAvailableAccountIds, { max: Math.max(toAssign * 10, 200) });
 			if (available.length === 0) continue;

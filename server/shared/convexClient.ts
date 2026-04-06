@@ -49,6 +49,7 @@ export type DbProfileRow = {
     last_opened_at?: string | null;
     login: boolean;
     daily_scraping_limit?: number | null;
+    assigned_accounts_limit?: number | null;
     daily_scraping_used?: number | null;
     scrape_lease_owner?: string | null;
     scrape_lease_expires_at?: string | null;
@@ -72,6 +73,7 @@ export type ProfileInput = {
     cookies_json?: string;
     test_ip?: boolean;
     daily_scraping_limit?: number | null;
+    assigned_accounts_limit?: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -273,6 +275,7 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             cookiesJson: profile.cookies_json,
             testIp: profile.test_ip,
             dailyScrapingLimit: profile.daily_scraping_limit,
+            assignedAccountsLimit: profile.assigned_accounts_limit,
         },
     });
 }
@@ -294,6 +297,7 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             cookiesJson: profile.cookies_json,
             testIp: profile.test_ip,
             dailyScrapingLimit: profile.daily_scraping_limit,
+            assignedAccountsLimit: profile.assigned_accounts_limit,
         },
     });
 }

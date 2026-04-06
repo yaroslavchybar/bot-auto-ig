@@ -24,6 +24,7 @@ export default defineSchema({
 		lastOpenedAt: v.optional(v.number()),
 		login: v.boolean(),
 		dailyScrapingLimit: v.optional(v.number()),
+		assignedAccountsLimit: v.optional(v.number()),
 		dailyScrapingUsed: v.optional(v.number()),
 		scrapeLeaseOwner: v.optional(v.string()),
 		scrapeLeaseExpiresAt: v.optional(v.number()),

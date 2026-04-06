@@ -78,6 +78,7 @@ Other route behavior:
   - prod: `VITE_API_URL` is required at build time
 - Express remains the control plane for orchestration surfaces such as runtime reconciliation, browser launch/stop, logs, monitoring, VNC, and workflow execution.
 - Profiles create/edit flows support pasted cookie JSON, while the cached profile list remains sanitized and fetches the sensitive cookie payload only from explicit profile detail reads.
+- Profiles create/edit flows also support a hard `assignedAccountsLimit` per profile, used by the daily account-assignment job.
 
 ### WebSocket
 - Default endpoint resolves from the current browser host to `/ws`.

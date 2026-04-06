@@ -11,6 +11,7 @@ export type Profile = {
   using?: boolean
   login?: boolean
   daily_scraping_limit?: number | null
+  assigned_accounts_limit?: number | null
   daily_scraping_used?: number
 }
 

@@ -139,6 +139,8 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         sessionId: body?.sessionId ?? body?.session_id ?? undefined,
         dailyScrapingLimit:
           body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
+        assignedAccountsLimit:
+          body?.assignedAccountsLimit ?? body?.assigned_accounts_limit ?? undefined,
       });
       return jsonResponse(mapProfileToPython(created, { includeCookies: true }));
     }),
@@ -161,6 +163,8 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         sessionId: body?.sessionId ?? body?.session_id ?? undefined,
         dailyScrapingLimit:
           body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
+        assignedAccountsLimit:
+          body?.assignedAccountsLimit ?? body?.assigned_accounts_limit ?? undefined,
       } as any);
       return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
     }),
@@ -183,6 +187,8 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         sessionId: body?.sessionId ?? body?.session_id ?? undefined,
         dailyScrapingLimit:
           body?.dailyScrapingLimit ?? body?.daily_scraping_limit ?? undefined,
+        assignedAccountsLimit:
+          body?.assignedAccountsLimit ?? body?.assigned_accounts_limit ?? undefined,
       });
       return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
     }),

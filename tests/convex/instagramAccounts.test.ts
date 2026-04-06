@@ -138,3 +138,216 @@ test('lists accounts by status and preserves scraping updates', async () => {
     assignedTo: profile!._id,
   })
 })
+
+test('daily assignment backfills missing profile limits to 10 and tops up to that cap', async () => {
+  const t = createConvexTest()
+  const now = Date.UTC(2026, 2, 13, 9, 0, 0)
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+
+  const listId = await t.run((ctx) =>
+    ctx.db.insert('lists', {
+      name: 'Assignable',
+      createdAt: now,
+    }),
+  )
+  const profileId = await t.run((ctx) =>
+    ctx.db.insert('profiles', {
+      createdAt: now,
+      name: 'Assigned Limit Profile',
+      status: 'idle',
+      mode: 'direct',
+      using: false,
+      testIp: false,
+      listIds: [listId],
+      login: false,
+      dailyScrapingUsed: 0,
+    } as never),
+  )
+
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-oldest',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 4_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-keep',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 3_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-trim-1',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 2_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-trim-2',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 1_000,
+  })
+  for (let index = 0; index < 8; index += 1) {
+    await insertDoc(t, 'instagramAccounts', {
+      userName: `available-${index}`,
+      status: 'available',
+      message: false,
+      createdAt: now + index,
+    })
+  }
+
+  await t.action(internal.instagramAccounts.assignAvailableAccountsDaily, {})
+
+  const updatedProfile = await t.run((ctx) => ctx.db.get(profileId))
+  const allRows = await t.run((ctx) => ctx.db.query('instagramAccounts').collect())
+  const assignedRows = allRows
+    .filter((row) => String(row.assignedTo || '') === String(profileId) && row.status === 'assigned')
+    .sort((a, b) => a.createdAt - b.createdAt)
+
+  expect(updatedProfile?.assignedAccountsLimit).toBe(10)
+  expect(assignedRows).toHaveLength(10)
+  expect(assignedRows.slice(0, 4).map((row) => row.userName)).toEqual([
+    'assigned-oldest',
+    'assigned-keep',
+    'assigned-trim-1',
+    'assigned-trim-2',
+  ])
+  expect(
+    assignedRows.slice(4).every((row) => String(row.userName).startsWith('available-')),
+  ).toBe(true)
+})
+
+test('daily assignment trims newest assigned accounts first when a profile is over its cap', async () => {
+  const t = createConvexTest()
+  const now = Date.UTC(2026, 2, 13, 9, 30, 0)
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+
+  const listId = await t.run((ctx) =>
+    ctx.db.insert('lists', {
+      name: 'Overflow',
+      createdAt: now,
+    }),
+  )
+  const profileId = await t.run((ctx) =>
+    ctx.db.insert('profiles', {
+      createdAt: now,
+      name: 'Overflow Profile',
+      status: 'idle',
+      mode: 'direct',
+      using: false,
+      testIp: false,
+      listIds: [listId],
+      login: false,
+      dailyScrapingUsed: 0,
+      assignedAccountsLimit: 2,
+    } as never),
+  )
+
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-oldest',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 4_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-keep',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 3_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-trim-1',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 2_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'assigned-trim-2',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 1_000,
+  })
+
+  await t.action(internal.instagramAccounts.assignAvailableAccountsDaily, {})
+
+  const allRows = await t.run((ctx) => ctx.db.query('instagramAccounts').collect())
+  const assignedRows = allRows
+    .filter((row) => String(row.assignedTo || '') === String(profileId) && row.status === 'assigned')
+    .sort((a, b) => a.createdAt - b.createdAt)
+  const trimmedRows = allRows
+    .filter((row) => ['assigned-trim-1', 'assigned-trim-2'].includes(String(row.userName)))
+    .sort((a, b) => String(a.userName).localeCompare(String(b.userName)))
+
+  expect(assignedRows.map((row) => row.userName)).toEqual([
+    'assigned-oldest',
+    'assigned-keep',
+  ])
+  expect(trimmedRows[0]?.status).toBe('available')
+  expect(trimmedRows[0]?.assignedTo).toBeUndefined()
+  expect(trimmedRows[1]?.status).toBe('available')
+  expect(trimmedRows[1]?.assignedTo).toBeUndefined()
+})
+
+test('daily assignment respects zero assigned account limits', async () => {
+  const t = createConvexTest()
+  const now = Date.UTC(2026, 2, 13, 10, 0, 0)
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+
+  const listId = await t.run((ctx) =>
+    ctx.db.insert('lists', {
+      name: 'Zero Limit',
+      createdAt: now,
+    }),
+  )
+  const profileId = await t.run((ctx) =>
+    ctx.db.insert('profiles', {
+      createdAt: now,
+      name: 'Zero Limit Profile',
+      status: 'idle',
+      mode: 'direct',
+      using: false,
+      testIp: false,
+      listIds: [listId],
+      login: false,
+      dailyScrapingUsed: 0,
+      assignedAccountsLimit: 0,
+    } as never),
+  )
+
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'zero-limit-assigned',
+    status: 'assigned',
+    assignedTo: profileId,
+    message: false,
+    createdAt: now - 1_000,
+  })
+  await insertDoc(t, 'instagramAccounts', {
+    userName: 'zero-limit-available',
+    status: 'available',
+    message: false,
+    createdAt: now,
+  })
+
+  await t.action(internal.instagramAccounts.assignAvailableAccountsDaily, {})
+
+  const allRows = await t.run((ctx) => ctx.db.query('instagramAccounts').collect())
+  const stillAssigned = allRows.filter((row) => String(row.assignedTo || '') === String(profileId))
+  const trimmed = allRows.find((row) => row.userName === 'zero-limit-assigned')
+
+  expect(stillAssigned).toHaveLength(0)
+  expect(trimmed?.userName).toBe('zero-limit-assigned')
+  expect(trimmed?.status).toBe('available')
+  expect(trimmed?.assignedTo).toBeUndefined()
+})

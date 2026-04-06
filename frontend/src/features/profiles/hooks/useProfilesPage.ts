@@ -126,6 +126,8 @@ function useProfileSave(
         testIp: Boolean(data.test_ip),
         dailyScrapingLimit:
           typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
+        assignedAccountsLimit:
+          typeof data.assigned_accounts_limit === 'number' ? data.assigned_accounts_limit : 10,
       }
       if (dialogState.isCreateOpen) {
         await createProfile(payload)

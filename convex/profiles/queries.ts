@@ -8,6 +8,7 @@ import {
 	getProfilesByListIds,
 	listAssignedProfilesRow,
 	listUnassignedProfilesRow,
+	normalizeProfileRow,
 } from "./helpers";
 
 export const listInternal = internalQuery({
@@ -20,7 +21,7 @@ export const listInternal = internalQuery({
 export const getByIdInternal = internalQuery({
 	args: { profileId: v.id("profiles") },
 	handler: async (ctx, args) => {
-		return (await ctx.db.get(args.profileId)) ?? null;
+		return normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null);
 	},
 });
 
@@ -48,7 +49,7 @@ export const getByNameInternal = internalQuery({
 export const getById = query({
 	args: { profileId: v.id("profiles") },
 	handler: async (ctx, args) => {
-		return (await ctx.db.get(args.profileId)) ?? null;
+		return normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null);
 	},
 });
 

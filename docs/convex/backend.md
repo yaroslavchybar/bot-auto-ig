@@ -26,7 +26,7 @@ Generated artifacts:
 
 From schema:
 - `lists`
-- `profiles` (includes optional `cookiesJson` for canonical browser cookie storage; omitted from list responses and exposed only on explicit profile detail reads)
+- `profiles` (includes optional `cookiesJson` for canonical browser cookie storage; omitted from list responses and exposed only on explicit profile detail reads; includes `assignedAccountsLimit` as the hard cap for how many `instagramAccounts` may stay assigned to one profile)
 - `instagramAccounts`
 - `messageTemplates`
 - `workflowArtifacts`
@@ -53,7 +53,7 @@ From schema:
 Current daily jobs:
 - reset daily scraping usage,
 - auto unsubscribe,
-- assign accounts,
+- assign accounts using each profile's `assignedAccountsLimit`,
 - reset workflow daily runs.
 
 ## Development
