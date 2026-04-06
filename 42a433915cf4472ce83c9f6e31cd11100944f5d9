@@ -1,0 +1,31 @@
+python/runners/workflow/runtime.py
+  f0858ca785548ed8 8,66,69-73,78-82,89,91
+python/tests/test_workflow_regressions.py
+  f0858ca785548ed8 9,14,16,461-667
+python/runners/workflow/account_session.py
+  f0858ca785548ed8 5,233
+python/runners/workflow/activity_dispatch.py
+  f0858ca785548ed8 16,138,144,148,150
+python/runners/workflow/browser_cleanup.py
+  f0858ca785548ed8 1-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "42a433915cf4472ce83c9f6e31cd11100944f5d9",
+  "prompts": {
+    "f0858ca785548ed8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6328-bdaf-7111-9dc9-87363ef86ae1",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1321,
+      "total_deletions": 965,
+      "accepted_lines": 814,
+      "overriden_lines": 0
+    }
+  }
+}
