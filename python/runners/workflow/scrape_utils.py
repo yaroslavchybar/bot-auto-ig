@@ -5,7 +5,14 @@ import time
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
-from python.core.config import PROJECT_URL, SECRET_KEY
+from python.core.config import (
+    DATAUPLOADER_ACCOUNT_STATUS,
+    DATAUPLOADER_DEST_ENVIRONMENTS,
+    DATAUPLOADER_ENV,
+    DATAUPLOADER_URL,
+    PROJECT_URL,
+    SECRET_KEY,
+)
 from python.core.storage.atomic import atomic_write_json
 
 
@@ -62,6 +69,30 @@ def _convex_get_json(path: str) -> Any:
         raise RuntimeError(f'Convex request failed for {path}: {exc}') from exc
 
 
+def _datauploader_post_json(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    if not DATAUPLOADER_URL:
+        raise RuntimeError('Datauploader URL is not configured')
+    try:
+        import requests
+
+        response = requests.post(
+            f'{DATAUPLOADER_URL}{path}',
+            json=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            timeout=120,
+        )
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise RuntimeError(f'Unexpected response shape for {path}')
+        return data
+    except Exception as exc:
+        raise RuntimeError(f'Datauploader request failed for {path}: {exc}') from exc
+
+
 def _build_scrape_export_payload(
     workflow_id: str,
     node_id: str,
@@ -81,6 +112,35 @@ def _build_scrape_export_payload(
         'count': len(users),
         'scrapedAt': int(time.time() * 1000),
         'storageKind': 'export',
+    }
+
+
+def _build_scrape_processing_payload(
+    workflow_id: str,
+    workflow_name: str,
+    node_id: str,
+    node_label: str,
+    profile_name: str,
+    kind: str,
+    targets: List[str],
+    users: List[Any],
+    stats: Dict[str, Any],
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        'workflowId': workflow_id,
+        'workflowName': workflow_name,
+        'nodeId': node_id,
+        'nodeLabel': node_label,
+        'kind': kind,
+        'targets': list(targets),
+        'sourceProfileName': profile_name,
+        'users': list(users),
+        'stats': dict(stats),
+        'metadata': dict(metadata),
+        'env': DATAUPLOADER_ENV,
+        'environments': list(DATAUPLOADER_DEST_ENVIRONMENTS),
+        'accountStatus': DATAUPLOADER_ACCOUNT_STATUS,
     }
 
 

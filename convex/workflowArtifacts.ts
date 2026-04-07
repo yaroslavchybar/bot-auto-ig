@@ -122,6 +122,7 @@ async function upsertArtifactRow(
     storageId?: any
     manifestStorageId?: any
     exportStorageId?: any
+    imported?: boolean
     stats?: Partial<ArtifactStats>
     metadata?: any
   },
@@ -147,7 +148,7 @@ async function upsertArtifactRow(
     targetUsername: packTargets(targets),
     targets,
     status: cleanString(args.status) || 'completed',
-    imported: false,
+    imported: args.imported === true,
     sourceProfileName: cleanString(args.sourceProfileName) || undefined,
     lastRunAt:
       typeof args.lastRunAt === 'number' && Number.isFinite(args.lastRunAt)
@@ -260,6 +261,7 @@ export const upsert = mutation({
     storageId: v.optional(v.id('_storage')),
     manifestStorageId: v.optional(v.id('_storage')),
     exportStorageId: v.optional(v.id('_storage')),
+    imported: v.optional(v.boolean()),
     stats: v.optional(
       v.object({
         scraped: v.optional(v.number()),
@@ -289,6 +291,7 @@ export const upsertInternal = internalMutation({
     storageId: v.optional(v.id('_storage')),
     manifestStorageId: v.optional(v.id('_storage')),
     exportStorageId: v.optional(v.id('_storage')),
+    imported: v.optional(v.boolean()),
     stats: v.optional(
       v.object({
         scraped: v.optional(v.number()),

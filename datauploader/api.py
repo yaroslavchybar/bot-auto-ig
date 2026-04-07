@@ -406,6 +406,22 @@ class ProcessScrapingTaskRequest(BaseModel):
     accountStatus: str = "available"
 
 
+class DirectScrapeProcessRequest(BaseModel):
+    workflowId: str
+    workflowName: str
+    nodeId: str
+    nodeLabel: str | None = None
+    kind: str
+    targets: list[str] = []
+    sourceProfileName: str | None = None
+    users: list[Any]
+    stats: dict[str, Any] = {}
+    metadata: dict[str, Any] = {}
+    env: str = "dev"
+    environments: list[str] = ["dev"]
+    accountStatus: str = "available"
+
+
 @app.post("/scraping-tasks/{task_id}/process")
 async def process_scraping_task(task_id: str, request: ProcessScrapingTaskRequest):
     try:
@@ -441,6 +457,47 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
             "taskId": task_id,
             "env": env,
             "usernamesExtracted": len(unique_accounts),
+            "stats": {
+                "totalProcessed": total_processed,
+                "removed": removed,
+                "remaining": total_processed - removed,
+            },
+            "uploaded": uploaded,
+            "duplicates": duplicates,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/workflow-runs/process-scrape")
+async def process_workflow_scrape(request: DirectScrapeProcessRequest):
+    try:
+        env = request.env
+        users = request.users if isinstance(request.users, list) else None
+        if users is None:
+            raise HTTPException(status_code=400, detail="users must be an array")
+
+        keyword_sets = load_all_keyword_sets(env=env)
+        kept_accounts, total_processed, removed = _filter_and_collect_accounts(users, keyword_sets)
+        unique_accounts = _deduplicate_accounts(kept_accounts)
+
+        envs = [str(item).strip() for item in (request.environments or []) if str(item).strip()]
+        if not envs:
+            raise HTTPException(status_code=400, detail="environments is required")
+
+        uploaded, duplicates = _upload_to_convex_envs(
+            unique_accounts,
+            envs,
+            request.accountStatus,
+        )
+
+        return {
+            "status": "completed",
+            "workflowId": request.workflowId,
+            "nodeId": request.nodeId,
+            "kind": request.kind,
             "stats": {
                 "totalProcessed": total_processed,
                 "removed": removed,

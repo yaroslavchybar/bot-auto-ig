@@ -27,6 +27,10 @@
 - `VITE_CLERK_PUBLISHABLE_KEY`
 - `VITE_API_URL` (required for production frontend builds)
 - `VITE_DATAUPLOADER_URL` (required for production frontend builds)
+- `DATAUPLOADER_URL` (Python workflow runtime direct-ingest base URL; defaults to `VITE_DATAUPLOADER_URL` or local service URL)
+- `DATAUPLOADER_ENV` (source keyword/Convex environment used by workflow runtime direct-ingest)
+- `DATAUPLOADER_DEST_ENVIRONMENTS` (comma-separated destination Convex environments for direct workflow account upload)
+- `DATAUPLOADER_ACCOUNT_STATUS` (status assigned to accounts uploaded from direct workflow processing)
 - `VITE_CONVEX_URL`
 
 ### Data Services

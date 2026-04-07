@@ -34,6 +34,10 @@ docker compose build datauploader
 - `VITE_CONVEX_URL`
 - `VITE_CLERK_PUBLISHABLE_KEY`
 - `VITE_DATAUPLOADER_URL`
+- `DATAUPLOADER_URL`
+- `DATAUPLOADER_ENV`
+- `DATAUPLOADER_DEST_ENVIRONMENTS`
+- `DATAUPLOADER_ACCOUNT_STATUS`
 
 ## Runtime Notes
 
@@ -45,6 +49,7 @@ docker compose build datauploader
 - `frontend` builds from `./frontend` with additional contexts for repo-root manifests and `./convex` so unrelated root files do not invalidate the build.
 - `server/Dockerfile` exposes named stages with `server-runtime` as the Compose/CI target; `frontend/Dockerfile` exposes `frontend-runtime`.
 - Non-local deployments must provide `VITE_API_URL` and `VITE_DATAUPLOADER_URL` at image build time so browser requests do not fall back to localhost.
+- Workflow runtime direct-ingest should point `DATAUPLOADER_URL` at the reachable service hostname from the server/Python container, not the browser-facing frontend URL.
 - Non-local deployments should terminate TLS at the reverse proxy and route `/ws` to `server:3001` before the frontend catch-all.
 - Non-local deployments should proxy `/vnc/<port>/websockify` to `server:<port>/websockify` so browser VNC traffic stays on the main HTTPS origin instead of connecting directly to plain `websockify` ports.
 

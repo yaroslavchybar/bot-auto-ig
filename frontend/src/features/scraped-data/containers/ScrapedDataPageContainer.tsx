@@ -324,7 +324,7 @@ export function ScrapedDataPageContainer() {
             emptyDescription={
               state.searchQuery.trim()
                 ? 'Try a different search term or clear the filter.'
-                : 'Completed workflow scrape results will appear here.'
+                : 'Completed workflow scrape history will appear here. Direct-processed runs may not include downloadable files.'
             }
           />
         </div>

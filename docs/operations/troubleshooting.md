@@ -17,7 +17,7 @@
 - `npm run dev:local:tabs` or `.\dev-local.ps1 -UseTabs` fails:
   - verify Windows Terminal `wt.exe` is available on `PATH`.
 - Data uploader actions fail:
-  - verify `VITE_DATAUPLOADER_URL` in frontend and `CONVEX_URL_DEV/PROD` in service env.
+  - verify `VITE_DATAUPLOADER_URL` in frontend, `DATAUPLOADER_URL` in the server/Python runtime, and `CONVEX_URL_DEV/PROD` in service env.
 
 ## Auth and Access Failures
 
@@ -46,7 +46,7 @@
 - Scrape workflow run denied:
   - verify the workflow includes `start_browser` and exactly one selected auth profile for `scrape_relationships`.
 - Scrape node target failures:
-  - inspect workflow details for scrape node state, retry metadata, and downloadable artifact or manifest payloads.
+  - inspect workflow details for scrape node state, retry metadata, and direct-processing history metadata; newer runs may not expose downloadable artifact or manifest payloads.
 
 ## Monitoring and VNC
 

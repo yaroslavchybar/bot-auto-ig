@@ -17,6 +17,42 @@ from python.tests.workflow_scrape_relationships_support import (
 )
 
 
+def _mock_datauploader(
+    monkeypatch,
+    *,
+    payloads=None,
+    stats=None,
+    uploaded=None,
+    duplicates=None,
+    error=None,
+):
+    captured = payloads if payloads is not None else []
+
+    def fake_post(path, payload):
+        assert path == "/workflow-runs/process-scrape"
+        captured.append(payload)
+        if error is not None:
+            raise RuntimeError(error)
+        users = payload.get("users") if isinstance(payload.get("users"), list) else []
+        return {
+            "status": "completed",
+            "stats": stats
+            or {
+                "totalProcessed": len(users),
+                "removed": 0,
+                "remaining": len(users),
+            },
+            "uploaded": uploaded or {"dev": len(users)},
+            "duplicates": duplicates or {"dev": 0},
+        }
+
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._datauploader_post_json",
+        fake_post,
+    )
+    return captured
+
+
 def _build_executor(
     monkeypatch,
     *,
@@ -104,14 +140,9 @@ def test_scrape_relationships_persists_completed_targets_before_retry(monkeypatc
 
 
 def test_scrape_relationships_continues_when_resume_snapshot_store_fails(monkeypatch, caplog):
-    saved_payloads = []
-
-    def fake_store_artifact(payload):
-        saved_payloads.append(payload)
-        return f"storage_{len(saved_payloads)}"
-
+    processed_payloads = []
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store_artifact)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_resume_failure"},
@@ -152,8 +183,8 @@ def test_scrape_relationships_continues_when_resume_snapshot_store_fails(monkeyp
 
     assert result == "success"
     assert chunk_calls == ["alpha", "beta"]
-    assert len(saved_payloads) == 1
-    assert saved_payloads[0]["users"] == [
+    assert len(processed_payloads) == 1
+    assert processed_payloads[0]["users"] == [
         {"username": "alpha", "id": "1"},
         {"username": "beta", "id": "2"},
     ]
@@ -239,14 +270,11 @@ def test_scrape_relationships_fails_on_unexpected_empty_result(monkeypatch):
 
 
 def test_scrape_relationships_caps_followers_per_target_and_reduces_request_limit(monkeypatch):
-    saved_payloads = []
+    processed_payloads = []
     requested_limits = []
 
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._store_artifact_payload",
-        lambda payload: saved_payloads.append(payload) or "storage_cap_followers",
-    )
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_cap_followers"},
@@ -282,11 +310,10 @@ def test_scrape_relationships_caps_followers_per_target_and_reduces_request_limi
 
     assert result == "success"
     assert requested_limits == [2]
-    assert saved_payloads[0]["users"] == [
+    assert processed_payloads[0]["users"] == [
         {"username": "u1", "id": "1"},
         {"username": "u2", "id": "2"},
     ]
-    assert saved_payloads[0]["count"] == 2
     assert runner.profiles_client.increment_calls == [("session_profile", 2)]
     state = runner.node_states["node-cap-followers"]
     assert state["status"] == "completed"
@@ -296,13 +323,10 @@ def test_scrape_relationships_caps_followers_per_target_and_reduces_request_limi
 
 
 def test_scrape_relationships_trims_following_overage_when_cap_is_reached(monkeypatch):
-    saved_payloads = []
+    processed_payloads = []
 
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._store_artifact_payload",
-        lambda payload: saved_payloads.append(payload) or "storage_cap_following",
-    )
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_cap_following"},
@@ -337,23 +361,19 @@ def test_scrape_relationships_trims_following_overage_when_cap_is_reached(monkey
     )
 
     assert result == "success"
-    assert saved_payloads[0]["users"] == [
+    assert processed_payloads[0]["users"] == [
         {"username": "u1", "id": "1"},
         {"username": "u2", "id": "2"},
     ]
-    assert saved_payloads[0]["count"] == 2
     assert runner.profiles_client.increment_calls == [("session_profile", 2)]
 
 
 def test_scrape_relationships_resets_cap_per_target(monkeypatch):
-    saved_payloads = []
+    processed_payloads = []
     requested_limits = []
 
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._store_artifact_payload",
-        lambda payload: saved_payloads.append(payload) or "storage_cap_multi",
-    )
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_cap_multi"},
@@ -386,27 +406,18 @@ def test_scrape_relationships_resets_cap_per_target(monkeypatch):
 
     assert result == "success"
     assert requested_limits == [("alpha", 1), ("beta", 1)]
-    assert saved_payloads[0]["users"] == [
+    assert processed_payloads[0]["users"] == [
         {"username": "alpha", "id": "alpha"},
         {"username": "beta", "id": "beta"},
     ]
 
 
 def test_scrape_relationships_both_mode_uses_separate_caps(monkeypatch):
-    saved_payloads = []
+    processed_payloads = []
     requested_limits = []
 
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._store_artifact_payload",
-        lambda payload: saved_payloads.append(payload) or f"storage_{payload['kind']}",
-    )
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._convex_post_json",
-        lambda *args, **kwargs: {"_id": f"artifact_{kwargs['kind']}"}
-        if "kind" in kwargs
-        else {"_id": "artifact"},
-    )
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
 
     def fake_scrape(*args, **kwargs):
@@ -455,8 +466,8 @@ def test_scrape_relationships_both_mode_uses_separate_caps(monkeypatch):
 
     assert result == "success"
     assert requested_limits == [("followers", 1), ("following", 2)]
-    assert [payload["kind"] for payload in saved_payloads] == ["followers", "following"]
-    assert [payload["count"] for payload in saved_payloads] == [1, 2]
+    assert [payload["kind"] for payload in processed_payloads] == ["followers", "following"]
+    assert [len(payload["users"]) for payload in processed_payloads] == [1, 2]
     assert [payload["kind"] for payload in upsert_calls] == ["followers", "following"]
 
 
@@ -464,10 +475,7 @@ def test_scrape_relationships_zero_cap_keeps_unlimited_behavior(monkeypatch):
     requested_limits = []
 
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._store_artifact_payload",
-        lambda payload: "storage_unlimited",
-    )
+    _mock_datauploader(monkeypatch)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_unlimited"},
@@ -503,14 +511,9 @@ def test_scrape_relationships_zero_cap_keeps_unlimited_behavior(monkeypatch):
 
 
 def test_scrape_relationships_allows_zero_rows_when_total_is_zero(monkeypatch):
-    saved_payloads = []
-
-    def fake_store(payload):
-        saved_payloads.append(payload)
-        return f"storage_{len(saved_payloads)}"
-
+    processed_payloads = []
     runner = _build_runner(monkeypatch)
-    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_zero"},
@@ -545,8 +548,8 @@ def test_scrape_relationships_allows_zero_rows_when_total_is_zero(monkeypatch):
     )
 
     assert result == "success"
-    assert len(saved_payloads) == 1
-    assert saved_payloads[0]["count"] == 0
+    assert len(processed_payloads) == 1
+    assert processed_payloads[0]["users"] == []
 
 
 def test_scrape_relationships_fails_when_relationship_link_missing(monkeypatch):
@@ -615,12 +618,7 @@ def test_scrape_relationships_fails_when_relationship_ui_does_not_open(monkeypat
 
 
 def test_scrape_relationships_resets_completed_state_before_rerun(monkeypatch):
-    saved_payloads = []
-
-    def fake_store(payload):
-        saved_payloads.append(payload)
-        return f"storage_{len(saved_payloads)}"
-
+    processed_payloads = []
     runner = _build_runner(
         monkeypatch,
         node_states={
@@ -639,7 +637,7 @@ def test_scrape_relationships_resets_completed_state_before_rerun(monkeypatch):
         "python.runners.workflow.scrape_relationships._load_users_from_storage",
         lambda storage_id: (_ for _ in ()).throw(AssertionError("stale artifact should not be loaded")),
     )
-    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_rerun"},
@@ -678,17 +676,14 @@ def test_scrape_relationships_resets_completed_state_before_rerun(monkeypatch):
         "https://www.instagram.com/alpha/",
     ]
     assert page.clicks[0]["selector"] == 'a[href="/alpha/followers/"]'
-    assert len(saved_payloads) == 1
-    assert saved_payloads[0]["storageKind"] == "export"
+    assert len(processed_payloads) == 1
+    assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "1"}]
 
 
 def test_scrape_relationships_caps_chunk_by_remaining_daily_limit(monkeypatch):
     runner = _build_runner(monkeypatch)
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._store_artifact_payload",
-        lambda payload: "storage_limited",
-    )
+    _mock_datauploader(monkeypatch)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: {"_id": "artifact_limited"},
@@ -798,15 +793,11 @@ def test_scrape_relationships_upsert_artifact_row_returns_last_error_after_retri
     assert sleep_calls == list(ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS)
 
 
-def test_scrape_relationships_complete_node_marks_artifact_upsert_fallback(monkeypatch):
-    saved_payloads = []
+def test_scrape_relationships_complete_active_kind_fails_when_artifact_upsert_exhausts_retries(monkeypatch):
+    processed_payloads = []
     update_calls = []
 
-    def fake_store_artifact_payload(payload):
-        saved_payloads.append(payload)
-        return "storage_complete_fallback"
-
-    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store_artifact_payload)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("convex unavailable")),
@@ -829,35 +820,28 @@ def test_scrape_relationships_complete_node_marks_artifact_upsert_fallback(monke
     executor.chunks_completed = 1
     executor.current_target_index = len(executor.targets)
 
-    assert executor._complete_node() == "success"
+    assert executor._complete_active_kind() == "failure"
 
-    assert saved_payloads[0]["users"] == executor.merged_users
-    assert update_calls[-1]["patch"]["status"] == "completed"
-    assert update_calls[-1]["patch"]["done"] is True
+    assert processed_payloads[0]["users"] == executor.merged_users
+    assert update_calls[-1]["patch"]["status"] == "failed"
+    assert update_calls[-1]["patch"].get("done") is not True
     assert update_calls[-1]["patch"]["artifactId"] is None
-    assert update_calls[-1]["patch"]["artifactUpsertError"] == "convex unavailable"
-    assert update_calls[-1]["patch"]["artifactUpsertPayload"] == {
-        "workflowId": "wf_123",
-        "nodeId": "node-complete-fallback",
-        "activityId": "scrape_relationships",
-    }
-    assert runner.node_states["node-complete-fallback"]["artifactUpsertError"] == "convex unavailable"
+    assert update_calls[-1]["patch"]["artifactUpsertError"] is None
+    assert update_calls[-1]["patch"]["artifactUpsertPayload"] is None
+    assert update_calls[-1]["patch"]["lastErrorCode"] == "artifact_upsert_failed"
+    assert runner.node_states["node-complete-fallback"]["lastErrorCode"] == "artifact_upsert_failed"
 
 
-def test_scrape_relationships_complete_node_marks_completed_and_stores_artifact(monkeypatch):
-    saved_payloads = []
+def test_scrape_relationships_complete_active_kind_marks_completed_and_upserts_history(monkeypatch):
+    processed_payloads = []
     upsert_payloads = []
     update_calls = []
-
-    def fake_store_artifact_payload(payload):
-        saved_payloads.append(payload)
-        return "storage_complete_success"
 
     def fake_post(path, payload):
         upsert_payloads.append({"path": path, "payload": payload})
         return {"_id": "artifact_complete_success"}
 
-    monkeypatch.setattr("python.runners.workflow.scrape_relationships._store_artifact_payload", fake_store_artifact_payload)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
     monkeypatch.setattr("python.runners.workflow.scrape_relationships._convex_post_json", fake_post)
 
     runner, executor = _build_executor(monkeypatch, node_id="node-complete-success")
@@ -873,14 +857,15 @@ def test_scrape_relationships_complete_node_marks_completed_and_stores_artifact(
     executor.chunks_completed = 1
     executor.current_target_index = len(executor.targets)
 
-    assert executor._complete_node() == "success"
+    assert executor._complete_active_kind() == "success"
 
-    assert saved_payloads[0]["users"] == executor.merged_users
+    assert processed_payloads[0]["users"] == executor.merged_users
     assert upsert_payloads[0]["path"] == "/api/workflow-artifacts/upsert"
-    assert upsert_payloads[0]["payload"]["storageId"] == "storage_complete_success"
+    assert upsert_payloads[0]["payload"]["imported"] is True
+    assert upsert_payloads[0]["payload"]["metadata"]["processingMode"] == "direct_datauploader"
     assert update_calls[-1]["patch"]["status"] == "completed"
     assert update_calls[-1]["patch"]["done"] is True
-    assert update_calls[-1]["patch"]["artifactStorageId"] == "storage_complete_success"
+    assert update_calls[-1]["patch"]["artifactStorageId"] is None
     assert update_calls[-1]["patch"]["artifactId"] == "artifact_complete_success"
     assert update_calls[-1]["patch"]["artifactUpsertError"] is None
     assert update_calls[-1]["patch"]["resumeSnapshotPath"] is None

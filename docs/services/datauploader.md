@@ -18,6 +18,9 @@ Workflow scrape artifact import flow:
 - `POST /scraping-tasks/{task_id}/process`
 - `POST /scraping-tasks/{task_id}/import`
 
+Workflow runtime direct-ingest flow:
+- `POST /workflow-runs/process-scrape`
+
 Upload flow:
 - `POST /upload`
 - `GET /upload/{job_id}/fields`
@@ -32,12 +35,14 @@ Upload flow:
 - Upload jobs expose detected `fields`, `sampleRow`, and `rowCount` before processing.
 - CSV and workflow-artifact processing responses include normalized `stats`, `uploaded`, and `duplicates` summaries.
 - The `/scraping-tasks` API shape fronts completed workflow scrape artifacts, and successful upload/import marks the workflow artifact as imported.
+- `POST /workflow-runs/process-scrape` accepts in-memory workflow scrape users, applies the same keyword filtering/upload pipeline immediately, and returns normalized `stats`, `uploaded`, and `duplicates` without creating a file-backed upload job.
 - Reads and writes Convex data through `convex_client.py` helpers.
 
 ## Request Notes
 
 - Scraping-task endpoints use `env` to select the source Convex environment.
 - Processing endpoints accept `uploadToConvex` plus `environments` to control which destination Convex environments receive the filtered accounts.
+- Direct workflow processing accepts workflow/node metadata, scrape `kind`, source `targets`, in-memory `users`, runtime `stats`, `metadata`, source `env`, destination `environments`, and `accountStatus`.
 - CSV upload accepts `.csv` files only; keyword file upload accepts `.txt` files only.
 
 ## Environment Variables

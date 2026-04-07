@@ -79,7 +79,7 @@ function TaskEmptyState({ hasSearchQuery }: { hasSearchQuery: boolean }) {
       <p className="text-subtle-copy mt-1 text-sm">
         {hasSearchQuery
           ? 'Try a different query or clear the filter.'
-          : 'Completed unimported workflow scrape artifacts will appear here.'}
+          : 'Completed unimported storage-backed workflow scrape artifacts will appear here. Direct-processed runs are handled automatically.'}
       </p>
     </div>
   )

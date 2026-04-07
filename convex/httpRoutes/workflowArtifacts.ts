@@ -108,6 +108,7 @@ function registerArtifactMutationRoutes(http: HttpRouter): void {
         targets: body?.targets,
         targetUsername: body?.targetUsername ?? body?.target_username,
         status: body?.status,
+        imported: body?.imported,
         sourceProfileName: body?.sourceProfileName ?? body?.source_profile_name,
         lastRunAt: body?.lastRunAt ?? body?.last_run_at,
         storageId: body?.storageId ?? body?.storage_id,
