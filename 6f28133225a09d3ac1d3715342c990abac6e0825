@@ -1,0 +1,25 @@
+python/runners/workflow/scrape_navigation.py
+  5ae48b2a7f8fe8a1 8-9,21-43,45,95
+python/tests/test_workflow_scrape_relationships_extended.py
+  5ae48b2a7f8fe8a1 7,621-676
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "6f28133225a09d3ac1d3715342c990abac6e0825",
+  "prompts": {
+    "5ae48b2a7f8fe8a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d688c-adbb-72a3-8b4d-5a3521f6bb09",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 87,
+      "total_deletions": 4,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    }
+  }
+}
