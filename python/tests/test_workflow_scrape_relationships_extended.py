@@ -4,6 +4,7 @@ import pytest
 
 from python.runners import run_workflow
 from python.runners.workflow import scrape_utils
+from python.runners.workflow.scrape_navigation import RELATIONSHIP_OPEN_RETRY_DELAYS_MS
 from python.runners.workflow.scrape_relationships import (
     ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS,
     ScrapeRelationshipsExecutor,
@@ -615,6 +616,64 @@ def test_scrape_relationships_fails_when_relationship_ui_does_not_open(monkeypat
     assert result == "failure"
     state = runner.node_states["node-open-fail"]
     assert state["lastErrorCode"] == "relationship_open_failed"
+
+
+def test_scrape_relationships_retries_relationship_open_when_first_click_is_blocked(monkeypatch):
+    class RetryRelationshipPage(_FakePage):
+        def __init__(self):
+            super().__init__(available_kinds={"followers"})
+            self.evaluate_attempts = 0
+            self.failed_clicks_remaining = 4
+
+        def evaluate(self, script, arg=None):
+            self.evaluations.append({"script": script, "arg": arg})
+            selectors = arg.get("selectors") if isinstance(arg, dict) else None
+            if selectors is None:
+                raise AssertionError("unexpected evaluate call in test fake")
+            self.evaluate_attempts += 1
+            if self.evaluate_attempts == 1:
+                return None
+            return super().evaluate(script, arg)
+
+        def click(self, selector, timeout=None):
+            if self.failed_clicks_remaining > 0:
+                self.clicks.append({"selector": selector, "timeout": timeout})
+                self.failed_clicks_remaining -= 1
+                raise Exception("subtree intercepts pointer events")
+            return super().click(selector, timeout=timeout)
+
+    processed_payloads = []
+    runner = _build_runner(monkeypatch)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_retry_open"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner,
+        "_scrape_relationship_chunk",
+        lambda *args, **kwargs: {
+            "outcome": "success",
+            "users": [{"username": "alpha", "id": "1"}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        },
+    )
+
+    page = RetryRelationshipPage()
+    result = runner._execute_scrape_relationships(
+        "node-open-retry",
+        scrape_config("followers", ["alpha"]),
+        page,
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert page.waits == [RELATIONSHIP_OPEN_RETRY_DELAYS_MS[0]]
+    assert len(processed_payloads) == 1
+    assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "1"}]
 
 
 def test_scrape_relationships_resets_completed_state_before_rerun(monkeypatch):

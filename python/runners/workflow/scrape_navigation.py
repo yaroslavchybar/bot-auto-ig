@@ -5,6 +5,9 @@ from typing import Any, Dict, Optional, Tuple
 from python.runners.workflow.io import log
 from python.runners.workflow.scrape_script import RELATIONSHIP_CHUNK_SCRIPT
 
+RELATIONSHIP_CLICK_TIMEOUT_MS = 5000
+RELATIONSHIP_OPEN_RETRY_DELAYS_MS = (400, 1200, 2500)
+
 
 def open_relationship_view(
     runner,
@@ -15,10 +18,31 @@ def open_relationship_view(
 ) -> Optional[Tuple[str, str]]:
     normalized_target = str(target_username or '').strip().strip('/').lower()
     log(f'scrape_relationships @{normalized_target}: opening {kind} list')
-    clicked_selector, click_error = _click_relationship_link(page, normalized_target, kind)
-    if not clicked_selector:
+    attempt_count = len(RELATIONSHIP_OPEN_RETRY_DELAYS_MS) + 1
+    click_error: Optional[Exception] = None
+    ui_error: Optional[Tuple[str, str]] = None
+
+    for attempt_index in range(attempt_count):
+        if attempt_index > 0:
+            delay_ms = RELATIONSHIP_OPEN_RETRY_DELAYS_MS[attempt_index - 1]
+            log(
+                f'scrape_relationships @{normalized_target}: retrying {kind} open '
+                f'(attempt {attempt_index + 1}/{attempt_count}, delay={delay_ms}ms)'
+            )
+            page.wait_for_timeout(delay_ms)
+
+        clicked_selector, click_error = _click_relationship_link(page, normalized_target, kind)
+        if not clicked_selector:
+            ui_error = None
+            continue
+
+        ui_error = _wait_for_relationship_ui(page, normalized_target, kind)
+        if ui_error is None:
+            return None
+
+    if click_error is not None:
         return _relationship_link_error(normalized_target, kind, click_error)
-    return _wait_for_relationship_ui(page, normalized_target, kind)
+    return ui_error or _relationship_link_error(normalized_target, kind, None)
 
 
 def _click_relationship_link(page: Any, normalized_target: str, kind: str) -> Tuple[Optional[str], Optional[Exception]]:
@@ -68,7 +92,7 @@ def _click_via_locators(page: Any, kind: str, click_error: Optional[Exception]) 
     ]
     for description, locator in locators:
         try:
-            locator.click(timeout=2000)
+            locator.click(timeout=RELATIONSHIP_CLICK_TIMEOUT_MS)
             return description, None
         except Exception as exc:
             click_error = exc
