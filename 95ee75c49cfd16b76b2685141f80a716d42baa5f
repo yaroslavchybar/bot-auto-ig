@@ -1,0 +1,57 @@
+python/runners/workflow/scrape_relationships.py
+  5ae48b2a7f8fe8a1 7,9,721-733,735-739,743-745,808-811,820,823-825,867-974
+docs/python/automation.md
+  5ae48b2a7f8fe8a1 26-28,64
+docs/services/datauploader.md
+  5ae48b2a7f8fe8a1 21-22,38,45
+frontend/src/features/scraped-data/containers/ScrapedDataPageContainer.tsx
+  5ae48b2a7f8fe8a1 327
+python/tests/test_workflow_scrape_relationships_extended.py
+  5ae48b2a7f8fe8a1 20-55,143,145,186-187,273,277,313,326,329,364,372,376,409,416,420,469-470,478,514,516,551-552,621,640,679-680,686,796-797,800,823,825-827,829-832,835-836,844,860,862,864-865,868
+docs/operations/environment-and-security.md
+  5ae48b2a7f8fe8a1 30-33
+python/runners/workflow/scrape_utils.py
+  5ae48b2a7f8fe8a1 8-15,72-95,118-143
+convex/workflowArtifacts.ts
+  5ae48b2a7f8fe8a1 125,151,264,294
+docs/operations/troubleshooting.md
+  5ae48b2a7f8fe8a1 20,49
+datauploader/api.py
+  5ae48b2a7f8fe8a1 409-419,470-471,474-480,486-494,498-500
+python/core/config.py
+  5ae48b2a7f8fe8a1 21-28,39-42
+frontend/src/features/accounts/components/AccountsTaskList.tsx
+  5ae48b2a7f8fe8a1 82
+python/tests/test_workflow_scrape_relationships.py
+  5ae48b2a7f8fe8a1 21,24-28,30,32-48,50-52,54,121,123,161-163,167,169,207-209,225,228-231,238,311,328,351,365,406,415,443,447-449,452-455,459,468,495-496,613,615,666-670,678,730,775,862,871,911,921,937,967,974,983,1015,1026-1032,1049
+convex/httpRoutes/workflowArtifacts.ts
+  5ae48b2a7f8fe8a1 111
+docker-compose.yml
+  5ae48b2a7f8fe8a1 21-24
+docs/frontend/guide.md
+  5ae48b2a7f8fe8a1 52
+docs/operations/docker-and-runtime.md
+  5ae48b2a7f8fe8a1 37-40,52
+datauploader/test_api.py
+  5ae48b2a7f8fe8a1 1-124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "95ee75c49cfd16b76b2685141f80a716d42baa5f",
+  "prompts": {
+    "5ae48b2a7f8fe8a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d688c-adbb-72a3-8b4d-5a3521f6bb09",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 2610,
+      "total_deletions": 2306,
+      "accepted_lines": 1893,
+      "overriden_lines": 12
+    }
+  }
+}
