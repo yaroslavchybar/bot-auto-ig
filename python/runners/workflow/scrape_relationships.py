@@ -58,6 +58,8 @@ class ScrapeRelationshipsExecutor:
         self.kind_queue = self._build_kind_queue(self.kind_mode)
         self.kind = self.kind_queue[0]
         self.chunk_limit = max(1, min(5000, _parse_int(cfg.get('chunkLimit'), 200)))
+        self.followers_max_to_scrape = self._parse_max_to_scrape(cfg.get('followersMaxToScrape'))
+        self.following_max_to_scrape = self._parse_max_to_scrape(cfg.get('followingMaxToScrape'))
         self.max_pages_per_attempt = max(1, min(100, _parse_int(cfg.get('maxPagesPerAttempt'), 3)))
         self.max_attempts = max(1, min(20, _parse_int(cfg.get('maxAttempts'), 4)))
         self.retry_backoff_seconds = _parse_retry_backoff_seconds(cfg.get('retryBackoffSeconds'))
@@ -122,8 +124,25 @@ class ScrapeRelationshipsExecutor:
             return ['followers', 'following']
         return [kind_mode]
 
+    def _parse_max_to_scrape(self, value: Any) -> Optional[int]:
+        parsed = max(0, _parse_int(value, 0))
+        if parsed == 0:
+            return None
+        return min(1000000, parsed)
+
     def _normalize_kind(self, value: Any) -> str:
         return 'following' if str(value or '').strip().lower() == 'following' else 'followers'
+
+    def _active_max_to_scrape(self) -> Optional[int]:
+        if self.kind == 'following':
+            return self.following_max_to_scrape
+        return self.followers_max_to_scrape
+
+    def _remaining_target_scrape_allowance(self) -> Optional[int]:
+        active_max = self._active_max_to_scrape()
+        if active_max is None:
+            return None
+        return max(0, active_max - self.target_scraped)
 
     def _normalize_completed_kinds(self, kinds: Any) -> list[str]:
         values = kinds if isinstance(kinds, list) else []
@@ -160,6 +179,9 @@ class ScrapeRelationshipsExecutor:
             'kindMode': self.kind_mode,
             'kind': self.kind,
             'activeKind': self.kind,
+            'followersMaxToScrape': self.followers_max_to_scrape or 0,
+            'followingMaxToScrape': self.following_max_to_scrape or 0,
+            'activeMaxToScrape': self._active_max_to_scrape() or 0,
             'completedKinds': list(self.completed_kinds),
             'completedArtifacts': list(self.completed_artifacts),
             'targets': self.targets,
@@ -313,6 +335,8 @@ class ScrapeRelationshipsExecutor:
             f'scrape_relationships: starting node {self.node_id} kindMode={self.kind_mode} '
             f'activeKind={self.kind} completedKinds={self.completed_kinds} '
             f'targets={len(self.targets)} chunkLimit={self.chunk_limit} '
+            f'followersMaxToScrape={self.followers_max_to_scrape or 0} '
+            f'followingMaxToScrape={self.following_max_to_scrape or 0} '
             f'maxPagesPerAttempt={self.max_pages_per_attempt} maxAttempts={self.max_attempts} '
             f'accountTargets={self.use_account_usernames} resumeIndex={self.current_target_index} '
             f"resumeCursor={'yes' if self.cursor else 'no'}"
@@ -421,7 +445,15 @@ class ScrapeRelationshipsExecutor:
         remaining_capacity = _profile_remaining_daily_scraping_capacity(self.profile_record)
         if remaining_capacity == 0:
             return {'outcome': 'daily_limit'}, 0
-        effective_chunk_limit = max(1, min(self.chunk_limit, remaining_capacity)) if remaining_capacity is not None else self.chunk_limit
+        remaining_target_allowance = self._remaining_target_scrape_allowance()
+        if remaining_target_allowance == 0:
+            return {'outcome': 'target_cap_reached'}, 0
+        effective_chunk_limit = self.chunk_limit
+        if remaining_capacity is not None:
+            effective_chunk_limit = min(effective_chunk_limit, remaining_capacity)
+        if remaining_target_allowance is not None:
+            effective_chunk_limit = min(effective_chunk_limit, remaining_target_allowance)
+        effective_chunk_limit = max(1, effective_chunk_limit)
         chunk = self.runner._scrape_relationship_chunk(
             self.page,
             target_username=target_username,
@@ -448,6 +480,12 @@ class ScrapeRelationshipsExecutor:
     def _handle_chunk_result(self, target_username: str, chunk: Dict[str, Any], elapsed_ms: int) -> Optional[str]:
         if chunk.get('outcome') == 'daily_limit':
             return self._fail_due_to_daily_limit()
+        if chunk.get('outcome') == 'target_cap_reached':
+            log(
+                f'scrape_relationships @{target_username}: target cap already reached '
+                f'(kind={self.kind}, total={self.target_scraped}/{self._active_max_to_scrape() or 0})'
+            )
+            return self._update_after_success(target_username, False, completion_reason='capped')
         outcome, error_code, error_message, chunk_users, chunk_debug = self._normalize_chunk(chunk)
         if outcome == 'success':
             return self._handle_success_chunk(
@@ -482,16 +520,50 @@ class ScrapeRelationshipsExecutor:
         chunk_debug: Dict[str, Any],
         elapsed_ms: int,
     ) -> Optional[str]:
-        next_cursor = str(chunk.get('nextCursor') or '').strip() or None
-        has_more = bool(chunk.get('hasMore')) and bool(next_cursor)
+        chunk_users, next_cursor, has_more, next_target_scraped, capped_by_limit = self._apply_target_scrape_cap(
+            chunk,
+            chunk_users,
+        )
         expected_total = chunk.get('total') if isinstance(chunk.get('total'), int) else None
-        next_target_scraped = self.target_scraped + len(chunk_users)
         if self._is_unexpected_empty_result(has_more, expected_total, next_target_scraped):
             message = f'{self.kind} list for @{target_username} returned zero users but profile metadata reported {expected_total}'
             return self._fail_target(target_username, 'fatal_error', 'unexpected_empty_result', message)
         self._record_success_progress(chunk_users, next_cursor, next_target_scraped)
-        self._log_success_chunk(target_username, chunk_users, chunk_debug, elapsed_ms, has_more, expected_total, next_target_scraped)
-        return self._update_after_success(target_username, has_more)
+        self._log_success_chunk(
+            target_username,
+            chunk_users,
+            chunk_debug,
+            elapsed_ms,
+            has_more,
+            expected_total,
+            next_target_scraped,
+            capped_by_limit,
+        )
+        return self._update_after_success(
+            target_username,
+            has_more,
+            completion_reason='capped' if capped_by_limit else None,
+        )
+
+    def _apply_target_scrape_cap(
+        self,
+        chunk: Dict[str, Any],
+        chunk_users: list[Any],
+    ) -> Tuple[list[Any], Optional[str], bool, int, bool]:
+        next_cursor = str(chunk.get('nextCursor') or '').strip() or None
+        has_more = bool(chunk.get('hasMore')) and bool(next_cursor)
+        remaining_target_allowance = self._remaining_target_scrape_allowance()
+        if remaining_target_allowance is None:
+            return chunk_users, next_cursor, has_more, self.target_scraped + len(chunk_users), False
+
+        trimmed_users = chunk_users[:remaining_target_allowance]
+        next_target_scraped = self.target_scraped + len(trimmed_users)
+        active_max = self._active_max_to_scrape()
+        capped_by_limit = bool(active_max is not None and next_target_scraped >= active_max)
+        if capped_by_limit:
+            next_cursor = None
+            has_more = False
+        return trimmed_users, next_cursor, has_more, next_target_scraped, capped_by_limit
 
     def _is_unexpected_empty_result(self, has_more: bool, expected_total: Optional[int], next_target_scraped: int) -> bool:
         return not has_more and expected_total is not None and expected_total > 0 and next_target_scraped == 0
@@ -517,11 +589,16 @@ class ScrapeRelationshipsExecutor:
         has_more: bool,
         expected_total: Optional[int],
         next_target_scraped: int,
+        capped_by_limit: bool,
     ) -> None:
         reported_total = expected_total if expected_total is not None else '?'
         label = 'chunk saved' if has_more else 'final chunk'
+        if capped_by_limit:
+            label = 'cap reached'
         total_value = next_target_scraped
         suffix = ' nextCursor=yes' if has_more else ''
+        if capped_by_limit:
+            suffix = f' cap={self._active_max_to_scrape() or 0}'
         log(
             f'scrape_relationships @{target_username}: {label} '
             f'rows={len(chunk_users)} total={total_value}/{reported_total} '
@@ -529,11 +606,17 @@ class ScrapeRelationshipsExecutor:
             f'elapsedMs={elapsed_ms} kind={self.kind}{suffix}'
         )
 
-    def _update_after_success(self, target_username: str, has_more: bool) -> Optional[str]:
-        if has_more:
+    def _update_after_success(
+        self,
+        target_username: str,
+        has_more: bool,
+        completion_reason: Optional[str] = None,
+    ) -> Optional[str]:
+        should_resume = has_more and completion_reason is None
+        if should_resume:
             self._store_resume_snapshot()
         else:
-            completion_error = self._complete_target(target_username)
+            completion_error = self._complete_target(target_username, completion_reason=completion_reason)
             if completion_error is not None:
                 error_code, error_message = completion_error
                 return self._fail_target(target_username, 'fatal_error', error_code, error_message)
@@ -557,7 +640,7 @@ class ScrapeRelationshipsExecutor:
             scraped=0,
             totalScraped=self.total_scraped,
             deduped=len(self.merged_users),
-            hasMore=has_more,
+            hasMore=should_resume,
             nextCursor=self.cursor,
             kind=self.kind,
             kindMode=self.kind_mode,
@@ -593,7 +676,11 @@ class ScrapeRelationshipsExecutor:
                 exc,
             )
 
-    def _complete_target(self, target_username: str) -> Optional[Tuple[str, str]]:
+    def _complete_target(
+        self,
+        target_username: str,
+        completion_reason: Optional[str] = None,
+    ) -> Optional[Tuple[str, str]]:
         if self.use_account_usernames and self._is_final_kind():
             try:
                 self._mark_target_account_done(target_username)
@@ -610,9 +697,12 @@ class ScrapeRelationshipsExecutor:
         else:
             _delete_resume_snapshot(self.resume_snapshot_path)
             self.resume_snapshot_path = ''
+        reason_suffix = ''
+        if completion_reason == 'capped':
+            reason_suffix = f' cap={self._active_max_to_scrape() or 0}'
         log(
             f'scrape_relationships @{target_username}: target completed '
-            f'(kind={self.kind}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
+            f'(kind={self.kind}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)}{reason_suffix})'
         )
         return None
 

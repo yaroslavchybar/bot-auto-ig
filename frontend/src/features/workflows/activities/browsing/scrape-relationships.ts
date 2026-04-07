@@ -53,6 +53,28 @@ export const scrapeRelationships: ActivityDefinition = {
       group: 'Pagination',
     },
     {
+      name: 'followersMaxToScrape',
+      type: 'number',
+      label: 'Followers Max To Scrape',
+      default: 0,
+      min: 0,
+      max: 1000000,
+      helpText:
+        'Per target profile, stop after this many followers rows. In "Both" mode this cap applies only to the followers pass. Use 0 for unlimited.',
+      group: 'Pagination',
+    },
+    {
+      name: 'followingMaxToScrape',
+      type: 'number',
+      label: 'Following Max To Scrape',
+      default: 0,
+      min: 0,
+      max: 1000000,
+      helpText:
+        'Per target profile, stop after this many following rows. In "Both" mode this cap applies only to the following pass. Use 0 for unlimited.',
+      group: 'Pagination',
+    },
+    {
       name: 'maxPagesPerAttempt',
       type: 'number',
       label: 'Max Pages Per Attempt',

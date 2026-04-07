@@ -238,6 +238,270 @@ def test_scrape_relationships_fails_on_unexpected_empty_result(monkeypatch):
     assert state["failedTargets"][0]["errorCode"] == "unexpected_empty_result"
 
 
+def test_scrape_relationships_caps_followers_per_target_and_reduces_request_limit(monkeypatch):
+    saved_payloads = []
+    requested_limits = []
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: saved_payloads.append(payload) or "storage_cap_followers",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_cap_followers"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        requested_limits.append(kwargs["chunk_limit"])
+        return {
+            "outcome": "success",
+            "users": [
+                {"username": "u1", "id": "1"},
+                {"username": "u2", "id": "2"},
+            ],
+            "nextCursor": "cursor_after_cap",
+            "hasMore": True,
+            "total": 10,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-cap-followers",
+        scrape_config(
+            "followers",
+            ["alpha"],
+            chunkLimit=50,
+            followersMaxToScrape=2,
+        ),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert requested_limits == [2]
+    assert saved_payloads[0]["users"] == [
+        {"username": "u1", "id": "1"},
+        {"username": "u2", "id": "2"},
+    ]
+    assert saved_payloads[0]["count"] == 2
+    assert runner.profiles_client.increment_calls == [("session_profile", 2)]
+    state = runner.node_states["node-cap-followers"]
+    assert state["status"] == "completed"
+    assert state["done"] is True
+    assert state["scraped"] == 2
+    assert state["completedTargets"] == 1
+
+
+def test_scrape_relationships_trims_following_overage_when_cap_is_reached(monkeypatch):
+    saved_payloads = []
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: saved_payloads.append(payload) or "storage_cap_following",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_cap_following"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runner,
+        "_scrape_relationship_chunk",
+        lambda *args, **kwargs: {
+            "outcome": "success",
+            "users": [
+                {"username": "u1", "id": "1"},
+                {"username": "u2", "id": "2"},
+                {"username": "u3", "id": "3"},
+            ],
+            "nextCursor": "cursor_after_cap",
+            "hasMore": True,
+            "total": 12,
+        },
+    )
+
+    result = runner._execute_scrape_relationships(
+        "node-cap-following",
+        scrape_config(
+            "following",
+            ["alpha"],
+            chunkLimit=50,
+            followingMaxToScrape=2,
+        ),
+        _FakePage(available_kinds={"following"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert saved_payloads[0]["users"] == [
+        {"username": "u1", "id": "1"},
+        {"username": "u2", "id": "2"},
+    ]
+    assert saved_payloads[0]["count"] == 2
+    assert runner.profiles_client.increment_calls == [("session_profile", 2)]
+
+
+def test_scrape_relationships_resets_cap_per_target(monkeypatch):
+    saved_payloads = []
+    requested_limits = []
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: saved_payloads.append(payload) or "storage_cap_multi",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_cap_multi"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        requested_limits.append((kwargs["target_username"], kwargs["chunk_limit"]))
+        return {
+            "outcome": "success",
+            "users": [{"username": kwargs["target_username"], "id": kwargs["target_username"]}],
+            "nextCursor": "cursor_after_cap",
+            "hasMore": True,
+            "total": 4,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-cap-multi",
+        scrape_config(
+            "followers",
+            ["alpha", "beta"],
+            chunkLimit=50,
+            followersMaxToScrape=1,
+        ),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert requested_limits == [("alpha", 1), ("beta", 1)]
+    assert saved_payloads[0]["users"] == [
+        {"username": "alpha", "id": "alpha"},
+        {"username": "beta", "id": "beta"},
+    ]
+
+
+def test_scrape_relationships_both_mode_uses_separate_caps(monkeypatch):
+    saved_payloads = []
+    requested_limits = []
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: saved_payloads.append(payload) or f"storage_{payload['kind']}",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": f"artifact_{kwargs['kind']}"}
+        if "kind" in kwargs
+        else {"_id": "artifact"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        requested_limits.append((kwargs["kind"], kwargs["chunk_limit"]))
+        if kwargs["kind"] == "followers":
+            return {
+                "outcome": "success",
+                "users": [{"username": "follower-1", "id": "f1"}],
+                "nextCursor": "followers_cursor",
+                "hasMore": True,
+                "total": 20,
+            }
+        return {
+            "outcome": "success",
+            "users": [
+                {"username": "following-1", "id": "g1"},
+                {"username": "following-2", "id": "g2"},
+            ],
+            "nextCursor": "following_cursor",
+            "hasMore": True,
+            "total": 20,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    upsert_calls = []
+
+    def fake_post(path, payload):
+        upsert_calls.append(payload)
+        return {"_id": f"artifact_{payload['kind']}"}
+
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._convex_post_json", fake_post)
+
+    result = runner._execute_scrape_relationships(
+        "node-cap-both",
+        scrape_config(
+            "both",
+            ["alpha"],
+            chunkLimit=50,
+            followersMaxToScrape=1,
+            followingMaxToScrape=2,
+        ),
+        _FakePage(available_kinds={"followers", "following"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert requested_limits == [("followers", 1), ("following", 2)]
+    assert [payload["kind"] for payload in saved_payloads] == ["followers", "following"]
+    assert [payload["count"] for payload in saved_payloads] == [1, 2]
+    assert [payload["kind"] for payload in upsert_calls] == ["followers", "following"]
+
+
+def test_scrape_relationships_zero_cap_keeps_unlimited_behavior(monkeypatch):
+    requested_limits = []
+
+    runner = _build_runner(monkeypatch)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._store_artifact_payload",
+        lambda payload: "storage_unlimited",
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_unlimited"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        requested_limits.append(kwargs["chunk_limit"])
+        return {
+            "outcome": "success",
+            "users": [{"username": "alpha", "id": "1"}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-cap-zero",
+        scrape_config(
+            "followers",
+            ["alpha"],
+            chunkLimit=50,
+            followersMaxToScrape=0,
+        ),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert requested_limits == [50]
+
+
 def test_scrape_relationships_allows_zero_rows_when_total_is_zero(monkeypatch):
     saved_payloads = []
 
