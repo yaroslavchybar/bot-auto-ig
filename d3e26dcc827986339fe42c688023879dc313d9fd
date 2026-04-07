@@ -1,0 +1,31 @@
+frontend/src/features/workflows/activities/browsing/scrape-relationships.ts
+  5ae48b2a7f8fe8a1 56-76
+docs/python/automation.md
+  5ae48b2a7f8fe8a1 28
+python/tests/test_workflow_scrape_relationships_extended.py
+  5ae48b2a7f8fe8a1 241-504
+frontend/src/features/workflows/activities/index.test.ts
+  5ae48b2a7f8fe8a1 1-34
+python/runners/workflow/scrape_relationships.py
+  5ae48b2a7f8fe8a1 61-62,127-132,136-146,182-184,338-339,448-456,483-488,523-526,532-566,592,596-597,600-601,609-616,619,643,679-683,700-702,705
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "d3e26dcc827986339fe42c688023879dc313d9fd",
+  "prompts": {
+    "5ae48b2a7f8fe8a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d688c-adbb-72a3-8b4d-5a3521f6bb09",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 479,
+      "total_deletions": 68,
+      "accepted_lines": 460,
+      "overriden_lines": 0
+    }
+  }
+}
