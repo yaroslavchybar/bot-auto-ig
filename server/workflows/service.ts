@@ -1,5 +1,10 @@
 import path from 'path'
-import { activeDisplays, workflowWorkers } from '../shared/store.js'
+import {
+  activeDisplays,
+  clearWorkflowProfileActive,
+  markWorkflowProfileActive,
+  workflowWorkers,
+} from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../shared/mutex.js'
 import { parseLogOutput } from '../logs/parser.js'
@@ -134,9 +139,17 @@ async function handleStatusEvent(
   }
 
   if (eventType === 'profile_started') {
-    currentProfile.value = meta.profile || null
+    const profileName = String(meta.profile ?? meta.profileName ?? '').trim()
+    currentProfile.value = profileName || null
+    if (profileName) {
+      markWorkflowProfileActive(workflowId, profileName)
+    }
   } else if (eventType === 'profile_completed') {
+    const profileName = String(meta.profile ?? meta.profileName ?? currentProfile.value ?? '').trim()
     currentProfile.value = null
+    if (profileName) {
+      clearWorkflowProfileActive(workflowId, profileName)
+    }
   }
 
   if (
@@ -157,6 +170,7 @@ async function handleStatusEvent(
   }
 
   if (eventType === 'session_ended') {
+    clearWorkflowProfileActive(workflowId)
     const status = normalizeWorkflowTerminalStatus(meta?.status)
     try {
       await workflowsUpdateStatus({
@@ -255,6 +269,7 @@ function wireProcessLifecycle(proc: any, workflowId: string): void {
   proc.on('close', async (code: number | null) => {
     workflowWorkers.delete(workflowId)
     clearWorkflowDisplays(workflowId)
+    clearWorkflowProfileActive(workflowId)
     broadcast({ type: 'workflow_status', workflowId, status: 'idle' })
     broadcast({
       type: 'log',
@@ -274,6 +289,7 @@ function wireProcessLifecycle(proc: any, workflowId: string): void {
   proc.on('error', async (err: Error) => {
     workflowWorkers.delete(workflowId)
     clearWorkflowDisplays(workflowId)
+    clearWorkflowProfileActive(workflowId)
     broadcast({ type: 'workflow_status', workflowId, status: 'idle' })
     broadcast({
       type: 'log',

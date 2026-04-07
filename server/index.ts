@@ -23,7 +23,7 @@ import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { detectInterruptedRun, clearState } from './automation/state.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
-import { profileProcesses } from './shared/store.js'
+import { getActiveRuntimeProfileNames } from './shared/store.js'
 import { isProcessRunning } from './shared/ProcessService.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 import logger from './shared/logger.js'
@@ -136,7 +136,7 @@ async function startServer(): Promise<void> {
     await cleanupOrphanedProcesses()
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
-    const reconciled = await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
+    const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())
     if (reconciled.cleared > 0) {
         logger.info({ cleared: reconciled.cleared }, 'Cleared stale running status for profile(s)')
     }

@@ -9,7 +9,7 @@ import {
   profilesSyncStatus,
   profilesSetLoginTrue,
 } from '../shared/convexClient.js'
-import { profileProcesses } from '../shared/store.js'
+import { getActiveRuntimeProfileNames, profileProcesses } from '../shared/store.js'
 import {
   normalizeProfileInput,
   generateFingerprint,
@@ -34,7 +34,7 @@ router.post('/generate-fingerprint', asyncHandler(async (req, res) => {
 
 // Get all profiles
 router.get('/', asyncHandler(async (_req, res) => {
-  await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
+  await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())
   const profiles = await profileManager.getProfiles()
   res.json(profiles)
 }))
@@ -106,7 +106,7 @@ router.post('/:name/stop', asyncHandler(async (req, res) => {
 }))
 
 router.post('/reconcile-runtime', asyncHandler(async (_req, res) => {
-  const result = await profileManager.reconcileRuntimeStatuses(profileProcesses.keys())
+  const result = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())
   res.json({ success: true, ...result })
 }))
 

@@ -45,3 +45,59 @@ export const activeDisplays = new Map<string, ActiveDisplaySession>()
 
 // Profile browser processes
 export const profileProcesses = new Map<string, ChildProcess>()
+
+// Workflow-owned active profiles. Each workflow can run one or more profiles.
+export const workflowProfileSessions = new Map<string, Set<string>>()
+
+export function markWorkflowProfileActive(workflowId: string, profileName: string): void {
+    const cleanWorkflowId = String(workflowId || '').trim()
+    const cleanProfileName = String(profileName || '').trim()
+    if (!cleanWorkflowId || !cleanProfileName) return
+
+    const existing = workflowProfileSessions.get(cleanWorkflowId)
+    if (existing) {
+        existing.add(cleanProfileName)
+        return
+    }
+
+    workflowProfileSessions.set(cleanWorkflowId, new Set([cleanProfileName]))
+}
+
+export function clearWorkflowProfileActive(workflowId: string, profileName?: string): void {
+    const cleanWorkflowId = String(workflowId || '').trim()
+    if (!cleanWorkflowId) return
+
+    if (typeof profileName === 'undefined') {
+        workflowProfileSessions.delete(cleanWorkflowId)
+        return
+    }
+
+    const cleanProfileName = String(profileName || '').trim()
+    if (!cleanProfileName) return
+
+    const existing = workflowProfileSessions.get(cleanWorkflowId)
+    if (!existing) return
+
+    existing.delete(cleanProfileName)
+    if (existing.size === 0) {
+        workflowProfileSessions.delete(cleanWorkflowId)
+    }
+}
+
+export function getActiveRuntimeProfileNames(): string[] {
+    const activeNames = new Set<string>()
+
+    for (const name of profileProcesses.keys()) {
+        const cleanName = String(name || '').trim()
+        if (cleanName) activeNames.add(cleanName)
+    }
+
+    for (const profiles of workflowProfileSessions.values()) {
+        for (const name of profiles) {
+            const cleanName = String(name || '').trim()
+            if (cleanName) activeNames.add(cleanName)
+        }
+    }
+
+    return Array.from(activeNames)
+}
