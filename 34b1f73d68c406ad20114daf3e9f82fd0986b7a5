@@ -1,0 +1,29 @@
+server/workflows/service.ts
+  a08048d55c730794 3-7,142-146,148,150-151,173,272,292
+server/shared/store.ts
+  a08048d55c730794 49-50,52-63,66-68,70-103
+server/profiles/routes.ts
+  a08048d55c730794 12,37,109
+server/index.ts
+  a08048d55c730794 26,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "34b1f73d68c406ad20114daf3e9f82fd0986b7a5",
+  "prompts": {
+    "a08048d55c730794": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d67ec-2559-7f00-98da-1e401fe9d18a",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 636,
+      "total_deletions": 564,
+      "accepted_lines": 243,
+      "overriden_lines": 26
+    }
+  }
+}
