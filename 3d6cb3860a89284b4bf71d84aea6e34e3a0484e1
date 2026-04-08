@@ -1,0 +1,110 @@
+tests/convex/moduleInventory.test.ts
+  7f8d4ecac974d2ac 16
+convex/scrapingAccounts.ts
+  14c1af3a3c939128 62,81-83
+  2169d542c7fbb37b 5-8,12-59,63-80,84-91
+  7f8d4ecac974d2ac 1-4,9-11,60-61,92
+convex/workflowArtifacts.ts
+  2169d542c7fbb37b 65-71,358,372
+  7f8d4ecac974d2ac 106,132-133,169-173,278-279,310-311,352-357,359-371
+tests/convex/inventory.test.ts
+  7f8d4ecac974d2ac 21,34
+python/tests/test_workflow_scrape_relationships_extended.py
+  7f8d4ecac974d2ac 32-37,40-41,44-45,916-918,922
+python/runners/workflow/scrape_utils.py
+  7f8d4ecac974d2ac 5,25-53,61-62,226-242
+  2169d542c7fbb37b 54-60
+datauploader/test_api.py
+  7f8d4ecac974d2ac 4,39,54,93-216
+  2169d542c7fbb37b 2,217-252
+python/tests/test_workflow_scrape_relationships.py
+  14c1af3a3c939128 716-720,760-764,802-806,838-839,1029-1033
+  7f8d4ecac974d2ac 32-37,40-41,44-45,448,488-489,1019-1020
+convex/http.ts
+  7f8d4ecac974d2ac 7,23
+datauploader/api.py
+  2169d542c7fbb37b 61-67,282-286
+  14c1af3a3c939128 297,299
+  7f8d4ecac974d2ac 4,6,17,21,24,35,57-60,70-73,75-81,257-258,261-262,266-269,275-281,287-289,296,298,300-301,303-305,309,335-345,381-403,412-417,554,556-557,562,568-569,575,599,606,739
+python/runners/workflow/scrape_relationships.py
+  7f8d4ecac974d2ac 10-11,15,71,201,299,314-315,664,727-729,733,739,744-745,759,811,822,841,857,883,895,898,907-909,913,916,918,921-923,931,933-935,939-941,943-944
+  14c1af3a3c939128 214,722
+server/shared/convexClient.ts
+  7f8d4ecac974d2ac 496-497
+docs/convex/backend.md
+  7f8d4ecac974d2ac 16,34,38,46,98
+  14c1af3a3c939128 40
+docs/services/datauploader.md
+  7f8d4ecac974d2ac 21,34,38-39,46
+frontend/src/features/accounts/components/AccountsTaskDetails.tsx
+  7f8d4ecac974d2ac 26,37,164
+tests/convex/http.test.ts
+  7f8d4ecac974d2ac 397-435,437
+  2169d542c7fbb37b 440-495
+convex/schema.ts
+  14c1af3a3c939128 43-50,62,66
+  7f8d4ecac974d2ac 60-61,63-65,67,160-161
+frontend/src/features/accounts/components/AccountsTaskList.tsx
+  7f8d4ecac974d2ac 82
+frontend/src/features/scraped-data/types.ts
+  7f8d4ecac974d2ac 20-21
+convex/httpRoutes/workflowArtifacts.ts
+  7f8d4ecac974d2ac 19-20,119-120,143-170
+datauploader/convex_client.py
+  7f8d4ecac974d2ac 114-123,142-144,206-207,209-212
+frontend/src/features/accounts/types/index.ts
+  7f8d4ecac974d2ac 48
+python/actions/common.py
+  7f8d4ecac974d2ac 22-36,52-53,55,59,62,65-88
+convex/httpRoutes/scrapingAccounts.ts
+  7f8d4ecac974d2ac 1-13,16-29,66-68
+  14c1af3a3c939128 14-15,30-65
+docs/python/automation.md
+  7f8d4ecac974d2ac 26-27,64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "3d6cb3860a89284b4bf71d84aea6e34e3a0484e1",
+  "prompts": {
+    "14c1af3a3c939128": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6e00-2445-74b1-ae32-81639bf4305d",
+        "model": "unknown"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 115,
+      "total_deletions": 92,
+      "accepted_lines": 79,
+      "overriden_lines": 0
+    },
+    "2169d542c7fbb37b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6dfd-ce1f-7cb2-adb1-b06fa89767ed",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 199,
+      "total_deletions": 83,
+      "accepted_lines": 199,
+      "overriden_lines": 0
+    },
+    "7f8d4ecac974d2ac": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6d80-cb6a-7732-99ca-cde6e2ec1a9c",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 2342,
+      "total_deletions": 1745,
+      "accepted_lines": 1703,
+      "overriden_lines": 24
+    }
+  }
+}
