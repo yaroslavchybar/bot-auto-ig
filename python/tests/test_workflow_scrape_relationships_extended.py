@@ -28,10 +28,18 @@ def _mock_datauploader(
     error=None,
 ):
     captured = payloads if payloads is not None else []
+    path_counts = {}
+
+    def fake_relative_path(workflow_id, node_id, kind, now_ms=None):
+        key = (node_id, kind)
+        next_count = path_counts.get(key, 0) + 1
+        path_counts[key] = next_count
+        suffix = "" if next_count == 1 else f"_{next_count}"
+        return f"scrapes/{node_id}_{kind}{suffix}.json"
 
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._local_scrape_artifact_relative_path",
-        lambda workflow_id, node_id, kind, now_ms=None: f"scrapes/{node_id}_{kind}.json",
+        fake_relative_path,
     )
 
     def fake_store(relative_path, payload):
@@ -70,9 +78,15 @@ def _build_executor(
 
 
 def test_scrape_relationships_persists_completed_targets_before_retry(monkeypatch):
+    processed_payloads = []
     resume_snapshots = []
 
     runner = _build_runner(monkeypatch)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_retry_snapshot"},
+    )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
     monkeypatch.setattr("python.runners.workflow.scrape_relationships._delete_resume_snapshot", lambda path: None)
     monkeypatch.setattr(
@@ -127,8 +141,10 @@ def test_scrape_relationships_persists_completed_targets_before_retry(monkeypatc
 
     assert result == "failure"
     assert chunk_calls == ["alpha", "beta"]
-    assert len(resume_snapshots) == 1
-    assert resume_snapshots[0]["payload"]["users"] == [
+    assert resume_snapshots == []
+    assert len(processed_payloads) == 1
+    assert processed_payloads[0]["targets"] == ["alpha"]
+    assert processed_payloads[0]["users"] == [
         {"username": "alpha", "id": "1"}
     ]
 
@@ -156,13 +172,21 @@ def test_scrape_relationships_continues_when_resume_snapshot_store_fails(monkeyp
 
     def fake_scrape(*args, **kwargs):
         target_username = kwargs["target_username"]
-        chunk_calls.append(target_username)
+        chunk_calls.append((target_username, kwargs["cursor"]))
+        if len(chunk_calls) == 1:
+            return {
+                "outcome": "success",
+                "users": [{"username": f"{target_username}_1", "id": "1"}],
+                "nextCursor": "cursor_2",
+                "hasMore": True,
+                "total": 2,
+            }
         return {
             "outcome": "success",
-            "users": [{"username": target_username, "id": str(len(chunk_calls))}],
+            "users": [{"username": f"{target_username}_2", "id": "2"}],
             "nextCursor": None,
             "hasMore": False,
-            "total": 1,
+            "total": 2,
         }
 
     monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
@@ -170,17 +194,17 @@ def test_scrape_relationships_continues_when_resume_snapshot_store_fails(monkeyp
     with caplog.at_level(logging.ERROR, logger="python.runners.workflow.scrape_relationships"):
         result = runner._execute_scrape_relationships(
             "node-resume-snapshot-error",
-            scrape_config("followers", ["alpha", "beta"], chunkLimit=25, maxPagesPerAttempt=3),
+            scrape_config("followers", ["alpha"], chunkLimit=25, maxPagesPerAttempt=3),
             _FakePage(available_kinds={"followers"}),
             "session_profile",
         )
 
     assert result == "success"
-    assert chunk_calls == ["alpha", "beta"]
+    assert chunk_calls == [("alpha", None), ("alpha", "cursor_2")]
     assert len(processed_payloads) == 1
     assert processed_payloads[0]["users"] == [
-        {"username": "alpha", "id": "1"},
-        {"username": "beta", "id": "2"},
+        {"username": "alpha_1", "id": "1"},
+        {"username": "alpha_2", "id": "2"},
     ]
     assert "Failed to store resume snapshot for workflow wf_123 node node-resume-snapshot-error" in caplog.text
 
@@ -400,10 +424,11 @@ def test_scrape_relationships_resets_cap_per_target(monkeypatch):
 
     assert result == "success"
     assert requested_limits == [("alpha", 1), ("beta", 1)]
-    assert processed_payloads[0]["users"] == [
-        {"username": "alpha", "id": "alpha"},
-        {"username": "beta", "id": "beta"},
-    ]
+    assert len(processed_payloads) == 2
+    assert processed_payloads[0]["targets"] == ["alpha"]
+    assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "alpha"}]
+    assert processed_payloads[1]["targets"] == ["beta"]
+    assert processed_payloads[1]["users"] == [{"username": "beta", "id": "beta"}]
 
 
 def test_scrape_relationships_both_mode_uses_separate_caps(monkeypatch):
@@ -732,6 +757,65 @@ def test_scrape_relationships_resets_completed_state_before_rerun(monkeypatch):
     assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "1"}]
 
 
+def test_scrape_relationships_resets_manual_both_state_when_local_artifact_is_missing(monkeypatch):
+    processed_payloads = []
+    scrape_calls = []
+    runner = _build_runner(
+        monkeypatch,
+        node_states={
+            "node-missing-local-artifact": {
+                "activityId": "scrape_relationships",
+                "kind": "following",
+                "activeKind": "following",
+                "kindMode": "both",
+                "targets": ["alpha"],
+                "currentTargetIndex": 1,
+                "completedKinds": ["followers", "following"],
+                "status": "running",
+                "done": False,
+                "localArtifactPath": "scrapes/missing_following.json",
+                "completedArtifacts": [
+                    {"kind": "followers", "localArtifactPath": "scrapes/missing_followers.json"},
+                    {"kind": "following", "localArtifactPath": "scrapes/missing_following.json"},
+                ],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._local_artifact_exists",
+        lambda path: False,
+    )
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_rerun_missing_local"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        scrape_calls.append((kwargs["kind"], kwargs["target_username"]))
+        return {
+            "outcome": "success",
+            "users": [{"username": f'{kwargs["kind"]}_{kwargs["target_username"]}', "id": kwargs["kind"]}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-missing-local-artifact",
+        scrape_config("both", ["alpha"]),
+        _FakePage(available_kinds={"followers", "following"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert scrape_calls == [("followers", "alpha"), ("following", "alpha")]
+    assert [payload["kind"] for payload in processed_payloads] == ["followers", "following"]
+
+
 def test_scrape_relationships_caps_chunk_by_remaining_daily_limit(monkeypatch):
     runner = _build_runner(monkeypatch)
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
@@ -816,6 +900,50 @@ def test_scrape_relationships_fails_when_daily_limit_is_already_reached(monkeypa
     assert state["lastErrorCode"] == "daily_scraping_limit_reached"
 
 
+def test_scrape_relationships_daily_limit_persists_partial_artifact(monkeypatch):
+    processed_payloads = []
+    upsert_payloads = []
+
+    def fake_post(path, payload):
+        upsert_payloads.append({"path": path, "payload": payload})
+        return {"_id": "artifact_partial_daily_limit"}
+
+    runner, executor = _build_executor(monkeypatch, node_id="node-daily-limit-partial")
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
+    monkeypatch.setattr("python.runners.workflow.scrape_relationships._convex_post_json", fake_post)
+
+    executor.merged_users = [{"username": "alpha", "id": "1"}]
+    executor.total_scraped = 1
+    executor.chunks_completed = 1
+    executor.cursor = "cursor_resume"
+    executor.resume_snapshot_path = "resume_to_delete.json"
+    executor.profile_record = {"daily_scraping_limit": 1000, "daily_scraping_used": 1000}
+    executor.targets = ["alpha", "beta"]
+    executor.current_target_index = 0
+
+    deleted_paths = []
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._delete_resume_snapshot",
+        lambda path: deleted_paths.append(path),
+    )
+
+    result = executor._fail_due_to_daily_limit()
+
+    assert result == "failure"
+    assert deleted_paths == ["resume_to_delete.json"]
+    assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "1"}]
+    assert upsert_payloads[0]["path"] == "/api/workflow-artifacts/upsert"
+    assert upsert_payloads[0]["payload"]["metadata"]["partial"] is True
+    assert upsert_payloads[0]["payload"]["metadata"]["interrupted"] is True
+    assert upsert_payloads[0]["payload"]["metadata"]["interruptionReason"] == "daily_scraping_limit_reached"
+    state = runner.node_states["node-daily-limit-partial"]
+    assert state["status"] == "failed"
+    assert state["lastErrorCode"] == "daily_scraping_limit_reached"
+    assert state["artifactId"] == "artifact_partial_daily_limit"
+    assert state["localArtifactPath"] == "scrapes/node-daily-limit-partial_followers.json"
+    assert state["resumeSnapshotPath"] is None
+
+
 def test_scrape_relationships_upsert_artifact_row_returns_last_error_after_retries(monkeypatch):
     upsert_attempts = []
     sleep_calls = []
@@ -845,7 +973,7 @@ def test_scrape_relationships_upsert_artifact_row_returns_last_error_after_retri
     assert sleep_calls == list(ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS)
 
 
-def test_scrape_relationships_complete_active_kind_fails_when_artifact_upsert_exhausts_retries(monkeypatch):
+def test_scrape_relationships_complete_target_fails_when_artifact_upsert_exhausts_retries(monkeypatch):
     processed_payloads = []
     update_calls = []
 
@@ -870,11 +998,12 @@ def test_scrape_relationships_complete_active_kind_fails_when_artifact_upsert_ex
     executor.merged_users = [{"username": "alpha", "id": "1"}]
     executor.total_scraped = 1
     executor.chunks_completed = 1
-    executor.current_target_index = len(executor.targets)
+    executor.targets = ["alpha"]
+    executor.current_target_index = 0
 
-    assert executor._complete_active_kind() == "failure"
+    assert executor._update_after_success("alpha", False) == "failure"
 
-    assert processed_payloads[0]["users"] == executor.merged_users
+    assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "1"}]
     assert update_calls[-1]["patch"]["status"] == "failed"
     assert update_calls[-1]["patch"].get("done") is not True
     assert update_calls[-1]["patch"]["artifactId"] is None
@@ -884,7 +1013,7 @@ def test_scrape_relationships_complete_active_kind_fails_when_artifact_upsert_ex
     assert runner.node_states["node-complete-fallback"]["lastErrorCode"] == "artifact_upsert_failed"
 
 
-def test_scrape_relationships_complete_active_kind_marks_completed_and_upserts_history(monkeypatch):
+def test_scrape_relationships_complete_target_marks_completed_and_upserts_history(monkeypatch):
     processed_payloads = []
     upsert_payloads = []
     update_calls = []
@@ -907,12 +1036,15 @@ def test_scrape_relationships_complete_active_kind_marks_completed_and_upserts_h
     executor.merged_users = [{"username": "alpha", "id": "1"}]
     executor.total_scraped = 1
     executor.chunks_completed = 1
-    executor.current_target_index = len(executor.targets)
+    executor.targets = ["alpha"]
+    executor.current_target_index = 0
 
-    assert executor._complete_active_kind() == "success"
+    assert executor._update_after_success("alpha", False) == "success"
 
-    assert processed_payloads[0]["users"] == executor.merged_users
+    assert processed_payloads[0]["users"] == [{"username": "alpha", "id": "1"}]
     assert upsert_payloads[0]["path"] == "/api/workflow-artifacts/upsert"
+    assert upsert_payloads[0]["payload"]["targets"] == ["alpha"]
+    assert upsert_payloads[0]["payload"]["targetUsername"] == "alpha"
     assert upsert_payloads[0]["payload"]["imported"] is False
     assert upsert_payloads[0]["payload"]["metadata"]["processingMode"] == "manual_queue"
     assert upsert_payloads[0]["payload"]["localArtifactPath"] == "scrapes/node-complete-success_followers.json"

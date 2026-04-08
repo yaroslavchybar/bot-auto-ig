@@ -28,10 +28,18 @@ def _mock_datauploader(
     error=None,
 ):
     captured = payloads if payloads is not None else []
+    path_counts = {}
+
+    def fake_relative_path(workflow_id, node_id, kind, now_ms=None):
+        key = (node_id, kind)
+        next_count = path_counts.get(key, 0) + 1
+        path_counts[key] = next_count
+        suffix = "" if next_count == 1 else f"_{next_count}"
+        return f"scrapes/{node_id}_{kind}{suffix}.json"
 
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._local_scrape_artifact_relative_path",
-        lambda workflow_id, node_id, kind, now_ms=None: f"scrapes/{node_id}_{kind}.json",
+        fake_relative_path,
     )
 
     def fake_store(relative_path, payload):
@@ -207,10 +215,11 @@ def _resume_node_state():
         "activityId": "scrape_relationships",
         "label": "Resume Scrape",
         "kind": "followers",
-        "targets": ["alpha", "beta"],
-        "currentTargetIndex": 1,
+        "targets": ["beta"],
+        "currentTargetIndex": 0,
         "scraped": 1,
         "chunksCompleted": 1,
+        "targetScraped": 1,
         "artifactStorageId": "export_existing",
     }
 
@@ -220,12 +229,12 @@ def _assert_resume_success(runner, page, processed_payloads):
     assert page.clicks[0]["selector"] == 'a[href="/beta/followers/"]'
     assert len(processed_payloads) == 1
     assert processed_payloads[0]["users"] == [
-        {"username": "alpha", "id": "1"},
-        {"username": "beta", "id": "2"},
+        {"username": "beta_saved", "id": "1"},
+        {"username": "beta_new", "id": "2"},
     ]
     state = runner.node_states["node-1"]
     assert state["done"] is True
-    assert state["completedTargets"] == 2
+    assert state["completedTargets"] == 1
     assert state["scraped"] == 2
     assert state["deduped"] == 2
     assert state["artifactStorageId"] is None
@@ -305,7 +314,7 @@ def test_scrape_relationships_resume_uses_saved_artifact(monkeypatch):
 
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._load_users_from_storage",
-        lambda storage_id: [{"username": "alpha", "id": "1"}]
+        lambda storage_id: [{"username": "beta_saved", "id": "1"}]
         if storage_id == "export_existing"
         else [],
     )
@@ -326,7 +335,7 @@ def test_scrape_relationships_resume_uses_saved_artifact(monkeypatch):
         "_scrape_relationship_chunk",
         lambda *args, **kwargs: {
             "outcome": "success",
-            "users": [{"username": "beta", "id": "2"}],
+            "users": [{"username": "beta_new", "id": "2"}],
             "nextCursor": None,
             "hasMore": False,
         },
@@ -335,7 +344,7 @@ def test_scrape_relationships_resume_uses_saved_artifact(monkeypatch):
     page = _FakePage()
     result = runner._execute_scrape_relationships(
         "node-1",
-        scrape_config("followers", ["alpha", "beta"]),
+        scrape_config("followers", ["beta"]),
         page,
         "session_profile",
     )
@@ -492,7 +501,7 @@ def test_scrape_relationships_marks_node_failed_when_datauploader_processing_rai
     assert state["artifactUpsertFailedAt"] is None
     assert state["artifactUpsertError"] is None
     assert state["artifactUpsertPayload"] is None
-    assert state["completedTargets"] == 1
+    assert state["completedTargets"] == 0
     assert state["resumeSnapshotPath"] is None
 
 
@@ -712,18 +721,32 @@ def test_scrape_relationships_logs_updated_total_for_each_saved_chunk(monkeypatc
 
 def test_scrape_relationships_uses_scraping_accounts_as_targets(monkeypatch):
     runner = _build_runner(monkeypatch)
+    upsert_payloads = []
+    account_statuses = {"alpha": "need_scraping", "beta": "need_scraping"}
+
+    def list_scraping_accounts_by_status(status):
+        if status != 'need_scraping':
+            return []
+        rows = []
+        if account_statuses['alpha'] == 'need_scraping':
+            rows.append({'id': 'acct-1', 'user_name': 'alpha', 'status': account_statuses['alpha']})
+        if account_statuses['beta'] == 'need_scraping':
+            rows.append({'id': 'acct-2', 'user_name': 'beta', 'status': account_statuses['beta']})
+        return rows
+
+    def update_scraping_account_status(account_id, status='done'):
+        username = 'alpha' if account_id == 'acct-1' else 'beta'
+        account_statuses[username] = status
+
     runner.accounts_client = SimpleNamespace(
-        list_scraping_accounts_by_status=lambda status: [
-            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
-            {'id': 'acct-2', 'user_name': 'beta', 'status': 'need_scraping'},
-        ] if status == 'need_scraping' else [],
-        update_scraping_account_status=lambda *args, **kwargs: None,
+        list_scraping_accounts_by_status=list_scraping_accounts_by_status,
+        update_scraping_account_status=update_scraping_account_status,
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
     _mock_datauploader(monkeypatch)
     monkeypatch.setattr(
         "python.runners.workflow.scrape_relationships._convex_post_json",
-        lambda *args, **kwargs: {"_id": "artifact_scraping_targets"},
+        lambda path, payload: upsert_payloads.append(payload) or {"_id": f"artifact_{payload['targetUsername']}"},
     )
     visited_targets = []
 
@@ -748,20 +771,127 @@ def test_scrape_relationships_uses_scraping_accounts_as_targets(monkeypatch):
 
     assert result == "success"
     assert visited_targets == ["alpha", "beta"]
+    assert [payload["targetUsername"] for payload in upsert_payloads] == ["alpha", "beta"]
+    assert [payload["targets"] for payload in upsert_payloads] == [["alpha"], ["beta"]]
     state = runner.node_states["node-account-targets"]
     assert state["useAccountUsernames"] is True
     assert state["targets"] == ["alpha", "beta"]
 
 
-def test_scrape_relationships_marks_scraping_account_done_after_success(monkeypatch):
-    status_updates = []
-    runner = _build_runner(monkeypatch)
+def test_scrape_relationships_reconciles_saved_account_targets_with_live_pool(monkeypatch):
+    runner, executor = _build_executor(
+        monkeypatch,
+        node_id="node-account-reconcile",
+        cfg=scrape_config("followers", [], useAccountUsernames=True),
+        node_states={
+            "node-account-reconcile": {
+                "activityId": "scrape_relationships",
+                "useAccountUsernames": True,
+                "kind": "followers",
+                "targets": ["alpha", "beta", "gamma"],
+                "currentTargetIndex": 1,
+                "status": "running",
+            }
+        },
+    )
     runner.accounts_client = SimpleNamespace(
         list_scraping_accounts_by_status=lambda status: [
             {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
+            {'id': 'acct-3', 'user_name': 'gamma', 'status': 'need_scraping'},
+            {'id': 'acct-4', 'user_name': 'delta', 'status': 'need_scraping'},
         ] if status == 'need_scraping' else [],
-        update_scraping_account_status=lambda account_id, status='done': status_updates.append(
-            {'account_id': account_id, 'status': status}
+        update_scraping_account_status=lambda *args, **kwargs: None,
+    )
+
+    executor._prepare_targets()
+    executor._load_state()
+
+    assert executor.targets == ["alpha", "gamma", "delta"]
+    assert executor.current_target_index == 1
+    assert executor.state["targets"] == ["alpha", "gamma", "delta"]
+    assert executor.state["currentTargetIndex"] == 1
+
+
+def test_scrape_relationships_loads_next_account_target_batch_after_first_100(monkeypatch):
+    processed_payloads = []
+    scrape_calls = []
+    status_updates = []
+    usernames = [f"user{i:03d}" for i in range(105)]
+    account_statuses = {username: "need_scraping" for username in usernames}
+
+    def list_scraping_accounts_by_status(status):
+        return [
+            {
+                "id": f"acct-{username}",
+                "user_name": username,
+                "status": account_statuses[username],
+            }
+            for username in usernames
+            if account_statuses[username] == status
+        ]
+
+    def update_scraping_account_status(account_id, status="done"):
+        username = account_id.removeprefix("acct-")
+        account_statuses[username] = status
+        status_updates.append((username, status))
+
+    runner = _build_runner(monkeypatch)
+    runner.accounts_client = SimpleNamespace(
+        list_scraping_accounts_by_status=list_scraping_accounts_by_status,
+        update_scraping_account_status=update_scraping_account_status,
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_batch"},
+    )
+
+    def fake_scrape(*args, **kwargs):
+        scrape_calls.append(kwargs["target_username"])
+        return {
+            "outcome": "success",
+            "users": [{"username": kwargs["target_username"], "id": kwargs["target_username"]}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-account-batches",
+        scrape_config("followers", [], useAccountUsernames=True),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert scrape_calls == usernames
+    assert len(processed_payloads) == 105
+    assert processed_payloads[0]["targets"] == ["user000"]
+    assert processed_payloads[99]["targets"] == ["user099"]
+    assert processed_payloads[100]["targets"] == ["user100"]
+    assert processed_payloads[104]["targets"] == ["user104"]
+    assert len(status_updates) == 105
+    assert all(status == "done" for _, status in status_updates)
+    state = runner.node_states["node-account-batches"]
+    assert state["done"] is True
+    assert state["targets"] == ["user100", "user101", "user102", "user103", "user104"]
+    assert state["completedTargets"] == 5
+
+
+def test_scrape_relationships_marks_scraping_account_done_after_success(monkeypatch):
+    status_updates = []
+    runner = _build_runner(monkeypatch)
+    account_statuses = {'alpha': 'need_scraping'}
+    runner.accounts_client = SimpleNamespace(
+        list_scraping_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': account_statuses['alpha']},
+        ] if status == 'need_scraping' and account_statuses['alpha'] == 'need_scraping' else [],
+        update_scraping_account_status=lambda account_id, status='done': (
+            status_updates.append({'account_id': account_id, 'status': status}),
+            account_statuses.__setitem__('alpha', status),
         ),
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
@@ -851,7 +981,7 @@ def test_scrape_relationships_fails_when_scraping_pool_is_empty(monkeypatch):
     assert logs == ['scrape_relationships could not resolve any account usernames in status scraping']
 
 
-def test_scrape_relationships_both_mode_runs_followers_then_following(monkeypatch):
+def test_scrape_relationships_both_mode_runs_followers_then_following_per_target(monkeypatch):
     processed_payloads = []
     upsert_payloads = []
 
@@ -887,7 +1017,7 @@ def test_scrape_relationships_both_mode_runs_followers_then_following(monkeypatc
     page = _FakePage(available_kinds={"followers", "following"})
     result = runner._execute_scrape_relationships(
         "node-both",
-        scrape_config("both", ["alpha"]),
+        scrape_config("both", ["alpha", "beta"]),
         page,
         "session_profile",
     )
@@ -896,13 +1026,27 @@ def test_scrape_relationships_both_mode_runs_followers_then_following(monkeypatc
     assert scrape_calls == [
         {"kind": "followers", "target": "alpha"},
         {"kind": "following", "target": "alpha"},
+        {"kind": "followers", "target": "beta"},
+        {"kind": "following", "target": "beta"},
     ]
     assert [click["selector"] for click in page.clicks] == [
         'a[href="/alpha/followers/"]',
         'a[href="/alpha/following/"]',
+        'a[href="/beta/followers/"]',
+        'a[href="/beta/following/"]',
     ]
-    assert [payload["kind"] for payload in processed_payloads] == ["followers", "following"]
-    assert [payload["kind"] for payload in upsert_payloads] == ["followers", "following"]
+    assert [(payload["kind"], payload["targets"][0]) for payload in processed_payloads] == [
+        ("followers", "alpha"),
+        ("following", "alpha"),
+        ("followers", "beta"),
+        ("following", "beta"),
+    ]
+    assert [(payload["kind"], payload["targetUsername"]) for payload in upsert_payloads] == [
+        ("followers", "alpha"),
+        ("following", "alpha"),
+        ("followers", "beta"),
+        ("following", "beta"),
+    ]
     state = runner.node_states["node-both"]
     assert state["done"] is True
     assert state["kindMode"] == "both"
@@ -910,7 +1054,7 @@ def test_scrape_relationships_both_mode_runs_followers_then_following(monkeypatc
     assert state["artifactId"] == "artifact_following"
 
 
-def test_scrape_relationships_both_mode_resume_skips_completed_pass(monkeypatch):
+def test_scrape_relationships_both_mode_resume_continues_current_target_kind(monkeypatch):
     processed_payloads = []
     scrape_kinds = []
 
@@ -919,7 +1063,8 @@ def test_scrape_relationships_both_mode_resume_skips_completed_pass(monkeypatch)
         node_states={
             "node-both-resume": {
                 "activityId": "scrape_relationships",
-                "kind": "followers",
+                "kind": "following",
+                "activeKind": "following",
                 "kindMode": "both",
                 "completedKinds": ["followers"],
                 "targets": ["alpha"],
@@ -961,6 +1106,39 @@ def test_scrape_relationships_both_mode_resume_skips_completed_pass(monkeypatch)
     state = runner.node_states["node-both-resume"]
     assert state["completedKinds"] == ["followers", "following"]
     assert state["done"] is True
+
+
+def test_scrape_relationships_keeps_resumable_state_when_done_flag_is_stale(monkeypatch):
+    runner, executor = _build_executor(
+        monkeypatch,
+        node_id="node-stale-done",
+        cfg=scrape_config("followers", ["alpha"]),
+        node_states={
+            "node-stale-done": {
+                "activityId": "scrape_relationships",
+                "kind": "followers",
+                "targets": ["alpha"],
+                "status": "running",
+                "done": True,
+                "currentTargetIndex": 0,
+                "cursor": "cursor_resume",
+                "scraped": 10,
+                "chunksCompleted": 2,
+                "resumeSnapshotPath": "resume_snapshot.json",
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._load_users_from_resume_snapshot",
+        lambda path: [{"username": "alpha", "id": "1"}] if path == "resume_snapshot.json" else [],
+    )
+
+    executor._load_state()
+
+    assert executor.resume_snapshot_path == "resume_snapshot.json"
+    assert executor.cursor == "cursor_resume"
+    assert executor.total_scraped == 10
+    assert executor.state["done"] is False
 
 
 def test_scrape_relationships_both_mode_keeps_first_artifact_when_second_pass_fails(monkeypatch):
@@ -1012,25 +1190,24 @@ def test_scrape_relationships_both_mode_keeps_first_artifact_when_second_pass_fa
     assert state["kindMode"] == "both"
     assert state["kind"] == "following"
     assert state["completedKinds"] == ["followers"]
-    assert state["completedArtifacts"] == [
-        {
-            "kind": "followers",
-            "artifactId": "artifact_followers",
-            "localArtifactPath": "scrapes/node-both-failure_followers.json",
-            "imported": False,
-        }
-    ]
+    assert len(state["completedArtifacts"]) == 1
+    assert state["completedArtifacts"][0]["kind"] == "followers"
+    assert state["completedArtifacts"][0]["targetUsername"] == "alpha"
+    assert state["completedArtifacts"][0]["artifactId"] == "artifact_followers"
+    assert state["completedArtifacts"][0]["localArtifactPath"] == "scrapes/node-both-failure_followers.json"
 
 
 def test_scrape_relationships_both_mode_marks_account_done_only_after_final_pass(monkeypatch):
     status_updates = []
     runner = _build_runner(monkeypatch)
+    account_statuses = {'alpha': 'need_scraping'}
     runner.accounts_client = SimpleNamespace(
         list_scraping_accounts_by_status=lambda status: [
-            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
-        ] if status == 'need_scraping' else [],
-        update_scraping_account_status=lambda account_id, status='done': status_updates.append(
-            {'account_id': account_id, 'status': status}
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': account_statuses['alpha']},
+        ] if status == 'need_scraping' and account_statuses['alpha'] == 'need_scraping' else [],
+        update_scraping_account_status=lambda account_id, status='done': (
+            status_updates.append({'account_id': account_id, 'status': status}),
+            account_statuses.__setitem__('alpha', status),
         ),
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)

@@ -11,12 +11,46 @@ import atexit
 import logging
 import os
 import signal
+import sys
 import time
 from typing import Any, Callable, Dict, List, Optional
 
 from python.core.storage.state_persistence import load_state, save_state
 
 logger = logging.getLogger(__name__)
+
+
+def _iter_active_loggers(base_logger: logging.Logger):
+    current: Optional[logging.Logger] = base_logger
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        yield current
+        seen.add(id(current))
+        if not current.propagate:
+            break
+        current = current.parent
+
+
+def _can_emit_log(base_logger: logging.Logger) -> bool:
+    saw_handler = False
+    for current in _iter_active_loggers(base_logger):
+        for handler in current.handlers:
+            saw_handler = True
+            stream = getattr(handler, 'stream', None)
+            if stream is not None and getattr(stream, 'closed', False):
+                return False
+    if not saw_handler and getattr(sys.stderr, 'closed', False):
+        return False
+    return True
+
+
+def _safe_log(level: int, message: str, *args: Any) -> None:
+    try:
+        if not _can_emit_log(logger):
+            return
+        logger.log(level, message, *args)
+    except Exception:
+        pass
 
 
 class ShutdownManager:
@@ -126,7 +160,7 @@ class ShutdownManager:
             return
         self._done = True
 
-        logger.info('Graceful shutdown initiated')
+        _safe_log(logging.INFO, 'Graceful shutdown initiated')
 
         # 1. Persist current state iff we have a profile context.
         #    Prefer the state callback (fresh in-flight snapshot) over
@@ -142,7 +176,7 @@ class ShutdownManager:
                     action = fresh.get('action', action)
                     progress = fresh.get('progress', progress)
             except Exception as exc:
-                logger.error('State callback failed, using fallback: %s', exc)
+                _safe_log(logging.ERROR, 'State callback failed, using fallback: %s', exc)
         if profile and action:
             try:
                 # Guard: do not overwrite a state already persisted by a
@@ -157,27 +191,29 @@ class ShutdownManager:
                     and isinstance(existing.get('progress'), (int, float))
                     and existing['progress'] >= progress
                 ):
-                    logger.info(
+                    _safe_log(
+                        logging.INFO,
                         'Skipping state save: persisted progress %d >= shutdown progress %d',
                         existing['progress'],
                         progress,
                     )
                 else:
                     save_state(profile, action, progress)
-                    logger.info(
+                    _safe_log(
+                        logging.INFO,
                         'State persisted: profile=%s action=%s progress=%d',
                         profile,
                         action,
                         progress,
                     )
             except Exception as exc:
-                logger.error('Failed to persist state: %s', exc)
+                _safe_log(logging.ERROR, 'Failed to persist state: %s', exc)
 
         # 2. Execute cleanup callables in LIFO order.
         for fn in reversed(self._cleanup_fns):
             try:
                 fn()
             except Exception as exc:
-                logger.debug('Cleanup function error (ignored): %s', exc)
+                _safe_log(logging.DEBUG, 'Cleanup function error (ignored): %s', exc)
 
-        logger.info('Graceful shutdown complete')
+        _safe_log(logging.INFO, 'Graceful shutdown complete')

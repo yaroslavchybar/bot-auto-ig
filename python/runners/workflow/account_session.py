@@ -172,6 +172,7 @@ def _emit_task_started(runner, node_id: str, activity_id: str, label: str, profi
         activityId=activity_id,
         label=label,
         status='running',
+        done=False,
         profile=profile_name,
         progress=progress,
         updatedAt=int(time.time() * 1000),

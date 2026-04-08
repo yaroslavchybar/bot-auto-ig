@@ -8,6 +8,7 @@ from python.runners.workflow.scrape_utils import (
     _dedupe_scraped_users,
     _delete_resume_snapshot,
     _local_scrape_artifact_relative_path,
+    _local_artifact_exists,
     _load_users_from_local_artifact,
     _load_users_from_resume_snapshot,
     _load_users_from_storage,
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 ARTIFACT_UPSERT_RETRY_DELAYS_SECONDS = (1, 2, 4)
 INTERRUPTIBLE_SLEEP_POLL_SECONDS = 0.1
+ACCOUNT_TARGET_BATCH_SIZE = 100
 
 
 class ScrapeRelationshipsExecutor:
@@ -82,6 +84,7 @@ class ScrapeRelationshipsExecutor:
         self.active_target_username: Optional[str] = None
         self.relationship_view_ready = False
         self.target_account_ids: Dict[str, str] = {}
+        self.live_account_targets: list[str] = []
         self.completed_kinds: list[str] = []
         self.completed_artifacts: list[Dict[str, Any]] = []
 
@@ -172,6 +175,16 @@ class ScrapeRelationshipsExecutor:
                 return kind
         return None
 
+    def _next_kind_for_current_target(self) -> Optional[str]:
+        try:
+            index = self.kind_queue.index(self.kind)
+        except ValueError:
+            return None
+        next_index = index + 1
+        if next_index >= len(self.kind_queue):
+            return None
+        return self.kind_queue[next_index]
+
     def _is_final_kind(self) -> bool:
         return self.kind == self.kind_queue[-1]
 
@@ -209,21 +222,17 @@ class ScrapeRelationshipsExecutor:
         if not self.use_account_usernames:
             self.targets = list(self.configured_targets)
             self.target_account_ids = {}
+            self.live_account_targets = []
             return
         existing_state = self.runner._get_node_state(self.node_id)
         scraping_accounts = self.runner.accounts_client.list_scraping_accounts_by_status('need_scraping')
         self.target_account_ids = self._build_target_account_ids(scraping_accounts)
+        self.live_account_targets = self._build_account_target_batch(scraping_accounts)
         if self._should_resume_account_targets(existing_state):
-            self.targets = _normalize_string_list(existing_state.get('targets'))
+            reconciled_state = self._reconcile_account_target_state(existing_state)
+            self.targets = _normalize_string_list(reconciled_state.get('targets'))
             return
-        self.targets = []
-        seen: set[str] = set()
-        for account in scraping_accounts:
-            username = self._normalize_account_username(account.get('user_name'))
-            if not username or username in seen:
-                continue
-            seen.add(username)
-            self.targets.append(username)
+        self.targets = list(self.live_account_targets[:ACCOUNT_TARGET_BATCH_SIZE])
 
     def _should_resume_account_targets(self, state: Optional[Dict[str, Any]]) -> bool:
         if not isinstance(state, dict):
@@ -247,6 +256,52 @@ class ScrapeRelationshipsExecutor:
             mapping[username] = account_id
         return mapping
 
+    def _build_account_target_batch(self, accounts: Any) -> list[str]:
+        targets: list[str] = []
+        seen: set[str] = set()
+        rows = accounts if isinstance(accounts, list) else []
+        for account in rows:
+            username = self._normalize_account_username(account.get('user_name'))
+            if not username or username in seen:
+                continue
+            seen.add(username)
+            targets.append(username)
+        return targets
+
+    def _reconcile_account_target_state(self, state: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        base = dict(state) if isinstance(state, dict) else {}
+        live_targets = list(self.live_account_targets)
+        live_target_set = set(live_targets)
+        saved_targets = _normalize_string_list(base.get('targets'))
+        current_index = max(0, _parse_int(base.get('currentTargetIndex'), 0))
+        reconciled_targets: list[str] = []
+        seen: set[str] = set()
+        adjusted_index = 0
+
+        for index, username in enumerate(saved_targets):
+            if username not in live_target_set or username in seen:
+                continue
+            seen.add(username)
+            reconciled_targets.append(username)
+            if index < current_index:
+                adjusted_index += 1
+
+        for username in live_targets:
+            if len(reconciled_targets) >= ACCOUNT_TARGET_BATCH_SIZE:
+                break
+            if username in seen:
+                continue
+            seen.add(username)
+            reconciled_targets.append(username)
+
+        if not reconciled_targets:
+            reconciled_targets = list(live_targets[:ACCOUNT_TARGET_BATCH_SIZE])
+            adjusted_index = 0
+
+        base['targets'] = reconciled_targets
+        base['currentTargetIndex'] = min(adjusted_index, len(reconciled_targets))
+        return base
+
     def _normalize_account_username(self, value: Any) -> str:
         cleaned = str(value or '').strip()
         if cleaned.startswith('@'):
@@ -257,6 +312,9 @@ class ScrapeRelationshipsExecutor:
     def _load_state(self) -> None:
         existing_state = self.runner._get_node_state(self.node_id)
         self.state = dict(existing_state) if isinstance(existing_state, dict) else {}
+        if self.use_account_usernames and self._should_resume_account_targets(self.state):
+            self.state = self._reconcile_account_target_state(self.state)
+            self.targets = _normalize_string_list(self.state.get('targets'))
         state_kind_mode = self._parse_kind_mode(self.state.get('kindMode') or self.state.get('kind'))
         if (
             state_kind_mode != self.kind_mode
@@ -266,10 +324,37 @@ class ScrapeRelationshipsExecutor:
             _delete_resume_snapshot(self.state.get('resumeSnapshotPath'))
             self.state = {}
         stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
+        if self._should_reset_missing_local_artifacts():
+            self._reset_stale_state(stale_index)
+        if self._should_ignore_stale_done_flag():
+            self.state['done'] = False
+        stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
         should_reset = self.state.get('done') or str(self.state.get('status') or '').strip().lower() == 'completed'
         if should_reset or stale_index > len(self.targets):
             self._reset_stale_state(stale_index)
         self._hydrate_resume_state()
+
+    def _should_ignore_stale_done_flag(self) -> bool:
+        if not self.state.get('done'):
+            return False
+        status = str(self.state.get('status') or '').strip().lower()
+        if status == 'completed':
+            return False
+
+        if str(self.state.get('resumeSnapshotPath') or '').strip():
+            return True
+        if str(self.state.get('cursor') or '').strip():
+            return True
+        if max(0, _parse_int(self.state.get('currentTargetIndex'), 0)) < len(self.targets):
+            return True
+        if max(0, _parse_int(self.state.get('scraped'), 0)) > 0:
+            return True
+        if max(0, _parse_int(self.state.get('chunksCompleted'), 0)) > 0:
+            return True
+        if max(0, _parse_int(self.state.get('targetScraped'), 0)) > 0:
+            return True
+        completed_kinds = self._normalize_completed_kinds(self.state.get('completedKinds'))
+        return 0 < len(completed_kinds) < len(self.kind_queue)
 
     def _reset_stale_state(self, stale_index: int) -> None:
         if not self.state:
@@ -282,13 +367,37 @@ class ScrapeRelationshipsExecutor:
         )
         self.state = {}
 
+    def _should_reset_missing_local_artifacts(self) -> bool:
+        if not self.state:
+            return False
+        local_paths: list[str] = []
+        direct_path = str(self.state.get('localArtifactPath') or '').strip()
+        if direct_path:
+            local_paths.append(direct_path)
+        for artifact in self._normalize_completed_artifacts(self.state.get('completedArtifacts')):
+            artifact_path = str(artifact.get('localArtifactPath') or '').strip()
+            if artifact_path:
+                local_paths.append(artifact_path)
+        seen: set[str] = set()
+        for path in local_paths:
+            if path in seen:
+                continue
+            seen.add(path)
+            if not _local_artifact_exists(path):
+                log(
+                    f'scrape_relationships: clearing stale local artifact state for node {self.node_id} '
+                    f'(missingLocalArtifactPath={path})'
+                )
+                return True
+        return False
+
     def _hydrate_resume_state(self) -> None:
         self.completed_kinds = self._normalize_completed_kinds(self.state.get('completedKinds'))
         self.completed_artifacts = self._normalize_completed_artifacts(self.state.get('completedArtifacts'))
         active_kind = str(self.state.get('activeKind') or self.state.get('kind') or '').strip().lower()
         active_kind = self._normalize_kind(active_kind) if active_kind else ''
         next_kind = self._next_pending_kind()
-        if active_kind and active_kind in self.kind_queue and active_kind not in self.completed_kinds:
+        if active_kind and active_kind in self.kind_queue:
             self.kind = active_kind
         elif next_kind is not None:
             self.kind = next_kind
@@ -354,11 +463,19 @@ class ScrapeRelationshipsExecutor:
         used = _profile_daily_scraping_used(self.profile_record)
         if limit is None:
             return 'failure'
-        self._persist_resume_snapshot_if_needed()
         message = (
             f'scrape_relationships: profile {self.profile_name} reached daily scraping '
             f'limit ({used}/{limit})'
         )
+        artifact_row = None
+        local_artifact_path = ''
+        if self.merged_users:
+            artifact_row, local_artifact_path = self._persist_interrupted_artifact(
+                error_code='daily_scraping_limit_reached',
+                error_message=message,
+            )
+        if not local_artifact_path:
+            self._persist_resume_snapshot_if_needed()
         target_username = self._current_target_username()
         if target_username:
             self.failed_targets = [
@@ -375,10 +492,40 @@ class ScrapeRelationshipsExecutor:
                 status='failed',
                 lastError=message,
                 lastErrorCode='daily_scraping_limit_reached',
+                artifactId=(artifact_row or {}).get('_id'),
+                localArtifactPath=local_artifact_path or self.local_artifact_path or None,
+                resumeSnapshotPath=self.resume_snapshot_path or None,
             ),
         )
         log(message)
         return 'failure'
+
+    def _persist_interrupted_artifact(
+        self,
+        *,
+        error_code: str,
+        error_message: str,
+    ) -> Tuple[Optional[Dict[str, Any]], str]:
+        target_username = self._current_target_username()
+        if not target_username:
+            return None, ''
+        artifact_row, local_artifact_path, persist_error = self._persist_target_artifact(
+            target_username,
+            interrupted=True,
+            interruption_code=error_code,
+            interruption_message=error_message,
+        )
+        if persist_error is not None:
+            logger.exception(
+                'Failed to persist interrupted scrape artifact row for workflow %s node %s profile %s kind %s: %s',
+                self.runner.workflow_id,
+                self.node_id,
+                self.profile_name,
+                self.kind,
+                persist_error[1],
+            )
+            return None, local_artifact_path
+        return artifact_row, local_artifact_path
 
     def _persist_resume_snapshot_if_needed(self) -> None:
         if not self.merged_users or self.artifact_storage_id or self.resume_snapshot_path:
@@ -619,10 +766,13 @@ class ScrapeRelationshipsExecutor:
         has_more: bool,
         completion_reason: Optional[str] = None,
     ) -> Optional[str]:
+        completed_kind = self.kind
         should_resume = has_more and completion_reason is None
         if should_resume:
             self._store_resume_snapshot()
         else:
+            completed_scraped = self.total_scraped
+            completed_deduped = len(self.merged_users)
             completion_error = self._complete_target(target_username, completion_reason=completion_reason)
             if completion_error is not None:
                 error_code, error_message = completion_error
@@ -645,11 +795,11 @@ class ScrapeRelationshipsExecutor:
             task=f'Scraped @{target_username}',
             targetUsername=target_username,
             scraped=0,
-            totalScraped=self.total_scraped,
-            deduped=len(self.merged_users),
+            totalScraped=0 if should_resume else completed_scraped,
+            deduped=0 if should_resume else completed_deduped,
             hasMore=should_resume,
             nextCursor=self.cursor,
-            kind=self.kind,
+            kind=completed_kind,
             kindMode=self.kind_mode,
             completedKinds=list(self.completed_kinds),
             completedTargets=self.current_target_index,
@@ -694,23 +844,34 @@ class ScrapeRelationshipsExecutor:
                 self._mark_target_account_done(target_username)
             except Exception as exc:
                 return ('account_status_update_failed', f'Failed to mark @{target_username} done after scrape: {exc}')
-        self.current_target_index += 1
-        self.cursor = None
-        self.attempt = 0
-        self.target_scraped = 0
-        self.active_target_username = None
-        self.relationship_view_ready = False
-        if self.current_target_index < len(self.targets):
-            self._store_resume_snapshot()
-        else:
+        _, _, persist_error = self._persist_target_artifact(
+            target_username,
+            completion_reason=completion_reason,
+        )
+        if persist_error is not None:
+            return persist_error
+        completed_scraped = self.total_scraped
+        completed_deduped = len(self.merged_users)
+        if self.resume_snapshot_path:
             _delete_resume_snapshot(self.resume_snapshot_path)
             self.resume_snapshot_path = ''
+        completed_kind = self.kind
+        if completed_kind not in self.completed_kinds:
+            self.completed_kinds = [*self.completed_kinds, completed_kind]
+        next_kind = self._next_kind_for_current_target()
+        if next_kind is None:
+            self.current_target_index += 1
+            if self.current_target_index < len(self.targets):
+                self.kind = self.kind_queue[0]
+        else:
+            self.kind = next_kind
+        self._reset_target_progress()
         reason_suffix = ''
         if completion_reason == 'capped':
             reason_suffix = f' cap={self._active_max_to_scrape() or 0}'
         log(
             f'scrape_relationships @{target_username}: target completed '
-            f'(kind={self.kind}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)}{reason_suffix})'
+            f'(kind={completed_kind}, totalScraped={completed_scraped}, deduped={completed_deduped}{reason_suffix})'
         )
         return None
 
@@ -724,50 +885,24 @@ class ScrapeRelationshipsExecutor:
 
     def _complete_active_kind(self) -> Optional[str]:
         completed_kind = self.kind
-        local_artifact_path, queue_error = self._queue_completed_kind_locally(completed_kind)
-        if queue_error is not None:
-            error_code, error_message = queue_error
-            return self._fail_node_completion(error_code, error_message)
-        artifact_payload = self._artifact_row_payload(
-            completed_kind,
-            local_artifact_path=local_artifact_path,
-        )
-        artifact_row, artifact_upsert_error = self._upsert_artifact_row(artifact_payload)
-        if artifact_row is None:
-            return self._fail_node_completion(
-                'artifact_upsert_failed',
-                f'Failed to persist queued scrape history row: {artifact_upsert_error or "unknown error"}',
-            )
-        artifact_record = {
-            'kind': completed_kind,
-            'artifactId': (artifact_row or {}).get('_id'),
-            'localArtifactPath': local_artifact_path,
-            'imported': False,
-        }
-        self.completed_artifacts = [*self.completed_artifacts, artifact_record]
         if completed_kind not in self.completed_kinds:
             self.completed_kinds = [*self.completed_kinds, completed_kind]
 
         next_kind = self._next_pending_kind()
         if next_kind is None:
-            return self._complete_node(artifact_row, artifact_upsert_error)
-        return self._start_next_kind(next_kind, artifact_record)
+            if self._load_next_account_target_batch():
+                return None
+            return self._complete_node()
+        return self._start_next_kind(next_kind)
 
-    def _start_next_kind(self, next_kind: str, artifact_record: Dict[str, Any]) -> Optional[str]:
+    def _start_next_kind(self, next_kind: str) -> Optional[str]:
         self.kind = next_kind
         self.artifact_storage_id = ''
         self.local_artifact_path = ''
         self.resume_snapshot_path = ''
-        self.merged_users = []
         self.current_target_index = 0
-        self.cursor = None
-        self.attempt = 0
-        self.total_scraped = 0
-        self.chunks_completed = 0
-        self.target_scraped = 0
         self.failed_targets = []
-        self.active_target_username = None
-        self.relationship_view_ready = False
+        self._reset_target_progress()
         self.runner._update_node_state(
             self.node_id,
             **self._node_state_patch(
@@ -778,7 +913,7 @@ class ScrapeRelationshipsExecutor:
                 artifactUpsertFailedAt=None,
                 artifactUpsertError=None,
                 artifactUpsertPayload=None,
-                lastCompletedKind=artifact_record.get('kind'),
+                lastCompletedKind=self.completed_kinds[-1] if self.completed_kinds else None,
                 lastError=None,
                 lastErrorCode=None,
             ),
@@ -802,10 +937,9 @@ class ScrapeRelationshipsExecutor:
 
     def _complete_node(
         self,
-        artifact_row: Optional[Dict[str, Any]] = None,
-        artifact_upsert_error: Optional[str] = None,
     ) -> str:
-        if artifact_row is None and artifact_upsert_error is None:
+        artifact_record = self.completed_artifacts[-1] if self.completed_artifacts else None
+        if artifact_record is None:
             return self._fail_node_completion(
                 'artifact_upsert_failed',
                 'Expected a completed queued artifact row before final node completion',
@@ -817,11 +951,14 @@ class ScrapeRelationshipsExecutor:
                 attempt=0,
                 cursor=None,
                 done=True,
+                scraped=artifact_record.get('scraped') or 0,
+                deduped=artifact_record.get('deduped') or 0,
+                chunksCompleted=artifact_record.get('chunksCompleted') or 0,
                 targetScraped=0,
                 artifactStorageId=None,
-                localArtifactPath=self.local_artifact_path or None,
+                localArtifactPath=artifact_record.get('localArtifactPath') or None,
                 manifestStorageId=None,
-                artifactId=(artifact_row or {}).get('_id'),
+                artifactId=artifact_record.get('artifactId'),
                 artifactUpsertFailedAt=None,
                 artifactUpsertError=None,
                 artifactUpsertPayload=None,
@@ -832,7 +969,7 @@ class ScrapeRelationshipsExecutor:
         log(
             f'scrape_relationships: node {self.node_id} completed '
             f'(kindMode={self.kind_mode}, completedKinds={self.completed_kinds}, '
-            f'targets={len(self.targets)}, totalScraped={self.total_scraped}, deduped={len(self.merged_users)})'
+            f'targets={len(self.targets)}, completedArtifacts={len(self.completed_artifacts)})'
         )
         return 'success'
 
@@ -881,6 +1018,8 @@ class ScrapeRelationshipsExecutor:
         kind: str,
         *,
         local_artifact_path: str,
+        target_username: str,
+        targets_completed: int,
     ) -> Dict[str, Any]:
         node_label = (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships'
         return {
@@ -889,8 +1028,8 @@ class ScrapeRelationshipsExecutor:
             'nodeId': self.node_id,
             'nodeLabel': node_label,
             'kind': kind,
-            'targets': self.targets,
-            'targetUsername': '\n'.join(self.targets),
+            'targets': [target_username],
+            'targetUsername': target_username,
             'status': 'completed',
             'imported': False,
             'sourceProfileName': self.profile_name,
@@ -900,19 +1039,21 @@ class ScrapeRelationshipsExecutor:
                 'scraped': self.total_scraped,
                 'deduped': len(self.merged_users),
                 'chunksCompleted': self.chunks_completed,
-                'targetsCompleted': self.current_target_index,
+                'targetsCompleted': targets_completed,
             },
             'metadata': {
                 **self._processing_metadata(),
                 'processingMode': 'manual_queue',
                 'artifactSource': 'local_file',
                 'localArtifactPath': local_artifact_path,
+                'targetUsername': target_username,
             },
         }
 
     def _queue_completed_kind_locally(
         self,
         completed_kind: str,
+        target_username: str,
     ) -> Tuple[str, Optional[Tuple[str, str]]]:
         try:
             local_artifact_path = _local_scrape_artifact_relative_path(
@@ -925,7 +1066,7 @@ class ScrapeRelationshipsExecutor:
                 self.node_id,
                 self.profile_name,
                 completed_kind,
-                self.targets,
+                [target_username],
                 self.merged_users,
             )
             _store_local_artifact_payload(local_artifact_path, payload)
@@ -937,11 +1078,128 @@ class ScrapeRelationshipsExecutor:
 
         log(
             f'scrape_relationships: queued node {self.node_id} '
-            f'kind={completed_kind} localArtifactPath={local_artifact_path} '
+            f'kind={completed_kind} target=@{target_username} localArtifactPath={local_artifact_path} '
             f'rows={len(self.merged_users)}'
         )
         self.local_artifact_path = local_artifact_path
         return local_artifact_path, None
+
+    def _persist_target_artifact(
+        self,
+        target_username: str,
+        *,
+        completion_reason: Optional[str] = None,
+        interrupted: bool = False,
+        interruption_code: Optional[str] = None,
+        interruption_message: Optional[str] = None,
+    ) -> Tuple[Optional[Dict[str, Any]], str, Optional[Tuple[str, str]]]:
+        local_artifact_path, queue_error = self._queue_completed_kind_locally(self.kind, target_username)
+        if queue_error is not None:
+            return None, '', queue_error
+
+        if self.resume_snapshot_path:
+            _delete_resume_snapshot(self.resume_snapshot_path)
+            self.resume_snapshot_path = ''
+
+        artifact_payload = self._artifact_row_payload(
+            self.kind,
+            local_artifact_path=local_artifact_path,
+            target_username=target_username,
+            targets_completed=self.current_target_index if interrupted else self.current_target_index + 1,
+        )
+        if completion_reason:
+            artifact_payload['metadata'] = {
+                **(artifact_payload.get('metadata') or {}),
+                'completionReason': completion_reason,
+            }
+        if interrupted:
+            artifact_payload['metadata'] = {
+                **(artifact_payload.get('metadata') or {}),
+                'partial': True,
+                'interrupted': True,
+                'interruptionReason': interruption_code,
+                'interruptionMessage': interruption_message,
+                'interruptedTargetUsername': target_username,
+            }
+        artifact_row, artifact_upsert_error = self._upsert_artifact_row(artifact_payload)
+        if artifact_row is None:
+            return None, local_artifact_path, (
+                'artifact_upsert_failed',
+                f'Failed to persist queued scrape history row: {artifact_upsert_error or "unknown error"}',
+            )
+        artifact_record = {
+            'kind': self.kind,
+            'targetUsername': target_username,
+            'artifactId': artifact_row.get('_id'),
+            'localArtifactPath': local_artifact_path,
+            'scraped': self.total_scraped,
+            'deduped': len(self.merged_users),
+            'chunksCompleted': self.chunks_completed,
+            'imported': False,
+        }
+        self.completed_artifacts = [*self.completed_artifacts, artifact_record]
+        self.local_artifact_path = local_artifact_path
+        return artifact_row, local_artifact_path, None
+
+    def _reset_target_progress(self) -> None:
+        self.artifact_storage_id = ''
+        self.merged_users = []
+        self.cursor = None
+        self.attempt = 0
+        self.total_scraped = 0
+        self.chunks_completed = 0
+        self.target_scraped = 0
+        self.active_target_username = None
+        self.relationship_view_ready = False
+
+    def _load_next_account_target_batch(self) -> bool:
+        if not self.use_account_usernames:
+            return False
+        scraping_accounts = self.runner.accounts_client.list_scraping_accounts_by_status('need_scraping')
+        self.target_account_ids = self._build_target_account_ids(scraping_accounts)
+        self.live_account_targets = self._build_account_target_batch(scraping_accounts)
+        next_targets = list(self.live_account_targets[:ACCOUNT_TARGET_BATCH_SIZE])
+        if not next_targets:
+            return False
+
+        self.targets = next_targets
+        self.kind = self.kind_queue[0]
+        self.completed_kinds = []
+        self.current_target_index = 0
+        self.failed_targets = []
+        self.resume_snapshot_path = ''
+        self._reset_target_progress()
+        self.runner._update_node_state(
+            self.node_id,
+            **self._node_state_patch(
+                status='running',
+                done=False,
+                manifestStorageId=None,
+                artifactId=None,
+                artifactUpsertFailedAt=None,
+                artifactUpsertError=None,
+                artifactUpsertPayload=None,
+                lastCompletedKind=None,
+                lastError=None,
+                lastErrorCode=None,
+            ),
+        )
+        self.runner._emit_node_state(
+            'task_progress',
+            self.node_id,
+            self.profile_name,
+            task='Loading next target batch',
+            kind=self.kind,
+            kindMode=self.kind_mode,
+            completedKinds=list(self.completed_kinds),
+            completedTargets=0,
+            progress=0,
+        )
+        log(
+            f'scrape_relationships: node {self.node_id} loading next account target batch '
+            f'targets={len(self.targets)} kind={self.kind}'
+        )
+        return True
 
     def _upsert_artifact_row(
         self,
@@ -1065,6 +1323,10 @@ class ScrapeRelationshipsExecutor:
                 attempt=self.attempt + (1 if retryable else 0),
                 lastError=error_message,
                 lastErrorCode=error_code,
+                artifactId=None,
+                artifactUpsertFailedAt=None,
+                artifactUpsertError=None,
+                artifactUpsertPayload=None,
             ),
         )
         log(

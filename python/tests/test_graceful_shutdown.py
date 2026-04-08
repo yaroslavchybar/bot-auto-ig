@@ -10,6 +10,7 @@ Verifies:
 """
 
 import json
+import logging
 import os
 import signal
 import time
@@ -19,6 +20,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from python.core.shutdown import ShutdownManager
+import python.core.storage.state_persistence as state_persistence
 from python.core.storage.state_persistence import (
     STATE_FILE,
     clear_state,
@@ -28,17 +30,12 @@ from python.core.storage.state_persistence import (
 
 
 @pytest.fixture(autouse=True)
-def clean_state_file():
-    """Remove state file before and after each test."""
-    if STATE_FILE.exists():
-        STATE_FILE.unlink()
-    for tmp in STATE_FILE.parent.glob('*.tmp'):
-        tmp.unlink(missing_ok=True)
+def clean_state_file(monkeypatch, tmp_path):
+    """Isolate state persistence so the full suite cannot leak session state into these tests."""
+    state_file = tmp_path / 'session_state.json'
+    monkeypatch.setattr(state_persistence, 'STATE_FILE', state_file)
+    monkeypatch.setattr('python.tests.test_graceful_shutdown.STATE_FILE', state_file)
     yield
-    if STATE_FILE.exists():
-        STATE_FILE.unlink()
-    for tmp in STATE_FILE.parent.glob('*.tmp'):
-        tmp.unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------------------
@@ -287,3 +284,41 @@ def test_save_state_failure_does_not_prevent_cleanup():
         mgr._run_shutdown()
 
     assert cleaned == [True]
+
+
+def test_shutdown_skips_logging_when_handler_stream_is_closed(monkeypatch):
+    """Shutdown should not emit logging errors when capture streams are already closed."""
+
+    class _ClosedStream:
+        closed = True
+
+        def write(self, _message):
+            raise ValueError('stream closed')
+
+        def flush(self):
+            raise ValueError('stream closed')
+
+    temp_logger = logging.getLogger('python.tests.shutdown_closed_stream')
+    previous_handlers = list(temp_logger.handlers)
+    previous_propagate = temp_logger.propagate
+    handler = logging.StreamHandler(_ClosedStream())
+    temp_logger.handlers = [handler]
+    temp_logger.propagate = False
+
+    cleaned = []
+    mgr = ShutdownManager()
+    mgr.set_state('closed-stream-profile', 'scroll_feed', 12)
+    mgr.add_cleanup(lambda: cleaned.append(True))
+
+    try:
+        monkeypatch.setattr('python.core.shutdown.logger', temp_logger)
+        mgr._run_shutdown()
+    finally:
+        handler.close()
+        temp_logger.handlers = previous_handlers
+        temp_logger.propagate = previous_propagate
+
+    assert cleaned == [True]
+    state = load_state()
+    assert state is not None
+    assert state['profile'] == 'closed-stream-profile'

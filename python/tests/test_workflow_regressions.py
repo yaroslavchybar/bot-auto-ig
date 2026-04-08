@@ -22,6 +22,7 @@ from python.runners.workflow.activity_dispatch import (
     execute_activity as execute_workflow_activity,
 )
 from python.runners.workflow.account_session import _handle_account_exception, _run_account_nodes, process_account
+from python.runners.workflow.account_session import _emit_task_started
 from python.runners.workflow.entrypoint import _start_node_inputs
 from python.runners.workflow.bootstrap import fetch_profiles_for_lists as fetch_workflow_profiles_for_lists
 from python.runners.workflow.io import emit_event as emit_workflow_event
@@ -148,6 +149,23 @@ def test_workflow_process_account_emits_failed_completion_when_nodes_fail(monkey
 
     assert process_account(runner, SimpleNamespace(username='alice', proxy=None)) is False
     assert ('profile_completed', {'profile': 'alice', 'status': 'failed', 'workflow_id': 'wf-2'}) in events
+
+
+def test_workflow_task_started_clears_done_flag():
+    states = {}
+
+    runner = SimpleNamespace(
+        _current_profile=None,
+        _current_progress=0,
+        workflow_id='wf-2',
+        _update_node_state=lambda node_id, **patch: states.setdefault(node_id, {}).update(patch),
+        _sanitize_node_states=lambda: states,
+    )
+
+    _emit_task_started(runner, 'node-1', 'scrape_relationships', 'Scrape', 'alice', 25)
+
+    assert states['node-1']['status'] == 'running'
+    assert states['node-1']['done'] is False
 
 
 def test_workflow_general_exception_emits_failed_completion(monkeypatch):
@@ -292,7 +310,7 @@ def test_workflow_unfollow_activity_marks_targets_as_done(monkeypatch):
 
     assert result == 'success'
     assert status_updates == [
-        {'account_id': 'account-1', 'status': 'done', 'assigned_to': '__NOT_SET__'}
+        {'account_id': 'account-1', 'status': 'done', 'assigned_to': None}
     ]
 
 

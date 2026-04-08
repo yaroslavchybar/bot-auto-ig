@@ -242,6 +242,10 @@ def _load_users_from_local_artifact(relative_path: str) -> List[Any]:
     return _extract_users_from_payload(payload)
 
 
+def _local_artifact_exists(relative_path: str) -> bool:
+    return _resolve_local_artifact_path(relative_path).exists()
+
+
 def _store_artifact_payload(payload: Dict[str, Any]) -> str:
     result = _convex_post_json('/api/workflow-artifacts/store-artifact', {'payload': payload})
     storage_id = str(result.get('storageId') or '').strip()
