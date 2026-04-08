@@ -1,0 +1,31 @@
+python/runners/workflow/scrape_relationships.py
+  2169d542c7fbb37b 11,39,87,178-187,225,230,232-233,235,259-279,281-304,315-317,327-330,337-358,370-392,470-478,495-497,503-528,769,774-775,798-799,802,847-855,858-868,874,893-896,905,916,941-942,954-956,959,961,972,1021-1022,1031-1032,1042,1049,1056,1069,1081,1087-1202,1326-1329
+python/tests/test_workflow_regressions.py
+  2169d542c7fbb37b 25,154-168,313
+python/tests/test_workflow_scrape_relationships_extended.py
+  2169d542c7fbb37b 31-38,42,81,85-89,144-147,175-183,186,189,203,206-207,427-431,760-818,903-946,976,1001-1002,1004,1006,1016,1039-1040,1042,1044,1046-1047
+python/runners/workflow/account_session.py
+  2169d542c7fbb37b 175
+python/tests/test_workflow_scrape_relationships.py
+  2169d542c7fbb37b 31-38,42,218-219,222,232-233,237,317,338,347,504,724-740,742-743,749,774-775,781-881,887,890-894,984,1020,1029-1030,1035-1036,1038-1042,1044-1048,1057,1066-1067,1111-1141,1193-1197,1203,1206-1210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "e1d059cb723cb7f054ddaf2e272f25d2f466e0af",
+  "prompts": {
+    "2169d542c7fbb37b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6dfd-ce1f-7cb2-adb1-b06fa89767ed",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1542,
+      "total_deletions": 952,
+      "accepted_lines": 1285,
+      "overriden_lines": 1
+    }
+  }
+}
