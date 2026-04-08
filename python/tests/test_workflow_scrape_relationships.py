@@ -29,27 +29,20 @@ def _mock_datauploader(
 ):
     captured = payloads if payloads is not None else []
 
-    def fake_post(path, payload):
-        assert path == "/workflow-runs/process-scrape"
-        captured.append(payload)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._local_scrape_artifact_relative_path",
+        lambda workflow_id, node_id, kind, now_ms=None: f"scrapes/{node_id}_{kind}.json",
+    )
+
+    def fake_store(relative_path, payload):
         if error is not None:
             raise RuntimeError(error)
-        users = payload.get("users") if isinstance(payload.get("users"), list) else []
-        return {
-            "status": "completed",
-            "stats": stats
-            or {
-                "totalProcessed": len(users),
-                "removed": 0,
-                "remaining": len(users),
-            },
-            "uploaded": uploaded or {"dev": len(users)},
-            "duplicates": duplicates or {"dev": 0},
-        }
+        captured.append({"localArtifactPath": relative_path, **payload})
+        return relative_path
 
     monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._datauploader_post_json",
-        fake_post,
+        "python.runners.workflow.scrape_relationships._store_local_artifact_payload",
+        fake_store,
     )
     return captured
 
@@ -452,7 +445,7 @@ def test_scrape_relationships_fails_when_artifact_upsert_exhausts_retries(monkey
     assert state["artifactUpsertError"] is None
     assert state["artifactUpsertPayload"] is None
     assert state["lastErrorCode"] == "artifact_upsert_failed"
-    assert "Failed to persist direct scrape history row: convex unavailable" in state["lastError"]
+    assert "Failed to persist queued scrape history row: convex unavailable" in state["lastError"]
     assert "payload={'workflowId': 'wf_123', 'nodeId': 'node-artifact-fallback', 'activityId': 'scrape_relationships', 'kind': 'followers'}" in caplog.text
 
 
@@ -492,8 +485,8 @@ def test_scrape_relationships_marks_node_failed_when_datauploader_processing_rai
     assert upsert_called is False
     state = runner.node_states["node-artifact-store-failure"]
     assert state["status"] == "failed"
-    assert state["lastErrorCode"] == "datauploader_processing_failed"
-    assert state["lastError"] == "Failed to process scrape with datauploader: uploader unavailable"
+    assert state["lastErrorCode"] == "local_artifact_store_failed"
+    assert state["lastError"] == "Failed to queue scrape artifact locally: uploader unavailable"
     assert state["artifactStorageId"] is None
     assert state["artifactId"] is None
     assert state["artifactUpsertFailedAt"] is None
@@ -720,11 +713,11 @@ def test_scrape_relationships_logs_updated_total_for_each_saved_chunk(monkeypatc
 def test_scrape_relationships_uses_scraping_accounts_as_targets(monkeypatch):
     runner = _build_runner(monkeypatch)
     runner.accounts_client = SimpleNamespace(
-        list_accounts_by_status=lambda status: [
-            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
-            {'id': 'acct-2', 'user_name': 'beta', 'status': 'scraping'},
-        ] if status == 'scraping' else [],
-        update_account_status=lambda *args, **kwargs: None,
+        list_scraping_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
+            {'id': 'acct-2', 'user_name': 'beta', 'status': 'need_scraping'},
+        ] if status == 'need_scraping' else [],
+        update_scraping_account_status=lambda *args, **kwargs: None,
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
     _mock_datauploader(monkeypatch)
@@ -764,11 +757,11 @@ def test_scrape_relationships_marks_scraping_account_done_after_success(monkeypa
     status_updates = []
     runner = _build_runner(monkeypatch)
     runner.accounts_client = SimpleNamespace(
-        list_accounts_by_status=lambda status: [
-            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
-        ] if status == 'scraping' else [],
-        update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
-            {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+        list_scraping_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
+        ] if status == 'need_scraping' else [],
+        update_scraping_account_status=lambda account_id, status='done': status_updates.append(
+            {'account_id': account_id, 'status': status}
         ),
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
@@ -798,7 +791,7 @@ def test_scrape_relationships_marks_scraping_account_done_after_success(monkeypa
 
     assert result == "success"
     assert status_updates == [
-        {'account_id': 'acct-1', 'status': 'done', 'assigned_to': '__NOT_SET__'}
+        {'account_id': 'acct-1', 'status': 'done'}
     ]
 
 
@@ -806,11 +799,11 @@ def test_scrape_relationships_leaves_scraping_account_unchanged_on_failure(monke
     status_updates = []
     runner = _build_runner(monkeypatch)
     runner.accounts_client = SimpleNamespace(
-        list_accounts_by_status=lambda status: [
-            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
-        ] if status == 'scraping' else [],
-        update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
-            {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+        list_scraping_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
+        ] if status == 'need_scraping' else [],
+        update_scraping_account_status=lambda account_id, status='done': status_updates.append(
+            {'account_id': account_id, 'status': status}
         ),
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
@@ -842,8 +835,8 @@ def test_scrape_relationships_fails_when_scraping_pool_is_empty(monkeypatch):
     logs = []
     runner = _build_runner(monkeypatch)
     runner.accounts_client = SimpleNamespace(
-        list_accounts_by_status=lambda status: [],
-        update_account_status=lambda *args, **kwargs: None,
+        list_scraping_accounts_by_status=lambda status: [],
+        update_scraping_account_status=lambda *args, **kwargs: None,
     )
     monkeypatch.setattr("python.runners.workflow.scrape_relationships.log", logs.append)
 
@@ -1023,13 +1016,8 @@ def test_scrape_relationships_both_mode_keeps_first_artifact_when_second_pass_fa
         {
             "kind": "followers",
             "artifactId": "artifact_followers",
-            "filterStats": {
-                "totalProcessed": 1,
-                "removed": 0,
-                "remaining": 1,
-            },
-            "uploaded": {"dev": 1},
-            "duplicates": {"dev": 0},
+            "localArtifactPath": "scrapes/node-both-failure_followers.json",
+            "imported": False,
         }
     ]
 
@@ -1038,11 +1026,11 @@ def test_scrape_relationships_both_mode_marks_account_done_only_after_final_pass
     status_updates = []
     runner = _build_runner(monkeypatch)
     runner.accounts_client = SimpleNamespace(
-        list_accounts_by_status=lambda status: [
-            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'scraping'},
-        ] if status == 'scraping' else [],
-        update_account_status=lambda account_id, status='subscribed', assigned_to='__NOT_SET__': status_updates.append(
-            {'account_id': account_id, 'status': status, 'assigned_to': assigned_to}
+        list_scraping_accounts_by_status=lambda status: [
+            {'id': 'acct-1', 'user_name': 'alpha', 'status': 'need_scraping'},
+        ] if status == 'need_scraping' else [],
+        update_scraping_account_status=lambda account_id, status='done': status_updates.append(
+            {'account_id': account_id, 'status': status}
         ),
     )
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
@@ -1072,5 +1060,5 @@ def test_scrape_relationships_both_mode_marks_account_done_only_after_final_pass
 
     assert result == "success"
     assert status_updates == [
-        {'account_id': 'acct-1', 'status': 'done', 'assigned_to': '__NOT_SET__'}
+        {'account_id': 'acct-1', 'status': 'done'}
     ]

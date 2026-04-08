@@ -2,6 +2,7 @@ import json
 import os
 import random
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
@@ -19,6 +20,44 @@ from python.core.storage.atomic import atomic_write_json
 def _project_root() -> str:
     here = os.path.abspath(os.path.dirname(__file__))
     return os.path.abspath(os.path.join(here, '..', '..', '..'))
+
+
+def _safe_path_fragment(value: Any, default: str) -> str:
+    raw = str(value or '').strip()
+    cleaned = ''.join(ch if ch.isalnum() else '_' for ch in raw)
+    cleaned = cleaned.strip('_')
+    return cleaned or default
+
+
+def _uploads_root() -> Path:
+    return Path(_project_root()) / 'data' / 'uploads'
+
+
+def _local_scrape_artifact_relative_path(
+    workflow_id: str,
+    node_id: str,
+    kind: str,
+    *,
+    now_ms: int | None = None,
+) -> str:
+    timestamp = int(now_ms if now_ms is not None else time.time() * 1000)
+    safe_workflow = _safe_path_fragment(workflow_id, 'workflow')
+    safe_node = _safe_path_fragment(node_id, 'node')
+    safe_kind = _safe_path_fragment(kind, 'followers')
+    return f'scrapes/{safe_workflow}/{safe_node}_{safe_kind}_{timestamp}.json'
+
+
+def _resolve_local_artifact_path(relative_path: str) -> Path:
+    cleaned = str(relative_path or '').strip().replace('\\', '/').lstrip('/')
+    if not cleaned:
+        raise RuntimeError('Local artifact path is required')
+    uploads_root = _uploads_root().resolve()
+    resolved = (uploads_root / Path(cleaned)).resolve()
+    try:
+        resolved.relative_to(uploads_root)
+    except ValueError as exc:
+        raise RuntimeError('Invalid local artifact path') from exc
+    return resolved
 
 
 def _workflow_headers() -> Dict[str, str]:
@@ -182,6 +221,25 @@ def _extract_users_from_payload(payload: Any) -> List[Any]:
         if isinstance(value, list):
             return value
     return []
+
+
+def _store_local_artifact_payload(relative_path: str, payload: Dict[str, Any]) -> str:
+    output_path = _resolve_local_artifact_path(relative_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(str(output_path), payload)
+    return relative_path
+
+
+def _load_users_from_local_artifact(relative_path: str) -> List[Any]:
+    input_path = _resolve_local_artifact_path(relative_path)
+    if not input_path.exists():
+        return []
+    try:
+        with input_path.open('r', encoding='utf-8') as fh:
+            payload = json.load(fh)
+    except Exception as exc:
+        raise RuntimeError(f'Failed to load local artifact payload for {relative_path}: {exc}') from exc
+    return _extract_users_from_payload(payload)
 
 
 def _store_artifact_payload(payload: Dict[str, Any]) -> str:

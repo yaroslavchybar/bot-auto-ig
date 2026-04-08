@@ -1,7 +1,9 @@
 """FastAPI REST API for CSV data upload and processing."""
 
 import csv
+import json
 import shutil
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -12,7 +14,15 @@ from pydantic import BaseModel
 
 from clean_data import detect_csv_separator
 from filter_instagram import filter_csv, filter_with_keywords, load_all_keyword_sets
-from convex_client import convex_mutation, convex_query, get_keywords, upsert_keywords, list_keywords, remove_keywords
+from convex_client import (
+    convex_mutation,
+    convex_query,
+    get_keywords,
+    insert_scraping_accounts_batch,
+    list_keywords,
+    remove_keywords,
+    upsert_keywords,
+)
 from scraping_tasks import (
     EXPORT_STORAGE_ID_KEYS,
     build_manifest_payload,
@@ -22,7 +32,7 @@ from scraping_tasks import (
     has_user_collection,
     normalize_task_row,
 )
-from uploader import extract_usernames_from_scraping_task_payload, upload_to_convex, upload_usernames_to_convex, upload_accounts_to_convex
+from uploader import extract_usernames_from_scraping_task_payload, upload_usernames_to_convex, upload_accounts_to_convex
 
 import requests
 
@@ -42,6 +52,33 @@ jobs: dict[str, dict[str, Any]] = {}
 
 UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_local_artifact_path(relative_path: str) -> Path:
+    cleaned = str(relative_path or "").strip().replace("\\", "/").lstrip("/")
+    if not cleaned:
+        raise HTTPException(status_code=400, detail="Task has no local artifact path")
+    uploads_root = UPLOAD_DIR.resolve()
+    resolved = (uploads_root / Path(cleaned)).resolve()
+    try:
+        resolved.relative_to(uploads_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid local artifact path") from exc
+    return resolved
+
+
+def _load_local_artifact_payload(relative_path: str) -> dict[str, Any]:
+    input_path = _resolve_local_artifact_path(relative_path)
+    if not input_path.exists():
+        raise HTTPException(status_code=404, detail=f"Local artifact file not found: {relative_path}")
+    try:
+        with input_path.open("r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to read local artifact file: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail=f"Invalid local artifact payload for {relative_path}")
+    return payload
 
 
 # ── Keywords endpoints ────────────────────────────────────────────────
@@ -217,29 +254,59 @@ def _extract_username_from_user(user):
     return ""
 
 
-def _filter_and_collect_accounts(users, keyword_sets):
-    """Filter users through keyword sets, return (kept_accounts, total, removed)."""
+def _build_scraping_archive_context(task: dict[str, Any]) -> dict[str, Any]:
+    return {}
+
+
+def _filter_and_collect_accounts(users, keyword_sets, archive_context: dict[str, Any] | None = None):
+    """Filter deduped users and optionally build archival rows."""
     total_processed = 0
     removed = 0
     kept = []
+    archived = []
+    seen = set()
+    now_ms = int(time.time() * 1000)
+
     for u in users:
-        total_processed += 1
         username = _extract_username_from_user(u)
-        fullname = _extract_fullname_from_user(u)
-        action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
-        if action == "remove":
-            removed += 1
-            continue
         clean_username = username.lstrip("@").strip()
         if not clean_username:
             continue
+
+        key = clean_username.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        total_processed += 1
+
+        # Skip private accounts
+        if isinstance(u, dict) and u.get("is_private") is True:
+            removed += 1
+            continue
+
+        fullname = _extract_fullname_from_user(u)
+        action, matched_name = filter_with_keywords(username, fullname, keyword_sets)
+
         entry = {"userName": clean_username}
         if fullname:
             entry["fullName"] = fullname
         if matched_name:
             entry["matchedName"] = matched_name
+
+        if archive_context is not None:
+            archived.append({
+                "userName": clean_username,
+                "status": "need_scraping",
+                "createdAt": now_ms,
+            })
+
+        if action == "remove":
+            removed += 1
+            continue
+
         kept.append(entry)
-    return kept, total_processed, removed
+
+    return kept, archived, total_processed, removed
 
 
 def _deduplicate_accounts(accounts):
@@ -263,6 +330,19 @@ def _upload_to_convex_envs(accounts, environments, status="available"):
         uploaded[out_env] = int(result.get("inserted", 0))
         duplicates[out_env] = int(result.get("skipped", 0))
     return uploaded, duplicates
+
+
+def _archive_scraping_accounts(accounts, env: str) -> dict[str, int]:
+    """Archive deduped scraping accounts into the scrapingAccounts table."""
+    if not accounts:
+        return {"inserted": 0, "skipped": 0}
+    result = insert_scraping_accounts_batch(accounts, env=env)
+    if result.get("status") != "success":
+        raise RuntimeError(result.get("errorMessage", "Unknown error"))
+    return {
+        "inserted": int(result.get("inserted", 0)),
+        "skipped": int(result.get("skipped", 0)),
+    }
 
 
 def _read_csv_as_user_dicts(input_path, sep):
@@ -298,11 +378,43 @@ def _load_manifest_payload(task: dict[str, Any], manifest_payload: dict[str, Any
     return build_manifest_payload(task, manifest_payload, chunk_payloads)
 
 
+def _finalize_local_artifact_import(task_id: str, env: str, local_artifact_path: str | None) -> None:
+    cleaned = str(local_artifact_path or "").strip()
+    if not cleaned:
+        convex_mutation("workflowArtifacts:setImported", {"id": task_id, "imported": True}, env=env)
+        return
+
+    file_path = _resolve_local_artifact_path(cleaned)
+    if not file_path.exists():
+        raise RuntimeError(f"Local artifact file not found: {cleaned}")
+
+    backup = file_path.read_bytes()
+    deleted_at = int(time.time() * 1000)
+    file_path.unlink()
+    try:
+        convex_mutation(
+            "workflowArtifacts:finalizeLocalImport",
+            {"id": task_id, "imported": True, "deletedAt": deleted_at},
+            env=env,
+        )
+    except Exception:
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_bytes(backup)
+        raise
+
+
 def _get_task_and_payload(task_id: str, env: str) -> tuple[dict[str, Any], dict[str, Any]]:
     task = convex_query("workflowArtifacts:getById", {"id": task_id}, env=env)
     if not task or not isinstance(task, dict):
         raise HTTPException(status_code=404, detail="Task not found")
     normalized_task = normalize_task_row(task)
+
+    local_artifact_path = str(task.get("localArtifactPath") or "").strip()
+    if local_artifact_path:
+        payload = _load_local_artifact_payload(local_artifact_path)
+        payload.setdefault("storageKind", "local")
+        payload.setdefault("localArtifactPath", local_artifact_path)
+        return normalized_task, payload
 
     primary_storage_ids: list[str] = []
     seen_storage_ids: set[str] = set()
@@ -439,24 +551,28 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
             users = extract_users_from_payload(payload)
 
         keyword_sets = load_all_keyword_sets(env=env)
-        kept_accounts, total_processed, removed = _filter_and_collect_accounts(users, keyword_sets)
-        unique_accounts = _deduplicate_accounts(kept_accounts)
+        kept_accounts, archived_accounts, total_processed, removed = _filter_and_collect_accounts(
+            users,
+            keyword_sets,
+            archive_context=_build_scraping_archive_context(task),
+        )
 
         uploaded: dict[str, int] = {}
         duplicates: dict[str, int] = {}
+        _archive_scraping_accounts(archived_accounts, env=env)
 
         if request.uploadToConvex:
             envs = [str(e).strip() for e in (request.environments or []) if str(e).strip()]
             if not envs:
                 raise HTTPException(status_code=400, detail="environments is required when uploadToConvex is true")
-            uploaded, duplicates = _upload_to_convex_envs(unique_accounts, envs, request.accountStatus)
-            convex_mutation("workflowArtifacts:setImported", {"id": task_id, "imported": True}, env=env)
+            uploaded, duplicates = _upload_to_convex_envs(kept_accounts, envs, request.accountStatus)
+            _finalize_local_artifact_import(task_id, env, task.get("localArtifactPath"))
 
         return {
             "status": "completed",
             "taskId": task_id,
             "env": env,
-            "usernamesExtracted": len(unique_accounts),
+            "usernamesExtracted": len(kept_accounts),
             "stats": {
                 "totalProcessed": total_processed,
                 "removed": removed,
@@ -480,15 +596,14 @@ async def process_workflow_scrape(request: DirectScrapeProcessRequest):
             raise HTTPException(status_code=400, detail="users must be an array")
 
         keyword_sets = load_all_keyword_sets(env=env)
-        kept_accounts, total_processed, removed = _filter_and_collect_accounts(users, keyword_sets)
-        unique_accounts = _deduplicate_accounts(kept_accounts)
+        kept_accounts, _archived_accounts, total_processed, removed = _filter_and_collect_accounts(users, keyword_sets)
 
         envs = [str(item).strip() for item in (request.environments or []) if str(item).strip()]
         if not envs:
             raise HTTPException(status_code=400, detail="environments is required")
 
         uploaded, duplicates = _upload_to_convex_envs(
-            unique_accounts,
+            kept_accounts,
             envs,
             request.accountStatus,
         )
@@ -621,8 +736,7 @@ async def process_csv(job_id: str, request: ProcessRequest):
         # Read CSV rows and apply filtering
         sep = detect_csv_separator(str(input_path))
         csv_users = _read_csv_as_user_dicts(input_path, sep)
-        kept_accounts, total_processed, removed_count = _filter_and_collect_accounts(csv_users, keyword_sets)
-        kept_accounts = _deduplicate_accounts(kept_accounts)
+        kept_accounts, _archived_accounts, total_processed, removed_count = _filter_and_collect_accounts(csv_users, keyword_sets)
 
         stats = {
             "total_processed": total_processed,

@@ -16,6 +16,8 @@ const workflowArtifactPaths = [
   '/api/workflow-artifacts/unimported',
   '/api/workflow-artifacts/upsert',
   '/api/workflow-artifacts/set-imported',
+  '/api/workflow-artifacts/set-local-artifact-deleted',
+  '/api/workflow-artifacts/finalize-local-import',
   '/api/workflow-artifacts/store-artifact',
   '/api/workflow-artifacts/storage-url',
 ];
@@ -114,6 +116,8 @@ function registerArtifactMutationRoutes(http: HttpRouter): void {
         storageId: body?.storageId ?? body?.storage_id,
         manifestStorageId: body?.manifestStorageId ?? body?.manifest_storage_id,
         exportStorageId: body?.exportStorageId ?? body?.export_storage_id,
+        localArtifactPath: body?.localArtifactPath ?? body?.local_artifact_path,
+        localArtifactDeletedAt: body?.localArtifactDeletedAt ?? body?.local_artifact_deleted_at,
         stats: body?.stats,
         metadata: body?.metadata,
       });
@@ -131,6 +135,39 @@ function registerArtifactMutationRoutes(http: HttpRouter): void {
       const row = await ctx.runMutation(internalApi.workflowArtifacts.setImportedInternal, {
         id: id as any,
         imported: Boolean(body?.imported),
+      });
+      return jsonResponse(row);
+    }),
+  });
+
+  http.route({
+    path: '/api/workflow-artifacts/set-local-artifact-deleted',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const id = body?.id;
+      if (!id) throw new ValidationError('id is required');
+      const deletedAt = Number(body?.deletedAt ?? body?.deleted_at ?? Date.now());
+      const row = await ctx.runMutation(internalApi.workflowArtifacts.setLocalArtifactDeletedInternal, {
+        id: id as any,
+        deletedAt,
+      });
+      return jsonResponse(row);
+    }),
+  });
+
+  http.route({
+    path: '/api/workflow-artifacts/finalize-local-import',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const id = body?.id;
+      if (!id) throw new ValidationError('id is required');
+      const deletedAt = Number(body?.deletedAt ?? body?.deleted_at ?? Date.now());
+      const row = await ctx.runMutation(internalApi.workflowArtifacts.finalizeLocalImportInternal, {
+        id: id as any,
+        imported: Boolean(body?.imported ?? true),
+        deletedAt,
       });
       return jsonResponse(row);
     }),

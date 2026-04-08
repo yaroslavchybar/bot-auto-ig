@@ -13,6 +13,7 @@
 - `instagramAccounts.ts`
 - `messageTemplates.ts`
 - `keywords.ts`
+- `scrapingAccounts.ts`
 - `workflowArtifacts.ts`
 - `workflows.ts`
 - `http.ts`
@@ -30,13 +31,19 @@ From schema:
 - `instagramAccounts`
 - `messageTemplates`
 - `workflowArtifacts`
+- `scrapingAccounts`
 - `workflows`
 - `keywords`
+
+`workflowArtifacts` can now represent either Convex-storage-backed exports or host-local workflow scrape payloads queued for manual import. Local scrape queue rows use `localArtifactPath` to reference the shared `data/uploads/scrapes/` file and `localArtifactDeletedAt` to record successful cleanup after manual processing.
+
+`scrapingAccounts` stores deduplicated Instagram usernames with a scraping status (`need_scraping` or `done`). Each row contains only `userName`, `status`, and `createdAt`.
 
 ## HTTP Actions
 
 - Exposed under `/api/*` on `.convex.site` deployment host.
 - Supports server/python interoperability for profile/list/account/template/workflow/workflow-artifact operations.
+- Supports server/python interoperability for profile/list/account/template/workflow/workflow-artifact operations plus scrape-account archive writes.
 - Every HTTP action route requires `INTERNAL_API_KEY`.
 - Missing `INTERNAL_API_KEY` is a configuration error and the HTTP surface fails closed rather than becoming public.
 
@@ -88,5 +95,6 @@ Keep `auth.config.ts` aligned with the active Clerk deployment domain so Convex 
 - `convex/instagramAccounts.ts`
 - `convex/messageTemplates.ts`
 - `convex/keywords.ts`
+- `convex/scrapingAccounts.ts`
 - `convex/workflowArtifacts.ts`
 - `convex/workflows.ts`

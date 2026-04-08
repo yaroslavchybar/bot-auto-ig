@@ -270,7 +270,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 		.query("instagramAccounts")
 		.withIndex("by_assignedTo", (q: any) => q.eq("assignedTo", existing._id))
 		.collect();
-	await Promise.all(accounts.map((a: any) => ctx.db.patch(a._id, { assignedTo: undefined })));
+	await Promise.all(accounts.map((a: any) => ctx.db.patch(a._id, { assignedTo: undefined, status: "available" })));
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -282,7 +282,7 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
 		.query("instagramAccounts")
 		.withIndex("by_assignedTo", (q: any) => q.eq("assignedTo", profileId))
 		.collect();
-	await Promise.all(accounts.map((a: any) => ctx.db.patch(a._id, { assignedTo: undefined })));
+	await Promise.all(accounts.map((a: any) => ctx.db.patch(a._id, { assignedTo: undefined, status: "available" })));
 	await ctx.db.delete(profileId);
 	return true;
 }

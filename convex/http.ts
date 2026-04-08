@@ -4,6 +4,7 @@ import { registerKeywordRoutes } from './httpRoutes/keywords';
 import { registerListRoutes } from './httpRoutes/lists';
 import { registerMessageTemplateRoutes } from './httpRoutes/messageTemplates';
 import { registerProfileRoutes } from './httpRoutes/profiles';
+import { registerScrapingAccountRoutes } from './httpRoutes/scrapingAccounts';
 import { registerPreflight } from './httpRoutes/shared';
 import { registerWorkflowArtifactRoutes } from './httpRoutes/workflowArtifacts';
 import { registerWorkflowRoutes } from './httpRoutes/workflows';
@@ -19,6 +20,7 @@ registerListRoutes(http);
 registerKeywordRoutes(http);
 registerMessageTemplateRoutes(http);
 registerInstagramAccountRoutes(http);
+registerScrapingAccountRoutes(http);
 registerWorkflowRoutes(http);
 registerWorkflowArtifactRoutes(http);
 

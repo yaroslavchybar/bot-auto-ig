@@ -185,6 +185,9 @@ def _mark_direct_message_target(client, target: Dict, log, behavior: Dict) -> No
     username = target.get('user_name')
     if not account_id:
         return
+    current_status = str(target.get('status') or '').strip().lower()
+    if current_status == 'subscribed':
+        return
     try:
         client.update_account_status(account_id, status=status)
         log(f'{username}: status updated to {status}')

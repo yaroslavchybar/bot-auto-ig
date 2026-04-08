@@ -19,6 +19,23 @@ def _viewport_bounds(page, default_width: int = 1280, default_height: int = 720)
     return default_width, default_height
 
 
+def _effective_viewport_bounds(page, default_width: int = 1280, default_height: int = 720) -> tuple[int, int]:
+    viewport_width, viewport_height = _viewport_bounds(
+        page,
+        default_width=default_width,
+        default_height=default_height,
+    )
+    try:
+        inner_width = int(page.evaluate("window.innerWidth") or viewport_width)
+    except Exception:
+        inner_width = viewport_width
+    try:
+        inner_height = int(page.evaluate("window.innerHeight") or viewport_height)
+    except Exception:
+        inner_height = viewport_height
+    return min(viewport_width, inner_width), min(viewport_height, inner_height)
+
+
 def _pick_spawn_coordinate(size: int, preferred_margin: int = 200, edge_margin: int = 15) -> int:
     size = max(int(size), edge_margin)
     safe_max = max(edge_margin, size - edge_margin)
@@ -32,22 +49,43 @@ def safe_mouse_move(page, target_x: int | float, target_y: int | float, margin_x
     """
     Safely move the mouse ensuring it does not hit the window boundaries, preventing the cursor from getting stuck.
     """
+    safe_x = int(target_x)
+    safe_y = int(target_y)
     try:
-        viewport = page.viewport_size
-        if viewport:
-            vw = viewport.get("width", 1366)
-            vh = viewport.get("height", 768)
-        else:
-            vw = 1366
-            vh = 768
-            
+        vw, vh = _effective_viewport_bounds(page, default_width=1366, default_height=768)
         safe_x = max(margin_x, min(int(target_x), vw - margin_x))
         safe_y = max(margin_y, min(int(target_y), vh - margin_y))
-        
+    except Exception:
+        pass
+
+    try:
         page.mouse.move(safe_x, safe_y, **kwargs)
-    except Exception as e:
-        # Fallback
-        page.mouse.move(int(target_x), int(target_y), **kwargs)
+    except Exception:
+        page.mouse.move(safe_x, safe_y, **kwargs)
+    return safe_x, safe_y
+
+
+def safe_mouse_click(
+    page,
+    target_x: int | float,
+    target_y: int | float,
+    margin_x: int = 15,
+    margin_y: int = 15,
+    click_delay_ms: int = 0,
+    **kwargs,
+):
+    safe_x, safe_y = safe_mouse_move(
+        page,
+        target_x,
+        target_y,
+        margin_x=margin_x,
+        margin_y=margin_y,
+    )
+    click_kwargs = dict(kwargs)
+    if click_delay_ms > 0:
+        click_kwargs["delay"] = int(click_delay_ms)
+    page.mouse.click(safe_x, safe_y, **click_kwargs)
+    return safe_x, safe_y
 
 
 def seed_mouse_cursor(page, preferred_margin: int = 200, edge_margin: int = 15) -> tuple[int, int] | None:

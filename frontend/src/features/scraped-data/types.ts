@@ -17,6 +17,8 @@ export type WorkflowArtifact = {
   storageId?: Id<'_storage'> | null
   manifestStorageId?: Id<'_storage'> | null
   exportStorageId?: Id<'_storage'> | null
+  localArtifactPath?: string | null
+  localArtifactDeletedAt?: number | null
   stats?: {
     scraped?: number
     deduped?: number

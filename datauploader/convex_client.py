@@ -111,6 +111,20 @@ def convex_mutation(path: str, args: dict[str, Any] | None = None, env: str = "d
             body=args,
             env=env,
         )
+    if path == "workflowArtifacts:setLocalArtifactDeleted":
+        return convex_internal_fetch(
+            "/api/workflow-artifacts/set-local-artifact-deleted",
+            method="POST",
+            body=args,
+            env=env,
+        )
+    if path == "workflowArtifacts:finalizeLocalImport":
+        return convex_internal_fetch(
+            "/api/workflow-artifacts/finalize-local-import",
+            method="POST",
+            body=args,
+            env=env,
+        )
     if path == "instagramAccounts:insert":
         return convex_internal_fetch(
             "/api/instagram-accounts",
@@ -121,6 +135,13 @@ def convex_mutation(path: str, args: dict[str, Any] | None = None, env: str = "d
     if path == "instagramAccounts:insertBatch":
         return convex_internal_fetch(
             "/api/instagram-accounts/batch",
+            method="POST",
+            body=args,
+            env=env,
+        )
+    if path == "scrapingAccounts:insertBatch":
+        return convex_internal_fetch(
+            "/api/scraping-accounts/batch",
             method="POST",
             body=args,
             env=env,
@@ -177,6 +198,15 @@ def insert_accounts_batch(accounts: list[dict[str, Any]], env: str = "dev") -> d
     """
     try:
         value = convex_mutation("instagramAccounts:insertBatch", {"accounts": accounts}, env=env)
+        return {"status": "success", "inserted": value.get("inserted", 0), "skipped": value.get("skipped", 0)}
+    except Exception as e:
+        return {"status": "error", "errorMessage": str(e)}
+
+
+def insert_scraping_accounts_batch(accounts: list[dict[str, Any]], env: str = "dev") -> dict:
+    """Insert multiple archived scraping accounts using Convex HTTP API mutation."""
+    try:
+        value = convex_mutation("scrapingAccounts:insertBatch", {"accounts": accounts}, env=env)
         return {"status": "success", "inserted": value.get("inserted", 0), "skipped": value.get("skipped", 0)}
     except Exception as e:
         return {"status": "error", "errorMessage": str(e)}

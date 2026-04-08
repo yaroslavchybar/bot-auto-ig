@@ -493,6 +493,8 @@ export type DbWorkflowArtifactRow = Record<string, any> & {
     storageId?: string | null
     manifestStorageId?: string | null
     exportStorageId?: string | null
+    localArtifactPath?: string | null
+    localArtifactDeletedAt?: number | null
     stats?: ScrapingTaskStats | null
 }
 

@@ -134,7 +134,7 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
       const url = new URL(request.url);
       const status = url.searchParams.get('status') || '';
       const accounts = await ctx.runQuery(internal.instagramAccounts.listByStatus, {
-        status,
+        status: status as any,
       });
       return jsonResponse(accounts.map(mapAccountToPython));
     }),

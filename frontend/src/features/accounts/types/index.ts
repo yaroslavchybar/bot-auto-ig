@@ -45,6 +45,7 @@ export interface ScrapingTaskRow {
   targetUsername?: string
   status?: string
   storageId?: string
+  localArtifactPath?: string
   imported?: boolean
   createdAt?: number
   updatedAt?: number

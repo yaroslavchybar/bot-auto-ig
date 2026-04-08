@@ -100,7 +100,7 @@ test('filters message targets by cooldown window', async () => {
   ])
 })
 
-test('lists accounts by status and preserves scraping updates', async () => {
+test('lists accounts by status and preserves status updates', async () => {
   const t = createConvexTest()
   const profile = await seedProfile(t, { name: 'Profile C' })
   const now = Date.UTC(2026, 2, 12, 14, 0, 0)
@@ -116,7 +116,7 @@ test('lists accounts by status and preserves scraping updates', async () => {
 
   await t.mutation(internal.instagramAccounts.updateStatus, {
     accountId: created.id,
-    status: 'scraping',
+    status: 'assigned',
     assignedTo: profile!._id,
   })
   await insertDoc(t, 'instagramAccounts', {
@@ -127,14 +127,14 @@ test('lists accounts by status and preserves scraping updates', async () => {
     createdAt: now - 4_000,
   })
 
-  const scrapingAccounts = await t.query(internal.instagramAccounts.listByStatus, {
-    status: 'scraping',
+  const assignedAccounts = await t.query(internal.instagramAccounts.listByStatus, {
+    status: 'assigned',
   })
 
-  expect(scrapingAccounts).toHaveLength(1)
-  expect(scrapingAccounts[0]).toMatchObject({
+  expect(assignedAccounts).toHaveLength(1)
+  expect(assignedAccounts[0]).toMatchObject({
     userName: 'scrape-me',
-    status: 'scraping',
+    status: 'assigned',
     assignedTo: profile!._id,
   })
 })

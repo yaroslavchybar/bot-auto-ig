@@ -23,7 +23,7 @@ function TaskDetailHeader() {
       <div>
         <h3 className="text-lg font-semibold">Artifact details</h3>
         <p className="text-subtle-copy text-sm">
-          Select a completed workflow scrape artifact to review and import.
+          Select a completed workflow scrape artifact to review, filter, and import.
         </p>
       </div>
     </div>
@@ -34,7 +34,7 @@ function TaskDetailPlaceholder() {
   return (
     <div className="text-subtle-copy border-line mt-5 rounded-2xl border border-dashed px-4 py-10 text-center text-sm">
       Pick an artifact from the list to inspect the detected account data
-      before importing.
+      before filtering and importing.
     </div>
   )
 }
@@ -161,7 +161,7 @@ function TaskDetailContent({ accounts }: AccountsTaskDetailsProps) {
             Processing
           </>
         ) : (
-          'Process & Upload'
+          'Filter & Import'
         )}
       </Button>
     </div>

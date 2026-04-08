@@ -39,7 +39,7 @@ export const scrapeRelationships: ActivityDefinition = {
       label: 'Use Account Usernames',
       default: false,
       helpText:
-        'Use all instagramAccounts currently in status "scraping" as runtime targets and mark each one "done" after a successful scrape. When enabled, the manual target list is ignored.',
+        'Use all scrapingAccounts currently in status "need_scraping" as runtime targets and mark each one "done" after a successful scrape. When enabled, the manual target list is ignored.',
       group: 'Targets',
     },
     {

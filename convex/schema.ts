@@ -40,7 +40,14 @@ export default defineSchema({
 		matchedName: v.optional(v.string()),
 		createdAt: v.number(),
 		assignedTo: v.optional(v.id("profiles")),
-		status: v.optional(v.string()),
+		status: v.optional(v.union(
+			v.literal("available"),
+			v.literal("assigned"),
+			v.literal("subscribed"),
+			v.literal("unsubscribed"),
+			v.literal("skipped"),
+			v.literal("done"),
+		)),
 		message: v.boolean(),
 		subscribedAt: v.optional(v.number()),
 		lastMessagedAt: v.optional(v.number()),
@@ -49,6 +56,14 @@ export default defineSchema({
 		.index("by_assignedTo", ["assignedTo"])
 		.index("by_status", ["status"])
 		.index("by_assignedTo_status", ["assignedTo", "status"]),
+
+	scrapingAccounts: defineTable({
+		userName: v.string(),
+		status: v.union(v.literal("need_scraping"), v.literal("done")),
+		createdAt: v.number(),
+	})
+		.index("by_userName", ["userName"])
+		.index("by_status", ["status"]),
 
 	messageTemplates: defineTable({
 		kind: v.string(),
@@ -142,6 +157,8 @@ export default defineSchema({
 		storageId: v.optional(v.id("_storage")),
 		manifestStorageId: v.optional(v.id("_storage")),
 		exportStorageId: v.optional(v.id("_storage")),
+		localArtifactPath: v.optional(v.string()),
+		localArtifactDeletedAt: v.optional(v.number()),
 		stats: v.optional(v.object({
 			scraped: v.number(),
 			deduped: v.number(),

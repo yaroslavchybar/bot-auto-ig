@@ -29,27 +29,20 @@ def _mock_datauploader(
 ):
     captured = payloads if payloads is not None else []
 
-    def fake_post(path, payload):
-        assert path == "/workflow-runs/process-scrape"
-        captured.append(payload)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._local_scrape_artifact_relative_path",
+        lambda workflow_id, node_id, kind, now_ms=None: f"scrapes/{node_id}_{kind}.json",
+    )
+
+    def fake_store(relative_path, payload):
         if error is not None:
             raise RuntimeError(error)
-        users = payload.get("users") if isinstance(payload.get("users"), list) else []
-        return {
-            "status": "completed",
-            "stats": stats
-            or {
-                "totalProcessed": len(users),
-                "removed": 0,
-                "remaining": len(users),
-            },
-            "uploaded": uploaded or {"dev": len(users)},
-            "duplicates": duplicates or {"dev": 0},
-        }
+        captured.append({"localArtifactPath": relative_path, **payload})
+        return relative_path
 
     monkeypatch.setattr(
-        "python.runners.workflow.scrape_relationships._datauploader_post_json",
-        fake_post,
+        "python.runners.workflow.scrape_relationships._store_local_artifact_payload",
+        fake_store,
     )
     return captured
 
@@ -920,11 +913,13 @@ def test_scrape_relationships_complete_active_kind_marks_completed_and_upserts_h
 
     assert processed_payloads[0]["users"] == executor.merged_users
     assert upsert_payloads[0]["path"] == "/api/workflow-artifacts/upsert"
-    assert upsert_payloads[0]["payload"]["imported"] is True
-    assert upsert_payloads[0]["payload"]["metadata"]["processingMode"] == "direct_datauploader"
+    assert upsert_payloads[0]["payload"]["imported"] is False
+    assert upsert_payloads[0]["payload"]["metadata"]["processingMode"] == "manual_queue"
+    assert upsert_payloads[0]["payload"]["localArtifactPath"] == "scrapes/node-complete-success_followers.json"
     assert update_calls[-1]["patch"]["status"] == "completed"
     assert update_calls[-1]["patch"]["done"] is True
     assert update_calls[-1]["patch"]["artifactStorageId"] is None
+    assert update_calls[-1]["patch"]["localArtifactPath"] == "scrapes/node-complete-success_followers.json"
     assert update_calls[-1]["patch"]["artifactId"] == "artifact_complete_success"
     assert update_calls[-1]["patch"]["artifactUpsertError"] is None
     assert update_calls[-1]["patch"]["resumeSnapshotPath"] is None

@@ -483,7 +483,7 @@ def test_run_messaging_flow_returns_zero_when_message_texts_missing():
     log.assert_called_with('No message texts for sending.')
 
 
-def test_run_messaging_flow_marks_direct_message_targets_as_scraping_when_configured(monkeypatch):
+def test_run_messaging_flow_marks_direct_message_targets_as_done_when_configured(monkeypatch):
     page = MagicMock()
     page.keyboard = MagicMock()
     log = MagicMock()
@@ -506,20 +506,20 @@ def test_run_messaging_flow_marks_direct_message_targets_as_scraping_when_config
 
     processed = run_messaging_flow(
         page=page,
-        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        targets=[{'id': 'acct-1', 'user_name': 'demo', 'status': 'assigned'}],
         message_texts=['Hi'],
         log=log,
         should_stop=lambda: False,
         client=client,
-        behavior_config={'direct_message_success_status': 'scraping'},
+        behavior_config={'direct_message_success_status': 'done'},
     )
 
     assert processed == 1
-    client.update_account_status.assert_called_once_with('acct-1', status='scraping')
+    client.update_account_status.assert_called_once_with('acct-1', status='done')
     assert mark_sent_calls == ['demo']
 
 
-def test_run_messaging_flow_does_not_mark_scraping_after_follow_fallback(monkeypatch):
+def test_run_messaging_flow_does_not_mark_done_after_follow_fallback(monkeypatch):
     page = MagicMock()
     page.keyboard = MagicMock()
     log = MagicMock()
@@ -547,12 +547,12 @@ def test_run_messaging_flow_does_not_mark_scraping_after_follow_fallback(monkeyp
 
     processed = run_messaging_flow(
         page=page,
-        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        targets=[{'id': 'acct-1', 'user_name': 'demo', 'status': 'assigned'}],
         message_texts=['Hi'],
         log=log,
         should_stop=lambda: False,
         client=client,
-        behavior_config={'direct_message_success_status': 'scraping'},
+        behavior_config={'direct_message_success_status': 'done'},
     )
 
     assert processed == 1
@@ -595,7 +595,7 @@ def test_run_messaging_flow_default_behavior_does_not_mark_direct_message_target
     assert mark_sent_calls == ['demo']
 
 
-def test_run_messaging_flow_does_not_mark_scraping_when_send_fails(monkeypatch):
+def test_run_messaging_flow_does_not_mark_done_when_send_fails(monkeypatch):
     page = MagicMock()
     page.keyboard = MagicMock()
     log = MagicMock()
@@ -610,12 +610,12 @@ def test_run_messaging_flow_does_not_mark_scraping_when_send_fails(monkeypatch):
 
     processed = run_messaging_flow(
         page=page,
-        targets=[{'id': 'acct-1', 'user_name': 'demo'}],
+        targets=[{'id': 'acct-1', 'user_name': 'demo', 'status': 'assigned'}],
         message_texts=['Hi'],
         log=log,
         should_stop=lambda: False,
         client=client,
-        behavior_config={'direct_message_success_status': 'scraping'},
+        behavior_config={'direct_message_success_status': 'done'},
     )
 
     assert processed == 0

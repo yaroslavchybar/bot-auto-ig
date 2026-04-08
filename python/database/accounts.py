@@ -23,6 +23,7 @@ class InstagramAccountsClient:
             )
 
         self.accounts_url = f"{PROJECT_URL}/api/instagram-accounts"
+        self.scraping_accounts_url = f"{PROJECT_URL}/api/scraping-accounts"
         self.profiles_url = f"{PROJECT_URL}/api/profiles"
         self.headers = {
             "Content-Type": "application/json",
@@ -90,11 +91,35 @@ class InstagramAccountsClient:
         return self._request("GET", f"{self.accounts_url}/to-message", params=params) or []
 
     def list_accounts_by_status(self, status: str) -> List[Dict]:
-        """Fetch accounts with the given status."""
+        """Fetch instagramAccounts with the given status."""
         params = {
             "status": status,
         }
         return self._request("GET", f"{self.accounts_url}/by-status", params=params) or []
+
+    # ----- Scraping accounts helpers -----------------------------------------
+    def list_scraping_accounts_by_status(self, status: str) -> List[Dict]:
+        """Fetch scrapingAccounts with the given status."""
+        params = {"status": status}
+        return self._request("GET", f"{self.scraping_accounts_url}/by-status", params=params) or []
+
+    def insert_scraping_account(self, user_name: str, status: str = "need_scraping") -> Optional[Dict]:
+        """Insert a single scraping account."""
+        result = self._request(
+            "POST",
+            f"{self.scraping_accounts_url}/batch",
+            data={"accounts": [{"userName": user_name, "status": status}]},
+        )
+        return result if isinstance(result, dict) else None
+
+    def update_scraping_account_status(self, account_id: str, status: str = "done") -> Optional[Dict]:
+        """Update the status of a scraping account."""
+        result = self._request(
+            "POST",
+            f"{self.scraping_accounts_url}/update-status",
+            data={"id": account_id, "status": status},
+        )
+        return result if isinstance(result, dict) else None
 
     def update_account_status(
         self,
@@ -106,9 +131,6 @@ class InstagramAccountsClient:
         Update account status (default -> 'subscribed').
         Optionally update assigned_to (e.g., set to None to unassign).
         """
-        if status == "done" and assigned_to == "__NOT_SET__":
-            assigned_to = None
-
         payload = {"status": status}
         if (status or "").lower() in ("subscribed"):
             payload["subscribed_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()

@@ -262,7 +262,7 @@ def test_workflow_unfollow_activity_fails_when_status_sync_fails(monkeypatch):
     assert logs == ['Failed to save unfollow status for @target: db down', 'Error processing target: db down']
 
 
-def test_workflow_unfollow_activity_marks_targets_as_scraping(monkeypatch):
+def test_workflow_unfollow_activity_marks_targets_as_done(monkeypatch):
     status_updates = []
 
     def _fake_unfollow_usernames(**kwargs):
@@ -292,11 +292,11 @@ def test_workflow_unfollow_activity_marks_targets_as_scraping(monkeypatch):
 
     assert result == 'success'
     assert status_updates == [
-        {'account_id': 'account-1', 'status': 'scraping', 'assigned_to': '__NOT_SET__'}
+        {'account_id': 'account-1', 'status': 'done', 'assigned_to': '__NOT_SET__'}
     ]
 
 
-def test_workflow_send_dm_activity_requests_scraping_status_for_direct_messages(monkeypatch):
+def test_workflow_send_dm_activity_requests_done_status_for_direct_messages(monkeypatch):
     captured = {}
 
     monkeypatch.setattr('python.runners.workflow.activity_dispatch.send_messages', lambda **kwargs: captured.update(kwargs))
@@ -319,7 +319,7 @@ def test_workflow_send_dm_activity_requests_scraping_status_for_direct_messages(
     )
 
     assert result == 'success'
-    assert captured['behavior_config']['direct_message_success_status'] == 'scraping'
+    assert captured['behavior_config']['direct_message_success_status'] == 'done'
 
 
 def test_workflow_fetch_profiles_ignores_redirect_responses(monkeypatch):

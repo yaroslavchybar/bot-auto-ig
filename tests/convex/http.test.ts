@@ -394,3 +394,102 @@ test('lists and updates workflow artifacts through internal-key routes', async (
     imported: true,
   })
 })
+
+test('finalizes local workflow artifacts through the internal-key route', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Finalize' })
+  const artifactId = await t.run(async (ctx) =>
+    await ctx.db.insert('workflowArtifacts', {
+      name: 'Queued Local Artifact',
+      workflowId: workflow!._id,
+      workflowName: workflow!.name,
+      nodeId: 'node-local-finalize',
+      kind: 'followers',
+      targets: ['target-a'],
+      targetUsername: 'target-a',
+      status: 'completed',
+      imported: false,
+      localArtifactPath: 'scrapes/local-finalize.json',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }),
+  )
+
+  const response = await t.fetch('/api/workflow-artifacts/finalize-local-import', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      id: artifactId,
+      imported: true,
+      deletedAt: 1234,
+    }),
+  })
+
+  expect(response.status).toBe(200)
+  await expect(response.json()).resolves.toMatchObject({
+    _id: artifactId,
+    imported: true,
+    localArtifactDeletedAt: 1234,
+  })
+})
+
+test('rejects invalid deletedAt values through workflow artifact internal-key routes', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Invalid Route' })
+  const artifactId = await t.run(async (ctx) =>
+    await ctx.db.insert('workflowArtifacts', {
+      name: 'Queued Local Artifact',
+      workflowId: workflow!._id,
+      workflowName: workflow!.name,
+      nodeId: 'node-local-invalid',
+      kind: 'followers',
+      targets: ['target-a'],
+      targetUsername: 'target-a',
+      status: 'completed',
+      imported: false,
+      localArtifactPath: 'scrapes/local-invalid.json',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }),
+  )
+
+  const setDeletedResponse = await t.fetch('/api/workflow-artifacts/set-local-artifact-deleted', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      id: artifactId,
+      deletedAt: 'NaN',
+    }),
+  })
+  const finalizeResponse = await t.fetch('/api/workflow-artifacts/finalize-local-import', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      id: artifactId,
+      imported: true,
+      deletedAt: 'Infinity',
+    }),
+  })
+
+  expect(setDeletedResponse.status).toBe(400)
+  await expect(setDeletedResponse.json()).resolves.toEqual({
+    error: 'deletedAt must be a finite number',
+  })
+  expect(finalizeResponse.status).toBe(400)
+  await expect(finalizeResponse.json()).resolves.toEqual({
+    error: 'deletedAt must be a finite number',
+  })
+})

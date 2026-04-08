@@ -7,14 +7,24 @@ class DummyClient:
     def __init__(self):
         self.increment_calls = []
         self.status_updates = []
+        self.scraping_status_updates = []
+        self.scraping_inserts = []
         self.accounts_by_status = []
+        self.scraping_accounts_by_status = []
 
     def increment_daily_scraping_used(self, name, amount):
         self.increment_calls.append((name, amount))
         return True
 
     def list_accounts_by_status(self, status):
-        return list(self.accounts_by_status) if status == 'scraping' else []
+        return list(self.accounts_by_status)
+
+    def list_scraping_accounts_by_status(self, status):
+        return list(self.scraping_accounts_by_status) if status == 'need_scraping' else []
+
+    def insert_scraping_account(self, user_name, status='need_scraping'):
+        self.scraping_inserts.append({'user_name': user_name, 'status': status})
+        return {'inserted': 1, 'skipped': 0}
 
     def update_account_status(self, account_id, status='subscribed', assigned_to='__NOT_SET__'):
         self.status_updates.append(
@@ -22,6 +32,15 @@ class DummyClient:
                 'account_id': account_id,
                 'status': status,
                 'assigned_to': assigned_to,
+            }
+        )
+        return True
+
+    def update_scraping_account_status(self, account_id, status='done'):
+        self.scraping_status_updates.append(
+            {
+                'account_id': account_id,
+                'status': status,
             }
         )
         return True

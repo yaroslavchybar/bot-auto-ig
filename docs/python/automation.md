@@ -23,8 +23,8 @@
 - Workflow profile selection uses the cooldown-aware Convex profiles availability route when profile reopen cooldown is enabled.
 - Workflow DM targeting uses `instagramAccounts.lastMessagedAt` plus node/runtime cooldown settings to skip recently messaged accounts.
 - Workflow `send_dm` can move a target to `instagramAccounts.status = "scraping"` after a successful DM only when the message was sent without using the follow-first fallback; message tracking still updates `message` and `lastMessagedAt`.
-- Workflow scrape nodes execute in the logged-in browser context, persist retry/resume state in workflow `nodeStates`, and hand completed scrape results directly to the data uploader service for filtering and `instagramAccounts` import.
-- Workflow scrape nodes still write lightweight `workflowArtifacts` history rows for observability, but direct-processed runs do not upload raw scrape payloads to Convex storage and may not expose downloadable data files.
+- Workflow scrape nodes execute in the logged-in browser context, persist retry/resume state in workflow `nodeStates`, and queue completed scrape results for manual processing instead of filtering/uploading immediately.
+- Completed workflow scrape nodes save deduped raw payloads under the shared `data/uploads/scrapes/` tree, then write lightweight `workflowArtifacts` history rows with `localArtifactPath` so the Accounts page can review and import them later.
 - Workflow scrape nodes can run `followers`, `following`, or `both`; `both` queues a full followers pass first, then a following pass, and records separate history rows per relationship kind.
 - Workflow scrape nodes can cap per-target output separately for followers and following. `followersMaxToScrape` and `followingMaxToScrape` use `0` as unlimited; in `both` mode each pass enforces its own cap independently.
 - Workflow scrape nodes can optionally replace manual target usernames with the global pool of `instagramAccounts` currently in status `scraping`; successful scrape completion moves those target accounts to `done`, while failed or interrupted targets remain `scraping`.
@@ -61,7 +61,7 @@ python -m pytest python/tests -q
 ## Environment Notes
 
 - Convex endpoint/key settings come from `python/core/config.py`, which loads `.env` when `python-dotenv` is available and reuses `INTERNAL_API_KEY` for protected HTTP actions.
-- Direct scrape processing reads `DATAUPLOADER_URL` (falls back to `VITE_DATAUPLOADER_URL`, then `http://localhost:3002`), `DATAUPLOADER_ENV`, `DATAUPLOADER_DEST_ENVIRONMENTS`, and `DATAUPLOADER_ACCOUNT_STATUS` from `python/core/config.py`.
+- Workflow scrape queueing still reads `DATAUPLOADER_ENV`, `DATAUPLOADER_DEST_ENVIRONMENTS`, and `DATAUPLOADER_ACCOUNT_STATUS` from `python/core/config.py` for artifact metadata compatibility; the runtime no longer posts completed scrape users to `DATAUPLOADER_URL` during node completion.
 - Feed debug behavior reads `FEED_DEBUG_MOUSE` in feed scrolling modules.
 - Browser bootstrap seeds the cursor to a randomized viewport-safe start position before the first navigation so sessions do not visibly begin from a fixed viewport edge.
 - Shared browser bootstrap preloads normalized profile cookies from Convex before the first Instagram navigation and writes the latest cookies back on successful session updates and clean shutdown.

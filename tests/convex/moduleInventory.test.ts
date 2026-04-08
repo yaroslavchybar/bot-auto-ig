@@ -13,6 +13,7 @@ const expectedModules = [
   'lists.ts',
   'messageTemplates.ts',
   'schema.ts',
+  'scrapingAccounts.ts',
   'workflowArtifacts.ts',
 ]
 

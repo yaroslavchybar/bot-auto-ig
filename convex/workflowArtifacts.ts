@@ -62,6 +62,13 @@ function defaultStats(existing?: Partial<ArtifactStats> | null): ArtifactStats {
   }
 }
 
+function normalizeFiniteTimestamp(value: number, fieldName = 'deletedAt'): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${fieldName} must be a finite number`)
+  }
+  return Math.max(0, Math.floor(value))
+}
+
 async function getArtifact(ctx: any, id: any) {
   return (await ctx.db.get(id)) ?? null
 }
@@ -96,7 +103,7 @@ async function listUnimportedArtifacts(ctx: any, kindRaw?: unknown) {
   const filtered = rows.filter((row: any) => {
     if (row.imported === true) return false
     if (cleanString(row.status || 'completed').toLowerCase() !== 'completed') return false
-    if (!row.storageId && !row.exportStorageId && !row.manifestStorageId) return false
+    if (!row.storageId && !row.exportStorageId && !row.manifestStorageId && !cleanString(row.localArtifactPath)) return false
     if (kindRaw === undefined || kindRaw === null || cleanString(kindRaw) === '') return true
     return normalizeKind(row.kind) === normalizeKind(kindRaw)
   })
@@ -122,6 +129,8 @@ async function upsertArtifactRow(
     storageId?: any
     manifestStorageId?: any
     exportStorageId?: any
+    localArtifactPath?: string
+    localArtifactDeletedAt?: number
     imported?: boolean
     stats?: Partial<ArtifactStats>
     metadata?: any
@@ -157,6 +166,11 @@ async function upsertArtifactRow(
     storageId: args.storageId,
     manifestStorageId: args.manifestStorageId,
     exportStorageId: args.exportStorageId,
+    localArtifactPath: cleanString(args.localArtifactPath) || undefined,
+    localArtifactDeletedAt:
+      typeof args.localArtifactDeletedAt === 'number' && Number.isFinite(args.localArtifactDeletedAt)
+        ? Math.max(0, Math.floor(args.localArtifactDeletedAt))
+        : undefined,
     stats: defaultStats(args.stats),
     metadata: args.metadata,
     createdAt: now,
@@ -261,6 +275,8 @@ export const upsert = mutation({
     storageId: v.optional(v.id('_storage')),
     manifestStorageId: v.optional(v.id('_storage')),
     exportStorageId: v.optional(v.id('_storage')),
+    localArtifactPath: v.optional(v.string()),
+    localArtifactDeletedAt: v.optional(v.number()),
     imported: v.optional(v.boolean()),
     stats: v.optional(
       v.object({
@@ -291,6 +307,8 @@ export const upsertInternal = internalMutation({
     storageId: v.optional(v.id('_storage')),
     manifestStorageId: v.optional(v.id('_storage')),
     exportStorageId: v.optional(v.id('_storage')),
+    localArtifactPath: v.optional(v.string()),
+    localArtifactDeletedAt: v.optional(v.number()),
     imported: v.optional(v.boolean()),
     stats: v.optional(
       v.object({
@@ -325,6 +343,33 @@ export const setImportedInternal = internalMutation({
     if (!existing) throw new Error('Artifact not found')
     await ctx.db.patch(args.id, {
       imported: Boolean(args.imported),
+      updatedAt: Date.now(),
+    })
+    return await getArtifact(ctx, args.id)
+  },
+})
+
+export const setLocalArtifactDeletedInternal = internalMutation({
+  args: { id: v.id('workflowArtifacts'), deletedAt: v.number() },
+  handler: async (ctx, args) => {
+    const existing = await getArtifact(ctx, args.id)
+    if (!existing) throw new Error('Artifact not found')
+    await ctx.db.patch(args.id, {
+      localArtifactDeletedAt: normalizeFiniteTimestamp(args.deletedAt),
+      updatedAt: Date.now(),
+    })
+    return await getArtifact(ctx, args.id)
+  },
+})
+
+export const finalizeLocalImportInternal = internalMutation({
+  args: { id: v.id('workflowArtifacts'), imported: v.boolean(), deletedAt: v.number() },
+  handler: async (ctx, args) => {
+    const existing = await getArtifact(ctx, args.id)
+    if (!existing) throw new Error('Artifact not found')
+    await ctx.db.patch(args.id, {
+      imported: Boolean(args.imported),
+      localArtifactDeletedAt: normalizeFiniteTimestamp(args.deletedAt),
       updatedAt: Date.now(),
     })
     return await getArtifact(ctx, args.id)

@@ -15,7 +15,14 @@ export const insert = internalMutation({
 		userName: v.string(),
 		fullName: v.optional(v.string()),
 		matchedName: v.optional(v.string()),
-		status: v.string(),
+		status: v.union(
+			v.literal("available"),
+			v.literal("assigned"),
+			v.literal("subscribed"),
+			v.literal("unsubscribed"),
+			v.literal("skipped"),
+			v.literal("done"),
+		),
 		message: v.boolean(),
 		createdAt: v.number(),
 	},
@@ -48,7 +55,14 @@ export const insertBatch = internalMutation({
 				userName: v.string(),
 				fullName: v.optional(v.string()),
 				matchedName: v.optional(v.string()),
-				status: v.string(),
+				status: v.union(
+					v.literal("available"),
+					v.literal("assigned"),
+					v.literal("subscribed"),
+					v.literal("unsubscribed"),
+					v.literal("skipped"),
+					v.literal("done"),
+				),
 				message: v.boolean(),
 				createdAt: v.number(),
 			}),
@@ -94,7 +108,7 @@ export const getForProfile = internalQuery({
 		const status = String(args.status || "assigned").trim() || "assigned";
 		const rows = await ctx.db
 			.query("instagramAccounts")
-			.withIndex("by_assignedTo_status", (q) => q.eq("assignedTo", args.profileId).eq("status", status))
+			.withIndex("by_assignedTo_status", (q) => q.eq("assignedTo", args.profileId).eq("status", status as any))
 			.collect();
 		rows.sort((a, b) => a.createdAt - b.createdAt);
 		return rows;
@@ -127,20 +141,23 @@ export const getToMessage = internalQuery({
 export const updateStatus = internalMutation({
 	args: {
 		accountId: v.id("instagramAccounts"),
-		status: v.string(),
+		status: v.union(
+			v.literal("available"),
+			v.literal("assigned"),
+			v.literal("subscribed"),
+			v.literal("unsubscribed"),
+			v.literal("skipped"),
+			v.literal("done"),
+		),
 		assignedTo: v.optional(v.union(v.null(), v.id("profiles"))),
 	},
 	handler: async (ctx, args) => {
-		const status = String(args.status || "").trim();
-		if (!status) throw new Error("status is required");
-		const patch: Record<string, unknown> = { status };
-		if (status.toLowerCase() === "subscribed") {
+		const patch: Record<string, unknown> = { status: args.status };
+		if (args.status === "subscribed") {
 			patch.subscribedAt = Date.now();
 		}
 		if (typeof args.assignedTo !== "undefined") {
 			patch.assignedTo = args.assignedTo === null ? undefined : args.assignedTo;
-		} else if (status.toLowerCase() === "done") {
-			patch.assignedTo = undefined;
 		}
 		await ctx.db.patch(args.accountId, patch as any);
 		return await ctx.db.get(args.accountId);
@@ -190,13 +207,18 @@ export const listUserNames = internalQuery({
 });
 
 export const listByStatus = internalQuery({
-	args: { status: v.string() },
+	args: { status: v.union(
+		v.literal("available"),
+		v.literal("assigned"),
+		v.literal("subscribed"),
+		v.literal("unsubscribed"),
+		v.literal("skipped"),
+		v.literal("done"),
+	) },
 	handler: async (ctx, args) => {
-		const status = String(args.status || "").trim();
-		if (!status) throw new Error("status is required");
 		const rows = await ctx.db
 			.query("instagramAccounts")
-			.withIndex("by_status", (q) => q.eq("status", status))
+			.withIndex("by_status", (q) => q.eq("status", args.status))
 			.collect();
 		rows.sort((a, b) => a.createdAt - b.createdAt);
 		return rows;

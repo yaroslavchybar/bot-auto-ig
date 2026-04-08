@@ -4,15 +4,15 @@ from typing import Any, Dict, Optional, Tuple
 
 from python.runners.workflow.scrape_utils import (
     _build_scrape_export_payload,
-    _build_scrape_processing_payload,
     _convex_post_json,
-    _datauploader_post_json,
     _dedupe_scraped_users,
     _delete_resume_snapshot,
+    _local_scrape_artifact_relative_path,
+    _load_users_from_local_artifact,
     _load_users_from_resume_snapshot,
     _load_users_from_storage,
     _resume_snapshot_path,
-    _store_artifact_payload,
+    _store_local_artifact_payload,
     _store_resume_snapshot,
 )
 from python.runners.workflow.io import log
@@ -68,6 +68,7 @@ class ScrapeRelationshipsExecutor:
         self.open_delay_seconds = max(0.0, min(60.0, _parse_float(cfg.get('openDelaySeconds'), 2.0)))
         self.state: Dict[str, Any] = {}
         self.artifact_storage_id = ''
+        self.local_artifact_path = ''
         self.resume_snapshot_path = ''
         self.merged_users: list[Any] = []
         self.current_target_index = 0
@@ -197,6 +198,7 @@ class ScrapeRelationshipsExecutor:
             'completedTargets': self.current_target_index,
             'failedTargets': self.failed_targets,
             'artifactStorageId': self.artifact_storage_id or None,
+            'localArtifactPath': self.local_artifact_path or None,
             'resumeSnapshotPath': self.resume_snapshot_path or None,
             'updatedAt': int(time.time() * 1000),
         }
@@ -209,7 +211,7 @@ class ScrapeRelationshipsExecutor:
             self.target_account_ids = {}
             return
         existing_state = self.runner._get_node_state(self.node_id)
-        scraping_accounts = self.runner.accounts_client.list_accounts_by_status('scraping')
+        scraping_accounts = self.runner.accounts_client.list_scraping_accounts_by_status('need_scraping')
         self.target_account_ids = self._build_target_account_ids(scraping_accounts)
         if self._should_resume_account_targets(existing_state):
             self.targets = _normalize_string_list(existing_state.get('targets'))
@@ -294,6 +296,7 @@ class ScrapeRelationshipsExecutor:
             self.kind = self.kind_queue[-1]
 
         self.artifact_storage_id = str(self.state.get('artifactStorageId') or '').strip()
+        self.local_artifact_path = str(self.state.get('localArtifactPath') or '').strip()
         self.resume_snapshot_path = str(self.state.get('resumeSnapshotPath') or '').strip()
         self.merged_users = self._load_merged_users()
         self.current_target_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
@@ -308,6 +311,8 @@ class ScrapeRelationshipsExecutor:
     def _load_merged_users(self) -> list[Any]:
         if self.artifact_storage_id:
             users = _load_users_from_storage(self.artifact_storage_id)
+        elif self.local_artifact_path:
+            users = _load_users_from_local_artifact(self.local_artifact_path)
         elif self.resume_snapshot_path:
             users = _load_users_from_resume_snapshot(self.resume_snapshot_path)
         else:
@@ -656,6 +661,7 @@ class ScrapeRelationshipsExecutor:
 
     def _store_resume_snapshot(self) -> None:
         self.artifact_storage_id = ''
+        self.local_artifact_path = ''
         try:
             self.resume_snapshot_path = _store_resume_snapshot(
                 _resume_snapshot_path(self.runner.workflow_id, self.node_id),
@@ -713,36 +719,30 @@ class ScrapeRelationshipsExecutor:
         account_id = self.target_account_ids.get(normalized)
         if not account_id:
             raise RuntimeError('target account id not found in scraping pool')
-        self.runner.accounts_client.update_account_status(account_id, status='done')
+        self.runner.accounts_client.update_scraping_account_status(account_id, status='done')
         self.target_account_ids.pop(normalized, None)
 
     def _complete_active_kind(self) -> Optional[str]:
         completed_kind = self.kind
-        processing_result = self._process_completed_kind_with_datauploader(completed_kind)
-        if isinstance(processing_result, tuple):
-            error_code, error_message = processing_result
+        local_artifact_path, queue_error = self._queue_completed_kind_locally(completed_kind)
+        if queue_error is not None:
+            error_code, error_message = queue_error
             return self._fail_node_completion(error_code, error_message)
-        filter_stats = processing_result['filterStats']
-        uploaded = processing_result['uploaded']
-        duplicates = processing_result['duplicates']
         artifact_payload = self._artifact_row_payload(
             completed_kind,
-            filter_stats=filter_stats,
-            uploaded=uploaded,
-            duplicates=duplicates,
+            local_artifact_path=local_artifact_path,
         )
         artifact_row, artifact_upsert_error = self._upsert_artifact_row(artifact_payload)
         if artifact_row is None:
             return self._fail_node_completion(
                 'artifact_upsert_failed',
-                f'Failed to persist direct scrape history row: {artifact_upsert_error or "unknown error"}',
+                f'Failed to persist queued scrape history row: {artifact_upsert_error or "unknown error"}',
             )
         artifact_record = {
             'kind': completed_kind,
             'artifactId': (artifact_row or {}).get('_id'),
-            'filterStats': filter_stats,
-            'uploaded': uploaded,
-            'duplicates': duplicates,
+            'localArtifactPath': local_artifact_path,
+            'imported': False,
         }
         self.completed_artifacts = [*self.completed_artifacts, artifact_record]
         if completed_kind not in self.completed_kinds:
@@ -756,6 +756,7 @@ class ScrapeRelationshipsExecutor:
     def _start_next_kind(self, next_kind: str, artifact_record: Dict[str, Any]) -> Optional[str]:
         self.kind = next_kind
         self.artifact_storage_id = ''
+        self.local_artifact_path = ''
         self.resume_snapshot_path = ''
         self.merged_users = []
         self.current_target_index = 0
@@ -807,7 +808,7 @@ class ScrapeRelationshipsExecutor:
         if artifact_row is None and artifact_upsert_error is None:
             return self._fail_node_completion(
                 'artifact_upsert_failed',
-                'Expected a completed direct-processing artifact row before final node completion',
+                'Expected a completed queued artifact row before final node completion',
             )
         self.runner._update_node_state(
             self.node_id,
@@ -818,6 +819,7 @@ class ScrapeRelationshipsExecutor:
                 done=True,
                 targetScraped=0,
                 artifactStorageId=None,
+                localArtifactPath=self.local_artifact_path or None,
                 manifestStorageId=None,
                 artifactId=(artifact_row or {}).get('_id'),
                 artifactUpsertFailedAt=None,
@@ -836,6 +838,7 @@ class ScrapeRelationshipsExecutor:
 
     def _fail_node_completion(self, error_code: str, error_message: str) -> str:
         self.artifact_storage_id = ''
+        self.local_artifact_path = ''
         logger.exception(
             'Failed to finalize scrape_relationships artifact for workflow %s node %s profile %s kind %s: %s',
             self.runner.workflow_id,
@@ -851,6 +854,7 @@ class ScrapeRelationshipsExecutor:
                 lastError=error_message,
                 lastErrorCode=error_code,
                 artifactStorageId=None,
+                localArtifactPath=None,
                 manifestStorageId=None,
                 artifactId=None,
                 artifactUpsertFailedAt=None,
@@ -876,9 +880,7 @@ class ScrapeRelationshipsExecutor:
         self,
         kind: str,
         *,
-        filter_stats: Dict[str, Any],
-        uploaded: Dict[str, int],
-        duplicates: Dict[str, int],
+        local_artifact_path: str,
     ) -> Dict[str, Any]:
         node_label = (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships'
         return {
@@ -890,9 +892,10 @@ class ScrapeRelationshipsExecutor:
             'targets': self.targets,
             'targetUsername': '\n'.join(self.targets),
             'status': 'completed',
-            'imported': True,
+            'imported': False,
             'sourceProfileName': self.profile_name,
             'lastRunAt': int(time.time() * 1000),
+            'localArtifactPath': local_artifact_path,
             'stats': {
                 'scraped': self.total_scraped,
                 'deduped': len(self.merged_users),
@@ -901,77 +904,44 @@ class ScrapeRelationshipsExecutor:
             },
             'metadata': {
                 **self._processing_metadata(),
-                'processingMode': 'direct_datauploader',
-                'filterStats': filter_stats,
-                'uploaded': uploaded,
-                'duplicates': duplicates,
+                'processingMode': 'manual_queue',
+                'artifactSource': 'local_file',
+                'localArtifactPath': local_artifact_path,
             },
         }
 
-    def _process_completed_kind_with_datauploader(
+    def _queue_completed_kind_locally(
         self,
         completed_kind: str,
-    ) -> Dict[str, Any] | Tuple[str, str]:
+    ) -> Tuple[str, Optional[Tuple[str, str]]]:
         try:
-            node_label = (self.runner._get_node_state(self.node_id) or {}).get('label') or 'Scrape Relationships'
-            payload = _build_scrape_processing_payload(
+            local_artifact_path = _local_scrape_artifact_relative_path(
                 self.runner.workflow_id,
-                self.runner.workflow_name,
                 self.node_id,
-                node_label,
+                completed_kind,
+            )
+            payload = _build_scrape_export_payload(
+                self.runner.workflow_id,
+                self.node_id,
                 self.profile_name,
                 completed_kind,
                 self.targets,
                 self.merged_users,
-                {
-                    'scraped': self.total_scraped,
-                    'deduped': len(self.merged_users),
-                    'chunksCompleted': self.chunks_completed,
-                    'targetsCompleted': self.current_target_index,
-                },
-                self._processing_metadata(),
             )
-            response = _datauploader_post_json('/workflow-runs/process-scrape', payload)
+            _store_local_artifact_payload(local_artifact_path, payload)
         except Exception as exc:
-            return (
-                'datauploader_processing_failed',
-                f'Failed to process scrape with datauploader: {exc}',
+            return '', (
+                'local_artifact_store_failed',
+                f'Failed to queue scrape artifact locally: {exc}',
             )
-
-        return self._normalize_processing_result(response, completed_kind)
-
-    def _normalize_processing_result(
-        self,
-        response: Dict[str, Any],
-        completed_kind: str,
-    ) -> Dict[str, Any] | Tuple[str, str]:
-        status = str(response.get('status') or 'completed').strip().lower()
-        if status not in {'completed', 'success'}:
-            detail = str(response.get('detail') or response.get('error') or response.get('message') or 'unknown error').strip()
-            return (
-                'datauploader_processing_failed',
-                f'Failed to process {completed_kind} scrape with datauploader: {detail or "unknown error"}',
-            )
-
-        raw_stats = response.get('stats') if isinstance(response.get('stats'), dict) else {}
-        filter_stats = {
-            'totalProcessed': max(0, int(raw_stats.get('totalProcessed', len(self.merged_users)) or 0)),
-            'removed': max(0, int(raw_stats.get('removed', 0) or 0)),
-            'remaining': max(0, int(raw_stats.get('remaining', len(self.merged_users)) or 0)),
-        }
-        uploaded = response.get('uploaded') if isinstance(response.get('uploaded'), dict) else {}
-        duplicates = response.get('duplicates') if isinstance(response.get('duplicates'), dict) else {}
 
         log(
-            f'scrape_relationships: datauploader processed node {self.node_id} '
-            f'kind={completed_kind} totalProcessed={filter_stats["totalProcessed"]} '
-            f'removed={filter_stats["removed"]} remaining={filter_stats["remaining"]}'
+            f'scrape_relationships: queued node {self.node_id} '
+            f'kind={completed_kind} localArtifactPath={local_artifact_path} '
+            f'rows={len(self.merged_users)}'
         )
-        return {
-            'filterStats': filter_stats,
-            'uploaded': uploaded,
-            'duplicates': duplicates,
-        }
+        self.local_artifact_path = local_artifact_path
+        return local_artifact_path, None
 
     def _upsert_artifact_row(
         self,
