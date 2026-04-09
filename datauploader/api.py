@@ -32,7 +32,7 @@ from scraping_tasks import (
     has_user_collection,
     normalize_task_row,
 )
-from uploader import extract_usernames_from_scraping_task_payload, upload_usernames_to_convex, upload_accounts_to_convex
+from uploader import upload_usernames_to_convex, upload_accounts_to_convex
 
 import requests
 
@@ -639,7 +639,33 @@ async def import_scraping_task(task_id: str, request: ImportScrapingTaskRequest)
         if task.get("imported") is True:
             raise HTTPException(status_code=400, detail="Task already imported")
 
-        usernames = extract_usernames_from_scraping_task_payload(payload)
+        users = payload.get("users")
+        if not isinstance(users, list):
+            users = extract_users_from_payload(payload)
+        public_users = [
+            user
+            for user in users
+            if not (isinstance(user, dict) and user.get("is_private") is True)
+        ]
+        usernames: list[str] = []
+        seen: set[str] = set()
+        for user in public_users:
+            username = ""
+            if isinstance(user, dict):
+                for key in ("userName", "username", "user_name", "login", "User Name"):
+                    value = user.get(key)
+                    if value is not None and str(value).strip():
+                        username = str(value).strip().lstrip("@")
+                        break
+            elif isinstance(user, str):
+                username = user.strip().lstrip("@")
+            if not username:
+                continue
+            key = username.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            usernames.append(username)
         result = upload_usernames_to_convex(usernames, env=env, status=request.accountStatus)
 
         convex_mutation("workflowArtifacts:setImported", {"id": task_id, "imported": True}, env=env)

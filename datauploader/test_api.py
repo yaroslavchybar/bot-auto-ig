@@ -199,6 +199,57 @@ class DirectScrapeProcessingApiTest(unittest.TestCase):
         mock_finalize.assert_called_once_with("task_local", "dev", "scrapes/task_local.json")
 
     @patch("api.convex_mutation")
+    @patch("api.upload_usernames_to_convex")
+    @patch("api._get_task_and_payload")
+    def test_import_scraping_task_skips_private_accounts(
+        self,
+        mock_get_task,
+        mock_upload_usernames,
+        mock_mutation,
+    ) -> None:
+        mock_get_task.return_value = (
+            {
+                "_id": "task_local",
+                "workflowId": "wf_1",
+            },
+            {
+                "users": [
+                    {"username": "public_alpha"},
+                    {"username": "private_beta", "is_private": True},
+                    {"username": "PUBLIC_ALPHA"},
+                    {"username": "public_gamma"},
+                ]
+            },
+        )
+        mock_upload_usernames.return_value = {"inserted": 2, "skipped": 0}
+
+        response = self.client.post(
+            "/scraping-tasks/task_local/import",
+            json={
+                "env": "dev",
+                "accountStatus": "available",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["taskId"], "task_local")
+        self.assertEqual(body["env"], "dev")
+        self.assertEqual(body["usernamesExtracted"], 2)
+        self.assertEqual(body["inserted"], 2)
+        self.assertEqual(body["skipped"], 0)
+        mock_upload_usernames.assert_called_once_with(
+            ["public_alpha", "public_gamma"],
+            env="dev",
+            status="available",
+        )
+        mock_mutation.assert_called_once_with(
+            "workflowArtifacts:setImported",
+            {"id": "task_local", "imported": True},
+            env="dev",
+        )
+
+    @patch("api.convex_mutation")
     def test_finalize_local_artifact_import_restores_file_on_failure(self, mock_mutation) -> None:
         artifact_path = Path("/app/uploads/scrapes/test_restore.json")
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
