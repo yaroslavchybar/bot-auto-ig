@@ -1,0 +1,25 @@
+python/runners/workflow/scrape_relationships.py
+  2169d542c7fbb37b 329-331,397-415
+python/tests/test_workflow_scrape_relationships_extended.py
+  2169d542c7fbb37b 819-869
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "5569a318d73847701f823e2fe64f3530e2fb0869",
+  "prompts": {
+    "2169d542c7fbb37b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d6dfd-ce1f-7cb2-adb1-b06fa89767ed",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 75,
+      "total_deletions": 0,
+      "accepted_lines": 75,
+      "overriden_lines": 0
+    }
+  }
+}
