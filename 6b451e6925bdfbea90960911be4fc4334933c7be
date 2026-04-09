@@ -1,0 +1,31 @@
+frontend/src/features/accounts/components/AccountsUploadSection.tsx
+  1777600f51645e54 18
+frontend/src/features/accounts/hooks/useAccountsState.ts
+  1777600f51645e54 16-17,67,82,86
+frontend/src/features/accounts/components/AccountsTaskDetails.tsx
+  1777600f51645e54 17-24,32-34,36-38,183,185-188,191,199,202,209,214,217-218,222,240-244,251,253-256,259-261,263-270,272-293,295-301,303-304,306-310,312,315-316,319,328-336,340,342,348-350
+frontend/src/features/accounts/components/AccountsTaskList.tsx
+  1777600f51645e54 3,13,17-20,49-50,52,56-57,59,70,74-84,86-92,106-183,187-190,192-193,197-200,202-203,209-224,243,250,253-263,309-312,315-316,321-322,339-340,342,351-354,356-357,364-408,422
+frontend/src/features/accounts/containers/AccountsPageContainer.tsx
+  1777600f51645e54 4,16,20,26,35-43,79,92-93,96,99-102,106-112,114-127,141-142,145-149,152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "6b451e6925bdfbea90960911be4fc4334933c7be",
+  "prompts": {
+    "1777600f51645e54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d72cf-45f8-7972-bcef-e7a241925f26",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1101,
+      "total_deletions": 795,
+      "accepted_lines": 963,
+      "overriden_lines": 6
+    }
+  }
+}
