@@ -168,6 +168,10 @@ export function ProcessingResultPanel({
   actionLabel: string
   onReset: () => void
 }) {
+  const hasScrapingStats =
+    typeof summary.scrapingInserted !== 'undefined' ||
+    typeof summary.scrapingDuplicates !== 'undefined'
+
   return (
     <div className="bg-panel-subtle border-line-soft rounded-3xl border p-5 shadow-xs backdrop-blur-xs">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -186,7 +190,12 @@ export function ProcessingResultPanel({
         </Button>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-5">
+      <div
+        className={cn(
+          'mt-5 grid grid-cols-1 gap-3',
+          hasScrapingStats ? 'md:grid-cols-4 xl:grid-cols-7' : 'md:grid-cols-5',
+        )}
+      >
         <MetricCard
           label="Processed"
           value={summary.stats.totalProcessed.toLocaleString()}
@@ -202,13 +211,25 @@ export function ProcessingResultPanel({
           accent="success"
         />
         <MetricCard
-          label="Inserted"
+          label={hasScrapingStats ? 'IG Inserted' : 'Inserted'}
           value={sumRecordValues(summary.uploaded).toLocaleString()}
         />
         <MetricCard
-          label="Duplicates"
+          label={hasScrapingStats ? 'IG Duplicates' : 'Duplicates'}
           value={sumRecordValues(summary.duplicates).toLocaleString()}
         />
+        {hasScrapingStats ? (
+          <MetricCard
+            label="Scraping Inserted"
+            value={sumRecordValues(summary.scrapingInserted ?? {}).toLocaleString()}
+          />
+        ) : null}
+        {hasScrapingStats ? (
+          <MetricCard
+            label="Scraping Duplicates"
+            value={sumRecordValues(summary.scrapingDuplicates ?? {}).toLocaleString()}
+          />
+        ) : null}
       </div>
     </div>
   )

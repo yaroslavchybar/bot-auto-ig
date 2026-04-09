@@ -15,8 +15,7 @@ interface AccountsUploadSectionProps {
 }
 
 function CsvDropZone({ accounts }: AccountsUploadSectionProps) {
-  const { state, fileInputRef, dragActive, handleDrag, handleDrop, handleFileSelect } =
-    accounts
+  const { state, fileInputRef, dragActive, handleDrag, handleDrop } = accounts
 
   return (
     <div className="bg-panel-subtle border-line-soft rounded-3xl border p-5 shadow-xs backdrop-blur-xs">
@@ -34,13 +33,6 @@ function CsvDropZone({ accounts }: AccountsUploadSectionProps) {
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
         {state.step === 'uploading' ? (
           <>
             <Loader2 className="text-brand h-10 w-10 animate-spin" />

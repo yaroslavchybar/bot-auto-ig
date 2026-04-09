@@ -93,6 +93,8 @@ export interface ProcessScrapingTaskResponse {
   stats: FilterStats
   uploaded: Record<string, number>
   duplicates: Record<string, number>
+  scrapingInserted: Record<string, number>
+  scrapingDuplicates: Record<string, number>
 }
 
 /** State for the upload process */

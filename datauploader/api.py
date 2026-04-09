@@ -559,7 +559,9 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
 
         uploaded: dict[str, int] = {}
         duplicates: dict[str, int] = {}
-        _archive_scraping_accounts(archived_accounts, env=env)
+        archive_result = _archive_scraping_accounts(archived_accounts, env=env)
+        scraping_inserted = {env: int(archive_result.get("inserted", 0))}
+        scraping_duplicates = {env: int(archive_result.get("skipped", 0))}
 
         if request.uploadToConvex:
             envs = [str(e).strip() for e in (request.environments or []) if str(e).strip()]
@@ -580,6 +582,8 @@ async def process_scraping_task(task_id: str, request: ProcessScrapingTaskReques
             },
             "uploaded": uploaded,
             "duplicates": duplicates,
+            "scrapingInserted": scraping_inserted,
+            "scrapingDuplicates": scraping_duplicates,
         }
     except HTTPException:
         raise

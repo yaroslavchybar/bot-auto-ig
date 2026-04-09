@@ -192,6 +192,8 @@ class DirectScrapeProcessingApiTest(unittest.TestCase):
         self.assertEqual(body["stats"], {"totalProcessed": 2, "removed": 1, "remaining": 1})
         self.assertEqual(body["uploaded"], {"dev": 1})
         self.assertEqual(body["duplicates"], {"dev": 0})
+        self.assertEqual(body["scrapingInserted"], {"dev": 1})
+        self.assertEqual(body["scrapingDuplicates"], {"dev": 0})
         mock_archive.assert_called_once()
         mock_upload.assert_called_once()
         mock_finalize.assert_called_once_with("task_local", "dev", "scrapes/task_local.json")

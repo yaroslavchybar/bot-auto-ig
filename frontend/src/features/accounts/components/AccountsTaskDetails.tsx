@@ -14,16 +14,28 @@ interface AccountsTaskDetailsProps {
   accounts: AccountsState
 }
 
-function TaskDetailHeader() {
+function TaskDetailHeader({
+  activeMode,
+  csvStep,
+}: {
+  activeMode: AccountsState['activeMode']
+  csvStep: AccountsState['state']['step']
+}) {
+  const isCsvActive = activeMode === 'csv' && csvStep !== 'idle'
+
   return (
     <div className="flex items-center gap-2">
       <div className="brand-surface brand-text flex h-10 w-10 items-center justify-center rounded-xl border">
         <FileSpreadsheet className="h-5 w-5" />
       </div>
       <div>
-        <h3 className="text-lg font-semibold">Artifact details</h3>
+        <h3 className="text-lg font-semibold">
+          {isCsvActive ? 'CSV import details' : 'Artifact details'}
+        </h3>
         <p className="text-subtle-copy text-sm">
-          Select a completed workflow scrape artifact to review, filter, and import.
+          {isCsvActive
+            ? 'Review the uploaded CSV, then filter and import it from this panel.'
+            : 'Select a completed workflow scrape artifact to review, filter, and import.'}
         </p>
       </div>
     </div>
@@ -168,23 +180,174 @@ function TaskDetailContent({ accounts }: AccountsTaskDetailsProps) {
   )
 }
 
+function CsvInfoCard({ accounts }: AccountsTaskDetailsProps) {
+  const {
+    state,
+    csvDetectedUsernameField,
+    csvDetectedFullNameField,
+    csvPreviewFields,
+  } = accounts
+
+  if (state.step !== 'selecting') return null
+
+  return (
+    <>
+      <div className="bg-panel-strong border-line rounded-2xl border p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-ink truncate text-lg font-semibold">
+              {state.fileName}
+            </div>
+            <div className="text-subtle-copy mt-1 text-sm">
+              Uploaded CSV preview
+            </div>
+          </div>
+          <Badge
+            variant="outline"
+            className="border-line bg-panel-muted text-copy"
+          >
+            CSV
+          </Badge>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <MetricCard label="Rows" value={state.rowCount.toLocaleString()} />
+          <MetricCard
+            label="Username Source"
+            value={csvDetectedUsernameField ?? 'Missing'}
+            accent={csvDetectedUsernameField ? 'success' : 'danger'}
+          />
+          <MetricCard
+            label="Full Name Source"
+            value={csvDetectedFullNameField ?? 'Not detected'}
+          />
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+            Sample Preview
+          </div>
+          <Badge
+            variant="outline"
+            className="border-line bg-panel-muted text-copy"
+          >
+            Auto-mapped
+          </Badge>
+        </div>
+        <SamplePreview
+          fields={csvPreviewFields}
+          sampleRow={state.sampleRow}
+          detectedUsernameField={csvDetectedUsernameField}
+          detectedFullNameField={csvDetectedFullNameField}
+          emptyMessage="No sample row is available for this file."
+        />
+      </div>
+    </>
+  )
+}
+
+function CsvDetailContent({ accounts }: AccountsTaskDetailsProps) {
+  const {
+    state,
+    csvMissingUsername,
+    handleCsvReset,
+    handleProcessCsv,
+  } = accounts
+
+  if (state.step === 'completed') {
+    return (
+      <div className="mt-5">
+        <ProcessingResultPanel
+          title="CSV upload complete"
+          summary={{
+            stats: state.stats,
+            uploaded: state.uploaded,
+            duplicates: state.duplicates,
+          }}
+          actionLabel="Upload another file"
+          onReset={handleCsvReset}
+        />
+      </div>
+    )
+  }
+
+  if (state.step === 'processing' || state.step === 'uploading') {
+    return (
+      <div className="mt-5 flex items-center justify-center px-4 py-10 text-sm">
+        <Loader2 className="text-brand mr-2 h-4 w-4 animate-spin" />
+        {state.step === 'uploading'
+          ? 'Uploading CSV preview...'
+          : 'Processing CSV import...'}
+      </div>
+    )
+  }
+
+  if (state.step === 'error') {
+    return (
+      <div className="mt-5">
+        <StatusBanner tone="danger">{state.message}</StatusBanner>
+      </div>
+    )
+  }
+
+  if (state.step !== 'selecting') {
+    return <TaskDetailPlaceholder />
+  }
+
+  return (
+    <div className="mt-5 space-y-5">
+      {csvMissingUsername ? (
+        <StatusBanner tone="warning">
+          This CSV does not expose a supported username field. Expected one of:{' '}
+          {USERNAME_ALIASES.join(', ')}.
+        </StatusBanner>
+      ) : (
+        <StatusBanner tone="success">
+          Username column detected automatically. Review the preview and import.
+        </StatusBanner>
+      )}
+
+      <CsvInfoCard accounts={accounts} />
+
+      <Button
+        onClick={handleProcessCsv}
+        disabled={csvMissingUsername}
+        className="brand-button h-11 w-full"
+      >
+        Process & Upload
+      </Button>
+    </div>
+  )
+}
+
 export function AccountsTaskDetails({
   accounts,
 }: AccountsTaskDetailsProps) {
-  const { selectedTaskError, selectedTaskLoading, selectedTask, selectedTaskPreview } =
-    accounts
+  const {
+    activeMode,
+    state,
+    selectedTaskError,
+    selectedTaskLoading,
+    selectedTask,
+    selectedTaskPreview,
+  } = accounts
+  const showCsvDetails = activeMode === 'csv' && state.step !== 'idle'
 
   return (
     <div className="bg-panel-subtle border-line-soft h-fit rounded-3xl border p-5 shadow-xs backdrop-blur-xs xl:sticky xl:top-28">
-      <TaskDetailHeader />
+      <TaskDetailHeader activeMode={activeMode} csvStep={state.step} />
 
-      {selectedTaskError ? (
+      {!showCsvDetails && selectedTaskError ? (
         <div className="mt-5">
           <StatusBanner tone="danger">{selectedTaskError}</StatusBanner>
         </div>
       ) : null}
 
-      {selectedTaskLoading ? (
+      {showCsvDetails ? (
+        <CsvDetailContent accounts={accounts} />
+      ) : selectedTaskLoading ? (
         <div className="flex items-center justify-center px-4 py-10 text-sm">
           <Loader2 className="text-brand mr-2 h-4 w-4 animate-spin" />
           Loading artifact preview...

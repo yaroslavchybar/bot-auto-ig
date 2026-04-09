@@ -13,6 +13,8 @@ export interface ProcessingSummary {
   }
   uploaded: Record<string, number>
   duplicates: Record<string, number>
+  scrapingInserted?: Record<string, number>
+  scrapingDuplicates?: Record<string, number>
 }
 
 export const USERNAME_ALIASES = [
@@ -62,7 +64,7 @@ export function useAccountsState() {
   const uploader = useDataUploader()
   const { state, uploadFile, processFile, reset } = uploader
 
-  const [activeMode, setActiveMode] = useState<AccountsMode>('csv')
+  const [activeMode, setActiveMode] = useState<AccountsMode>('scraping')
 
   const csv = useCsvHandlers({ state, uploadFile, processFile, reset })
   const { handleCsvReset } = csv
@@ -77,10 +79,11 @@ export function useAccountsState() {
   const handleResetActiveMode = useCallback(() => {
     if (activeMode === 'csv') {
       handleCsvReset()
+      setActiveMode('scraping')
       return
     }
     handleScrapingReset()
-  }, [activeMode, handleCsvReset, handleScrapingReset])
+  }, [activeMode, handleCsvReset, handleScrapingReset, setActiveMode])
 
   return {
     state,

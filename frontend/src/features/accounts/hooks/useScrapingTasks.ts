@@ -12,6 +12,17 @@ import {
 const DEFAULT_ACCOUNTS_ENV = 'dev' as const
 const DEFAULT_PROCESS_ENVIRONMENTS = ['dev']
 
+export interface BulkScrapingImportResult {
+  stats: ProcessingSummary['stats']
+  uploaded: Record<string, number>
+  duplicates: Record<string, number>
+  scrapingInserted: Record<string, number>
+  scrapingDuplicates: Record<string, number>
+  processedArtifacts: number
+  skippedArtifacts: string[]
+  failedArtifacts: Array<{ name: string; reason: string }>
+}
+
 interface ScrapingTasksInput {
   listScrapingTasks: (
     env: 'dev' | 'prod',
@@ -34,6 +45,8 @@ interface ScrapingTasksInput {
     stats: ProcessingSummary['stats']
     uploaded: Record<string, number>
     duplicates: Record<string, number>
+    scrapingInserted: Record<string, number>
+    scrapingDuplicates: Record<string, number>
   }>
 }
 
@@ -230,7 +243,13 @@ function useScrapingHandlers(
         environments: DEFAULT_PROCESS_ENVIRONMENTS,
         accountStatus: 'available',
       })
-      setScrapingResult({ stats: result.stats, uploaded: result.uploaded, duplicates: result.duplicates })
+      setScrapingResult({
+        stats: result.stats,
+        uploaded: result.uploaded,
+        duplicates: result.duplicates,
+        scrapingInserted: result.scrapingInserted,
+        scrapingDuplicates: result.scrapingDuplicates,
+      })
       await refreshScrapingTasks()
     } catch (error) {
       selection.setSelectedTaskError(error instanceof Error ? error.message : String(error))
@@ -272,6 +291,19 @@ function useFilteredTasks(
   }, [scrapingTasks, searchQuery])
 }
 
+function mergeNumberRecord(
+  target: Record<string, number>,
+  source: Record<string, number>,
+) {
+  for (const [key, value] of Object.entries(source)) {
+    target[key] = (target[key] ?? 0) + value
+  }
+}
+
+function getTaskLabel(task: ScrapingTaskRow | undefined, taskId: string) {
+  return task?.name || task?.targetUsername || `Artifact ${taskId}`
+}
+
 export function useScrapingTasks(input: ScrapingTasksInput) {
   const { listScrapingTasks, getScrapingTaskFields, processScrapingTask } =
     input
@@ -307,18 +339,197 @@ export function useScrapingTasks(input: ScrapingTasksInput) {
   )
 
   const filteredScrapingTasks = useFilteredTasks(scrapingTasks, taskSearchQuery)
+  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([])
+  const [bulkProcessing, setBulkProcessing] = useState(false)
+  const [bulkProcessingLabel, setBulkProcessingLabel] = useState<string | null>(
+    null,
+  )
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
+  const [bulkResult, setBulkResult] =
+    useState<BulkScrapingImportResult | null>(null)
+  const [bulkError, setBulkError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setSelectedTaskIds((previous) =>
+      previous.filter((taskId) =>
+        scrapingTasks.some((task) => String(task._id || '') === taskId),
+      ),
+    )
+  }, [scrapingTasks])
+
+  const selectedTaskIdSet = useMemo(
+    () => new Set(selectedTaskIds),
+    [selectedTaskIds],
+  )
+  const visibleTaskIds = useMemo(
+    () => filteredScrapingTasks.map((task) => String(task._id || '')),
+    [filteredScrapingTasks],
+  )
+  const allVisibleSelected =
+    visibleTaskIds.length > 0 &&
+    visibleTaskIds.every((taskId) => selectedTaskIdSet.has(taskId))
+  const someVisibleSelected =
+    visibleTaskIds.some((taskId) => selectedTaskIdSet.has(taskId)) &&
+    !allVisibleSelected
+
+  const handleToggleTaskSelection = useCallback((taskId: string) => {
+    setSelectedTaskIds((previous) => {
+      if (previous.includes(taskId)) {
+        return previous.filter((id) => id !== taskId)
+      }
+      return [...previous, taskId]
+    })
+  }, [])
+
+  const handleToggleAllVisibleSelection = useCallback(
+    (checked: boolean) => {
+      setSelectedTaskIds((previous) => {
+        const next = new Set(previous)
+        for (const taskId of visibleTaskIds) {
+          if (checked) {
+            next.add(taskId)
+          } else {
+            next.delete(taskId)
+          }
+        }
+        return Array.from(next)
+      })
+    },
+    [visibleTaskIds],
+  )
+
+  const clearSelectedTasks = useCallback(() => {
+    setSelectedTaskIds([])
+  }, [])
+
+  const clearBulkResult = useCallback(() => {
+    setBulkResult(null)
+    setBulkError(null)
+  }, [])
+
+  const handleProcessSelectedTasks = useCallback(async () => {
+    if (selectedTaskIds.length === 0 || bulkProcessing) return
+
+    const taskMap = new Map(
+      scrapingTasks.map((task) => [String(task._id || ''), task]),
+    )
+    const summary: ProcessingSummary = {
+      stats: { totalProcessed: 0, removed: 0, remaining: 0 },
+      uploaded: {},
+      duplicates: {},
+      scrapingInserted: {},
+      scrapingDuplicates: {},
+    }
+    const skippedArtifacts: string[] = []
+    const failedArtifacts: Array<{ name: string; reason: string }> = []
+    let processedArtifacts = 0
+
+    setBulkProcessing(true)
+    setBulkError(null)
+    setBulkResult(null)
+    setBulkProgress({ current: 0, total: selectedTaskIds.length })
+
+    try {
+      for (const [index, taskId] of selectedTaskIds.entries()) {
+        const task = taskMap.get(taskId)
+        const taskLabel = getTaskLabel(task, taskId)
+        setBulkProcessingLabel(taskLabel)
+        setBulkProgress({ current: index + 1, total: selectedTaskIds.length })
+
+        try {
+          const preview = await getScrapingTaskFields(
+            taskId,
+            DEFAULT_ACCOUNTS_ENV,
+          )
+          const detectedUsernameField = findAlias(
+            preview.fields,
+            USERNAME_ALIASES,
+          )
+
+          if (!detectedUsernameField) {
+            skippedArtifacts.push(taskLabel)
+            continue
+          }
+
+          const result = await processScrapingTask(taskId, {
+            env: DEFAULT_ACCOUNTS_ENV,
+            keepFields: preview.fields,
+            uploadToConvex: true,
+            environments: DEFAULT_PROCESS_ENVIRONMENTS,
+            accountStatus: 'available',
+          })
+
+          processedArtifacts += 1
+          summary.stats.totalProcessed += result.stats.totalProcessed
+          summary.stats.removed += result.stats.removed
+          summary.stats.remaining += result.stats.remaining
+          mergeNumberRecord(summary.uploaded, result.uploaded)
+          mergeNumberRecord(summary.duplicates, result.duplicates)
+          mergeNumberRecord(
+            summary.scrapingInserted ?? {},
+            result.scrapingInserted,
+          )
+          mergeNumberRecord(
+            summary.scrapingDuplicates ?? {},
+            result.scrapingDuplicates,
+          )
+        } catch (error) {
+          failedArtifacts.push({
+            name: taskLabel,
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+
+      await refreshScrapingTasks()
+      setSelectedTaskIds([])
+      setBulkResult({
+        stats: summary.stats,
+        uploaded: summary.uploaded,
+        duplicates: summary.duplicates,
+        scrapingInserted: summary.scrapingInserted ?? {},
+        scrapingDuplicates: summary.scrapingDuplicates ?? {},
+        processedArtifacts,
+        skippedArtifacts,
+        failedArtifacts,
+      })
+    } catch (error) {
+      setBulkError(
+        error instanceof Error
+          ? error.message
+          : 'Bulk artifact import failed',
+      )
+    } finally {
+      setBulkProcessing(false)
+      setBulkProcessingLabel(null)
+      setBulkProgress({ current: 0, total: 0 })
+    }
+  }, [
+    bulkProcessing,
+    getScrapingTaskFields,
+    processScrapingTask,
+    refreshScrapingTasks,
+    scrapingTasks,
+    selectedTaskIds,
+  ])
 
   const isScrapingBusy =
-    scrapingLoading || selectedTaskLoading || Boolean(processingTaskId)
+    scrapingLoading || selectedTaskLoading || Boolean(processingTaskId) || bulkProcessing
   const scrapingDirty =
     Boolean(selectedTaskId) ||
+    selectedTaskIds.length > 0 ||
     Boolean(scrapingResult) ||
+    Boolean(bulkResult) ||
+    Boolean(bulkError) ||
     taskSearchQuery.trim().length > 0 ||
     tasksKind !== ''
 
   const handleScrapingReset = useCallback(() => {
     setTaskSearchQuery('')
     setTasksKind('')
+    setSelectedTaskIds([])
+    setBulkError(null)
+    setBulkResult(null)
     resetHandlers()
   }, [resetHandlers])
 
@@ -335,14 +546,27 @@ export function useScrapingTasks(input: ScrapingTasksInput) {
     selectedTaskPreview,
     selectedTaskLoading,
     selectedTaskError,
+    selectedTaskIds,
+    allVisibleSelected,
+    someVisibleSelected,
     processingTaskId,
     scrapingResult,
+    bulkProcessing,
+    bulkProcessingLabel,
+    bulkProgress,
+    bulkResult,
+    bulkError,
     ...derived,
     isScrapingBusy,
     scrapingDirty,
     handleScrapingReset,
     handleRefreshScrapingTasks,
     handleSelectTask,
+    handleToggleTaskSelection,
+    handleToggleAllVisibleSelection,
+    clearSelectedTasks,
+    clearBulkResult,
     handleProcessTask,
+    handleProcessSelectedTasks,
   }
 }
