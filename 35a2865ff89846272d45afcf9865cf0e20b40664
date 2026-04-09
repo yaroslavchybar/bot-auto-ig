@@ -1,0 +1,25 @@
+datauploader/test_api.py
+  9ad285559642a54c 202-251
+datauploader/api.py
+  9ad285559642a54c 35,642-668
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.6",
+  "base_commit_sha": "35a2865ff89846272d45afcf9865cf0e20b40664",
+  "prompts": {
+    "9ad285559642a54c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d737e-7f35-7a73-a3c4-c442860b0ef3",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 608,
+      "total_deletions": 531,
+      "accepted_lines": 490,
+      "overriden_lines": 2
+    }
+  }
+}
