@@ -326,6 +326,9 @@ class ScrapeRelationshipsExecutor:
         stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
         if self._should_reset_missing_local_artifacts():
             self._reset_stale_state(stale_index)
+        if self._should_reset_exhausted_manual_state():
+            stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
+            self._reset_stale_state(stale_index)
         if self._should_ignore_stale_done_flag():
             self.state['done'] = False
         stale_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
@@ -389,6 +392,27 @@ class ScrapeRelationshipsExecutor:
                     f'(missingLocalArtifactPath={path})'
                 )
                 return True
+        return False
+
+    def _should_reset_exhausted_manual_state(self) -> bool:
+        if not self.state or self.use_account_usernames:
+            return False
+        if str(self.state.get('resumeSnapshotPath') or '').strip():
+            return False
+        if str(self.state.get('cursor') or '').strip():
+            return False
+        if self._should_reset_missing_local_artifacts():
+            return False
+        current_index = max(0, _parse_int(self.state.get('currentTargetIndex'), 0))
+        if current_index < len(self.targets):
+            return False
+        completed_kinds = self._normalize_completed_kinds(self.state.get('completedKinds'))
+        if completed_kinds:
+            log(
+                f'scrape_relationships: clearing exhausted manual state for node {self.node_id} '
+                f'(currentTargetIndex={current_index}, targets={len(self.targets)}, completedKinds={completed_kinds})'
+            )
+            return True
         return False
 
     def _hydrate_resume_state(self) -> None:

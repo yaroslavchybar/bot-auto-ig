@@ -816,6 +816,57 @@ def test_scrape_relationships_resets_manual_both_state_when_local_artifact_is_mi
     assert [payload["kind"] for payload in processed_payloads] == ["followers", "following"]
 
 
+def test_scrape_relationships_resets_exhausted_manual_state_without_local_artifacts(monkeypatch):
+    processed_payloads = []
+    scrape_calls = []
+    runner = _build_runner(
+        monkeypatch,
+        node_states={
+            "node-exhausted-manual": {
+                "activityId": "scrape_relationships",
+                "kind": "followers",
+                "activeKind": "followers",
+                "kindMode": "followers",
+                "targets": ["alpha"],
+                "currentTargetIndex": 1,
+                "completedKinds": ["followers"],
+                "status": "running",
+                "done": False,
+            }
+        },
+    )
+    _mock_datauploader(monkeypatch, payloads=processed_payloads)
+    monkeypatch.setattr(
+        "python.runners.workflow.scrape_relationships._convex_post_json",
+        lambda *args, **kwargs: {"_id": "artifact_exhausted_manual"},
+    )
+    monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
+
+    def fake_scrape(*args, **kwargs):
+        scrape_calls.append((kwargs["kind"], kwargs["target_username"]))
+        return {
+            "outcome": "success",
+            "users": [{"username": kwargs["target_username"], "id": "1"}],
+            "nextCursor": None,
+            "hasMore": False,
+            "total": 1,
+        }
+
+    monkeypatch.setattr(runner, "_scrape_relationship_chunk", fake_scrape)
+
+    result = runner._execute_scrape_relationships(
+        "node-exhausted-manual",
+        scrape_config("followers", ["alpha"]),
+        _FakePage(available_kinds={"followers"}),
+        "session_profile",
+    )
+
+    assert result == "success"
+    assert scrape_calls == [("followers", "alpha")]
+    assert len(processed_payloads) == 1
+    assert processed_payloads[0]["targets"] == ["alpha"]
+
+
 def test_scrape_relationships_caps_chunk_by_remaining_daily_limit(monkeypatch):
     runner = _build_runner(monkeypatch)
     monkeypatch.setattr(runner, "_emit_node_state", lambda *args, **kwargs: None)
