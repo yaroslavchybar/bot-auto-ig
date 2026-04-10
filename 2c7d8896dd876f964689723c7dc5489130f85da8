@@ -1,0 +1,39 @@
+tests/convex/instagramAccounts.test.ts
+  121710dfdb61b434 6-9,306-384,387-424
+docs/services/datauploader.md
+  121710dfdb61b434 38
+datauploader/test_api.py
+  121710dfdb61b434 201-325
+convex/httpRoutes/instagramAccounts.ts
+  121710dfdb61b434 4-5,57-87
+convex/httpRoutes/shared.ts
+  121710dfdb61b434 136,138-142,144,146-157
+convex/httpRoutes/scrapingAccounts.ts
+  121710dfdb61b434 4-5,28-58
+datauploader/api.py
+  121710dfdb61b434 35,339-353,355-356
+docs/convex/backend.md
+  121710dfdb61b434 47
+datauploader/uploader.py
+  121710dfdb61b434 22-26,87,136,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "2c7d8896dd876f964689723c7dc5489130f85da8",
+  "prompts": {
+    "121710dfdb61b434": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d7808-7ff2-7963-84a0-2f79256e8509",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Yaroslav",
+      "messages": [],
+      "total_additions": 1432,
+      "total_deletions": 1084,
+      "accepted_lines": 1168,
+      "overriden_lines": 9
+    }
+  }
+}
