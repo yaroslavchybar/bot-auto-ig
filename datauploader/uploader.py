@@ -19,6 +19,13 @@ class UploadResult(TypedDict):
     skipped: int
 
 
+def iter_batches(items: list, batch_size: int = BATCH_SIZE):
+    """Yield deterministic list slices for bulk uploads."""
+    safe_batch_size = max(1, int(batch_size or BATCH_SIZE))
+    for index in range(0, len(items), safe_batch_size):
+        yield items[index : index + safe_batch_size]
+
+
 def _get_username(row: dict) -> str | None:
     """Extract username from row using various possible column names."""
     for alias in USERNAME_ALIASES:
@@ -77,8 +84,7 @@ def upload_to_convex(csv_path: Path, envs: list[str] | None = None) -> dict[str,
 
         total_inserted = 0
         total_skipped = 0
-        for i in range(0, len(usernames), BATCH_SIZE):
-            batch_usernames = usernames[i : i + BATCH_SIZE]
+        for batch_usernames in iter_batches(usernames):
             accounts = [prepare_account(u, "available") for u in batch_usernames]
             try:
                 result = insert_accounts_batch(accounts, env)
@@ -127,8 +133,7 @@ def upload_usernames_to_convex(
 
     total_inserted = 0
     total_skipped = 0
-    for i in range(0, len(cleaned), BATCH_SIZE):
-        batch_usernames = cleaned[i : i + BATCH_SIZE]
+    for batch_usernames in iter_batches(cleaned):
         accounts = [prepare_account(u, status) for u in batch_usernames]
         result = insert_accounts_batch(accounts, env)
         if result.get("status") == "success":
@@ -162,8 +167,7 @@ def upload_accounts_to_convex(
 
     total_inserted = 0
     total_skipped = 0
-    for i in range(0, len(accounts_data), BATCH_SIZE):
-        batch = accounts_data[i : i + BATCH_SIZE]
+    for batch in iter_batches(accounts_data):
         prepared = [
             prepare_account(
                 username=str(a.get("userName", "")).strip().lstrip("@"),

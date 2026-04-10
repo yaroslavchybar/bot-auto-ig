@@ -35,6 +35,7 @@ Upload flow:
 - Uses in-memory job state for processing lifecycle.
 - Upload jobs expose detected `fields`, `sampleRow`, and `rowCount` before processing.
 - CSV and workflow-artifact processing responses include normalized `stats`, `uploaded`, and `duplicates` summaries.
+- Bulk uploads to Convex are chunked in fixed `500`-row batches so large artifact imports stay within Convex function limits while preserving aggregated `inserted` / `skipped` results.
 - The `/scraping-tasks` API shape fronts completed workflow scrape artifacts queued for manual review. Successful processing archives the full deduped scrape into `scrapingAccounts`, uploads only accepted accounts to `instagramAccounts`, marks the artifact imported, and deletes the local raw file after that full sequence succeeds.
 - `POST /workflow-runs/process-scrape` remains available as a legacy/internal direct-ingest surface, but workflow scraping now queues local artifacts instead of calling it during runtime completion.
 - Reads and writes Convex data through `convex_client.py` helpers.

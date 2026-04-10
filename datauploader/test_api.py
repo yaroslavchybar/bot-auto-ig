@@ -198,6 +198,131 @@ class DirectScrapeProcessingApiTest(unittest.TestCase):
         mock_upload.assert_called_once()
         mock_finalize.assert_called_once_with("task_local", "dev", "scrapes/task_local.json")
 
+    @patch("api._finalize_local_artifact_import")
+    @patch("api._upload_to_convex_envs")
+    @patch("api.insert_scraping_accounts_batch")
+    @patch("api._filter_and_collect_accounts")
+    @patch("api.load_all_keyword_sets")
+    @patch("api._get_task_and_payload")
+    def test_process_scraping_task_archives_large_batches_in_chunks(
+        self,
+        mock_get_task,
+        mock_keywords,
+        mock_filter,
+        mock_insert_batch,
+        mock_upload,
+        mock_finalize,
+    ) -> None:
+        mock_get_task.return_value = (
+            {
+                "_id": "task_chunked",
+                "workflowId": "wf_1",
+                "workflowName": "Workflow",
+                "nodeId": "node_1",
+                "kind": "followers",
+                "localArtifactPath": "scrapes/task_chunked.json",
+            },
+            {"users": [{"username": "placeholder"}]},
+        )
+        mock_keywords.return_value = {"us_male_names": {"john"}}
+        archived_accounts = [
+            {"userName": f"user_{index}", "status": "need_scraping", "createdAt": index}
+            for index in range(1201)
+        ]
+        mock_filter.return_value = (
+            [{"userName": "kept_user", "fullName": "Kept User", "matchedName": "Kept"}],
+            archived_accounts,
+            1201,
+            1200,
+        )
+        mock_insert_batch.side_effect = [
+            {"status": "success", "inserted": 500, "skipped": 0},
+            {"status": "success", "inserted": 450, "skipped": 50},
+            {"status": "success", "inserted": 150, "skipped": 51},
+        ]
+        mock_upload.return_value = ({"dev": 1}, {"dev": 0})
+
+        response = self.client.post(
+            "/scraping-tasks/task_chunked/process",
+            json={
+                "env": "dev",
+                "keepFields": ["username", "full_name"],
+                "uploadToConvex": True,
+                "environments": ["dev"],
+                "accountStatus": "available",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["scrapingInserted"], {"dev": 1100})
+        self.assertEqual(body["scrapingDuplicates"], {"dev": 101})
+        self.assertEqual(mock_insert_batch.call_count, 3)
+        self.assertEqual(len(mock_insert_batch.call_args_list[0].args[0]), 500)
+        self.assertEqual(len(mock_insert_batch.call_args_list[1].args[0]), 500)
+        self.assertEqual(len(mock_insert_batch.call_args_list[2].args[0]), 201)
+        mock_finalize.assert_called_once_with("task_chunked", "dev", "scrapes/task_chunked.json")
+
+    @patch("api._finalize_local_artifact_import")
+    @patch("api._upload_to_convex_envs")
+    @patch("api.insert_scraping_accounts_batch")
+    @patch("api._filter_and_collect_accounts")
+    @patch("api.load_all_keyword_sets")
+    @patch("api._get_task_and_payload")
+    def test_process_scraping_task_does_not_finalize_when_archive_chunk_fails(
+        self,
+        mock_get_task,
+        mock_keywords,
+        mock_filter,
+        mock_insert_batch,
+        mock_upload,
+        mock_finalize,
+    ) -> None:
+        mock_get_task.return_value = (
+            {
+                "_id": "task_chunk_fail",
+                "workflowId": "wf_1",
+                "workflowName": "Workflow",
+                "nodeId": "node_1",
+                "kind": "followers",
+                "localArtifactPath": "scrapes/task_chunk_fail.json",
+            },
+            {"users": [{"username": "placeholder"}]},
+        )
+        mock_keywords.return_value = {"us_male_names": {"john"}}
+        archived_accounts = [
+            {"userName": f"user_{index}", "status": "need_scraping", "createdAt": index}
+            for index in range(501)
+        ]
+        mock_filter.return_value = (
+            [{"userName": "kept_user", "fullName": "Kept User", "matchedName": "Kept"}],
+            archived_accounts,
+            501,
+            500,
+        )
+        mock_insert_batch.side_effect = [
+            {"status": "success", "inserted": 500, "skipped": 0},
+            {"status": "error", "errorMessage": "chunk failed"},
+        ]
+
+        response = self.client.post(
+            "/scraping-tasks/task_chunk_fail/process",
+            json={
+                "env": "dev",
+                "keepFields": ["username", "full_name"],
+                "uploadToConvex": True,
+                "environments": ["dev"],
+                "accountStatus": "available",
+            },
+        )
+
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("chunk failed", response.json()["detail"])
+        self.assertIn("partial progress inserted=500, skipped=0", response.json()["detail"])
+        self.assertEqual(mock_insert_batch.call_count, 2)
+        mock_upload.assert_not_called()
+        mock_finalize.assert_not_called()
+
     @patch("api.convex_mutation")
     @patch("api.upload_usernames_to_convex")
     @patch("api._get_task_and_payload")

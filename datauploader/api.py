@@ -32,7 +32,7 @@ from scraping_tasks import (
     has_user_collection,
     normalize_task_row,
 )
-from uploader import upload_usernames_to_convex, upload_accounts_to_convex
+from uploader import iter_batches, upload_usernames_to_convex, upload_accounts_to_convex
 
 import requests
 
@@ -336,12 +336,24 @@ def _archive_scraping_accounts(accounts, env: str) -> dict[str, int]:
     """Archive deduped scraping accounts into the scrapingAccounts table."""
     if not accounts:
         return {"inserted": 0, "skipped": 0}
-    result = insert_scraping_accounts_batch(accounts, env=env)
-    if result.get("status") != "success":
-        raise RuntimeError(result.get("errorMessage", "Unknown error"))
+    batches = list(iter_batches(accounts))
+    inserted = 0
+    skipped = 0
+    for index, batch in enumerate(batches):
+        result = insert_scraping_accounts_batch(batch, env=env)
+        if result.get("status") != "success":
+            error_message = str(result.get("errorMessage", "Unknown error"))
+            partial_message = (
+                f"Bulk scraping account archive failed after {index}/{len(batches)} batches; "
+                f"partial progress inserted={inserted}, skipped={skipped}. {error_message}"
+            )
+            print(partial_message)
+            raise RuntimeError(partial_message)
+        inserted += int(result.get("inserted", 0))
+        skipped += int(result.get("skipped", 0))
     return {
-        "inserted": int(result.get("inserted", 0)),
-        "skipped": int(result.get("skipped", 0)),
+        "inserted": inserted,
+        "skipped": skipped,
     }
 
 

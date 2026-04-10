@@ -44,6 +44,7 @@ From schema:
 - Exposed under `/api/*` on `.convex.site` deployment host.
 - Supports server/python interoperability for profile/list/account/template/workflow/workflow-artifact operations.
 - Supports server/python interoperability for profile/list/account/template/workflow/workflow-artifact operations plus scrape-account archive writes.
+- Bulk account archive/import HTTP routes aggregate fixed `500`-row chunks before calling the underlying mutations so oversized batch requests do not exceed Convex single-function limits.
 - Every HTTP action route requires `INTERNAL_API_KEY`.
 - Missing `INTERNAL_API_KEY` is a configuration error and the HTTP surface fails closed rather than becoming public.
 

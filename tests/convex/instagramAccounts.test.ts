@@ -3,6 +3,10 @@ import { expect, test, vi } from 'vitest'
 import { internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedProfile } from './helpers'
 
+function stubEnv(env: Record<string, string>) {
+  vi.stubGlobal('process', { env })
+}
+
 test('normalizes usernames and skips duplicates', async () => {
   const t = createConvexTest()
 
@@ -297,6 +301,125 @@ test('daily assignment trims newest assigned accounts first when a profile is ov
   expect(trimmedRows[0]?.assignedTo).toBeUndefined()
   expect(trimmedRows[1]?.status).toBe('available')
   expect(trimmedRows[1]?.assignedTo).toBeUndefined()
+})
+
+test('chunks oversized instagram account batches and aggregates duplicate counts', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  await t.mutation(internal.instagramAccounts.insert, {
+    userName: 'existing-user',
+    status: 'available',
+    message: false,
+    createdAt: Date.now() - 1_000,
+  })
+
+  const accounts = [
+    ...Array.from({ length: 499 }, (_, index) => ({
+      userName: `batch-user-${index}`,
+      fullName: `Batch User ${index}`,
+      matchedName: `Match ${index}`,
+      status: 'available',
+      message: false,
+      createdAt: Date.now() + index,
+    })),
+    {
+      userName: 'cross-boundary',
+      fullName: 'Cross Boundary',
+      matchedName: 'Cross',
+      status: 'available',
+      message: false,
+      createdAt: Date.now() + 500,
+    },
+    {
+      userName: '@Cross-Boundary//',
+      fullName: 'Cross Boundary Duplicate',
+      matchedName: 'Cross',
+      status: 'available',
+      message: false,
+      createdAt: Date.now() + 501,
+    },
+    {
+      userName: 'existing-user',
+      fullName: 'Existing User',
+      matchedName: 'Existing',
+      status: 'available',
+      message: false,
+      createdAt: Date.now() + 502,
+    },
+    {
+      userName: 'tail-user',
+      fullName: 'Tail User',
+      matchedName: 'Tail',
+      status: 'done',
+      message: false,
+      createdAt: Date.now() + 503,
+    },
+  ]
+
+  const response = await t.fetch('/api/instagram-accounts/batch', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ accounts }),
+  })
+  const body = await response.json()
+  const rows = await t.run(async (ctx) => await ctx.db.query('instagramAccounts').collect())
+  const crossBoundaryRows = rows.filter((row) => row.userName === 'cross-boundary')
+  const tailRow = rows.find((row) => row.userName === 'tail-user')
+
+  expect(response.status).toBe(200)
+  expect(body).toMatchObject({ inserted: 501, skipped: 2 })
+  expect(Array.isArray(body.ids)).toBe(true)
+  expect(body.ids).toHaveLength(501)
+  expect(rows).toHaveLength(502)
+  expect(crossBoundaryRows).toHaveLength(1)
+  expect(tailRow).toMatchObject({
+    userName: 'tail-user',
+    status: 'done',
+    fullName: 'Tail User',
+    matchedName: 'Tail',
+  })
+})
+
+test('reports partial progress when a later instagram account batch fails', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+
+  const accounts = [
+    ...Array.from({ length: 500 }, (_, index) => ({
+      userName: `batch-user-${index}`,
+      fullName: `Batch User ${index}`,
+      matchedName: `Match ${index}`,
+      status: 'available',
+      message: false,
+      createdAt: Date.now() + index,
+    })),
+    {
+      fullName: 'Missing Username',
+      matchedName: 'Missing',
+      status: 'available',
+      message: false,
+      createdAt: Date.now() + 501,
+    },
+  ]
+
+  const response = await t.fetch('/api/instagram-accounts/batch', {
+    method: 'POST',
+    headers: {
+      authorization: 'Bearer secret-token',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ accounts }),
+  })
+  const body = await response.json()
+  const rows = await t.run(async (ctx) => await ctx.db.query('instagramAccounts').collect())
+
+  expect(response.status).toBe(400)
+  expect(body.error).toContain('partial progress inserted=500, skipped=0')
+  expect(rows).toHaveLength(500)
 })
 
 test('daily assignment respects zero assigned account limits', async () => {
