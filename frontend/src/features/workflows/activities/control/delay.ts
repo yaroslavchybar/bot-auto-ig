@@ -32,7 +32,7 @@ export const delay: ActivityDefinition = {
   ],
 
   outputs: ['next'],
-  pythonHandler: '__builtin__.delay',
+  handler: 'control.delay',
 }
 
 

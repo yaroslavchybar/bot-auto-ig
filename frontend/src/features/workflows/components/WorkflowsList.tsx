@@ -97,7 +97,7 @@ function ActionsMenuItems({
         Edit Schedule
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={onEditFlow} disabled={isRunning}>
+      <DropdownMenuItem onClick={() => onEditFlow(workflow)} disabled={isRunning}>
         <GitBranch className="mr-2 h-4 w-4" />
         Edit Flow
       </DropdownMenuItem>
@@ -511,7 +511,7 @@ export function WorkflowsList({
       <div className="space-y-4">
         {workflows.map((workflow) => (
           <WorkflowMobileCard key={workflow._id} workflow={workflow}
-            onToggleActive={onToggleActive} onEditSchedule={onEditSchedule} {...sharedMenuProps} />
+            onToggleActive={onToggleActive} {...sharedMenuProps} />
         ))}
       </div>
     )
@@ -524,7 +524,7 @@ export function WorkflowsList({
         <TableBody>
           {workflows.map((workflow) => (
             <WorkflowDesktopRow key={workflow._id} workflow={workflow}
-              onToggleActive={onToggleActive} onEditSchedule={onEditSchedule} {...sharedMenuProps} />
+              onToggleActive={onToggleActive} {...sharedMenuProps} />
           ))}
         </TableBody>
       </Table>

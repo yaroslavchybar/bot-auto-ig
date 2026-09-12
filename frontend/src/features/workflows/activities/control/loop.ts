@@ -26,7 +26,7 @@ export const loop: ActivityDefinition = {
   ],
 
   outputs: ['loop', 'done'],
-  pythonHandler: '__builtin__.loop',
+  handler: 'control.loop',
 }
 
 

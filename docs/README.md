@@ -7,7 +7,7 @@ Conflict order: `docs/` → `AGENTS.md` → README stubs.
 ## What This Repo Is
 
 Instagram automation platform: React Router frontend, Express orchestration
-server, Python browser-automation runtime, Convex shared data layer, Bun
+server, Camoufox JS browser automation, Convex shared data layer, Bun
 CSV/artifact ingest service. Package manager and server runtime: Bun
 (`packageManager: bun@1.4.2`, workspaces `frontend` + `server` +
 `datauploader`).
@@ -18,17 +18,14 @@ CSV/artifact ingest service. Package manager and server runtime: Bun
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
 - `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|monitoring|displays|health`)
-  + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Python
+  + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/Camoufox
   subprocess orchestration. Admin session middleware globally;
   `/api/workflows` also accepts `INTERNAL_API_KEY`. Rate limits:
   general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
-  so `python/` runners and `data/` work from source or `dist/`.
-- `python/`: automation runtime. Entry points `runners/launcher.py`,
-  `runners/run_workflow.py`, `runners/run_multiple_accounts.py`; layers
-  `actions/` (Instagram domain), `browser/` (lifecycle/anti-detect),
-  `database/` (Convex clients), `core/` (config/logging/process). Emits
-  `__EVENT__`-prefixed JSON for WebSocket propagation. Scrape results queue
-  as local artifacts under `data/uploads/scrapes/` for manual review/import.
+- `server/browser/`: Camoufox JS sessions, profile persistence, and login/manual
+  browser entrypoints.
+- `server/automation/`: Bun workers and TypeScript Instagram actions. Workers
+  emit `__EVENT__`-prefixed JSON for WebSocket propagation.
 - `convex/`: schema, queries/mutations (`profiles`, `lists`, `workflows`,
   `keywords`, `workflowArtifacts`, `instagramAccounts`, `scrapingAccounts`,
   `messageTemplates`), HTTP actions, crons. Generated code in
@@ -48,7 +45,7 @@ optional `-WithUploader -WithConvex`, `-UseTabs`).
 Workspaces: `bun run --filter frontend dev|build|start|lint|preview|typecheck`,
 `bun run --filter anti-server dev|build|start`,
 `bun run --filter anti-uploader dev|build|start|test|typecheck`.
-Python: `python -m pytest python/tests -q`. Docker: `docker compose up --build`
+Server: `bun run --filter anti-server build`. Docker: `docker compose up --build`
 (services below); Convex: `bunx convex dev|deploy`.
 
 ## Local Ports & Docker
@@ -84,8 +81,8 @@ areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounti
 - Frontend/server changes without dedicated tests: `lint` + `build`.
 - Automation/parsing/retry/state changes: add/update tests.
 - Conventions: TS/TSX 2-space (server files historically 4-space), single
-  quotes, semicolon-light; components `PascalCase`; hooks `useX.*`; Python
-  PEP 8/snake_case, `logging` not `print()`, English-only strings.
+  quotes, semicolon-light; components `PascalCase`; hooks `useX.*`; English-only
+  strings.
 - PRs: what/why, impacted modules, verification commands, UI screenshots.
 - Troubleshooting first checks: Telegram env present, backend on :3001,
   `bun` on PATH, `wt.exe` for `-UseTabs`, uploader/Convex URLs consistent.

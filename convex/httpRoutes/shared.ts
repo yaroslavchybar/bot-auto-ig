@@ -7,12 +7,14 @@ import { httpAction, type ActionCtx } from '../_generated/server';
 
 /** Base error for HTTP actions with a status code. */
 export class HttpError extends Error {
+  readonly statusCode: number;
   constructor(
     message: string,
-    public readonly statusCode: number,
+    statusCode: number,
   ) {
     super(message);
     this.name = 'HttpError';
+    this.statusCode = statusCode;
   }
 }
 
@@ -187,7 +189,7 @@ export async function parseBody(request: Request): Promise<Record<string, any>> 
   }
 }
 
-export function mapProfileToPython(
+export function mapProfileToApi(
   profile: any,
   optionsOrIndex?: { includeCookies?: boolean } | number,
 ): any {
@@ -233,7 +235,7 @@ export function mapProfileToPython(
   return mapped;
 }
 
-export function mapAccountToPython(account: any): any {
+export function mapAccountToApi(account: any): any {
   if (!account) return account;
   return {
     id: account._id,
@@ -249,7 +251,7 @@ export function mapAccountToPython(account: any): any {
   };
 }
 
-export function mapListToPython(list: any): any {
+export function mapListToApi(list: any): any {
   if (!list) return list;
   return {
     id: list._id,

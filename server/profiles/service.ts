@@ -1,5 +1,7 @@
-import path from 'path'
 import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
+import { FingerprintGenerator } from 'fingerprint-generator'
 import { profileManager } from './data.js'
 import type { Profile } from './data.js'
 import {
@@ -11,18 +13,14 @@ import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
 import logger from '../shared/logger.js'
-import { spawnPython, killProcess } from '../shared/ProcessService.js'
+import { spawnBun, killProcess } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
-const LAUNCHER_SCRIPT = path.join(PROJECT_ROOT, 'python', 'runners', 'launcher.py')
-const FINGERPRINT_GENERATOR_SCRIPT = path.join(
-  PROJECT_ROOT,
-  'python',
-  'browser',
-  'fingerprint.py',
-)
+const LAUNCHER_SCRIPT = fs.existsSync(path.join(PROJECT_ROOT, 'server', 'browser', 'manual.ts'))
+  ? path.join(PROJECT_ROOT, 'server', 'browser', 'manual.ts')
+  : path.join(PROJECT_ROOT, 'server', 'dist', 'browser', 'manual.js')
 
 export function normalizeProfileInput(body: Record<string, unknown> = {}): any {
   const normalizedCookies = normalizeProfileCookiesJson(body.cookies_json ?? body.cookiesJson)
@@ -56,36 +54,20 @@ function clearManualDisplay(profileName: string): boolean {
 }
 
 export async function generateFingerprint(os: string): Promise<any> {
-  const result = await new Promise<string>((resolve, reject) => {
-    const args = [FINGERPRINT_GENERATOR_SCRIPT, '--os', os]
-    const child = spawnPython({
-      args,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    let stdout = ''
-    let stderr = ''
-
-    child.stdout?.on('data', (data) => {
-      stdout += data.toString()
-    })
-
-    child.stderr?.on('data', (data) => {
-      stderr += data.toString()
-    })
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim())
-      } else {
-        reject(new Error(stderr || `Process exited with code ${code}`))
-      }
-    })
-
-    child.on('error', reject)
+  const targetOs = ({ mac: 'macos', macos: 'macos', linux: 'linux', windows: 'windows' } as Record<string, 'macos' | 'linux' | 'windows'>)[
+    String(os || 'windows').toLowerCase()
+  ] || 'windows'
+  const generator = new FingerprintGenerator({
+    browsers: ['firefox'],
+    operatingSystems: [targetOs],
+    mockWebRTC: true,
   })
-
-  return JSON.parse(result)
+  return generator.getFingerprint({
+    browsers: ['firefox'],
+    operatingSystems: [targetOs],
+    mockWebRTC: true,
+    screen: { minWidth: 1280, maxWidth: 1920, minHeight: 720, maxHeight: 1080 },
+  }).fingerprint
 }
 
 /** Auto-generate fingerprint seed if missing, broadcasting result. */
@@ -140,7 +122,7 @@ function handleChildStdout(name: string, data: Buffer) {
       workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
       message: log.message,
       level: log.level,
-      source: 'python',
+      source: 'typescript',
       profileName: name,
       ...meta,
     })
@@ -157,7 +139,7 @@ function handleChildStderr(name: string, data: Buffer) {
       workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
       message: log.message,
       level: log.explicitLevel ? log.level : 'error',
-      source: 'python',
+      source: 'typescript',
       profileName: name,
       ...meta,
     })
@@ -233,7 +215,7 @@ export async function startProfileBrowser(name: string): Promise<void> {
     profileName: name,
   })
 
-  const child = spawnPython({
+  const child = spawnBun({
     args,
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: process.platform === 'win32',

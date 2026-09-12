@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import type { Node } from 'reactflow'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { getActivityById } from '@/features/workflows/activities/index'
+import { getActivityById, type ActivityDefinition } from '@/features/workflows/activities/index'
 import { X, Play, Settings2, Info } from 'lucide-react'
 import { GroupedInputs } from '@/features/workflows/activity-ui/GroupedInputs'
 import { cn } from '@/lib/utils'
@@ -223,7 +223,7 @@ function ActivitySettingsBody({
   config,
   onChange,
 }: {
-  activity: { description: string; inputs: { name: string }[] }
+  activity: ActivityDefinition
   config: Record<string, unknown>
   onChange: (name: string, value: unknown) => void
 }) {

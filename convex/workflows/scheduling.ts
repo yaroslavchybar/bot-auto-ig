@@ -227,7 +227,7 @@ export const executeScheduledWorkflow = internalMutation({
 			updatedAt: Date.now(),
 		});
 
-		// Schedule the HTTP call to trigger Python runner
+		// Schedule the HTTP call to trigger the Bun worker
 		await ctx.scheduler.runAfter(0, internal.workflows.scheduling.triggerWorkflowExecution, {
 			workflowId: args.workflowId,
 		});
@@ -236,7 +236,7 @@ export const executeScheduledWorkflow = internalMutation({
 	},
 });
 
-// Internal action to call the server and trigger Python execution
+// Internal action to call the server and trigger TypeScript execution
 export const triggerWorkflowExecution = internalAction({
 	args: { workflowId: v.id("workflows") },
 	handler: async (_ctx, args) => {

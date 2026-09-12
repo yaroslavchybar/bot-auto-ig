@@ -14,6 +14,7 @@ import {
   getCategoryLabel,
   searchActivities,
   type ActivityCategoryFilter,
+  type ActivityDefinition,
 } from '@/features/workflows/activities'
 import { ActivityIcon } from './activityIcons'
 import { useWorkflowEditor } from './WorkflowEditorContext'
@@ -35,7 +36,7 @@ function BlockLibraryCategoryList({
   query,
   onSelectCategory,
 }: {
-  categories: readonly string[]
+  categories: readonly ActivityCategoryFilter[]
   selectedCategory: ActivityCategoryFilter
   query: string
   onSelectCategory: (category: ActivityCategoryFilter) => void
@@ -75,7 +76,7 @@ function BlockLibraryItem({
   badgeLabel,
   onInsert,
 }: {
-  activity: { id: string; name: string; description: string; icon: string; color: string; category: string }
+  activity: ActivityDefinition
   badgeLabel: string
   onInsert: (activityId: string) => void
 }) {
@@ -120,8 +121,8 @@ function BlockLibraryResultsList({
   showRecentActivities,
   onInsert,
 }: {
-  displayResults: Array<{ id: string; name: string; description: string; icon: string; color: string; category: string }>
-  recentActivities: Array<{ id: string; name: string; description: string; icon: string; color: string; category: string }>
+  displayResults: ActivityDefinition[]
+  recentActivities: ActivityDefinition[]
   showRecentActivities: boolean
   onInsert: (activityId: string) => void
 }) {

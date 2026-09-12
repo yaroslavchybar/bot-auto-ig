@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { parseLogLine } from './parser.js'
+import { createLogStreamParser, parseLogLine } from './parser.js'
+
+test('worker events survive arbitrary byte boundaries and UTF-8 splits', () => {
+    const parser = createLogStreamParser()
+    const data = Buffer.from('__EVENT__{"type":"task_progress","profile":"Ярослав"}__EVENT__\nfinished')
+    const parsed = [...data].flatMap((byte) => parser.write(Buffer.from([byte])))
+    parsed.push(...parser.end())
+    assert.equal(parsed.length, 2)
+    assert.equal(parsed[0].metadata?.profile, 'Ярослав')
+    assert.equal(parsed[1].message, 'finished')
+})
 
 test('parseLogLine handles prefixed event lines that contain the legacy sentinel text', () => {
     const parsed = parseLogLine('__EVENT__{"type":"task_progress","ts":"2026-03-13T12:00:00+00:00","detail":"checkpoint }__EVENT__ reached","profile":"alice"}')

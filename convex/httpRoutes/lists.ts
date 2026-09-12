@@ -2,7 +2,7 @@ import type { HttpRouter } from 'convex/server';
 import { api } from '../_generated/api';
 import {
   jsonResponse,
-  mapListToPython,
+  mapListToApi,
   parseBody,
   registerPreflight,
   withErrorHandling,
@@ -23,7 +23,7 @@ export function registerListRoutes(http: HttpRouter): void {
     method: 'GET',
     handler: withErrorHandling(async (ctx) => {
       const lists = await ctx.runQuery(api.lists.list, {});
-      return jsonResponse(lists.map(mapListToPython));
+      return jsonResponse(lists.map(mapListToApi));
     }),
   });
 
@@ -33,7 +33,7 @@ export function registerListRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
       const created = await ctx.runMutation(api.lists.create, body as any);
-      return jsonResponse(mapListToPython(created));
+      return jsonResponse(mapListToApi(created));
     }),
   });
 
@@ -43,7 +43,7 @@ export function registerListRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
       const updated = await ctx.runMutation(api.lists.update, body as any);
-      return jsonResponse(mapListToPython(updated));
+      return jsonResponse(mapListToApi(updated));
     }),
   });
 

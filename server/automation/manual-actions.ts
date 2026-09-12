@@ -1,9 +1,10 @@
 import { EventEmitter } from 'events';
+import fs from 'fs';
 import path from 'path';
 import { Profile, profileManager } from '../profiles/index.js';
 import { registerCleanup } from './shutdown.js';
 import {
-  spawnPython,
+    spawnBun,
   killProcess,
   waitForExit,
   type ChildProcess,
@@ -28,7 +29,9 @@ class ManualAutomationService extends EventEmitter {
         const name = profile.name;
         if (this._processes.has(name)) return;
 
-        const scriptPath = path.join(PROJECT_ROOT, 'python', 'runners', 'launcher.py');
+        const scriptPath = fs.existsSync(path.join(PROJECT_ROOT, 'server', 'browser', 'manual.ts'))
+            ? path.join(PROJECT_ROOT, 'server', 'browser', 'manual.ts')
+            : path.join(PROJECT_ROOT, 'server', 'dist', 'browser', 'manual.js');
         const args = ['--name', name];
         if (profile.proxy) args.push('--proxy', profile.proxy);
         args.push('--action', 'manual');
@@ -36,7 +39,7 @@ class ManualAutomationService extends EventEmitter {
         if (profile.fingerprint_os) args.push('--fingerprint-os', profile.fingerprint_os);
 
         try {
-            const child = spawnPython({
+            const child = spawnBun({
                 args: [scriptPath, ...args],
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: process.platform === 'win32',

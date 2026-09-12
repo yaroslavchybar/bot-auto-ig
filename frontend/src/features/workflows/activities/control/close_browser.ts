@@ -10,7 +10,7 @@ export const closeBrowser: ActivityDefinition = {
   color: '#E74C3C',
   inputs: [],
   outputs: ['next'],
-  pythonHandler: 'control.close_browser',
+  handler: 'control.close_browser',
 }
 
 

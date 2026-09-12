@@ -17,7 +17,7 @@ export const selectList: ActivityDefinition = {
     },
   ],
   outputs: ['next'],
-  pythonHandler: 'control.select_list',
+  handler: 'control.select_list',
 }
 
 

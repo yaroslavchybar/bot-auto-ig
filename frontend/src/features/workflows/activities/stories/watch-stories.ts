@@ -48,7 +48,7 @@ export const watchStories: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.stories.watch',
+  handler: 'stories.watch',
 }
 
 

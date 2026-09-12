@@ -1,6 +1,6 @@
 /**
  * Backend API Server for Vue Frontend
- * Handles Python subprocess control and WebSocket communication
+ * Handles Bun subprocess control and WebSocket communication
  */
 import './env.js'
 // Sentry must be initialized before Express app creation

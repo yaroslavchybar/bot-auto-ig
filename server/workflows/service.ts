@@ -1,4 +1,5 @@
 import path from 'path'
+import fs from 'fs'
 import {
   activeDisplays,
   clearWorkflowProfileActive,
@@ -7,7 +8,7 @@ import {
 } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../shared/mutex.js'
-import { parseLogOutput } from '../logs/parser.js'
+import { createLogStreamParser, parseLogOutput } from '../logs/parser.js'
 import {
   workflowsGetById,
   workflowsStart,
@@ -15,7 +16,7 @@ import {
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
 import {
-  spawnPython,
+  spawnBun,
   killProcess,
   getPid,
   waitForExit,
@@ -24,7 +25,9 @@ import { NotFoundError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
-const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_workflow.py')
+const WORKFLOW_RUNNER = fs.existsSync(path.join(PROJECT_ROOT, 'server', 'automation', 'worker.ts'))
+  ? path.join(PROJECT_ROOT, 'server', 'automation', 'worker.ts')
+  : path.join(PROJECT_ROOT, 'server', 'dist', 'automation', 'worker.js')
 
 // ---------------------------------------------------------------------------
 // Utility helpers (re-exported from ProcessService)
@@ -41,8 +44,7 @@ export function isStopNoiseLog(message: string): boolean {
     /Future exception was never retrieved/i.test(m) ||
     /BrokenPipeError/i.test(m) ||
     /Broken pipe/i.test(m) ||
-    /Traceback \(most recent call last\)/i.test(m) ||
-    /asyncio\/unix_events\.py/i.test(m)
+    /Traceback \(most recent call last\)/i.test(m)
   )
 }
 
@@ -101,7 +103,7 @@ export function getWorkflowStatus(workflowId?: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Spawn and wire up the Python workflow subprocess
+// Spawn and wire up the Bun workflow subprocess
 // ---------------------------------------------------------------------------
 
 function buildPayload(workflowId: string, workflow: any, parallelProfiles?: number) {
@@ -176,6 +178,7 @@ async function handleStatusEvent(
       await workflowsUpdateStatus({
         workflowId,
         status,
+        error: typeof meta.error === 'string' ? meta.error : undefined,
         currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
         nodeStates: nextNodeStates,
       })
@@ -225,26 +228,28 @@ function wireStdout(
   workflowId: string,
   currentProfile: { value: string | null },
 ): void {
-  proc.stdout?.on('data', (data: Buffer) => {
-    const raw = data.toString()
-    const parsed = parseLogOutput(raw)
-
+  const parser = createLogStreamParser()
+  const consume = (parsed: ReturnType<typeof parseLogOutput>) => {
     for (const log of parsed) {
       const stopRequested = Boolean((proc as any).__stopRequested)
       if (stopRequested && isStopNoiseLog(log?.message)) continue
-      void handleStatusEvent(workflowId, log, currentProfile)
+      proc.__statusUpdates = (proc.__statusUpdates || Promise.resolve())
+        .then(() => handleStatusEvent(workflowId, log, currentProfile))
+        .catch((error: unknown) => logger.error({ err: error, workflowId }, 'Workflow status update failed'))
       handleDisplayEvent(workflowId, log)
       broadcast({
         workflowId,
         type: log.eventType ? log.eventType : 'log',
         message: log.message,
         level: log.level,
-        source: 'python',
+        source: 'typescript',
         profileName: currentProfile.value,
         ...log.metadata,
       })
     }
-  })
+  }
+  proc.stdout?.on('data', (data: Buffer) => consume(parser.write(data)))
+  proc.stdout?.on('end', () => consume(parser.end()))
 }
 
 function wireStderr(proc: any, workflowId: string): void {
@@ -259,7 +264,7 @@ function wireStderr(proc: any, workflowId: string): void {
         workflowId,
         message: log.message,
         level: log.explicitLevel ? log.level : 'error',
-        source: 'python',
+        source: 'typescript',
       })
     }
   })
@@ -267,6 +272,7 @@ function wireStderr(proc: any, workflowId: string): void {
 
 function wireProcessLifecycle(proc: any, workflowId: string): void {
   proc.on('close', async (code: number | null) => {
+    await proc.__statusUpdates
     workflowWorkers.delete(workflowId)
     clearWorkflowDisplays(workflowId)
     clearWorkflowProfileActive(workflowId)
@@ -336,8 +342,8 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<void> {
     source: 'server',
   })
 
-  const proc = spawnPython({
-    args: ['-u', PYTHON_RUNNER],
+  const proc = spawnBun({
+    args: [WORKFLOW_RUNNER],
   })
   workflowWorkers.set(workflowId, { process: proc, status: 'running', startedAt: Date.now() })
 

@@ -1,5 +1,5 @@
 /**
- * ProcessService — Centralized Python child-process spawning, killing,
+ * ProcessService — Centralized Bun child-process spawning, killing,
  * and PID tracking for the server.
  *
  * All runner-process spawning MUST go through this module.
@@ -31,8 +31,8 @@ const EXTENDED_SIGTERM_WAIT_MS = 5000
 // Spawn options
 // ---------------------------------------------------------------------------
 
-export interface SpawnPythonOptions {
-  /** Arguments for the Python interpreter (script path + flags). */
+export interface SpawnBunOptions {
+  /** Arguments for the Bun script (script path + flags). */
   args: string[]
   /** Override working directory (defaults to PROJECT_ROOT). */
   cwd?: string
@@ -130,14 +130,13 @@ function trackProcess(proc: ChildProcess): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Spawn a Python child process with standard env vars & stdio config.
+ * Spawn a Bun child process with standard stdio and lifecycle tracking.
  *
- * Uses `PYTHONUNBUFFERED=1` and `PYTHONPATH=PROJECT_ROOT` by default.
  * Every spawned child is registered in the global process registry so
  * that shutdown can terminate all children, not just known categories.
  */
-export function spawnPython(options: SpawnPythonOptions): ChildProcess {
-  const python = process.env.PYTHON || 'python'
+export function spawnBun(options: SpawnBunOptions): ChildProcess {
+  const bun = process.env.BUN || 'bun'
   const cwd = options.cwd ?? PROJECT_ROOT
   const stdio = (options.stdio ?? ['pipe', 'pipe', 'pipe']) as any
   const shell = options.shell ?? false
@@ -148,12 +147,10 @@ export function spawnPython(options: SpawnPythonOptions): ChildProcess {
 
   const env: Record<string, string | undefined> = {
     ...process.env,
-    PYTHONUNBUFFERED: '1',
-    PYTHONPATH: PROJECT_ROOT,
     ...options.extraEnv,
   }
 
-  const child = nodeSpawn(python, options.args, {
+  const child = nodeSpawn(bun, options.args, {
     cwd,
     detached,
     stdio,
@@ -166,7 +163,7 @@ export function spawnPython(options: SpawnPythonOptions): ChildProcess {
   if (child.pid) {
     logger.info(
       { pid: child.pid, script: options.args[0] },
-      'Spawned Python process',
+      'Spawned Bun process',
     )
   }
 

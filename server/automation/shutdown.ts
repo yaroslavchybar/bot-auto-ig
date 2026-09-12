@@ -4,7 +4,7 @@
  * On SIGTERM/SIGINT:
  * 1. Stop accepting new HTTP connections (close the server)
  * 2. Close all WebSocket connections
- * 3. Kill all Python child processes (automation, workflows, profiles)
+ * 3. Kill all Bun child processes (automation, workflows, profiles)
  * 4. Persist automation state atomically
  * 5. Clear PID files
  * 6. Exit cleanly with code 0
@@ -86,7 +86,7 @@ async function performCleanup(): Promise<void> {
   // 1. Persist automation state before killing processes
   persistAutomationState()
 
-  // 2. Kill all Python child processes
+  // 2. Kill all Bun child processes
   await killAllChildProcesses()
 
   // 3. Run registered cleanup functions (runner.ts, manual-actions.ts)
@@ -144,7 +144,7 @@ function persistAutomationState(): void {
 }
 
 /**
- * Kill ALL tracked Python child processes via the global ProcessService
+ * Kill ALL tracked Bun child processes via the global ProcessService
  * registry. This catches automation, workflow, profile, login, and
  * fingerprint subprocesses — nothing is orphaned.
  */

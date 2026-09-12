@@ -87,10 +87,8 @@ export function useAccountsState() {
 
   return {
     state,
-    fileInputRef: csv.fileInputRef,
     activeMode,
     setActiveMode,
-    dragActive: csv.dragActive,
     ...scraping,
     ...csv,
     handleResetActiveMode,

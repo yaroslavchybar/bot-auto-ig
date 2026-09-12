@@ -47,7 +47,7 @@ export const approveRequests: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.engagement.approve_follow_requests',
+  handler: 'engagement.approve_follow_requests',
 }
 
 

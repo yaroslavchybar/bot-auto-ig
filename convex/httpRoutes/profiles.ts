@@ -2,7 +2,7 @@ import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
 import {
   jsonResponse,
-  mapProfileToPython,
+  mapProfileToApi,
   parseBody,
   registerPreflight,
   withErrorHandling,
@@ -57,7 +57,7 @@ function registerProfileQueryRoutes(http: HttpRouter): void {
     method: 'GET',
     handler: withErrorHandling(async (ctx) => {
       const profiles = await ctx.runQuery(internal.profiles.queries.listInternal, {});
-      return jsonResponse(profiles.map(mapProfileToPython));
+      return jsonResponse(profiles.map(mapProfileToApi));
     }),
   });
 
@@ -68,7 +68,7 @@ function registerProfileQueryRoutes(http: HttpRouter): void {
       const url = new URL(request.url);
       const name = url.searchParams.get('name') || '';
       const profile = await ctx.runQuery(internalApi.profiles.queries.getByNameInternal, { name });
-      return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
+      return jsonResponse(mapProfileToApi(profile, { includeCookies: true }));
     }),
   });
 
@@ -82,7 +82,7 @@ function registerProfileQueryRoutes(http: HttpRouter): void {
       const profile = profileId
         ? await ctx.runQuery(internal.profiles.queries.getByIdInternal, { profileId: profileId as any })
         : null;
-      return jsonResponse(mapProfileToPython(profile, { includeCookies: true }));
+      return jsonResponse(mapProfileToApi(profile, { includeCookies: true }));
     }),
   });
 
@@ -97,7 +97,7 @@ function registerProfileQueryRoutes(http: HttpRouter): void {
         listIds,
         cooldownMinutes,
       });
-      return jsonResponse(profiles.map(mapProfileToPython));
+      return jsonResponse(profiles.map(mapProfileToApi));
     }),
   });
 
@@ -110,7 +110,7 @@ function registerProfileQueryRoutes(http: HttpRouter): void {
       const profiles = await ctx.runQuery(internalApi.profiles.queries.getByListIdsInternal, {
         listIds,
       });
-      return jsonResponse(profiles.map(mapProfileToPython));
+      return jsonResponse(profiles.map(mapProfileToApi));
     }),
   });
 }
@@ -142,7 +142,7 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         assignedAccountsLimit:
           body?.assignedAccountsLimit ?? body?.assigned_accounts_limit ?? undefined,
       });
-      return jsonResponse(mapProfileToPython(created, { includeCookies: true }));
+      return jsonResponse(mapProfileToApi(created, { includeCookies: true }));
     }),
   });
 
@@ -166,7 +166,7 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         assignedAccountsLimit:
           body?.assignedAccountsLimit ?? body?.assigned_accounts_limit ?? undefined,
       } as any);
-      return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
+      return jsonResponse(mapProfileToApi(updated, { includeCookies: true }));
     }),
   });
 
@@ -190,7 +190,7 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         assignedAccountsLimit:
           body?.assignedAccountsLimit ?? body?.assigned_accounts_limit ?? undefined,
       });
-      return jsonResponse(mapProfileToPython(updated, { includeCookies: true }));
+      return jsonResponse(mapProfileToApi(updated, { includeCookies: true }));
     }),
   });
 }
@@ -299,7 +299,7 @@ function registerScrapeLeaseRoutes(http: HttpRouter): void {
         now: body?.now ?? Date.now(),
         minHealth: body?.minHealth,
       });
-      return jsonResponse(mapProfileToPython(profile));
+      return jsonResponse(mapProfileToApi(profile));
     }),
   });
 
@@ -314,7 +314,7 @@ function registerScrapeLeaseRoutes(http: HttpRouter): void {
         leaseMs: body?.leaseMs,
         now: body?.now ?? Date.now(),
       });
-      return jsonResponse(mapProfileToPython(profile));
+      return jsonResponse(mapProfileToApi(profile));
     }),
   });
 
@@ -344,7 +344,7 @@ function registerScrapeResultRoutes(http: HttpRouter): void {
         amount: body?.amount,
         now: body?.now ?? Date.now(),
       });
-      return jsonResponse(mapProfileToPython(profile));
+      return jsonResponse(mapProfileToApi(profile));
     }),
   });
 
@@ -358,7 +358,7 @@ function registerScrapeResultRoutes(http: HttpRouter): void {
         workerId: body?.workerId,
         now: body?.now ?? Date.now(),
       });
-      return jsonResponse(mapProfileToPython(profile));
+      return jsonResponse(mapProfileToApi(profile));
     }),
   });
 

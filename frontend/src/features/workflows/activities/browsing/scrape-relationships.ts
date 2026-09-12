@@ -115,5 +115,5 @@ export const scrapeRelationships: ActivityDefinition = {
     },
   ],
   outputs: ['success', 'failure'],
-  pythonHandler: 'browsing.scrape_relationships',
+  handler: 'browsing.scrape_relationships',
 }

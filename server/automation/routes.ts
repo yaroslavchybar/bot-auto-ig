@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import fs from 'fs'
 import path from 'path'
 import { automationState } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
@@ -7,17 +8,21 @@ import { automationMutex } from '../shared/mutex.js'
 import { savePid, clearPid } from './process-manager.js'
 import { validateSettings } from '../shared/settings-schema.js'
 import { markStarted, markStopped } from './state.js'
-import { parseLogOutput } from '../logs/parser.js'
+import { createLogStreamParser, parseLogOutput } from '../logs/parser.js'
 import logger from '../shared/logger.js'
-import { spawnPython, killProcess } from '../shared/ProcessService.js'
+import { spawnBun, killProcess } from '../shared/ProcessService.js'
 import type { ChildProcess } from '../shared/ProcessService.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import { ValidationError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
-const PYTHON_RUNNER = path.join(PROJECT_ROOT, 'python', 'runners', 'run_multiple_accounts.py')
-const LOGIN_SCRIPT = path.join(PROJECT_ROOT, 'python', 'actions', 'login', 'session.py')
+const AUTOMATION_RUNNER = fs.existsSync(path.join(PROJECT_ROOT, 'server', 'automation', 'worker.ts'))
+    ? path.join(PROJECT_ROOT, 'server', 'automation', 'worker.ts')
+    : path.join(PROJECT_ROOT, 'server', 'dist', 'automation', 'worker.js')
+const LOGIN_SCRIPT = fs.existsSync(path.join(PROJECT_ROOT, 'server', 'browser', 'login.ts'))
+    ? path.join(PROJECT_ROOT, 'server', 'browser', 'login.ts')
+    : path.join(PROJECT_ROOT, 'server', 'dist', 'browser', 'login.js')
 
 const router = Router()
 
@@ -100,13 +105,13 @@ router.post('/login', asyncHandler(async (req, res) => {
 // Helpers – automation start
 // ---------------------------------------------------------------------------
 
-/** Spawn the automation Python process and wire all I/O + lifecycle events. */
+/** Spawn the Bun automation process and wire all I/O + lifecycle events. */
 function spawnAndWireAutomation(settings: Record<string, unknown>): void {
     automationState.status = 'running'
     broadcast({ type: 'status', status: 'running' })
     broadcast({ type: 'log', message: 'Starting automation...', level: 'info', source: 'server' })
 
-    automationState.process = spawnPython({ args: ['-u', PYTHON_RUNNER] })
+    automationState.process = spawnBun({ args: [AUTOMATION_RUNNER] })
 
     const payload = JSON.stringify({ settings })
     automationState.process.stdin?.write(payload)
@@ -128,25 +133,27 @@ function wireAutomationStdout(
     proc: ChildProcess,
     currentProfile: { value: string | null },
 ): void {
-    proc.stdout?.on('data', (data) => {
-        const parsed = parseLogOutput(data.toString())
+    const parser = createLogStreamParser()
+    const consume = (parsed: ReturnType<typeof parseLogOutput>) => {
         for (const log of parsed) {
             if (log.eventType === 'profile_started') {
                 currentProfile.value = (log.metadata as any)?.profile || null
             } else if (log.eventType === 'profile_completed') {
                 currentProfile.value = null
             }
-            logger.info({ source: 'python' }, log.message)
+            logger.info({ source: 'typescript' }, log.message)
             broadcast({
                 type: log.eventType ? log.eventType : 'log',
                 message: log.message,
                 level: log.level,
-                source: 'python',
+                source: 'typescript',
                 profileName: currentProfile.value,
                 ...log.metadata,
             })
         }
-    })
+    }
+    proc.stdout?.on('data', (data: Buffer) => consume(parser.write(data)))
+    proc.stdout?.on('end', () => consume(parser.end()))
 }
 
 /** Wire stderr events for the automation process. */
@@ -154,12 +161,12 @@ function wireAutomationStderr(proc: ChildProcess): void {
     proc.stderr?.on('data', (data) => {
         const parsed = parseLogOutput(data.toString())
         for (const log of parsed) {
-            logger.error({ source: 'python' }, log.message)
+            logger.error({ source: 'typescript' }, log.message)
             broadcast({
                 type: 'log',
                 message: log.message,
                 level: log.explicitLevel ? log.level : 'error',
-                source: 'python',
+                source: 'typescript',
             })
         }
     })
@@ -168,7 +175,7 @@ function wireAutomationStderr(proc: ChildProcess): void {
 /** Wire close/error lifecycle events for the automation process. */
 function wireAutomationLifecycle(proc: ChildProcess): void {
     proc.on('close', (code) => {
-        logger.info({ code }, 'Python process exited')
+        logger.info({ code }, 'Bun process exited')
         clearPid()
         markStopped()
         automationState.process = null
@@ -183,7 +190,7 @@ function wireAutomationLifecycle(proc: ChildProcess): void {
     })
 
     proc.on('error', (err) => {
-        logger.error({ err }, 'Python process error')
+        logger.error({ err }, 'Bun process error')
         clearPid()
         markStopped()
         automationState.process = null
@@ -202,13 +209,13 @@ function wireAutomationLifecycle(proc: ChildProcess): void {
 // Helpers – login
 // ---------------------------------------------------------------------------
 
-/** Spawn the login Python process. */
+/** Spawn the Bun login process. */
 function spawnLoginProcess(profileName: string, headless?: boolean): ChildProcess {
     const args = [LOGIN_SCRIPT, '--profile', profileName]
     if (headless) {
         args.push('--headless')
     }
-    return spawnPython({ args })
+    return spawnBun({ args })
 }
 
 /** Send login credentials via stdin. */

@@ -73,7 +73,7 @@ export interface ActivityDefinition {
   color: string // Hex color for the node
   inputs: ActivityInput[] // Configuration inputs
   outputs: ActivityOutput[] // Output handles for connections
-  pythonHandler: string // Python module that runs this
+  handler: string // TypeScript activity handler identifier
   quickAdd?: boolean // Whether to feature this activity in quick-add menus
   keywords?: string[] // Search helpers for the block library
   pickerGroup?: string // Optional grouping hint for picker presentation

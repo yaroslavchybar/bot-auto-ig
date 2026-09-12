@@ -155,7 +155,7 @@ export const browseFeed: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.browsing.feed_scrolling',
+  handler: 'browsing.feed_scrolling',
 }
 
 

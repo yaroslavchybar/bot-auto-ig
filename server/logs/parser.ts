@@ -1,15 +1,36 @@
 /**
- * Log Parser - Parse and format Python automation log output.
+ * Log Parser - Parse and format TypeScript automation log output.
  * Handles structured events, debug messages, and plain log lines.
  */
+
+import { StringDecoder } from 'node:string_decoder'
 
 interface ParsedLog {
     message: string
     level: 'info' | 'warn' | 'error' | 'success' | 'debug'
-    source: 'python' | 'server'
+    source: 'typescript' | 'server'
     eventType?: string
     metadata?: Record<string, unknown>
     explicitLevel?: boolean
+}
+
+/** Pipe chunks can split both event JSON and UTF-8 characters. Parse complete lines only. */
+export function createLogStreamParser() {
+    const decoder = new StringDecoder('utf8')
+    let pending = ''
+    const consume = (text: string, flush: boolean): ParsedLog[] => {
+        pending += text
+        const lines = pending.split('\n')
+        pending = flush ? '' : lines.pop() || ''
+        return lines.flatMap((line) => {
+            const parsed = parseLogLine(line)
+            return parsed ? [parsed] : []
+        })
+    }
+    return {
+        write: (chunk: Buffer) => consume(decoder.write(chunk), false),
+        end: () => consume(decoder.end(), true),
+    }
 }
 
 const EVENT_PREFIX = '__EVENT__'
@@ -71,7 +92,7 @@ function stripLogPrefixes(line: string): string {
 }
 
 /**
- * Parse a single log line from Python output.
+ * Parse a single log line from the Bun worker.
  */
 export function parseLogLine(raw: string): ParsedLog | null {
     const line = raw.trim()
@@ -92,7 +113,7 @@ export function parseLogLine(raw: string): ParsedLog | null {
         return {
             message,
             level: eventType === 'error' ? 'error' : 'info',
-            source: 'python',
+            source: 'typescript',
             eventType,
             metadata: eventData,
         }
@@ -148,13 +169,13 @@ export function parseLogLine(raw: string): ParsedLog | null {
     return {
         message: cleaned,
         level,
-        source: 'python',
+        source: 'typescript',
         explicitLevel,
     }
 }
 
 /**
- * Parse multiple log lines (handles multi-line output from Python).
+ * Parse multiple log lines from a worker stream.
  */
 export function parseLogOutput(raw: string): ParsedLog[] {
     const lines = raw.split('\n')

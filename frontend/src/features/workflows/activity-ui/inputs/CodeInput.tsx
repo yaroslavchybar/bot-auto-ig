@@ -1,5 +1,5 @@
 import type { ActivityInput } from '@/features/workflows/activities/types'
-import { PythonCodeField } from '../PythonCodeField'
+import { TypeScriptCodeField } from '../TypeScriptCodeField'
 
 interface CodeInputProps {
   input: ActivityInput
@@ -8,7 +8,7 @@ interface CodeInputProps {
 }
 
 export function CodeInput({ input, value, onChange }: CodeInputProps) {
-  return <PythonCodeField input={input} value={value} onChange={onChange} />
+  return <TypeScriptCodeField input={input} value={value} onChange={onChange} />
 }
 
 

@@ -3,17 +3,12 @@ FROM oven/bun:1.4.2-debian AS system-base
 
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PATH="/opt/venv/bin:$PATH"
 
 # Stable system dependencies for the browser + VNC runtime.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   apt-get update \
   && apt-get install -y --no-install-recommends \
-  python3 \
-  python3-venv \
-  python3-pip \
-  python-is-python3 \
   ca-certificates \
   # Virtual display and window manager for headless=false
   fluxbox \
@@ -43,29 +38,29 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libva-drm2 \
   && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m venv /opt/venv
-
 RUN mkdir -p /root/.fluxbox && \
   echo "session.screen0.toolbar.visible: false" > /root/.fluxbox/init && \
   echo "[app] (name=.*)" > /root/.fluxbox/apps && \
   echo "  [Deco] {NONE}" >> /root/.fluxbox/apps && \
   echo "[end]" >> /root/.fluxbox/apps
 
-FROM system-base AS python-deps
-COPY --from=python_src requirements.txt /tmp/python/requirements.txt
-RUN --mount=type=cache,target=/root/.cache \
-  pip install -r /tmp/python/requirements.txt
-
-FROM python-deps AS browser-deps
-RUN --mount=type=cache,target=/root/.cache \
-  python -m camoufox fetch \
-  && python -m playwright install --with-deps firefox
+FROM system-base AS browser-deps
+WORKDIR /app
+COPY --from=repo_root package.json bun.lock ./
+COPY --from=repo_root server/package.json ./server/package.json
+COPY --from=repo_root frontend/package.json ./frontend/package.json
+COPY --from=repo_root datauploader/package.json ./datauploader/package.json
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bun install --frozen-lockfile --production --filter anti-server
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bunx --no-install camoufox-js fetch
 
 FROM browser-deps AS bun-build-deps
 WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
+COPY --from=repo_root datauploader/package.json ./datauploader/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --filter anti-server
 
@@ -74,6 +69,7 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
+COPY --from=repo_root datauploader/package.json ./datauploader/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --production --filter anti-server
 
@@ -90,8 +86,6 @@ COPY --from=bun-runtime-deps /app/bun.lock /app/bun.lock
 COPY --from=bun-runtime-deps /app/frontend/package.json /app/frontend/package.json
 COPY --from=app-build /app/server/dist /app/server/dist
 COPY --from=app-build /app/server/package.json /app/server/package.json
-COPY --from=python_src . /app/python
-
 WORKDIR /app/server
 ENV NODE_ENV=production
 ENV DISPLAY=:99

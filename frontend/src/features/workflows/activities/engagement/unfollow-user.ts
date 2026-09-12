@@ -55,7 +55,7 @@ export const unfollowUser: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.engagement.unfollow_users',
+  handler: 'engagement.unfollow_users',
 }
 
 

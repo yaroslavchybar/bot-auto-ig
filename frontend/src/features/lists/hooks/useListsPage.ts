@@ -42,7 +42,7 @@ function useListDialogState(lists: List[]) {
 
 function useListMutations(
   dialog: ReturnType<typeof useListDialogState>,
-  backgroundRefresh: () => Promise<void>,
+  backgroundRefresh: ReturnType<typeof useLists>['backgroundRefresh'],
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const createList = useMutation(api.lists.create)

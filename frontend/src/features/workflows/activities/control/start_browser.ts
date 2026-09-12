@@ -65,7 +65,7 @@ export const startBrowser: ActivityDefinition = {
     },
   ],
   outputs: ['next'],
-  pythonHandler: 'control.start_browser',
+  handler: 'control.start_browser',
 }
 
 

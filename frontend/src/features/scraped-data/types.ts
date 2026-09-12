@@ -1,4 +1,4 @@
-import type { Id } from '../../../../../convex/_generated/dataModel'
+import type { Id } from '../../../../convex/_generated/dataModel'
 
 export type WorkflowArtifact = {
   _id: Id<'workflowArtifacts'>

@@ -35,7 +35,7 @@ export const condition: ActivityDefinition = {
   ],
 
   outputs: ['true', 'false'],
-  pythonHandler: '__builtin__.condition',
+  handler: 'control.condition',
 }
 
 

@@ -1,4 +1,5 @@
 import { Plus, RefreshCw, Upload } from 'lucide-react'
+import type { WorkflowArtifact } from '../hooks/useWorkflowsPage'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -205,7 +206,7 @@ function WorkflowDetailsSheet({
 }: {
   detailsWorkflow: Workflow | null
   artifactsLoading: boolean
-  workflowArtifacts: Record<string, { _id: string; name: string }[]>
+  workflowArtifacts: Record<string, WorkflowArtifact[]>
   onSetDetailsWorkflowId: (id: import('../../../../../convex/_generated/dataModel').Id<'workflows'> | null) => void
   onToggleActive: (workflow: Workflow) => void
   onEditSchedule: (workflow: Workflow) => void

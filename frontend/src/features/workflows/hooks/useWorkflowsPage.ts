@@ -20,7 +20,7 @@ import {
 } from '../utils/workflowImportExport'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
-type WorkflowArtifact = {
+export type WorkflowArtifact = {
   _id: string
   name: string
   nodeLabel?: string | null

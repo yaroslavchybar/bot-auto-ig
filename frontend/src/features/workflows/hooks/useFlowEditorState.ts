@@ -126,7 +126,7 @@ function useNodeDeletion(
   edgesRef: React.RefObject<Edge[]>,
   setNodes: ReturnType<typeof useNodesState>[1],
   setEdges: ReturnType<typeof useEdgesState>[1],
-  setSelectedNode: (node: Node | null) => void,
+  setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>,
 ) {
   const deleteToastIdRef = useRef<string | number | null>(null)
 
@@ -328,7 +328,7 @@ function useNodeActions(
 function useGraphOperations(
   setNodes: ReturnType<typeof useNodesState>[1],
   setEdges: ReturnType<typeof useEdgesState>[1],
-  setSelectedNode: (n: Node | null) => void,
+  setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>,
   nodesRef: { current: Node[] },
   edgesRef: { current: Edge[] },
   blockLibrary: ReturnType<typeof useBlockLibraryState>,

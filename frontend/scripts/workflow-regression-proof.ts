@@ -19,7 +19,7 @@ const changedFiles = execSync('git diff --name-only origin/main...HEAD', {
 const runtimeProtocolFiles = [
   'server/api/workflows.ts',
   'convex/workflows.ts',
-  'python/getting_started/run_workflow.py',
+  'server/automation/worker.ts',
 ]
 
 const touchedRuntimeProtocol = runtimeProtocolFiles.filter((file) =>

@@ -25,7 +25,7 @@ export const randomBranch: ActivityDefinition = {
   ],
 
   outputs: ['path_a', 'path_b', 'path_c'],
-  pythonHandler: '__builtin__.random_branch',
+  handler: 'control.random_branch',
 }
 
 

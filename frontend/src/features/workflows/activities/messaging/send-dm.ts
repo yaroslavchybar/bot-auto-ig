@@ -124,7 +124,7 @@ export const sendDm: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.messaging.send_dm',
+  handler: 'messaging.send_dm',
 }
 
 

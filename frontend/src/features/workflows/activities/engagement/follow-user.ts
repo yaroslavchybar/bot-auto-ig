@@ -103,7 +103,7 @@ export const followUser: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.engagement.follow_users',
+  handler: 'engagement.follow_users',
 }
 
 

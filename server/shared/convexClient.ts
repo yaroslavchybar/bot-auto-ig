@@ -74,6 +74,7 @@ export type ProfileInput = {
     test_ip?: boolean;
     daily_scraping_limit?: number | null;
     assigned_accounts_limit?: number | null;
+    session_id?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -193,6 +194,7 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
         let resp: Response
         try {
             resp = await fetch(url, {
+                signal: AbortSignal.timeout(30_000),
                 method: options.method || 'GET',
                 headers,
                 body: options.body ? JSON.stringify(options.body) : undefined,
@@ -261,6 +263,12 @@ export async function profilesGetById(profileId: string): Promise<DbProfileRow |
     return convexFetch<DbProfileRow | null>(`/api/profiles/by-id?profileId=${encodeURIComponent(cleaned)}`);
 }
 
+export async function profilesGetByName(name: string): Promise<DbProfileRow | null> {
+    const cleaned = String(name || '').trim();
+    if (!cleaned) throw new Error('name is required');
+    return convexFetch<DbProfileRow | null>(`/api/profiles/by-name?name=${encodeURIComponent(cleaned)}`);
+}
+
 export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRow | null> {
     const name = String(profile?.name || '').trim();
     if (!name) throw new Error('name is required');
@@ -276,6 +284,7 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             testIp: profile.test_ip,
             dailyScrapingLimit: profile.daily_scraping_limit,
             assignedAccountsLimit: profile.assigned_accounts_limit,
+            sessionId: profile.session_id,
         },
     });
 }
@@ -298,6 +307,7 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             testIp: profile.test_ip,
             dailyScrapingLimit: profile.daily_scraping_limit,
             assignedAccountsLimit: profile.assigned_accounts_limit,
+            sessionId: profile.session_id,
         },
     });
 }
@@ -470,6 +480,57 @@ export async function messageTemplatesUpsert(kind: string, texts: string[]): Pro
     const cleanedTexts = texts.map(t => String(t)).filter(t => t.trim());
     await convexFetch<any>('/api/message-templates', { method: 'POST', body: { kind: cleanedKind, texts: cleanedTexts } });
     return true;
+}
+
+export type InstagramAccount = {
+    id: string;
+    user_name: string;
+    status?: string | null;
+    message?: boolean;
+};
+
+export async function instagramAccountsForProfile(profileId: string, status = 'assigned'): Promise<InstagramAccount[]> {
+    const result = await convexFetch<InstagramAccount[]>(
+        `/api/instagram-accounts/for-profile?profileId=${encodeURIComponent(profileId)}&status=${encodeURIComponent(status)}`,
+    );
+    return Array.isArray(result) ? result : [];
+}
+
+export async function instagramAccountsToMessage(profileId: string, cooldownHours = 0): Promise<InstagramAccount[]> {
+    const result = await convexFetch<InstagramAccount[]>(
+        `/api/instagram-accounts/to-message?profileId=${encodeURIComponent(profileId)}&cooldownHours=${encodeURIComponent(String(cooldownHours))}`,
+    );
+    return Array.isArray(result) ? result : [];
+}
+
+export async function instagramAccountUpdateStatus(id: string, status: string): Promise<void> {
+    await convexFetch('/api/instagram-accounts/update-status', {
+        method: 'POST',
+        body: { id, status },
+    });
+}
+
+export async function instagramAccountUpdateMessage(userName: string): Promise<void> {
+    await convexFetch('/api/instagram-accounts/update-message', {
+        method: 'POST',
+        body: { user_name: userName, message: true, last_messaged_at: Date.now() },
+    });
+}
+
+export async function scrapingAccountsPending(): Promise<Array<{ id: string; user_name: string }>> {
+    return convexFetch('/api/scraping-accounts/by-status?status=need_scraping');
+}
+
+export async function scrapingAccountComplete(id: string): Promise<void> {
+    await convexFetch('/api/scraping-accounts/update-status', { method: 'POST', body: { id, status: 'done' } });
+}
+
+export async function workflowArtifactUpsert(input: {
+    workflowId: string; workflowName: string; nodeId: string; kind: 'followers' | 'following';
+    targets: string[]; sourceProfileName: string; localArtifactPath: string; status: string;
+    stats: ScrapingTaskStats;
+}): Promise<void> {
+    await convexFetch('/api/workflow-artifacts/upsert', { method: 'POST', body: { ...input, lastRunAt: Date.now(), imported: false } });
 }
 
 // ==================== WORKFLOWS ====================

@@ -4,8 +4,8 @@ import {
   chunkArray,
   formatChunkFailureMessage,
   jsonResponse,
-  mapAccountToPython,
-  mapProfileToPython,
+  mapAccountToApi,
+  mapProfileToApi,
   parseBody,
   registerPreflight,
   withErrorHandling,
@@ -99,7 +99,7 @@ function registerAccountMutationRoutes(http: HttpRouter): void {
         assignedTo:
           typeof body?.assigned_to !== 'undefined' ? body.assigned_to : body?.assignedTo,
       });
-      return jsonResponse(mapAccountToPython(updated));
+      return jsonResponse(mapAccountToApi(updated));
     }),
   });
 
@@ -113,7 +113,7 @@ function registerAccountMutationRoutes(http: HttpRouter): void {
         message: body?.message,
         lastMessagedAt: body?.lastMessagedAt ?? body?.last_messaged_at,
       });
-      return jsonResponse(mapAccountToPython(updated));
+      return jsonResponse(mapAccountToApi(updated));
     }),
   });
 }
@@ -132,7 +132,7 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
         profileId: profileId as any,
         status,
       });
-      return jsonResponse(accounts.map(mapAccountToPython));
+      return jsonResponse(accounts.map(mapAccountToApi));
     }),
   });
 
@@ -152,7 +152,7 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
         profileId: profileId as any,
         cooldownHours,
       });
-      return jsonResponse(accounts.map(mapAccountToPython));
+      return jsonResponse(accounts.map(mapAccountToApi));
     }),
   });
 
@@ -165,7 +165,7 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
       const accounts = await ctx.runQuery(internal.instagramAccounts.listByStatus, {
         status: status as any,
       });
-      return jsonResponse(accounts.map(mapAccountToPython));
+      return jsonResponse(accounts.map(mapAccountToApi));
     }),
   });
 
@@ -193,7 +193,7 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
         internal.instagramAccounts.getProfilesWithAssignedAccounts,
         { status },
       );
-      return jsonResponse(profiles.map(mapProfileToPython));
+      return jsonResponse(profiles.map(mapProfileToApi));
     }),
   });
 }

@@ -132,7 +132,7 @@ export const browseReels: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  pythonHandler: 'instagram_actions.browsing.reels_scrolling',
+  handler: 'browsing.reels_scrolling',
 }
 
 
