@@ -8,9 +8,9 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load .env from project root
+// Load .env.local from project root
 dotenv.config({ quiet: true });
-dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
+dotenv.config({ path: path.resolve(__dirname, '../../.env.local'), quiet: true });
 
 const convexCloudUrl = process.env.CONVEX_URL;
 // Use INTERNAL_API_KEY to call Convex HTTP endpoints (same key as CONVEX_API_KEY in Convex Dashboard)

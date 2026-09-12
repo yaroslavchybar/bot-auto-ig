@@ -6,5 +6,6 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const projectRoot = path.resolve(__dirname, '..')
 
-dotenv.config({ path: path.join(projectRoot, '.env') })
-dotenv.config({ path: path.join(projectRoot, '.env.local'), override: true })
+// Single local source of truth: root .env.local.
+// Container/prod env arrives as real environment variables, which dotenv never overrides.
+dotenv.config({ path: path.join(projectRoot, '.env.local') })

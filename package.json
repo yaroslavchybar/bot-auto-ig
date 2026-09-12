@@ -11,7 +11,8 @@
   ],
   "scripts": {
     "build": "bun run --filter anti-server build",
-    "dev": "bun run --filter anti-server dev",
+    "dev": "concurrently -n server,frontend,uploader,convex -c green,magenta,cyan,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bun run --filter anti-uploader dev\" \"bunx convex dev\"",
+    "dev:server": "bun run --filter anti-server dev",
     "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1",
     "dev:local:full": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -WithUploader -WithConvex",
     "dev:local:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs",
@@ -26,6 +27,7 @@
   "devDependencies": {
     "@types/node": "^24.10.1",
     "@typescript/native": "npm:typescript@^7.0.2",
+    "concurrently": "^10.0.5",
     "convex-test": "^0.0.58",
     "typescript": "~6.0.3",
     "vitest": "^4.0.18"

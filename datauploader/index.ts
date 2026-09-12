@@ -1,3 +1,4 @@
+import './src/env.js'
 import { mkdir } from 'node:fs/promises'
 import { createApp } from './src/app.js'
 import { config } from './src/config.js'

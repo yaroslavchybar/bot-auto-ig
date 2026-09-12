@@ -13,7 +13,7 @@ services:
     volumes:
       - ./data:/app/data
     env_file:
-      - .env
+      - .env.local
     environment:
       - SERVER_PORT=3001
       - DISPLAY=:99
@@ -35,7 +35,7 @@ services:
     volumes:
       - ./data/uploads:/app/uploads
     env_file:
-      - .env
+      - .env.local
     environment:
       - CONVEX_URL_DEV=${CONVEX_URL_DEV}
     restart: unless-stopped
@@ -53,7 +53,7 @@ services:
         VITE_CONVEX_URL: ${VITE_CONVEX_URL}
         VITE_DATAUPLOADER_URL: ${VITE_DATAUPLOADER_URL:-http://localhost:3002}
     env_file:
-      - .env
+      - .env.local
     environment:
       - PORT=80
     ports:

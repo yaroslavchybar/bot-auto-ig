@@ -66,7 +66,7 @@ dev-login button (`POST /api/auth/dev-login`, non-production only) or
 
 ## Environment & Security
 
-Secrets live in `.env`/`.env.local`, never committed. Key vars: `SERVER_PORT`,
+Secrets live in `.env.local`, never committed. Key vars: `SERVER_PORT`,
 `CONVEX_URL`, `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls),
 `CONVEX_URL_DEV/PROD`, `DATAUPLOADER_*`.
