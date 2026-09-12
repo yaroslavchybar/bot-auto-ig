@@ -42,7 +42,6 @@ export type DbProfileRow = {
     session_id?: string | null;
     Using: boolean;
     test_ip: boolean;
-    fingerprint_seed?: string | null;
     fingerprint_os?: string | null;
     cookies_json?: string | null;
     list_ids?: string[] | null;
@@ -68,7 +67,6 @@ export type ProfileInput = {
     name: string;
     proxy?: string;
     proxy_type?: string;
-    fingerprint_seed?: string;
     fingerprint_os?: string;
     cookies_json?: string;
     test_ip?: boolean;
@@ -278,7 +276,6 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             name,
             proxy: profile.proxy,
             proxyType: profile.proxy_type,
-            fingerprintSeed: profile.fingerprint_seed,
             fingerprintOs: profile.fingerprint_os,
             cookiesJson: profile.cookies_json,
             testIp: profile.test_ip,
@@ -301,7 +298,6 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             name,
             proxy: profile.proxy,
             proxyType: profile.proxy_type,
-            fingerprintSeed: profile.fingerprint_seed,
             fingerprintOs: profile.fingerprint_os,
             cookiesJson: profile.cookies_json,
             testIp: profile.test_ip,

@@ -1,3 +1,33 @@
+// Single source of truth for browser resolution.
+// Window size, VNC desktop geometry and spoofed fingerprint screen must match,
+// otherwise sites see e.g. screen.width=3840 on a 1366px window (fingerprint leak).
+export const BROWSER_WINDOW_WIDTH = 1366
+export const BROWSER_WINDOW_HEIGHT = 768
+
+// Force the spoofed fingerprint screen to match the real window.
+// fingerprint-generator has no 1366x768 in its dataset (exact constraint throws),
+// so we generate normally and overwrite afterwards.
+export function normalizeFingerprintScreen<T extends { screen?: Record<string, unknown> }>(
+  fingerprint: T,
+): T {
+  const screen = fingerprint?.screen
+  if (!screen || typeof screen !== 'object') return fingerprint
+  screen.width = BROWSER_WINDOW_WIDTH
+  screen.height = BROWSER_WINDOW_HEIGHT
+  screen.availWidth = BROWSER_WINDOW_WIDTH
+  screen.availHeight = BROWSER_WINDOW_HEIGHT
+  screen.availLeft = 0
+  screen.availTop = 0
+  screen.screenX = 0
+  screen.pageXOffset = 0
+  screen.pageYOffset = 0
+  screen.outerWidth = BROWSER_WINDOW_WIDTH
+  screen.outerHeight = BROWSER_WINDOW_HEIGHT
+  screen.innerWidth = BROWSER_WINDOW_WIDTH
+  screen.innerHeight = BROWSER_WINDOW_HEIGHT
+  return fingerprint
+}
+
 export function parseProxy(
   value: string | null | undefined,
 ): { server: string; username?: string; password?: string } | undefined {

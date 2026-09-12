@@ -212,7 +212,6 @@ export function mapProfileToApi(
     session_id: typeof profile.sessionId === 'string' ? profile.sessionId : null,
     Using: Boolean(profile.using),
     test_ip: Boolean(profile.testIp),
-    fingerprint_seed: profile.fingerprintSeed ?? null,
     fingerprint_os: profile.fingerprintOs ?? null,
     list_ids: listIds,
     last_opened_at: toIso(profile.lastOpenedAt),

@@ -5,7 +5,6 @@ type ProfileRecord = Record<string, unknown> & {
   name?: unknown
   proxy?: unknown
   proxyType?: unknown
-  fingerprintSeed?: unknown
   fingerprintOs?: unknown
   cookiesJson?: unknown
   testIp?: unknown
@@ -24,10 +23,6 @@ export function mapProfileRecord(record: ProfileRecord | null | undefined): Prof
     proxy: typeof record?.proxy === 'string' ? record.proxy : undefined,
     proxy_type:
       typeof record?.proxyType === 'string' ? record.proxyType : undefined,
-    fingerprint_seed:
-      typeof record?.fingerprintSeed === 'string'
-        ? record.fingerprintSeed
-        : undefined,
     fingerprint_os:
       typeof record?.fingerprintOs === 'string' ? record.fingerprintOs : undefined,
     cookies_json:

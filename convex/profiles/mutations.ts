@@ -23,7 +23,6 @@ const profileArgsShape = {
 	proxy: v.optional(v.string()),
 	proxyType: v.optional(v.string()),
 	testIp: v.optional(v.boolean()),
-	fingerprintSeed: v.optional(v.string()),
 	fingerprintOs: v.optional(v.string()),
 	cookiesJson: v.optional(v.string()),
 	sessionId: v.optional(v.string()),

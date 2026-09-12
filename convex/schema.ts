@@ -17,7 +17,6 @@ export default defineSchema({
 		sessionId: v.optional(v.string()),
 		using: v.boolean(),
 		testIp: v.boolean(),
-		fingerprintSeed: v.optional(v.string()),
 		fingerprintOs: v.optional(v.string()),
 		cookiesJson: v.optional(v.string()),
 		listIds: v.optional(v.array(v.id("lists"))),

@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Camoufox } from 'camoufox-js'
 import { FingerprintGenerator, type Fingerprint } from 'fingerprint-generator'
-import { parseProxy } from './config.js'
+import { parseProxy, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
 import { shutdownSignal } from './lifecycle.js'
 import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
@@ -90,24 +90,38 @@ async function launchSession(
   let fingerprint: Fingerprint | undefined
   try {
     const cached = JSON.parse(fs.readFileSync(fingerprintPath, 'utf8'))
-    if (cached.seed === profile.fingerprint_seed && cached.os === targetOs)
+    if (cached.os === targetOs && cached.fingerprint)
       fingerprint = cached.fingerprint
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   if (!fingerprint) {
-    fingerprint = new FingerprintGenerator({
-      browsers: ['firefox'],
-      operatingSystems: [targetOs],
-    }).getFingerprint().fingerprint
+    fingerprint = normalizeFingerprintScreen(
+      new FingerprintGenerator({
+        browsers: ['firefox'],
+        operatingSystems: [targetOs],
+      }).getFingerprint().fingerprint,
+    )
     fs.writeFileSync(
       fingerprintPath,
       JSON.stringify({
-        seed: profile.fingerprint_seed,
         os: targetOs,
         fingerprint,
       }),
     )
+  } else {
+    // Old caches hold random screens (e.g. 3840x1080). Patch and persist.
+    const before = JSON.stringify(fingerprint.screen)
+    normalizeFingerprintScreen(fingerprint)
+    if (JSON.stringify(fingerprint.screen) !== before) {
+      fs.writeFileSync(
+        fingerprintPath,
+        JSON.stringify({
+          os: targetOs,
+          fingerprint,
+        }),
+      )
+    }
   }
   const proxy = parseProxy(profile.proxy)
   const launchOptions: Record<string, unknown> = {
@@ -120,7 +134,10 @@ async function launchSession(
     geoip: Boolean(proxy),
     humanize: true,
     locale: 'en-US',
-    window: [1366, 768],
+    // NOTE: window alone does nothing when an explicit fingerprint is passed
+    // (camoufox-js only uses it for internal generation). The spoofed
+    // outer/inner dims are set by normalizeFingerprintScreen above to match.
+    window: [BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT],
     ...(options.display
       ? { env: { ...process.env, DISPLAY: options.display } }
       : {}),

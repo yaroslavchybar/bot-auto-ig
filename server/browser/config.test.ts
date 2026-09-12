@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseProxy } from './config.js'
+import { parseProxy, normalizeFingerprintScreen } from './config.js'
 
 test('proxy schemes, IPv6 and encoded credentials survive parsing', () => {
   assert.deepEqual(parseProxy('socks5://proxy.example:1080'), {
@@ -19,4 +19,17 @@ test('proxy schemes, IPv6 and encoded credentials survive parsing', () => {
     username: 'u',
     password: 'p:extra',
   })
+})
+
+test('fingerprint screen is locked to window size', () => {
+  const fp: any = { screen: { width: 3840, height: 1080, outerWidth: 100, innerHeight: 10 } }
+  normalizeFingerprintScreen(fp)
+  assert.equal(fp.screen.width, 1366)
+  assert.equal(fp.screen.height, 768)
+  assert.equal(fp.screen.availWidth, 1366)
+  assert.equal(fp.screen.availHeight, 768)
+  assert.equal(fp.screen.outerWidth, 1366)
+  assert.equal(fp.screen.outerHeight, 768)
+  assert.equal(fp.screen.innerWidth, 1366)
+  assert.equal(fp.screen.innerHeight, 768)
 })

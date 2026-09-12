@@ -12,7 +12,6 @@ import {
 import { getActiveRuntimeProfileNames, profileProcesses } from '../shared/store.js'
 import {
   normalizeProfileInput,
-  generateFingerprint,
   startProfileBrowser,
   stopProfileBrowser,
 } from './service.js'
@@ -24,13 +23,6 @@ import {
 } from '../shared/errors.js'
 
 const router = Router()
-
-// Generate a new fingerprint using BrowserForge
-router.post('/generate-fingerprint', asyncHandler(async (req, res) => {
-  const { os = 'windows' } = req.body || {}
-  const fingerprint = await generateFingerprint(os)
-  res.json({ success: true, fingerprint })
-}))
 
 // Get all profiles
 router.get('/', asyncHandler(async (_req, res) => {
@@ -81,6 +73,10 @@ router.put('/:name', asyncHandler(async (req, res) => {
 // Delete a profile
 router.delete('/:name', asyncHandler(async (req, res) => {
   const name = req.params.name
+  // Stop a running browser first, otherwise its locked files survive deletion.
+  if (profileProcesses.has(name)) {
+    await stopProfileBrowser(name)
+  }
   const success = await profileManager.deleteProfile(name)
   if (!success) {
     throw new AppError('Failed to delete profile', 500, 'INTERNAL_ERROR')

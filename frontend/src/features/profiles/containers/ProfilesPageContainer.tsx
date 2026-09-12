@@ -42,7 +42,8 @@ export function ProfilesPageContainer() {
         deleteProfile={s.deleteProfile} loginProfile={s.loginProfile} saving={s.saving}
         logs={s.logs} logsLoading={s.logsLoading} wsLogs={s.wsLogs}
         onSetLogsProfileId={s.setLogsProfileId} onSetDetailsProfileId={s.setDetailsProfileId}
-        onSetLoginProfileId={s.setLoginProfileId} onDeleteConfirm={s.handleDeleteConfirm}
+        onSetDeleteProfileId={s.setDeleteProfileId} onSetLoginProfileId={s.setLoginProfileId}
+        onDeleteConfirm={s.handleDeleteConfirm}
         onRefreshProfiles={s.refreshProfiles} onLoadLogs={s.loadLogs} />
     </div>
   )
@@ -254,6 +255,7 @@ interface ProfileViewDialogsProps {
   logs: LogEntry[]; logsLoading: boolean; wsLogs: LogEntry[]
   onSetLogsProfileId: (id: string | null) => void
   onSetDetailsProfileId: (id: string | null) => void
+  onSetDeleteProfileId: (id: string | null) => void
   onSetLoginProfileId: (id: string | null) => void
   onDeleteConfirm: () => void
   onRefreshProfiles: () => Promise<void>
@@ -278,7 +280,7 @@ function ProfileViewDeleteAndLogin(p: ProfileViewDialogsProps) {
         <ConfirmDeleteDialog open={Boolean(p.deleteProfile)} title="Delete Profile?"
           entityLabel="and its data" itemName={p.deleteProfile.name} confirmLabel="Delete Profile"
           saving={p.saving} error={null} onConfirm={p.onDeleteConfirm}
-          onCancel={() => p.onSetDetailsProfileId(null)} />
+          onCancel={() => p.onSetDeleteProfileId(null)} />
       ) : null}
       <LoginDialog key={p.loginProfile?.id ?? 'no-login'} open={Boolean(p.loginProfile)}
         profile={p.loginProfile} logs={p.wsLogs}

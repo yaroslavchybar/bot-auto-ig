@@ -144,7 +144,6 @@ export async function createProfileRow(ctx: any, args: any) {
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
 		using: false,
 		testIp: args.testIp ?? false,
-		fingerprintSeed: args.fingerprintSeed,
 		fingerprintOs: args.fingerprintOs,
 		listIds: [],
 		lastOpenedAt: undefined,
@@ -183,9 +182,6 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	}
 	if (typeof args.testIp === "boolean") {
 		next.testIp = args.testIp;
-	}
-	if (typeof args.fingerprintSeed === "string") {
-		next.fingerprintSeed = args.fingerprintSeed;
 	}
 	if (typeof args.fingerprintOs === "string") {
 		next.fingerprintOs = args.fingerprintOs;
@@ -229,9 +225,6 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	}
 	if (typeof args.testIp === "boolean") {
 		next.testIp = args.testIp;
-	}
-	if (typeof args.fingerprintSeed === "string") {
-		next.fingerprintSeed = args.fingerprintSeed;
 	}
 	if (typeof args.fingerprintOs === "string") {
 		next.fingerprintOs = args.fingerprintOs;

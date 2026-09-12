@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { shutdownSignal, sleep } from './lifecycle.js'
+import { BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
 
 export type Display = {
   display: string
@@ -102,7 +103,7 @@ export async function allocateDisplay(): Promise<Display | undefined> {
       start('Xtigervnc', [
         `:${displayNum}`,
         '-geometry',
-        '1366x768',
+        `${BROWSER_WINDOW_WIDTH}x${BROWSER_WINDOW_HEIGHT}`,
         '-depth',
         '24',
         '-rfbport',

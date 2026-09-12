@@ -113,7 +113,6 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     body: JSON.stringify({
       old_name: 'Profile Start',
       name: 'Profile Start',
-      fingerprint_seed: 'seed-123',
       fingerprint_os: 'windows',
     }),
   })
@@ -134,7 +133,6 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
   expect(updateResponse.status).toBe(200)
   await expect(updateResponse.json()).resolves.toMatchObject({
     name: 'Profile Start',
-    fingerprint_seed: 'seed-123',
     fingerprint_os: 'windows',
     assigned_accounts_limit: 10,
   })
@@ -142,7 +140,6 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
   await expect(syncResponse.json()).resolves.toEqual({ ok: true })
   expect(updated).toMatchObject({
     name: 'Profile Start',
-    fingerprintSeed: 'seed-123',
     fingerprintOs: 'windows',
     status: 'running',
     using: true,

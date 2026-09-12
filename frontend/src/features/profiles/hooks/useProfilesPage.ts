@@ -120,7 +120,6 @@ function useProfileSave(
         name,
         proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
         proxyType: typeof data.proxy_type === 'string' ? data.proxy_type.trim() : '',
-        fingerprintSeed: data.fingerprint_seed || undefined,
         fingerprintOs: data.fingerprint_os || undefined,
         cookiesJson: typeof data.cookies_json === 'string' ? data.cookies_json.trim() : '',
         testIp: Boolean(data.test_ip),
@@ -159,13 +158,16 @@ function useProfileCrud(
   setSaving: (v: boolean) => void,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
-  const removeProfile = useMutation(api.profiles.mutations.removeById)
-
   const handleDeleteConfirm = useCallback(async () => {
     if (!dialogState.deleteProfile) return
     setSaving(true)
     try {
-      await removeProfile({ profileId: dialogState.deleteProfile.id as Id<'profiles'> })
+      // Delete via backend so the DB row and data/profiles/<name> go together.
+      // (Direct Convex removeById leaves the browser folder behind.)
+      await apiFetch(
+        `/api/profiles/${encodeURIComponent(dialogState.deleteProfile.name)}`,
+        { method: 'DELETE' },
+      )
       await refreshProfiles()
       dialogState.setDeleteProfileId(null)
     } catch (e) {
@@ -173,7 +175,7 @@ function useProfileCrud(
     } finally {
       setSaving(false)
     }
-  }, [dialogState, refreshProfiles, removeProfile, handleError, setSaving])
+  }, [dialogState, refreshProfiles, handleError, setSaving])
 
   const toggleUsing = useCallback(async (profile: Profile) => {
     setSaving(true)
@@ -343,6 +345,7 @@ export function useProfilesPage() {
     loginProfileId: dialogState.loginProfileId,
     setSearchQuery, setIsCreateOpen: dialogState.setIsCreateOpen,
     setDetailsProfileId: dialogState.setDetailsProfileId,
+    setDeleteProfileId: dialogState.setDeleteProfileId,
     setLogsProfileId: dialogState.setLogsProfileId,
     setLoginProfileId: dialogState.setLoginProfileId,
     handleRefreshProfiles: actions.handleRefreshProfiles,

@@ -19,7 +19,6 @@ export type Profile = {
   name: string
   proxy?: string
   proxy_type?: string
-  fingerprint_seed?: string
   fingerprint_os?: string
   cookies_json?: string
   test_ip?: boolean
@@ -38,7 +37,6 @@ function mapDbRowToProfile(p: any): Profile {
     name: p.name,
     proxy: p.proxy,
     proxy_type: p.proxy_type,
-    fingerprint_seed: p.fingerprint_seed,
     fingerprint_os: p.fingerprint_os,
     cookies_json: undefined,
     test_ip: p.test_ip,
@@ -64,7 +62,6 @@ function mapDbRowToProfileWithCookies(row: any): Profile | null {
     name: row.name,
     proxy: row.proxy ?? undefined,
     proxy_type: row.proxy_type ?? undefined,
-    fingerprint_seed: row.fingerprint_seed ?? undefined,
     fingerprint_os: row.fingerprint_os ?? undefined,
     cookies_json: row.cookies_json ?? undefined,
     test_ip: row.test_ip,
@@ -157,7 +154,6 @@ export class ProfileManager {
         name: profile.name,
         proxy: profile.proxy,
         proxy_type: profile.proxy_type,
-        fingerprint_seed: profile.fingerprint_seed,
         fingerprint_os: profile.fingerprint_os,
         cookies_json: profile.cookies_json,
         test_ip: profile.test_ip,
@@ -182,7 +178,6 @@ export class ProfileManager {
         name: profile.name,
         proxy: profile.proxy,
         proxy_type: profile.proxy_type,
-        fingerprint_seed: profile.fingerprint_seed,
         fingerprint_os: profile.fingerprint_os,
         cookies_json: profile.cookies_json,
         test_ip: profile.test_ip,
@@ -217,16 +212,30 @@ export class ProfileManager {
       return false
     }
 
-    const profilePath = path.join(PROFILES_DIR, name)
-    if (fs.existsSync(profilePath)) {
-      try {
-        fs.rmSync(profilePath, { recursive: true, force: true })
-      } catch (e) {
-        logger.error({ err: e }, 'Error deleting profile directory')
-      }
-    }
+    // Only touch browser data after a confirmed DB delete.
+    this.removeLocalProfileDir(name)
 
     return true
+  }
+
+  /**
+   * Recovery helper for orphan profile directories left behind by older
+   * deletes (e.g. direct DB removes that bypassed the backend). Deliberately
+   * separate from deleteProfile so a failed DB delete can never wipe a live
+   * profile's cookies and fingerprint cache.
+   */
+  removeLocalProfileDir(name: string): boolean {
+    const clean = String(name || '').trim()
+    if (!clean || clean === '.' || clean === '..' || /[/\\]/.test(clean)) return false
+    const profilePath = path.join(PROFILES_DIR, clean)
+    if (!fs.existsSync(profilePath)) return false
+    try {
+      fs.rmSync(profilePath, { recursive: true, force: true })
+      return true
+    } catch (e) {
+      logger.error({ err: e }, 'Error deleting profile directory')
+      return false
+    }
   }
 
   async syncProfileStatus(name: string, status: string, using: boolean): Promise<boolean> {

@@ -13,7 +13,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { Fingerprint, RefreshCw, Globe, Shield, Target, Users } from 'lucide-react'
+import { Fingerprint, Globe, Shield, Target, Users } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizeCookiesJsonForForm } from '../utils/cookieJson'
 
@@ -32,16 +32,6 @@ interface FieldProps {
   saving: boolean
   setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
   setLocalError: (error: string | null) => void
-}
-
-// Generate a random seed string
-function generateSeed(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let result = ''
-  for (let i = 0; i < 32; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return result
 }
 
 /* ── Profile Name Field ── */
@@ -276,17 +266,7 @@ function OsSelector({
   )
 }
 
-/* ── Seed Display ── */
-
-function SeedDisplay({ seed }: { seed: string | undefined }) {
-  if (!seed) return null
-  return (
-    <div className="bg-panel-muted border-line-soft flex items-center gap-2 rounded-sm border p-2 text-xs">
-      <Shield className="text-subtle-copy h-3.5 w-3.5" />
-      <span className="text-muted-copy flex-1 truncate font-mono">{seed}</span>
-    </div>
-  )
-}
+/* ── Fingerprint Fields ── */
 
 function FingerprintFields({
   draft, saving, setDraft,
@@ -294,10 +274,6 @@ function FingerprintFields({
   draft: Partial<Profile>; saving: boolean
   setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
 }) {
-  const handleRegenerateSeed = () => {
-    setDraft((prev) => ({ ...prev, fingerprint_seed: generateSeed() }))
-  }
-
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
@@ -306,17 +282,11 @@ function FingerprintFields({
         </Label>
       </div>
       <div className="bg-panel-subtle border-line-soft space-y-4 rounded-md border p-4">
-        <div className="flex items-end gap-4">
-          <OsSelector
-            value={draft.fingerprint_os || 'windows'}
-            saving={saving}
-            onChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
-          />
-          <Button type="button" onClick={handleRegenerateSeed} disabled={saving} className="h-9">
-            <RefreshCw className="mr-2 h-3.5 w-3.5" /> New Seed
-          </Button>
-        </div>
-        <SeedDisplay seed={draft.fingerprint_seed} />
+        <OsSelector
+          value={draft.fingerprint_os || 'windows'}
+          saving={saving}
+          onChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
+        />
       </div>
     </div>
   )
@@ -530,9 +500,6 @@ export function ProfileForm({
         typeof draft.assigned_accounts_limit === 'number'
           ? Math.max(0, Math.floor(draft.assigned_accounts_limit))
           : 10,
-      fingerprint_seed:
-        draft.fingerprint_seed ||
-        (mode === 'create' ? generateSeed() : draft.fingerprint_seed),
     }
     const normalizedCookies = normalizeCookiesJsonForForm(
       String(finalData.cookies_json ?? ''),

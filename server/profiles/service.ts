@@ -1,18 +1,13 @@
-import crypto from 'crypto'
 import fs from 'fs'
 import path from 'path'
-import { FingerprintGenerator } from 'fingerprint-generator'
 import { profileManager } from './data.js'
-import type { Profile } from './data.js'
 import {
   profilesSyncStatus,
-  profilesUpdateByName,
 } from '../shared/convexClient.js'
 import { activeDisplays, profileProcesses } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
-import logger from '../shared/logger.js'
 import { spawnBun, killProcess } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
@@ -51,54 +46,6 @@ function setManualDisplay(
 
 function clearManualDisplay(profileName: string): boolean {
   return activeDisplays.delete(manualDisplayKey(profileName))
-}
-
-export async function generateFingerprint(os: string): Promise<any> {
-  const targetOs = ({ mac: 'macos', macos: 'macos', linux: 'linux', windows: 'windows' } as Record<string, 'macos' | 'linux' | 'windows'>)[
-    String(os || 'windows').toLowerCase()
-  ] || 'windows'
-  const generator = new FingerprintGenerator({
-    browsers: ['firefox'],
-    operatingSystems: [targetOs],
-    mockWebRTC: true,
-  })
-  return generator.getFingerprint({
-    browsers: ['firefox'],
-    operatingSystems: [targetOs],
-    mockWebRTC: true,
-    screen: { minWidth: 1280, maxWidth: 1920, minHeight: 720, maxHeight: 1080 },
-  }).fingerprint
-}
-
-/** Auto-generate fingerprint seed if missing, broadcasting result. */
-async function ensureFingerprintSeed(profile: Profile): Promise<void> {
-  if (profile.fingerprint_seed) return
-
-  const newSeed = crypto.randomUUID()
-  const defaultOs = profile.fingerprint_os || 'windows'
-  try {
-    await profilesUpdateByName(profile.name, {
-      name: profile.name,
-      proxy: profile.proxy,
-      proxy_type: profile.proxy_type,
-      fingerprint_seed: newSeed,
-      fingerprint_os: defaultOs,
-      test_ip: profile.test_ip,
-      daily_scraping_limit: profile.daily_scraping_limit,
-      assigned_accounts_limit: profile.assigned_accounts_limit,
-    })
-    profile.fingerprint_seed = newSeed
-    profile.fingerprint_os = defaultOs
-    broadcast({
-      type: 'log',
-      message: `Auto-generated fingerprint seed for ${profile.name}: ${newSeed.slice(0, 8)}...`,
-      level: 'info',
-      source: 'server',
-      profileName: profile.name,
-    })
-  } catch (e) {
-    logger.error({ err: e, profile: profile.name }, 'Failed to auto-generate fingerprint seed')
-  }
 }
 
 function handleChildStdout(name: string, data: Buffer) {
@@ -199,12 +146,9 @@ export async function startProfileBrowser(name: string): Promise<void> {
     throw new NotFoundError('Profile not found')
   }
 
-  await ensureFingerprintSeed(profile)
-
   const args = [LAUNCHER_SCRIPT, '--name', name, '--action', 'manual', '--workflow-id', 'manual']
 
   if (profile.proxy) args.push('--proxy', profile.proxy)
-  if (profile.fingerprint_seed) args.push('--fingerprint-seed', profile.fingerprint_seed)
   if (profile.fingerprint_os) args.push('--fingerprint-os', profile.fingerprint_os)
 
   broadcast({

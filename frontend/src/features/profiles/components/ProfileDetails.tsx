@@ -5,7 +5,6 @@ import {
   Fingerprint,
   Globe,
   Monitor,
-  Shield,
   Box,
   Activity,
   CalendarClock,
@@ -116,34 +115,27 @@ function ProfileNetworkSection({ profile }: { profile: Profile }) {
 
 /* ── Fingerprint Section ── */
 
+const OS_LABELS: Record<string, string> = {
+  windows: 'Windows',
+  mac: 'macOS',
+  macos: 'macOS',
+  linux: 'Linux',
+}
+
 function ProfileFingerprintSection({ profile }: { profile: Profile }) {
   return (
     <div className="p-6">
       <h4 className="text-copy mb-4 flex items-center gap-2 text-sm font-medium">
         <Fingerprint className="h-4 w-4" /> Digital Fingerprint
       </h4>
-      {profile.fingerprint_seed ? (
-        <div className="border-line-soft ml-1.5 grid gap-4 border-l pl-2">
-          <DetailRow
-            icon={<Monitor className="h-3.5 w-3.5" />}
-            label="Operating System"
-            value={profile.fingerprint_os === 'mac' ? 'macOS' : 'Windows'}
-            className="text-ink"
-          />
-          <div className="space-y-1.5">
-            <span className="text-muted-copy flex items-center gap-1.5 text-xs font-medium">
-              <Shield className="h-3.5 w-3.5" /> Seed
-            </span>
-            <div className="bg-panel-muted border-line-soft text-muted-copy rounded-md border p-2 font-mono text-xs break-all">
-              {profile.fingerprint_seed}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="text-subtle-copy border-line border-l-2 pl-4 text-sm">
-          No custom fingerprint configured.
-        </div>
-      )}
+      <div className="border-line-soft ml-1.5 grid gap-4 border-l pl-2">
+        <DetailRow
+          icon={<Monitor className="h-3.5 w-3.5" />}
+          label="Operating System"
+          value={OS_LABELS[profile.fingerprint_os || ''] || 'Windows'}
+          className="text-ink"
+        />
+      </div>
     </div>
   )
 }

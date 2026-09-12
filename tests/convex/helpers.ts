@@ -57,7 +57,6 @@ export async function seedProfile(
     proxy: overrides.proxy as string | undefined,
     proxyType: overrides.proxyType as string | undefined,
     testIp: overrides.testIp as boolean | undefined,
-    fingerprintSeed: overrides.fingerprintSeed as string | undefined,
     fingerprintOs: overrides.fingerprintOs as string | undefined,
     cookiesJson: overrides.cookiesJson as string | undefined,
     sessionId: overrides.sessionId as string | undefined,
