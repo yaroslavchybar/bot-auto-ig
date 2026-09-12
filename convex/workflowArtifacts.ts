@@ -1,6 +1,9 @@
 import { v } from 'convex/values'
 import { internalAction, internalMutation, internalQuery } from './_generated/server'
-import { mutation, query } from './auth'
+// NOTE: browser-called queries/mutations below are intentionally public.
+// Admin-only access is enforced by the Express session login; the browser
+// Convex client carries no identity since Clerk was removed.
+import { mutation, query } from './_generated/server'
 
 type ArtifactKind = 'followers' | 'following'
 

@@ -5,7 +5,7 @@ import {
   useNavigation,
   useOutlet,
 } from 'react-router'
-import { Authenticated, AuthLoading, Unauthenticated } from 'convex/react'
+import { AuthGuard } from '@/components/layout/AuthGuard'
 import { UserMenu } from '@/components/layout/user-menu'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
 import {
@@ -72,28 +72,8 @@ function KeepAliveViewport({
   )
 }
 
-function ConvexAuthGate({ children }: { children: ReactNode }) {
-  return (
-    <>
-      <AuthLoading>
-        <div className="bg-shell text-ink flex h-svh items-center justify-center text-sm">
-          Connecting data session...
-        </div>
-      </AuthLoading>
-      <Unauthenticated>
-        <div className="bg-shell text-ink flex h-svh items-center justify-center px-6 text-center">
-          <div className="max-w-md space-y-2">
-            <h2 className="text-lg font-semibold">Convex authentication failed</h2>
-            <p className="text-muted-copy text-sm">
-              Check Clerk JWT template `convex` and Convex env
-              `CLERK_JWT_ISSUER_DOMAIN`.
-            </p>
-          </div>
-        </div>
-      </Unauthenticated>
-      <Authenticated>{children}</Authenticated>
-    </>
-  )
+function SessionGate({ children }: { children: ReactNode }) {
+  return <AuthGuard>{children}</AuthGuard>
 }
 
 export function ProtectedLayoutShell({
@@ -118,13 +98,13 @@ export function ProtectedLayoutShell({
   if (appChrome === 'immersive') {
     return (
       <ConvexClientProvider>
-        <ConvexAuthGate>
+        <SessionGate>
           <div className="bg-shell flex h-svh min-w-0 flex-col overflow-hidden">
             <div className="min-h-0 min-w-0 flex-1">
               <KeepAliveViewport pathname={currentPath} outlet={outlet} />
             </div>
           </div>
-        </ConvexAuthGate>
+        </SessionGate>
         <Toaster />
       </ConvexClientProvider>
     )
@@ -132,7 +112,7 @@ export function ProtectedLayoutShell({
 
   return (
     <ConvexClientProvider>
-      <ConvexAuthGate>
+      <SessionGate>
         <SidebarProvider
           defaultOpen={sidebarDefaultOpen}
           className="h-svh min-w-0 overflow-hidden"
@@ -169,7 +149,7 @@ export function ProtectedLayoutShell({
             </div>
           </SidebarInset>
         </SidebarProvider>
-      </ConvexAuthGate>
+      </SessionGate>
       <Toaster />
     </ConvexClientProvider>
   )

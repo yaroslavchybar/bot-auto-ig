@@ -22,14 +22,8 @@ function getRequiredEnv(name: RequiredEnvName): string {
   return value
 }
 
-const disableClerkAuth =
-  import.meta.env.DEV && import.meta.env.DISABLE_CLERK_AUTH === 'true'
-
-const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
-
-if (!disableClerkAuth && !clerkPublishableKey) {
-  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY environment variable')
-}
+const disableAuth =
+  import.meta.env.DEV && import.meta.env.DISABLE_AUTH === 'true'
 
 function getServiceUrl(
   name: 'VITE_API_URL' | 'VITE_DATAUPLOADER_URL',
@@ -58,10 +52,9 @@ const convexUrl = normalizeHttpsUrl(getRequiredEnv('VITE_CONVEX_URL'))
 
 export const env = {
   apiUrl,
-  clerkPublishableKey,
   convexUrl,
   dataUploaderUrl,
-  disableClerkAuth,
+  disableAuth,
   isDev: import.meta.env.DEV,
 } as const
 

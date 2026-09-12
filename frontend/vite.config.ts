@@ -45,18 +45,6 @@ function getManualChunk(id: string): string | undefined {
   )
     return 'radix'
   if (
-    packageName.startsWith('@clerk/') ||
-    [
-      'cookie',
-      'detect-node-es',
-      'set-cookie-parser',
-      'swr',
-      'use-sync-external-store',
-    ].includes(packageName)
-  ) {
-    return 'react-core'
-  }
-  if (
     packageName.startsWith('@codemirror/') ||
     packageName.startsWith('@lezer/') ||
     packageName === '@marijn/find-cluster-break' ||
@@ -101,7 +89,7 @@ const sentryConfig: SentryReactRouterBuildOptions = {
 
 export default defineConfig((config) => ({
   envDir: path.resolve(rootDir, '..'),
-  envPrefix: ['VITE_', 'DISABLE_CLERK_AUTH'],
+  envPrefix: ['VITE_', 'DISABLE_AUTH'],
   plugins: [
     tailwindcss(),
     reactRouter(),

@@ -1,13 +1,14 @@
-import { useAuth } from '@clerk/react-router'
+import { useAppAuth } from '@/lib/auth'
 import { Navigate } from 'react-router'
 import { RefreshCw } from 'lucide-react'
+import { AUTH_ROUTES } from '@/lib/auth-routing'
 
 interface AuthGuardProps {
   children: React.ReactNode
 }
 
 export function AuthGuard({ children }: AuthGuardProps) {
-  const { isLoaded, isSignedIn } = useAuth()
+  const { isLoaded, isSignedIn } = useAppAuth()
 
   if (!isLoaded) {
     return (
@@ -21,10 +22,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (!isSignedIn) {
-    return <Navigate to="/sign-in" replace />
+    return <Navigate to={AUTH_ROUTES.login} replace />
   }
 
   return <>{children}</>
 }
-
-

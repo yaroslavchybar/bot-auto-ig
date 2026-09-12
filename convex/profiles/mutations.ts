@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
-import { mutation } from "../auth";
+import { mutation } from "../_generated/server";
 import {
 	normalizeDailyScrapingLimit,
 	backfillAssignedAccountsLimitRow,

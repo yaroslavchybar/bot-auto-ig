@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
-import { query } from "../auth";
+import { query } from "../_generated/server";
 import {
 	listProfileRows,
 	getProfileByNameRow,

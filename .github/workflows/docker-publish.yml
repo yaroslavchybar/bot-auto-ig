@@ -49,10 +49,6 @@ jobs:
             echo "Missing repo variable: VITE_CONVEX_URL"
             exit 1
           fi
-          if [ -z "${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}" ]; then
-            echo "Missing secret: VITE_CLERK_PUBLISHABLE_KEY"
-            exit 1
-          fi
 
       - name: Build and push server
         if: matrix.service == 'server'
@@ -89,7 +85,6 @@ jobs:
             VITE_API_URL=${{ vars.VITE_API_URL }}
             VITE_DATAUPLOADER_URL=${{ vars.VITE_DATAUPLOADER_URL }}
             VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
-            VITE_CLERK_PUBLISHABLE_KEY=${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
 
       - name: Build and push datauploader
         if: matrix.service == 'datauploader'

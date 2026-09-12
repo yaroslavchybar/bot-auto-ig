@@ -15,7 +15,7 @@ function normalizeRequestBody(body: RequestInit['body'] | unknown) {
 }
 
 /**
- * Registers the Clerk token getter so that apiFetch / apiFetchWithRetry
+ * Registers the session token getter so that apiFetch / apiFetchWithRetry
  * can attach Authorization headers automatically.
  *
  * Also returns a convenience `authFetch` that delegates to `apiFetch`

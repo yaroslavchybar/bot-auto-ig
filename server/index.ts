@@ -10,7 +10,8 @@ import express from 'express'
 import { createServer } from 'http'
 
 import { initWebSocket } from './websocket.js'
-import { clerkAuth, requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
+import { requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
+import { authRouter } from './auth/routes.js'
 
 import { automationRouter } from './automation/index.js'
 import logsRouter from './logs/routes.js'
@@ -83,13 +84,13 @@ app.use((req, res, next) => {
     next()
 })
 
-// Initialize Clerk middleware (parses auth tokens)
-app.use(clerkAuth)
-
+// Public auth endpoints (Telegram login, session, logout)
 // Health check (public)
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
+
+app.use('/api/auth', authRouter)
 
 // Protected API Routes - require authentication and rate limiting
 app.use('/api/automation', requireApiAuth, automationLimiter, automationRouter)

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery } from "./_generated/server";
-import { mutation, query } from "./auth";
+import { mutation, query } from "./_generated/server";
 
 export const listInternal = internalQuery({
 	args: {},

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
-import { query } from "../auth";
+import { query } from "../_generated/server";
 import { statusValidator, getWorkflowListIds, type WorkflowStatus } from "./helpers";
 
 async function listWorkflows(ctx: any, args: { status?: WorkflowStatus }) {

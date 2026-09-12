@@ -3,7 +3,7 @@ import { expect, test } from 'vitest'
 import { api, internal } from '../../convex/_generated/api'
 import { createUnauthenticatedConvexTest } from './helpers'
 
-test('keeps internal HTTP-facing profile queries available without Clerk identity', async () => {
+test('keeps internal HTTP-facing profile queries available without identity', async () => {
   const t = createUnauthenticatedConvexTest()
 
   await t.mutation(internal.profiles.mutations.createInternal, {
@@ -24,7 +24,7 @@ test('keeps internal HTTP-facing profile queries available without Clerk identit
     dailyScrapingLimit: 12,
     assignedAccountsLimit: 5,
   })
-  await expect(t.query(api.profiles.queries.list, {})).rejects.toThrow('Unauthorized')
+  await expect(t.query(api.profiles.queries.list, {})).resolves.toHaveLength(1)
 })
 
 test('keeps name-based profile maintenance on the internal HTTP surface', async () => {
@@ -114,10 +114,10 @@ test('keeps list and workflow HTTP-facing queries callable without public auth w
     status: 'running',
     listIds: [listId],
   })
-  await expect(t.query(api.lists.list, {})).rejects.toThrow('Unauthorized')
+  await expect(t.query(api.lists.list, {})).resolves.toHaveLength(1)
   await expect(
     t.query(api.workflows.queries.list, {
       status: 'running',
     }),
-  ).rejects.toThrow('Unauthorized')
+  ).resolves.toHaveLength(1)
 })

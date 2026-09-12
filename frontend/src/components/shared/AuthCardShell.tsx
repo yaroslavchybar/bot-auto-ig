@@ -7,9 +7,9 @@ interface AuthCardShellProps {
   title: string
   description: string
   error?: string | null
-  footerPrompt: string
-  footerLinkLabel: string
-  footerLinkTo: string
+  footerPrompt?: string
+  footerLinkLabel?: string
+  footerLinkTo?: string
   children: ReactNode
 }
 
@@ -47,12 +47,14 @@ export function AuthCardShell({
 
           {children}
 
-          <div className="border-line-soft text-muted-copy border-t pt-5 text-sm">
-            {footerPrompt}{' '}
-            <Link className="brand-link font-medium" to={footerLinkTo}>
-              {footerLinkLabel}
-            </Link>
-          </div>
+          {footerPrompt && footerLinkLabel && footerLinkTo ? (
+            <div className="border-line-soft text-muted-copy border-t pt-5 text-sm">
+              {footerPrompt}{' '}
+              <Link className="brand-link font-medium" to={footerLinkTo}>
+                {footerLinkLabel}
+              </Link>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

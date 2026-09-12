@@ -2,11 +2,11 @@ import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
 import { clients, logsStore, MAX_LOGS, automationState } from './shared/store.js'
 import { appendLog as appendFileLog } from './logs/store.js'
-import { verifyToken } from '@clerk/express'
+import { verifySessionUid } from './auth/telegram.js'
+import { isLocalAuthBypassEnabled } from './security/auth.js'
 import logger from './shared/logger.js'
 
-const LOCAL_AUTH_BYPASS =
-    process.env.NODE_ENV !== 'production' && process.env.DISABLE_CLERK_AUTH === 'true'
+const LOCAL_AUTH_BYPASS = isLocalAuthBypassEnabled()
 
 export function initWebSocket(server: Server, path: string = '/ws') {
     const wss = new WebSocketServer({ server, path })
@@ -22,9 +22,7 @@ export function initWebSocket(server: Server, path: string = '/ws') {
         }
 
         if (!LOCAL_AUTH_BYPASS) {
-            try {
-                await verifyToken(token!, { secretKey: process.env.CLERK_SECRET_KEY })
-            } catch {
+            if (!token || !verifySessionUid(token)) {
                 ws.close(4003, 'Invalid auth token')
                 return
             }

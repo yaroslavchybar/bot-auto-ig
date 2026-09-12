@@ -1,17 +1,16 @@
 import { redirect } from 'react-router'
 
 export const AUTH_ROUTES = {
-  signIn: '/sign-in',
-  signUp: '/sign-up',
+  login: '/login',
   signedInFallback: '/profiles',
 } as const
 
 export const REDIRECT_URL_PARAM = 'redirect_url'
 
-export function buildSignInRedirect(requestUrl: string): never {
-  const signInUrl = new URL(AUTH_ROUTES.signIn, requestUrl)
-  signInUrl.searchParams.set(REDIRECT_URL_PARAM, requestUrl)
-  throw redirect(`${signInUrl.pathname}${signInUrl.search}`)
+export function buildLoginRedirect(requestUrl: string): never {
+  const loginUrl = new URL(AUTH_ROUTES.login, requestUrl)
+  loginUrl.searchParams.set(REDIRECT_URL_PARAM, requestUrl)
+  throw redirect(`${loginUrl.pathname}${loginUrl.search}`)
 }
 
 export function getSafeRedirectTarget(

@@ -1,8 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query } from "./auth";
+import { mutation, query } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
 
-// ── Public (auth-guarded) – used by frontend ──
+// ── Public – used by frontend ──
 
 export const get = query({
 	args: { kind: v.string() },

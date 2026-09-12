@@ -1,8 +1,4 @@
 import {
-  clerkMiddleware,
-  rootAuthLoader,
-} from '@clerk/react-router/server'
-import {
   Links,
   Meta,
   Outlet,
@@ -10,18 +6,14 @@ import {
   ScrollRestoration,
 } from 'react-router'
 import type { ReactNode } from 'react'
-import type { Route } from './+types/root'
 import './index.css'
-import { getClerkAppearance } from '@/components/shared/clerk-appearance'
 import { AppAuthProvider } from '@/lib/auth'
 import { ErrorBoundary as AppErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { RouteErrorView } from '@/components/shared/RouteErrorView'
-import { ThemeProvider, useTheme } from '@/hooks/use-theme'
+import { ThemeProvider } from '@/hooks/use-theme'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
 import { useNavigationBreadcrumb } from '@/hooks/useNavigationBreadcrumb'
-import { AUTH_ROUTES } from '@/lib/auth-routing'
-import { env } from '@/lib/env'
 import { cn } from '@/lib/utils'
 
 function themeBootstrapScript() {
@@ -64,46 +56,6 @@ function AppFrame({ children }: { children: ReactNode }) {
   )
 }
 
-export const middleware: Route.MiddlewareFunction[] = [
-  ...(env.disableClerkAuth
-    ? []
-    : [
-        clerkMiddleware({
-          signInUrl: AUTH_ROUTES.signIn,
-          signUpUrl: AUTH_ROUTES.signUp,
-        }),
-      ]),
-]
-
-export function loader(args: Route.LoaderArgs) {
-  if (env.disableClerkAuth) return null
-
-  return rootAuthLoader(args, {
-    signInUrl: AUTH_ROUTES.signIn,
-    signUpUrl: AUTH_ROUTES.signUp,
-  })
-}
-
-function RootProviders({
-  children,
-  loaderData,
-}: {
-  children: ReactNode
-  loaderData: Route.ComponentProps['loaderData']
-}) {
-  const { theme } = useTheme()
-  const clerkAppearance = getClerkAppearance(theme)
-
-  return (
-    <AppAuthProvider
-      loaderData={loaderData}
-      appearance={clerkAppearance}
-    >
-      {children}
-    </AppAuthProvider>
-  )
-}
-
 export function Layout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -131,17 +83,17 @@ export function HydrateFallback() {
   )
 }
 
-export default function Root({ loaderData }: Route.ComponentProps) {
+export default function Root() {
   useNavigationBreadcrumb()
 
   return (
     <ThemeProvider>
       <AppErrorBoundary>
-        <RootProviders loaderData={loaderData}>
+        <AppAuthProvider>
           <AppFrame>
             <Outlet />
           </AppFrame>
-        </RootProviders>
+        </AppAuthProvider>
       </AppErrorBoundary>
     </ThemeProvider>
   )
