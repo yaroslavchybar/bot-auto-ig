@@ -51,6 +51,7 @@ From schema:
 ## Clerk Auth Model
 
 - `convex/auth.ts` wraps browser-facing `query`, `mutation`, and `action` exports and requires a Clerk identity through `ctx.auth.getUserIdentity()`.
+- Setting `DISABLE_CLERK_AUTH=true` in a development Convex environment enables a local development identity for those browser-facing functions and makes `auth.config.ts` use no Clerk providers. Do not set this in production.
 - Browser-accessed modules such as `lists`, `profiles`, `messageTemplates`, `workflowArtifacts`, and `workflows` should use those wrappers for public functions.
 - Server-only helpers should use `internalQuery`, `internalMutation`, or `internalAction`.
 - Browser code should use the Convex React client with Clerk auth; it should not call Convex HTTP action routes directly.
@@ -67,9 +68,9 @@ Current daily jobs:
 ## Development
 
 ```bash
-npx convex dev
-npx convex deploy
-npm run test:convex
+bunx convex dev
+bunx convex deploy
+bun run test:convex
 ```
 
 Treat `convex/_generated/*` as generated artifacts.
@@ -78,7 +79,7 @@ Keep `auth.config.ts` aligned with the active Clerk deployment domain so Convex 
 
 ## Local Verification
 
-- `npm run test:convex` runs the isolated Convex self-test harness with `convex-test` + Vitest.
+- `bun run test:convex` runs the isolated Convex self-test harness with `convex-test` + Vitest.
 - The local suite covers the owned top-level `convex/*.ts` cohort and excludes `convex/_generated/*`.
 - Tests must remain deterministic and local-only: no live Convex backend, no real outbound network calls, no deployed data writes.
 - Any change under `convex/` must add or update relevant tests in `convex/tests/`.

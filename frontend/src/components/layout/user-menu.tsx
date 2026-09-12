@@ -1,4 +1,3 @@
-import { useUser, useClerk } from '@clerk/react-router'
 import { Settings, LogOut } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -10,10 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useAppClerk, useAppUser } from '@/lib/auth'
+import { env } from '@/lib/env'
 
 export function UserMenu() {
-  const { user } = useUser()
-  const clerk = useClerk()
+  const user = useAppUser()
+  const clerk = useAppClerk()
 
   if (!user) return null
 
@@ -58,20 +59,28 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-panel-hover mx-1" />
         <div className="p-1">
-          <DropdownMenuItem
-            className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
-            onClick={() => clerk.openUserProfile()}
-          >
-            <Settings className="text-muted-copy h-4 w-4" />
-            <span>Manage account</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
-            onClick={() => clerk.signOut({ redirectUrl: '/sign-in' })}
-          >
-            <LogOut className="text-muted-copy h-4 w-4" />
-            <span>Sign out</span>
-          </DropdownMenuItem>
+          {env.disableClerkAuth ? (
+            <DropdownMenuItem disabled>
+              Local development auth bypass
+            </DropdownMenuItem>
+          ) : (
+            <>
+              <DropdownMenuItem
+                className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
+                onClick={() => clerk.openUserProfile()}
+              >
+                <Settings className="text-muted-copy h-4 w-4" />
+                <span>Manage account</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
+                onClick={() => clerk.signOut({ redirectUrl: '/sign-in' })}
+              >
+                <LogOut className="text-muted-copy h-4 w-4" />
+                <span>Sign out</span>
+              </DropdownMenuItem>
+            </>
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

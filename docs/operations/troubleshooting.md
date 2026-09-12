@@ -4,17 +4,18 @@
 
 - `frontend` fails at startup with publishable key error:
   - verify `VITE_CLERK_PUBLISHABLE_KEY` is present.
-- API/server returns Clerk publishable key errors during local `npm run dev`:
+- API/server returns Clerk publishable key errors during local `bun run dev`:
   - verify `.env` or `.env.local` contains `VITE_CLERK_PUBLISHABLE_KEY` or `CLERK_PUBLISHABLE_KEY`.
+  - for local work without Clerk, set `DISABLE_CLERK_AUTH=true` in `.env.local` and restart the frontend, server, and Convex dev process.
   - verify `CLERK_SECRET_KEY` is present for authenticated routes and WebSocket verification.
 - API calls fail from frontend:
   - verify backend at `http://localhost:3001`.
   - verify `VITE_API_URL` overrides are intentional.
-- `npm run dev:local` fails before opening processes:
-  - verify `npm` is available on `PATH`.
+- `bun run dev:local` fails before opening processes:
+  - verify `bun` is available on `PATH`.
   - verify Python 3.11+ is available through `.venv\Scripts\python.exe`, `python`, or `py`.
   - pass `-PythonPath C:\path\to\python.exe` to `dev-local.ps1` when the default resolution order is not correct.
-- `npm run dev:local:tabs` or `.\dev-local.ps1 -UseTabs` fails:
+- `bun run dev:local:tabs` or `.\dev-local.ps1 -UseTabs` fails:
   - verify Windows Terminal `wt.exe` is available on `PATH`.
 - Data uploader actions fail:
   - verify `VITE_DATAUPLOADER_URL` in frontend, `DATAUPLOADER_URL` in the server/Python runtime, and `CONVEX_URL_DEV/PROD` in service env.

@@ -1,5 +1,5 @@
 ﻿# syntax=docker/dockerfile:1.7
-FROM node:20-bookworm-slim AS system-base
+FROM oven/bun:1.4.2-debian AS system-base
 
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive
@@ -61,25 +61,33 @@ RUN --mount=type=cache,target=/root/.cache \
   python -m camoufox fetch \
   && python -m playwright install --with-deps firefox
 
-FROM browser-deps AS node-build-deps
-WORKDIR /app/server
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm ci
+FROM browser-deps AS bun-build-deps
+WORKDIR /app
+COPY --from=repo_root package.json bun.lock ./
+COPY --from=repo_root server/package.json ./server/package.json
+COPY --from=repo_root frontend/package.json ./frontend/package.json
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bun install --frozen-lockfile --filter anti-server
 
-FROM browser-deps AS node-runtime-deps
-WORKDIR /app/server
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm ci --omit=dev
+FROM browser-deps AS bun-runtime-deps
+WORKDIR /app
+COPY --from=repo_root package.json bun.lock ./
+COPY --from=repo_root server/package.json ./server/package.json
+COPY --from=repo_root frontend/package.json ./frontend/package.json
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bun install --frozen-lockfile --production --filter anti-server
 
-FROM node-build-deps AS app-build
-COPY . ./
-RUN npm run build
+FROM bun-build-deps AS app-build
+COPY --from=repo_root server ./server
+RUN bun run --filter anti-server build
 
 FROM browser-deps AS server-runtime
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY --from=node-runtime-deps /app/server/node_modules /app/server/node_modules
+COPY --from=bun-runtime-deps /app/node_modules /app/node_modules
+COPY --from=bun-runtime-deps /app/server /app/server
+COPY --from=bun-runtime-deps /app/package.json /app/package.json
+COPY --from=bun-runtime-deps /app/bun.lock /app/bun.lock
+COPY --from=bun-runtime-deps /app/frontend/package.json /app/frontend/package.json
 COPY --from=app-build /app/server/dist /app/server/dist
 COPY --from=app-build /app/server/package.json /app/server/package.json
 COPY --from=python_src . /app/python

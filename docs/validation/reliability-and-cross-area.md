@@ -245,10 +245,10 @@
 **Description:** After all refactoring milestones are complete, the full application stack starts successfully: Convex backend responds, Express server starts and binds its port, frontend builds without errors and renders the landing page, WebSocket connects.
 
 **Pass condition:**
-1. `npm run build` (root) exits with code 0.
-2. `npm --prefix frontend run build` exits with code 0.
-3. `npm --prefix server run build` exits with code 0.
-4. `npm run dev` (root) starts without errors; server logs show "listening on port 3001" (or configured port).
+1. `bun run build` (root) exits with code 0.
+2. `bun run --filter frontend build` exits with code 0.
+3. `bun run --filter anti-server build` exits with code 0.
+4. `bun run dev` (root) starts without errors; server logs show "listening on port 3001" (or configured port).
 5. `GET /` on the frontend returns HTTP 200 with valid HTML.
 6. WebSocket connection to `/ws` succeeds (with valid auth token).
 7. At least one API endpoint (e.g., `GET /api/profiles`) returns `{ success: true, data: [...] }`.
@@ -361,11 +361,11 @@
 **Description:** After all refactoring is complete, every build, lint, and test command defined in the project passes with zero errors.
 
 **Pass condition:**
-1. `npm run build` — exit code 0.
-2. `npm --prefix frontend run build` — exit code 0.
-3. `npm --prefix frontend run lint` — exit code 0, zero warnings treated as errors.
-4. `npm --prefix server run build` — exit code 0.
-5. `npm run test:convex` — all tests pass.
+1. `bun run build` — exit code 0.
+2. `bun run --filter frontend build` — exit code 0.
+3. `bun run --filter frontend lint` — exit code 0, zero warnings treated as errors.
+4. `bun run --filter anti-server build` — exit code 0.
+5. `bun run test:convex` — all tests pass.
 6. `python -m pytest python/tests -q` — all tests pass, zero failures.
 7. `docker compose up --build` — containers start without error (if applicable).
 

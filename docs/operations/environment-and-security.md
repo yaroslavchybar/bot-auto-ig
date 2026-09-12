@@ -9,6 +9,7 @@
 
 ### Server Runtime
 - `SERVER_PORT`
+- `DISABLE_CLERK_AUTH=true` (development only; disables Clerk checks across local frontend/server/Convex auth)
 - `ALLOWED_ORIGINS`
 - `NODE_ENV`
 - `PYTHON`
@@ -24,6 +25,7 @@
 - `VITE_CLERK_PUBLISHABLE_KEY` (local-dev fallback for issuer derivation only)
 
 ### Frontend Runtime / Build
+- `DISABLE_CLERK_AUTH=true` (development only; the Vite config exposes this shared local flag)
 - `VITE_CLERK_PUBLISHABLE_KEY`
 - `VITE_API_URL` (required for production frontend builds)
 - `VITE_DATAUPLOADER_URL` (required for production frontend builds)
@@ -56,6 +58,7 @@
   - automation routes: 10/min
   - write limiter available: 30/min
 - WebSocket requires token verification via Clerk secret key.
+- When `DISABLE_CLERK_AUTH=true` is active in development, API and WebSocket auth checks are bypassed and Convex uses the fixed local development identity.
 
 ## High-Risk Edit Areas
 

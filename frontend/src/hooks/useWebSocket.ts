@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
-import { useAuth } from '@clerk/react-router'
 import { env } from '@/lib/env'
+import { useAppAuth } from '@/lib/auth'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
 import type { LogEntry } from '@/lib/logs'
 
@@ -295,7 +295,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     workflowId, onEvent,
   } = options
   const wsUrl = url ?? getDefaultWebSocketUrl()
-  const { getToken } = useAuth()
+  const { getToken } = useAppAuth()
 
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')

@@ -1,6 +1,6 @@
 # Logs
 *.log
-npm-debug.log*
+bun-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*

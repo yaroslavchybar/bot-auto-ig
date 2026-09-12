@@ -43,14 +43,14 @@ Operations:
 
 ## Quick Commands
 
-- `npm run dev` (root)
-- `npm run build` (root)
-- `npm run test:convex`
-- `npm --prefix frontend run dev`
-- `npm --prefix frontend run build`
-- `npm --prefix frontend run lint`
-- `npm --prefix server run dev`
-- `npm --prefix server run build`
+- `bun run dev` (root)
+- `bun run build` (root)
+- `bun run test:convex`
+- `bun run --filter frontend dev`
+- `bun run --filter frontend build`
+- `bun run --filter frontend lint`
+- `bun run --filter anti-server dev`
+- `bun run --filter anti-server build`
 - `python -m pytest python/tests -q`
 - `docker compose up --build`
 
@@ -60,7 +60,7 @@ Operations:
 - React components: `PascalCase` filenames.
 - Hooks: `useX.ts` or `useX.tsx` naming.
 - Python: PEP 8 and snake_case naming.
-- For Convex changes, run `npm run test:convex` and add or update relevant tests in `convex/tests/`.
+- For Convex changes, run `bun run test:convex` and add or update relevant tests in `convex/tests/`.
 - For frontend/server changes without dedicated tests, run lint + build.
 - Add/update tests when changing automation behavior, parsing, retries, or state handling.
 

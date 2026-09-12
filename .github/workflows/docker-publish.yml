@@ -63,6 +63,7 @@ jobs:
           target: server-runtime
           build-contexts: |
             python_src=./python
+            repo_root=.
           pull: true
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}

@@ -6,6 +6,7 @@ services:
       target: server-runtime
       additional_contexts:
         python_src: ./python
+        repo_root: .
     ports:
       - "3001:3001"
       - "6080:6080"

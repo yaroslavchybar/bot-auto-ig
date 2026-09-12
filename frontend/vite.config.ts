@@ -101,7 +101,7 @@ const sentryConfig: SentryReactRouterBuildOptions = {
 
 export default defineConfig((config) => ({
   envDir: path.resolve(rootDir, '..'),
-  envPrefix: ['VITE_'],
+  envPrefix: ['VITE_', 'DISABLE_CLERK_AUTH'],
   plugins: [
     tailwindcss(),
     reactRouter(),

@@ -1,19 +1,15 @@
 ﻿# syntax=docker/dockerfile:1.7
-FROM node:20-bookworm-slim AS frontend-build
+FROM oven/bun:1.4.2-slim AS frontend-build
 
 WORKDIR /app
 
-COPY --from=repo_root package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm ci --omit=dev
+COPY --from=repo_root package.json bun.lock ./
+COPY --from=repo_root server/package.json ./server/package.json
+COPY --from=repo_root frontend/package.json ./frontend/package.json
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bun install --frozen-lockfile --filter frontend
 
-WORKDIR /app/frontend
-
-COPY package.json package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm ci
-
-COPY . ./
+COPY . ./frontend/
 COPY --from=convex_src . /app/convex/
 
 ARG VITE_CONVEX_URL
@@ -28,20 +24,22 @@ ENV VITE_API_URL=$VITE_API_URL
 ARG VITE_DATAUPLOADER_URL
 ENV VITE_DATAUPLOADER_URL=$VITE_DATAUPLOADER_URL
 
-RUN npm run build
+RUN bun run --filter frontend build
 
-FROM node:20-bookworm-slim AS frontend-runtime
+FROM oven/bun:1.4.2-slim AS frontend-runtime
 
-WORKDIR /app/frontend
+WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=80
 
-COPY --from=frontend-build /app/frontend/package.json ./package.json
-COPY --from=frontend-build /app/frontend/package-lock.json ./package-lock.json
-COPY --from=frontend-build /app/frontend/node_modules ./node_modules
-COPY --from=frontend-build /app/frontend/build ./build
+COPY --from=frontend-build /app/package.json ./package.json
+COPY --from=frontend-build /app/bun.lock ./bun.lock
+COPY --from=frontend-build /app/frontend/package.json ./frontend/package.json
+COPY --from=frontend-build /app/server/package.json ./server/package.json
+COPY --from=frontend-build /app/node_modules ./node_modules
+COPY --from=frontend-build /app/frontend/build ./frontend/build
 
 EXPOSE 80
 
-CMD ["npm", "run", "start", "--", "--host", "0.0.0.0", "--port", "80"]
+CMD ["bun", "run", "--filter", "frontend", "start", "--", "--host", "0.0.0.0", "--port", "80"]

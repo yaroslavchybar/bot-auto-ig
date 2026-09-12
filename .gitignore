@@ -141,6 +141,9 @@ dmypy.json
 
 node_modules/
 
+# Bun is the package manager; never commit npm lockfiles.
+package-lock.json
+
 # Project-specific
 # Browser profiles (contain user data, cookies, etc.)
 profiles/*/

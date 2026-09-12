@@ -5,6 +5,9 @@ import { appendLog as appendFileLog } from './logs/store.js'
 import { verifyToken } from '@clerk/express'
 import logger from './shared/logger.js'
 
+const LOCAL_AUTH_BYPASS =
+    process.env.NODE_ENV !== 'production' && process.env.DISABLE_CLERK_AUTH === 'true'
+
 export function initWebSocket(server: Server, path: string = '/ws') {
     const wss = new WebSocketServer({ server, path })
 
@@ -13,20 +16,26 @@ export function initWebSocket(server: Server, path: string = '/ws') {
         const url = new URL(req.url || '', `http://${req.headers.host}`)
         const token = url.searchParams.get('token')
 
-        if (!token) {
+        if (!LOCAL_AUTH_BYPASS && !token) {
             ws.close(4001, 'Missing auth token')
             return
         }
 
-        try {
-            await verifyToken(token, { secretKey: process.env.CLERK_SECRET_KEY })
-        } catch {
-            ws.close(4003, 'Invalid auth token')
-            return
+        if (!LOCAL_AUTH_BYPASS) {
+            try {
+                await verifyToken(token!, { secretKey: process.env.CLERK_SECRET_KEY })
+            } catch {
+                ws.close(4003, 'Invalid auth token')
+                return
+            }
         }
 
         clients.add(ws)
-        logger.info('WebSocket client connected (authenticated)')
+        logger.info(
+            LOCAL_AUTH_BYPASS
+                ? 'WebSocket client connected (local auth bypass)'
+                : 'WebSocket client connected (authenticated)',
+        )
 
         // Send current status
         ws.send(JSON.stringify({ type: 'status', status: automationState.status }))

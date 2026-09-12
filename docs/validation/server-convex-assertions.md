@@ -138,7 +138,7 @@
 
 ### VAL-SRVC-011 — Server Build Succeeds
 
-**Description:** `npm --prefix server run build` completes without errors after refactoring.
+**Description:** `bun run --filter anti-server build` completes without errors after refactoring.
 
 **Pass condition:** Exit code 0, no TypeScript compilation errors.
 
@@ -248,9 +248,9 @@
 
 ### VAL-CNVX-006 — All Existing Convex Tests Pass
 
-**Description:** All 58 existing Convex tests (run via `npm run test:convex`) continue to pass without modification (or with only import-path updates if modules moved).
+**Description:** All 58 existing Convex tests (run via `bun run test:convex`) continue to pass without modification (or with only import-path updates if modules moved).
 
-**Pass condition:** `npm run test:convex` exits with code 0 and reports 58 (or more) tests passing.
+**Pass condition:** `bun run test:convex` exits with code 0 and reports 58 (or more) tests passing.
 
 **Fail condition:** Any test failure or test count decrease below 58.
 
@@ -290,7 +290,7 @@
 
 ### VAL-CNVX-009 — Convex Build Succeeds
 
-**Description:** `npx convex dev --once` (or equivalent typecheck/codegen) completes without errors after refactoring.
+**Description:** `bunx convex dev --once` (or equivalent typecheck/codegen) completes without errors after refactoring.
 
 **Pass condition:** Exit code 0, all generated types are valid.
 

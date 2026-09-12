@@ -144,7 +144,8 @@ Import contract and validation:
 
 ## Environment Variables
 
-- `VITE_CLERK_PUBLISHABLE_KEY` (required)
+- `VITE_CLERK_PUBLISHABLE_KEY` (required unless local auth bypass is enabled)
+- `DISABLE_CLERK_AUTH=true` (development only; bypasses Clerk login and uses the local development identity)
 - `VITE_API_URL` (required for production builds; optional in local dev)
 - `VITE_DATAUPLOADER_URL` (required for production builds; optional in local dev)
 - `VITE_CONVEX_URL` (required)
@@ -152,11 +153,11 @@ Import contract and validation:
 ## Dev and Build
 
 ```bash
-npm --prefix frontend run dev
-npm --prefix frontend run build
-npm --prefix frontend run start
-npm --prefix frontend run lint
-npm --prefix frontend run preview
+bun run --filter frontend dev
+bun run --filter frontend build
+bun run --filter frontend start
+bun run --filter frontend lint
+bun run --filter frontend preview
 ```
 
 ## Verified Against

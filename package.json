@@ -1,16 +1,22 @@
 {
   "name": "anti",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "frontend",
+    "server"
+  ],
   "scripts": {
-    "build": "npm --prefix server run build",
-    "dev": "npm --prefix server run dev",
+    "build": "bun run --filter anti-server build",
+    "dev": "bun run --filter anti-server dev",
     "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1",
     "dev:local:full": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -WithUploader -WithConvex",
     "dev:local:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs",
     "dev:local:full:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs -WithUploader -WithConvex",
-    "start": "npm --prefix server run start",
-    "test:convex": "vitest run --config vitest.convex.config.ts"
+    "start": "bun run --filter anti-server start",
+    "test:convex": "bunx vitest run --config vitest.convex.config.ts"
   },
   "dependencies": {
     "@convex-dev/crons": "^0.2.0",

@@ -1,6 +1,6 @@
-import { useAuth } from '@clerk/react-router'
 import { useCallback, useEffect } from 'react'
 import { setTokenGetter, apiFetch, type RetryOptions } from '@/lib/api'
+import { useAppAuth } from '@/lib/auth'
 
 function normalizeRequestBody(body: RequestInit['body'] | unknown) {
   if (typeof body !== 'string') {
@@ -22,7 +22,7 @@ function normalizeRequestBody(body: RequestInit['body'] | unknown) {
  * while preserving the shared retry policy and auth headers.
  */
 export function useAuthenticatedFetch() {
-  const { getToken } = useAuth()
+  const { getToken } = useAppAuth()
 
   useEffect(() => {
     setTokenGetter(getToken)

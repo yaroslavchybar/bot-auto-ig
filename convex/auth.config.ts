@@ -14,6 +14,11 @@ function getConfiguredIssuerDomain() {
   return issuerDomain ? normalizeDomain(String(issuerDomain)) : null
 }
 
+function localAuthBypassEnabled() {
+  const environment = (globalThis as any)?.process?.env as Record<string, string | undefined> | undefined
+  return environment?.NODE_ENV !== 'production' && environment?.DISABLE_CLERK_AUTH === 'true'
+}
+
 function getRequiredPublishableKey() {
   const publishableKey =
     (globalThis as any)?.process?.env?.CLERK_PUBLISHABLE_KEY ||
@@ -56,13 +61,20 @@ function getClerkDomainFromPublishableKey(publishableKey: string) {
   return normalizeDomain(frontendApi)
 }
 
-const clerkDomain = getConfiguredIssuerDomain() ?? getClerkDomainFromPublishableKey(getRequiredPublishableKey())
+const clerkDomain = getConfiguredIssuerDomain()
+const resolvedClerkDomain = clerkDomain ?? (
+  localAuthBypassEnabled() ? null : getClerkDomainFromPublishableKey(getRequiredPublishableKey())
+)
 
-export default {
-  providers: [
-    {
-      domain: clerkDomain,
-      applicationID: 'convex',
-    },
-  ],
-} satisfies AuthConfig
+const authConfig: AuthConfig = localAuthBypassEnabled()
+  ? { providers: [] }
+  : {
+      providers: [
+        {
+          domain: resolvedClerkDomain!,
+          applicationID: 'convex',
+        },
+      ],
+    }
+
+export default authConfig

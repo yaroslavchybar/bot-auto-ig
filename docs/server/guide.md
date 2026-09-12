@@ -67,6 +67,7 @@ Mounted under `/api/*`:
 ## Environment Variables
 
 - `SERVER_PORT`
+- `DISABLE_CLERK_AUTH=true` (development only; bypasses Clerk API authentication)
 - `ALLOWED_ORIGINS`
 - `NODE_ENV`
 - `PYTHON`
@@ -86,9 +87,9 @@ Mounted under `/api/*`:
 ## Commands
 
 ```bash
-npm --prefix server run dev
-npm --prefix server run build
-npm --prefix server run start
+bun run --filter anti-server dev
+bun run --filter anti-server build
+bun run --filter anti-server start
 ```
 
 ## Verified Against

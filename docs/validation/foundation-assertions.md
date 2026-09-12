@@ -223,11 +223,11 @@ Every `.py` file under `python/` is either (a) imported by at least one other mo
 
 ### VAL-FOUND-041: No unused imports in server TypeScript files
 `server/` files have no unused imports.
-**Evidence:** Run `npx tsc --noEmit` in `server/` — zero "declared but never read" errors.
+**Evidence:** Run `bunx tsc --noEmit` in `server/` — zero "declared but never read" errors.
 
 ### VAL-FOUND-042: No unused imports in frontend TypeScript files
 `frontend/` files have no unused imports.
-**Evidence:** Run `npm --prefix frontend run typecheck` — zero "declared but never read" errors.
+**Evidence:** Run `bun run --filter frontend typecheck` — zero "declared but never read" errors.
 
 ### VAL-FOUND-043: No commented-out code blocks remain
 No large blocks (≥3 consecutive lines) of commented-out code exist in `python/`, `server/`, or `frontend/src/`. Explanatory comments are fine; dead code behind `#` or `//` is not.
@@ -310,19 +310,19 @@ Frontend source files under `frontend/src/` (excluding test/script files) do not
 ## K. Build & Lint Verification
 
 ### VAL-FOUND-059: Server builds without errors
-`npm --prefix server run build` completes with exit code 0 and no TypeScript errors.
+`bun run --filter anti-server build` completes with exit code 0 and no TypeScript errors.
 **Evidence:** Run command; confirm clean exit.
 
 ### VAL-FOUND-060: Frontend builds without errors
-`npm --prefix frontend run build` completes with exit code 0.
+`bun run --filter frontend build` completes with exit code 0.
 **Evidence:** Run command; confirm clean exit.
 
 ### VAL-FOUND-061: Frontend lint passes
-`npm --prefix frontend run lint` completes with zero errors.
+`bun run --filter frontend lint` completes with zero errors.
 **Evidence:** Run command; confirm clean output.
 
 ### VAL-FOUND-062: Frontend typecheck passes
-`npm --prefix frontend run typecheck` completes with zero errors.
+`bun run --filter frontend typecheck` completes with zero errors.
 **Evidence:** Run command; confirm clean output.
 
 ### VAL-FOUND-063: Python tests pass
@@ -330,7 +330,7 @@ Frontend source files under `frontend/src/` (excluding test/script files) do not
 **Evidence:** Run command; confirm all tests pass.
 
 ### VAL-FOUND-064: Convex tests pass
-`npm run test:convex` passes with zero failures.
+`bun run test:convex` passes with zero failures.
 **Evidence:** Run command; confirm clean exit.
 
 ---
@@ -342,7 +342,7 @@ Frontend source files under `frontend/src/` (excluding test/script files) do not
 **Evidence:** Read `.env.example`; confirm `.gitignore` includes `.env` and `.env.local`.
 
 ### VAL-FOUND-066: Docker build succeeds with Foundation changes
-`docker compose build` completes successfully, incorporating the new `sentry-sdk` dependency in the Python container and any new npm packages in server/frontend.
+`docker compose build` completes successfully, incorporating the new `sentry-sdk` dependency in the Python container and any new bun packages in server/frontend.
 **Evidence:** Run `docker compose build`; confirm exit code 0.
 
 ### VAL-FOUND-067: No secrets in committed source

@@ -55,12 +55,12 @@ function Resolve-PythonPath {
   throw 'No Python interpreter found. Create .venv or install Python 3.11+.'
 }
 
-function Get-NodeCommand {
-  if (Test-CommandExists 'npm') {
-    return 'npm'
+function Get-JSCommand {
+  if (Test-CommandExists 'bun') {
+    return 'bun'
   }
 
-  throw 'npm is not available on PATH.'
+  throw 'bun is not available on PATH.'
 }
 
 function Start-DevProcess {
@@ -144,7 +144,7 @@ function Assert-PathExists {
   }
 }
 
-$npm = Get-NodeCommand
+$bun = Get-JSCommand
 $python = Resolve-PythonPath -RequestedPythonPath $PythonPath
 
 Assert-PathExists -Path (Join-Path $repoRoot 'package.json') -Message 'Run this script from the repo root.'
@@ -155,8 +155,8 @@ Write-Host 'Starting local dev processes...' -ForegroundColor Yellow
 Write-Host 'Frontend: http://localhost:5173' -ForegroundColor Yellow
 Write-Host 'API:      http://localhost:3001' -ForegroundColor Yellow
 
-$serverCommand = "$npm run dev"
-$frontendCommand = "$npm --prefix frontend run dev"
+$serverCommand = "$bun run dev"
+$frontendCommand = "$bun run --filter frontend dev"
 
 $processes = @(
   [pscustomobject]@{
@@ -200,7 +200,7 @@ if ($WithUploader) {
 }
 
 if ($WithConvex) {
-  $convexCommand = 'npx convex dev'
+  $convexCommand = 'bunx convex dev'
   $processes += [pscustomobject]@{
     Name = 'convex'
     WorkingDirectory = $repoRoot

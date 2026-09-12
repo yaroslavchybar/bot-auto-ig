@@ -10,7 +10,22 @@ import {
 
 type AuthenticatedCtx = Pick<QueryCtx, 'auth'> | Pick<MutationCtx, 'auth'> | Pick<ActionCtx, 'auth'>
 
+const LOCAL_USER_IDENTITY: UserIdentity = {
+  subject: 'local-dev-user',
+  tokenIdentifier: 'local-dev-user',
+  issuer: 'local-dev',
+  name: 'Local Developer',
+  email: 'local-dev@example.test',
+}
+
+function localAuthBypassEnabled() {
+  const environment = (globalThis as any)?.process?.env as Record<string, string | undefined> | undefined
+  return environment?.NODE_ENV !== 'production' && environment?.DISABLE_CLERK_AUTH === 'true'
+}
+
 export async function requireUserIdentity(ctx: AuthenticatedCtx): Promise<UserIdentity> {
+  if (localAuthBypassEnabled()) return LOCAL_USER_IDENTITY
+
   const identity = await ctx.auth.getUserIdentity()
 
   if (!identity) {

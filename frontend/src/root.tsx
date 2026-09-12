@@ -1,4 +1,3 @@
-import { ClerkProvider } from '@clerk/react-router'
 import {
   clerkMiddleware,
   rootAuthLoader,
@@ -14,6 +13,7 @@ import type { ReactNode } from 'react'
 import type { Route } from './+types/root'
 import './index.css'
 import { getClerkAppearance } from '@/components/shared/clerk-appearance'
+import { AppAuthProvider } from '@/lib/auth'
 import { ErrorBoundary as AppErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { RouteErrorView } from '@/components/shared/RouteErrorView'
 import { ThemeProvider, useTheme } from '@/hooks/use-theme'
@@ -65,13 +65,19 @@ function AppFrame({ children }: { children: ReactNode }) {
 }
 
 export const middleware: Route.MiddlewareFunction[] = [
-  clerkMiddleware({
-    signInUrl: AUTH_ROUTES.signIn,
-    signUpUrl: AUTH_ROUTES.signUp,
-  }),
+  ...(env.disableClerkAuth
+    ? []
+    : [
+        clerkMiddleware({
+          signInUrl: AUTH_ROUTES.signIn,
+          signUpUrl: AUTH_ROUTES.signUp,
+        }),
+      ]),
 ]
 
 export function loader(args: Route.LoaderArgs) {
+  if (env.disableClerkAuth) return null
+
   return rootAuthLoader(args, {
     signInUrl: AUTH_ROUTES.signIn,
     signUpUrl: AUTH_ROUTES.signUp,
@@ -89,13 +95,12 @@ function RootProviders({
   const clerkAppearance = getClerkAppearance(theme)
 
   return (
-    <ClerkProvider
+    <AppAuthProvider
       loaderData={loaderData}
-      publishableKey={env.clerkPublishableKey}
       appearance={clerkAppearance}
     >
       {children}
-    </ClerkProvider>
+    </AppAuthProvider>
   )
 }
 

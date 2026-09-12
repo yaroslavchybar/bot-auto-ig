@@ -23,7 +23,7 @@
 **Evidence requirements:**
 1. `wc -l` / line-count output for every new and modified file.
 2. Screenshot or agent-browser smoke-test log of the `/accounts` page loading and interactive flows.
-3. `npm --prefix frontend run build` exits 0.
+3. `bun run --filter frontend build` exits 0.
 
 ---
 
@@ -131,7 +131,7 @@ The `LogEntry` type exported from `lib/logs.ts` (line 1) and the `LogEntry` inte
 
 **Evidence requirements:**
 1. `rg "export (type|interface) LogEntry" frontend/src` returns exactly 1 result.
-2. `npm --prefix frontend run typecheck` exits 0.
+2. `bun run --filter frontend typecheck` exits 0.
 
 ---
 
@@ -177,19 +177,19 @@ The `@sentry/react` (or equivalent) SDK is installed, initialized in the app ent
 **Evidence requirements:**
 1. `package.json` diff showing Sentry dependency.
 2. Grep for `Sentry.init`, `addBreadcrumb`, `captureException` with file locations.
-3. `npm --prefix frontend run build` exits 0.
+3. `bun run --filter frontend build` exits 0.
 
 ---
 
 ## VAL-FE-009 — Production build succeeds
 
-**Title:** `npm --prefix frontend run build` exits 0
+**Title:** `bun run --filter frontend build` exits 0
 
 **Behavioral description:**
 After all refactoring changes, the full frontend production build completes without errors.
 
 **Pass condition:**
-- `npm --prefix frontend run build` exits with code 0.
+- `bun run --filter frontend build` exits with code 0.
 - No TypeScript compilation errors.
 - No missing module or import errors.
 
@@ -197,44 +197,44 @@ After all refactoring changes, the full frontend production build completes with
 - Build exits non-zero, OR any error is printed to stderr.
 
 **Evidence requirements:**
-1. Full terminal output of `npm --prefix frontend run build` showing success.
+1. Full terminal output of `bun run --filter frontend build` showing success.
 
 ---
 
 ## VAL-FE-010 — Lint passes
 
-**Title:** `npm --prefix frontend run lint` exits 0
+**Title:** `bun run --filter frontend lint` exits 0
 
 **Behavioral description:**
 After all refactoring changes, ESLint reports no errors across the entire frontend source tree.
 
 **Pass condition:**
-- `npm --prefix frontend run lint` exits with code 0.
+- `bun run --filter frontend lint` exits with code 0.
 - Zero ESLint errors (warnings are acceptable).
 
 **Fail condition:**
 - Lint exits non-zero, OR any ESLint error is reported.
 
 **Evidence requirements:**
-1. Full terminal output of `npm --prefix frontend run lint`.
+1. Full terminal output of `bun run --filter frontend lint`.
 
 ---
 
 ## VAL-FE-011 — TypeScript type-check passes
 
-**Title:** `npm --prefix frontend run typecheck` exits 0
+**Title:** `bun run --filter frontend typecheck` exits 0
 
 **Behavioral description:**
 TypeScript strict-mode compilation across the entire frontend source tree completes with no errors.
 
 **Pass condition:**
-- `npm --prefix frontend run typecheck` exits with code 0.
+- `bun run --filter frontend typecheck` exits with code 0.
 
 **Fail condition:**
 - Any `TS` error codes emitted.
 
 **Evidence requirements:**
-1. Terminal output of `npm --prefix frontend run typecheck`.
+1. Terminal output of `bun run --filter frontend typecheck`.
 
 ---
 
@@ -360,7 +360,7 @@ Beyond the specific `getCache`/`setCache` and `LogEntry` duplicates (VAL-FE-005,
 After file moves and renames, all import paths are updated. No broken imports remain. The project's `@/` path alias is used consistently (no relative `../../..` chains exceeding 2 levels).
 
 **Pass condition:**
-- `npm --prefix frontend run typecheck` exits 0 (covers broken imports).
+- `bun run --filter frontend typecheck` exits 0 (covers broken imports).
 - No import uses more than two `../` levels (prefer `@/` alias).
 
 **Fail condition:**
