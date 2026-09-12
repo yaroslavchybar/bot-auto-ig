@@ -1,9 +1,5 @@
-__pycache__/
-*.pyc
-*.pyo
+node_modules/
+dist/
+uploads/
 .git
 .env
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-uploads/

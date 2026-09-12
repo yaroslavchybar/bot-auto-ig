@@ -6,7 +6,8 @@
   "packageManager": "bun@1.4.2",
   "workspaces": [
     "frontend",
-    "server"
+    "server",
+    "datauploader"
   ],
   "scripts": {
     "build": "bun run --filter anti-server build",

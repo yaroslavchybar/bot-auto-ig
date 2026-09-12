@@ -3,8 +3,7 @@ param(
   [switch]$WithUploader,
   [switch]$WithConvex,
   [switch]$UseTabs,
-  [switch]$NoNewWindows,
-  [string]$PythonPath
+  [switch]$NoNewWindows
 )
 
 $ErrorActionPreference = 'Stop'
@@ -13,46 +12,11 @@ $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $repoRoot
 
 $psExe = (Get-Process -Id $PID).Path
-$defaultVenvPython = Join-Path $repoRoot '.venv\Scripts\python.exe'
 
 function Test-CommandExists {
   param([Parameter(Mandatory = $true)][string]$Name)
 
   return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
-}
-
-function Resolve-PythonPath {
-  param([string]$RequestedPythonPath)
-
-  if ($RequestedPythonPath) {
-    if (-not (Test-Path $RequestedPythonPath)) {
-      throw "Requested PythonPath does not exist: $RequestedPythonPath"
-    }
-    return (Resolve-Path $RequestedPythonPath).Path
-  }
-
-  if (Test-Path $defaultVenvPython) {
-    return (Resolve-Path $defaultVenvPython).Path
-  }
-
-  if (Test-CommandExists 'python') {
-    return 'python'
-  }
-
-  if (Test-CommandExists 'py') {
-    $pyPath = & py -3.11 -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1
-    if ($pyPath) {
-      $pyPath = $pyPath.ToString().Trim()
-    }
-
-    if ($pyPath -and (Test-Path -LiteralPath $pyPath)) {
-      return $pyPath
-    }
-
-    return 'py'
-  }
-
-  throw 'No Python interpreter found. Create .venv or install Python 3.11+.'
 }
 
 function Get-JSCommand {
@@ -145,7 +109,6 @@ function Assert-PathExists {
 }
 
 $bun = Get-JSCommand
-$python = Resolve-PythonPath -RequestedPythonPath $PythonPath
 
 Assert-PathExists -Path (Join-Path $repoRoot 'package.json') -Message 'Run this script from the repo root.'
 Assert-PathExists -Path (Join-Path $repoRoot 'frontend\package.json') -Message 'Missing frontend/package.json.'
@@ -174,28 +137,13 @@ $processes = @(
 )
 
 if ($WithUploader) {
-  $uploaderDir = Join-Path $repoRoot 'datauploader'
-  Assert-PathExists -Path $uploaderDir -Message 'Missing datauploader directory.'
-
-  $envFile = if (Test-Path (Join-Path $repoRoot '.env.local')) {
-    '..\.env.local'
-  } elseif (Test-Path (Join-Path $repoRoot '.env')) {
-    '..\.env'
-  } else {
-    $null
-  }
-
-  $uploaderCommand = "& '$python' -m uvicorn api:app --reload --host 0.0.0.0 --port 3002"
-  if ($envFile) {
-    $uploaderCommand += " --env-file $envFile"
-  }
-
   Write-Host 'Uploader: http://localhost:3002' -ForegroundColor Yellow
+  $uploaderCommand = "$bun run --filter anti-uploader dev"
   $processes += [pscustomobject]@{
     Name = 'datauploader'
-    WorkingDirectory = $uploaderDir
+    WorkingDirectory = $repoRoot
     Command = $uploaderCommand
-    FullCommand = "Write-Host ""[datauploader] working dir: $uploaderDir"" -ForegroundColor Cyan; Set-Location -LiteralPath '$uploaderDir'; $uploaderCommand"
+    FullCommand = "Write-Host ""[datauploader] working dir: $repoRoot"" -ForegroundColor Cyan; Set-Location -LiteralPath '$repoRoot'; $uploaderCommand"
   }
 }
 
@@ -224,4 +172,3 @@ Write-Host '  .\dev-local.ps1' -ForegroundColor Green
 Write-Host '  .\dev-local.ps1 -WithUploader' -ForegroundColor Green
 Write-Host '  .\dev-local.ps1 -WithUploader -WithConvex' -ForegroundColor Green
 Write-Host '  .\dev-local.ps1 -UseTabs -WithUploader -WithConvex' -ForegroundColor Green
-Write-Host '  .\dev-local.ps1 -PythonPath C:\path\to\python.exe' -ForegroundColor Green
