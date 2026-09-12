@@ -28,13 +28,11 @@ server, Camoufox JS browser automation, Convex shared data layer. Package manage
   `workflowArtifacts`, `instagramAccounts`, `scrapingAccounts`,
   `messageTemplates`), HTTP actions, crons. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
-- `data/`: runtime logs/uploads (git-ignored).
+- `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
 
 ## Commands
 
-Root (`bun run …`): `dev`, `build`, `start`, `test:convex`,
-`dev:local*` (Windows launcher `dev-local.ps1` for server+frontend,
-optional `-WithConvex`, `-UseTabs`).
+Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`.
 Workspaces: `bun run --filter frontend dev|build|start|lint|preview|typecheck`,
 `bun run --filter anti-server dev|build|start`.
 Server: `bun run --filter anti-server build`. Docker: `docker compose up --build`

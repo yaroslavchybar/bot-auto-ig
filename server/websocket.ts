@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
 import { clients, logsStore, MAX_LOGS, automationState } from './shared/store.js'
-import { appendLog as appendFileLog } from './logs/store.js'
 import { verifySessionUid } from './auth/telegram.js'
 import { isLocalAuthBypassEnabled } from './security/auth.js'
 import logger from './shared/logger.js'
@@ -73,15 +72,6 @@ export function broadcast(data: object) {
         if (logsStore.length > MAX_LOGS) {
             logsStore.shift()
         }
-        appendFileLog(logEntry.message, logEntry.source, logEntry.level as any, logEntry.profileName, {
-            workflowId: logEntry.workflowId,
-            taskId: logEntry.taskId,
-            targetUsername: logEntry.targetUsername,
-            errorCode: logEntry.errorCode,
-            outcome: logEntry.outcome,
-            diagnostics: logEntry.diagnostics,
-            attempt: logEntry.attempt,
-        })
     }
 
     clients.forEach((client) => {

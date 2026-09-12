@@ -3,7 +3,6 @@ import { Link, useLocation } from '@/lib/router'
 import {
   Users,
   List,
-  FileText,
   GitBranch,
   Monitor,
   Database,
@@ -28,7 +27,6 @@ export const NAV_IDS = [
   'workflows',
   'scraped-data',
   'lists',
-  'logs',
   'vnc',
 ] as const
 
@@ -69,13 +67,6 @@ export const NAV_ITEMS = [
     to: '/vnc',
     icon: Monitor,
     breadcrumb: 'Browser View',
-  },
-  {
-    title: 'Logs',
-    id: 'logs',
-    to: '/logs',
-    icon: FileText,
-    breadcrumb: 'Logs',
   },
 ] as const satisfies ReadonlyArray<{
   title: string

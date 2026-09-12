@@ -19,7 +19,7 @@ import {
 import { parseSidebarOpen } from '@/lib/sidebar-state'
 import type { RouteMeta } from '@/lib/router'
 
-const KEEP_ALIVE_PATHS = new Set(['/workflows', '/logs', '/vnc'])
+const KEEP_ALIVE_PATHS = new Set(['/workflows', '/vnc'])
 const keepAliveCache = new Map<string, ReactNode>()
 
 type ProtectedLayoutShellProps = {

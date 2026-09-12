@@ -5,14 +5,9 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
-export type LogsMode = 'live' | 'static'
+export type LogsMode = 'live'
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug' | 'all'
-
-export type LogFileItem = {
-  label: string
-  value: string
-}
 
 export const FEED_DEBUG_TAGS = [
   '[feed-like-debug]',
@@ -60,12 +55,9 @@ export function useLogsState({
   const { handleError } = useErrorHandler()
 
   const {
-    mode, wsConnected, logs, loading, filesLoading, refreshing,
-    files, selectedFile,
+    mode, wsConnected, logs, loading, refreshing,
     switchToLive: doSwitchToLive,
-    switchToStatic: doSwitchToStatic,
     handleRefresh, handleClearLive,
-    handleFileChange: doHandleFileChange,
     inlineError, dismissError,
   } = useLogsFetching(liveBufferSize, workflowId, handleError)
 
@@ -78,30 +70,16 @@ export function useLogsState({
     feedDebugOnly, setFeedDebugOnly,
   } = useLogsFiltering({ logs, workflowId, profileName })
 
-  // Wrap mode/file actions to also reset visible count
+  // Wrap reload to also reset visible count
   const switchToLive = useCallback(() => {
     doSwitchToLive()
     resetVisibleCount()
   }, [doSwitchToLive, resetVisibleCount])
 
-  const switchToStatic = useCallback(() => {
-    doSwitchToStatic()
-    resetVisibleCount()
-  }, [doSwitchToStatic, resetVisibleCount])
-
-  const handleFileChange = useCallback(
-    (value: string) => {
-      doHandleFileChange(value)
-      resetVisibleCount()
-    },
-    [doHandleFileChange, resetVisibleCount],
-  )
-
   return {
-    mode, wsConnected, switchToLive, switchToStatic,
+    mode, wsConnected, switchToLive,
     logs, filteredLogs, visibleLogs, hasMoreLogs, loadMoreLogs,
-    loading, filesLoading, refreshing,
-    files, selectedFile, handleFileChange,
+    loading, refreshing,
     handleRefresh, handleClearLive,
     inlineError, dismissError,
     filterQuery, setFilterQuery, levelFilter, setLevelFilter,
@@ -117,13 +95,10 @@ function useLogsCoreState(
   liveBufferSize: number,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
-  const [mode, setMode] = useState<LogsMode>('live')
+  const [mode] = useState<LogsMode>('live')
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [loading, setLoading] = useState(false)
-  const [filesLoading, setFilesLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [files, setFiles] = useState<LogFileItem[]>([])
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [inlineError, setInlineError] = useState<string | null>(null)
   const processedWsLogsRef = useRef(0)
 
@@ -137,9 +112,8 @@ function useLogsCoreState(
   )
 
   return {
-    mode, setMode, logs, setLogs, loading, setLoading,
-    filesLoading, setFilesLoading, refreshing, setRefreshing,
-    files, setFiles, selectedFile, setSelectedFile,
+    mode, logs, setLogs, loading, setLoading,
+    refreshing, setRefreshing,
     handleError: handleErrorWithInline, inlineError, setInlineError,
     processedWsLogsRef, liveBufferSize,
   }
@@ -150,8 +124,7 @@ function useLogsCoreState(
 function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
   const {
     liveBufferSize, setLoading, handleError, setInlineError, setLogs,
-    processedWsLogsRef, setMode, selectedFile,
-    setFilesLoading, setFiles, setSelectedFile,
+    processedWsLogsRef,
   } = state
 
   const loadLiveLogs = useCallback(async () => {
@@ -160,56 +133,18 @@ function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
       const data = await apiFetch<LogEntry[]>('/api/logs')
       setLogs(data.slice(-liveBufferSize))
       processedWsLogsRef.current = 0
-      setMode('live')
       setInlineError(null)
     } catch (e) {
       handleError(e, 'Load logs')
     } finally {
       setLoading(false)
     }
-  }, [liveBufferSize, processedWsLogsRef, handleError, setInlineError, setLoading, setLogs, setMode])
+  }, [liveBufferSize, processedWsLogsRef, handleError, setInlineError, setLoading, setLogs])
 
-  const loadFiles = useCallback(async () => {
-    setFilesLoading(true)
-    try {
-      const data = await apiFetch<string[]>('/api/logs/files')
-      const items = (data || []).map((f) => ({ label: f, value: f }))
-      setFiles(items)
-      if (!selectedFile && items[0]) setSelectedFile(items[0].value)
-      setInlineError(null)
-      return items
-    } catch (e) {
-      handleError(e, 'Load log files')
-      return []
-    } finally {
-      setFilesLoading(false)
-    }
-  }, [selectedFile, handleError, setInlineError, setFiles, setFilesLoading, setSelectedFile])
-
-  const loadFileLogs = useCallback(
-    async (filename: string) => {
-      if (!filename) return
-      setLoading(true)
-      try {
-        const data = await apiFetch<LogEntry[]>(
-          `/api/logs/file/${encodeURIComponent(filename)}`,
-        )
-        setLogs(data.slice(-liveBufferSize))
-        setMode('static')
-        setInlineError(null)
-      } catch (e) {
-        handleError(e, 'Load file logs')
-      } finally {
-        setLoading(false)
-      }
-    },
-    [liveBufferSize, handleError, setInlineError, setLoading, setLogs, setMode],
-  )
-
-  return { loadLiveLogs, loadFiles, loadFileLogs }
+  return { loadLiveLogs }
 }
 
-// --- Fetching hook: data loading, WebSocket, mode switching ---
+// --- Fetching hook: data loading, WebSocket, reload ---
 
 function useLogsFetching(
   liveBufferSize: number,
@@ -218,11 +153,11 @@ function useLogsFetching(
 ) {
   const state = useLogsCoreState(liveBufferSize, handleError)
   const {
-    mode, setMode, logs, loading, filesLoading, refreshing, setRefreshing,
-    files, selectedFile, setSelectedFile, setLogs, setLoading,
+    mode, logs, loading, refreshing, setRefreshing,
+    setLogs, setLoading,
     processedWsLogsRef, inlineError, setInlineError,
   } = state
-  const { loadLiveLogs, loadFiles, loadFileLogs } = useLogsDataLoading(state)
+  const { loadLiveLogs } = useLogsDataLoading(state)
 
   const { logs: wsLogs, connected: wsConnected } = useWebSocket({
     workflowId,
@@ -231,27 +166,17 @@ function useLogsFetching(
     maxBuffer: liveBufferSize,
   })
 
-  const refreshStaticLogs = useCallback(async () => {
-    const items = await loadFiles()
-    const nextFile = selectedFile
-      ? items.find((item) => item.value === selectedFile)?.value ?? null
-      : (items[0]?.value ?? null)
-    if (!nextFile) { setSelectedFile(null); setLogs([]); return }
-    if (nextFile !== selectedFile) { setSelectedFile(nextFile); return }
-    await loadFileLogs(nextFile)
-  }, [loadFileLogs, loadFiles, selectedFile, setLogs, setSelectedFile])
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
       await Promise.all([
-        mode === 'live' ? loadLiveLogs() : refreshStaticLogs(),
+        loadLiveLogs(),
         new Promise((resolve) => setTimeout(resolve, 300)),
       ])
     } finally {
       setRefreshing(false)
     }
-  }, [loadLiveLogs, mode, refreshStaticLogs, setRefreshing])
+  }, [loadLiveLogs, setRefreshing])
 
   const handleClearLive = useCallback(async () => {
     setLoading(true)
@@ -269,26 +194,14 @@ function useLogsFetching(
   useEffect(() => { void loadLiveLogs() }, [loadLiveLogs])
   useWsLogMerge(mode, wsLogs, processedWsLogsRef, liveBufferSize, setLogs)
 
-  useEffect(() => {
-    if (mode === 'static' && files.length === 0 && !filesLoading) void loadFiles()
-  }, [files.length, filesLoading, loadFiles, mode])
-
-  useEffect(() => {
-    if (mode === 'static' && selectedFile) void loadFileLogs(selectedFile)
-  }, [mode, selectedFile, loadFileLogs])
-
-  const switchToLive = useCallback(() => { setMode('live'); void loadLiveLogs() }, [loadLiveLogs, setMode])
-  const switchToStatic = useCallback(() => { setMode('static') }, [setMode])
-  const handleFileChange = useCallback((value: string) => {
-    setSelectedFile(value); setMode('static')
-  }, [setMode, setSelectedFile])
+  const switchToLive = useCallback(() => { void loadLiveLogs() }, [loadLiveLogs])
 
   const dismissError = useCallback(() => setInlineError(null), [setInlineError])
 
   return {
-    mode, wsConnected, logs, loading, filesLoading, refreshing,
-    files, selectedFile, switchToLive, switchToStatic,
-    handleRefresh, handleClearLive, handleFileChange,
+    mode, wsConnected, logs, loading, refreshing,
+    switchToLive,
+    handleRefresh, handleClearLive,
     inlineError, dismissError,
   }
 }

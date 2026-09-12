@@ -25,18 +25,11 @@ export function LogsViewer({
       <div className="border-line-soft relative z-10 flex shrink-0 flex-col border-b bg-transparent shadow-xs">
         {/* Row 1: Main Controls & Connection State */}
         <LogsStreamControls
-          mode={state.mode}
           wsConnected={state.wsConnected}
           loading={state.loading}
-          filesLoading={state.filesLoading}
           refreshing={state.refreshing}
-          files={state.files}
-          selectedFile={state.selectedFile}
-          onSwitchToLive={state.switchToLive}
-          onSwitchToStatic={state.switchToStatic}
           onRefresh={state.handleRefresh}
           onClearLive={state.handleClearLive}
-          onFileChange={state.handleFileChange}
         />
 
         {/* Row 2: Filters and View Configuration */}
@@ -84,7 +77,6 @@ export function LogsViewer({
         totalCount={state.filteredLogs.length}
         filterQuery={state.filterQuery}
         levelFilter={state.levelFilter}
-        mode={state.mode}
       />
     </div>
   )
@@ -118,13 +110,11 @@ function LogsStatusBar({
   totalCount,
   filterQuery,
   levelFilter,
-  mode,
 }: {
   visibleCount: number
   totalCount: number
   filterQuery: string
   levelFilter: string
-  mode: string
 }) {
   return (
     <div className="border-line-soft text-subtle-copy flex h-auto min-h-[20px] shrink-0 flex-wrap items-center justify-between gap-2 border-t bg-transparent px-2 py-1 text-[10px]">
@@ -138,9 +128,7 @@ function LogsStatusBar({
         )}
       </div>
       <div className="flex items-center">
-        <span className="hidden sm:inline">
-          Mode: {mode === 'live' ? 'Live Streaming' : 'Archival Exploration'}
-        </span>
+        <span className="hidden sm:inline">Mode: Live Streaming</span>
       </div>
     </div>
   )

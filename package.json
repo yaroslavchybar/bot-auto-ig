@@ -12,10 +12,6 @@
     "build": "bun run --filter anti-server build",
     "dev": "concurrently -n server,frontend,convex -c green,magenta,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bunx convex dev\"",
     "dev:server": "bun run --filter anti-server dev",
-    "dev:local": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1",
-    "dev:local:full": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -WithConvex",
-    "dev:local:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs",
-    "dev:local:full:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\dev-local.ps1 -UseTabs -WithConvex",
     "start": "bun run --filter anti-server start",
     "test:convex": "bunx vitest run --config vitest.convex.config.ts"
   },

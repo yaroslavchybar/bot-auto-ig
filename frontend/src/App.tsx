@@ -1,6 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { ListsPage } from '@/features/lists/ListsPage'
-import { LogsPage } from '@/features/logs/LogsPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ScrapedDataPage } from '@/features/scraped-data/ScrapedDataPage'
 import { VncPage } from '@/features/vnc/VncPage'
@@ -133,12 +132,6 @@ function Routes() {
       return (
         <ProtectedRoute meta={meta} pathname={pathname}>
           <ListsPage />
-        </ProtectedRoute>
-      )
-    case '/logs':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <LogsPage />
         </ProtectedRoute>
       )
     case '/vnc':
