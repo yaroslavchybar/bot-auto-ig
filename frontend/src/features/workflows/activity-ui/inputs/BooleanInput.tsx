@@ -9,29 +9,30 @@ interface BooleanInputProps {
 }
 
 export function BooleanInput({ input, value, onChange }: BooleanInputProps) {
-  const displayValue = value ?? input.default ?? ''
+  const checked = Boolean(value ?? input.default ?? false)
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
         <Label
           htmlFor={input.name}
-          className="text-copy cursor-pointer text-[11px] font-medium"
+          className="text-copy cursor-pointer text-[13px] font-medium"
         >
           {input.label}
           {input.required && <span className="text-status-danger ml-1">*</span>}
         </Label>
-        <Switch
-          id={input.name}
-          checked={!!displayValue}
-          onCheckedChange={(checked) => onChange(!!checked)}
-        />
+        {input.helpText && (
+          <p className="text-subtle-copy mt-0.5 text-[11px] leading-snug">
+            {input.helpText}
+          </p>
+        )}
       </div>
-      {input.helpText && (
-        <p className="text-subtle-copy text-[10px] leading-tight">
-          {input.helpText}
-        </p>
-      )}
+      <Switch
+        id={input.name}
+        checked={checked}
+        onCheckedChange={(next) => onChange(!!next)}
+        className="mt-0.5 shrink-0"
+      />
     </div>
   )
 }

@@ -33,37 +33,40 @@ export const browseFeed: ActivityDefinition = {
       group: 'Duration',
     },
 
-    // Like Chance
+    // Engagement chances
     {
       name: 'like_chance',
       type: 'range',
-      label: 'Like Chance (%)',
+      label: 'Like Chance',
       default: 10,
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Follow Chance
     {
       name: 'follow_chance',
       type: 'range',
-      label: 'Follow Chance (%)',
+      label: 'Follow Chance',
       default: 0,
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Carousel Watch Chance
     {
       name: 'carousel_watch_chance',
       type: 'range',
-      label: 'Carousel Watch Chance (%)',
+      label: 'Carousel Watch Chance',
       default: 0,
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Carousel Max Slides
@@ -116,7 +119,7 @@ export const browseFeed: ActivityDefinition = {
     {
       name: 'skip_post_chance',
       type: 'range',
-      label: 'Skip Post Chance (%)',
+      label: 'Skip Post Chance',
       default: 30,
       min: 0,
       max: 100,

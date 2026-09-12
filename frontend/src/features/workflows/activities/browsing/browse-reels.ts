@@ -33,37 +33,40 @@ export const browseReels: ActivityDefinition = {
       group: 'Duration',
     },
 
-    // Like Chance
+    // Engagement chances
     {
       name: 'reels_like_chance',
       type: 'range',
-      label: 'Like Chance (%)',
+      label: 'Like Chance',
       default: 10,
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Follow Chance
     {
       name: 'reels_follow_chance',
       type: 'range',
-      label: 'Follow Chance (%)',
+      label: 'Follow Chance',
       default: 0,
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Skip Chance
     {
       name: 'reels_skip_chance',
       type: 'range',
-      label: 'Skip Chance (%)',
+      label: 'Skip Chance',
       default: 30,
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Skip Timing (seconds)

@@ -33,7 +33,7 @@ export const followUser: ActivityDefinition = {
       group: 'Highlights',
     },
 
-    // Likes percentage
+    // Engagement behavior
     {
       name: 'likes_percentage',
       type: 'range',
@@ -42,6 +42,7 @@ export const followUser: ActivityDefinition = {
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Scroll percentage
@@ -53,6 +54,7 @@ export const followUser: ActivityDefinition = {
       min: 0,
       max: 100,
       unit: '%',
+      group: 'Engagement',
     },
 
     // Following limit

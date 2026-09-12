@@ -18,22 +18,15 @@ export function NumberInput({
   const displayValue = value ?? input.default ?? ''
 
   return (
-    <div className="flex flex-col space-y-1.5">
+    <div className="flex min-w-0 flex-1 flex-col space-y-1.5">
       <Label
         htmlFor={input.name}
-        className="text-copy flex justify-between text-[11px] font-medium"
+        className="text-copy truncate text-[13px] font-medium"
       >
-        <span>
-          {input.label}
-          {input.required && <span className="text-status-danger ml-1">*</span>}
-        </span>
-        {input.unit && !compact && (
-          <span className="text-subtle-copy font-mono text-[10px]">
-            {input.unit}
-          </span>
-        )}
+        {compact ? input.label.replace(/^(Min|Max)\s*/i, '') || input.label : input.label}
+        {input.required && <span className="text-status-danger ml-1">*</span>}
       </Label>
-      <div className="flex items-center gap-1.5">
+      <div className="relative">
         <BaseInput
           id={input.name}
           type="number"
@@ -41,24 +34,24 @@ export function NumberInput({
           max={input.max}
           step={input.step}
           value={displayValue as number}
-          onChange={(e) => onChange(Number(e.target.value))}
+          onChange={(e) => {
+            const next = e.target.value
+            onChange(next === '' ? '' : Number(next))
+          }}
           placeholder={input.placeholder}
-          className="border-line-soft bg-field-alt h-9 rounded-lg px-3 text-sm transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-offset-0"
+          className="border-line-soft bg-field-alt h-8 rounded-lg pr-9 text-[13px] tabular-nums transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-offset-0"
         />
-        {compact && input.unit && (
-          <span className="text-subtle-copy w-8 shrink-0 font-mono text-[10px]">
+        {input.unit && (
+          <span className="text-subtle-copy pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[11px]">
             {input.unit}
           </span>
         )}
       </div>
-      {input.helpText && (
-        <p className="text-subtle-copy text-[10px] leading-tight">
+      {input.helpText && !compact && (
+        <p className="text-subtle-copy text-[11px] leading-snug">
           {input.helpText}
         </p>
       )}
     </div>
   )
 }
-
-
-

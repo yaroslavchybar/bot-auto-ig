@@ -21,13 +21,13 @@ export function SelectInput({ input, value, onChange }: SelectInputProps) {
     <div className="flex flex-col space-y-1.5">
       <Label
         htmlFor={input.name}
-        className="text-copy text-[11px] font-medium"
+        className="text-copy text-[13px] font-medium"
       >
         {input.label}
         {input.required && <span className="text-status-danger ml-1">*</span>}
       </Label>
       <Select value={String(displayValue)} onValueChange={(v) => onChange(v)}>
-        <SelectTrigger className="border-line-soft bg-field-alt h-9 rounded-lg text-sm transition-colors duration-100 focus:ring-2 focus:ring-offset-0">
+        <SelectTrigger className="border-line-soft bg-field-alt h-8 rounded-lg text-[13px] transition-colors duration-100 focus:ring-2 focus:ring-offset-0">
           <SelectValue placeholder={input.placeholder || 'Select...'} />
         </SelectTrigger>
         <SelectContent className="text-sm">
@@ -43,7 +43,7 @@ export function SelectInput({ input, value, onChange }: SelectInputProps) {
         </SelectContent>
       </Select>
       {input.helpText && (
-        <p className="text-subtle-copy text-[10px] leading-tight">
+        <p className="text-subtle-copy text-[11px] leading-snug">
           {input.helpText}
         </p>
       )}

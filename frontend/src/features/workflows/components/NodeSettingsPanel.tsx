@@ -1,10 +1,11 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { Node } from 'reactflow'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getActivityById, type ActivityDefinition } from '@/features/workflows/activities/index'
-import { X, Play, Settings2, Info } from 'lucide-react'
+import { X, Play, Info } from 'lucide-react'
 import { GroupedInputs } from '@/features/workflows/activity-ui/GroupedInputs'
+import { ActivityIcon } from './activityIcons'
 import { cn } from '@/lib/utils'
 
 interface NodeSettingsPanelProps {
@@ -55,7 +56,7 @@ function SettingsPanelShell({
   return (
     <div
       className={cn(
-        'border-line-soft bg-panel/95 flex w-[360px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-sm',
+        'border-line-soft bg-panel/95 flex max-h-full w-[380px] shrink-0 flex-col overflow-hidden rounded-2xl border shadow-xs backdrop-blur-sm',
         'animate-in slide-in-from-right-2 fade-in duration-200',
         suppressed && 'hidden',
       )}
@@ -72,37 +73,63 @@ function SettingsPanelShell({
 function SettingsPanelHeader({
   icon,
   title,
-  subtitle,
+  category,
+  description,
   accentColor,
   onClose,
 }: {
   icon: React.ReactNode
   title: string
-  subtitle: string
+  category: string
+  description?: string
   accentColor?: string
   onClose: () => void
 }) {
   return (
-    <div className="border-line-soft bg-panel-subtle relative flex shrink-0 items-center justify-between border-b px-4 py-3">
-      <div className="flex items-center gap-2.5">
+    <div className="border-line-soft bg-panel-subtle relative shrink-0 border-b px-4 py-3">
+      <div className="flex items-start gap-2.5">
         {icon}
-        <div className="flex flex-col gap-1">
-          <h3 className="text-ink text-sm leading-none font-semibold">
-            {title}
-          </h3>
-          <p className="text-subtle-copy font-mono text-[10px] leading-none tracking-[0.18em] uppercase">
-            {subtitle}
-          </p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-ink truncate text-sm leading-tight font-semibold">
+              {title}
+            </h3>
+            <span
+              className="text-subtle-copy inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9px] tracking-[0.14em] uppercase"
+              style={
+                accentColor
+                  ? {
+                      borderColor: `color-mix(in srgb, ${accentColor} 30%, transparent)`,
+                      backgroundColor: `color-mix(in srgb, ${accentColor} 8%, transparent)`,
+                    }
+                  : undefined
+              }
+            >
+              {accentColor && (
+                <span
+                  className="h-1 w-1 rounded-full"
+                  style={{ backgroundColor: accentColor }}
+                />
+              )}
+              {category}
+            </span>
+          </div>
+          {description && (
+            <p className="text-subtle-copy mt-0.5 truncate text-xs">
+              {description}
+            </p>
+          )}
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Close settings"
+          className="text-subtle-copy hover:text-ink hover:bg-panel-hover -mt-0.5 -mr-1 h-7 w-7 shrink-0 rounded-lg transition-colors duration-150"
+          onClick={onClose}
+        >
+          <X className="h-4 w-4" />
+        </Button>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="text-subtle-copy hover:text-ink hover:bg-panel-hover h-8 w-8 rounded-lg transition-colors duration-150"
-        onClick={onClose}
-      >
-        <X className="h-4 w-4" />
-      </Button>
       {accentColor && (
         <div
           className="absolute right-0 bottom-0 left-0 h-px"
@@ -137,7 +164,8 @@ function StartNodeSettings({
           </div>
         }
         title="Start Node"
-        subtitle="Workflow Entry"
+        category="Workflow Entry"
+        description="Where this workflow begins"
         accentColor="#22c55e"
         onClose={onClose}
       />
@@ -203,19 +231,6 @@ function UnknownActivityPanel({
   )
 }
 
-/* ── Activity description callout ── */
-
-function ActivityDescription({ description }: { description: string }) {
-  return (
-    <div className="bg-panel-subtle/50 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
-      <Info className="text-subtle-copy mt-0.5 h-3.5 w-3.5 shrink-0 opacity-50" />
-      <p className="text-subtle-copy text-[11px] leading-relaxed">
-        {description}
-      </p>
-    </div>
-  )
-}
-
 /* ── Activity settings body ── */
 
 function ActivitySettingsBody({
@@ -228,9 +243,8 @@ function ActivitySettingsBody({
   onChange: (name: string, value: unknown) => void
 }) {
   return (
-    <ScrollArea className="flex-1 bg-transparent">
-      <div className="space-y-5 p-4">
-        <ActivityDescription description={activity.description} />
+    <ScrollArea className="min-h-0 flex-1 bg-transparent">
+      <div className="space-y-4 p-4">
         {activity.inputs.length === 0 ? (
           <p className="text-subtle-copy text-sm">This activity has no configurable inputs.</p>
         ) : (
@@ -248,14 +262,37 @@ function ActivityNodeSettings({
   const activity = getActivityById(activityId)
   const initialConfig = (node.data?.config as Record<string, unknown>) || {}
   const [config, setConfig] = useState<Record<string, unknown>>(initialConfig)
+  const [baseline, setBaseline] =
+    useState<Record<string, unknown>>(initialConfig)
 
   const handleChange = useCallback((name: string, value: unknown) => {
     setConfig((prev) => ({ ...prev, [name]: value }))
   }, [])
 
+  const handleReset = useCallback(() => {
+    setConfig(baseline)
+  }, [baseline])
+
   const handleSave = useCallback(() => {
     onUpdate(node.id, { ...node.data, config })
+    setBaseline(config)
   }, [node.id, node.data, config, onUpdate])
+
+  const isDirty =
+    JSON.stringify(config) !== JSON.stringify(baseline)
+
+  // Ctrl/Cmd+Enter applies changes without leaving the panel.
+  useEffect(() => {
+    if (suppressed || !isDirty) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault()
+        handleSave()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [suppressed, isDirty, handleSave])
 
   if (!activity) {
     return <UnknownActivityPanel activityId={activityId} suppressed={suppressed} onClose={onClose} />
@@ -272,22 +309,43 @@ function ActivityNodeSettings({
               borderColor: `color-mix(in srgb, ${activity.color} 19%, transparent)`,
             }}
           >
-            <Settings2 className="h-4 w-4" style={{ color: activity.color }} />
+            <ActivityIcon
+              iconName={activity.icon}
+              className="h-4 w-4"
+              style={{ color: activity.color }}
+            />
           </div>
         }
         title={activity.name}
-        subtitle={activity.category}
+        category={activity.category}
+        description={activity.description}
         accentColor={activity.color}
         onClose={onClose}
       />
       <ActivitySettingsBody activity={activity} config={config} onChange={handleChange} />
-      <div className="border-line-soft bg-panel-subtle border-t p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]">
+      <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center gap-2 border-t p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]">
         <Button
-          className="brand-button h-9 w-full rounded-lg text-sm transition-all duration-150"
+          variant="ghost"
           size="sm"
-          onClick={handleSave}
+          onClick={handleReset}
+          disabled={!isDirty}
+          className="text-subtle-copy hover:text-ink h-9 shrink-0 rounded-lg px-3 text-[13px] disabled:opacity-40"
         >
-          Apply Changes
+          Reset
+        </Button>
+        <Button
+          className="brand-button h-9 flex-1 rounded-lg text-sm transition-all duration-150 disabled:opacity-60"
+          size="sm"
+          disabled={!isDirty}
+          onClick={handleSave}
+          title={isDirty ? 'Apply changes (Ctrl+Enter)' : 'No changes to apply'}
+        >
+          <span className="inline-flex items-center gap-2">
+            {isDirty && (
+              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+            )}
+            {isDirty ? 'Apply Changes' : 'No Changes'}
+          </span>
         </Button>
       </div>
     </SettingsPanelShell>
