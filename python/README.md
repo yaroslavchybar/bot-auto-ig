@@ -1,8 +1,7 @@
 # Python Automation
 
 Canonical documentation moved to:
-- [docs/python/automation.md](../docs/python/automation.md)
-- [docs/python/components.md](../docs/python/components.md)
+- [docs/README.md](../docs/README.md)
 
 Docs system contract:
 - `docs/` is source of truth.

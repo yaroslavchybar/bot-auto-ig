@@ -8,29 +8,7 @@ Rule of precedence:
 
 ## Canonical Documentation
 
-- Docs index: [docs/README.md](docs/README.md)
-- Knowledge model: [docs/overview/knowledge-model.md](docs/overview/knowledge-model.md)
-- Repository map: [docs/overview/repository-map.md](docs/overview/repository-map.md)
-- Developer workflow: [docs/overview/developer-workflow.md](docs/overview/developer-workflow.md)
-
-Domain guides:
-- Frontend: [docs/frontend/guide.md](docs/frontend/guide.md)
-- Frontend component audit: [docs/frontend/component-audit.md](docs/frontend/component-audit.md)
-- Server: [docs/server/guide.md](docs/server/guide.md)
-- Python automation: [docs/python/automation.md](docs/python/automation.md)
-- Python components: [docs/python/components.md](docs/python/components.md)
-- Convex backend: [docs/convex/backend.md](docs/convex/backend.md)
-
-Service guides:
-- Data uploader: [docs/services/datauploader.md](docs/services/datauploader.md)
-
-Operations:
-- Environment and security: [docs/operations/environment-and-security.md](docs/operations/environment-and-security.md)
-- Docker runtime: [docs/operations/docker-and-runtime.md](docs/operations/docker-and-runtime.md)
-- Troubleshooting: [docs/operations/troubleshooting.md](docs/operations/troubleshooting.md)
-- Content mapping: [docs/operations/content-parity.md](docs/operations/content-parity.md)
-- Drift matrix: [docs/operations/drift-matrix.md](docs/operations/drift-matrix.md)
-- Verification log: [docs/operations/verification-log.md](docs/operations/verification-log.md)
+- All guidance consolidated in [docs/README.md](docs/README.md) (system of record).
 
 ## Quick Repo Map
 

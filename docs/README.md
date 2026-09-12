@@ -1,48 +1,79 @@
 # Repository Documentation (System of Record)
 
-This `docs/` directory is the canonical source for architecture, runtime behavior, API surfaces, environment policy, and troubleshooting.
+Consolidated from the former per-area guides. `docs/` remains canonical;
+`AGENTS.md` is the short navigation map; module READMEs are pointer stubs.
+Conflict order: `docs/` → `AGENTS.md` → README stubs.
 
-Documentation contract:
-- `docs/` is canonical.
-- `AGENTS.md` is a short navigation map for agent context.
-- Module `README.md` files are pointer stubs to canonical docs.
+## What This Repo Is
 
-Conflict resolution order:
-1. `docs/` pages
-2. `AGENTS.md`
-3. Module `README.md` stubs
+Instagram automation platform: React Router frontend, Express orchestration
+server, Python browser-automation runtime, Convex shared data layer, FastAPI
+CSV/artifact ingest service. Package manager and server runtime: Bun
+(`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
-## Docs Index
+- `frontend/`: React Router 7 + Vite app (`root.tsx`, `routes.ts`, `entry.client/server.tsx`).
+  Feature-owned UI under `src/features/` (`profiles`, `lists`, `workflows`,
+  `accounts`, `logs`, `vnc`, `monitoring`, `scraped-data`, `auth`); shared
+  `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
+  directly with Clerk tokens; Express handles orchestration only.
+- `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|monitoring|displays|health`)
+  + WebSocket (`/ws`) + Python subprocess orchestration. Clerk auth middleware
+  globally; `/api/workflows` also accepts `INTERNAL_API_KEY`. Rate limits:
+  general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
+  so `python/` runners and `data/` work from source or `dist/`.
+- `python/`: automation runtime. Entry points `runners/launcher.py`,
+  `runners/run_workflow.py`, `runners/run_multiple_accounts.py`; layers
+  `actions/` (Instagram domain), `browser/` (lifecycle/anti-detect),
+  `database/` (Convex clients), `core/` (config/logging/process). Emits
+  `__EVENT__`-prefixed JSON for WebSocket propagation. Scrape results queue
+  as local artifacts under `data/uploads/scrapes/` for manual review/import.
+- `convex/`: schema, queries/mutations (`profiles`, `lists`, `workflows`,
+  `keywords`, `workflowArtifacts`, `instagramAccounts`, `scrapingAccounts`,
+  `messageTemplates`), HTTP actions, crons. Generated code in
+  `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
+- `datauploader/`: FastAPI service (port 3002) for CSV upload (`POST /upload`)
+  and workflow-artifact review/import (`/scraping-tasks/*`), plus keyword
+  file management. Chunked 500-row Convex writes; uploads live in `/app/uploads`.
+- `data/`: runtime logs/uploads (git-ignored).
 
-### Overview
-- [Knowledge Model](./overview/knowledge-model.md)
-- [Repository Map](./overview/repository-map.md)
-- [Developer Workflow](./overview/developer-workflow.md)
+## Commands
 
-### Core Subsystems
-- [Frontend Guide](./frontend/guide.md)
-- [Frontend Component Audit](./frontend/component-audit.md)
-- [Server Guide](./server/guide.md)
-- [Python Automation Guide](./python/automation.md)
-- [Python Components Reference](./python/components.md)
-- [Convex Backend Guide](./convex/backend.md)
+Root (`bun run …`): `dev`, `build`, `start`, `test:convex`,
+`dev:local*` (Windows launcher `dev-local.ps1` for server+frontend,
+optional `-WithUploader -WithConvex`, `-UseTabs`).
+Workspaces: `bun run --filter frontend dev|build|start|lint|preview|typecheck`,
+`bun run --filter anti-server dev|build|start`.
+Python: `python -m pytest python/tests -q`. Docker: `docker compose up --build`
+(services below); Convex: `bunx convex dev|deploy`.
 
-### Services
-- [Data Uploader Service](./services/datauploader.md)
+## Local Ports & Docker
 
-### Operations
-- [Environment and Security](./operations/environment-and-security.md)
-- [Docker and Runtime Operations](./operations/docker-and-runtime.md)
-- [Troubleshooting](./operations/troubleshooting.md)
-- [README-to-Docs Content Mapping](./operations/content-parity.md)
-- [Docs Drift Matrix](./operations/drift-matrix.md)
-- [Verification Log](./operations/verification-log.md)
+`frontend` 5173, `server` 3001, `datauploader` 3002, VNC 6080 + 6081–6130.
+Images: `oven/bun:1.4.2-*` for server/frontend, `python:3.12-slim` for the
+uploader. Production frontend builds require `VITE_API_URL`,
+`VITE_DATAUPLOADER_URL`, `VITE_CONVEX_URL`, `VITE_CLERK_PUBLISHABLE_KEY` as
+build args; runtime also needs `CLERK_SECRET_KEY` for SSR auth.
 
-## Maintenance Rules
+## Environment & Security
 
-- Keep deep technical content in `docs/`, not in `AGENTS.md`.
-- Keep README stubs link-first and concise.
-- Use repo-relative links only (no machine-local absolute URIs).
-- Update docs in the same change as runtime behavior changes.
-- Keep root proof commands discoverable; Convex local verification runs through `bun run test:convex`.
-- Keep drift matrix current when stale docs are discovered.
+Secrets live in `.env`/`.env.local`, never committed. Key vars: `SERVER_PORT`,
+`CONVEX_URL`, `CLERK_PUBLISHABLE_KEY`/`CLERK_SECRET_KEY`,
+`VITE_CLERK_PUBLISHABLE_KEY`, `INTERNAL_API_KEY` (server→Convex calls),
+`CLERK_JWT_ISSUER_DOMAIN`, `CONVEX_URL_DEV/PROD`, `DATAUPLOADER_*`.
+`DISABLE_CLERK_AUTH=true` bypasses auth in local dev only. High-risk edit
+areas: `server/security/*`, `server/index.ts` (CORS/auth mounting),
+`server/websocket.ts`, `convex/http.ts`, `convex/auth.ts`.
+
+## Workflow & Quality Gates
+
+- Bun workspaces; `bun install --frozen-lockfile` must be clean.
+- Convex changes: add/update `convex/tests/` + `bun run test:convex`.
+- Frontend/server changes without dedicated tests: `lint` + `build`.
+- Automation/parsing/retry/state changes: add/update tests.
+- Conventions: TS/TSX 2-space (server files historically 4-space), single
+  quotes, semicolon-light; components `PascalCase`; hooks `useX.*`; Python
+  PEP 8/snake_case, `logging` not `print()`, English-only strings.
+- PRs: what/why, impacted modules, verification commands, UI screenshots.
+- Troubleshooting first checks: Clerk keys present, backend on :3001,
+  `bun` on PATH, `wt.exe` for `-UseTabs`, uploader/Convex URLs consistent.
+- Update this file in the same change as runtime behavior changes.

@@ -2,7 +2,7 @@
 
 Canonical documentation moved to:
 
-- [docs/frontend/guide.md](../docs/frontend/guide.md)
+- [docs/README.md](../docs/README.md)
 
 Docs system contract:
 

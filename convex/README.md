@@ -1,7 +1,7 @@
 # Convex Backend
 
 Canonical documentation moved to:
-- [docs/convex/backend.md](../docs/convex/backend.md)
+- [docs/README.md](../docs/README.md)
 
 Docs system contract:
 - `docs/` is source of truth.

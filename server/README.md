@@ -1,7 +1,7 @@
 # Server
 
 Canonical documentation moved to:
-- [docs/server/guide.md](../docs/server/guide.md)
+- [docs/README.md](../docs/README.md)
 
 Docs system contract:
 - `docs/` is source of truth.
