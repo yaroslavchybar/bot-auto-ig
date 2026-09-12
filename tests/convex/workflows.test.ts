@@ -140,12 +140,13 @@ test('resets daily runs for active workflows', async () => {
 test('deleting a workflow also removes its stored artifacts', async () => {
   const t = createConvexTest()
   const workflow = await seedWorkflow(t, { name: 'Workflow Delete Cascade' })
-  const stored = await t.action(internal.workflowArtifacts.storeArtifactInternal, {
-    payload: {
-      storageKind: 'export',
-      users: [{ userName: 'user-delete' }],
-    },
-  })
+  const storageId = await t.run(async (ctx) =>
+    ctx.storage.store(
+      new Blob([JSON.stringify({ storageKind: 'export', users: [{ userName: 'user-delete' }] })], {
+        type: 'application/json',
+      }),
+    ),
+  )
 
   const artifact = await t.mutation(api.workflowArtifacts.upsert, {
     workflowId: workflow!._id,
@@ -153,8 +154,8 @@ test('deleting a workflow also removes its stored artifacts', async () => {
     nodeId: 'node-delete-cascade',
     kind: 'followers',
     targets: ['target-delete'],
-    storageId: stored.storageId,
-    exportStorageId: stored.storageId,
+    storageId,
+    exportStorageId: storageId,
   })
 
   const removed = await t.mutation(api.workflows.mutations.remove, { id: workflow!._id })
@@ -162,7 +163,7 @@ test('deleting a workflow also removes its stored artifacts', async () => {
     id: artifact!._id,
   })
   const storageUrl = await t.query(api.workflowArtifacts.getStorageUrl, {
-    storageId: stored.storageId,
+    storageId,
   })
 
   expect(removed).toBe(true)

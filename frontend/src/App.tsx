@@ -1,8 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { AccountsPage } from '@/features/accounts/AccountsPage'
 import { ListsPage } from '@/features/lists/ListsPage'
 import { LogsPage } from '@/features/logs/LogsPage'
-import { MonitoringPage } from '@/features/monitoring/MonitoringPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ScrapedDataPage } from '@/features/scraped-data/ScrapedDataPage'
 import { VncPage } from '@/features/vnc/VncPage'
@@ -137,12 +135,6 @@ function Routes() {
           <ListsPage />
         </ProtectedRoute>
       )
-    case '/accounts':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <AccountsPage />
-        </ProtectedRoute>
-      )
     case '/logs':
       return (
         <ProtectedRoute meta={meta} pathname={pathname}>
@@ -159,12 +151,6 @@ function Routes() {
       return (
         <ProtectedRoute meta={meta} pathname={pathname}>
           <VncSessionPage />
-        </ProtectedRoute>
-      )
-    case '/monitoring':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <MonitoringPage />
         </ProtectedRoute>
       )
     default:

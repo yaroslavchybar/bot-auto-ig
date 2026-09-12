@@ -18,7 +18,6 @@ import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
 import listsRouter from './lists/routes.js'
 import { workflowsRouter } from './workflows/index.js'
-import monitoringRouter from './monitoring/routes.js'
 import displaysRouter from './displays/routes.js'
 import { cleanupOrphanedProcesses } from './automation/process-manager.js'
 import { detectInterruptedRun, clearState } from './automation/state.js'
@@ -98,7 +97,6 @@ app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
 app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
-app.use('/api/monitoring', requireApiAuth, apiLimiter, monitoringRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
 // Sentry error handler must be registered after all routes

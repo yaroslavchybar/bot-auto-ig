@@ -25,10 +25,7 @@ function getRequiredEnv(name: RequiredEnvName): string {
 const disableAuth =
   import.meta.env.DEV && import.meta.env.DISABLE_AUTH === 'true'
 
-function getServiceUrl(
-  name: 'VITE_API_URL' | 'VITE_DATAUPLOADER_URL',
-  devDefault: string,
-): string {
+function getServiceUrl(name: 'VITE_API_URL', devDefault: string): string {
   const value = import.meta.env[name]
   if (value) {
     return trimTrailingSlash(value)
@@ -43,17 +40,11 @@ function getServiceUrl(
 
 const apiUrl = getServiceUrl('VITE_API_URL', 'http://localhost:3001')
 
-const dataUploaderUrl = getServiceUrl(
-  'VITE_DATAUPLOADER_URL',
-  'http://localhost:3002',
-)
-
 const convexUrl = normalizeHttpsUrl(getRequiredEnv('VITE_CONVEX_URL'))
 
 export const env = {
   apiUrl,
   convexUrl,
-  dataUploaderUrl,
   disableAuth,
   isDev: import.meta.env.DEV,
 } as const

@@ -33,7 +33,6 @@ export async function insertDoc(
   t: ReturnType<typeof createConvexTest>,
   table:
     | 'instagramAccounts'
-    | 'keywords'
     | 'lists'
     | 'messageTemplates'
     | 'profiles'

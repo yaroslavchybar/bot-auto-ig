@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-  [switch]$WithUploader,
   [switch]$WithConvex,
   [switch]$UseTabs,
   [switch]$NoNewWindows
@@ -136,17 +135,6 @@ $processes = @(
   }
 )
 
-if ($WithUploader) {
-  Write-Host 'Uploader: http://localhost:3002' -ForegroundColor Yellow
-  $uploaderCommand = "$bun run --filter anti-uploader dev"
-  $processes += [pscustomobject]@{
-    Name = 'datauploader'
-    WorkingDirectory = $repoRoot
-    Command = $uploaderCommand
-    FullCommand = "Write-Host ""[datauploader] working dir: $repoRoot"" -ForegroundColor Cyan; Set-Location -LiteralPath '$repoRoot'; $uploaderCommand"
-  }
-}
-
 if ($WithConvex) {
   $convexCommand = 'bunx convex dev'
   $processes += [pscustomobject]@{
@@ -169,6 +157,5 @@ Write-Host ''
 Write-Host 'Launched dev processes.' -ForegroundColor Green
 Write-Host 'Options:' -ForegroundColor Green
 Write-Host '  .\dev-local.ps1' -ForegroundColor Green
-Write-Host '  .\dev-local.ps1 -WithUploader' -ForegroundColor Green
-Write-Host '  .\dev-local.ps1 -WithUploader -WithConvex' -ForegroundColor Green
-Write-Host '  .\dev-local.ps1 -UseTabs -WithUploader -WithConvex' -ForegroundColor Green
+Write-Host '  .\dev-local.ps1 -WithConvex' -ForegroundColor Green
+Write-Host '  .\dev-local.ps1 -UseTabs -WithConvex' -ForegroundColor Green

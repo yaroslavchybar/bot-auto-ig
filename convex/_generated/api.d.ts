@@ -11,7 +11,6 @@
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as httpRoutes_instagramAccounts from "../httpRoutes/instagramAccounts.js";
-import type * as httpRoutes_keywords from "../httpRoutes/keywords.js";
 import type * as httpRoutes_lists from "../httpRoutes/lists.js";
 import type * as httpRoutes_messageTemplates from "../httpRoutes/messageTemplates.js";
 import type * as httpRoutes_profiles from "../httpRoutes/profiles.js";
@@ -20,7 +19,6 @@ import type * as httpRoutes_shared from "../httpRoutes/shared.js";
 import type * as httpRoutes_workflowArtifacts from "../httpRoutes/workflowArtifacts.js";
 import type * as httpRoutes_workflows from "../httpRoutes/workflows.js";
 import type * as instagramAccounts from "../instagramAccounts.js";
-import type * as keywords from "../keywords.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles_helpers from "../profiles/helpers.js";
@@ -44,7 +42,6 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   http: typeof http;
   "httpRoutes/instagramAccounts": typeof httpRoutes_instagramAccounts;
-  "httpRoutes/keywords": typeof httpRoutes_keywords;
   "httpRoutes/lists": typeof httpRoutes_lists;
   "httpRoutes/messageTemplates": typeof httpRoutes_messageTemplates;
   "httpRoutes/profiles": typeof httpRoutes_profiles;
@@ -53,7 +50,6 @@ declare const fullApi: ApiFromModules<{
   "httpRoutes/workflowArtifacts": typeof httpRoutes_workflowArtifacts;
   "httpRoutes/workflows": typeof httpRoutes_workflows;
   instagramAccounts: typeof instagramAccounts;
-  keywords: typeof keywords;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
   "profiles/helpers": typeof profiles_helpers;

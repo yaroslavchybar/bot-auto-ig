@@ -29,14 +29,12 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   },
   '/scraped-data': { breadcrumb: 'Scraped Data', navId: 'scraped-data' },
   '/lists': { breadcrumb: 'Lists Manager', navId: 'lists' },
-  '/accounts': { breadcrumb: 'Upload Accounts', navId: 'accounts' },
   '/logs': { breadcrumb: 'Logs', navId: 'logs' },
   '/vnc': { breadcrumb: 'Browser View', navId: 'vnc' },
   '/vnc/session/:workflowId/:profileName': {
     breadcrumb: 'Live Session',
     navId: 'vnc',
   },
-  '/monitoring': { breadcrumb: 'VPS Monitor', navId: 'monitoring' },
   '/login': { breadcrumb: 'Sign In' },
 }
 

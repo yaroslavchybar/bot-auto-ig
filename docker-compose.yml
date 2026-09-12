@@ -20,24 +20,6 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
-      - DATAUPLOADER_URL=${DATAUPLOADER_URL:-http://datauploader:3002}
-      - DATAUPLOADER_ENV=${DATAUPLOADER_ENV:-dev}
-      - DATAUPLOADER_DEST_ENVIRONMENTS=${DATAUPLOADER_DEST_ENVIRONMENTS:-dev}
-      - DATAUPLOADER_ACCOUNT_STATUS=${DATAUPLOADER_ACCOUNT_STATUS:-available}
-    restart: unless-stopped
-
-  datauploader:
-    build:
-      context: ./datauploader
-      dockerfile: Dockerfile
-    ports:
-      - "3002:3002"
-    volumes:
-      - ./data/uploads:/app/uploads
-    env_file:
-      - .env.local
-    environment:
-      - CONVEX_URL_DEV=${CONVEX_URL_DEV}
     restart: unless-stopped
 
   frontend:
@@ -51,7 +33,6 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
         VITE_CONVEX_URL: ${VITE_CONVEX_URL}
-        VITE_DATAUPLOADER_URL: ${VITE_DATAUPLOADER_URL:-http://localhost:3002}
     env_file:
       - .env.local
     environment:
@@ -60,5 +41,4 @@ services:
       - "5173:80"
     depends_on:
       - server
-      - datauploader
     restart: unless-stopped

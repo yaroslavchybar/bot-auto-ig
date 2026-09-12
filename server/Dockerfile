@@ -49,7 +49,6 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
-COPY --from=repo_root datauploader/package.json ./datauploader/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --production --filter anti-server
 RUN --mount=type=cache,target=/root/.bun/install/cache \
@@ -60,7 +59,6 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
-COPY --from=repo_root datauploader/package.json ./datauploader/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --filter anti-server
 
@@ -69,7 +67,6 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
-COPY --from=repo_root datauploader/package.json ./datauploader/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --production --filter anti-server
 

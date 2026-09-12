@@ -6,18 +6,16 @@ Conflict order: `docs/` → `AGENTS.md` → README stubs.
 
 ## What This Repo Is
 
-Instagram automation platform: React Router frontend, Express orchestration
-server, Camoufox JS browser automation, Convex shared data layer, Bun
-CSV/artifact ingest service. Package manager and server runtime: Bun
-(`packageManager: bun@1.4.2`, workspaces `frontend` + `server` +
-`datauploader`).
+Instagram automation platform: React frontend, Express orchestration
+server, Camoufox JS browser automation, Convex shared data layer. Package manager and server runtime: Bun
+(`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
-- `frontend/`: React Router 7 + Vite app (`root.tsx`, `routes.ts`, `entry.client/server.tsx`).
+- `frontend/`: React + Vite app.
   Feature-owned UI under `src/features/` (`profiles`, `lists`, `workflows`,
-  `accounts`, `logs`, `vnc`, `monitoring`, `scraped-data`, `auth`); shared
+  `logs`, `vnc`, `scraped-data`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
-- `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|monitoring|displays|health`)
+- `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|displays|health`)
   + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/Camoufox
   subprocess orchestration. Admin session middleware globally;
   `/api/workflows` also accepts `INTERNAL_API_KEY`. Rate limits:
@@ -27,32 +25,26 @@ CSV/artifact ingest service. Package manager and server runtime: Bun
 - `server/automation/`: Bun workers and TypeScript Instagram actions. Workers
   emit `__EVENT__`-prefixed JSON for WebSocket propagation.
 - `convex/`: schema, queries/mutations (`profiles`, `lists`, `workflows`,
-  `keywords`, `workflowArtifacts`, `instagramAccounts`, `scrapingAccounts`,
+  `workflowArtifacts`, `instagramAccounts`, `scrapingAccounts`,
   `messageTemplates`), HTTP actions, crons. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
-- `datauploader/`: Bun service (`anti-uploader`, port 3002) for CSV upload
-  (`POST /upload`) and workflow-artifact review/import
-  (`/scraping-tasks/*`), plus keyword file management. Chunked 500-row
-  Convex writes; uploads live in `UPLOAD_DIR` (`/app/uploads` in Docker).
-  Tests: `bun run --filter anti-uploader test`.
 - `data/`: runtime logs/uploads (git-ignored).
 
 ## Commands
 
 Root (`bun run …`): `dev`, `build`, `start`, `test:convex`,
 `dev:local*` (Windows launcher `dev-local.ps1` for server+frontend,
-optional `-WithUploader -WithConvex`, `-UseTabs`).
+optional `-WithConvex`, `-UseTabs`).
 Workspaces: `bun run --filter frontend dev|build|start|lint|preview|typecheck`,
-`bun run --filter anti-server dev|build|start`,
-`bun run --filter anti-uploader dev|build|start|test|typecheck`.
+`bun run --filter anti-server dev|build|start`.
 Server: `bun run --filter anti-server build`. Docker: `docker compose up --build`
 (services below); Convex: `bunx convex dev|deploy`.
 
 ## Local Ports & Docker
 
-`frontend` 5173, `server` 3001, `datauploader` 3002, VNC 6080 + 6081–6130.
-Images: `oven/bun:1.4.2-*` for server/frontend/uploader. Production frontend builds require `VITE_API_URL`,
-`VITE_DATAUPLOADER_URL`, `VITE_CONVEX_URL` as build args.
+`frontend` 5173, `server` 3001, VNC 6080 + 6081–6130.
+Images: `oven/bun:1.4.2-*` for server/frontend. Production frontend builds require `VITE_API_URL`,
+`VITE_CONVEX_URL` as build args.
 
 ## Authentication
 
@@ -69,7 +61,7 @@ dev-login button (`POST /api/auth/dev-login`, non-production only) or
 Secrets live in `.env.local`, never committed. Key vars: `SERVER_PORT`,
 `CONVEX_URL`, `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls),
-`CONVEX_URL_DEV/PROD`, `DATAUPLOADER_*`.
+`CONVEX_URL_DEV/PROD`.
 `DISABLE_AUTH=true` bypasses auth in local dev only. High-risk edit
 areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounting),
 `server/websocket.ts`, `convex/http.ts`.
@@ -85,5 +77,5 @@ areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounti
   strings.
 - PRs: what/why, impacted modules, verification commands, UI screenshots.
 - Troubleshooting first checks: Telegram env present, backend on :3001,
-  `bun` on PATH, `wt.exe` for `-UseTabs`, uploader/Convex URLs consistent.
+  `bun` on PATH, `wt.exe` for `-UseTabs`, Convex URLs consistent.
 - Update this file in the same change as runtime behavior changes.

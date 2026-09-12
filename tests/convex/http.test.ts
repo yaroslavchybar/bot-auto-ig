@@ -1,7 +1,6 @@
 import { expect, test, vi } from 'vitest'
 
 import { api } from '../../convex/_generated/api'
-import { internal } from '../../convex/_generated/api'
 import {
   createConvexTest,
   createUnauthenticatedConvexTest,
@@ -289,62 +288,18 @@ test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', as
   })
 })
 
-test('serves internal keyword routes behind INTERNAL_API_KEY auth', async () => {
-  const t = createConvexTest()
-  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
-
-  await t.mutation(internal.keywords.upsert, {
-    filename: 'names.txt',
-    content: 'Alice\nBob',
-  })
-
-  const response = await t.fetch('/api/keywords?filename=names.txt', {
-    method: 'GET',
-    headers: { authorization: 'Bearer secret-token' },
-  })
-
-  expect(response.status).toBe(200)
-  await expect(response.json()).resolves.toBe('Alice\nBob')
-})
-
-test('inserts instagram accounts through the internal HTTP surface', async () => {
-  const t = createConvexTest()
-  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
-
-  const response = await t.fetch('/api/instagram-accounts/batch', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer secret-token',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      accounts: [
-        {
-          userName: '@User-A',
-          status: 'available',
-          message: false,
-          createdAt: Date.now(),
-        },
-      ],
-    }),
-  })
-  const body = await response.json()
-
-  expect(response.status).toBe(200)
-  expect(body).toMatchObject({ inserted: 1, skipped: 0 })
-})
-
 test('lists and updates workflow artifacts through internal-key routes', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
   const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Host' })
-  const stored = await t.action(internal.workflowArtifacts.storeArtifactInternal, {
-    payload: {
-      storageKind: 'export',
-      users: [{ username: 'target-a' }],
-    },
-  })
+  const storageId = await t.run(async (ctx) =>
+    ctx.storage.store(
+      new Blob([JSON.stringify({ storageKind: 'export', users: [{ username: 'target-a' }] })], {
+        type: 'application/json',
+      }),
+    ),
+  )
   const artifact = await t.mutation(api.workflowArtifacts.upsert, {
     workflowId: workflow!._id,
     workflowName: workflow!.name,
@@ -353,7 +308,7 @@ test('lists and updates workflow artifacts through internal-key routes', async (
     name: 'Task A',
     kind: 'followers',
     targets: ['target-a'],
-    storageId: stored.storageId,
+    storageId,
   })
 
   const listResponse = await t.fetch(
@@ -370,126 +325,10 @@ test('lists and updates workflow artifacts through internal-key routes', async (
       headers: { authorization: 'Bearer secret-token' },
     },
   )
-  const setImportedResponse = await t.fetch('/api/workflow-artifacts/set-imported', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer secret-token',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      id: artifact!._id,
-      imported: true,
-    }),
-  })
-
   expect(listResponse.status).toBe(200)
   await expect(listResponse.json()).resolves.toMatchObject([
     { _id: artifact!._id, workflowId: workflow!._id },
   ])
   expect(byIdResponse.status).toBe(200)
   await expect(byIdResponse.json()).resolves.toMatchObject({ _id: artifact!._id })
-  expect(setImportedResponse.status).toBe(200)
-  await expect(setImportedResponse.json()).resolves.toMatchObject({
-    _id: artifact!._id,
-    imported: true,
-  })
-})
-
-test('finalizes local workflow artifacts through the internal-key route', async () => {
-  const t = createConvexTest()
-  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
-
-  const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Finalize' })
-  const artifactId = await t.run(async (ctx) =>
-    await ctx.db.insert('workflowArtifacts', {
-      name: 'Queued Local Artifact',
-      workflowId: workflow!._id,
-      workflowName: workflow!.name,
-      nodeId: 'node-local-finalize',
-      kind: 'followers',
-      targets: ['target-a'],
-      targetUsername: 'target-a',
-      status: 'completed',
-      imported: false,
-      localArtifactPath: 'scrapes/local-finalize.json',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }),
-  )
-
-  const response = await t.fetch('/api/workflow-artifacts/finalize-local-import', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer secret-token',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      id: artifactId,
-      imported: true,
-      deletedAt: 1234,
-    }),
-  })
-
-  expect(response.status).toBe(200)
-  await expect(response.json()).resolves.toMatchObject({
-    _id: artifactId,
-    imported: true,
-    localArtifactDeletedAt: 1234,
-  })
-})
-
-test('rejects invalid deletedAt values through workflow artifact internal-key routes', async () => {
-  const t = createConvexTest()
-  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
-
-  const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Invalid Route' })
-  const artifactId = await t.run(async (ctx) =>
-    await ctx.db.insert('workflowArtifacts', {
-      name: 'Queued Local Artifact',
-      workflowId: workflow!._id,
-      workflowName: workflow!.name,
-      nodeId: 'node-local-invalid',
-      kind: 'followers',
-      targets: ['target-a'],
-      targetUsername: 'target-a',
-      status: 'completed',
-      imported: false,
-      localArtifactPath: 'scrapes/local-invalid.json',
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    }),
-  )
-
-  const setDeletedResponse = await t.fetch('/api/workflow-artifacts/set-local-artifact-deleted', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer secret-token',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      id: artifactId,
-      deletedAt: 'NaN',
-    }),
-  })
-  const finalizeResponse = await t.fetch('/api/workflow-artifacts/finalize-local-import', {
-    method: 'POST',
-    headers: {
-      authorization: 'Bearer secret-token',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      id: artifactId,
-      imported: true,
-      deletedAt: 'Infinity',
-    }),
-  })
-
-  expect(setDeletedResponse.status).toBe(400)
-  await expect(setDeletedResponse.json()).resolves.toEqual({
-    error: 'deletedAt must be a finite number',
-  })
-  expect(finalizeResponse.status).toBe(400)
-  await expect(finalizeResponse.json()).resolves.toEqual({
-    error: 'deletedAt must be a finite number',
-  })
 })

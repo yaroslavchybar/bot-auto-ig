@@ -173,13 +173,4 @@ export default defineSchema({
 		.index("by_workflowId_nodeId", ["workflowId", "nodeId"])
 		.index("by_imported", ["imported"])
 		.index("by_kind", ["kind"]),
-
-	// ═══════════════════════════════════════════════════════════════════
-	// KEYWORDS TABLE (for filtration name lists)
-	// ═══════════════════════════════════════════════════════════════════
-
-	keywords: defineTable({
-		filename: v.string(), // e.g. "us_male_names.txt"
-		content: v.string(), // newline-separated list of words
-	}).index("by_filename", ["filename"]),
 });

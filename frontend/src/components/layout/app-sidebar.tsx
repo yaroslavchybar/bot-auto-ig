@@ -4,10 +4,8 @@ import {
   Users,
   List,
   FileText,
-  Upload,
   GitBranch,
   Monitor,
-  Activity,
   Database,
 } from 'lucide-react'
 
@@ -30,10 +28,8 @@ export const NAV_IDS = [
   'workflows',
   'scraped-data',
   'lists',
-  'accounts',
   'logs',
   'vnc',
-  'monitoring',
 ] as const
 
 export type NavId = (typeof NAV_IDS)[number]
@@ -68,13 +64,6 @@ export const NAV_ITEMS = [
     breadcrumb: 'Lists Manager',
   },
   {
-    title: 'Upload Accounts',
-    id: 'accounts',
-    to: '/accounts',
-    icon: Upload,
-    breadcrumb: 'Upload Accounts',
-  },
-  {
     title: 'Browser View',
     id: 'vnc',
     to: '/vnc',
@@ -87,13 +76,6 @@ export const NAV_ITEMS = [
     to: '/logs',
     icon: FileText,
     breadcrumb: 'Logs',
-  },
-  {
-    title: 'VPS Monitor',
-    id: 'monitoring',
-    to: '/monitoring',
-    icon: Activity,
-    breadcrumb: 'VPS Monitor',
   },
 ] as const satisfies ReadonlyArray<{
   title: string

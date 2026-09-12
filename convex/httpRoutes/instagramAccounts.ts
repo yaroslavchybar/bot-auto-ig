@@ -1,8 +1,6 @@
 import type { HttpRouter } from 'convex/server';
 import { internal } from '../_generated/api';
 import {
-  chunkArray,
-  formatChunkFailureMessage,
   jsonResponse,
   mapAccountToApi,
   mapProfileToApi,
@@ -13,7 +11,6 @@ import {
 
 const instagramAccountPaths = [
   '/api/instagram-accounts',
-  '/api/instagram-accounts/batch',
   '/api/instagram-accounts/for-profile',
   '/api/instagram-accounts/by-status',
   '/api/instagram-accounts/to-message',
@@ -46,45 +43,6 @@ function registerAccountMutationRoutes(http: HttpRouter): void {
         createdAt: body?.createdAt ?? body?.created_at,
       });
       return jsonResponse(created);
-    }),
-  });
-
-  http.route({
-    path: '/api/instagram-accounts/batch',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const accounts = Array.isArray(body?.accounts) ? body.accounts : [];
-      const batches = chunkArray(accounts);
-      let inserted = 0;
-      let skipped = 0;
-      const ids: unknown[] = [];
-
-      for (const [index, batch] of batches.entries()) {
-        try {
-          const result = await ctx.runMutation(internal.instagramAccounts.insertBatch, {
-            accounts: batch,
-          });
-          inserted += Number(result?.inserted ?? 0);
-          skipped += Number(result?.skipped ?? 0);
-          if (Array.isArray(result?.ids)) {
-            ids.push(...result.ids);
-          }
-        } catch (error) {
-          const message = formatChunkFailureMessage({
-            operation: 'Bulk instagram account import',
-            inserted,
-            skipped,
-            completedBatches: index,
-            totalBatches: batches.length,
-            error,
-          });
-          console.error(message);
-          throw new Error(message);
-        }
-      }
-
-      return jsonResponse({ inserted, skipped, ids });
     }),
   });
 

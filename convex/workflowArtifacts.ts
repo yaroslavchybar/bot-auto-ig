@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { internalAction, internalMutation, internalQuery } from './_generated/server'
+import { internalMutation, internalQuery } from './_generated/server'
 // NOTE: browser-called queries/mutations below are intentionally public.
 // Admin-only access is enforced by the Express session login; the browser
 // Convex client carries no identity since Clerk was removed.
@@ -65,13 +65,6 @@ function defaultStats(existing?: Partial<ArtifactStats> | null): ArtifactStats {
   }
 }
 
-function normalizeFiniteTimestamp(value: number, fieldName = 'deletedAt'): number {
-  if (!Number.isFinite(value)) {
-    throw new Error(`${fieldName} must be a finite number`)
-  }
-  return Math.max(0, Math.floor(value))
-}
-
 async function getArtifact(ctx: any, id: any) {
   return (await ctx.db.get(id)) ?? null
 }
@@ -99,20 +92,6 @@ async function listAllArtifacts(ctx: any) {
     return bTs - aTs
   })
   return filtered
-}
-
-async function listUnimportedArtifacts(ctx: any, kindRaw?: unknown) {
-  const rows = await ctx.db.query('workflowArtifacts').collect()
-  const filtered = rows.filter((row: any) => {
-    if (row.imported === true) return false
-    if (cleanString(row.status || 'completed').toLowerCase() !== 'completed') return false
-    if (!row.storageId && !row.exportStorageId && !row.manifestStorageId && !cleanString(row.localArtifactPath)) return false
-    if (kindRaw === undefined || kindRaw === null || cleanString(kindRaw) === '') return true
-    return normalizeKind(row.kind) === normalizeKind(kindRaw)
-  })
-  const available = await filterVisibleArtifacts(ctx, filtered)
-  available.sort((a: any, b: any) => b.updatedAt - a.updatedAt)
-  return available
 }
 
 async function upsertArtifactRow(
@@ -242,16 +221,6 @@ export const listByWorkflowInternal = internalQuery({
   handler: async (ctx, args) => await listArtifactsByWorkflow(ctx, args.workflowId),
 })
 
-export const listUnimported = query({
-  args: { kind: v.optional(v.string()) },
-  handler: async (ctx, args) => await listUnimportedArtifacts(ctx, args.kind),
-})
-
-export const listUnimportedInternal = internalQuery({
-  args: { kind: v.optional(v.string()) },
-  handler: async (ctx, args) => await listUnimportedArtifacts(ctx, args.kind),
-})
-
 export const getById = query({
   args: { id: v.id('workflowArtifacts') },
   handler: async (ctx, args) => await getArtifact(ctx, args.id),
@@ -326,59 +295,6 @@ export const upsertInternal = internalMutation({
   handler: async (ctx, args) => await upsertArtifactRow(ctx, args),
 })
 
-export const setImported = mutation({
-  args: { id: v.id('workflowArtifacts'), imported: v.boolean() },
-  handler: async (ctx, args) => {
-    const existing = await getArtifact(ctx, args.id)
-    if (!existing) throw new Error('Artifact not found')
-    await ctx.db.patch(args.id, {
-      imported: Boolean(args.imported),
-      updatedAt: Date.now(),
-    })
-    return await getArtifact(ctx, args.id)
-  },
-})
-
-export const setImportedInternal = internalMutation({
-  args: { id: v.id('workflowArtifacts'), imported: v.boolean() },
-  handler: async (ctx, args) => {
-    const existing = await getArtifact(ctx, args.id)
-    if (!existing) throw new Error('Artifact not found')
-    await ctx.db.patch(args.id, {
-      imported: Boolean(args.imported),
-      updatedAt: Date.now(),
-    })
-    return await getArtifact(ctx, args.id)
-  },
-})
-
-export const setLocalArtifactDeletedInternal = internalMutation({
-  args: { id: v.id('workflowArtifacts'), deletedAt: v.number() },
-  handler: async (ctx, args) => {
-    const existing = await getArtifact(ctx, args.id)
-    if (!existing) throw new Error('Artifact not found')
-    await ctx.db.patch(args.id, {
-      localArtifactDeletedAt: normalizeFiniteTimestamp(args.deletedAt),
-      updatedAt: Date.now(),
-    })
-    return await getArtifact(ctx, args.id)
-  },
-})
-
-export const finalizeLocalImportInternal = internalMutation({
-  args: { id: v.id('workflowArtifacts'), imported: v.boolean(), deletedAt: v.number() },
-  handler: async (ctx, args) => {
-    const existing = await getArtifact(ctx, args.id)
-    if (!existing) throw new Error('Artifact not found')
-    await ctx.db.patch(args.id, {
-      imported: Boolean(args.imported),
-      localArtifactDeletedAt: normalizeFiniteTimestamp(args.deletedAt),
-      updatedAt: Date.now(),
-    })
-    return await getArtifact(ctx, args.id)
-  },
-})
-
 export const remove = mutation({
   args: { id: v.id('workflowArtifacts') },
   handler: async (ctx, args) => {
@@ -398,17 +314,6 @@ export const remove = mutation({
 
     await ctx.db.delete(args.id)
     return existing
-  },
-})
-
-export const storeArtifactInternal = internalAction({
-  args: { payload: v.any() },
-  handler: async (ctx, args) => {
-    const blob = new Blob([JSON.stringify(args.payload ?? {}, null, 2)], {
-      type: 'application/json',
-    })
-    const storageId = await ctx.storage.store(blob)
-    return { storageId }
   },
 })
 

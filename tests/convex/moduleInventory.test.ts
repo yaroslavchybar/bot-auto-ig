@@ -7,7 +7,6 @@ const expectedModules = [
   'crons.ts',
   'http.ts',
   'instagramAccounts.ts',
-  'keywords.ts',
   'lists.ts',
   'messageTemplates.ts',
   'schema.ts',

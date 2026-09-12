@@ -17,9 +17,6 @@ jobs:
           - service: frontend
             dockerfile: frontend/Dockerfile
             tag: frontend
-          - service: datauploader
-            dockerfile: datauploader/Dockerfile
-            tag: datauploader
 
     steps:
       - name: Checkout code
@@ -39,10 +36,6 @@ jobs:
         run: |
           if [ -z "${{ vars.VITE_API_URL }}" ]; then
             echo "Missing repo variable: VITE_API_URL"
-            exit 1
-          fi
-          if [ -z "${{ vars.VITE_DATAUPLOADER_URL }}" ]; then
-            echo "Missing repo variable: VITE_DATAUPLOADER_URL"
             exit 1
           fi
           if [ -z "${{ vars.VITE_CONVEX_URL }}" ]; then
@@ -83,18 +76,5 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL }}
-            VITE_DATAUPLOADER_URL=${{ vars.VITE_DATAUPLOADER_URL }}
             VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
-
-      - name: Build and push datauploader
-        if: matrix.service == 'datauploader'
-        uses: docker/build-push-action@v6
-        with:
-          context: ./datauploader
-          file: ./${{ matrix.dockerfile }}
-          pull: true
-          push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/anti-instagram:${{ matrix.tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 

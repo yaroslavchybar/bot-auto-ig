@@ -48,60 +48,6 @@ export const insert = internalMutation({
 	},
 });
 
-export const insertBatch = internalMutation({
-	args: {
-		accounts: v.array(
-			v.object({
-				userName: v.string(),
-				fullName: v.optional(v.string()),
-				matchedName: v.optional(v.string()),
-				status: v.union(
-					v.literal("available"),
-					v.literal("assigned"),
-					v.literal("subscribed"),
-					v.literal("unsubscribed"),
-					v.literal("skipped"),
-					v.literal("done"),
-				),
-				message: v.boolean(),
-				createdAt: v.number(),
-			}),
-		),
-	},
-	handler: async (ctx, { accounts }) => {
-		const insertedIds = [];
-		const seen = new Set<string>();
-		let skipped = 0;
-		for (const account of accounts) {
-			const userName = normalizeUserName(account.userName);
-			if (!userName) throw new Error("userName is required");
-			if (seen.has(userName)) {
-				skipped++;
-				continue;
-			}
-			seen.add(userName);
-			const existing = await ctx.db
-				.query("instagramAccounts")
-				.withIndex("by_userName", (q) => q.eq("userName", userName))
-				.first();
-			if (existing) {
-				skipped++;
-				continue;
-			}
-			const id = await ctx.db.insert("instagramAccounts", {
-				userName,
-				fullName: account.fullName,
-				matchedName: account.matchedName,
-				status: account.status,
-				message: account.message,
-				createdAt: account.createdAt,
-			});
-			insertedIds.push(id);
-		}
-		return { inserted: insertedIds.length, skipped, ids: insertedIds };
-	},
-});
-
 export const getForProfile = internalQuery({
 	args: { profileId: v.id("profiles"), status: v.optional(v.string()) },
 	handler: async (ctx, args) => {
