@@ -2,11 +2,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
-import { reactRouter } from '@react-router/dev/vite'
-import {
-  sentryReactRouter,
-  type SentryReactRouterBuildOptions,
-} from '@sentry/react-router'
+import react from '@vitejs/plugin-react'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -54,15 +50,7 @@ function getManualChunk(id: string): string | undefined {
     return 'codemirror'
   }
   if (packageName === 'lucide-react') return 'icons'
-  if (
-    [
-      'react',
-      'react-dom',
-      'react-router',
-      'react-router-dom',
-      'scheduler',
-    ].includes(packageName)
-  ) {
+  if (['react', 'react-dom', 'scheduler'].includes(packageName)) {
     return 'react-core'
   }
   if (packageName === 'react-resizable-panels') return 'layout'
@@ -81,23 +69,12 @@ function getManualChunk(id: string): string | undefined {
   return undefined
 }
 
-const sentryConfig: SentryReactRouterBuildOptions = {
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-}
-
-export default defineConfig((config) => ({
+export default defineConfig({
   envDir: path.resolve(rootDir, '..'),
   envPrefix: ['VITE_', 'DISABLE_AUTH'],
-  plugins: [
-    tailwindcss(),
-    reactRouter(),
-    ...(sentryConfig.authToken
-      ? [sentryReactRouter(sentryConfig, config)]
-      : []),
-  ],
+  plugins: [tailwindcss(), react()],
   build: {
+    outDir: 'dist',
     rollupOptions: {
       output: {
         manualChunks: getManualChunk,
@@ -121,4 +98,4 @@ export default defineConfig((config) => ({
       },
     },
   },
-}))
+})

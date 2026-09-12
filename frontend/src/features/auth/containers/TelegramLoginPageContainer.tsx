@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Navigate, useNavigate, useSearchParams } from 'react-router'
+import { Navigate, useNavigate, useSearchParams } from '@/lib/router'
 import { Code, Loader2, Send } from 'lucide-react'
 import { AuthCardShell } from '@/components/shared/AuthCardShell'
 import { Button } from '@/components/ui/button'

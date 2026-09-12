@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/react-router'
+import * as Sentry from '@sentry/react'
 
 /**
  * Add a navigation breadcrumb when the route changes.

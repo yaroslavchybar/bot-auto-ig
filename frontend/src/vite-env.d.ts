@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_API_URL?: string
   readonly VITE_CONVEX_URL: string
   readonly VITE_DATAUPLOADER_URL?: string
+  readonly VITE_SENTRY_DSN?: string
 }
 
 interface ImportMeta {

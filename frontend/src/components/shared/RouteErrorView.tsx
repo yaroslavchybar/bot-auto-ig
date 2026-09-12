@@ -1,24 +1,25 @@
-import { isRouteErrorResponse, useRouteError } from 'react-router'
 import { useEffect } from 'react'
-import * as Sentry from '@sentry/react-router'
+import * as Sentry from '@sentry/react'
 import { AlertTriangle } from 'lucide-react'
 
 type RouteErrorViewProps = {
   title: string
+  error?: unknown
 }
 
-export function RouteErrorView({ title }: RouteErrorViewProps) {
-  const error = useRouteError()
-
+export function RouteErrorView({ title, error }: RouteErrorViewProps) {
   useEffect(() => {
-    Sentry.captureException(error)
+    if (error) {
+      Sentry.captureException(error)
+    }
   }, [error])
 
-  const message = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText}`
-    : error instanceof Error
+  const message =
+    error instanceof Error
       ? error.message
-      : 'An unexpected error occurred.'
+      : typeof error === 'string'
+        ? error
+        : 'An unexpected error occurred.'
 
   return (
     <div className="bg-shell text-ink flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { useLocation } from 'react-router'
+import { useLocation } from '@/lib/router'
 import { toast } from 'sonner'
-import * as Sentry from '@sentry/react-router'
+import * as Sentry from '@sentry/react'
 
 /**
  * Extract a user-visible message from any thrown value.

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { NavLink, useLocation } from 'react-router'
+import { Link, useLocation } from '@/lib/router'
 import {
   Users,
   List,
@@ -142,10 +142,10 @@ export function AppSidebar(props: AppSidebarProps) {
                       }
                       className="text-muted-copy hover:text-ink hover:bg-panel-subtle data-[active=true]:bg-panel-selected transition-colors data-[active=true]:text-ink"
                     >
-                      <NavLink to={item.to}>
+                      <Link to={item.to}>
                         {item.icon && <item.icon />}
                         <span>{item.title}</span>
-                      </NavLink>
+                      </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}

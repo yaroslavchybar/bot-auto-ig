@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from '@/lib/router'
 import type { Edge, Node } from 'reactflow'
 import { ArrowLeft } from 'lucide-react'
 import { api } from '../../../../../convex/_generated/api'

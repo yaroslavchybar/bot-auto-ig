@@ -7,7 +7,7 @@ import {
   type ChangeEvent,
 } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
-import { useNavigate } from 'react-router'
+import { useNavigate } from '@/lib/router'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { toast } from 'sonner'

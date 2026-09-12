@@ -21,11 +21,9 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "rootDirs": [".", "./.react-router/types"],
-    "ignoreDeprecations": "5.0",
     "paths": {
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", ".react-router/types/**/*"]
+  "include": ["src"]
 }

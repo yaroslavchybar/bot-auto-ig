@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useLocation } from 'react-router'
+import { useLocation } from '@/lib/router'
 import { addNavigationBreadcrumb } from '@/lib/sentry'
 
 /**

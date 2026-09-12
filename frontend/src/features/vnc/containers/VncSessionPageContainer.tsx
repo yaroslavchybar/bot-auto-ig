@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from '@/lib/router'
 import { Panel, Group, Separator } from 'react-resizable-panels'
 import { ArrowLeft, FileText, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'

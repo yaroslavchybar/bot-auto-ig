@@ -1,10 +1,4 @@
-import { Activity, useEffect, type ReactNode } from 'react'
-import {
-  useLocation,
-  useMatches,
-  useNavigation,
-  useOutlet,
-} from 'react-router'
+import { Activity, type ReactNode } from 'react'
 import { AuthGuard } from '@/components/layout/AuthGuard'
 import { UserMenu } from '@/components/layout/user-menu'
 import { ThemeToggle } from '@/components/layout/theme-toggle'
@@ -13,49 +7,41 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar'
-import {
-  AppSidebar,
-  type NavId,
-} from '@/components/layout/app-sidebar'
+import { AppSidebar } from '@/components/layout/app-sidebar'
 import { useAuthenticatedFetch } from '@/hooks/useAuthenticatedFetch'
 import { ConvexClientProvider } from '@/components/layout/ConvexClientProvider'
-import { Toaster } from '@/components/ui/toaster'
 import {
   Breadcrumb,
   BreadcrumbItem,
   BreadcrumbList,
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb'
+import { parseSidebarOpen } from '@/lib/sidebar-state'
+import type { RouteMeta } from '@/lib/router'
 
 const KEEP_ALIVE_PATHS = new Set(['/workflows', '/accounts', '/logs', '/vnc'])
 const keepAliveCache = new Map<string, ReactNode>()
 
 type ProtectedLayoutShellProps = {
-  sidebarDefaultOpen?: boolean
-}
-
-type RouteHandle = {
-  breadcrumb?: string
-  navId?: NavId
-  appChrome?: 'default' | 'immersive'
+  routeMeta: RouteMeta
+  pathname: string
+  children: ReactNode
 }
 
 function KeepAliveViewport({
   pathname,
-  outlet,
+  children,
 }: {
   pathname: string
-  outlet: ReactNode
+  children: ReactNode
 }) {
-  useEffect(() => {
-    if (!KEEP_ALIVE_PATHS.has(pathname) || !outlet || keepAliveCache.has(pathname)) {
-      return
-    }
-
-    keepAliveCache.set(pathname, outlet)
-  }, [pathname, outlet])
-
-  const activeHeavyRoute = keepAliveCache.get(pathname)
+  // Cache on first render so the route mounts inside its stable Activity
+  // immediately — caching in an effect would first mount it outside, then
+  // remount inside, losing local state. The set is idempotent, so double
+  // renders just keep the first element.
+  if (KEEP_ALIVE_PATHS.has(pathname) && children && !keepAliveCache.has(pathname)) {
+    keepAliveCache.set(pathname, children)
+  }
 
   return (
     <>
@@ -67,7 +53,7 @@ function KeepAliveViewport({
           {element}
         </Activity>
       ))}
-      {KEEP_ALIVE_PATHS.has(pathname) ? (!activeHeavyRoute ? outlet : null) : outlet}
+      {KEEP_ALIVE_PATHS.has(pathname) ? null : children}
     </>
   )
 }
@@ -76,24 +62,20 @@ function SessionGate({ children }: { children: ReactNode }) {
   return <AuthGuard>{children}</AuthGuard>
 }
 
-export function ProtectedLayoutShell({
-  sidebarDefaultOpen = true,
-}: ProtectedLayoutShellProps) {
-  const location = useLocation()
-  const matches = useMatches()
-  const navigation = useNavigation()
-  const outlet = useOutlet()
+function readSidebarDefaultOpen() {
+  if (typeof document === 'undefined') return true
+  return parseSidebarOpen(document.cookie)
+}
 
+export function ProtectedLayoutShell({
+  routeMeta,
+  pathname,
+  children,
+}: ProtectedLayoutShellProps) {
   useAuthenticatedFetch()
 
-  const activeMatch = [...matches].reverse().find((match) => {
-    const handle = match.handle as RouteHandle | undefined
-    return Boolean(handle?.breadcrumb)
-  })
-  const activeHandle = activeMatch?.handle as RouteHandle | undefined
-  const breadcrumb = activeHandle?.breadcrumb ?? 'Profiles Manager'
-  const currentPath = location.pathname
-  const appChrome = activeHandle?.appChrome ?? 'default'
+  const breadcrumb = routeMeta.breadcrumb ?? 'Profiles Manager'
+  const appChrome = routeMeta.appChrome ?? 'default'
 
   if (appChrome === 'immersive') {
     return (
@@ -101,11 +83,12 @@ export function ProtectedLayoutShell({
         <SessionGate>
           <div className="bg-shell flex h-svh min-w-0 flex-col overflow-hidden">
             <div className="min-h-0 min-w-0 flex-1">
-              <KeepAliveViewport pathname={currentPath} outlet={outlet} />
+              <KeepAliveViewport pathname={pathname}>
+                {children}
+              </KeepAliveViewport>
             </div>
           </div>
         </SessionGate>
-        <Toaster />
       </ConvexClientProvider>
     )
   }
@@ -114,7 +97,7 @@ export function ProtectedLayoutShell({
     <ConvexClientProvider>
       <SessionGate>
         <SidebarProvider
-          defaultOpen={sidebarDefaultOpen}
+          defaultOpen={readSidebarDefaultOpen()}
           className="h-svh min-w-0 overflow-hidden"
         >
           <AppSidebar />
@@ -133,24 +116,20 @@ export function ProtectedLayoutShell({
                 </Breadcrumb>
               </div>
               <div className="ml-auto flex items-center gap-2 px-4">
-                {navigation.state !== 'idle' ? (
-                  <div className="bg-brand/15 text-brand rounded-full px-3 py-1 text-xs font-medium">
-                    {navigation.state === 'loading' ? 'Loading...' : 'Saving...'}
-                  </div>
-                ) : null}
                 <ThemeToggle />
                 <UserMenu />
               </div>
             </header>
             <div className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-0">
               <div className="min-h-0 min-w-0 flex-1">
-                <KeepAliveViewport pathname={currentPath} outlet={outlet} />
+                <KeepAliveViewport pathname={pathname}>
+                  {children}
+                </KeepAliveViewport>
               </div>
             </div>
           </SidebarInset>
         </SidebarProvider>
       </SessionGate>
-      <Toaster />
     </ConvexClientProvider>
   )
 }

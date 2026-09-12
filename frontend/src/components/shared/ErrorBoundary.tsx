@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/react-router'
+import * as Sentry from '@sentry/react'
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'

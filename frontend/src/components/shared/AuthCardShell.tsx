@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
+import { Link } from '@/lib/router'
 import { ShieldCheck } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate } from '@/lib/router'
 import { LayoutGrid, RefreshCw } from 'lucide-react'
 import { VncTile } from '../components/VncTile'
 import { Button } from '@/components/ui/button'

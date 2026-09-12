@@ -1,5 +1,3 @@
-import { redirect } from 'react-router'
-
 export const AUTH_ROUTES = {
   login: '/login',
   signedInFallback: '/profiles',
@@ -7,10 +5,9 @@ export const AUTH_ROUTES = {
 
 export const REDIRECT_URL_PARAM = 'redirect_url'
 
-export function buildLoginRedirect(requestUrl: string): never {
-  const loginUrl = new URL(AUTH_ROUTES.login, requestUrl)
-  loginUrl.searchParams.set(REDIRECT_URL_PARAM, requestUrl)
-  throw redirect(`${loginUrl.pathname}${loginUrl.search}`)
+export function buildLoginUrl(next: string): string {
+  const params = new URLSearchParams({ [REDIRECT_URL_PARAM]: next })
+  return `${AUTH_ROUTES.login}?${params.toString()}`
 }
 
 export function getSafeRedirectTarget(

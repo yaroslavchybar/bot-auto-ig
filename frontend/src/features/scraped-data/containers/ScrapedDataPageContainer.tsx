@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useConvex, useMutation, useQuery } from 'convex/react'
-import { useNavigate } from 'react-router'
+import { useNavigate } from '@/lib/router'
 import { RefreshCw, Search } from 'lucide-react'
 import { toast } from 'sonner'
 

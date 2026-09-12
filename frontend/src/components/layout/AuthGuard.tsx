@@ -1,7 +1,7 @@
 import { useAppAuth } from '@/lib/auth'
-import { Navigate } from 'react-router'
+import { Navigate } from '@/lib/router'
 import { RefreshCw } from 'lucide-react'
-import { AUTH_ROUTES } from '@/lib/auth-routing'
+import { AUTH_ROUTES, REDIRECT_URL_PARAM } from '@/lib/auth-routing'
 
 interface AuthGuardProps {
   children: React.ReactNode
@@ -22,7 +22,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (!isSignedIn) {
-    return <Navigate to={AUTH_ROUTES.login} replace />
+    const next = `${window.location.pathname}${window.location.search}`
+    const params = new URLSearchParams({ [REDIRECT_URL_PARAM]: next })
+    return <Navigate to={`${AUTH_ROUTES.login}?${params.toString()}`} replace />
   }
 
   return <>{children}</>
