@@ -46,11 +46,16 @@ Images: `oven/bun:1.4.2-*` for server/frontend. Production frontend builds requi
 
 ## Authentication
 
-Telegram Login Widget via the shared igscrape bot (widget flow only — the
-bot's webhook belongs to igscrape). Only `TELEGRAM_ADMIN_ID` can sign in;
+Telegram deep-link login via the ig-bot bot (same flow as igscrape): the
+login button jumps straight into the Telegram app via `tg://resolve`
+(no browser tab), the user taps START in the bot, and the frontend polls
+until the `tg-webhook` confirms the single-use token (10 min TTL).
+Only `TELEGRAM_ADMIN_ID` can sign in;
 sessions are HMAC-signed tokens (cookie + Bearer, 30 days). Endpoints:
-`GET /api/auth/config|me`, `POST /api/auth/login|dev-login|logout`.
-The widget only works on the BotFather-registered domain; localhost uses the
+`GET /api/auth/config|me|tg-poll`, `POST /api/auth/login|tg-link|tg-webhook|dev-login|logout`.
+The server registers its webhook from `PUBLIC_BASE_URL` (falls back to
+`APP_PUBLIC_URL`, then first `ALLOWED_ORIGINS`) on boot; without a public
+URL (localhost) `tg-link` returns 503 and dev uses the
 dev-login button (`POST /api/auth/dev-login`, non-production only) or
 `DISABLE_AUTH=true`. Login page: `/login`.
 

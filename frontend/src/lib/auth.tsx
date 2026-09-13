@@ -36,6 +36,7 @@ type AppAuthContextValue = {
   user: AppUser | null
   authFetch: (path: string, init?: RequestInit) => Promise<Response>
   loginWithTelegram: (payload: Record<string, unknown>) => Promise<void>
+  loginWithToken: (user: AppUser, token: string) => void
   devLogin: () => Promise<void>
   signOut: () => Promise<void>
 }
@@ -83,6 +84,7 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     user: LOCAL_USER,
     authFetch: (path, init) => fetch(authUrl(path), init),
     loginWithTelegram: async () => undefined,
+    loginWithToken: () => undefined,
     devLogin: async () => undefined,
     signOut: async () => undefined,
   }
@@ -136,7 +138,7 @@ function TelegramAuthProvider({ children }: { children: ReactNode }) {
 
   // Revalidate any stored session on mount. The token being validated is
   // captured up front so a stale response can never overwrite a newer
-  // session established by loginWithTelegram or devLogin meanwhile.
+  // session established by loginWithTelegram, loginWithToken, or devLogin meanwhile.
   useEffect(() => {
     let cancelled = false
     const validating = tokenRef.current ?? readStoredToken()
@@ -187,6 +189,14 @@ function TelegramAuthProvider({ children }: { children: ReactNode }) {
     storeSession(data.token, data.user)
   }, [authFetch, storeSession])
 
+  // Deep-link login: the tg-poll endpoint returns the session directly.
+  const loginWithToken = useCallback(
+    (user: AppUser, token: string) => {
+      storeSession(token, user)
+    },
+    [storeSession],
+  )
+
   const signOut = useCallback(async () => {
     try {
       await authFetch('/api/auth/logout', { method: 'POST' })
@@ -205,6 +215,7 @@ function TelegramAuthProvider({ children }: { children: ReactNode }) {
     user,
     authFetch,
     loginWithTelegram,
+    loginWithToken,
     devLogin,
     signOut,
   }

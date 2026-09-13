@@ -1,9 +1,11 @@
 import crypto from 'node:crypto'
 
-// Telegram Login Widget verification + signed session tokens.
-// Ports the widget/session parts of igscrape's server/auth.go. The bot
-// deep-link flow is intentionally NOT ported: a Telegram bot can only have
-// one webhook, and the shared bot's webhook belongs to igscrape.
+// Telegram login: widget verification + signed sessions + bot deep-link login.
+// The deep-link flow ports igscrape's server/auth.go: the app jumps straight
+// into the Telegram app via tg://resolve (no browser tab), the user taps
+// START in the bot, and the frontend polls until the webhook confirms it.
+// ig-bot uses its own bot (TELEGRAM_BOT_USERNAME), so its webhook never
+// clashes with igscrape's.
 
 export type TelegramUser = {
     id: string
@@ -254,4 +256,159 @@ export function extractSessionToken(req: {
     const header = Array.isArray(auth) ? auth[0] : auth
     if (header && header.startsWith('Bearer ')) return header.slice('Bearer '.length).trim()
     return ''
+}
+
+// ---- Bot deep-link login (ports igscrape's server/auth.go) ----
+
+export const LOGIN_TOKEN_TTL_MS = 10 * 60 * 1000
+export const LOGIN_MAX_PENDING = 1000
+export const LOGIN_TOKEN_RE = /^[0-9a-f]{32}$/
+
+export type PendingLoginUser = {
+    id: string
+    username?: string
+    firstName: string
+}
+
+type PendingLogin = {
+    createdAt: number
+    user: PendingLoginUser | null
+}
+
+const pendingLogins = new Map<string, PendingLogin>()
+
+// Webhook secret exists from boot and never changes while running.
+const loginWebhookSecret = crypto.randomBytes(24).toString('hex')
+let loginWebhookReady = false
+
+export function getLoginWebhookSecret(): string {
+    return loginWebhookSecret
+}
+
+export function isLoginWebhookReady(): boolean {
+    return loginWebhookReady
+}
+
+export function markLoginWebhookReady(): void {
+    loginWebhookReady = true
+}
+
+export function sweepPendingLogins(): void {
+    const now = Date.now()
+    for (const [token, entry] of pendingLogins) {
+        if (now - entry.createdAt > LOGIN_TOKEN_TTL_MS) pendingLogins.delete(token)
+    }
+}
+
+/** Mints a single-use login token, or null when the pending cap is hit. */
+export function createPendingLogin(): string | null {
+    sweepPendingLogins()
+    if (pendingLogins.size >= LOGIN_MAX_PENDING) return null
+    const token = crypto.randomBytes(16).toString('hex')
+    pendingLogins.set(token, { createdAt: Date.now(), user: null })
+    return token
+}
+
+/** Snapshot of the entry, or null when missing/expired (expired is deleted). */
+export function peekPendingLogin(token: string): PendingLogin | null {
+    const entry = pendingLogins.get(token)
+    if (!entry || Date.now() - entry.createdAt > LOGIN_TOKEN_TTL_MS) {
+        pendingLogins.delete(token)
+        return null
+    }
+    return { createdAt: entry.createdAt, user: entry.user ? { ...entry.user } : null }
+}
+
+/** Attaches the Telegram user to an unconfirmed token. False when unknown, expired, or already confirmed. */
+export function confirmPendingLogin(token: string, user: PendingLoginUser): boolean {
+    const entry = pendingLogins.get(token)
+    if (!entry || Date.now() - entry.createdAt > LOGIN_TOKEN_TTL_MS || entry.user) {
+        return false
+    }
+    entry.user = user
+    return true
+}
+
+/** Atomically single-use consumes a confirmed token. Null when missing, expired, or still pending. */
+export function consumePendingLogin(token: string): PendingLogin | null {
+    const entry = pendingLogins.get(token)
+    if (!entry || Date.now() - entry.createdAt > LOGIN_TOKEN_TTL_MS) {
+        pendingLogins.delete(token)
+        return null
+    }
+    if (!entry.user) return entry
+    pendingLogins.delete(token)
+    return entry
+}
+
+// Small in-memory limiter for public login endpoints.
+const loginRateWindows = new Map<string, { count: number; resetAt: number }>()
+
+export function allowLoginAttempt(key: string, limit: number, windowMs: number): boolean {
+    const now = Date.now()
+    if (loginRateWindows.size > 5000) {
+        for (const [k, w] of loginRateWindows) {
+            if (w.resetAt <= now) loginRateWindows.delete(k)
+        }
+    }
+    const window = loginRateWindows.get(key)
+    if (!window || window.resetAt <= now) {
+        loginRateWindows.set(key, { count: 1, resetAt: now + windowMs })
+        return true
+    }
+    if (window.count >= limit) return false
+    window.count++
+    return true
+}
+
+async function botApi(method: string, body: Record<string, unknown>): Promise<unknown> {
+    const botToken = getBotToken()
+    if (!botToken) throw new Error('TELEGRAM_BOT_TOKEN is not configured')
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15_000)
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        })
+        const out = (await res.json().catch(() => null)) as {
+            ok?: boolean
+            result?: unknown
+            description?: string
+        } | null
+        if (!res.ok || !out?.ok) {
+            throw new Error(out?.description || `Telegram API ${method} failed`)
+        }
+        return out.result
+    } finally {
+        clearTimeout(timeout)
+    }
+}
+
+/** Public base URL the Telegram webhook calls back (no trailing slash). */
+export function getPublicBaseUrl(): string {
+    const raw =
+        process.env.PUBLIC_BASE_URL ||
+        process.env.APP_PUBLIC_URL ||
+        (process.env.ALLOWED_ORIGINS || '').split(',')[0] ||
+        ''
+    return raw.trim().replace(/\/+$/, '')
+}
+
+export async function registerLoginWebhook(baseURL: string): Promise<void> {
+    await botApi('setWebhook', {
+        url: `${baseURL}/api/auth/tg-webhook`,
+        secret_token: loginWebhookSecret,
+        drop_pending_updates: true,
+    })
+    markLoginWebhookReady()
+}
+
+export async function sendLoginConfirmation(chatId: number): Promise<void> {
+    await botApi('sendMessage', {
+        chat_id: chatId,
+        text: 'Logged in. Return to the site to continue.',
+    })
 }

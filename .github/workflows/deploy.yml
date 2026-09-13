@@ -160,6 +160,8 @@ jobs:
           SERVER_PORT=3001
           DISPLAY=:99
           ALLOWED_ORIGINS=${{ vars.APP_PUBLIC_URL }}
+          # Public HTTPS base the Telegram login webhook registers against.
+          PUBLIC_BASE_URL=${{ vars.APP_PUBLIC_URL }}
           CONVEX_URL=${{ secrets.CONVEX_URL }}
           INTERNAL_API_KEY=${{ secrets.INTERNAL_API_KEY }}
           TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}

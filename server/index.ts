@@ -26,12 +26,19 @@ import { profileManager } from './profiles/index.js'
 import { getActiveRuntimeProfileNames } from './shared/store.js'
 import { isProcessRunning } from './shared/ProcessService.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
+import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
 import logger from './shared/logger.js'
 import { AppError } from './shared/errors.js'
 import type { Request, Response, NextFunction } from 'express'
 
 const app = express()
 const server = createServer(app)
+
+// Trust exactly the known proxy hops in front of the server so req.ip is the
+// real client IP: Caddy (HTTPS entry) -> frontend nginx (/api/ proxy).
+// A client-supplied X-Forwarded-For entry stays beyond the trusted hops and
+// can never become req.ip — the rate-limit key.
+app.set('trust proxy', 2)
 
 // Initialize WebSocket
 const wss = initWebSocket(server)
@@ -53,7 +60,7 @@ app.use((req, res, next) => {
     // If origin is not allowed in production, don't set the header (browser will block)
 
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Telegram-Bot-Api-Secret-Token')
     res.header('Access-Control-Allow-Credentials', 'true')
 
     if (req.method === 'OPTIONS') {
@@ -148,6 +155,17 @@ async function startServer(): Promise<void> {
     server.listen(PORT, () => {
         logger.info({ port: PORT }, 'API server running')
         logger.info({ port: PORT }, 'WebSocket available')
+        // Point the bot at our webhook so deep-link logins complete.
+        // Best-effort: a failure only disables app-open login. Telegram must
+        // reach us over HTTPS, so local dev (no public URL) stays on dev login.
+        setTimeout(() => {
+            const base = getPublicBaseUrl()
+            if (!base) return
+            registerLoginWebhook(base).then(
+                () => logger.info('Telegram login webhook registered'),
+                (err) => logger.warn({ err }, 'Telegram login webhook failed'),
+            )
+        }, 2000)
     })
 }
 
