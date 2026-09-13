@@ -23,7 +23,7 @@ export function getBotToken(): string {
 }
 
 export function getBotUsername(): string {
-    return (process.env.TELEGRAM_BOT_USERNAME || '').trim()
+    return (process.env.TELEGRAM_BOT_USERNAME || '').trim().replace(/^@/, '')
 }
 
 export function getAdminId(): string {
