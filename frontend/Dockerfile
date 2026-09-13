@@ -6,8 +6,11 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
+# Full workspace install: the build typechecks ../convex (needs the root
+# convex deps) and test files (needs root vitest). The build stage is
+# discarded, so dev deps never reach the nginx runtime image.
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun install --frozen-lockfile --filter frontend
+  bun install --frozen-lockfile
 
 COPY . ./frontend/
 COPY --from=convex_src . /app/convex/

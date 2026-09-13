@@ -59,8 +59,10 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
+# Full workspace install: the build script runs root typescript and tsc
+# typechecks dev dependencies. Runtime stays minimal (bun-runtime-deps).
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun install --frozen-lockfile --filter anti-server
+  bun install --frozen-lockfile
 
 FROM browser-deps AS bun-runtime-deps
 WORKDIR /app
