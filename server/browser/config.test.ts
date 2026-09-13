@@ -2,6 +2,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseProxy, normalizeFingerprintScreen } from './config.js'
 
+test('bare proxy strings respect the profile protocol; explicit schemes take precedence', () => {
+  assert.deepEqual(parseProxy('proxy.example:1080:user:password', 'socks5'), {
+    server: 'socks5://proxy.example:1080', username: 'user', password: 'password',
+  })
+  assert.equal(parseProxy('proxy.example:1080', 'socks5')?.server, 'socks5://proxy.example:1080')
+  assert.equal(parseProxy('http://proxy.example:8080', 'socks5')?.server, 'http://proxy.example:8080')
+  assert.throws(() => parseProxy('proxy.example:1080', 'invalid'), /Invalid proxy protocol/)
+})
+
 test('proxy schemes, IPv6 and encoded credentials survive parsing', () => {
   assert.deepEqual(parseProxy('socks5://proxy.example:1080'), {
     server: 'socks5://proxy.example:1080',

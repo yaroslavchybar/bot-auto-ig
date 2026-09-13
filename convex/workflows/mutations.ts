@@ -171,6 +171,7 @@ async function startWorkflow(ctx: any, args: { id: any }) {
 	await ctx.db.patch(args.id, {
 		status: "pending",
 		runsToday: runsToday + 1,
+		nodeStates: undefined,
 		lastRunAt: Date.now(),
 		error: undefined,
 		currentNodeId: undefined,

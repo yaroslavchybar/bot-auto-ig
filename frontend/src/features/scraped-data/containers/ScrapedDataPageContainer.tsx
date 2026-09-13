@@ -8,6 +8,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { apiDownload } from '@/lib/api'
+import { artifactDownloadPath, type ArtifactDownloadTarget } from '@/lib/artifact-download'
 import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -89,10 +90,9 @@ function useScrapedDataState() {
 
 function useArtifactDownload(setPageError: (e: string | null) => void) {
   const downloadArtifact = useCallback(
-    async (storageId: Id<'_storage'> | null | undefined, fileName: string) => {
-      if (!storageId) throw new Error('Artifact file is not available')
+    async (target: ArtifactDownloadTarget, fileName: string) => {
       await apiDownload(
-        `/api/workflows/artifacts/download?storageId=${encodeURIComponent(storageId)}&fileName=${encodeURIComponent(fileName)}`,
+        artifactDownloadPath(target, fileName),
         fileName,
       )
     },
@@ -104,7 +104,7 @@ function useArtifactDownload(setPageError: (e: string | null) => void) {
       setPageError(null)
       try {
         await downloadArtifact(
-          artifact.exportStorageId || artifact.storageId,
+          { storageId: artifact.exportStorageId || artifact.storageId, workflowId: artifact.workflowId, artifactId: artifact._id },
           `${artifact.name || artifact.nodeLabel || 'scrape-result'}.json`,
         )
       } catch (error) {
@@ -120,7 +120,7 @@ function useArtifactDownload(setPageError: (e: string | null) => void) {
       setPageError(null)
       try {
         await downloadArtifact(
-          artifact.manifestStorageId,
+          { storageId: artifact.manifestStorageId },
           `${artifact.name || artifact.nodeLabel || 'scrape-result'}_manifest.json`,
         )
       } catch (error) {

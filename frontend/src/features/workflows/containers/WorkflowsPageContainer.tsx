@@ -212,7 +212,7 @@ function WorkflowDetailsSheet({
   onEditSchedule: (workflow: Workflow) => void
   onReset: (workflow: Workflow) => void
   onStopRun: (workflow: Workflow) => void
-  onDownloadArtifact: (storageId: string, fileName: string) => void
+  onDownloadArtifact: (target: import('@/lib/artifact-download').ArtifactDownloadTarget, fileName: string) => void
 }) {
   return (
     <Sheet

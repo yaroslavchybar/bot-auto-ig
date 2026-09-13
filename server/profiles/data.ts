@@ -10,6 +10,9 @@ import {
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
 import { resolveProjectRoot } from '../shared/utils.js'
+import { automationMutex } from '../shared/mutex.js'
+import { getTrackedProcesses } from '../shared/ProcessService.js'
+import { automationState, profileProcesses, workflowWorkers } from '../shared/store.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PROFILES_DIR = path.join(PROJECT_ROOT, 'data', 'profiles')
@@ -253,6 +256,21 @@ export class ProfileManager {
    * Any busy profile that has no active process is reset to idle.
    */
   async reconcileRuntimeStatuses(
+    activeProfileNames: Iterable<string>,
+  ): Promise<{ cleared: number; errors: string[] }> {
+    const release = await automationMutex.acquire()
+    try {
+      // A live worker may be starting a profile before its first status event arrives.
+      if (getTrackedProcesses().size || profileProcesses.size || workflowWorkers.size || automationState.process) {
+        return { cleared: 0, errors: [] }
+      }
+      return await this.reconcileIdleRuntimeStatuses(activeProfileNames)
+    } finally {
+      release()
+    }
+  }
+
+  private async reconcileIdleRuntimeStatuses(
     activeProfileNames: Iterable<string>,
   ): Promise<{ cleared: number; errors: string[] }> {
     const active = new Set(

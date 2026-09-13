@@ -12,6 +12,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { toast } from 'sonner'
 import { apiDownload, apiFetch } from '@/lib/api'
+import { artifactDownloadPath, type ArtifactDownloadTarget } from '@/lib/artifact-download'
 import { getActivityById } from '@/features/workflows/activities'
 import type { Workflow } from '../types'
 import {
@@ -22,6 +23,9 @@ import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 export type WorkflowArtifact = {
   _id: string
+  workflowId: string
+  localArtifactPath?: string | null
+  localArtifactDeletedAt?: number | null
   name: string
   nodeLabel?: string | null
   kind: 'followers' | 'following'
@@ -406,10 +410,10 @@ export function useWorkflowsPage() {
     finally { setRefreshing(false) }
   }, [convex, handleError, setWorkflowsData])
 
-  const handleDownloadArtifact = useCallback(async (storageId: string, fileName: string) => {
+  const handleDownloadArtifact = useCallback(async (target: ArtifactDownloadTarget, fileName: string) => {
     try {
       await apiDownload(
-        `/api/workflows/artifacts/download?storageId=${encodeURIComponent(storageId)}&fileName=${encodeURIComponent(fileName)}`,
+        artifactDownloadPath(target, fileName),
         fileName,
       )
     } catch (e) { handleError(e, 'Download artifact') }

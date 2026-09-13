@@ -73,7 +73,7 @@ function ArtifactActionsMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => onDownloadData(artifact)}
-          disabled={!artifact.exportStorageId && !artifact.storageId}
+          disabled={!artifact.exportStorageId && !artifact.storageId && (!artifact.localArtifactPath || !!artifact.localArtifactDeletedAt)}
         >
           <Download className="mr-2 h-4 w-4" /> Download Data
         </DropdownMenuItem>

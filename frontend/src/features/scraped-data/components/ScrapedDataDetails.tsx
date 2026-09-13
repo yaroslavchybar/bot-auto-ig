@@ -51,7 +51,7 @@ function ArtifactHeaderCard({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => onDownloadData(artifact)}
-          disabled={!artifact.exportStorageId && !artifact.storageId}>
+          disabled={!artifact.exportStorageId && !artifact.storageId && (!artifact.localArtifactPath || !!artifact.localArtifactDeletedAt)}>
           <Download className="mr-2 h-4 w-4" />Download Data
         </Button>
         {artifact.manifestStorageId ? (
@@ -103,7 +103,7 @@ function ArtifactMetadataCard({ artifact }: { artifact: WorkflowArtifact }) {
     { label: 'Last Run', value: formatDateTime(artifact.lastRunAt) },
     { label: 'Created', value: formatDateTime(artifact.createdAt) },
     { label: 'Updated', value: formatDateTime(artifact.updatedAt) },
-    { label: 'Data File', value: artifact.exportStorageId || artifact.storageId ? 'Available' : 'Missing' },
+    { label: 'Data File', value: artifact.exportStorageId || artifact.storageId || (artifact.localArtifactPath && !artifact.localArtifactDeletedAt) ? 'Available' : 'Missing' },
     ...(artifact.manifestStorageId ? [{ label: 'Manifest File', value: 'Available' }] : []),
   ]
 

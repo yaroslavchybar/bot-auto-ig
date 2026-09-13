@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import fs from 'fs'
 import path from 'path'
-import { automationState } from '../shared/store.js'
+import { automationState, markWorkflowProfileActive, clearWorkflowProfileActive } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { profilesSetLoginTrue } from '../shared/convexClient.js'
 import { automationMutex } from '../shared/mutex.js'
@@ -138,7 +138,10 @@ function wireAutomationStdout(
         for (const log of parsed) {
             if (log.eventType === 'profile_started') {
                 currentProfile.value = (log.metadata as any)?.profile || null
+                if (currentProfile.value) markWorkflowProfileActive('automation', currentProfile.value)
             } else if (log.eventType === 'profile_completed') {
+                const name = (log.metadata as any)?.profile
+                if (name) clearWorkflowProfileActive('automation', name)
                 currentProfile.value = null
             }
             logger.info({ source: 'typescript' }, log.message)
@@ -175,6 +178,7 @@ function wireAutomationStderr(proc: ChildProcess): void {
 /** Wire close/error lifecycle events for the automation process. */
 function wireAutomationLifecycle(proc: ChildProcess): void {
     proc.on('close', (code) => {
+        clearWorkflowProfileActive('automation')
         logger.info({ code }, 'Bun process exited')
         clearPid()
         markStopped()
@@ -190,6 +194,7 @@ function wireAutomationLifecycle(proc: ChildProcess): void {
     })
 
     proc.on('error', (err) => {
+        clearWorkflowProfileActive('automation')
         logger.error({ err }, 'Bun process error')
         clearPid()
         markStopped()

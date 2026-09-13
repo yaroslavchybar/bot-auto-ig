@@ -174,13 +174,12 @@ function ListsEditForm({
 
 function useProfileRows(
   initialData: List | undefined,
-  liveProfiles: Array<{ _id: unknown; name: unknown; login: unknown; listIds?: unknown[] }> | undefined,
+  liveProfiles: Array<{ _id: unknown; name: unknown; listIds?: unknown[] }> | undefined,
   selectionOverrides: Record<string, boolean>,
 ): ProfileRow[] {
   return useMemo(() => {
     if (!initialData || !liveProfiles) return []
     return liveProfiles
-      .filter((p) => Boolean(p?.login))
       .map((p) => {
         const id = String(p._id ?? '')
         const listIds = Array.isArray(p.listIds)

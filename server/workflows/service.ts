@@ -270,13 +270,11 @@ function wireStderr(proc: any, workflowId: string): void {
   })
 }
 
-function wireProcessLifecycle(proc: any, workflowId: string): void {
+export function wireProcessLifecycle(proc: any, workflowId: string): void {
+  let spawnError: Error | undefined
   proc.on('close', async (code: number | null) => {
     await proc.__statusUpdates
-    workflowWorkers.delete(workflowId)
-    clearWorkflowDisplays(workflowId)
-    clearWorkflowProfileActive(workflowId)
-    broadcast({ type: 'workflow_status', workflowId, status: 'idle' })
+    if (workflowWorkers.get(workflowId)?.process !== proc) return
     broadcast({
       type: 'log',
       workflowId,
@@ -287,16 +285,18 @@ function wireProcessLifecycle(proc: any, workflowId: string): void {
 
     try {
       const stopRequested = Boolean((proc as any).__stopRequested)
-      const finalStatus = stopRequested ? 'cancelled' : code === 0 ? 'completed' : 'failed'
-      await workflowsUpdateStatus({ workflowId, status: finalStatus })
+      const finalStatus = stopRequested ? 'cancelled' : !spawnError && code === 0 ? 'completed' : 'failed'
+      await workflowsUpdateStatus({ workflowId, status: finalStatus, error: spawnError?.message })
     } catch { /* noop */ }
-  })
-
-  proc.on('error', async (err: Error) => {
+    if (workflowWorkers.get(workflowId)?.process !== proc) return
     workflowWorkers.delete(workflowId)
     clearWorkflowDisplays(workflowId)
     clearWorkflowProfileActive(workflowId)
     broadcast({ type: 'workflow_status', workflowId, status: 'idle' })
+  })
+
+  proc.on('error', (err: Error) => {
+    spawnError = err
     broadcast({
       type: 'log',
       workflowId,
@@ -304,13 +304,6 @@ function wireProcessLifecycle(proc: any, workflowId: string): void {
       level: 'error',
       source: 'server',
     })
-    try {
-      await workflowsUpdateStatus({
-        workflowId,
-        status: 'failed',
-        error: String(err?.message || err),
-      })
-    } catch { /* noop */ }
   })
 }
 
@@ -323,15 +316,16 @@ export interface RunWorkflowInput {
   parallelProfiles?: number
 }
 
-export async function runWorkflow(input: RunWorkflowInput): Promise<void> {
+export async function runWorkflow(input: RunWorkflowInput, spawn = spawnBun): Promise<void> {
   const { workflowId, parallelProfiles } = input
 
-  const workflow = await workflowsGetById(workflowId)
+  let workflow = await workflowsGetById(workflowId)
   if (!workflow) {
     throw new NotFoundError('Workflow not found')
   }
 
-  await workflowsStart(workflowId)
+  workflow = await workflowsStart(workflowId)
+  if (!workflow) throw new NotFoundError('Workflow not found')
 
   broadcast({ type: 'workflow_status', workflowId, status: 'running' })
   broadcast({
@@ -342,7 +336,7 @@ export async function runWorkflow(input: RunWorkflowInput): Promise<void> {
     source: 'server',
   })
 
-  const proc = spawnBun({
+  const proc = spawn({
     args: [WORKFLOW_RUNNER],
   })
   workflowWorkers.set(workflowId, { process: proc, status: 'running', startedAt: Date.now() })

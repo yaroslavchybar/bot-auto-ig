@@ -44,13 +44,11 @@ export async function fetchProfilesForEdit(
       id?: string
       profile_id?: string
       name: string
-      login?: boolean
       list_ids?: string[] | null
     }>
   >('/api/profiles')
 
   const rows: ProfileRow[] = (allProfiles || [])
-    .filter((profile) => Boolean(profile?.login))
     .map((profile) => {
       const profileId = String(profile.id ?? profile.profile_id ?? '')
       const listIds = Array.isArray(profile.list_ids)

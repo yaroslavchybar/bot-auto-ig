@@ -26,7 +26,6 @@ const router = Router()
 
 // Get all profiles
 router.get('/', asyncHandler(async (_req, res) => {
-  await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())
   const profiles = await profileManager.getProfiles()
   res.json(profiles)
 }))

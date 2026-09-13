@@ -30,20 +30,24 @@ export function normalizeFingerprintScreen<T extends { screen?: Record<string, u
 
 export function parseProxy(
   value: string | null | undefined,
+  protocol: string | null | undefined = 'http',
 ): { server: string; username?: string; password?: string } | undefined {
   const raw = String(value || '').trim()
   if (!raw || raw.toLowerCase() === 'none') return undefined
+  const scheme = protocol?.trim().toLowerCase() || 'http'
+  if (!raw.includes('://') && !['http', 'https', 'socks5'].includes(scheme))
+    throw new Error('Invalid proxy protocol')
   const legacy = raw.match(
     /^(?:(https?|socks5):\/\/)?([^:@/]+):(\d+):([^:]+):(.+)$/,
   )
   if (legacy) {
     return {
-      server: `${legacy[1] || 'http'}://${legacy[2]}:${legacy[3]}`,
+      server: `${legacy[1] || scheme}://${legacy[2]}:${legacy[3]}`,
       username: legacy[4],
       password: legacy[5],
     }
   }
-  const url = new URL(raw.includes('://') ? raw : `http://${raw}`)
+  const url = new URL(raw.includes('://') ? raw : `${scheme}://${raw}`)
   if (!['http:', 'https:', 'socks5:'].includes(url.protocol) || !url.hostname)
     throw new Error('Invalid proxy URL')
   return {

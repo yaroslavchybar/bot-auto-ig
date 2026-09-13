@@ -4,6 +4,7 @@ import { Camoufox } from 'camoufox-js'
 import { FingerprintGenerator, type Fingerprint } from 'fingerprint-generator'
 import { parseProxy, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
 import { shutdownSignal } from './lifecycle.js'
+import { prepareBrowserProxy } from './proxy.js'
 import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
 import {
@@ -123,7 +124,7 @@ async function launchSession(
       )
     }
   }
-  const proxy = parseProxy(profile.proxy)
+  const proxy = parseProxy(profile.proxy, profile.proxy_type)
   const launchOptions: Record<string, unknown> = {
     headless: options.headless ?? false,
     user_data_dir: profileDir,
@@ -149,7 +150,16 @@ async function launchSession(
       : {}),
   }
 
-  const context = (await Camoufox(launchOptions)) as BrowserContext
+  const preparedProxy = await prepareBrowserProxy(proxy)
+  let context: BrowserContext
+  try {
+    shutdownSignal.throwIfAborted()
+    context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
+  } catch (error) {
+    await preparedProxy.close()
+    throw error
+  }
+  context.once('close', () => { void preparedProxy.close().catch(() => undefined) })
   let closing: Promise<void> | undefined
   const close = () =>
     (closing ??= (async () => {
@@ -157,7 +167,11 @@ async function launchSession(
       try {
         await saveSession(profile, context)
       } finally {
-        await context.close()
+        try {
+          await context.close()
+        } finally {
+          await preparedProxy.close()
+        }
       }
     })())
   const onAbort = () => {
@@ -191,6 +205,7 @@ async function launchSession(
   } catch (error) {
     shutdownSignal.removeEventListener('abort', onAbort)
     await context.close().catch(() => undefined)
+    await preparedProxy.close()
     throw error
   }
 

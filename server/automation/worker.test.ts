@@ -3,6 +3,29 @@ import assert from 'node:assert/strict'
 import type { CamoufoxSession } from '../browser/camoufox.js'
 import { runWorkflow } from './worker.js'
 
+test('close then start replaces the browser and final cleanup closes the replacement', async () => {
+  const originalFetch = globalThis.fetch
+  const profile = { name: 'chosen', profile_id: 'chosen', list_ids: ['chosen'], login: true, Using: false }
+  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
+  const sessions: Array<{ closed: boolean; visits: number }> = []
+  try {
+    await runWorkflow({ workflow: {
+      nodes: [
+        { id: 'select', data: { activityId: 'select_list', config: { sourceLists: ['chosen'] } } },
+        { id: 'close', data: { activityId: 'close_browser' } },
+        { id: 'open', data: { activityId: 'start_browser', config: { headlessMode: true } } },
+        { id: 'feed', data: { activityId: 'browse_feed', config: { feed_min_time_minutes: 0, feed_max_time_minutes: 0 } } },
+      ],
+      edges: [['select', 'close'], ['close', 'open'], ['open', 'feed']].map(([source, target]) => ({ source, target, sourceHandle: 'next' })),
+    } }, async () => {
+      const state = { closed: false, visits: 0 }
+      sessions.push(state)
+      return { page: { goto: async () => { assert.equal(state.closed, false); state.visits++ } }, close: async () => { state.closed = true } } as unknown as CamoufoxSession
+    })
+    assert.deepEqual(sessions, [{ closed: true, visits: 0 }, { closed: true, visits: 1 }])
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('workflow action failures reject the run and close the browser', async () => {
   const originalFetch = globalThis.fetch
   let closed = false

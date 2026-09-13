@@ -219,6 +219,7 @@ export const executeScheduledWorkflow = internalMutation({
 		await ctx.db.patch(args.workflowId, {
 			status: "pending",
 			runsToday: runsToday + 1,
+			nodeStates: undefined,
 			lastRunAt: Date.now(),
 			error: undefined,
 			currentNodeId: undefined,

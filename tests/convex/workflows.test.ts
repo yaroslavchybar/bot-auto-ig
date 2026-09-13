@@ -9,6 +9,26 @@ import {
 } from '../../frontend/src/features/workflows/activities'
 import { validateWorkflowImport } from '../../frontend/src/features/workflows/utils/workflowImportExport'
 
+test('fresh manual and scheduled runs clear completed profile state while retries keep checkpoints', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
+  const t = createConvexTest()
+  const nodeStates = { __profileRuns: { profile: { completed: true, states: {}, currentNodeId: null } } }
+  const manual = await seedWorkflow(t, { status: 'completed', nodeStates })
+  const started = await t.mutation(api.workflows.mutations.start, { id: manual!._id })
+  expect(started?.nodeStates).toBeUndefined()
+  const retry = await seedWorkflow(t, { status: 'failed', nodeStates })
+  await t.mutation(api.workflows.mutations.retry, { id: retry!._id })
+  const retried = await t.mutation(api.workflows.mutations.start, { id: retry!._id })
+  expect(retried?.nodeStates).toEqual(nodeStates)
+  const scheduled = await seedWorkflow(t, { status: 'completed', isActive: true, nodeStates })
+  await t.mutation(internal.workflows.scheduling.executeScheduledWorkflow, { workflowId: scheduled!._id })
+  const scheduledDoc = await t.run(ctx => ctx.db.get(scheduled!._id))
+  expect(scheduledDoc?.nodeStates).toBeUndefined()
+  vi.runAllTimers()
+  await t.finishInProgressScheduledFunctions()
+})
+
 test('creates workflows, deduplicates list ids, and transitions status', async () => {
   const t = createConvexTest()
   const list = await seedList(t, 'List A')

@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge'
+import type { ArtifactDownloadTarget } from '@/lib/artifact-download'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
@@ -16,6 +17,9 @@ export interface WorkflowDetailsProps {
   workflow: Workflow
   artifacts?: Array<{
     _id: string
+    workflowId: string
+    localArtifactPath?: string | null
+    localArtifactDeletedAt?: number | null
     name: string
     nodeLabel?: string | null
     kind: 'followers' | 'following'
@@ -36,7 +40,7 @@ export interface WorkflowDetailsProps {
   }>
   artifactsLoading?: boolean
   onDownloadArtifact?: (
-    storageId: string,
+    target: ArtifactDownloadTarget,
     fileName: string,
   ) => void
   onToggleActive?: () => void
@@ -385,7 +389,7 @@ function ArtifactCard({
   onDownloadArtifact,
 }: {
   artifact: WorkflowDetailsProps['artifacts'] extends Array<infer T> | undefined ? T : never
-  onDownloadArtifact?: (storageId: string, fileName: string) => void
+  onDownloadArtifact?: (target: ArtifactDownloadTarget, fileName: string) => void
 }) {
   const targets =
     Array.isArray(artifact.targets) && artifact.targets.length > 0
@@ -423,13 +427,13 @@ function ArtifactCard({
         ) : null}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {exportStorageId && onDownloadArtifact ? (
+        {(exportStorageId || (artifact.localArtifactPath && !artifact.localArtifactDeletedAt)) && onDownloadArtifact ? (
           <Button
             size="sm"
             variant="outline"
             onClick={() =>
               onDownloadArtifact(
-                exportStorageId,
+                { storageId: exportStorageId, workflowId: artifact.workflowId, artifactId: artifact._id },
                 `${artifact.name || artifact.nodeLabel || 'scrape-result'}.json`,
               )
             }
@@ -444,7 +448,7 @@ function ArtifactCard({
             variant="outline"
             onClick={() =>
               onDownloadArtifact(
-                manifestStorageId,
+                { storageId: manifestStorageId },
                 `${artifact.name || artifact.nodeLabel || 'scrape-result'}_manifest.json`,
               )
             }
@@ -467,7 +471,7 @@ function ScrapeResultsSection({
 }: {
   artifacts: WorkflowDetailsProps['artifacts']
   artifactsLoading: boolean
-  onDownloadArtifact?: (storageId: string, fileName: string) => void
+  onDownloadArtifact?: (target: ArtifactDownloadTarget, fileName: string) => void
 }) {
   return (
     <div>

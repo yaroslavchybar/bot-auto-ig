@@ -66,11 +66,32 @@ async function withProfile(
     workflowId?: string
     openSession?: typeof openCamoufoxSession
   } = {},
-  run: (session: CamoufoxSession) => Promise<void>,
+  run: (session: CamoufoxSession, controls: {
+    close: () => Promise<void>
+    reopen: (headless?: boolean) => Promise<CamoufoxSession>
+  }) => Promise<void>,
 ): Promise<void> {
   const workflowId = options.workflowId || 'automation'
   let session: CamoufoxSession | undefined
+  let closed = false
   let markedRunning = false
+  const close = async () => {
+    if (!session || closed) return
+    await session.close()
+    closed = true
+    if (session.display) event('display_released', { workflow_id: workflowId, profile: profile.name })
+  }
+  const reopen = async (headless = options.headless ?? true) => {
+    if (closed) {
+      session = await (options.openSession ?? openCamoufoxSession)(profile.name, { headless })
+      closed = false
+      if (session.display) event('display_allocated', {
+        workflow_id: workflowId, profile: profile.name,
+        display_num: session.display.displayNum, vnc_port: session.display.vncPort,
+      })
+    }
+    return session!
+  }
   try {
     session = await (options.openSession ?? openCamoufoxSession)(profile.name, {
       headless: options.headless ?? true,
@@ -89,7 +110,7 @@ async function withProfile(
         display_num: session.display.displayNum,
         vnc_port: session.display.vncPort,
       })
-    await run(session)
+    await run(session, { close, reopen })
     event('profile_completed', {
       profile: profile.name,
       profile_id: profile.profile_id,
@@ -106,12 +127,7 @@ async function withProfile(
     })
     throw error
   } finally {
-    await session?.close().catch(() => undefined)
-    if (session?.display)
-      event('display_released', {
-        workflow_id: workflowId,
-        profile: profile.name,
-      })
+    await close().catch(() => undefined)
     if (markedRunning)
       await profilesSyncStatus(profile.name, 'idle', false).catch(
         () => undefined,
@@ -349,7 +365,7 @@ export async function runWorkflow(
         openSession,
         workflowId,
       },
-      async (session) => {
+      async (session, controls) => {
         const runs = (aggregateStates.__profileRuns ??= {})
         const run = (runs[profile.profile_id] ??= {
           states: {},
@@ -493,9 +509,10 @@ export async function runWorkflow(
                   }),
               })
             } else if (activity === 'close_browser') {
-              await session.close()
+              await controls.close()
+            } else if (activity === 'start_browser') {
+              session = await controls.reopen(config.headlessMode)
             } else if (
-              activity === 'start_browser' ||
               activity === 'select_list' ||
               activity === 'start'
             ) {

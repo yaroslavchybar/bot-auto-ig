@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { localArtifactFile } from './artifacts.js'
 import {
   workflowArtifactsGetStorageUrl,
   workflowArtifactsListByWorkflow,
@@ -76,6 +77,14 @@ router.get('/artifacts/download', asyncHandler(async (req, res) => {
   const fileName = String(
     (req.query as any)?.fileName ?? 'artifact.json',
   ).trim() || 'artifact.json'
+  const artifactId = String(req.query.artifactId ?? '').trim()
+  if (artifactId) {
+    const filename = await localArtifactFile(String(req.query.workflowId ?? '').trim(), artifactId)
+    await new Promise<void>((resolve, reject) => {
+      res.download(filename, fileName, error => error ? reject(error) : resolve())
+    })
+    return
+  }
   if (!storageId) {
     throw new ValidationError('storageId is required')
   }
