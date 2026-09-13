@@ -16,6 +16,11 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 
 COPY . ./frontend/
 COPY --from=convex_src . /app/convex/
+# Frontend typechecks shared wire types from the server package
+# (frontend/src/hooks/useWebSocket.ts, frontend/src/features/workflows/activities/types.ts).
+# Both are `import type`, erased from the bundle. Keep this in sync if the
+# frontend imports more files from outside frontend/ and convex/.
+COPY --from=repo_root server/shared/contracts.ts ./server/shared/contracts.ts
 
 ARG VITE_CONVEX_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
