@@ -47,14 +47,10 @@ function ActivityMenuItem({
       onSelect={onSelect}
       className="items-start gap-3"
     >
-      <div
-        className="mt-0.5 rounded-md p-1.5"
-        style={{ backgroundColor: `${activity.color}16` }}
-      >
+      <div className="bg-panel-subtle border-line-soft mt-0.5 rounded-md border p-1.5">
         <ActivityIcon
           iconName={activity.icon}
-          className="h-3.5 w-3.5"
-          style={{ color: activity.color }}
+          className="text-ink h-3.5 w-3.5"
         />
       </div>
       <div className="min-w-0 flex-1">
@@ -178,13 +174,14 @@ function QuickAddTrigger({ compact, className, iconClassName }: {
       <button
         type="button"
         className={cn(
-          'button-positive inline-flex items-center justify-center rounded-full backdrop-blur-sm transition-[opacity,background-color,color,transform]',
-          compact ? 'h-6 w-6' : 'h-8 w-8', className,
+          'button-positive inline-flex items-center justify-center rounded-full border shadow-sm backdrop-blur-sm',
+          compact ? 'h-[22px] w-[22px]' : 'h-7 w-7', className,
         )}
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
         onPointerDown={(event) => event.stopPropagation()}
         aria-label="Add connected block"
+        title="Add connected block"
       >
         <Plus className={cn(compact ? 'h-3 w-3' : 'h-4 w-4', iconClassName)} />
       </button>

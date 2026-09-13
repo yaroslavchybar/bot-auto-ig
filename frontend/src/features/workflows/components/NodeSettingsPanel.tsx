@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Node } from 'reactflow'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getActivityById, type ActivityDefinition } from '@/features/workflows/activities/index'
-import { X, Play, Info } from 'lucide-react'
+import { X, Play } from 'lucide-react'
 import { GroupedInputs } from '@/features/workflows/activity-ui/GroupedInputs'
 import { ActivityIcon } from './activityIcons'
 import { cn } from '@/lib/utils'
@@ -74,51 +74,24 @@ function SettingsPanelHeader({
   icon,
   title,
   category,
-  description,
-  accentColor,
   onClose,
 }: {
   icon: React.ReactNode
   title: string
   category: string
-  description?: string
-  accentColor?: string
   onClose: () => void
 }) {
   return (
     <div className="border-line-soft bg-panel-subtle relative shrink-0 border-b px-4 py-3">
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-center gap-2.5">
         {icon}
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-ink truncate text-sm leading-tight font-semibold">
-              {title}
-            </h3>
-            <span
-              className="text-subtle-copy inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[9px] tracking-[0.14em] uppercase"
-              style={
-                accentColor
-                  ? {
-                      borderColor: `color-mix(in srgb, ${accentColor} 30%, transparent)`,
-                      backgroundColor: `color-mix(in srgb, ${accentColor} 8%, transparent)`,
-                    }
-                  : undefined
-              }
-            >
-              {accentColor && (
-                <span
-                  className="h-1 w-1 rounded-full"
-                  style={{ backgroundColor: accentColor }}
-                />
-              )}
-              {category}
-            </span>
+          <h3 className="text-ink truncate text-sm leading-tight font-semibold">
+            {title}
+          </h3>
+          <div className="text-subtle-copy mt-0.5 truncate text-[11px]">
+            {category}
           </div>
-          {description && (
-            <p className="text-subtle-copy mt-0.5 truncate text-xs">
-              {description}
-            </p>
-          )}
         </div>
         <Button
           variant="ghost"
@@ -130,14 +103,6 @@ function SettingsPanelHeader({
           <X className="h-4 w-4" />
         </Button>
       </div>
-      {accentColor && (
-        <div
-          className="absolute right-0 bottom-0 left-0 h-px"
-          style={{
-            background: `linear-gradient(to right, color-mix(in srgb, ${accentColor} 25%, transparent), transparent 80%)`,
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -159,33 +124,17 @@ function StartNodeSettings({
     <SettingsPanelShell suppressed={suppressed}>
       <SettingsPanelHeader
         icon={
-          <div className="bg-status-success-soft border-status-success-border rounded-lg border p-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]">
-            <Play className="text-status-success h-4 w-4" />
+          <div className="border-line-soft bg-panel-subtle rounded-lg border p-2">
+            <Play className="text-ink h-4 w-4" />
           </div>
         }
-        title="Start Node"
-        category="Workflow Entry"
-        description="Where this workflow begins"
-        accentColor="#22c55e"
+        title="Start"
+        category="Entry point"
         onClose={onClose}
       />
-      <ScrollArea className="flex-1 bg-transparent">
-        <div className="space-y-3 p-4">
-          <div className="bg-status-success-soft/20 flex items-start gap-2.5 rounded-lg px-3 py-2.5">
-            <Info className="text-status-success mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />
-            <div className="space-y-2">
-              <p className="text-muted-copy text-[11px] leading-relaxed">
-                This is the entry point for your workflow. Connect this node to the
-                first action you want to perform.
-              </p>
-              <p className="text-muted-copy text-[11px] leading-relaxed">
-                Use the "Start Browser" and "Select List" nodes from the Control
-                Flow category to set up your workflow appropriately.
-              </p>
-            </div>
-          </div>
-        </div>
-      </ScrollArea>
+      <div className="text-muted-copy p-4 text-xs">
+        Connect it to your first block.
+      </div>
     </SettingsPanelShell>
   )
 }
@@ -262,37 +211,14 @@ function ActivityNodeSettings({
   const activity = getActivityById(activityId)
   const initialConfig = (node.data?.config as Record<string, unknown>) || {}
   const [config, setConfig] = useState<Record<string, unknown>>(initialConfig)
-  const [baseline, setBaseline] =
-    useState<Record<string, unknown>>(initialConfig)
 
   const handleChange = useCallback((name: string, value: unknown) => {
-    setConfig((prev) => ({ ...prev, [name]: value }))
-  }, [])
-
-  const handleReset = useCallback(() => {
-    setConfig(baseline)
-  }, [baseline])
-
-  const handleSave = useCallback(() => {
-    onUpdate(node.id, { ...node.data, config })
-    setBaseline(config)
-  }, [node.id, node.data, config, onUpdate])
-
-  const isDirty =
-    JSON.stringify(config) !== JSON.stringify(baseline)
-
-  // Ctrl/Cmd+Enter applies changes without leaving the panel.
-  useEffect(() => {
-    if (suppressed || !isDirty) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-        event.preventDefault()
-        handleSave()
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [suppressed, isDirty, handleSave])
+    const base = (node.data?.config as Record<string, unknown>) || {}
+    const next = { ...base, [name]: value }
+    setConfig(next)
+    // Live-apply: no Apply button needed.
+    onUpdate(node.id, { ...node.data, config: next })
+  }, [node.id, node.data, onUpdate])
 
   if (!activity) {
     return <UnknownActivityPanel activityId={activityId} suppressed={suppressed} onClose={onClose} />
@@ -302,52 +228,18 @@ function ActivityNodeSettings({
     <SettingsPanelShell suppressed={suppressed}>
       <SettingsPanelHeader
         icon={
-          <div
-            className="rounded-lg border p-2 shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
-            style={{
-              backgroundColor: `color-mix(in srgb, ${activity.color} 8%, transparent)`,
-              borderColor: `color-mix(in srgb, ${activity.color} 19%, transparent)`,
-            }}
-          >
+          <div className="border-line-soft bg-panel-subtle rounded-lg border p-2">
             <ActivityIcon
               iconName={activity.icon}
-              className="h-4 w-4"
-              style={{ color: activity.color }}
+              className="text-ink h-4 w-4"
             />
           </div>
         }
         title={activity.name}
         category={activity.category}
-        description={activity.description}
-        accentColor={activity.color}
         onClose={onClose}
       />
       <ActivitySettingsBody activity={activity} config={config} onChange={handleChange} />
-      <div className="border-line-soft bg-panel-subtle flex shrink-0 items-center gap-2 border-t p-3 shadow-[inset_0_1px_0_rgb(255_255_255/0.04)]">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleReset}
-          disabled={!isDirty}
-          className="text-subtle-copy hover:text-ink h-9 shrink-0 rounded-lg px-3 text-[13px] disabled:opacity-40"
-        >
-          Reset
-        </Button>
-        <Button
-          className="brand-button h-9 flex-1 rounded-lg text-sm transition-all duration-150 disabled:opacity-60"
-          size="sm"
-          disabled={!isDirty}
-          onClick={handleSave}
-          title={isDirty ? 'Apply changes (Ctrl+Enter)' : 'No changes to apply'}
-        >
-          <span className="inline-flex items-center gap-2">
-            {isDirty && (
-              <span className="h-1.5 w-1.5 rounded-full bg-current" />
-            )}
-            {isDirty ? 'Apply Changes' : 'No Changes'}
-          </span>
-        </Button>
-      </div>
     </SettingsPanelShell>
   )
 }

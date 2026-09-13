@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import ReactFlow, {
   Background,
+  BackgroundVariant,
   Controls,
   ReactFlowProvider,
   type Edge,
@@ -10,16 +11,6 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { ArrowLeft, Plus, Save, Sparkles } from 'lucide-react'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import type { Workflow } from '../types'
 import { ActivityNode } from './ActivityNode'
@@ -69,22 +60,26 @@ function WorkflowFlowEditorInner({
     onSave(state.nodes, state.edges)
   }, [state.edges, state.nodes, onSave])
 
+  // Delete key removes node instantly (undo via toast). Ctrl/Cmd+S saves.
   useEffect(() => {
-    if (!state.selectedNode || state.blockLibraryOpen || state.pendingDeleteNodeId) return
+    if (state.blockLibraryOpen) return
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        isEditableTarget(event.target) ||
-        state.selectedNode!.id === 'start_node' ||
-        (event.key !== 'Delete' && event.key !== 'Backspace')
-      ) return
+      const savePressed =
+        (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's'
+      if (savePressed) {
+        event.preventDefault()
+        if (!saving) handleSave()
+        return
+      }
+      if (!state.selectedNode || isEditableTarget(event.target)) return
+      if (state.selectedNode.id === 'start_node') return
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return
       event.preventDefault()
-      state.setPendingDeleteNodeId(state.selectedNode!.id)
+      state.editorContextValue.deleteNode(state.selectedNode.id)
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.blockLibraryOpen, state.pendingDeleteNodeId, state.selectedNode, state.setPendingDeleteNodeId])
+  }, [state.blockLibraryOpen, state.selectedNode, state.editorContextValue, handleSave, saving])
 
   return (
     <div className="bg-shell text-ink flex h-full w-full flex-col overflow-hidden p-2 font-sans text-xs md:p-3">
@@ -110,6 +105,7 @@ function WorkflowFlowEditorInner({
             onConnect={state.onConnect}
             onSelectionChange={state.onSelectionChange}
             onMoveEnd={state.onMoveEnd}
+            onAddBlock={state.handleOpenDisconnectedLibrary}
           />
 
           <NodeSettingsPanel
@@ -124,12 +120,6 @@ function WorkflowFlowEditorInner({
           open={state.blockLibraryOpen}
           insertionContext={state.blockLibraryContext}
           onOpenChange={state.handleBlockLibraryOpenChange}
-        />
-
-        <DeleteNodeDialog
-          pendingDeleteNode={state.pendingDeleteNode}
-          onOpenChange={state.handleDeleteDialogOpenChange}
-          onConfirm={state.handleConfirmDeleteNode}
         />
       </WorkflowEditorProvider>
     </div>
@@ -165,7 +155,7 @@ function EditorToolbar({
             className="border-line-soft bg-field-alt hover:bg-panel-hover h-8 rounded-lg px-3 text-xs text-copy shadow-none"
           >
             <ArrowLeft className="mr-2 h-3.5 w-3.5" />
-            Back to Workflows
+            Back
           </Button>
           <h1 className="page-title-gradient min-w-0 truncate text-lg font-semibold md:text-xl">
             {workflowName || 'Workflow'}
@@ -183,10 +173,10 @@ function EditorToolbar({
             Add Block
           </Button>
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={onClear}
-            className="border-line-soft bg-field-alt hover:bg-panel-hover h-8 rounded-lg px-3 text-xs text-copy shadow-none"
+            className="h-8 rounded-lg px-3 text-xs"
           >
             Clear
           </Button>
@@ -195,6 +185,7 @@ function EditorToolbar({
             onClick={onSave}
             disabled={saving}
             className="brand-button h-8 rounded-lg px-3 text-xs"
+            title="Save (Ctrl+S)"
           >
             <Save className="mr-1.5 h-3.5 w-3.5" />
             {saving ? 'Saving...' : 'Save Flow'}
@@ -221,6 +212,7 @@ function EditorCanvas({
   onConnect,
   onSelectionChange,
   onMoveEnd,
+  onAddBlock,
 }: {
   canvasRef: MutableRefObject<HTMLDivElement | null>
   nodes: Node[]
@@ -232,6 +224,7 @@ function EditorCanvas({
   onConnect: OnConnect
   onSelectionChange: OnSelectionChangeFunc
   onMoveEnd: () => void
+  onAddBlock: () => void
 }) {
   return (
     <div className="border-line-soft bg-panel/40 relative min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-xs">
@@ -239,7 +232,7 @@ function EditorCanvas({
         ref={canvasRef}
         className="bg-shell absolute inset-0 overflow-hidden"
       >
-        {isEmptyCanvas ? <EmptyCanvasOverlay /> : null}
+        {isEmptyCanvas ? <EmptyCanvasOverlay onAddBlock={onAddBlock} /> : null}
 
         <ReactFlow
           nodes={nodes}
@@ -255,73 +248,40 @@ function EditorCanvas({
           deleteKeyCode={null}
           className="bg-transparent"
           selectNodesOnDrag={false}
+          snapToGrid
+          snapGrid={[16, 16]}
+          minZoom={0.4}
+          maxZoom={1.75}
           defaultEdgeOptions={WORKFLOW_EDGE_DEFAULTS}
         >
-          <Controls className="bg-panel-muted border-line" />
-          <Background gap={16} size={1} color="var(--workflow-grid)" />
+          <Controls className="bg-panel-muted border-line" showInteractive={false} />
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={22}
+            size={1.5}
+            color="var(--workflow-grid)"
+          />
         </ReactFlow>
       </div>
     </div>
   )
 }
 
-function EmptyCanvasOverlay() {
+function EmptyCanvasOverlay({ onAddBlock }: { onAddBlock: () => void }) {
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-      <div className="bg-panel/92 border-line-soft max-w-sm rounded-2xl border p-5 text-center shadow-xl backdrop-blur-sm">
+    <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
+      <div className="bg-panel/95 border-line-soft max-w-sm rounded-2xl border p-5 text-center shadow-xl backdrop-blur-sm">
         <div className="bg-panel-subtle mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl">
           <Sparkles className="text-ink h-5 w-5" />
         </div>
         <h3 className="text-ink text-sm font-semibold">
-          Start building from the entry node
+          Start building
         </h3>
-        <p className="text-subtle-copy mt-2 text-xs leading-relaxed">
-          Click the <strong>+</strong> button on the start node to
-          add the first block, or use the header action to place a
-          disconnected block.
-        </p>
+        <Button size="sm" className="brand-button mt-4 h-8 rounded-lg px-4 text-xs" onClick={onAddBlock}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" />
+          Add first block
+        </Button>
       </div>
     </div>
-  )
-}
-
-/* ── Delete Dialog ── */
-
-function DeleteNodeDialog({
-  pendingDeleteNode,
-  onOpenChange,
-  onConfirm,
-}: {
-  pendingDeleteNode: Node | null
-  onOpenChange: (open: boolean) => void
-  onConfirm: () => void
-}) {
-  return (
-    <AlertDialog
-      open={pendingDeleteNode != null}
-      onOpenChange={onOpenChange}
-    >
-      <AlertDialogContent className="bg-panel border-line border shadow-xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-ink">
-            Delete node?
-          </AlertDialogTitle>
-          <AlertDialogDescription className="text-muted-copy">
-            {pendingDeleteNode
-              ? `Remove "${String(pendingDeleteNode.data?.label ?? pendingDeleteNode.id)}" from this workflow?`
-              : 'Remove this node from the workflow?'}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            onClick={onConfirm}
-          >
-            Delete node
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   )
 }

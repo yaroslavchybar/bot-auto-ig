@@ -442,4 +442,8 @@
 
 @utility workflow-handle {
   background-color: var(--workflow-edge) !important;
+
+  &:hover {
+    background-color: var(--ink) !important;
+  }
 }

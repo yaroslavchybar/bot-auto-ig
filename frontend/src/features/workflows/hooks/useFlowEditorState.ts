@@ -24,6 +24,7 @@ import {
   createActivityNode,
   createEdgeId,
   duplicateWorkflowNode,
+  fixOverlappingNodes,
   getConnectedInsertPosition,
   getDisconnectedInsertPosition,
   normalizeWorkflowNode,
@@ -219,10 +220,14 @@ function useBlockLibraryState() {
 function useInitialGraphData(workflow: Workflow | null) {
   const initialNodes = useMemo(() => {
     if (workflow?.nodes && (workflow.nodes as Node[]).length > 0) {
-      return (workflow.nodes as Node[]).map((node) => ({
+      const normalized = (workflow.nodes as Node[]).map((node) => ({
         ...normalizeWorkflowNode(node),
         selected: false,
       }))
+      return fixOverlappingNodes(
+        normalized,
+        (workflow.edges as Edge[] | undefined) ?? [],
+      )
     }
     return [createDefaultStartNode()]
   }, [workflow])
@@ -334,12 +339,12 @@ function useGraphOperations(
   blockLibrary: ReturnType<typeof useBlockLibraryState>,
 ) {
   const performDeleteNode = useNodeDeletion(nodesRef, edgesRef, setNodes, setEdges, setSelectedNode)
-  const [pendingDeleteNodeId, setPendingDeleteNodeId] = useState<string | null>(null)
-
-  const deleteNode = useCallback((nodeId: string) => {
-    if (nodeId === 'start_node') return
-    setPendingDeleteNodeId(nodeId)
-  }, [])
+  const deleteNode = useCallback(
+    (nodeId: string) => {
+      performDeleteNode(nodeId)
+    },
+    [performDeleteNode],
+  )
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -356,18 +361,14 @@ function useGraphOperations(
     blockLibrary.setBlockLibraryContext(null)
   }, [blockLibrary, setEdges, setNodes, setSelectedNode])
 
-  const handleDeleteDialogOpenChange = useCallback((nextOpen: boolean) => {
-    if (!nextOpen) setPendingDeleteNodeId(null)
-  }, [])
+  const handleDeleteDialogOpenChange = useCallback(() => {}, [])
 
-  const handleConfirmDeleteNode = useCallback(() => {
-    if (!pendingDeleteNodeId) return
-    performDeleteNode(pendingDeleteNodeId)
-    setPendingDeleteNodeId(null)
-  }, [pendingDeleteNodeId, performDeleteNode])
+  const handleConfirmDeleteNode = useCallback(() => {}, [])
 
   return {
-    pendingDeleteNodeId, setPendingDeleteNodeId, deleteNode,
+    pendingDeleteNodeId: null as string | null,
+    setPendingDeleteNodeId: () => {},
+    deleteNode,
     onConnect, handleClear, handleDeleteDialogOpenChange, handleConfirmDeleteNode,
   }
 }

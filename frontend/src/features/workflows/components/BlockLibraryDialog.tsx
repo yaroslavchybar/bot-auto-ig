@@ -86,14 +86,10 @@ function BlockLibraryItem({
       className="button-panel flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left"
       onClick={() => onInsert(activity.id)}
     >
-      <div
-        className="rounded-lg p-2"
-        style={{ backgroundColor: `${activity.color}18` }}
-      >
+      <div className="bg-panel-subtle border-line-soft rounded-lg border p-2">
         <ActivityIcon
           iconName={activity.icon}
-          className="h-4 w-4"
-          style={{ color: activity.color }}
+          className="text-ink h-4 w-4"
         />
       </div>
       <div className="min-w-0 flex-1">

@@ -12,10 +12,35 @@ export interface BlockInsertionContext {
   disconnected?: boolean
 }
 
-const CONNECTED_NODE_X_OFFSET = 260
+const CONNECTED_NODE_X_OFFSET = 330
 const CONNECTED_NODE_Y_OFFSET = 78
-const DUPLICATE_NODE_OFFSET = 40
+const DUPLICATE_NODE_X_OFFSET = 32
+const DUPLICATE_NODE_Y_OFFSET = 170
 const DISCONNECTED_NODE_OFFSET = 24
+
+// Card footprint used to detect overlapping nodes saved with old spacing.
+const NODE_WIDTH = 248
+const NODE_HEADER_HEIGHT = 64
+const NODE_OUTPUT_ROW_HEIGHT = 36
+const OVERLAP_GAP = 8
+const LAYOUT_X_STEP = 330
+const LAYOUT_Y_STEP = 210
+const LAYOUT_ORIGIN = { x: 60, y: 60 }
+
+function getNodeHeight(node: Node): number {
+  const outputs = getActivityOutputs(node)
+  const rows = Math.max(outputs.length, 1)
+  return NODE_HEADER_HEIGHT + rows * NODE_OUTPUT_ROW_HEIGHT
+}
+
+function nodesIntersect(a: Node, b: Node): boolean {
+  return (
+    a.position.x - OVERLAP_GAP < b.position.x + NODE_WIDTH &&
+    b.position.x - OVERLAP_GAP < a.position.x + NODE_WIDTH &&
+    a.position.y - OVERLAP_GAP < b.position.y + getNodeHeight(b) &&
+    b.position.y - OVERLAP_GAP < a.position.y + getNodeHeight(a)
+  )
+}
 
 function cloneData<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -89,8 +114,8 @@ export function duplicateWorkflowNode(node: Node): Node {
     ...cloneData(node),
     id: `${node.id}_copy_${Date.now().toString(36)}`,
     position: {
-      x: node.position.x + DUPLICATE_NODE_OFFSET,
-      y: node.position.y + DUPLICATE_NODE_OFFSET,
+      x: node.position.x + DUPLICATE_NODE_X_OFFSET,
+      y: node.position.y + DUPLICATE_NODE_Y_OFFSET,
     },
     selected: false,
   }
@@ -121,6 +146,71 @@ export function getConnectedInsertPosition(
     x: sourceNode.position.x + CONNECTED_NODE_X_OFFSET,
     y: sourceNode.position.y + outputIndex * CONNECTED_NODE_Y_OFFSET,
   }
+}
+
+/** Lay nodes out left-to-right following edges. Used once when saved positions overlap. */
+function layoutNodesByDepth(nodes: Node[], edges: Edge[]): Node[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const children = new Map<string, string[]>()
+  for (const edge of edges) {
+    if (byId.has(edge.source) && byId.has(edge.target)) {
+      const list = children.get(edge.source) ?? []
+      list.push(edge.target)
+      children.set(edge.source, list)
+    }
+  }
+  const start = byId.get('start_node') ?? nodes[0]
+  if (!start) return nodes
+
+  const depth = new Map<string, number>([[start.id, 0]])
+  const queue = [start.id]
+  while (queue.length > 0) {
+    const id = queue.shift() as string
+    const d = depth.get(id) as number
+    for (const child of children.get(id) ?? []) {
+      if (!depth.has(child)) {
+        depth.set(child, d + 1)
+        queue.push(child)
+      }
+    }
+  }
+  let nextDepth = depth.size > 0 ? Math.max(...depth.values()) + 1 : 0
+  for (const node of nodes) {
+    if (!depth.has(node.id)) {
+      depth.set(node.id, nextDepth)
+      nextDepth += 1
+    }
+  }
+
+  const rowInLevel = new Map<number, number>()
+  return nodes.map((node) => {
+    const d = depth.get(node.id) ?? 0
+    const row = rowInLevel.get(d) ?? 0
+    rowInLevel.set(d, row + 1)
+    return {
+      ...node,
+      position: {
+        x: LAYOUT_ORIGIN.x + d * LAYOUT_X_STEP,
+        y: LAYOUT_ORIGIN.y + row * LAYOUT_Y_STEP,
+      },
+    }
+  })
+}
+
+/**
+ * Old workflows were saved with spacing for narrow cards, so they overlap
+ * now. If any two nodes overlap, re-lay the whole canvas out. Otherwise
+ * keep the user's manual positions untouched.
+ */
+export function fixOverlappingNodes(nodes: Node[], edges: Edge[]): Node[] {
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      if (nodesIntersect(nodes[i], nodes[j])) {
+        return layoutNodesByDepth(nodes, edges)
+      }
+    }
+  }
+  return nodes
 }
 
 export function getDisconnectedInsertPosition(args: {
