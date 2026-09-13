@@ -1,4 +1,4 @@
-﻿# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.7
 FROM oven/bun:1.4.2-debian AS system-base
 
 WORKDIR /app
@@ -50,7 +50,7 @@ COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun install --frozen-lockfile --production --filter anti-server
+  bun install --frozen-lockfile --production --filter anti-server --ignore-scripts
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bunx --no-install camoufox-js fetch
 
@@ -72,7 +72,7 @@ COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun install --frozen-lockfile --production --filter anti-server
+  bun install --frozen-lockfile --production --filter anti-server --ignore-scripts
 
 FROM bun-build-deps AS app-build
 COPY --from=repo_root server ./server
