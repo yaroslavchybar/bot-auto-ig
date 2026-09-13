@@ -168,11 +168,27 @@ export const executeScheduledWorkflow = internalMutation({
 export const triggerWorkflowExecution = internalAction({
 	args: { workflowId: v.id("workflows") },
 	handler: async (_ctx, args) => {
-		const serverUrl = (globalThis as any)?.process?.env?.SERVER_URL || "http://localhost:5000";
-		const apiKey = (globalThis as any)?.process?.env?.INTERNAL_API_KEY || "";
+		const rawServerUrl = (globalThis as any)?.process?.env?.SERVER_URL as string | undefined;
+		const rawApiKey = (globalThis as any)?.process?.env?.INTERNAL_API_KEY as string | undefined;
+
+		// Normalize base URL (trim whitespace, drop trailing slashes).
+		const serverUrl = (typeof rawServerUrl === "string" ? rawServerUrl.trim() : "") || "http://localhost:5000";
+		const normalizedServerUrl = serverUrl.replace(/\/+$/, "");
+		// Trim pasted secrets (trailing newline/space breaks undici fetch
+		// with "failed to parse header value").
+		const apiKey = typeof rawApiKey === "string" ? rawApiKey.trim() : "";
+
+		if (!apiKey) {
+			console.error("Cannot trigger workflow: INTERNAL_API_KEY is not configured in Convex env");
+			return { success: false, error: "INTERNAL_API_KEY is not configured in Convex env" };
+		}
+		if (/[\r\n\0]/.test(apiKey) || /[^\x20-\x7E]/.test(apiKey)) {
+			console.error("Cannot trigger workflow: INTERNAL_API_KEY contains invalid characters (newline or non-ASCII). Re-set it without quotes/newlines.");
+			return { success: false, error: "INTERNAL_API_KEY contains invalid characters" };
+		}
 
 		try {
-			const response = await fetch(`${serverUrl}/api/workflows/run`, {
+			const response = await fetch(`${normalizedServerUrl}/api/workflows/run`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
