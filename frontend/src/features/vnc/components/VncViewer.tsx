@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc/lib/rfb.js'
 import { cn } from '@/lib/utils'
+import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { buildVncWebSocketUrl } from '../utils/buildVncWebSocketUrl'
 
 interface VncViewerProps {
@@ -82,6 +83,7 @@ function useSyncInteractive(
 /* ── RFB connection lifecycle ── */
 
 function useRfbConnection(
+  enabled: boolean,
   url: string,
   screenRef: React.RefObject<HTMLDivElement | null>,
   rfbRef: React.MutableRefObject<RFB | null>,
@@ -97,11 +99,9 @@ function useRfbConnection(
 
   useEffect(() => {
     const screen = screenRef.current
-    if (!screen) return
+    if (!screen || !enabled) return
 
-    let disposed = false
-    // eslint-disable-next-line prefer-const -- reassigned in event listeners
-    let terminalFailure = false
+    const lifecycle = { disposed: false, terminalFailure: false }
 
     const clearReconnectTimer = () => {
       if (reconnectTimerRef.current !== null) {
@@ -111,7 +111,7 @@ function useRfbConnection(
     }
 
     const scheduleReconnect = () => {
-      if (disposed || reconnectTimerRef.current !== null) return
+      if (lifecycle.disposed || lifecycle.terminalFailure || reconnectTimerRef.current !== null) return
       reconnectAttemptRef.current += 1
       setConnectionOverlay({
         tone: 'info',
@@ -123,22 +123,22 @@ function useRfbConnection(
       reconnectTimerRef.current = window.setTimeout(() => {
         reconnectTimerRef.current = null
         setReconnectKey((current) => current + 1)
-      }, RECONNECT_DELAY_MS)
+      }, Math.min(RECONNECT_DELAY_MS * 2 ** Math.min(reconnectAttemptRef.current - 1, 5), 30000))
     }
 
     screen.replaceChildren()
     const rfb = new RFB(screen, url)
     rfbRef.current = rfb
     configureRfb(rfb, interactiveRef)
-    attachRfbListeners(rfb, disposed, terminalFailure, clearReconnectTimer,
+    attachRfbListeners(rfb, lifecycle, clearReconnectTimer,
       reconnectAttemptRef, setConnectionOverlay, scheduleReconnect)
 
     return () => {
-      disposed = true
+      lifecycle.disposed = true
       clearReconnectTimer()
       detachAndDisconnect(rfb, rfbRef, screen)
     }
-  }, [reconnectKey, url, screenRef, rfbRef, interactiveRef])
+  }, [enabled, reconnectKey, url, screenRef, rfbRef, interactiveRef])
 
   return { connectionOverlay }
 }
@@ -156,20 +156,20 @@ function configureRfb(rfb: RFB, interactiveRef: React.MutableRefObject<boolean>)
 
 function attachRfbListeners(
   rfb: RFB,
-  disposed: boolean,
-  terminalFailure: boolean,
+  lifecycle: { disposed: boolean; terminalFailure: boolean },
   clearReconnectTimer: () => void,
   reconnectAttemptRef: React.MutableRefObject<number>,
   setConnectionOverlay: (s: OverlayState) => void,
   scheduleReconnect: () => void,
 ) {
   rfb.addEventListener('connect', () => {
+    if (lifecycle.disposed || lifecycle.terminalFailure) return
     reconnectAttemptRef.current = 0
     clearReconnectTimer()
     setConnectionOverlay(null)
   })
   rfb.addEventListener('disconnect', (event: Event) => {
-    if (disposed || terminalFailure) return
+    if (lifecycle.disposed || lifecycle.terminalFailure) return
     if ((event as DisconnectEvent).detail?.clean) {
       setConnectionOverlay({ tone: 'info', text: 'Display disconnected.' })
       return
@@ -177,8 +177,9 @@ function attachRfbListeners(
     scheduleReconnect()
   })
   rfb.addEventListener('securityfailure', (event: Event) => {
-    if (disposed) return
-    terminalFailure = true
+    if (lifecycle.disposed) return
+    lifecycle.terminalFailure = true
+    clearReconnectTimer()
     const reason = (event as SecurityFailureEvent).detail?.reason
     const status = (event as SecurityFailureEvent).detail?.status
     setConnectionOverlay({
@@ -191,8 +192,9 @@ function attachRfbListeners(
     })
   })
   rfb.addEventListener('credentialsrequired', () => {
-    if (disposed) return
-    terminalFailure = true
+    if (lifecycle.disposed) return
+    lifecycle.terminalFailure = true
+    clearReconnectTimer()
     setConnectionOverlay({ tone: 'error', text: 'Display requested credentials.' })
   })
 }
@@ -238,10 +240,23 @@ export function VncViewer({
   const screenRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const interactiveRef = useRef(interactive)
+  const isVisible = useDocumentVisibility()
+  const [inViewport, setInViewport] = useState(false)
+
+  // Stop framebuffer traffic and decoding for hidden routes and off-screen tiles.
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const observer = new IntersectionObserver(([entry]) => {
+      setInViewport(entry.isIntersecting)
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
 
   useFullscreenKey(interactive, containerRef)
   useSyncInteractive(interactive, rfbRef, interactiveRef)
-  const { connectionOverlay } = useRfbConnection(url, screenRef, rfbRef, interactiveRef)
+  const { connectionOverlay } = useRfbConnection(isVisible && inViewport, url, screenRef, rfbRef, interactiveRef)
 
   return (
     <div

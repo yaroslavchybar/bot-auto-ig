@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import {
   applyDisplayEvent,
   normalizeSessions,
@@ -20,6 +21,8 @@ import { useErrorHandler } from '@/hooks/useErrorHandler'
  */
 export function useVncSessions(enabled: boolean) {
   const isMobile = useIsMobile()
+  const isVisible = useDocumentVisibility()
+  const active = enabled && isVisible
   const { handleError } = useErrorHandler()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
@@ -42,30 +45,30 @@ export function useVncSessions(enabled: boolean) {
 
   const { connected } = useWebSocket({
     onEvent: handleSocketEvent,
-    enabled,
+    enabled: active,
+    eventsOnly: true,
     pauseWhenHidden: true,
   })
 
   useEffect(() => {
-    if (!enabled) {
+    if (!active) {
       return
     }
 
-    void refresh()
-
-    if (connected) {
-      return
+    let disposed = false
+    // Schedule the next poll after completion so slow requests cannot pile up.
+    const poll = async () => {
+      await refresh()
+      if (!disposed && !connected) {
+        timer = setTimeout(() => { void poll() }, isMobile ? 15000 : 5000)
+      }
     }
-
-    const interval = setInterval(
-      () => {
-        void refresh()
-      },
-      isMobile ? 15000 : 5000,
-    )
-
-    return () => clearInterval(interval)
-  }, [connected, isMobile, enabled, refresh])
+    let timer = setTimeout(() => { void poll() }, 0)
+    return () => {
+      disposed = true
+      clearTimeout(timer)
+    }
+  }, [connected, isMobile, active, refresh])
 
   return {
     sessions,

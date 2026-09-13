@@ -194,29 +194,13 @@ export const clearBusyForListsInternal = internalMutation({
 	},
 });
 
-export const incrementDailyScrapingUsed = mutation({
-	args: { name: v.string(), amount: v.number() },
-	handler: async (ctx, args) => {
-		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount);
-	},
-});
-
+// Quota charges are internal-only: the server calls them through the
+// INTERNAL_API_KEY-gated HTTP route. A public mutation would let any client
+// inflate dailyScrapingUsed and spam scrapeQuotaCommits rows.
 export const incrementDailyScrapingUsedInternal = internalMutation({
-	args: { name: v.string(), amount: v.number() },
+	args: { name: v.string(), amount: v.number(), commitKey: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount);
-	},
-});
-
-export const incrementDailyScrapingUsedById = mutation({
-	args: { profileId: v.id("profiles"), amount: v.number() },
-	handler: async (ctx, args) => {
-		const amount = Number.isFinite(args.amount) ? Math.max(0, Math.floor(args.amount)) : 0;
-		if (amount === 0) return true;
-		const existing = await ctx.db.get(args.profileId);
-		if (!existing) return true;
-		await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
-		return true;
+		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount, args.commitKey);
 	},
 });
 

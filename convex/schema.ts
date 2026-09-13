@@ -33,6 +33,13 @@ export default defineSchema({
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
 
+	scrapeQuotaCommits: defineTable({
+		key: v.string(),
+		profileName: v.string(),
+		amount: v.number(),
+		createdAt: v.number(),
+	}).index("by_key", ["key"]),
+
 	instagramAccounts: defineTable({
 		userName: v.string(),
 		fullName: v.optional(v.string()),

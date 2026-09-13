@@ -3,6 +3,22 @@ import assert from 'node:assert/strict'
 import type { CamoufoxSession } from '../browser/camoufox.js'
 import { runWorkflow } from './worker.js'
 
+test('retry skips completed profiles without launching or changing their status', async () => {
+  const originalFetch = globalThis.fetch
+  let launches = 0
+  globalThis.fetch = (async url => {
+    assert.ok(String(url).endsWith('/api/profiles'))
+    return Response.json([{ name: 'done', profile_id: 'done', list_ids: ['chosen'], login: true, Using: false }])
+  }) as typeof fetch
+  try {
+    await runWorkflow({ workflow: {
+      nodes: [{ id: 'select', data: { activityId: 'select_list', config: { sourceLists: ['chosen'] } } }],
+      nodeStates: { __profileRuns: { done: { completed: true } } },
+    } }, async () => { launches++; throw new Error('Must not launch') })
+    assert.equal(launches, 0)
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('close then start replaces the browser and final cleanup closes the replacement', async () => {
   const originalFetch = globalThis.fetch
   const profile = { name: 'chosen', profile_id: 'chosen', list_ids: ['chosen'], login: true, Using: false }

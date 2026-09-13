@@ -60,11 +60,24 @@ Secrets live in `.env.local`, never committed. Key vars: `SERVER_PORT`,
 `CONVEX_URL`, `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls),
 `CONVEX_URL_DEV/PROD`.
+`BROWSER_MAX_CONCURRENCY` (default `3`) caps active browser sessions across all
+workers launched by one server, including manual/login sessions. Workers must be
+launched through the server so they share its resource budget; waiting is cancellable.
 `DISABLE_AUTH=true` bypasses auth in local dev only. High-risk edit
 areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounting),
 `server/websocket.ts`, `convex/http.ts`.
 
 ## Workflow & Quality Gates
+
+- Scrapes store immutable user chunks plus a small atomic checkpoint. Downloads
+  stream committed chunks as JSON; retries retain the cursor without rewriting prior users.
+  Older scrape checkpoints require a fresh workflow run.
+- Workflow checkpoints are separate from UI events. Pending database snapshots
+  coalesce, and slow WebSocket clients are disconnected at a 1 MiB outbound buffer.
+
+- Live VNC streams disconnect while the tab or viewer is hidden/off-screen and
+  reconnect when visible. Failed connections back off to a 30-second retry delay.
+- Display-session watchers pause background polling and do not retain log feeds.
 
 - Bun workspaces; `bun install --frozen-lockfile` must be clean.
 - Convex changes: add/update `convex/tests/` + `bun run test:convex`.

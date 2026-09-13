@@ -4,6 +4,7 @@ import { Camoufox } from 'camoufox-js'
 import { FingerprintGenerator, type Fingerprint } from 'fingerprint-generator'
 import { parseProxy, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
 import { shutdownSignal } from './lifecycle.js'
+import { acquireBrowserSlot } from './budget.js'
 import { prepareBrowserProxy } from './proxy.js'
 import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
@@ -239,12 +240,20 @@ export async function openCamoufoxSession(
   fs.writeFileSync(lock, String(process.pid))
   fs.closeSync(lock)
   let released = false
+  let releaseSlot: (() => void) | undefined
+  let budgetLost = false
+  let liveSession: CamoufoxSession | undefined
   const release = () => {
     if (released) return
     released = true
+    releaseSlot?.()
     fs.unlinkSync(lockPath)
   }
   try {
+    releaseSlot = await acquireBrowserSlot(shutdownSignal, undefined, () => {
+      budgetLost = true
+      void liveSession?.close().catch(() => undefined)
+    })
     const display = options.headless ? undefined : await allocateDisplay()
     let session: CamoufoxSession
     try {
@@ -252,6 +261,11 @@ export async function openCamoufoxSession(
         ...options,
         display: display?.display ?? options.display,
       })
+      liveSession = session
+      if (budgetLost) {
+        await session.close()
+        throw new Error('Browser resource budget disconnected')
+      }
     } catch (error) {
       await display?.close()
       throw error

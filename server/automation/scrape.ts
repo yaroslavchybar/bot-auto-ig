@@ -13,7 +13,7 @@ import { resolveProjectRoot } from '../shared/utils.js'
 import { shutdownSignal, sleep } from '../browser/lifecycle.js'
 
 type Kind = 'followers' | 'following'
-type User = {
+export type User = {
   pk?: string | number
   id?: string
   username?: string
@@ -24,7 +24,7 @@ type Progress = {
   cursor: string | null
   targetCount: number
   chunks: number
-  users: User[]
+  scraped: number
   completed: boolean
 }
 const count = (value: unknown, fallback: number) =>
@@ -39,9 +39,10 @@ export async function fetchRelationshipPage(
   kind: Kind,
   cursor: string | null,
   limit: number,
+  target: { userId?: string; total?: number } = {},
 ) {
-  return page.evaluate(
-    async ({ username, kind, cursor, limit }) => {
+  const result = await page.evaluate(
+    async ({ username, kind, cursor, limit, target }) => {
       const headers: Record<string, string> = {
         'x-ig-app-id': '936619743392459',
         'x-asbd-id': '129477',
@@ -64,10 +65,15 @@ export async function fetchRelationshipPage(
           throw new Error(String(body.message || 'Instagram request failed'))
         return body
       }
-      const metadata = await request(
-        `/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
-      )
-      const userId = metadata.data?.user?.id || metadata.data?.user?.pk
+      if (!target.userId) {
+        const metadata = await request(
+          `/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`,
+        )
+        const user = metadata.data?.user
+        target = { userId: String(user?.id || user?.pk || ''), total:
+          kind === 'followers' ? user?.edge_followed_by?.count : user?.edge_follow?.count }
+      }
+      const userId = target.userId
       if (!userId) throw new Error('Target profile not found')
       const params = new URLSearchParams({ count: String(limit) })
       if (cursor) params.set('max_id', cursor)
@@ -77,15 +83,12 @@ export async function fetchRelationshipPage(
       const users = body.users ?? body.profiles
       if (!Array.isArray(users))
         throw new Error('Invalid relationship response')
-      const total =
-        kind === 'followers'
-          ? metadata.data.user.edge_followed_by?.count
-          : metadata.data.user.edge_follow?.count
-      if (!cursor && users.length === 0 && Number(total) > 0)
+      if (!cursor && users.length === 0 && Number(target.total) > 0)
         throw new Error(
           'Instagram returned an incomplete empty relationship list',
         )
       return {
+        target,
         users: users as User[],
         cursor:
           body.next_max_id == null || body.big_list === false
@@ -93,8 +96,10 @@ export async function fetchRelationshipPage(
             : String(body.next_max_id) || null,
       }
     },
-    { username, kind, cursor, limit },
+    { username, kind, cursor, limit, target },
   )
+  Object.assign(target, result.target)
+  return result
 }
 
 export async function scrapeRelationships(input: {
@@ -105,7 +110,7 @@ export async function scrapeRelationships(input: {
   nodeId: string
   config: Record<string, unknown>
   state: Record<string, any>
-  onProgress: () => void
+  onProgress: () => void | Promise<void>
   artifactRoot?: string
 }): Promise<void> {
   const {
@@ -159,27 +164,31 @@ export async function scrapeRelationships(input: {
       cursor: null,
       targetCount: 0,
       chunks: 0,
-      users: [],
+      scraped: 0,
       completed: false,
     }
     try {
-      progress = JSON.parse(await fs.readFile(filename, 'utf8')).progress
+      const checkpoint = JSON.parse(await fs.readFile(filename, 'utf8'))
+      if (checkpoint.format !== 'ig-bot-chunks-v1') throw new Error('Unsupported scrape checkpoint; start a fresh workflow run')
+      progress = checkpoint.progress
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
-    const seen = new Set(
-      progress.users.map((user) =>
-        String(user.pk ?? user.id ?? user.username).toLowerCase(),
-      ),
-    )
+    const chunkRoot = `${filename}.chunks`
+    await fs.mkdir(chunkRoot, { recursive: true })
+    const seen = new Set<string>()
+    for (let index = 0; index < progress.chunks; index++) {
+      const users: User[] = JSON.parse(await fs.readFile(path.join(chunkRoot, `${index}.json`), 'utf8'))
+      for (const user of users) seen.add(String(user.pk ?? user.id ?? user.username).toLowerCase())
+    }
     const persist = async (status: string) => {
       const payload = {
+        format: 'ig-bot-chunks-v1',
         workflowId,
         nodeId,
         kind,
         targets,
-        users: progress.users,
-        count: progress.users.length,
+        count: progress.scraped,
         profileName: profile.name,
         storageKind: 'local',
         progress,
@@ -197,18 +206,19 @@ export async function scrapeRelationships(input: {
         localArtifactPath: relativePath,
         status,
         stats: {
-          scraped: progress.users.length,
-          deduped: progress.users.length,
+          scraped: progress.scraped,
+          deduped: progress.scraped,
           chunksCompleted: progress.chunks,
           targetsCompleted: progress.target,
         },
       })
-      onProgress()
+      await onProgress()
     }
     try {
       while (progress.target < targets.length) {
         shutdownSignal.throwIfAborted()
         const username = targets[progress.target]
+        const targetMetadata: { userId?: string; total?: number } = {}
         await page.goto(`https://www.instagram.com/${username}/`, {
           waitUntil: 'domcontentloaded',
           timeout: 45_000,
@@ -265,6 +275,7 @@ export async function scrapeRelationships(input: {
                 kind,
                 progress.cursor,
                 limit,
+                targetMetadata,
               )
               break
             } catch (error) {
@@ -287,18 +298,38 @@ export async function scrapeRelationships(input: {
               'Instagram returned an empty page with more results',
             )
           const users = result.users.slice(0, limit)
+          const freshUsers: User[] = []
           for (const user of users) {
             const id = String(
               user.pk ?? user.id ?? user.username ?? '',
             ).toLowerCase()
             if (id && !seen.has(id)) {
               seen.add(id)
-              progress.users.push(user)
+              freshUsers.push(user)
             }
           }
-          await profilesIncrementDailyScrapingUsed(profile.name, users.length)
-          profile.daily_scraping_used =
-            (profile.daily_scraping_used || 0) + users.length
+          // Idempotent quota charge tied to this chunk commit. A crash after
+          // the charge but before the checkpoint retries the same cursor with
+          // the same key, and the server applies it at most once. Do not
+          // reorder (charge after persist): a crash in between would advance
+          // the cursor without ever charging.
+          const quotaCommitKey = `${key}:chunk:${progress.chunks}`
+          const quotaApplied = await profilesIncrementDailyScrapingUsed(
+            profile.name,
+            users.length,
+            quotaCommitKey,
+          )
+          // Deduped means a previous attempt already charged this chunk and
+          // the reloaded profile already includes it; do not count twice.
+          if (quotaApplied)
+            profile.daily_scraping_used =
+              (profile.daily_scraping_used || 0) + users.length
+          // Commit the chunk first. A crash before the checkpoint leaves an ignored
+          // chunk which is safely replaced when this cursor is retried.
+          const chunkFile = path.join(chunkRoot, `${progress.chunks}.json`)
+          await fs.writeFile(`${chunkFile}.tmp`, JSON.stringify(freshUsers))
+          await fs.rename(`${chunkFile}.tmp`, chunkFile)
+          progress.scraped += freshUsers.length
           progress.targetCount += users.length
           progress.cursor = result.cursor
           progress.chunks++
@@ -321,5 +352,5 @@ export async function scrapeRelationships(input: {
   }
   for (const account of accounts) await scrapingAccountComplete(account.id)
   state.completed = true
-  onProgress()
+  await onProgress()
 }

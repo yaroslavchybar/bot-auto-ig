@@ -13,6 +13,7 @@ import {
 } from '../shared/convexClient.js'
 import { DEFAULT_SETTINGS, type InstagramSettings } from '../shared/types.js'
 import { scrapeRelationships } from './scrape.js'
+import { runPool } from './pool.js'
 import {
   advanceLoop,
   nextNode,
@@ -44,10 +45,11 @@ function log(message: string, level: LogLevel = 'info'): void {
   )
 }
 
-function event(type: string, data: AnyRecord = {}): void {
-  process.stdout.write(
+function event(type: string, data: AnyRecord = {}): Promise<void> {
+  return new Promise((resolve, reject) => process.stdout.write(
     `__EVENT__${JSON.stringify({ type, ts: new Date().toISOString(), ...data })}__EVENT__\n`,
-  )
+    error => error ? reject(error) : resolve(),
+  ))
 }
 
 function number(value: unknown, fallback: number): number {
@@ -79,13 +81,13 @@ async function withProfile(
     if (!session || closed) return
     await session.close()
     closed = true
-    if (session.display) event('display_released', { workflow_id: workflowId, profile: profile.name })
+    if (session.display) await event('display_released', { workflow_id: workflowId, profile: profile.name })
   }
   const reopen = async (headless = options.headless ?? true) => {
     if (closed) {
       session = await (options.openSession ?? openCamoufoxSession)(profile.name, { headless })
       closed = false
-      if (session.display) event('display_allocated', {
+      if (session.display) await event('display_allocated', {
         workflow_id: workflowId, profile: profile.name,
         display_num: session.display.displayNum, vnc_port: session.display.vncPort,
       })
@@ -98,20 +100,20 @@ async function withProfile(
     })
     await profilesSyncStatus(profile.name, 'running', true)
     markedRunning = true
-    event('profile_started', {
+    await event('profile_started', {
       profile: profile.name,
       profile_id: profile.profile_id,
       workflow_id: workflowId,
     })
     if (session.display)
-      event('display_allocated', {
+      await event('display_allocated', {
         workflow_id: workflowId,
         profile: profile.name,
         display_num: session.display.displayNum,
         vnc_port: session.display.vncPort,
       })
     await run(session, { close, reopen })
-    event('profile_completed', {
+    await event('profile_completed', {
       profile: profile.name,
       profile_id: profile.profile_id,
       workflow_id: workflowId,
@@ -119,7 +121,7 @@ async function withProfile(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log(`${profile.name}: ${message}`, 'error')
-    event('error', {
+    await event('error', {
       profile: profile.name,
       profile_id: profile.profile_id,
       workflow_id: workflowId,
@@ -212,7 +214,7 @@ async function runAutomation(input: AnyRecord): Promise<void> {
     .slice(0, Math.max(1, number(settings.max_sessions, 5)))
   const stop = shouldStop
 
-  event('session_started', {
+  await event('session_started', {
     workflow_id: 'automation',
     total_profiles: profiles.length,
   })
@@ -225,44 +227,27 @@ async function runAutomation(input: AnyRecord): Promise<void> {
     1,
     Math.min(10, Math.floor(number(settings.parallel_profiles, 1))),
   )
-  for (let offset = 0; offset < profiles.length; offset += parallel) {
+  await runPool(profiles, parallel, async profile => {
     shutdownSignal.throwIfAborted()
-    const batch = profiles.slice(offset, offset + parallel)
-    const results = await Promise.allSettled(
-      batch.map((profile) =>
-        withProfile(
-          profile,
-          { headless: settings.headless },
-          async (session) => {
-            for (const action of actions) {
-              if (stop()) break
-              event('task_started', {
-                workflow_id: 'automation',
-                profile: profile.name,
-                task: action,
-              })
-              await runConfiguredAction(
-                String(action),
-                session,
-                settings,
-                profile,
-                stop,
-              )
-              event('task_completed', {
-                workflow_id: 'automation',
-                profile: profile.name,
-                task: action,
-              })
-            }
-          },
-        ),
-      ),
+    await withProfile(
+      profile,
+      { headless: settings.headless },
+      async (session) => {
+        for (const action of actions) {
+          if (stop()) break
+          await event('task_started', {
+            workflow_id: 'automation', profile: profile.name, task: action,
+          })
+          await runConfiguredAction(String(action), session, settings, profile, stop)
+          await event('task_completed', {
+            workflow_id: 'automation', profile: profile.name, task: action,
+          })
+        }
+      },
     )
-    const failure = results.find((result) => result.status === 'rejected')
-    if (failure?.status === 'rejected') throw failure.reason
-  }
+  })
 
-  event('session_ended', { workflow_id: 'automation', status: 'completed' })
+  await event('session_ended', { workflow_id: 'automation', status: 'completed' })
   log('TypeScript automation finished', 'success')
 }
 
@@ -335,7 +320,7 @@ export async function runWorkflow(
     ),
   )
 
-  event('session_started', { workflow_id: workflowId })
+  await event('session_started', { workflow_id: workflowId })
   if (!profiles.length)
     throw new Error('No available logged-in profile in the selected lists')
 
@@ -358,6 +343,7 @@ export async function runWorkflow(
       )
   const runProfile = async (profile: DbProfileRow) => {
     shutdownSignal.throwIfAborted()
+    if (aggregateStates.__profileRuns?.[profile.profile_id]?.completed) return
     await withProfile(
       profile,
       {
@@ -374,11 +360,15 @@ export async function runWorkflow(
         })
         if (run.completed) return
         const nodeStates = run.states as AnyRecord
-        const report = (type: string, data: AnyRecord) => {
+        const report = async (type: string, data: AnyRecord) => {
           Object.assign(aggregateStates, nodeStates)
-          event(type, {
+          await event(type, {
             ...data,
             profile: profile.name,
+          })
+          await event('checkpoint', {
+            workflow_id: workflowId,
+            node_id: run.currentNodeId,
             node_states: aggregateStates,
           })
         }
@@ -401,7 +391,7 @@ export async function runWorkflow(
             completedAt: undefined,
             error: undefined,
           }
-          report('task_started', {
+          await report('task_started', {
             workflow_id: workflowId,
             node_id: current.id,
             task: activity,
@@ -526,7 +516,7 @@ export async function runWorkflow(
               status: 'failed',
               error: String(error),
             }
-            report('task_progress', {
+            await report('task_progress', {
               workflow_id: workflowId,
               node_id: current.id,
             })
@@ -541,7 +531,7 @@ export async function runWorkflow(
             current = nextNode(nodes, edges, current, 'failure')
             run.currentNodeId = current?.id ?? null
             run.completed = !current
-            report('task_progress', {
+            await report('task_progress', {
               workflow_id: workflowId,
               node_id: current?.id,
             })
@@ -556,7 +546,7 @@ export async function runWorkflow(
           const next = nextNode(nodes, edges, current, handle)
           run.currentNodeId = next?.id ?? null
           run.completed = !next
-          report('task_completed', {
+          await report('task_completed', {
             workflow_id: workflowId,
             node_id: current.id,
             task: activity,
@@ -570,23 +560,20 @@ export async function runWorkflow(
       },
     )
   }
-  for (let offset = 0; offset < profiles.length; offset += parallel) {
-    const results = await Promise.allSettled(
-      profiles.slice(offset, offset + parallel).map(runProfile),
-    )
-    const failure = results.find((result) => result.status === 'rejected')
-    if (failure?.status === 'rejected') {
+  await runPool(profiles, parallel, async (profile, index) => {
+    try { await runProfile(profile) }
+    catch (error) {
       if (
         hasScrape &&
-        /daily scraping limit reached/.test(String(failure.reason)) &&
-        offset + parallel < profiles.length
+        /daily scraping limit reached/.test(String(error)) &&
+        index + 1 < profiles.length
       )
-        continue
-      throw failure.reason
+        return
+      throw error
     }
-  }
+  })
 
-  event('session_ended', {
+  await event('session_ended', {
     workflow_id: workflowId,
     status: 'completed',
     node_states: nodeStates,
@@ -613,12 +600,12 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
-  main().catch((error) => {
+  main().catch(async (error) => {
     const message = error instanceof Error ? error.message : String(error)
     log(message, 'error')
-    event('session_ended', {
+    await event('session_ended', {
       status: shouldStop() ? 'stopped' : 'failed',
       error: message,
-    })
+    }).catch(() => undefined)
     process.exitCode = shouldStop() ? 0 : 1
   })

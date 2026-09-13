@@ -50,7 +50,7 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
     status: 'running',
     using: true,
   })
-  await t.mutation(api.profiles.mutations.incrementDailyScrapingUsed, {
+  await t.mutation(internal.profiles.mutations.incrementDailyScrapingUsedInternal, {
     name: 'Profile B',
     amount: 5,
   })
@@ -69,6 +69,31 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
     assignedAccountsLimit: 10,
     dailyScrapingUsed: 0,
   })
+})
+
+test('quota charges are idempotent per commitKey and reject key reuse with different data', async () => {
+  const t = createConvexTest()
+  await seedProfile(t, { name: 'Quota A' })
+  await seedProfile(t, { name: 'Quota B' })
+
+  const charge = (name: string, amount: number, commitKey?: string) =>
+    t.mutation(internal.profiles.mutations.incrementDailyScrapingUsedInternal, {
+      name,
+      amount,
+      commitKey,
+    })
+
+  expect(await charge('Quota A', 5, 'key-1')).toBe(true)
+  // Same key + same charge data: deduped, no double charge.
+  expect(await charge('Quota A', 5, 'key-1')).toBe(false)
+  // Same key + different amount or profile: rejected loudly, not silently undercharged.
+  await expect(charge('Quota A', 6, 'key-1')).rejects.toThrow()
+  await expect(charge('Quota B', 5, 'key-1')).rejects.toThrow()
+
+  const updated = await t.query(api.profiles.queries.getByName, {
+    name: 'Quota A',
+  })
+  expect(updated?.dailyScrapingUsed).toBe(5)
 })
 
 test('defaults assigned accounts limit to 10 and persists explicit updates including 0', async () => {

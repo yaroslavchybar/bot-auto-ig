@@ -10,19 +10,24 @@ export interface AutomationProgress {
   currentTask: string | null
 }
 
-interface WebSocketMessage {
-  type:
-    | 'log'
-    | 'status'
-    | 'workflow_status'
-    | 'error'
-    | 'session_started'
-    | 'profile_started'
-    | 'task_started'
-    | 'profile_completed'
-    | 'session_ended'
-    | 'display_allocated'
-    | 'display_released'
+export type WebSocketEventType =
+  | 'log'
+  | 'status'
+  | 'workflow_status'
+  | 'error'
+  | 'session_started'
+  | 'profile_started'
+  | 'task_started'
+  | 'task_progress'
+  | 'task_completed'
+  | 'checkpoint'
+  | 'profile_completed'
+  | 'session_ended'
+  | 'display_allocated'
+  | 'display_released'
+
+export interface WebSocketMessage {
+  type: WebSocketEventType
   message?: string
   level?: string
   source?: string
@@ -30,19 +35,27 @@ interface WebSocketMessage {
   workflowId?: string
   workflow_id?: string
   total_accounts?: number
+  total_profiles?: number
   profile?: string
   profileName?: string
+  profile_id?: string
   taskId?: string
+  task?: string
+  node_id?: string
+  nodeId?: string
+  node_states?: Record<string, unknown>
+  nodeStates?: Record<string, unknown>
   targetUsername?: string
+  error?: string
   errorCode?: string
   outcome?: string
   attempt?: number
   diagnostics?: string
-  task?: string
   vnc_port?: number
   vncPort?: number
   display_num?: number
   displayNum?: number
+  ts?: string
 }
 
 interface UseWebSocketOptions {
@@ -51,6 +64,7 @@ interface UseWebSocketOptions {
   enabled?: boolean
   pauseWhenHidden?: boolean
   maxBuffer?: number
+  eventsOnly?: boolean
   workflowId?: string | null
   onEvent?: (message: WebSocketMessage) => void
 }
@@ -161,6 +175,7 @@ function processSocketMessage(
   rawMessage: string,
   workflowId: string | null | undefined,
   maxBuffer: number,
+  eventsOnly: boolean,
   onEvent: ((message: WebSocketMessage) => void) | undefined,
   currentProfileRef: React.MutableRefObject<string | null>,
   setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>,
@@ -170,6 +185,7 @@ function processSocketMessage(
   try {
     const data: WebSocketMessage = JSON.parse(rawMessage)
     try { onEvent?.(data) } catch { /* ignore */ }
+    if (eventsOnly) return
     const activeWorkflowId = workflowId ?? null
     const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
     const matches = matchesWorkflowFilter(data, activeWorkflowId)
@@ -292,7 +308,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
     url, autoConnect = true, enabled = true,
     pauseWhenHidden = false, maxBuffer = 500,
-    workflowId, onEvent,
+    workflowId, onEvent, eventsOnly = false,
   } = options
   const wsUrl = url ?? getDefaultWebSocketUrl()
   const { getToken } = useAppAuth()
@@ -301,7 +317,8 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
   const [progress, setProgress] = useState<AutomationProgress>(
     { totalAccounts: 0, currentProfile: null, currentTask: null })
-  const isVisible = useVisibility()
+  const documentVisible = useVisibility()
+  const isVisible = !pauseWhenHidden || documentVisible
   const wsRef = useRef<WebSocket | null>(null)
   const connectingRef = useRef(false)
   const intentionalDisconnectRef = useRef(false)
@@ -313,7 +330,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
     processSocketMessage(
-      rawMessage, workflowId, maxBuffer, onEvent,
+      rawMessage, workflowId, maxBuffer, eventsOnly, onEvent,
       currentProfileRef, setLogs, setStatus, setProgress,
     )
   })

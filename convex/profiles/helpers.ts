@@ -70,16 +70,44 @@ export async function listProfileRows(ctx: any) {
 	return rows.map((row: any) => normalizeProfileRow(row));
 }
 
-export async function incrementDailyScrapingUsedByName(ctx: any, name: string, amountRaw: number) {
+export async function incrementDailyScrapingUsedByName(
+	ctx: any,
+	name: string,
+	amountRaw: number,
+	commitKeyRaw?: unknown,
+) {
 	const cleanedName = String(name || "").trim();
 	if (!cleanedName) throw new Error("name is required");
 	const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
 	if (amount === 0) return true;
+	// Idempotency key ties one quota charge to one durable chunk commit.
+	// A retry of the same cursor reuses the key and is applied at most once.
+	const commitKey = typeof commitKeyRaw === "string" ? commitKeyRaw.trim() : "";
+	if (commitKey) {
+		const seen = await ctx.db
+			.query("scrapeQuotaCommits")
+			.withIndex("by_key", (q: any) => q.eq("key", commitKey))
+			.first();
+		if (seen) {
+			if (seen.profileName !== cleanedName || seen.amount !== amount) {
+				throw new Error("commitKey was reused with different charge data");
+			}
+			return false;
+		}
+	}
 	const existing = await ctx.db
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
 		.first();
 	if (!existing) return true;
+	if (commitKey) {
+		await ctx.db.insert("scrapeQuotaCommits", {
+			key: commitKey,
+			profileName: cleanedName,
+			amount,
+			createdAt: Date.now(),
+		});
+	}
 	await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
 	return true;
 }

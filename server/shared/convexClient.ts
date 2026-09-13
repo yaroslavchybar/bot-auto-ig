@@ -177,7 +177,7 @@ export class ConvexHttpError extends Error {
 }
 
 // HTTP client for Convex with exponential backoff retry
-async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any } = {}): Promise<T> {
+async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any; maxRetries?: number } = {}): Promise<T> {
     const url = `${convexUrl}${endpoint}`;
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -185,7 +185,8 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
     };
     headers['Authorization'] = `Bearer ${convexApiKey}`;
 
-    const { maxRetries, baseDelay } = retryConfig
+    const { baseDelay } = retryConfig
+    const maxRetries = options.maxRetries ?? retryConfig.maxRetries
     let lastError: unknown
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -386,12 +387,28 @@ export async function profilesClearBusyForLists(listIds: string[]): Promise<true
     return true;
 }
 
-export async function profilesIncrementDailyScrapingUsed(name: string, amount: number): Promise<true> {
+export async function profilesIncrementDailyScrapingUsed(
+    name: string,
+    amount: number,
+    commitKey?: string,
+): Promise<boolean> {
     const cleanedName = String(name || '').trim();
     if (!cleanedName) throw new Error('name is required');
     const safeAmount = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
     if (safeAmount === 0) return true;
-    await convexFetch<any>('/api/profiles/increment-daily-scraping-used', { method: 'POST', body: { name: cleanedName, amount: safeAmount } });
+    const cleanedKey = typeof commitKey === 'string' ? commitKey.trim() : '';
+    // Single attempt: a retry after a lost response would dedupe server-side
+    // and return false, which the caller would misread as "already charged".
+    // Let it throw instead; the outer scrape retry reuses the same commitKey.
+    const res = await convexFetch<any>('/api/profiles/increment-daily-scraping-used', {
+        method: 'POST',
+        maxRetries: 0,
+        body: cleanedKey
+            ? { name: cleanedName, amount: safeAmount, commitKey: cleanedKey }
+            : { name: cleanedName, amount: safeAmount },
+    });
+    // Server dedupes by commitKey: { ok: false } means this chunk was charged already.
+    if (res && typeof res.ok === 'boolean') return res.ok !== false ? true : false;
     return true;
 }
 

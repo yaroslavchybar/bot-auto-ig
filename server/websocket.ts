@@ -47,8 +47,6 @@ export function initWebSocket(server: Server, path: string = '/ws') {
 }
 
 export function broadcast(data: object) {
-    const message = JSON.stringify(data)
-
     // Store log entries
     if ('type' in data && (data as any).type === 'log') {
         const logEntry = {
@@ -74,9 +72,21 @@ export function broadcast(data: object) {
         }
     }
 
+    if (clients.size === 0) return
+    const message = JSON.stringify(data)
     clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(message)
+            sendBounded(client, message)
         }
     })
+}
+
+/** Drop stalled clients rather than retaining an unlimited outbound queue. */
+export function sendBounded(client: WebSocket, message: string, maxBytes = 1024 * 1024): void {
+    if (client.bufferedAmount + Buffer.byteLength(message) > maxBytes) {
+        clients.delete(client)
+        client.terminate()
+        return
+    }
+    client.send(message, error => { if (error) { clients.delete(client); client.terminate() } })
 }

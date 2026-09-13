@@ -10,6 +10,7 @@ import { spawn as nodeSpawn, execFile, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import logger from './logger.js'
+import { browserBudgetEndpoint } from '../browser/budget.js'
 import { resolveProjectRoot } from './utils.js'
 
 export type { ChildProcess }
@@ -148,6 +149,7 @@ export function spawnBun(options: SpawnBunOptions): ChildProcess {
   const env: Record<string, string | undefined> = {
     ...process.env,
     ...options.extraEnv,
+    BROWSER_BUDGET_ENDPOINT: browserBudgetEndpoint(),
   }
 
   const child = nodeSpawn(bun, options.args, {

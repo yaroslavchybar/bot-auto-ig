@@ -15,6 +15,7 @@ import {
   workflowsUpdateStatus,
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
+import { latestQueue } from '../shared/latest-queue.js'
 import {
   spawnBun,
   killProcess,
@@ -127,75 +128,21 @@ function buildPayload(workflowId: string, workflow: any, parallelProfiles?: numb
 
 async function handleStatusEvent(
   workflowId: string,
-  log: any,
-  currentProfile: { value: string | null },
+  log: ReturnType<typeof parseLogOutput>[number],
 ): Promise<void> {
-  const meta = (log?.metadata as any) || {}
-  const eventType = log?.eventType
+  const meta = log.metadata || {}
+  const eventType = log.eventType
   const nextNodeStates = meta.node_states ?? meta.nodeStates
   const nextCurrentNodeId = meta.node_id ?? meta.nodeId
-
-  if (eventType === 'session_started') {
-    try { await workflowsUpdateStatus({ workflowId, status: 'running' }) } catch { /* noop */ }
-    return
-  }
-
-  if (eventType === 'profile_started') {
-    const profileName = String(meta.profile ?? meta.profileName ?? '').trim()
-    currentProfile.value = profileName || null
-    if (profileName) {
-      markWorkflowProfileActive(workflowId, profileName)
-    }
-  } else if (eventType === 'profile_completed') {
-    const profileName = String(meta.profile ?? meta.profileName ?? currentProfile.value ?? '').trim()
-    currentProfile.value = null
-    if (profileName) {
-      clearWorkflowProfileActive(workflowId, profileName)
-    }
-  }
-
-  if (
-    (eventType === 'task_started' ||
-      eventType === 'task_completed' ||
-      eventType === 'task_progress') &&
-    nextCurrentNodeId
-  ) {
-    try {
-      await workflowsUpdateStatus({
-        workflowId,
-        status: 'running',
-        currentNodeId: String(nextCurrentNodeId),
-        nodeStates: nextNodeStates,
-      })
-    } catch { /* noop */ }
-    return
-  }
-
-  if (eventType === 'session_ended') {
-    clearWorkflowProfileActive(workflowId)
-    const status = normalizeWorkflowTerminalStatus(meta?.status)
-    try {
-      await workflowsUpdateStatus({
-        workflowId,
-        status,
-        error: typeof meta.error === 'string' ? meta.error : undefined,
-        currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
-        nodeStates: nextNodeStates,
-      })
-    } catch { /* noop */ }
-    return
-  }
-
-  if (nextNodeStates !== undefined) {
-    try {
-      await workflowsUpdateStatus({
-        workflowId,
-        status: 'running',
-        currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
-        nodeStates: nextNodeStates,
-      })
-    } catch { /* noop */ }
-  }
+  const terminal = eventType === 'session_ended'
+  if (terminal) clearWorkflowProfileActive(workflowId)
+  await workflowsUpdateStatus({
+    workflowId,
+    status: terminal ? normalizeWorkflowTerminalStatus(meta.status) : 'running',
+    error: terminal && typeof meta.error === 'string' ? meta.error : undefined,
+    currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
+    nodeStates: nextNodeStates,
+  })
 }
 
 function handleDisplayEvent(workflowId: string, log: any): void {
@@ -229,14 +176,40 @@ function wireStdout(
   currentProfile: { value: string | null },
 ): void {
   const parser = createLogStreamParser()
+  let lastCheckpoint: Record<string, unknown> | undefined
+  const updates = latestQueue<ReturnType<typeof parseLogOutput>[number]>(async log => {
+    try { await handleStatusEvent(workflowId, log) }
+    catch (error) { logger.error({ err: error, workflowId }, 'Workflow status update failed') }
+  })
   const consume = (parsed: ReturnType<typeof parseLogOutput>) => {
     for (const log of parsed) {
       const stopRequested = Boolean((proc as any).__stopRequested)
       if (stopRequested && isStopNoiseLog(log?.message)) continue
-      proc.__statusUpdates = (proc.__statusUpdates || Promise.resolve())
-        .then(() => handleStatusEvent(workflowId, log, currentProfile))
-        .catch((error: unknown) => logger.error({ err: error, workflowId }, 'Workflow status update failed'))
+      if (log.eventType === 'profile_started' || log.eventType === 'profile_completed') {
+        const name = String(log.metadata?.profile || '')
+        if (log.eventType === 'profile_started') {
+          currentProfile.value = name
+          if (name) markWorkflowProfileActive(workflowId, name)
+        } else {
+          currentProfile.value = null
+          if (name) clearWorkflowProfileActive(workflowId, name)
+        }
+      }
+      if (['checkpoint', 'session_started', 'session_ended'].includes(log.eventType || '')) {
+        if (log.eventType === 'checkpoint') lastCheckpoint = log.metadata
+        if (
+          log.eventType === 'session_ended' &&
+          log.metadata?.node_states == null &&
+          log.metadata?.nodeStates == null &&
+          lastCheckpoint
+        ) {
+          log.metadata = { ...lastCheckpoint, ...log.metadata }
+        }
+        proc.__statusUpdates = updates.push(log)
+      }
+      if (log.eventType === 'checkpoint') continue
       handleDisplayEvent(workflowId, log)
+      const { node_states, nodeStates, ...uiMetadata } = log.metadata || {}
       broadcast({
         workflowId,
         type: log.eventType ? log.eventType : 'log',
@@ -244,7 +217,7 @@ function wireStdout(
         level: log.level,
         source: 'typescript',
         profileName: currentProfile.value,
-        ...log.metadata,
+        ...uiMetadata,
       })
     }
   }

@@ -1,5 +1,8 @@
 import { Router } from 'express'
 import { localArtifactFile } from './artifacts.js'
+import { artifactJson } from './artifact-stream.js'
+import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 import {
   workflowArtifactsGetStorageUrl,
   workflowArtifactsListByWorkflow,
@@ -80,9 +83,9 @@ router.get('/artifacts/download', asyncHandler(async (req, res) => {
   const artifactId = String(req.query.artifactId ?? '').trim()
   if (artifactId) {
     const filename = await localArtifactFile(String(req.query.workflowId ?? '').trim(), artifactId)
-    await new Promise<void>((resolve, reject) => {
-      res.download(filename, fileName, error => error ? reject(error) : resolve())
-    })
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+    await pipeline(Readable.from(artifactJson(filename)), res)
     return
   }
   if (!storageId) {
