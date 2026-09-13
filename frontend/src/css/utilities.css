@@ -268,11 +268,6 @@
   color: transparent;
 }
 
-@utility brand-panel-selected {
-  border-color: var(--line-strong);
-  background-color: var(--panel-selected);
-}
-
 @utility brand-surface {
   background-color: var(--panel-muted);
   border-color: var(--line);
@@ -294,19 +289,6 @@
   }
 }
 
-@utility brand-icon-button {
-  color: var(--muted-copy);
-  transition:
-    color 150ms ease,
-    background-color 150ms ease,
-    border-color 150ms ease;
-
-  &:hover {
-    background-color: var(--panel-hover);
-    color: var(--copy);
-  }
-}
-
 @utility brand-focus {
   transition:
     border-color 150ms ease,
@@ -320,15 +302,6 @@
       0 0 0 1px var(--line-strong),
       0 0 0 4px var(--brand-ring-soft);
     outline: none;
-  }
-}
-
-@utility brand-focus-strong {
-  &:focus,
-  &:focus-visible {
-    box-shadow:
-      0 0 0 1px var(--line-strong),
-      0 0 0 4px var(--brand-ring-strong);
   }
 }
 
@@ -440,30 +413,8 @@
   box-shadow: var(--shadow-status-danger);
 }
 
-@utility status-glow-info {
-  box-shadow: var(--shadow-status-info);
-}
-
-@utility status-glow-warning {
-  box-shadow: var(--shadow-status-warning);
-}
-
 @utility status-glow-success {
   box-shadow: var(--shadow-status-success);
-}
-
-@utility status-glow-danger {
-  box-shadow: var(--shadow-status-danger);
-}
-
-@utility status-dot-info {
-  background-color: var(--status-info);
-  box-shadow: var(--shadow-status-info);
-}
-
-@utility status-dot-warning {
-  background-color: var(--status-warning);
-  box-shadow: var(--shadow-status-warning);
 }
 
 @utility status-dot-success {
@@ -491,25 +442,4 @@
 
 @utility workflow-handle {
   background-color: var(--workflow-edge) !important;
-}
-
-@utility ambient-glow-surface {
-  background-color: color-mix(in srgb, var(--copy) 10%, transparent);
-  filter: blur(120px);
-}
-
-@utility ambient-glow-surface-reduced {
-  background-image:
-    radial-gradient(
-      ellipse 68% 58% at 50% 38%,
-      color-mix(in srgb, var(--copy) 14%, transparent) 0%,
-      color-mix(in srgb, var(--muted-copy) 10%, transparent) 36%,
-      transparent 74%
-    ),
-    radial-gradient(
-      ellipse 54% 42% at 50% 58%,
-      color-mix(in srgb, var(--line-strong) 12%, transparent) 0%,
-      transparent 78%
-    );
-  opacity: 0.58;
 }

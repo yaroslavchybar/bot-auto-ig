@@ -8,8 +8,6 @@
  * 4. Persist automation state atomically
  * 5. Clear PID files
  * 6. Exit cleanly with code 0
- *
- * Also provides registerCleanup() for modules that need custom teardown.
  */
 import type { Server } from 'http'
 import type { WebSocketServer } from 'ws'
@@ -18,19 +16,6 @@ import { automationMutex } from '../shared/mutex.js'
 import { killProcess, clearPid, getTrackedProcesses, getPid } from '../shared/ProcessService.js'
 import { saveState } from './state.js'
 import logger from '../shared/logger.js'
-
-// ---------------------------------------------------------------------------
-// Legacy registerCleanup API (used by runner.ts, manual-actions.ts)
-// ---------------------------------------------------------------------------
-
-type CleanupFn = () => void | Promise<void>
-const cleanupFns = new Set<CleanupFn>()
-
-/** Register a cleanup function to run during graceful shutdown. */
-export function registerCleanup(fn: CleanupFn): () => void {
-  cleanupFns.add(fn)
-  return () => { cleanupFns.delete(fn) }
-}
 
 // ---------------------------------------------------------------------------
 // Shutdown orchestration
@@ -89,10 +74,7 @@ async function performCleanup(): Promise<void> {
   // 2. Kill all Bun child processes
   await killAllChildProcesses()
 
-  // 3. Run registered cleanup functions (runner.ts, manual-actions.ts)
-  await runRegisteredCleanups()
-
-  // 4. Clear PID files
+  // 3. Clear PID files
   clearPid()
 }
 
@@ -167,15 +149,4 @@ async function killAllChildProcesses(): Promise<void> {
 
   await Promise.allSettled(killPromises)
   logger.info({ count: tracked.size }, 'All child processes killed')
-}
-
-/** Run all cleanup functions registered via registerCleanup(). */
-async function runRegisteredCleanups(): Promise<void> {
-  for (const fn of cleanupFns) {
-    try {
-      await fn()
-    } catch (err) {
-      logger.error({ err }, 'Cleanup function failed')
-    }
-  }
 }

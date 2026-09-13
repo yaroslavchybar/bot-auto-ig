@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/dialog'
 import { Plus, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useListsPage } from '../hooks/useListsPage'
 
 export function ListsPageContainer() {
@@ -17,7 +16,6 @@ export function ListsPageContainer() {
 
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
-      <AmbientGlow />
       <ListsHeader loading={state.loading} saving={state.saving}
         refreshing={state.refreshing} onCreate={state.handleCreate}
         onRefresh={() => void state.handleRefreshLists()} />

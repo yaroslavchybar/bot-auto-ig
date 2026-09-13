@@ -32,11 +32,27 @@ server, Camoufox JS browser automation, Convex shared data layer. Package manage
 
 ## Commands
 
-Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`.
+Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`, `lint`.
 Workspaces: `bun run --filter frontend dev|build|start|lint|preview|typecheck`,
-`bun run --filter anti-server dev|build|start`.
+`bun run --filter anti-server dev|build|start|typecheck`.
 Server: `bun run --filter anti-server build`. Docker: `docker compose up --build`
 (services below); Convex: `bunx convex dev|deploy`.
+
+### TypeScript and ESLint
+
+All builds and typechecks use TypeScript **7.0.2**, pinned as
+`@typescript/native` (an npm alias for `typescript`). `bun run typecheck`
+checks the server, frontend, and Convex. Convex CLI also finds this compiler.
+
+The `typescript` dependency aliases `@typescript/typescript6@6.0.2` because
+ESLint needs its JavaScript compiler API. It supplies `tsc6`, so it does not
+compete with TypeScript 7's `tsc`. Keep both aliases aligned in all three
+package manifests. This follows [Microsoft's setup guide](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/).
+
+`bun run lint` runs the existing frontend ESLint rules; server and Convex
+currently use typechecks only. Install the recommended VS Code extensions
+when prompted. Workspace settings select TypeScript 7 and the frontend
+ESLint working directory. See the [TypeScript extension setup](https://marketplace.visualstudio.com/items?itemName=TypeScriptTeam.native-preview).
 
 ## Local Ports & Docker
 

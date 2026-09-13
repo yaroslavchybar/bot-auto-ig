@@ -13,13 +13,3 @@ export type Profile = {
   assigned_accounts_limit?: number | null
   daily_scraping_used?: number
 }
-
-export type ProfileMode =
-  | 'list'
-  | 'create'
-  | 'edit'
-  | 'delete'
-  | 'logs'
-  | 'login'
-
-

@@ -379,14 +379,6 @@ export async function profilesBulkRemoveFromList(profileIds: string[], listId: s
     return true;
 }
 
-export async function profilesClearBusyForLists(listIds: string[]): Promise<true> {
-    if (!Array.isArray(listIds) || listIds.length === 0) return true;
-    const cleanedListIds = listIds.map(v => String(v || '').trim()).filter(Boolean);
-    if (cleanedListIds.length === 0) return true;
-    await convexFetch<any>('/api/profiles/clear-busy-for-lists', { method: 'POST', body: { listIds: cleanedListIds } });
-    return true;
-}
-
 export async function profilesIncrementDailyScrapingUsed(
     name: string,
     amount: number,
@@ -412,71 +404,6 @@ export async function profilesIncrementDailyScrapingUsed(
     return true;
 }
 
-export async function profilesClaimScrapeLease(input: {
-    workerId: string;
-    leaseMs: number;
-    now?: number;
-    minHealth?: number;
-}): Promise<DbProfileRow | null> {
-    return convexFetch<DbProfileRow | null>('/api/profiles/claim-scrape-lease', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function profilesRefreshScrapeLease(input: {
-    profileId: string;
-    workerId: string;
-    leaseMs: number;
-    now?: number;
-}): Promise<DbProfileRow | null> {
-    return convexFetch<DbProfileRow | null>('/api/profiles/refresh-scrape-lease', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function profilesReleaseScrapeLease(input: {
-    profileId: string;
-    workerId?: string;
-}): Promise<true> {
-    await convexFetch<any>('/api/profiles/release-scrape-lease', {
-        method: 'POST',
-        body: input,
-    });
-    return true;
-}
-
-export async function profilesMarkScrapeSuccess(input: {
-    profileId: string;
-    workerId: string;
-    amount: number;
-    now?: number;
-}): Promise<DbProfileRow | null> {
-    return convexFetch<DbProfileRow | null>('/api/profiles/mark-scrape-success', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function profilesMarkScrapeFailure(input: {
-    profileId: string;
-    workerId: string;
-    now?: number;
-}): Promise<DbProfileRow | null> {
-    return convexFetch<DbProfileRow | null>('/api/profiles/mark-scrape-failure', {
-        method: 'POST',
-        body: input,
-    });
-}
-
-export async function profilesSweepExpiredScrapeLeases(now: number = Date.now()): Promise<{ released: number }> {
-    return convexFetch<{ released: number }>('/api/profiles/sweep-expired-scrape-leases', {
-        method: 'POST',
-        body: { now },
-    });
-}
-
 // ==================== MESSAGE TEMPLATES ====================
 
 export async function messageTemplatesGet(kind: string): Promise<string[]> {
@@ -484,15 +411,6 @@ export async function messageTemplatesGet(kind: string): Promise<string[]> {
     if (!cleaned) throw new Error('kind is required');
     const result = await convexFetch<string[] | null>(`/api/message-templates?kind=${encodeURIComponent(cleaned)}`);
     return Array.isArray(result) ? result : [];
-}
-
-export async function messageTemplatesUpsert(kind: string, texts: string[]): Promise<true> {
-    const cleanedKind = String(kind || '').trim();
-    if (!cleanedKind) throw new Error('kind is required');
-    if (!Array.isArray(texts)) throw new Error('texts must be an array');
-    const cleanedTexts = texts.map(t => String(t)).filter(t => t.trim());
-    await convexFetch<any>('/api/message-templates', { method: 'POST', body: { kind: cleanedKind, texts: cleanedTexts } });
-    return true;
 }
 
 export type InstagramAccount = {
@@ -609,12 +527,6 @@ export async function workflowArtifactsListByWorkflow(workflowId: string): Promi
     const cleaned = String(workflowId || '').trim()
     if (!cleaned) throw new Error('workflowId is required')
     return convexFetch<DbWorkflowArtifactRow[]>(`/api/workflow-artifacts?workflowId=${encodeURIComponent(cleaned)}`)
-}
-
-export async function workflowArtifactsGetById(id: string): Promise<DbWorkflowArtifactRow | null> {
-    const cleaned = String(id || '').trim()
-    if (!cleaned) throw new Error('id is required')
-    return convexFetch<DbWorkflowArtifactRow | null>(`/api/workflow-artifacts/by-id?id=${encodeURIComponent(cleaned)}`)
 }
 
 export async function workflowArtifactsGetStorageUrl(storageId: string): Promise<string | null> {

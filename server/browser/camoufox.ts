@@ -24,6 +24,7 @@ export type CamoufoxSession = {
   profile: DbProfileRow
   display?: Display
   close: () => Promise<void>
+  closed: Promise<void>
 }
 
 function profilePath(name: string): string {
@@ -58,10 +59,12 @@ async function saveSession(
   profile: DbProfileRow,
   context: BrowserContext,
 ): Promise<void> {
+  let stage = 'read cookies from browser'
   try {
     const cookies = await context.cookies()
     const id = sessionId(cookies)
     if (!id && !profile.session_id && cookies.length === 0) return
+    stage = 'write cookies to database'
     await profilesUpdateByName(profile.name, {
       name: profile.name,
       cookies_json: JSON.stringify(cookies),
@@ -69,19 +72,13 @@ async function saveSession(
     })
   } catch {
     // Browser shutdown must not hide the original action error.
-    process.stderr.write('Could not save browser session cookies\n')
+    process.stderr.write(`Could not save browser session cookies: failed to ${stage}\n`)
   }
 }
 
-async function launchSession(
-  profileName: string,
-  options: { headless?: boolean; display?: string; userAgent?: string } = {},
-): Promise<CamoufoxSession> {
-  shutdownSignal.throwIfAborted()
-  const profile = await profilesGetByName(profileName)
-  if (!profile) throw new Error(`Profile not found: ${profileName}`)
+type SessionOptions = { headless?: boolean; display?: string; userAgent?: string }
 
-  const profileDir = profilePath(profileName)
+function browserOptions(profile: DbProfileRow, profileDir: string, options: SessionOptions) {
   const targetOs =
     profile.fingerprint_os === 'mac' || profile.fingerprint_os === 'macos'
       ? 'macos'
@@ -128,6 +125,9 @@ async function launchSession(
   const proxy = parseProxy(profile.proxy, profile.proxy_type)
   const launchOptions: Record<string, unknown> = {
     headless: options.headless ?? false,
+    // lifecycle.ts handles these signals and saves cookies before closing.
+    handleSIGINT: false,
+    handleSIGTERM: false,
     user_data_dir: profileDir,
     os: targetOs,
     fingerprint,
@@ -151,37 +151,107 @@ async function launchSession(
       : {}),
   }
 
-  const preparedProxy = await prepareBrowserProxy(proxy)
-  let context: BrowserContext
-  try {
-    shutdownSignal.throwIfAborted()
-    context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
-  } catch (error) {
-    await preparedProxy.close()
-    throw error
+  return launchOptions
+}
+
+/** A profile directory can belong to only one worker, including during startup. */
+function lockProfile(profileDir: string): () => void {
+  const lockPath = path.join(profileDir, 'worker.lock')
+  if (fs.existsSync(lockPath)) {
+    const pid = Number(fs.readFileSync(lockPath, 'utf8'))
+    if (!Number.isSafeInteger(pid) || pid <= 0)
+      throw new Error('Invalid profile lock')
+    try {
+      process.kill(pid, 0)
+      throw new Error(`Profile is already open: ${path.basename(profileDir)}`)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+      fs.unlinkSync(lockPath)
+    }
   }
-  context.once('close', () => { void preparedProxy.close().catch(() => undefined) })
+  const lock = fs.openSync(lockPath, 'wx')
+  fs.writeFileSync(lock, String(process.pid))
+  fs.closeSync(lock)
+  return () => fs.unlinkSync(lockPath)
+}
+
+export async function openCamoufoxSession(
+  profileName: string,
+  options: SessionOptions = {},
+): Promise<CamoufoxSession> {
+  shutdownSignal.throwIfAborted()
+  const profileDir = profilePath(profileName)
+  const releaseLock = lockProfile(profileDir)
+  let releaseSlot: (() => void) | undefined
+  let display: Display | undefined
+  let preparedProxy: Awaited<ReturnType<typeof prepareBrowserProxy>> | undefined
+  let context: BrowserContext | undefined
+  let profile: DbProfileRow | undefined
+  let ready = false
+  let browserClosed = false
+  let budgetLost = false
   let closing: Promise<void> | undefined
-  const close = () =>
-    (closing ??= (async () => {
-      shutdownSignal.removeEventListener('abort', onAbort)
-      try {
-        await saveSession(profile, context)
-      } finally {
-        try {
-          await context.close()
-        } finally {
-          await preparedProxy.close()
-        }
+  let resolveClosed!: () => void
+  let rejectClosed!: (error: unknown) => void
+  const closed = new Promise<void>((resolve, reject) => {
+    resolveClosed = resolve
+    rejectClosed = reject
+  })
+  // Automation callers await close(); manual callers await closed.
+  void closed.catch(() => undefined)
+
+  const close = (): Promise<void> => {
+    // Defer work so reentrant browser events see the same shutdown promise.
+    closing ??= Promise.resolve().then(async () => {
+      shutdownSignal.removeEventListener('abort', requestClose)
+      const errors: unknown[] = []
+      const steps = [
+        () => ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
+        () => !browserClosed ? context?.close() : undefined,
+        () => preparedProxy?.close(),
+        () => display?.close(),
+        releaseLock,
+        () => releaseSlot?.(),
+      ]
+      for (const step of steps) {
+        try { await step() } catch (error) { errors.push(error) }
       }
-    })())
-  const onAbort = () => {
-    void close().catch(() => undefined)
+      if (errors.length) throw new AggregateError(errors, 'Browser cleanup failed')
+    })
+    closing.then(resolveClosed, rejectClosed)
+    return closing
   }
-  shutdownSignal.addEventListener('abort', onAbort, { once: true })
-  let page: Page
-  try {
+  const requestClose = () => { void close().catch(() => undefined) }
+  const checkStartup = () => {
     shutdownSignal.throwIfAborted()
+    if (budgetLost) throw new Error('Browser resource budget disconnected')
+    if (browserClosed) throw new Error('Browser closed during startup')
+  }
+
+  try {
+    releaseSlot = await acquireBrowserSlot(shutdownSignal, undefined, () => {
+      budgetLost = true
+      if (context) requestClose()
+    })
+    checkStartup()
+    profile = await profilesGetByName(profileName) ?? undefined
+    if (!profile) throw new Error(`Profile not found: ${profileName}`)
+    checkStartup()
+    display = options.headless ? undefined : await allocateDisplay()
+    checkStartup()
+    const launchOptions = browserOptions(profile, profileDir, {
+      ...options, display: display?.display ?? options.display,
+    })
+    preparedProxy = await prepareBrowserProxy(parseProxy(profile.proxy, profile.proxy_type))
+    checkStartup()
+    context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
+    context.once('close', () => {
+      browserClosed = true
+      requestClose()
+    })
+    // All resources are acquired; shutdown can now interrupt page initialization.
+    shutdownSignal.addEventListener('abort', requestClose, { once: true })
+    checkStartup()
     const cookies = storedCookies(profile)
     if (cookies.length) await context.addCookies(cookies)
     else if (profile.session_id)
@@ -196,99 +266,19 @@ async function launchSession(
           sameSite: 'None',
         },
       ])
-    page = context.pages()[0] || (await context.newPage())
+    const page = context.pages()[0] || (await context.newPage())
     if (page.url() === 'about:blank') {
       await page.goto('https://www.instagram.com/', {
         waitUntil: 'domcontentloaded',
         timeout: 45_000,
       })
     }
+    checkStartup()
+    ready = true
+    return { context, page, profile, display, close, closed }
   } catch (error) {
-    shutdownSignal.removeEventListener('abort', onAbort)
-    await context.close().catch(() => undefined)
-    await preparedProxy.close()
-    throw error
-  }
-
-  return {
-    context,
-    page,
-    profile,
-    close,
-  }
-}
-
-/** A profile directory can belong to only one worker, including during browser startup. */
-export async function openCamoufoxSession(
-  profileName: string,
-  options: { headless?: boolean; display?: string; userAgent?: string } = {},
-): Promise<CamoufoxSession> {
-  const lockPath = path.join(profilePath(profileName), 'worker.lock')
-  if (fs.existsSync(lockPath)) {
-    const pid = Number(fs.readFileSync(lockPath, 'utf8'))
-    if (!Number.isSafeInteger(pid) || pid <= 0)
-      throw new Error('Invalid profile lock')
-    try {
-      process.kill(pid, 0)
-      throw new Error(`Profile is already open: ${profileName}`)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
-      fs.unlinkSync(lockPath)
-    }
-  }
-  const lock = fs.openSync(lockPath, 'wx')
-  fs.writeFileSync(lock, String(process.pid))
-  fs.closeSync(lock)
-  let released = false
-  let releaseSlot: (() => void) | undefined
-  let budgetLost = false
-  let liveSession: CamoufoxSession | undefined
-  const release = () => {
-    if (released) return
-    released = true
-    releaseSlot?.()
-    fs.unlinkSync(lockPath)
-  }
-  try {
-    releaseSlot = await acquireBrowserSlot(shutdownSignal, undefined, () => {
-      budgetLost = true
-      void liveSession?.close().catch(() => undefined)
-    })
-    const display = options.headless ? undefined : await allocateDisplay()
-    let session: CamoufoxSession
-    try {
-      session = await launchSession(profileName, {
-        ...options,
-        display: display?.display ?? options.display,
-      })
-      liveSession = session
-      if (budgetLost) {
-        await session.close()
-        throw new Error('Browser resource budget disconnected')
-      }
-    } catch (error) {
-      await display?.close()
-      throw error
-    }
-    session.context.once('close', release)
-    session.context.once('close', () => {
-      void display?.close().catch(() => undefined)
-    })
-    const close = session.close
-    return {
-      ...session,
-      display,
-      close: async () => {
-        try {
-          await close()
-        } finally {
-          await display?.close()
-          release()
-        }
-      },
-    }
-  } catch (error) {
-    release()
+    // Complete partial startup cleanup without replacing the startup error.
+    await close().catch(() => undefined)
     throw error
   }
 }

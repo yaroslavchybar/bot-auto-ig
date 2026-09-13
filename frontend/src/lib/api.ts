@@ -236,25 +236,3 @@ export async function withRetry<T>(
 
   throw lastError ?? new Error('Max retries exceeded')
 }
-
-/**
- * API fetch with explicit retry semantics for callers that opt in.
- *
- * @deprecated Prefer `apiFetch`; it retries read requests automatically and
- * avoids replaying mutating requests unless the caller opts in.
- */
-export async function apiFetchWithRetry<T>(
-  path: string,
-  options: {
-    method?: string
-    body?: unknown
-    timeout?: number
-    maxRetries?: number
-    onRetry?: RetryOptions['onRetry']
-  } = {},
-): Promise<T> {
-  return apiFetch<T>(path, {
-    ...options,
-    maxRetries: options.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
-  })
-}

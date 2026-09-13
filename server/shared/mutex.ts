@@ -31,13 +31,6 @@ export class Mutex {
             this.locked = false
         }
     }
-
-    /**
-     * Check if mutex is currently locked.
-     */
-    isLocked(): boolean {
-        return this.locked
-    }
 }
 
 // Singleton mutex for automation operations

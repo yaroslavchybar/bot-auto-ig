@@ -206,11 +206,6 @@ async function filterVisibleArtifacts(ctx: any, rows: any[]) {
   return results.filter(Boolean)
 }
 
-export const listByWorkflow = query({
-  args: { workflowId: v.id('workflows') },
-  handler: async (ctx, args) => await listArtifactsByWorkflow(ctx, args.workflowId),
-})
-
 export const listAll = query({
   args: {},
   handler: async (ctx) => await listAllArtifacts(ctx),
@@ -219,48 +214,6 @@ export const listAll = query({
 export const listByWorkflowInternal = internalQuery({
   args: { workflowId: v.id('workflows') },
   handler: async (ctx, args) => await listArtifactsByWorkflow(ctx, args.workflowId),
-})
-
-export const getById = query({
-  args: { id: v.id('workflowArtifacts') },
-  handler: async (ctx, args) => await getArtifact(ctx, args.id),
-})
-
-export const getByIdInternal = internalQuery({
-  args: { id: v.id('workflowArtifacts') },
-  handler: async (ctx, args) => await getArtifact(ctx, args.id),
-})
-
-export const upsert = mutation({
-  args: {
-    workflowId: v.id('workflows'),
-    workflowName: v.string(),
-    nodeId: v.string(),
-    nodeLabel: v.optional(v.string()),
-    name: v.optional(v.string()),
-    kind: v.optional(v.string()),
-    targets: v.optional(v.array(v.string())),
-    targetUsername: v.optional(v.string()),
-    status: v.optional(v.string()),
-    sourceProfileName: v.optional(v.string()),
-    lastRunAt: v.optional(v.number()),
-    storageId: v.optional(v.id('_storage')),
-    manifestStorageId: v.optional(v.id('_storage')),
-    exportStorageId: v.optional(v.id('_storage')),
-    localArtifactPath: v.optional(v.string()),
-    localArtifactDeletedAt: v.optional(v.number()),
-    imported: v.optional(v.boolean()),
-    stats: v.optional(
-      v.object({
-        scraped: v.optional(v.number()),
-        deduped: v.optional(v.number()),
-        chunksCompleted: v.optional(v.number()),
-        targetsCompleted: v.optional(v.number()),
-      }),
-    ),
-    metadata: v.optional(v.any()),
-  },
-  handler: async (ctx, args) => await upsertArtifactRow(ctx, args),
 })
 
 export const upsertInternal = internalMutation({
@@ -315,11 +268,6 @@ export const remove = mutation({
     await ctx.db.delete(args.id)
     return existing
   },
-})
-
-export const getStorageUrl = query({
-  args: { storageId: v.id('_storage') },
-  handler: async (ctx, args) => await ctx.storage.getUrl(args.storageId),
 })
 
 export const getStorageUrlInternal = internalQuery({

@@ -156,10 +156,7 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
     throw new NotFoundError('Profile not found')
   }
 
-  const args = [LAUNCHER_SCRIPT, '--name', name, '--action', 'manual', '--workflow-id', 'manual']
-
-  if (profile.proxy) args.push('--proxy', profile.proxy)
-  if (profile.fingerprint_os) args.push('--fingerprint-os', profile.fingerprint_os)
+  const args = [LAUNCHER_SCRIPT, '--name', name, '--workflow-id', 'manual']
 
   broadcast({
     type: 'log',

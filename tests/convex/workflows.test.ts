@@ -9,18 +9,17 @@ import {
 } from '../../frontend/src/features/workflows/activities'
 import { validateWorkflowImport } from '../../frontend/src/features/workflows/utils/workflowImportExport'
 
-test('fresh manual and scheduled runs clear completed profile state while retries keep checkpoints', async () => {
+test('fresh runs clear completed profile state while pending runs keep checkpoints', async () => {
   vi.useFakeTimers()
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
   const t = createConvexTest()
   const nodeStates = { __profileRuns: { profile: { completed: true, states: {}, currentNodeId: null } } }
   const manual = await seedWorkflow(t, { status: 'completed', nodeStates })
-  const started = await t.mutation(api.workflows.mutations.start, { id: manual!._id })
+  const started = await t.mutation(internal.workflows.mutations.startInternal, { id: manual!._id })
   expect(started?.nodeStates).toBeUndefined()
-  const retry = await seedWorkflow(t, { status: 'failed', nodeStates })
-  await t.mutation(api.workflows.mutations.retry, { id: retry!._id })
-  const retried = await t.mutation(api.workflows.mutations.start, { id: retry!._id })
-  expect(retried?.nodeStates).toEqual(nodeStates)
+  const pending = await seedWorkflow(t, { status: 'pending', nodeStates })
+  const resumed = await t.mutation(internal.workflows.mutations.startInternal, { id: pending!._id })
+  expect(resumed?.nodeStates).toEqual(nodeStates)
   const scheduled = await seedWorkflow(t, { status: 'completed', isActive: true, nodeStates })
   await t.mutation(internal.workflows.scheduling.executeScheduledWorkflow, { workflowId: scheduled!._id })
   const scheduledDoc = await t.run(ctx => ctx.db.get(scheduled!._id))
@@ -40,14 +39,14 @@ test('creates workflows, deduplicates list ids, and transitions status', async (
     edges: [],
     listIds: [list!._id, list!._id],
   })
-  const started = await t.mutation(api.workflows.mutations.start, { id: created!._id })
-  const running = await t.mutation(api.workflows.mutations.updateStatus, {
+  const started = await t.mutation(internal.workflows.mutations.startInternal, { id: created!._id })
+  const running = await t.mutation(internal.workflows.mutations.updateStatusInternal, {
     id: created!._id,
     status: 'running',
     currentNodeId: 'node-1',
     nodeStates: { 'node-1': 'running' },
   })
-  const completed = await t.mutation(api.workflows.mutations.updateStatus, {
+  const completed = await t.mutation(internal.workflows.mutations.updateStatusInternal, {
     id: created!._id,
     status: 'completed',
   })
@@ -73,15 +72,15 @@ test('allows pending-running-paused-running transitions for active runs', async 
     status: 'pending',
   })
 
-  const running = await t.mutation(api.workflows.mutations.updateStatus, {
+  const running = await t.mutation(internal.workflows.mutations.updateStatusInternal, {
     id: workflow!._id,
     status: 'running',
   })
-  const paused = await t.mutation(api.workflows.mutations.updateStatus, {
+  const paused = await t.mutation(internal.workflows.mutations.updateStatusInternal, {
     id: workflow!._id,
     status: 'paused',
   })
-  const resumed = await t.mutation(api.workflows.mutations.updateStatus, {
+  const resumed = await t.mutation(internal.workflows.mutations.updateStatusInternal, {
     id: workflow!._id,
     status: 'running',
   })
@@ -168,7 +167,7 @@ test('deleting a workflow also removes its stored artifacts', async () => {
     ),
   )
 
-  const artifact = await t.mutation(api.workflowArtifacts.upsert, {
+  const artifact = await t.mutation(internal.workflowArtifacts.upsertInternal, {
     workflowId: workflow!._id,
     workflowName: workflow!.name,
     nodeId: 'node-delete-cascade',
@@ -179,10 +178,8 @@ test('deleting a workflow also removes its stored artifacts', async () => {
   })
 
   const removed = await t.mutation(api.workflows.mutations.remove, { id: workflow!._id })
-  const artifactAfterDelete = await t.query(api.workflowArtifacts.getById, {
-    id: artifact!._id,
-  })
-  const storageUrl = await t.query(api.workflowArtifacts.getStorageUrl, {
+  const artifactAfterDelete = await t.run((ctx) => ctx.db.get(artifact!._id))
+  const storageUrl = await t.query(internal.workflowArtifacts.getStorageUrlInternal, {
     storageId,
   })
 

@@ -26,22 +26,6 @@ export class ValidationError extends HttpError {
   }
 }
 
-/** 404 Not Found — requested resource does not exist. */
-export class NotFoundError extends HttpError {
-  constructor(message: string) {
-    super(message, 404);
-    this.name = 'NotFoundError';
-  }
-}
-
-/** 409 Conflict — operation conflicts with current resource state. */
-export class ConflictError extends HttpError {
-  constructor(message: string) {
-    super(message, 409);
-    this.name = 'ConflictError';
-  }
-}
-
 // ═══════════════════════════════════════════════════════════════════
 // Error Categorization
 // ═══════════════════════════════════════════════════════════════════
@@ -133,30 +117,6 @@ export function jsonResponse(body: unknown, status: number = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
-}
-
-export const BULK_INSERT_BATCH_SIZE = 500;
-
-export function chunkArray<T>(items: T[], chunkSize: number = BULK_INSERT_BATCH_SIZE): T[][] {
-  const safeChunkSize = Math.max(1, Math.floor(chunkSize || BULK_INSERT_BATCH_SIZE));
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += safeChunkSize) {
-    chunks.push(items.slice(index, index + safeChunkSize));
-  }
-  return chunks;
-}
-
-export function formatChunkFailureMessage(args: {
-  operation: string;
-  inserted: number;
-  skipped: number;
-  completedBatches: number;
-  totalBatches: number;
-  error: unknown;
-}): string {
-  const errorMessage =
-    args.error instanceof Error ? args.error.message : String(args.error ?? 'Unknown error');
-  return `${args.operation} failed after ${args.completedBatches}/${args.totalBatches} batches; partial progress inserted=${args.inserted}, skipped=${args.skipped}. ${errorMessage}`;
 }
 
 function getInternalApiKey(): string | null {

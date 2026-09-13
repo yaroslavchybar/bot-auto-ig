@@ -1,0 +1,6 @@
+{
+  "recommendations": [
+    "TypeScriptTeam.native-preview",
+    "dbaeumer.vscode-eslint"
+  ]
+}

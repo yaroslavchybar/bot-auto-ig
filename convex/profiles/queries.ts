@@ -32,13 +32,6 @@ export const list = query({
 	},
 });
 
-export const getByName = query({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await getProfileByNameRow(ctx, args.name);
-	},
-});
-
 export const getByNameInternal = internalQuery({
 	args: { name: v.string() },
 	handler: async (ctx, args) => {
@@ -53,16 +46,6 @@ export const getById = query({
 	},
 });
 
-export const getAvailableForLists = query({
-	args: {
-		listIds: v.array(v.string()),
-		cooldownMinutes: v.number(),
-	},
-	handler: async (ctx, args) => {
-		return await getAvailableProfilesForLists(ctx, args.listIds, args.cooldownMinutes);
-	},
-});
-
 export const getAvailableForListsInternal = internalQuery({
 	args: {
 		listIds: v.array(v.string()),
@@ -70,15 +53,6 @@ export const getAvailableForListsInternal = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		return await getAvailableProfilesForLists(ctx, args.listIds, args.cooldownMinutes);
-	},
-});
-
-export const getByListIds = query({
-	args: {
-		listIds: v.array(v.string()),
-	},
-	handler: async (ctx, args) => {
-		return await getProfilesByListIds(ctx, args.listIds);
 	},
 });
 
@@ -91,24 +65,10 @@ export const getByListIdsInternal = internalQuery({
 	},
 });
 
-export const listAssigned = query({
-	args: { listId: v.id("lists") },
-	handler: async (ctx, args) => {
-		return await listAssignedProfilesRow(ctx, args.listId);
-	},
-});
-
 export const listAssignedInternal = internalQuery({
 	args: { listId: v.id("lists") },
 	handler: async (ctx, args) => {
 		return await listAssignedProfilesRow(ctx, args.listId);
-	},
-});
-
-export const listUnassigned = query({
-	args: {},
-	handler: async (ctx) => {
-		return await listUnassignedProfilesRow(ctx);
 	},
 });
 

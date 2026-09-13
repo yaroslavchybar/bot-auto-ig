@@ -9,7 +9,3 @@ export type ProfileRow = {
   selected: boolean
   initialSelected: boolean
 }
-
-export type ListMode = 'list' | 'create' | 'edit' | 'delete'
-
-

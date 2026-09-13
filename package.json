@@ -13,7 +13,9 @@
     "dev": "concurrently -n server,frontend,convex -c green,magenta,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bunx convex dev\"",
     "dev:server": "bun run --filter anti-server dev",
     "start": "bun run --filter anti-server start",
-    "test:convex": "bunx vitest run --config vitest.convex.config.ts"
+    "test:convex": "bunx vitest run --config vitest.convex.config.ts",
+    "typecheck": "bun run --filter anti-server typecheck && bun run --filter frontend typecheck && tsc -p convex/tsconfig.json --noEmit",
+    "lint": "bun run --filter frontend lint"
   },
   "dependencies": {
     "@convex-dev/crons": "^0.2.0",
@@ -21,16 +23,11 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "concurrently": "^10.0.5",
     "convex-test": "^0.0.58",
-    "typescript": "~6.0.3",
-    "vitest": "^4.0.18"
-  },
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "tests"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vitest": "^4.0.18",
+    "@typescript/native": "npm:typescript@7.0.2"
   },
   "keywords": [],
   "author": "",

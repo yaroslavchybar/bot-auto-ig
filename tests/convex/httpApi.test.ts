@@ -102,7 +102,7 @@ test('keeps list and workflow HTTP-facing queries callable without public auth w
     }),
   )
 
-  const lists = await t.query(internal.lists.listInternal, {})
+  const lists = await t.query(api.lists.list, {})
   const workflows = await t.query(internal.workflows.queries.listInternal, {
     status: 'running',
   })

@@ -104,53 +104,6 @@ export class ProfileManager {
     }
   }
 
-  /** Get profile folder names from local data/profiles directory */
-  getLocalProfileNames(): string[] {
-    try {
-      if (!fs.existsSync(PROFILES_DIR)) return []
-      return fs
-        .readdirSync(PROFILES_DIR, { withFileTypes: true })
-        .filter((d) => d.isDirectory())
-        .map((d) => d.name)
-    } catch (e) {
-      logger.error({ err: e }, 'Error reading local profiles')
-      return []
-    }
-  }
-
-  /** Sync local profiles to database — creates DB entries for local profiles that don't exist in DB */
-  async syncLocalProfilesToDb(): Promise<{ created: number; errors: string[] }> {
-    const localNames = this.getLocalProfileNames()
-    if (localNames.length === 0) return { created: 0, errors: [] }
-
-    let dbProfiles: Profile[] = []
-    try {
-      dbProfiles = await this.getProfiles()
-    } catch {
-      dbProfiles = []
-    }
-
-    const dbNames = new Set(dbProfiles.map((p) => p.name))
-    const toCreate = localNames.filter((name) => !dbNames.has(name))
-
-    let created = 0
-    const errors: string[] = []
-
-    for (const name of toCreate) {
-      try {
-        await profilesCreate({ name, test_ip: false })
-        created++
-        logger.info({ profile: name }, 'Auto-created profile in DB')
-      } catch (e: any) {
-        const msg = `Failed to create profile "${name}": ${e?.message || e}`
-        logger.error({ err: e, profile: name }, msg)
-        errors.push(msg)
-      }
-    }
-
-    return { created, errors }
-  }
-
   async createProfile(profile: Profile): Promise<boolean> {
     try {
       await profilesCreate({

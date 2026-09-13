@@ -21,14 +21,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useProfilesPage } from '../hooks/useProfilesPage'
 
 export function ProfilesPageContainer() {
   const s = useProfilesPage()
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
-      <AmbientGlow />
       <ProfilesHeader searchQuery={s.searchQuery} onSearchChange={s.setSearchQuery}
         onRefresh={() => void s.handleRefreshProfiles()} onCreate={s.handleCreate}
         loading={s.loading} saving={s.saving} refreshing={s.refreshing} />

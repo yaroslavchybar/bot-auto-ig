@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 
-import { api } from '../../convex/_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import {
   createConvexTest,
   createUnauthenticatedConvexTest,
@@ -285,7 +285,7 @@ test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', as
   })
 })
 
-test('lists and updates workflow artifacts through internal-key routes', async () => {
+test('lists workflow artifacts and rejects the removed by-id route', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
@@ -297,7 +297,7 @@ test('lists and updates workflow artifacts through internal-key routes', async (
       }),
     ),
   )
-  const artifact = await t.mutation(api.workflowArtifacts.upsert, {
+  const artifact = await t.mutation(internal.workflowArtifacts.upsertInternal, {
     workflowId: workflow!._id,
     workflowName: workflow!.name,
     nodeId: 'node-1',
@@ -326,6 +326,5 @@ test('lists and updates workflow artifacts through internal-key routes', async (
   await expect(listResponse.json()).resolves.toMatchObject([
     { _id: artifact!._id, workflowId: workflow!._id },
   ])
-  expect(byIdResponse.status).toBe(200)
-  await expect(byIdResponse.json()).resolves.toMatchObject({ _id: artifact!._id })
+  expect(byIdResponse.status).toBe(404)
 })

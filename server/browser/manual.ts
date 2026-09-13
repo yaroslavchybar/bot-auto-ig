@@ -1,5 +1,4 @@
 import { openCamoufoxSession } from './camoufox.js'
-import { shouldStop } from './lifecycle.js'
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(name)
@@ -27,15 +26,16 @@ async function main(): Promise<void> {
     )
   process.stdout.write('Browser is running...\n')
 
-  await new Promise<void>((resolve) => {
-    const timer = setInterval(() => {
-      if (shouldStop() || session.context.pages().length === 0) {
-        clearInterval(timer)
-        resolve()
-      }
-    }, 500)
-  })
-  await session.close()
+  const watchPage = (page: typeof session.page) => {
+    page.once('close', () => {
+      if (session.context.pages().length === 0)
+        void session.close().catch(() => undefined)
+    })
+  }
+  session.context.on('page', watchPage)
+  session.context.pages().forEach(watchPage)
+  if (session.context.pages().length === 0) void session.close().catch(() => undefined)
+  await session.closed
 }
 
 main().catch((error) => {

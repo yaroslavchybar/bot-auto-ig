@@ -252,40 +252,6 @@ export async function killProcess(proc: ChildProcess): Promise<void> {
 }
 
 /**
- * Platform-aware kill using taskkill on Windows or SIGTERM→SIGKILL on Unix.
- * Intended for the simpler "stop and forget" cases (automation/profiles).
- */
-export async function killByPid(
-  pid: number,
-  proc?: ChildProcess | null,
-): Promise<void> {
-  if (process.platform === 'win32') {
-    await taskkillTree(pid)
-    return
-  }
-
-  // Unix: try process group, fall back to direct proc.kill
-  let usedGroupKill = false
-  try {
-    process.kill(-pid, 'SIGTERM')
-    usedGroupKill = true
-  } catch {
-    if (proc) {
-      try { proc.kill('SIGTERM') } catch { /* noop */ }
-    }
-  }
-
-  await new Promise((r) => setTimeout(r, DEFAULT_SIGTERM_WAIT_MS))
-
-  // SIGKILL fallback: try process group first, then direct child kill
-  if (usedGroupKill) {
-    try { process.kill(-pid, 'SIGKILL') } catch { /* noop */ }
-  } else if (proc) {
-    try { proc.kill('SIGKILL') } catch { /* noop */ }
-  }
-}
-
-/**
  * Kill a process by PID only (no ChildProcess reference).
  * Used for orphan cleanup.
  */

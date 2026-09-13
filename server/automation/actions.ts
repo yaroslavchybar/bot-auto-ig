@@ -139,10 +139,8 @@ export async function watchStories(
 }
 
 async function processProfiles(
-  page: Page,
   profileId: string,
   status: 'assigned' | 'subscribed',
-  log: ActionLogger,
   shouldStop: StopCheck,
   action: (username: string) => Promise<boolean>,
   config: Record<string, unknown>,
@@ -185,10 +183,8 @@ export async function followUsers(
   config: Record<string, unknown> = {},
 ): Promise<void> {
   await processProfiles(
-    page,
     profileId,
     'assigned',
-    log,
     shouldStop,
     async (username) => {
       await page.goto(
@@ -211,10 +207,8 @@ export async function unfollowUsers(
   config: Record<string, unknown> = {},
 ): Promise<void> {
   await processProfiles(
-    page,
     profileId,
     'subscribed',
-    log,
     shouldStop,
     async (username) => {
       await page.goto(

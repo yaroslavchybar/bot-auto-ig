@@ -4,7 +4,6 @@ import type { ActivityDefinition } from '../types'
  * Send Messages Activity
  *
  * Sends direct messages to users.
- * Settings mirror: MessageSettingsDialog
  */
 export const sendDm: ActivityDefinition = {
   id: 'send_dm',
@@ -126,5 +125,3 @@ export const sendDm: ActivityDefinition = {
   outputs: ['success', 'failure'],
   handler: 'messaging.send_dm',
 }
-
-

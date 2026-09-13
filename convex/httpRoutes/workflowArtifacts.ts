@@ -12,7 +12,6 @@ const internalApi = internal as any;
 
 const workflowArtifactPaths = [
   '/api/workflow-artifacts',
-  '/api/workflow-artifacts/by-id',
   '/api/workflow-artifacts/upsert',
   '/api/workflow-artifacts/storage-url',
 ];
@@ -38,20 +37,6 @@ function registerArtifactQueryRoutes(http: HttpRouter): void {
         workflowId: workflowId as any,
       });
       return jsonResponse(rows);
-    }),
-  });
-
-  http.route({
-    path: '/api/workflow-artifacts/by-id',
-    method: 'GET',
-    handler: withErrorHandling(async (ctx, request) => {
-      const url = new URL(request.url);
-      const id = url.searchParams.get('id') || '';
-      if (!id) throw new ValidationError('id is required');
-      const row = await ctx.runQuery(internalApi.workflowArtifacts.getByIdInternal, {
-        id: id as any,
-      });
-      return jsonResponse(row);
     }),
   });
 

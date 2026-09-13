@@ -7,25 +7,6 @@ export type ActionName =
     | 'Approve Requests'
     | 'Send Messages';
 
-export type ListRow = { id: string; name: string };
-
-export type LogLevel = 'info' | 'warn' | 'error' | 'success';
-
-export type LogEntry = {
-    ts: number;
-    message: string;
-    source?: string;
-    level?: LogLevel;
-    profileName?: string;
-    workflowId?: string;
-    taskId?: string;
-    targetUsername?: string;
-    errorCode?: string;
-    outcome?: string;
-    attempt?: number;
-    diagnostics?: string;
-};
-
 export type InstagramSettings = {
     automation_enabled: boolean;
     use_private_profiles: boolean;

@@ -46,24 +46,6 @@ export function normalizeProfileRow(profile: any) {
 	};
 }
 
-export function normalizeScrapeHealth(value: unknown): number {
-	const numeric = Number(value);
-	if (!Number.isFinite(numeric)) return 100;
-	return Math.max(0, Math.min(100, Math.floor(numeric)));
-}
-
-export function hasRemainingDailyCapacity(profile: any): boolean {
-	const limit = typeof profile.dailyScrapingLimit === "number" ? profile.dailyScrapingLimit : null;
-	const used = typeof profile.dailyScrapingUsed === "number" ? profile.dailyScrapingUsed : 0;
-	return limit === null || used < limit;
-}
-
-export function hasActiveScrapeLease(profile: any, now: number): boolean {
-	const owner = typeof profile.scrapeLeaseOwner === "string" ? profile.scrapeLeaseOwner.trim() : "";
-	const expiresAt = typeof profile.scrapeLeaseExpiresAt === "number" ? profile.scrapeLeaseExpiresAt : 0;
-	return Boolean(owner) && expiresAt > now;
-}
-
 export async function listProfileRows(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	rows.sort((a: any, b: any) => a.createdAt - b.createdAt);
@@ -393,17 +375,6 @@ export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[],
 	return true;
 }
 
-export async function clearBusyProfilesForListsRow(ctx: any, listIds: any[]) {
-	if (!Array.isArray(listIds) || listIds.length === 0) return true;
-	const allowed = new Set(listIds.map((id) => String(id)));
-	const rows = (await ctx.db.query("profiles").collect()).filter((profile: any) =>
-		getProfileListIds(profile).some((listId) => allowed.has(String(listId))),
-	);
-	const toUpdate = rows.filter((r: any) => (String(r.status || "").toLowerCase() === "running" ? true : Boolean(r.using)));
-	await Promise.all(toUpdate.map((p: any) => ctx.db.patch(p._id, { status: "idle", using: false })));
-	return true;
-}
-
 export async function backfillAssignedAccountsLimitRow(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	let updated = 0;
@@ -414,127 +385,4 @@ export async function backfillAssignedAccountsLimitRow(ctx: any) {
 		updated++;
 	}
 	return { updated };
-}
-
-export async function claimBestScrapeLeaseRow(
-	ctx: any,
-	workerId: string,
-	leaseMsRaw: number,
-	nowRaw: number,
-	minHealthRaw: number
-) {
-	const worker = String(workerId || "").trim();
-	if (!worker) throw new Error("workerId is required");
-	const now = Number.isFinite(nowRaw) ? Math.floor(nowRaw) : Date.now();
-	const leaseMs = Math.max(1000, Number.isFinite(leaseMsRaw) ? Math.floor(leaseMsRaw) : 90000);
-	const minHealth = Math.max(0, Math.min(100, Number.isFinite(minHealthRaw) ? Math.floor(minHealthRaw) : 25));
-	const rows = await ctx.db.query("profiles").collect();
-	const candidates = rows.filter((profile: any) => {
-		const proxy = typeof profile.proxy === "string" ? profile.proxy.trim() : "";
-		const sessionId = typeof profile.sessionId === "string" ? profile.sessionId.trim() : "";
-		if (!proxy || !sessionId) return false;
-		if (Boolean(profile.using) || String(profile.status || "").toLowerCase() === "running") return false;
-		if (hasActiveScrapeLease(profile, now)) return false;
-		if (!hasRemainingDailyCapacity(profile)) return false;
-		return normalizeScrapeHealth(profile.scrapeHealth) >= minHealth;
-	});
-	candidates.sort((a: any, b: any) => {
-		const aOpened = typeof a.lastOpenedAt === "number" ? a.lastOpenedAt : 0;
-		const bOpened = typeof b.lastOpenedAt === "number" ? b.lastOpenedAt : 0;
-		if (aOpened !== bOpened) return aOpened - bOpened;
-		const aUsed = typeof a.dailyScrapingUsed === "number" ? a.dailyScrapingUsed : 0;
-		const bUsed = typeof b.dailyScrapingUsed === "number" ? b.dailyScrapingUsed : 0;
-		if (aUsed !== bUsed) return aUsed - bUsed;
-		return a.createdAt - b.createdAt;
-	});
-
-	const selected = candidates[0];
-	if (!selected) return null;
-	await ctx.db.patch(selected._id, {
-		scrapeLeaseOwner: worker,
-		scrapeLeaseExpiresAt: now + leaseMs,
-		lastOpenedAt: now,
-	});
-	return normalizeProfileRow(await ctx.db.get(selected._id));
-}
-
-export async function refreshScrapeLeaseRow(ctx: any, profileId: any, workerId: string, leaseMsRaw: number, nowRaw: number) {
-	const existing = await ctx.db.get(profileId);
-	if (!existing) throw new Error("Profile not found");
-	const worker = String(workerId || "").trim();
-	if (!worker) throw new Error("workerId is required");
-	if (String(existing.scrapeLeaseOwner || "").trim() !== worker) {
-		throw new Error("Profile scrape lease is not owned by this worker");
-	}
-	const now = Number.isFinite(nowRaw) ? Math.floor(nowRaw) : Date.now();
-	const leaseMs = Math.max(1000, Number.isFinite(leaseMsRaw) ? Math.floor(leaseMsRaw) : 90000);
-	await ctx.db.patch(profileId, {
-		scrapeLeaseExpiresAt: now + leaseMs,
-	});
-	return normalizeProfileRow(await ctx.db.get(profileId));
-}
-
-export async function releaseScrapeLeaseRow(ctx: any, profileId: any, workerId?: string | null) {
-	const existing = await ctx.db.get(profileId);
-	if (!existing) return true;
-	const worker = typeof workerId === "string" ? workerId.trim() : "";
-	if (worker && String(existing.scrapeLeaseOwner || "").trim() !== worker) {
-		return true;
-	}
-	await ctx.db.patch(profileId, {
-		scrapeLeaseOwner: undefined,
-		scrapeLeaseExpiresAt: undefined,
-	});
-	return true;
-}
-
-export async function markScrapeSuccessRow(ctx: any, profileId: any, amountRaw: number, workerId: string, nowRaw: number) {
-	const existing = await ctx.db.get(profileId);
-	if (!existing) throw new Error("Profile not found");
-	const worker = String(workerId || "").trim();
-	if (worker && String(existing.scrapeLeaseOwner || "").trim() !== worker) {
-		throw new Error("Profile scrape lease is not owned by this worker");
-	}
-	const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
-	const now = Number.isFinite(nowRaw) ? Math.floor(nowRaw) : Date.now();
-	await ctx.db.patch(profileId, {
-		dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount,
-		scrapeHealth: Math.min(100, normalizeScrapeHealth(existing.scrapeHealth) + 1),
-		scrapeLeaseOwner: undefined,
-		scrapeLeaseExpiresAt: undefined,
-		lastOpenedAt: now,
-	});
-	return normalizeProfileRow(await ctx.db.get(profileId));
-}
-
-export async function markScrapeFailureRow(ctx: any, profileId: any, workerId: string, nowRaw: number) {
-	const existing = await ctx.db.get(profileId);
-	if (!existing) throw new Error("Profile not found");
-	const worker = String(workerId || "").trim();
-	if (worker && String(existing.scrapeLeaseOwner || "").trim() !== worker) {
-		throw new Error("Profile scrape lease is not owned by this worker");
-	}
-	const now = Number.isFinite(nowRaw) ? Math.floor(nowRaw) : Date.now();
-	await ctx.db.patch(profileId, {
-		scrapeHealth: Math.max(0, normalizeScrapeHealth(existing.scrapeHealth) - 10),
-		lastScrapeFailureAt: now,
-		scrapeLeaseOwner: undefined,
-		scrapeLeaseExpiresAt: undefined,
-	});
-	return normalizeProfileRow(await ctx.db.get(profileId));
-}
-
-export async function sweepExpiredScrapeLeasesRow(ctx: any, nowRaw: number) {
-	const now = Number.isFinite(nowRaw) ? Math.floor(nowRaw) : Date.now();
-	const rows = await ctx.db.query("profiles").collect();
-	const expired = rows.filter((profile: any) => hasActiveScrapeLease(profile, now) === false && Boolean(profile.scrapeLeaseOwner));
-	await Promise.all(
-		expired.map((profile: any) =>
-			ctx.db.patch(profile._id, {
-				scrapeLeaseOwner: undefined,
-				scrapeLeaseExpiresAt: undefined,
-			})
-		)
-	);
-	return { released: expired.length };
 }

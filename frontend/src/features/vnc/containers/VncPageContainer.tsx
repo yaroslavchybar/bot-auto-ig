@@ -3,7 +3,6 @@ import { useNavigate } from '@/lib/router'
 import { LayoutGrid, RefreshCw } from 'lucide-react'
 import { VncTile } from '../components/VncTile'
 import { Button } from '@/components/ui/button'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useVncSessions } from '../hooks/useVncSessions'
 import { useRouteActive } from '@/hooks/useRouteActive'
 import { buildVncSessionPath, sessionKey } from '../utils/liveSessions'
@@ -30,7 +29,6 @@ export function VncPageContainer() {
 
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
-      <AmbientGlow className="h-[400px] w-[800px]" reducedClassName="w-[560px] h-[240px]" />
       <VncHeader
         sessionCount={sessions.length}
         connected={connected}

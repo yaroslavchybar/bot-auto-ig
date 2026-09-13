@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from '@/lib/router'
 import { ShieldCheck } from 'lucide-react'
-import { Input } from '@/components/ui/input'
 
 interface AuthCardShellProps {
   title: string
@@ -60,48 +59,3 @@ export function AuthCardShell({
     </div>
   )
 }
-
-interface AuthFieldProps {
-  id: string
-  label: string
-  type?: string
-  autoComplete?: string
-  inputMode?: React.ComponentProps<typeof Input>['inputMode']
-  value: string
-  disabled: boolean
-  onChange: (value: string) => void
-}
-
-export function AuthField({
-  id,
-  label,
-  type = 'text',
-  autoComplete,
-  inputMode,
-  value,
-  disabled,
-  onChange,
-}: AuthFieldProps) {
-  return (
-    <div className="space-y-2">
-      <label
-        htmlFor={id}
-        className="text-muted-copy text-[11px] font-semibold tracking-[0.24em] uppercase"
-      >
-        {label}
-      </label>
-      <Input
-        id={id}
-        type={type}
-        autoComplete={autoComplete}
-        inputMode={inputMode}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="brand-focus border-line bg-field text-ink h-11 rounded-xl px-3 text-sm shadow-xs focus-visible:ring-0 focus-visible:ring-offset-0"
-        required
-        disabled={disabled}
-      />
-    </div>
-  )
-}
-

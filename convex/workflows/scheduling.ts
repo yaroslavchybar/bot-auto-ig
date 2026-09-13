@@ -63,79 +63,6 @@ export const updateSchedule = mutation({
 	},
 });
 
-export const activate = mutation({
-	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
-		if (workflow.isActive) throw new Error("Workflow is already active");
-
-		// Require schedule to be configured
-		if (!workflow.scheduleType) {
-			throw new Error("Please configure a schedule before activating");
-		}
-
-		const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
-		validateScheduleConfig(workflow.scheduleType as ScheduleType, scheduleConfig);
-
-		if (workflow.scheduleType === "instant") {
-			await ctx.db.patch(args.id, {
-				isActive: true,
-				cronJobId: undefined,
-				updatedAt: Date.now(),
-			});
-			await ctx.scheduler.runAfter(0, internal.workflows.scheduling.executeScheduledWorkflow, {
-				workflowId: args.id,
-			});
-		} else {
-			const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
-
-			// Register the cron job
-			const cronJobId = await crons.register(
-				ctx,
-				schedule,
-				internal.workflows.scheduling.executeScheduledWorkflow,
-				{ workflowId: args.id },
-				`workflow_${args.id}`
-			);
-
-			await ctx.db.patch(args.id, {
-				isActive: true,
-				cronJobId,
-				updatedAt: Date.now(),
-			});
-		}
-
-		return await ctx.db.get(args.id);
-	},
-});
-
-export const deactivate = mutation({
-	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
-		if (!workflow.isActive) throw new Error("Workflow is not active");
-
-		// Delete the cron job if exists
-		if (workflow.cronJobId) {
-			try {
-				await crons.delete(ctx, { id: workflow.cronJobId });
-			} catch {
-				// Cron may already be deleted
-			}
-		}
-
-		await ctx.db.patch(args.id, {
-			isActive: false,
-			cronJobId: undefined,
-			updatedAt: Date.now(),
-		});
-
-		return await ctx.db.get(args.id);
-	},
-});
-
 export const toggleActive = mutation({
 	args: { id: v.id("workflows") },
 	handler: async (ctx, args) => {
@@ -283,37 +210,5 @@ export const resetDailyRuns = internalMutation({
 		}
 
 		return { reset: activeWorkflows.length };
-	},
-});
-
-export const migrateLegacyListIdToListIds = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const rows = await ctx.db.query("workflows").collect();
-		let migrated = 0;
-		for (const row of rows) {
-			const doc = row as any;
-			if (Array.isArray(doc.listIds)) continue;
-			const legacyListId = doc.listId;
-			const listIds = legacyListId ? [legacyListId] : [];
-			await ctx.db.patch(row._id, { listIds } as any);
-			migrated++;
-		}
-		return { migrated };
-	},
-});
-
-export const cleanupLegacyListIdField = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const rows = await ctx.db.query("workflows").collect();
-		let cleaned = 0;
-		for (const row of rows) {
-			const doc = row as any;
-			if (!("listId" in doc)) continue;
-			await ctx.db.patch(row._id, { listId: undefined } as any);
-			cleaned++;
-		}
-		return { cleaned };
 	},
 });

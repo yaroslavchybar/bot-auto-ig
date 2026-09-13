@@ -152,15 +152,6 @@ export function getActivityById(id: string): ActivityDefinition | undefined {
 }
 
 /**
- * Get all activities in a category
- */
-export function getActivitiesByCategory(
-  category: ActivityCategory,
-): ActivityDefinition[] {
-  return ACTIVITY_REGISTRY.filter((a) => a.category === category)
-}
-
-/**
  * Get list of all categories
  */
 export function getAllCategories(): ActivityCategory[] {
@@ -179,20 +170,6 @@ export function getCategoryLabel(category: ActivityCategory): string {
     control: 'Control Flow',
   }
   return labels[category]
-}
-
-/**
- * Get icon name for a category
- */
-export function getCategoryIcon(category: ActivityCategory): string {
-  const icons: Record<ActivityCategory, string> = {
-    browsing: 'Scroll',
-    engagement: 'Users',
-    messaging: 'MessageCircle',
-    stories: 'CircleDot',
-    control: 'Settings2',
-  }
-  return icons[category]
 }
 
 export function getQuickPickActivities(limit = 6): ActivityDefinition[] {
@@ -284,49 +261,3 @@ export function normalizeActivityConfig(
     ...rawConfig,
   }
 }
-
-/**
- * Validate config values against activity definition
- * Returns array of error messages (empty = valid)
- */
-export function validateConfig(
-  activityId: string,
-  config: Record<string, unknown>,
-): string[] {
-  const activity = getActivityById(activityId)
-  if (!activity) return ['Unknown activity']
-
-  const errors: string[] = []
-  for (const input of activity.inputs) {
-    const value = config[input.name]
-
-    // Check required
-    if (
-      input.required &&
-      (value === undefined || value === null || value === '')
-    ) {
-      errors.push(`${input.label} is required`)
-      continue
-    }
-
-    // Validate number ranges
-    if (value !== undefined && value !== null) {
-      if (input.type === 'number') {
-        const num = Number(value)
-        if (isNaN(num)) {
-          errors.push(`${input.label} must be a number`)
-        } else {
-          if (input.min !== undefined && num < input.min) {
-            errors.push(`${input.label} must be at least ${input.min}`)
-          }
-          if (input.max !== undefined && num > input.max) {
-            errors.push(`${input.label} must be at most ${input.max}`)
-          }
-        }
-      }
-    }
-  }
-  return errors
-}
-
-

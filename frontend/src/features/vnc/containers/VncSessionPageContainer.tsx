@@ -5,7 +5,6 @@ import { ArrowLeft, FileText, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useVncSessions } from '../hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from '../utils/liveSessions'
 
@@ -201,7 +200,6 @@ function VncMobileLayout({
 }) {
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
-      <AmbientGlow className="h-[360px] w-[700px]" reducedClassName="w-[480px] h-[220px]" />
       <VncMobileHeader session={session} onBack={onBack} onToggleLogs={onToggleLogs} showMobileLogs={showMobileLogs} />
 
       <div className="min-h-0 flex-1 space-y-2 p-2">
@@ -330,7 +328,6 @@ function VncDesktopLayout({
 }) {
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
-      <AmbientGlow className="h-[400px] w-[800px]" reducedClassName="w-[560px] h-[240px]" />
       <VncDesktopHeader session={session} loading={loading} onBack={onBack} onRefresh={onRefresh} />
       <VncDesktopPanels
         session={session}

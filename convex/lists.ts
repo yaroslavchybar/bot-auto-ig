@@ -1,15 +1,5 @@
 import { v } from "convex/values";
-import { internalQuery } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-
-export const listInternal = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		const rows = await ctx.db.query("lists").collect();
-		rows.sort((a, b) => a.createdAt - b.createdAt);
-		return rows;
-	},
-});
 
 export const list = query({
 	args: {},

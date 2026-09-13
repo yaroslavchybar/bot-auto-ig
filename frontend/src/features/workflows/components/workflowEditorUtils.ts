@@ -107,19 +107,6 @@ export function selectOnlyNode(nodes: Node[], nodeId: string | null): Node[] {
   }))
 }
 
-export function getSingleOutputHandle(node: Node): string | null {
-  if (node.type === 'start') {
-    return null
-  }
-
-  const outputs = getActivityOutputs(node)
-  if (outputs.length !== 1) {
-    return null
-  }
-
-  return outputs[0] === 'next' || outputs[0] === 'success' ? null : outputs[0]
-}
-
 export function getConnectedInsertPosition(
   sourceNode: Node,
   sourceHandle?: string | null,

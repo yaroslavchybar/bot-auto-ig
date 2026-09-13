@@ -166,14 +166,6 @@ export function useSearchParams(): [URLSearchParams] {
   return useMemo(() => [new URLSearchParams(search)], [search])
 }
 
-export function useMatchedRoute(): MatchedRoute | null {
-  const { pathname, params, pattern } = useContext(RouterContext)
-  return useMemo(() => {
-    if (!pattern) return matchRoute(pathname)
-    return { pattern, params, meta: ROUTE_META[pattern] }
-  }, [pathname, params, pattern])
-}
-
 export function Navigate({ to, replace = false }: { to: string; replace?: boolean }) {
   const navigateFn = useNavigate()
   useEffect(() => {

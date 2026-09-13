@@ -1,22 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
-import {
-	normalizeDailyScrapingLimit,
-	backfillAssignedAccountsLimitRow,
-	createProfileRow,
-	updateProfileByNameRow,
-	updateProfileByIdRow,
-	removeProfileByNameRow,
-	removeProfileByIdRow,
-	syncProfileStatusRow,
-	setProfileLoginTrueRow,
-	bulkSetProfileListIdRow,
-	bulkAddProfilesToListRow,
-	bulkRemoveProfilesFromListRow,
-	clearBusyProfilesForListsRow,
-	incrementDailyScrapingUsedByName,
-} from "./helpers";
+import { backfillAssignedAccountsLimitRow, createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, setProfileLoginTrueRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow, incrementDailyScrapingUsedByName } from "./helpers";
 
 const profileArgsShape = {
 	name: v.string(),
@@ -49,13 +34,6 @@ const updateByNameArgsShape = {
 	...profileArgsShape,
 };
 
-export const updateByName = mutation({
-	args: updateByNameArgsShape,
-	handler: async (ctx, args) => {
-		return await updateProfileByNameRow(ctx, args);
-	},
-});
-
 export const updateByNameInternal = internalMutation({
 	args: updateByNameArgsShape,
 	handler: async (ctx, args) => {
@@ -82,24 +60,10 @@ export const updateByIdInternal = internalMutation({
 	},
 });
 
-export const removeByName = mutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await removeProfileByNameRow(ctx, args.name);
-	},
-});
-
 export const removeByNameInternal = internalMutation({
 	args: { name: v.string() },
 	handler: async (ctx, args) => {
 		return await removeProfileByNameRow(ctx, args.name);
-	},
-});
-
-export const removeById = mutation({
-	args: { profileId: v.id("profiles") },
-	handler: async (ctx, args) => {
-		return await removeProfileByIdRow(ctx, args.profileId);
 	},
 });
 
@@ -110,13 +74,6 @@ export const removeByIdInternal = internalMutation({
 	},
 });
 
-export const syncStatus = mutation({
-	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
-	handler: async (ctx, args) => {
-		return await syncProfileStatusRow(ctx, args.name, args.status, args.using);
-	},
-});
-
 export const syncStatusInternal = internalMutation({
 	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
@@ -124,24 +81,10 @@ export const syncStatusInternal = internalMutation({
 	},
 });
 
-export const setLoginTrue = mutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await setProfileLoginTrueRow(ctx, args.name);
-	},
-});
-
 export const setLoginTrueInternal = internalMutation({
 	args: { name: v.string() },
 	handler: async (ctx, args) => {
 		return await setProfileLoginTrueRow(ctx, args.name);
-	},
-});
-
-export const bulkSetListId = mutation({
-	args: { profileIds: v.array(v.id("profiles")), listId: v.optional(v.union(v.null(), v.id("lists"))) },
-	handler: async (ctx, args) => {
-		return await bulkSetProfileListIdRow(ctx, args.profileIds, args.listId);
 	},
 });
 
@@ -180,20 +123,6 @@ export const bulkRemoveFromListInternal = internalMutation({
 	},
 });
 
-export const clearBusyForLists = mutation({
-	args: { listIds: v.array(v.id("lists")) },
-	handler: async (ctx, args) => {
-		return await clearBusyProfilesForListsRow(ctx, args.listIds);
-	},
-});
-
-export const clearBusyForListsInternal = internalMutation({
-	args: { listIds: v.array(v.id("lists")) },
-	handler: async (ctx, args) => {
-		return await clearBusyProfilesForListsRow(ctx, args.listIds);
-	},
-});
-
 // Quota charges are internal-only: the server calls them through the
 // INTERNAL_API_KEY-gated HTTP route. A public mutation would let any client
 // inflate dailyScrapingUsed and spam scrapeQuotaCommits rows.
@@ -201,17 +130,6 @@ export const incrementDailyScrapingUsedInternal = internalMutation({
 	args: { name: v.string(), amount: v.number(), commitKey: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount, args.commitKey);
-	},
-});
-
-export const updateDailyScrapingLimit = mutation({
-	args: { profileId: v.id("profiles"), limit: v.union(v.number(), v.null()) },
-	handler: async (ctx, args) => {
-		const existing = await ctx.db.get(args.profileId);
-		if (!existing) throw new Error("Profile not found");
-		const limit = normalizeDailyScrapingLimit(args.limit);
-		await ctx.db.patch(args.profileId, { dailyScrapingLimit: limit });
-		return await ctx.db.get(args.profileId);
 	},
 });
 

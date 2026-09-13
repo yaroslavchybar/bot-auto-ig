@@ -9,7 +9,6 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { apiDownload } from '@/lib/api'
 import { artifactDownloadPath, type ArtifactDownloadTarget } from '@/lib/artifact-download'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -294,7 +293,6 @@ export function ScrapedDataPageContainer() {
 
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
-      <AmbientGlow />
 
       <ScrapedDataHeader
         searchQuery={state.searchQuery}

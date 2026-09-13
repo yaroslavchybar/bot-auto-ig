@@ -4,14 +4,11 @@ import { registerListRoutes } from './httpRoutes/lists';
 import { registerMessageTemplateRoutes } from './httpRoutes/messageTemplates';
 import { registerProfileRoutes } from './httpRoutes/profiles';
 import { registerScrapingAccountRoutes } from './httpRoutes/scrapingAccounts';
-import { registerPreflight } from './httpRoutes/shared';
+
 import { registerWorkflowArtifactRoutes } from './httpRoutes/workflowArtifacts';
 import { registerWorkflowRoutes } from './httpRoutes/workflows';
 
 const http = httpRouter();
-
-// Register OPTIONS preflight for paths that only have OPTIONS handlers
-registerPreflight(http, ['/api/instagram-settings']);
 
 // Register all domain route groups
 registerProfileRoutes(http);

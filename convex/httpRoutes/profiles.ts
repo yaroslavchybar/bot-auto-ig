@@ -22,16 +22,9 @@ const profilePaths = [
   '/api/profiles/delete-by-id',
   '/api/profiles/remove-by-name',
   '/api/profiles/delete-by-name',
-  '/api/profiles/clear-busy-for-lists',
   '/api/profiles/sync-status',
   '/api/profiles/set-login-true',
   '/api/profiles/increment-daily-scraping-used',
-  '/api/profiles/claim-scrape-lease',
-  '/api/profiles/refresh-scrape-lease',
-  '/api/profiles/release-scrape-lease',
-  '/api/profiles/mark-scrape-success',
-  '/api/profiles/mark-scrape-failure',
-  '/api/profiles/sweep-expired-scrape-leases',
   '/api/profiles/assigned',
   '/api/profiles/unassigned',
   '/api/profiles/bulk-set-list-id',
@@ -44,7 +37,7 @@ export function registerProfileRoutes(http: HttpRouter): void {
   registerProfileQueryRoutes(http);
   registerProfileCrudRoutes(http);
   registerProfileStatusRoutes(http);
-  registerProfileScrapingRoutes(http);
+
   registerProfileAssignmentRoutes(http);
   registerProfileBulkRoutes(http);
 }
@@ -230,18 +223,6 @@ function registerProfileDeleteRoutes(http: HttpRouter): void {
 /* ── Status mutation routes ── */
 
 function registerProfileStatusRoutes(http: HttpRouter): void {
-  http.route({
-    path: '/api/profiles/clear-busy-for-lists',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const listIds = body?.listIds ?? body?.list_ids ?? [];
-      const ok = await ctx.runMutation(internalApi.profiles.mutations.clearBusyForListsInternal, {
-        listIds: listIds as any[],
-      });
-      return jsonResponse({ ok });
-    }),
-  });
 
   http.route({
     path: '/api/profiles/sync-status',
@@ -273,102 +254,6 @@ function registerProfileStatusRoutes(http: HttpRouter): void {
         body as any,
       );
       return jsonResponse({ ok });
-    }),
-  });
-}
-
-/* ── Scraping lease routes ── */
-
-function registerProfileScrapingRoutes(http: HttpRouter): void {
-  registerScrapeLeaseRoutes(http);
-  registerScrapeResultRoutes(http);
-}
-
-function registerScrapeLeaseRoutes(http: HttpRouter): void {
-  http.route({
-    path: '/api/profiles/claim-scrape-lease',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const profile = await ctx.runMutation(internal.profiles.scraping.claimBestScrapeLeaseInternal, {
-        workerId: body?.workerId,
-        leaseMs: body?.leaseMs,
-        now: body?.now ?? Date.now(),
-        minHealth: body?.minHealth,
-      });
-      return jsonResponse(mapProfileToApi(profile));
-    }),
-  });
-
-  http.route({
-    path: '/api/profiles/refresh-scrape-lease',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const profile = await ctx.runMutation(internal.profiles.scraping.refreshScrapeLeaseInternal, {
-        profileId: body?.profileId,
-        workerId: body?.workerId,
-        leaseMs: body?.leaseMs,
-        now: body?.now ?? Date.now(),
-      });
-      return jsonResponse(mapProfileToApi(profile));
-    }),
-  });
-
-  http.route({
-    path: '/api/profiles/release-scrape-lease',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const ok = await ctx.runMutation(internal.profiles.scraping.releaseScrapeLeaseInternal, {
-        profileId: body?.profileId,
-        workerId: body?.workerId,
-      });
-      return jsonResponse({ ok });
-    }),
-  });
-}
-
-function registerScrapeResultRoutes(http: HttpRouter): void {
-  http.route({
-    path: '/api/profiles/mark-scrape-success',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const profile = await ctx.runMutation(internal.profiles.scraping.markScrapeSuccessInternal, {
-        profileId: body?.profileId,
-        workerId: body?.workerId,
-        amount: body?.amount,
-        now: body?.now ?? Date.now(),
-      });
-      return jsonResponse(mapProfileToApi(profile));
-    }),
-  });
-
-  http.route({
-    path: '/api/profiles/mark-scrape-failure',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const profile = await ctx.runMutation(internal.profiles.scraping.markScrapeFailureInternal, {
-        profileId: body?.profileId,
-        workerId: body?.workerId,
-        now: body?.now ?? Date.now(),
-      });
-      return jsonResponse(mapProfileToApi(profile));
-    }),
-  });
-
-  http.route({
-    path: '/api/profiles/sweep-expired-scrape-leases',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const result = await ctx.runMutation(
-        internal.profiles.scraping.sweepExpiredScrapeLeasesInternal,
-        { now: body?.now ?? Date.now() },
-      );
-      return jsonResponse(result);
     }),
   });
 }

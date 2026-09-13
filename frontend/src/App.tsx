@@ -11,7 +11,6 @@ import { AuthGuard } from '@/components/layout/AuthGuard'
 import { ProtectedLayoutShell } from '@/components/layout/ProtectedLayoutShell'
 import { ErrorBoundary as AppErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { ThemeProvider } from '@/hooks/use-theme'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { Toaster } from '@/components/ui/toaster'
 import { usePerformanceMode } from '@/hooks/use-performance-mode'
 import { AppAuthProvider } from '@/lib/auth'
@@ -35,10 +34,6 @@ function AppFrame({ children }: { children: ReactNode }) {
         performanceMode && 'performance-mode',
       )}
     >
-      <AmbientGlow
-        className="h-[500px] w-[1000px]"
-        reducedClassName="h-[280px] w-[640px]"
-      />
       {children}
     </div>
   )

@@ -216,25 +216,9 @@ async function updateWorkflowStatus(ctx: any, args: UpdateStatusArgs) {
 	return await ctx.db.get(args.id);
 }
 
-export const start = mutation({
-	args: { id: v.id("workflows") },
-	handler: startWorkflow,
-});
-
 export const startInternal = internalMutation({
 	args: { id: v.id("workflows") },
 	handler: startWorkflow,
-});
-
-export const updateStatus = mutation({
-	args: {
-		id: v.id("workflows"),
-		status: statusValidator,
-		currentNodeId: v.optional(v.string()),
-		nodeStates: v.optional(v.any()),
-		error: v.optional(v.string()),
-	},
-	handler: updateWorkflowStatus,
 });
 
 export const updateStatusInternal = internalMutation({
@@ -246,90 +230,6 @@ export const updateStatusInternal = internalMutation({
 		error: v.optional(v.string()),
 	},
 	handler: updateWorkflowStatus,
-});
-
-export const pause = mutation({
-	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
-
-		if (workflow.status !== "running") {
-			throw new Error("Can only pause running workflows");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "paused",
-			updatedAt: Date.now(),
-		});
-		return await ctx.db.get(args.id);
-	},
-});
-
-export const resume = mutation({
-	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
-
-		if (workflow.status !== "paused") {
-			throw new Error("Can only resume paused workflows");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "running",
-			updatedAt: Date.now(),
-		});
-		return await ctx.db.get(args.id);
-	},
-});
-
-export const cancel = mutation({
-	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
-
-		if (workflow.status === "completed" || workflow.status === "cancelled") {
-			throw new Error("Workflow already finished");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "cancelled",
-			completedAt: Date.now(),
-			updatedAt: Date.now(),
-		});
-		return await ctx.db.get(args.id);
-	},
-});
-
-export const retry = mutation({
-	args: { id: v.id("workflows") },
-	handler: async (ctx, args) => {
-		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
-
-		if (workflow.status !== "failed") {
-			throw new Error("Can only retry failed workflows");
-		}
-
-		const maxRetries = workflow.maxRetries ?? 0;
-		const retryCount = (workflow.retryCount ?? 0) + 1;
-
-		if (maxRetries > 0 && retryCount > maxRetries) {
-			throw new Error("Maximum retries exceeded");
-		}
-
-		await ctx.db.patch(args.id, {
-			status: "pending",
-			retryCount,
-			error: undefined,
-			currentNodeId: undefined,
-			completedAt: undefined,
-			updatedAt: Date.now(),
-		});
-		return await ctx.db.get(args.id);
-	},
 });
 
 export const reset = mutation({

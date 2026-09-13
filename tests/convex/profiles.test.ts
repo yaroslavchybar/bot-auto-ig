@@ -19,7 +19,7 @@ test('creates profiles and selects available profiles by list with cooldown logi
     listId: list!._id,
   })
 
-  const available = await t.query(api.profiles.queries.getAvailableForLists, {
+  const available = await t.query(internal.profiles.queries.getAvailableForListsInternal, {
     listIds: [String(list!._id)],
     cooldownMinutes: 10,
   })
@@ -36,7 +36,7 @@ test('creates profiles and selects available profiles by list with cooldown logi
   expect(available[0]?._id).toBe(profile!._id)
 })
 
-test('clears busy profiles for lists and resets scraping counters', async () => {
+test('syncs profile status and resets scraping counters', async () => {
   const t = createConvexTest()
   const list = await seedList(t, 'List A')
   const profile = await seedProfile(t, { name: 'Profile B' })
@@ -45,7 +45,7 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
     profileIds: [profile!._id],
     listId: list!._id,
   })
-  await t.mutation(api.profiles.mutations.syncStatus, {
+  await t.mutation(internal.profiles.mutations.syncStatusInternal, {
     name: 'Profile B',
     status: 'running',
     using: true,
@@ -54,8 +54,10 @@ test('clears busy profiles for lists and resets scraping counters', async () => 
     name: 'Profile B',
     amount: 5,
   })
-  await t.mutation(api.profiles.mutations.clearBusyForLists, {
-    listIds: [list!._id],
+  await t.mutation(internal.profiles.mutations.syncStatusInternal, {
+    name: 'Profile B',
+    status: 'idle',
+    using: false,
   })
   await t.mutation(internal.profiles.scraping.resetDailyScrapingUsed, {})
 
@@ -90,7 +92,7 @@ test('quota charges are idempotent per commitKey and reject key reuse with diffe
   await expect(charge('Quota A', 6, 'key-1')).rejects.toThrow()
   await expect(charge('Quota B', 5, 'key-1')).rejects.toThrow()
 
-  const updated = await t.query(api.profiles.queries.getByName, {
+  const updated = await t.query(internal.profiles.queries.getByNameInternal, {
     name: 'Quota A',
   })
   expect(updated?.dailyScrapingUsed).toBe(5)

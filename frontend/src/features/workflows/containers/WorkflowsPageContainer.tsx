@@ -21,14 +21,12 @@ import { WorkflowsList } from '../components/WorkflowsList'
 import { WorkflowDialog } from '../components/WorkflowDialog'
 import { WorkflowDetails } from '../components/WorkflowDetails'
 import { ScheduleDialog } from '../components/ScheduleDialog'
-import { AmbientGlow } from '@/components/ui/ambient-glow'
 import { useWorkflowsPage } from '../hooks/useWorkflowsPage'
 
 export function WorkflowsPageContainer() {
   const s = useWorkflowsPage()
   return (
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
-      <AmbientGlow />
       <WorkflowsHeader saving={s.saving} workflowsLoading={s.workflowsLoading}
         refreshing={s.refreshing} importInputRef={s.importInputRef}
         onCreate={s.handleCreate} onRefresh={() => void s.handleRefresh()}
