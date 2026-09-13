@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -11,8 +10,7 @@ import { useNavigate } from '@/lib/router'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { toast } from 'sonner'
-import { apiDownload, apiFetch } from '@/lib/api'
-import { artifactDownloadPath, type ArtifactDownloadTarget } from '@/lib/artifact-download'
+import { apiFetch } from '@/lib/api'
 import { getActivityById } from '@/features/workflows/activities'
 import type { Workflow } from '../types'
 import {
@@ -20,27 +18,6 @@ import {
   validateWorkflowImport,
 } from '../utils/workflowImportExport'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
-
-export type WorkflowArtifact = {
-  _id: string
-  workflowId: string
-  localArtifactPath?: string | null
-  localArtifactDeletedAt?: number | null
-  name: string
-  nodeLabel?: string | null
-  kind: 'followers' | 'following'
-  targets?: string[]
-  targetUsername?: string | null
-  status?: string | null
-  sourceProfileName?: string | null
-  lastRunAt?: number | null
-  stats?: {
-    scraped?: number
-    deduped?: number
-    chunksCompleted?: number
-    targetsCompleted?: number
-  } | null
-}
 
 /* ── Dialog state management ── */
 
@@ -72,46 +49,6 @@ function useWorkflowDialogState(workflowsList: Workflow[]) {
     deleteWorkflowId, setDeleteWorkflowId,
     editWorkflow, detailsWorkflow, scheduleWorkflow,
   }
-}
-
-/* ── Artifact fetching ── */
-
-function useWorkflowArtifacts(
-  detailsWorkflowId: Id<'workflows'> | null,
-  handleError: ReturnType<typeof useErrorHandler>['handleError'],
-) {
-  const [workflowArtifacts, setWorkflowArtifacts] = useState<
-    Record<string, WorkflowArtifact[]>
-  >({})
-  const [fetchedIds, setFetchedIds] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    if (!detailsWorkflowId) return
-    const id = String(detailsWorkflowId)
-    let cancelled = false
-    void apiFetch<WorkflowArtifact[]>(
-      `/api/workflows/artifacts?workflowId=${encodeURIComponent(id)}`,
-    )
-      .then((rows) => {
-        if (cancelled) return
-        setWorkflowArtifacts((prev) => ({
-          ...prev,
-          [id]: Array.isArray(rows) ? rows : [],
-        }))
-        setFetchedIds((prev) => new Set(prev).add(id))
-      })
-      .catch((cause) => {
-        if (cancelled) return
-        handleError(cause, 'Workflow artifacts')
-        setFetchedIds((prev) => new Set(prev).add(id))
-      })
-    return () => { cancelled = true }
-  }, [detailsWorkflowId, handleError])
-
-  const artifactsLoading = detailsWorkflowId !== null
-    && !fetchedIds.has(String(detailsWorkflowId))
-
-  return { artifactsLoading, workflowArtifacts }
 }
 
 /* ── CRUD operations ── */
@@ -342,8 +279,6 @@ export function useWorkflowsPage() {
 
   const { workflowsList, workflowsLoading } = useWorkflowsData()
   const dialogState = useWorkflowDialogState(workflowsList)
-  const { artifactsLoading, workflowArtifacts } =
-    useWorkflowArtifacts(dialogState.detailsWorkflowId, handleError)
 
   const crud = useWorkflowMutations(dialogState, handleError)
   const navigate = useNavigate()
@@ -380,21 +315,12 @@ export function useWorkflowsPage() {
     finally { setRefreshing(false) }
   }, [convex, handleError])
 
-  const handleDownloadArtifact = useCallback(async (target: ArtifactDownloadTarget, fileName: string) => {
-    try {
-      await apiDownload(
-        artifactDownloadPath(target, fileName),
-        fileName,
-      )
-    } catch (e) { handleError(e, 'Download artifact') }
-  }, [handleError])
-
   return {
     importInputRef: importExport.importInputRef,
     workflowsList, workflowsLoading, saving: crud.saving, refreshing,
     isCreateOpen: dialogState.isCreateOpen, editWorkflow: dialogState.editWorkflow,
     detailsWorkflow: dialogState.detailsWorkflow, scheduleWorkflow: dialogState.scheduleWorkflow,
-    deleteWorkflowId: dialogState.deleteWorkflowId, artifactsLoading, workflowArtifacts,
+    deleteWorkflowId: dialogState.deleteWorkflowId,
     setIsCreateOpen: dialogState.setIsCreateOpen, setEditWorkflowId: dialogState.setEditWorkflowId,
     setDetailsWorkflowId: dialogState.setDetailsWorkflowId,
     setScheduleWorkflowId: dialogState.setScheduleWorkflowId,
@@ -411,6 +337,6 @@ export function useWorkflowsPage() {
     handleStopRun: scheduling.handleStopRun,
     handleEditSchedule: scheduling.handleEditSchedule,
     handleSaveSchedule: scheduling.handleSaveSchedule,
-    handleReset: crud.handleReset, handleDownloadArtifact,
+    handleReset: crud.handleReset,
   }
 }

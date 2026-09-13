@@ -44,6 +44,11 @@ export const remove = mutation({
 			const listIds = Array.isArray(workflow.listIds) ? workflow.listIds : [];
 			return listIds.some((listId: any) => String(listId) === String(args.id));
 		});
+		const jobs = await ctx.db.query("scrapeJobs").collect();
+		const impactedJobs = jobs.filter((job: any) => {
+			const listIds = Array.isArray(job.listIds) ? job.listIds : [];
+			return listIds.some((listId: any) => String(listId) === String(args.id));
+		});
 		await Promise.all(
 			impacted.map((profile: any) => {
 				const listIds = Array.isArray(profile.listIds) ? profile.listIds : [];
@@ -58,6 +63,15 @@ export const remove = mutation({
 				const listIds = Array.isArray(workflow.listIds) ? workflow.listIds : [];
 				const nextListIds = listIds.filter((listId: any) => String(listId) !== String(args.id));
 				return ctx.db.patch(workflow._id, {
+					listIds: nextListIds,
+				});
+			}),
+		);
+		await Promise.all(
+			impactedJobs.map((job: any) => {
+				const listIds = Array.isArray(job.listIds) ? job.listIds : [];
+				const nextListIds = listIds.filter((listId: any) => String(listId) !== String(args.id));
+				return ctx.db.patch(job._id, {
 					listIds: nextListIds,
 				});
 			}),

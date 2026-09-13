@@ -3,6 +3,10 @@ import type { Id } from './_generated/dataModel';
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+// NOTE: browser-called queries below are intentionally public.
+// Admin-only access is enforced by the Express session login; the browser
+// Convex client carries no identity since Clerk was removed.
+import { query } from "./_generated/server";
 import { normalizeAssignedAccountsLimit } from "./profiles/helpers";
 
 function normalizeUserName(userName: string): string {
@@ -27,6 +31,9 @@ export const insert = internalMutation({
 		),
 		message: v.boolean(),
 		createdAt: v.number(),
+		isVerified: v.optional(v.boolean()),
+		isPrivate: v.optional(v.boolean()),
+		sourceJobId: v.optional(v.id("scrapeJobs")),
 	},
 	handler: async (ctx, args) => {
 		const userName = normalizeUserName(args.userName);
@@ -45,8 +52,61 @@ export const insert = internalMutation({
 			status: args.status,
 			message: args.message,
 			createdAt: args.createdAt,
+			isVerified: args.isVerified,
+			isPrivate: args.isPrivate,
+			sourceJobId: args.sourceJobId,
 		});
 		return { id, alreadyExisted: false };
+	},
+});
+
+// Batch insert for scrape jobs: dedupes by userName, skips blanks.
+// Never overwrites existing rows (messaging flow owns them).
+export const insertMany = internalMutation({
+	args: {
+		accounts: v.array(v.object({
+			userName: v.string(),
+			fullName: v.optional(v.string()),
+			isVerified: v.optional(v.boolean()),
+			isPrivate: v.optional(v.boolean()),
+			sourceJobId: v.optional(v.id("scrapeJobs")),
+		})),
+	},
+	handler: async (ctx, args) => {
+		let inserted = 0;
+		let existed = 0;
+		let skipped = 0;
+		const now = Date.now();
+		const batch = args.accounts.slice(0, 500);
+		skipped += args.accounts.length - batch.length;
+		for (const account of batch) {
+			const userName = normalizeUserName(account.userName);
+			if (!userName) {
+				skipped += 1;
+				continue;
+			}
+			const existing = await ctx.db
+				.query("instagramAccounts")
+				.withIndex("by_userName", (q) => q.eq("userName", userName))
+				.first();
+			if (existing) {
+				existed += 1;
+				continue;
+			}
+			await ctx.db.insert("instagramAccounts", {
+				userName,
+				fullName: account.fullName,
+				status: "available",
+				message: false,
+				createdAt: now,
+				isVerified: account.isVerified,
+				isPrivate: account.isPrivate,
+				sourceJobId: account.sourceJobId,
+				scrapedAt: now,
+			});
+			inserted += 1;
+		}
+		return { inserted, existed, skipped };
 	},
 });
 
@@ -171,6 +231,39 @@ export const listByStatus = internalQuery({
 		rows.sort((a, b) => a.createdAt - b.createdAt);
 		return rows;
 	},
+});
+
+async function listBySourceJob(ctx: any, jobId: any) {
+	const rows = await ctx.db
+		.query("instagramAccounts")
+		.withIndex("by_sourceJob", (q: any) => q.eq("sourceJobId", jobId))
+		.collect();
+	rows.sort((a: any, b: any) => b.createdAt - a.createdAt);
+	return rows;
+}
+
+export const listByJob = query({
+	args: { jobId: v.id("scrapeJobs") },
+	handler: async (ctx, args) => await listBySourceJob(ctx, args.jobId),
+});
+
+export const listScraped = query({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args) => {
+		const limit = Math.max(1, Math.min(2000, Math.floor(Number(args.limit) || 500)));
+		// Rows without scrapedAt are absent from the index, so this reads a
+		// bounded newest-first page with no in-memory filter or sort.
+		return await ctx.db
+			.query("instagramAccounts")
+			.withIndex("by_scrapedAt")
+			.order("desc")
+			.take(limit);
+	},
+});
+
+export const listByJobInternal = internalQuery({
+	args: { jobId: v.id("scrapeJobs") },
+	handler: async (ctx, args) => await listBySourceJob(ctx, args.jobId),
 });
 
 export const getProfilesWithAssignedAccounts = internalQuery({

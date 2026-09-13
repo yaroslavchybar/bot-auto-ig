@@ -48,11 +48,11 @@ export const NAV_ITEMS = [
     breadcrumb: 'Workflows',
   },
   {
-    title: 'Scraped Data',
+    title: 'Scrape Jobs',
     id: 'scraped-data',
     to: '/scraped-data',
     icon: Database,
-    breadcrumb: 'Scraped Data',
+    breadcrumb: 'Scrape Jobs',
   },
   {
     title: 'Lists Manager',

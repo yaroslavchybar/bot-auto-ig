@@ -1,202 +1,202 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useConvex, useMutation, useQuery } from 'convex/react'
-import { useNavigate } from '@/lib/router'
-import { RefreshCw, Search } from 'lucide-react'
+import { useMutation, useQuery } from 'convex/react'
+import { Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from './../../../../convex/_generated/api'
 import type { Id } from './../../../../convex/_generated/dataModel'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
-import { apiDownload } from '@/lib/api'
-import { artifactDownloadPath, type ArtifactDownloadTarget } from '@/lib/artifact-download'
+import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ScrapeJobDialog } from './components/ScrapeJobDialog'
+import { ScrapeJobsList } from './components/ScrapeJobsList'
+import { ScrapedAccountsList } from './components/ScrapedAccountsList'
+import type { ScrapeJob, ScrapeJobForm, ScrapedAccount } from './types'
+import { DEFAULT_JOB_FORM, jobToForm } from './types'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import { ScrapedDataList } from './components/ScrapedDataList'
-import { ScrapedDataDetails } from './components/ScrapedDataDetails'
-import type { WorkflowArtifact } from './types'
-import { getArtifactSortTimestamp } from './utils'
+  getJobSortTimestamp,
+  getResultSortTimestamp,
+  jobMatchesQuery,
+  resultMatchesQuery,
+} from './utils'
 
-/* ── State + handler hook ── */
+/* ── Page state ── */
 
-function useScrapedDataState() {
-  const convex = useConvex()
-  const navigate = useNavigate()
-  const removeArtifact = useMutation(api.workflowArtifacts.remove)
-  const artifactsQuery = useQuery(api.workflowArtifacts.listAll, {})
-  const artifacts = useMemo(
-    () => (Array.isArray(artifactsQuery) ? (artifactsQuery as WorkflowArtifact[]) : []),
-    [artifactsQuery],
+function useScrapeJobsState() {
+  const jobsQuery = useQuery(api.scrapeJobs.list, {})
+  const accountsQuery = useQuery(api.instagramAccounts.listScraped, { limit: 500 })
+  const createJob = useMutation(api.scrapeJobs.create)
+  const updateJob = useMutation(api.scrapeJobs.update)
+  const removeJob = useMutation(api.scrapeJobs.remove)
+
+  const jobs = useMemo(
+    () => (Array.isArray(jobsQuery) ? (jobsQuery as ScrapeJob[]) : []),
+    [jobsQuery],
   )
+  const accounts = useMemo(
+    () => (Array.isArray(accountsQuery) ? (accountsQuery as ScrapedAccount[]) : []),
+    [accountsQuery],
+  )
+  const jobNames = useMemo(() => {
+    const names: Record<string, string> = {}
+    for (const job of jobs) names[String(job._id)] = job.name
+    return names
+  }, [jobs])
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [detailsArtifactId, setDetailsArtifactId] = useState<
-    Id<'workflowArtifacts'> | null
-  >(null)
-  const [deletingArtifactId, setDeletingArtifactId] = useState<
-    Id<'workflowArtifacts'> | null
-  >(null)
+  const [jobDialogOpen, setJobDialogOpen] = useState(false)
+  const [editingJob, setEditingJob] = useState<ScrapeJob | null>(null)
+  const [savingJob, setSavingJob] = useState(false)
+  const [jobError, setJobError] = useState<string | null>(null)
+  const [actionPendingId, setActionPendingId] = useState<string | null>(null)
+  const [deletingJobId, setDeletingJobId] = useState<Id<'scrapeJobs'> | null>(null)
   const [savingDelete, setSavingDelete] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
   const [pageError, setPageError] = useState<string | null>(null)
-  const [hiddenArtifactIds, setHiddenArtifactIds] = useState<Id<'workflowArtifacts'>[]>([])
 
-  const isLoading = artifactsQuery === undefined
-  const visibleArtifacts = useMemo(
-    () => artifacts.filter((artifact) => !hiddenArtifactIds.includes(artifact._id)),
-    [artifacts, hiddenArtifactIds],
+  const isLoading = jobsQuery === undefined || accountsQuery === undefined
+  const query = searchQuery.trim().toLowerCase()
+
+  const filteredJobs = useMemo(
+    () =>
+      [...jobs]
+        .sort((a, b) => getJobSortTimestamp(b) - getJobSortTimestamp(a))
+        .filter((job) => jobMatchesQuery(job, query)),
+    [jobs, query],
+  )
+  const filteredAccounts = useMemo(
+    () =>
+      [...accounts]
+        .sort((a, b) => getResultSortTimestamp(b) - getResultSortTimestamp(a))
+        .filter((account) => resultMatchesQuery(account, query, jobNames[String(account.sourceJobId)] ?? '')),
+    [accounts, query, jobNames],
   )
 
-  const filteredArtifacts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    return [...visibleArtifacts]
-      .sort((a, b) => getArtifactSortTimestamp(b) - getArtifactSortTimestamp(a))
-      .filter((artifact) => {
-        if (!query) return true
-        const haystack = [
-          artifact.name, artifact.workflowName, artifact.nodeLabel,
-          artifact.sourceProfileName, artifact.targetUsername, artifact.kind,
-        ].map((value) => String(value || '').toLowerCase()).join(' ')
-        return haystack.includes(query)
-      })
-  }, [visibleArtifacts, searchQuery])
-
-  const detailsArtifact =
-    visibleArtifacts.find((artifact) => artifact._id === detailsArtifactId) ?? null
-  const deletingArtifact =
-    visibleArtifacts.find((artifact) => artifact._id === deletingArtifactId) ?? null
+  const deletingJob = jobs.find((job) => job._id === deletingJobId) ?? null
 
   return {
-    convex, navigate, removeArtifact,
+    jobs, accounts, jobNames, createJob, updateJob, removeJob,
     searchQuery, setSearchQuery,
-    detailsArtifactId, setDetailsArtifactId,
-    deletingArtifactId, setDeletingArtifactId,
+    jobDialogOpen, setJobDialogOpen,
+    editingJob, setEditingJob,
+    savingJob, setSavingJob,
+    jobError, setJobError,
+    actionPendingId, setActionPendingId,
+    deletingJobId, setDeletingJobId,
     savingDelete, setSavingDelete,
-    refreshing, setRefreshing,
     pageError, setPageError,
-    hiddenArtifactIds, setHiddenArtifactIds,
-    isLoading, visibleArtifacts, filteredArtifacts,
-    detailsArtifact, deletingArtifact,
+    isLoading, filteredJobs, filteredAccounts,
+    deletingJob,
   }
 }
 
-/* ── Download handlers ── */
+type JobsState = ReturnType<typeof useScrapeJobsState>
 
-function useArtifactDownload(setPageError: (e: string | null) => void) {
-  const downloadArtifact = useCallback(
-    async (target: ArtifactDownloadTarget, fileName: string) => {
-      await apiDownload(
-        artifactDownloadPath(target, fileName),
-        fileName,
-      )
+/* ── Job CRUD + run/stop ── */
+
+function formToMutation(form: ScrapeJobForm) {
+  return {
+    name: form.name.trim(),
+    targets: form.targets,
+    listIds: form.listIds as Id<'lists'>[],
+    config: {
+      maxToScrape: Math.max(0, Math.floor(Number(form.maxToScrape) || 0)),
+      maxAttempts: Math.max(1, Math.floor(Number(form.maxAttempts) || 4)),
+      retryBackoffSeconds: form.retryBackoffSeconds.trim() || '30,120,600,1800',
+      openDelaySeconds: Math.max(0, Math.floor(Number(form.openDelaySeconds) || 0)),
+      fields: { ...form.fields },
+      skip: { ...form.skip },
     },
-    [],
-  )
-
-  const handleDownloadData = useCallback(
-    async (artifact: WorkflowArtifact) => {
-      setPageError(null)
-      try {
-        await downloadArtifact(
-          { workflowId: artifact.workflowId, artifactId: artifact._id },
-          `${artifact.name || artifact.nodeLabel || 'scrape-result'}.json`,
-        )
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        setPageError(message); toast.error(message)
-      }
-    },
-    [downloadArtifact, setPageError],
-  )
-
-
-  return { handleDownloadData }
+  }
 }
 
-/* ── CRUD handlers ── */
+function useJobActions(state: JobsState) {
+  const {
+    createJob, updateJob, removeJob,
+    setJobDialogOpen, setEditingJob, setSavingJob, setJobError,
+    setActionPendingId, setPageError, setDeletingJobId,
+    deletingJobId, setSavingDelete,
+  } = state
 
-function useArtifactDelete(state: ReturnType<typeof useScrapedDataState>) {
-  const { removeArtifact, setPageError, setSavingDelete,
-    setDetailsArtifactId, setDeletingArtifactId,
-    setHiddenArtifactIds, deletingArtifactId, detailsArtifactId } = state
+  const handleCreate = useCallback(() => {
+    setEditingJob(null); setJobError(null); setJobDialogOpen(true)
+  }, [setEditingJob, setJobError, setJobDialogOpen])
 
-  const handleDeleteClick = useCallback((artifact: WorkflowArtifact) => {
-    setDeletingArtifactId(artifact._id); setPageError(null)
-  }, [setDeletingArtifactId, setPageError])
+  const handleEdit = useCallback((job: ScrapeJob) => {
+    setEditingJob(job); setJobError(null); setJobDialogOpen(true)
+  }, [setEditingJob, setJobError, setJobDialogOpen])
+
+  const handleSaveJob = useCallback(async (form: ScrapeJobForm) => {
+    setSavingJob(true); setJobError(null)
+    try {
+      if (state.editingJob) {
+        await updateJob({ id: state.editingJob._id, ...formToMutation(form) })
+        toast.success(`Updated "${form.name}"`)
+      } else {
+        await createJob(formToMutation(form))
+        toast.success(`Created "${form.name}"`)
+      }
+      setJobDialogOpen(false); setEditingJob(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setJobError(message)
+    } finally { setSavingJob(false) }
+  }, [createJob, updateJob, setSavingJob, setJobError, setJobDialogOpen, setEditingJob, state.editingJob])
+
+  const handleRun = useCallback(async (job: ScrapeJob) => {
+    setActionPendingId(String(job._id)); setPageError(null)
+    try {
+      await apiFetch('/api/scrape-jobs/run', { method: 'POST', body: { jobId: String(job._id) } })
+      toast.success(`Started "${job.name}"`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setPageError(message); toast.error(message)
+    } finally { setActionPendingId(null) }
+  }, [setActionPendingId, setPageError])
+
+  const handleStop = useCallback(async (job: ScrapeJob) => {
+    setActionPendingId(String(job._id)); setPageError(null)
+    try {
+      await apiFetch('/api/scrape-jobs/stop', { method: 'POST', body: { jobId: String(job._id) } })
+      toast.success(`Stopped "${job.name}"`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      setPageError(message); toast.error(message)
+    } finally { setActionPendingId(null) }
+  }, [setActionPendingId, setPageError])
+
+  const handleDeleteClick = useCallback((job: ScrapeJob) => {
+    setDeletingJobId(job._id); setPageError(null)
+  }, [setDeletingJobId, setPageError])
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!deletingArtifactId) return
+    if (!deletingJobId) return
     setSavingDelete(true); setPageError(null)
     try {
-      const removed = await removeArtifact({ id: deletingArtifactId })
-      setHiddenArtifactIds((current) =>
-        current.includes(deletingArtifactId) ? current : [...current, deletingArtifactId],
-      )
-      toast.success(`Deleted "${removed.name}"`)
-      if (detailsArtifactId === deletingArtifactId) setDetailsArtifactId(null)
-      setDeletingArtifactId(null)
+      await removeJob({ id: deletingJobId })
+      toast.success('Deleted scrape job')
+      setDeletingJobId(null)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setPageError(message); toast.error(message)
     } finally { setSavingDelete(false) }
-  }, [deletingArtifactId, detailsArtifactId, removeArtifact, setDeletingArtifactId,
-    setDetailsArtifactId, setHiddenArtifactIds, setPageError, setSavingDelete])
+  }, [deletingJobId, removeJob, setDeletingJobId, setPageError, setSavingDelete])
 
-  return { handleDeleteClick, handleConfirmDelete }
+  return { handleCreate, handleEdit, handleSaveJob, handleRun, handleStop, handleDeleteClick, handleConfirmDelete }
 }
 
-function useScrapedDataHandlers(state: ReturnType<typeof useScrapedDataState>) {
-  const { convex, navigate, setPageError, setRefreshing,
-    setDetailsArtifactId, setHiddenArtifactIds } = state
+/* ── Header ── */
 
-  const downloads = useArtifactDownload(setPageError)
-  const deleteHandlers = useArtifactDelete(state)
-
-  const handleViewDetails = useCallback((artifact: WorkflowArtifact) => {
-    setDetailsArtifactId(artifact._id); setPageError(null)
-  }, [setDetailsArtifactId, setPageError])
-
-  const handleOpenWorkflow = useCallback(
-    (artifact: WorkflowArtifact) => { navigate(`/workflows/${artifact.workflowId}/editor`) },
-    [navigate],
-  )
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await Promise.all([
-        convex.query(api.workflowArtifacts.listAll, {}),
-        new Promise((resolve) => setTimeout(resolve, 300)),
-      ])
-      setHiddenArtifactIds([])
-    } finally { setRefreshing(false) }
-  }, [convex, setHiddenArtifactIds, setRefreshing])
-
-  return {
-    ...downloads, ...deleteHandlers, handleViewDetails,
-    handleOpenWorkflow, handleRefresh,
-  }
-}
-
-/* ── Search header ── */
-
-function ScrapedDataHeader({
+function ScrapeJobsHeader({
   searchQuery,
   onSearchChange,
-  onRefresh,
+  onCreate,
   isLoading,
-  refreshing,
 }: {
   searchQuery: string
   onSearchChange: (v: string) => void
-  onRefresh: () => void
+  onCreate: () => void
   isLoading: boolean
-  refreshing: boolean
 }) {
   return (
     <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
@@ -214,16 +214,25 @@ function ScrapedDataHeader({
           <Button
             variant="outline"
             size="icon"
-            onClick={onRefresh}
-            disabled={isLoading || refreshing}
-            aria-label="Refresh artifacts"
-            title="Refresh artifacts"
+            onClick={() => onSearchChange('')}
+            disabled={isLoading}
+            aria-label="Clear search"
+            title="Clear search"
             className="h-8 w-8 shrink-0 p-0"
           >
-            <RefreshCw
-              className={isLoading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'}
-            />
-            <span className="sr-only">Refresh</span>
+            <X className="h-4 w-4" />
+            <span className="sr-only">Clear</span>
+          </Button>
+        </div>
+        <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
+          <Button
+            size="icon"
+            onClick={onCreate}
+            disabled={isLoading}
+            className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Create Job
           </Button>
         </div>
       </div>
@@ -231,60 +240,23 @@ function ScrapedDataHeader({
   )
 }
 
-/* ── Details sheet ── */
-
-function ScrapedDataDetailsSheet({
-  detailsArtifact,
-  onClose,
-  onDownloadData,
-  onDelete,
-  onOpenWorkflow,
-}: {
-  detailsArtifact: WorkflowArtifact | null
-  onClose: () => void
-  onDownloadData: (a: WorkflowArtifact) => void
-  onDelete: (a: WorkflowArtifact) => void
-  onOpenWorkflow: (a: WorkflowArtifact) => void
-}) {
-  return (
-    <Sheet open={Boolean(detailsArtifact)} onOpenChange={(open) => { if (!open) onClose() }}>
-      <SheetContent className="border-line bg-panel text-ink flex w-full max-w-full flex-col gap-0 border-l p-0 shadow-xl sm:w-[540px]">
-        <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
-          <SheetTitle className="page-title-gradient">Artifact Details</SheetTitle>
-        </SheetHeader>
-        {detailsArtifact ? (
-          <ScrapedDataDetails
-            artifact={detailsArtifact}
-            onDownloadData={(a) => void onDownloadData(a)}
-            onDelete={onDelete}
-            onOpenWorkflow={onOpenWorkflow}
-          />
-        ) : (
-          <div className="text-muted-foreground p-8 text-center text-sm">Artifact unavailable.</div>
-        )}
-      </SheetContent>
-    </Sheet>
-  )
-}
-
 /* ── Main component ── */
 
 export function ScrapedDataPage() {
-  const state = useScrapedDataState()
-  const handlers = useScrapedDataHandlers(state)
+  const state = useScrapeJobsState()
+  const jobs = useJobActions(state)
 
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
 
-      <ScrapedDataHeader
+      <ScrapeJobsHeader
         searchQuery={state.searchQuery}
         onSearchChange={state.setSearchQuery}
-        onRefresh={() => void handlers.handleRefresh()}
+        onCreate={jobs.handleCreate}
         isLoading={state.isLoading}
-        refreshing={state.refreshing}
       />
 
-      {state.pageError && !state.deletingArtifact && (
+      {state.pageError && !state.deletingJob && (
         <div className="status-banner-danger relative z-10 flex items-center border-b px-6 py-3 text-sm">
           <span className="status-dot-danger mr-2 h-1.5 w-1.5 rounded-full" />
           {state.pageError}
@@ -292,45 +264,77 @@ export function ScrapedDataPage() {
       )}
 
       <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-        <div className="mx-auto max-w-[2000px]">
-          <ScrapedDataList
-            artifacts={state.filteredArtifacts}
-            loading={state.isLoading}
-            onViewDetails={handlers.handleViewDetails}
-            onDownloadData={(a) => void handlers.handleDownloadData(a)}
-            onDelete={handlers.handleDeleteClick}
-            emptyTitle={state.searchQuery.trim() ? 'No matching artifacts' : 'No scraped artifacts'}
-            emptyDescription={
-              state.searchQuery.trim()
-                ? 'Try a different search term or clear the filter.'
-                : 'Completed workflow scrape history will appear here. Direct-processed runs may not include downloadable files.'
-            }
-          />
+        <div className="mx-auto max-w-[2000px] space-y-8">
+          <section>
+            <h2 className="text-copy mb-3 text-sm font-semibold tracking-wide uppercase">Jobs</h2>
+            <ScrapeJobsList
+              jobs={state.filteredJobs}
+              loading={state.isLoading}
+              actionPendingId={state.actionPendingId}
+              onRun={(job) => void jobs.handleRun(job)}
+              onStop={(job) => void jobs.handleStop(job)}
+              onEdit={jobs.handleEdit}
+              onDelete={jobs.handleDeleteClick}
+              emptyTitle={state.searchQuery.trim() ? 'No matching jobs' : 'No scrape jobs'}
+              emptyDescription={
+                state.searchQuery.trim()
+                  ? 'Try a different search term or clear the filter.'
+                  : 'Create a job to start scraping post likers.'
+              }
+            />
+          </section>
+          <section>
+            <h2 className="text-copy mb-3 text-sm font-semibold tracking-wide uppercase">
+              Accounts · {state.filteredAccounts.length}
+            </h2>
+            <ScrapedAccountsList
+              accounts={state.filteredAccounts}
+              jobNames={state.jobNames}
+              loading={state.isLoading}
+              emptyTitle={state.searchQuery.trim() ? 'No matching accounts' : 'No scraped accounts'}
+              emptyDescription={
+                state.searchQuery.trim()
+                  ? 'Try a different search term or clear the filter.'
+                  : 'Completed job runs will add accounts here.'
+              }
+            />
+          </section>
         </div>
       </div>
 
-      <ScrapedDataDetailsSheet
-        detailsArtifact={state.detailsArtifact}
-        onClose={() => state.setDetailsArtifactId(null)}
-        onDownloadData={handlers.handleDownloadData}
-        onDelete={handlers.handleDeleteClick}
-        onOpenWorkflow={handlers.handleOpenWorkflow}
+      <ScrapeJobDialog
+        open={state.jobDialogOpen}
+        title={state.editingJob ? 'Edit Scrape Job' : 'Create Scrape Job'}
+        description={
+          state.editingJob
+            ? 'Update posts, lists, and scrape limits.'
+            : 'Pick posts and profile lists, then run the job.'
+        }
+        initial={state.editingJob ? jobToForm(state.editingJob) : DEFAULT_JOB_FORM}
+        saving={state.savingJob}
+        error={state.jobError}
+        onClose={() => {
+          if (state.savingJob) return
+          state.setJobDialogOpen(false)
+          state.setEditingJob(null)
+        }}
+        onSave={(form) => void jobs.handleSaveJob(form)}
       />
 
-      {state.deletingArtifact ? (
+      {state.deletingJob ? (
         <ConfirmDeleteDialog
-          open={Boolean(state.deletingArtifact)}
-          title="Delete Scrape Artifact"
-          entityLabel="scrape artifact"
-          itemName={state.deletingArtifact.name || 'Selected artifact'}
-          confirmLabel="Delete Artifact"
+          open={Boolean(state.deletingJob)}
+          title="Delete Scrape Job"
+          entityLabel="scrape job"
+          itemName={state.deletingJob.name || 'Selected job'}
+          confirmLabel="Delete Job"
           saving={state.savingDelete}
           error={state.pageError}
-          extraDescription="Stored data and manifest files will be removed too."
-          onConfirm={() => void handlers.handleConfirmDelete()}
+          extraDescription="The job will be removed. Already scraped accounts stay in the table."
+          onConfirm={() => void jobs.handleConfirmDelete()}
           onCancel={() => {
             if (state.savingDelete) return
-            state.setDeletingArtifactId(null)
+            state.setDeletingJobId(null)
           }}
         />
       ) : null}

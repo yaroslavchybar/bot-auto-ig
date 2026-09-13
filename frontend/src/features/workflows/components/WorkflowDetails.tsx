@@ -1,9 +1,8 @@
 import { Badge } from '@/components/ui/badge'
-import type { ArtifactDownloadTarget } from '@/lib/artifact-download'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
-import { Clock, Download, RefreshCw, Settings2, Square } from 'lucide-react'
+import { Clock, RefreshCw, Settings2, Square } from 'lucide-react'
 import type { Workflow, WorkflowStatus, ScheduleConfig } from '../types'
 import {
   getStatusColor,
@@ -15,31 +14,6 @@ import {
 
 export interface WorkflowDetailsProps {
   workflow: Workflow
-  artifacts?: Array<{
-    _id: string
-    workflowId: string
-    localArtifactPath?: string | null
-    localArtifactDeletedAt?: number | null
-    name: string
-    nodeLabel?: string | null
-    kind: 'followers' | 'following'
-    targets?: string[]
-    targetUsername?: string | null
-    status?: string | null
-    sourceProfileName?: string | null
-    lastRunAt?: number | null
-    stats?: {
-      scraped?: number
-      deduped?: number
-      chunksCompleted?: number
-      targetsCompleted?: number
-    } | null
-  }>
-  artifactsLoading?: boolean
-  onDownloadArtifact?: (
-    target: ArtifactDownloadTarget,
-    fileName: string,
-  ) => void
   onToggleActive?: () => void
   onEditSchedule?: () => void
   onReset?: () => void
@@ -304,182 +278,6 @@ function ErrorSection({ error }: { error: string }) {
   )
 }
 
-/* ── Scrape Node State Card ── */
-
-function ScrapeNodeStateCard({
-  nodeId,
-  state,
-}: {
-  nodeId: string
-  state: Record<string, unknown>
-}) {
-  const targets = Array.isArray(state.targets)
-    ? state.targets
-        .map((value) => String(value ?? '').trim())
-        .filter(Boolean)
-    : []
-
-  return (
-    <div className="border-line-soft bg-panel-subtle rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-ink text-sm font-medium">
-            {String(state.label ?? nodeId)}
-          </p>
-          <p className="text-subtle-copy text-xs">
-            {String(state.kind ?? 'followers')} ·{' '}
-            {targets.length} target(s)
-          </p>
-        </div>
-        <Badge variant="outline">
-          {String(state.status ?? 'idle')}
-        </Badge>
-      </div>
-      <div className="text-subtle-copy mt-2 text-xs">
-        Scraped: {Number(state.scraped ?? 0) || 0}
-      </div>
-      {typeof state.lastError === 'string' &&
-      state.lastError.trim() ? (
-        <p className="text-status-danger mt-2 text-xs">
-          {state.lastError}
-        </p>
-      ) : null}
-    </div>
-  )
-}
-
-/* ── Scrape Node States Section ── */
-
-function ScrapeNodeStatesSection({
-  scrapeNodeStates,
-}: {
-  scrapeNodeStates: [string, unknown][]
-}) {
-  return (
-    <div>
-      <h4 className="text-muted-copy mb-2 text-sm font-medium">
-        Scrape Node State
-      </h4>
-      {scrapeNodeStates.length === 0 ? (
-        <p className="text-subtle-copy text-sm">
-          No scrape node state recorded yet.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {scrapeNodeStates.map(([nodeId, state]) => (
-            <ScrapeNodeStateCard
-              key={nodeId}
-              nodeId={nodeId}
-              state={state as Record<string, unknown>}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── Single Artifact Card ── */
-
-function ArtifactCard({
-  artifact,
-  onDownloadArtifact,
-}: {
-  artifact: WorkflowDetailsProps['artifacts'] extends Array<infer T> | undefined ? T : never
-  onDownloadArtifact?: (target: ArtifactDownloadTarget, fileName: string) => void
-}) {
-  const targets =
-    Array.isArray(artifact.targets) && artifact.targets.length > 0
-      ? artifact.targets
-      : String(artifact.targetUsername || '')
-          .split(/\r?\n/)
-          .map((value) => value.trim())
-          .filter(Boolean)
-  const scrapedCount = artifact.stats?.deduped ?? artifact.stats?.scraped ?? 0
-
-  return (
-    <div className="border-line-soft bg-panel-subtle rounded-lg border p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-ink text-sm font-medium">
-            {artifact.nodeLabel || artifact.name}
-          </p>
-          <p className="text-subtle-copy text-xs">
-            {artifact.kind} · {targets.length} target(s)
-          </p>
-        </div>
-        <Badge variant="outline">
-          {artifact.status || 'completed'}
-        </Badge>
-      </div>
-      <div className="text-subtle-copy mt-2 space-y-1 text-xs">
-        <p>Rows: {scrapedCount}</p>
-        {artifact.sourceProfileName ? (
-          <p>Profile: {artifact.sourceProfileName}</p>
-        ) : null}
-        {artifact.lastRunAt ? (
-          <p>Last Run: {formatTimestamp(artifact.lastRunAt)}</p>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {((artifact.localArtifactPath && !artifact.localArtifactDeletedAt)) && onDownloadArtifact ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              onDownloadArtifact(
-                { workflowId: artifact.workflowId, artifactId: artifact._id },
-                `${artifact.name || artifact.nodeLabel || 'scrape-result'}.json`,
-              )
-            }
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Download Data
-          </Button>
-        ) : null}
-        
-      </div>
-    </div>
-  )
-}
-
-/* ── Scrape Results Section ── */
-
-function ScrapeResultsSection({
-  artifacts,
-  artifactsLoading,
-  onDownloadArtifact,
-}: {
-  artifacts: WorkflowDetailsProps['artifacts']
-  artifactsLoading: boolean
-  onDownloadArtifact?: (target: ArtifactDownloadTarget, fileName: string) => void
-}) {
-  return (
-    <div>
-      <h4 className="text-muted-copy mb-2 text-sm font-medium">
-        Scrape Results
-      </h4>
-      {artifactsLoading ? (
-        <p className="text-subtle-copy text-sm">Loading artifacts...</p>
-      ) : !artifacts || artifacts.length === 0 ? (
-        <p className="text-subtle-copy text-sm">
-          No scrape artifacts available for this workflow yet.
-        </p>
-      ) : (
-        <div className="space-y-3">
-          {artifacts.map((artifact) => (
-            <ArtifactCard
-              key={artifact._id}
-              artifact={artifact}
-              onDownloadArtifact={onDownloadArtifact}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 /* ── Timestamps Section ── */
 
 function TimestampsSection({ workflow }: { workflow: Workflow }) {
@@ -506,28 +304,10 @@ function TimestampsSection({ workflow }: { workflow: Workflow }) {
   )
 }
 
-/* ── Helpers ── */
-
-function extractScrapeNodeStates(workflow: WorkflowDetailsProps['workflow']) {
-  const raw = workflow.nodeStates && typeof workflow.nodeStates === 'object'
-    ? workflow.nodeStates
-    : {}
-  return Object.entries(raw).filter(([, state]) => {
-    if (!state || typeof state !== 'object') return false
-    const s = state as Record<string, unknown>
-    return s.activityId === 'scrape_relationships' ||
-      typeof s.artifactStorageId === 'string' ||
-      typeof s.manifestStorageId === 'string'
-  })
-}
-
 /* ── Main Component ── */
 
 export function WorkflowDetails({
   workflow,
-  artifacts = [],
-  artifactsLoading = false,
-  onDownloadArtifact,
   onToggleActive,
   onEditSchedule,
   onReset,
@@ -540,7 +320,6 @@ export function WorkflowDetails({
   const isActive = workflow.isActive ?? false
   const hasSchedule = !!workflow.scheduleType
   const canToggleActive = hasSchedule && (!isRunning || isActive)
-  const scrapeNodeStates = extractScrapeNodeStates(workflow)
 
   return (
     <div className="text-ink space-y-6 p-6">
@@ -579,12 +358,6 @@ export function WorkflowDetails({
         <InformationSection workflow={workflow} />
         <ExecutionHistorySection workflow={workflow} />
         {workflow.error && <ErrorSection error={workflow.error} />}
-        <ScrapeNodeStatesSection scrapeNodeStates={scrapeNodeStates} />
-        <ScrapeResultsSection
-          artifacts={artifacts}
-          artifactsLoading={artifactsLoading}
-          onDownloadArtifact={onDownloadArtifact}
-        />
         <TimestampsSection workflow={workflow} />
       </div>
     </div>

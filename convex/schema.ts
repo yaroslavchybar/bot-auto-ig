@@ -36,12 +36,18 @@ export default defineSchema({
 		createdAt: v.number(),
 	}).index("by_key", ["key"]),
 
-	instagramAccounts: defineTable({
-		userName: v.string(),
-		fullName: v.optional(v.string()),
-		matchedName: v.optional(v.string()),
-		createdAt: v.number(),
-		assignedTo: v.optional(v.id("profiles")),
+ 	instagramAccounts: defineTable({
+ 		userName: v.string(),
+ 		fullName: v.optional(v.string()),
+ 		matchedName: v.optional(v.string()),
+ 		createdAt: v.number(),
+ 		assignedTo: v.optional(v.id("profiles")),
+ 		isVerified: v.optional(v.boolean()),
+ 		isPrivate: v.optional(v.boolean()),
+  		sourceJobId: v.optional(v.id("scrapeJobs")),
+		// Set only for scrape-inserted rows so listScraped can page the
+		// index instead of scanning the whole table. Messaging rows omit it.
+		scrapedAt: v.optional(v.number()),
 		status: v.optional(v.union(
 			v.literal("available"),
 			v.literal("assigned"),
@@ -57,15 +63,49 @@ export default defineSchema({
 		.index("by_userName", ["userName"])
 		.index("by_assignedTo", ["assignedTo"])
 		.index("by_status", ["status"])
+		.index("by_sourceJob", ["sourceJobId"])
+		.index("by_scrapedAt", ["scrapedAt"])
 		.index("by_assignedTo_status", ["assignedTo", "status"]),
 
-	scrapingAccounts: defineTable({
-		userName: v.string(),
-		status: v.union(v.literal("need_scraping"), v.literal("done")),
+ 	scrapeJobs: defineTable({
+ 		name: v.string(),
+ 		targets: v.array(v.string()),
+ 		listIds: v.array(v.id("lists")),
+		status: v.union(
+			v.literal("idle"),
+			v.literal("running"),
+			v.literal("completed"),
+			v.literal("failed"),
+			v.literal("cancelled"),
+		),
+ 		config: v.object({
+ 			maxToScrape: v.number(),
+ 			maxAttempts: v.number(),
+ 			retryBackoffSeconds: v.string(),
+ 			openDelaySeconds: v.number(),
+			fields: v.object({
+				fullName: v.boolean(),
+				isVerified: v.boolean(),
+				isPrivate: v.boolean(),
+			}),
+			skip: v.object({
+				private: v.boolean(),
+				verified: v.boolean(),
+				noFullName: v.boolean(),
+			}),
+		}),
+		stats: v.object({
+			scraped: v.number(),
+			deduped: v.number(),
+			chunksCompleted: v.number(),
+			targetsCompleted: v.number(),
+		}),
+		error: v.optional(v.string()),
+		startedAt: v.optional(v.number()),
+		completedAt: v.optional(v.number()),
 		createdAt: v.number(),
-	})
-		.index("by_userName", ["userName"])
-		.index("by_status", ["status"]),
+		updatedAt: v.number(),
+	}).index("by_status", ["status"]),
 
 	messageTemplates: defineTable({
 		kind: v.string(),
@@ -140,34 +180,4 @@ export default defineSchema({
 		.index("by_name", ["name"])
 		.index("by_isActive", ["isActive"])
 		.index("by_status", ["status"]),
-
-	workflowArtifacts: defineTable({
-		name: v.string(),
-		workflowId: v.id("workflows"),
-		workflowName: v.string(),
-		nodeId: v.string(),
-		nodeLabel: v.optional(v.string()),
-		kind: v.union(v.literal("followers"), v.literal("following")),
-		targetUsername: v.optional(v.string()),
-		targets: v.array(v.string()),
-		status: v.optional(v.string()),
-		imported: v.optional(v.boolean()),
-		sourceProfileName: v.optional(v.string()),
-		lastRunAt: v.optional(v.number()),
-		localArtifactPath: v.optional(v.string()),
-		localArtifactDeletedAt: v.optional(v.number()),
-		stats: v.optional(v.object({
-			scraped: v.number(),
-			deduped: v.number(),
-			chunksCompleted: v.number(),
-			targetsCompleted: v.number(),
-		})),
-		metadata: v.optional(v.any()),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	})
-		.index("by_workflowId", ["workflowId"])
-		.index("by_workflowId_nodeId", ["workflowId", "nodeId"])
-		.index("by_imported", ["imported"])
-		.index("by_kind", ["kind"]),
 });

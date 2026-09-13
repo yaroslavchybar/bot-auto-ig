@@ -87,14 +87,6 @@ export const remove = mutation({
 			throw new DomainError('CONFLICT', "Cannot delete running workflow");
 		}
 
-		const artifacts = await ctx.db
-			.query("workflowArtifacts")
-			.withIndex("by_workflowId", (q: any) => q.eq("workflowId", args.id))
-			.collect();
-		for (const artifact of artifacts) {
-			await ctx.db.delete(artifact._id);
-		}
-
 		await ctx.db.delete(args.id);
 		return true;
 	},

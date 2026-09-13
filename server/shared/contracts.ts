@@ -20,7 +20,7 @@ export type ProfileRecord = {
   dailyScrapingUsed?: number
 }
 
-export const ACTIVITY_IDS = ['browse_feed', 'browse_reels', 'scrape_relationships', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'select_list', 'start_browser', 'approve_requests', 'follow_user', 'unfollow_user', 'send_dm', 'watch_stories'] as const
+export const ACTIVITY_IDS = ['browse_feed', 'browse_reels', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'select_list', 'start_browser', 'approve_requests', 'follow_user', 'unfollow_user', 'send_dm', 'watch_stories'] as const
 export type ActivityId = typeof ACTIVITY_IDS[number]
 
 export type WebSocketEventType =

@@ -36,7 +36,7 @@ export async function insertDoc(
     | 'lists'
     | 'messageTemplates'
     | 'profiles'
-    | 'workflowArtifacts'
+    | 'scrapeJobs'
     | 'workflows',
   value: Record<string, unknown>
 ) {

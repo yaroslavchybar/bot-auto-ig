@@ -3,9 +3,8 @@ import { registerInstagramAccountRoutes } from './httpRoutes/instagramAccounts';
 import { registerListRoutes } from './httpRoutes/lists';
 import { registerMessageTemplateRoutes } from './httpRoutes/messageTemplates';
 import { registerProfileRoutes } from './httpRoutes/profiles';
-import { registerScrapingAccountRoutes } from './httpRoutes/scrapingAccounts';
+import { registerScrapeJobRoutes } from './httpRoutes/scrapeJobs';
 
-import { registerWorkflowArtifactRoutes } from './httpRoutes/workflowArtifacts';
 import { registerWorkflowRoutes } from './httpRoutes/workflows';
 
 const http = httpRouter();
@@ -15,8 +14,7 @@ registerProfileRoutes(http);
 registerListRoutes(http);
 registerMessageTemplateRoutes(http);
 registerInstagramAccountRoutes(http);
-registerScrapingAccountRoutes(http);
+registerScrapeJobRoutes(http);
 registerWorkflowRoutes(http);
-registerWorkflowArtifactRoutes(http);
 
 export default http;

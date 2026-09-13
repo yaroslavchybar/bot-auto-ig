@@ -285,39 +285,53 @@ test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', as
   })
 })
 
-test('lists workflow artifacts and rejects the removed by-id route', async () => {
+test('creates scrape jobs and inserts scraped accounts over HTTP', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+  const headers = { authorization: 'Bearer secret-token' }
 
-  const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Host' })
-  const artifact = await t.mutation(internal.workflowArtifacts.upsertInternal, {
-    workflowId: workflow!._id,
-    workflowName: workflow!.name,
-    nodeId: 'node-1',
-    nodeLabel: 'Scrape Relationships',
-    name: 'Task A',
-    kind: 'followers',
-    targets: ['target-a'],
-    localArtifactPath: 'scrapes/test.json',
+  const createResponse = await t.fetch('/api/scrape-jobs/create', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      name: 'Job HTTP',
+      targets: ['https://www.instagram.com/p/B1LbfVPlwIA/', 'B1LbfVPlwIA'],
+      listIds: [],
+      config: { maxToScrape: 100, skip: { private: true }, fields: { fullName: false } },
+    }),
   })
-
-  const listResponse = await t.fetch(
-    `/api/workflow-artifacts?workflowId=${encodeURIComponent(String(workflow!._id))}`,
-    {
-      method: 'GET',
-      headers: { authorization: 'Bearer secret-token' },
-    },
-  )
-  const byIdResponse = await t.fetch(
-    `/api/workflow-artifacts/by-id?id=${encodeURIComponent(String(artifact!._id))}`,
-    {
-      method: 'GET',
-      headers: { authorization: 'Bearer secret-token' },
-    },
-  )
-  expect(listResponse.status).toBe(200)
-  await expect(listResponse.json()).resolves.toMatchObject([
-    { _id: artifact!._id, workflowId: workflow!._id },
+  expect(createResponse.status).toBe(200)
+  const job = await createResponse.json()
+  expect(job.targets).toEqual([
+    'https://www.instagram.com/p/B1LbfVPlwIA/',
+    'B1LbfVPlwIA',
   ])
-  expect(byIdResponse.status).toBe(404)
+  expect(job.config.maxToScrape).toBe(100)
+  expect(job.config.skip).toMatchObject({ private: true, verified: false, noFullName: false })
+  expect(job.config.fields).toMatchObject({ fullName: false, isVerified: true, isPrivate: true })
+
+  const listResponse = await t.fetch('/api/scrape-jobs', { method: 'GET', headers })
+  expect(listResponse.status).toBe(200)
+  await expect(listResponse.json()).resolves.toMatchObject([{ _id: job._id }])
+
+  const insertResponse = await t.fetch('/api/instagram-accounts/insert-many', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      accounts: [
+        { userName: 'leada', fullName: 'Lead A', isVerified: false, isPrivate: false, sourceJobId: job._id },
+        { userName: 'leada', fullName: 'Lead A' },
+        { userName: '  ' },
+      ],
+    }),
+  })
+  expect(insertResponse.status).toBe(200)
+  await expect(insertResponse.json()).resolves.toMatchObject({ inserted: 1, existed: 1, skipped: 1 })
+
+  const byJobResponse = await t.fetch(
+    `/api/instagram-accounts/by-job?jobId=${encodeURIComponent(String(job._id))}`,
+    { method: 'GET', headers },
+  )
+  expect(byJobResponse.status).toBe(200)
+  await expect(byJobResponse.json()).resolves.toMatchObject([{ user_name: 'leada' }])
 })

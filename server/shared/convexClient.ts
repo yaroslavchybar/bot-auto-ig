@@ -347,20 +347,101 @@ export async function instagramAccountUpdateMessage(userName: string): Promise<v
     });
 }
 
-export async function scrapingAccountsPending(): Promise<Array<{ id: string; user_name: string }>> {
-    return convexFetch('/api/scraping-accounts/by-status?status=need_scraping');
+// ==================== SCRAPE JOBS ====================
+
+export type ScrapeJobConfig = {
+    maxToScrape: number;
+    maxAttempts: number;
+    retryBackoffSeconds: string;
+    openDelaySeconds: number;
+    fields: { fullName: boolean; isVerified: boolean; isPrivate: boolean };
+    skip: { private: boolean; verified: boolean; noFullName: boolean };
+};
+
+export type ScrapeJobStats = {
+    scraped: number;
+    deduped: number;
+    chunksCompleted: number;
+    targetsCompleted: number;
+};
+
+export type DbScrapeJobRow = {
+    _id: string;
+    name: string;
+    targets: string[];
+    listIds: string[];
+    status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+    config: ScrapeJobConfig;
+    stats: ScrapeJobStats;
+    error?: string;
+    startedAt?: number;
+    completedAt?: number;
+    createdAt?: number;
+    updatedAt?: number;
+};
+
+export type ScrapedAccountInsert = {
+    userName: string;
+    fullName?: string;
+    isVerified?: boolean;
+    isPrivate?: boolean;
+    sourceJobId?: string;
+};
+
+export async function instagramAccountsInsertMany(
+    accounts: ScrapedAccountInsert[],
+): Promise<{ inserted: number; existed: number; skipped: number }> {
+    if (!accounts.length) return { inserted: 0, existed: 0, skipped: 0 };
+    return convexFetch('/api/instagram-accounts/insert-many', { method: 'POST', body: { accounts } });
 }
 
-export async function scrapingAccountComplete(id: string): Promise<void> {
-    await convexFetch('/api/scraping-accounts/update-status', { method: 'POST', body: { id, status: 'done' } });
+// Usernames already saved for a job, used to resume a scrape without
+// re-saving rows. Mirrors igscrape seeding existingIDs from Convex.
+export async function instagramAccountsByJob(jobId: string): Promise<Array<{ userName: string }>> {
+    const cleaned = String(jobId || '').trim();
+    if (!cleaned) throw new Error('jobId is required');
+    const result = await convexFetch<Array<{ userName?: string; user_name?: string }>>(
+        `/api/instagram-accounts/by-job?jobId=${encodeURIComponent(cleaned)}`,
+    );
+    return (Array.isArray(result) ? result : []).map((account) => ({
+        userName: String(account?.userName ?? account?.user_name ?? ''),
+    }));
 }
 
-export async function workflowArtifactUpsert(input: {
-    workflowId: string; workflowName: string; nodeId: string; kind: 'followers' | 'following';
-    targets: string[]; sourceProfileName: string; localArtifactPath: string; status: string;
-    stats: ScrapingTaskStats;
-}): Promise<void> {
-    await convexFetch('/api/workflow-artifacts/upsert', { method: 'POST', body: { ...input, lastRunAt: Date.now(), imported: false } });
+export async function scrapeJobsGetById(jobId: string): Promise<DbScrapeJobRow | null> {
+    const cleaned = String(jobId || '').trim();
+    if (!cleaned) throw new Error('jobId is required');
+    return convexFetch<DbScrapeJobRow | null>(`/api/scrape-jobs/by-id?jobId=${encodeURIComponent(cleaned)}`);
+}
+
+export async function scrapeJobsStart(jobId: string): Promise<DbScrapeJobRow | null> {
+    const cleaned = String(jobId || '').trim();
+    if (!cleaned) throw new Error('jobId is required');
+    return convexFetch<DbScrapeJobRow | null>('/api/scrape-jobs/start', { method: 'POST', body: { id: cleaned } });
+}
+
+export async function scrapeJobsFinish(
+    jobId: string,
+    status: 'completed' | 'failed' | 'cancelled',
+    error?: string,
+    stats?: ScrapingTaskStats,
+): Promise<DbScrapeJobRow | null> {
+    const cleaned = String(jobId || '').trim();
+    if (!cleaned) throw new Error('jobId is required');
+    return convexFetch<DbScrapeJobRow | null>('/api/scrape-jobs/finish', {
+        method: 'POST',
+        body: { id: cleaned, status, error, stats },
+    });
+}
+
+export async function scrapeJobsUpdateStats(jobId: string, stats: ScrapingTaskStats): Promise<void> {
+    const cleaned = String(jobId || '').trim();
+    if (!cleaned) throw new Error('jobId is required');
+    await convexFetch('/api/scrape-jobs/update-stats', { method: 'POST', body: { id: cleaned, stats } });
+}
+
+export async function scrapeJobsReconcileInterrupted(): Promise<{ reconciled: number }> {
+    return convexFetch('/api/scrape-jobs/reconcile', { method: 'POST', body: {} });
 }
 
 // ==================== WORKFLOWS ====================
@@ -373,25 +454,6 @@ export type DbWorkflowRow = {
     status?: string
     currentNodeId?: string
     nodeStates?: Record<string, unknown>
-}
-
-export type DbWorkflowArtifactRow = {
-    _id: string
-    workflowId: string
-    workflowName: string
-    nodeId: string
-    nodeLabel?: string | null
-    name: string
-    kind: 'followers' | 'following'
-    targetUsername?: string | null
-    targets?: string[]
-    status?: string | null
-    imported?: boolean
-    sourceProfileName?: string | null
-    lastRunAt?: number | null
-    localArtifactPath?: string | null
-    localArtifactDeletedAt?: number | null
-    stats?: ScrapingTaskStats | null
 }
 
 export async function workflowsGetById(workflowId: string): Promise<DbWorkflowRow | null> {
@@ -425,12 +487,6 @@ export async function workflowsUpdateStatus(input: {
             error: input.error,
         },
     })
-}
-
-export async function workflowArtifactsListByWorkflow(workflowId: string): Promise<DbWorkflowArtifactRow[]> {
-    const cleaned = String(workflowId || '').trim()
-    if (!cleaned) throw new Error('workflowId is required')
-    return convexFetch<DbWorkflowArtifactRow[]>(`/api/workflow-artifacts?workflowId=${encodeURIComponent(cleaned)}`)
 }
 
 

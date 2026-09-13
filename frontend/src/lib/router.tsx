@@ -36,7 +36,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     navId: 'workflows',
     appChrome: 'immersive',
   },
-  '/scraped-data': { Page: ScrapedDataPage, breadcrumb: 'Scraped Data', navId: 'scraped-data' },
+  '/scraped-data': { Page: ScrapedDataPage, breadcrumb: 'Scrape Jobs', navId: 'scraped-data' },
   '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
   '/vnc/session/:workflowId/:profileName': { Page: VncSessionPage,

@@ -7,12 +7,15 @@ import {
   parseBody,
   registerPreflight,
   withErrorHandling,
+  ValidationError,
 } from './shared';
 
 const instagramAccountPaths = [
   '/api/instagram-accounts',
+  '/api/instagram-accounts/insert-many',
   '/api/instagram-accounts/for-profile',
   '/api/instagram-accounts/by-status',
+  '/api/instagram-accounts/by-job',
   '/api/instagram-accounts/to-message',
   '/api/instagram-accounts/update-status',
   '/api/instagram-accounts/update-message',
@@ -41,6 +44,28 @@ function registerAccountMutationRoutes(http: HttpRouter): void {
         status: body?.status,
         message: body?.message,
         createdAt: body?.createdAt ?? body?.created_at,
+        isVerified: body?.isVerified ?? body?.is_verified,
+        isPrivate: body?.isPrivate ?? body?.is_private,
+        sourceJobId: body?.sourceJobId ?? body?.source_job_id,
+      });
+      return jsonResponse(created);
+    }),
+  });
+
+  http.route({
+    path: '/api/instagram-accounts/insert-many',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const accounts = Array.isArray(body?.accounts) ? body.accounts : [];
+      const created = await ctx.runMutation(internal.instagramAccounts.insertMany, {
+        accounts: accounts.map((account: any) => ({
+          userName: account?.userName ?? account?.user_name ?? '',
+          fullName: account?.fullName ?? account?.full_name,
+          isVerified: account?.isVerified ?? account?.is_verified,
+          isPrivate: account?.isPrivate ?? account?.is_private,
+          sourceJobId: account?.sourceJobId ?? account?.source_job_id,
+        })),
       });
       return jsonResponse(created);
     }),
@@ -89,6 +114,20 @@ function registerAccountQueryRoutes(http: HttpRouter): void {
       const accounts = await ctx.runQuery(internal.instagramAccounts.getForProfile, {
         profileId: profileId as any,
         status,
+      });
+      return jsonResponse(accounts.map(mapAccountToApi));
+    }),
+  });
+
+  http.route({
+    path: '/api/instagram-accounts/by-job',
+    method: 'GET',
+    handler: withErrorHandling(async (ctx, request) => {
+      const url = new URL(request.url);
+      const jobId = url.searchParams.get('jobId') || '';
+      if (!jobId) throw new ValidationError('jobId is required');
+      const accounts = await ctx.runQuery(internal.instagramAccounts.listByJobInternal, {
+        jobId: jobId as any,
       });
       return jsonResponse(accounts.map(mapAccountToApi));
     }),

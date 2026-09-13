@@ -22,10 +22,14 @@ server, Camoufox JS browser automation, Convex shared data layer. Package manage
   general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
 - `server/browser/`: Camoufox JS sessions, profile persistence, and login/manual
   browser entrypoints.
-- `server/automation/`: Bun workers and TypeScript Instagram actions. Workers
+- `server/automation/`: Bun workers and TypeScript Instagram actions (`scrape.ts`
+  scrapes post likers and inserts survivors into `instagramAccounts`;
+  `igWebApi.ts` is the browser-session API client). Workflow workers
   emit `__EVENT__`-prefixed JSON for WebSocket propagation.
+- `server/scrapeJobs/`: standalone scrape job runner, Express routes
+  (`/api/scrape-jobs/run|stop|status`), and cursor checkpoints.
 - `convex/`: schema, queries/mutations (`profiles`, `lists`, `workflows`,
-  `workflowArtifacts`, `instagramAccounts`, `scrapingAccounts`,
+  `scrapeJobs`, `instagramAccounts`,
   `messageTemplates`), HTTP actions, crons. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
 - `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
@@ -90,9 +94,14 @@ areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounti
 
 ## Workflow & Quality Gates
 
-- Scrapes store immutable user chunks plus a small atomic checkpoint. Downloads
-  stream committed chunks as JSON; retries retain the cursor without rewriting prior users.
-  Older scrape checkpoints require a fresh workflow run.
+- Scrape jobs fetch likers per configured post (URL, shortcode, or media id)
+  in 100-user pages with `max_id` cursors (same shape as igscrape
+  `fetchViaRest`), 3 attempts per page with 1.5s backoff, a random 3–10s
+  pause between chunks and pages, filter each page (skip
+  private/verified/nameless, keep selected export fields) and persist
+  survivors into `instagramAccounts` in chunks of 25 as `available`
+  without touching existing rows. Retries resume from page one skipping
+  already-saved rows and reuse the same quota commit key per page.
 - Workflow checkpoints are separate from UI events. Pending database snapshots
   coalesce, and slow WebSocket clients are disconnected at a 1 MiB outbound buffer.
 

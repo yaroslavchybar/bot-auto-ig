@@ -163,24 +163,22 @@ test('reads reset daily counters without a cron', async () => {
   expect(rows[0]?.runsToday).toBe(0)
 })
 
-test('deleting a workflow also removes its stored artifacts', async () => {
+test('deleting a scrape job keeps its scraped accounts for messaging', async () => {
   const t = createConvexTest()
-  const workflow = await seedWorkflow(t, { name: 'Workflow Delete Cascade' })
-
-  const artifact = await t.mutation(internal.workflowArtifacts.upsertInternal, {
-    workflowId: workflow!._id,
-    workflowName: workflow!.name,
-    nodeId: 'node-delete-cascade',
-    kind: 'followers',
-    targets: ['target-delete'],
-    localArtifactPath: 'scrapes/test.json',
+  const job = await t.mutation(api.scrapeJobs.create, {
+    name: 'Job Delete Keeps Accounts',
+    targets: ['B1LbfVPlwIA'],
   })
 
-  const removed = await t.mutation(api.workflows.mutations.remove, { id: workflow!._id })
-  const artifactAfterDelete = await t.run((ctx) => ctx.db.get(artifact!._id))
+  await t.mutation(internal.instagramAccounts.insertMany, {
+    accounts: [{ userName: 'leaddelete', sourceJobId: job!._id }],
+  })
+
+  const removed = await t.mutation(api.scrapeJobs.remove, { id: job!._id })
+  const accounts = await t.query(api.instagramAccounts.listScraped, {})
 
   expect(removed).toBe(true)
-  expect(artifactAfterDelete).toBeNull()
+  expect(accounts.map((account) => account.userName)).toContain('leaddelete')
 })
 
 test('provides expanded default config for workflow activities', () => {

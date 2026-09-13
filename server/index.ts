@@ -17,6 +17,7 @@ import profileLoginRouter from './profiles/login.js'
 import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
 import { workflowsRouter } from './workflows/index.js'
+import { scrapeJobsRouter } from './scrapeJobs/index.js'
 import displaysRouter from './displays/routes.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
@@ -25,6 +26,7 @@ import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
 import logger from './shared/logger.js'
 import { workflowsReconcileInterrupted } from './shared/convexClient.js'
+import { scrapeJobsReconcileInterrupted } from './shared/convexClient.js'
 import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
 import { AppError } from './shared/errors.js'
 import type { Request, Response, NextFunction } from 'express'
@@ -101,6 +103,7 @@ app.use('/api/profiles/login', requireApiAuth, automationLimiter, profileLoginRo
 app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
+app.use('/api/scrape-jobs', requireApiAuthOrInternalKey, apiLimiter, scrapeJobsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
 // Sentry error handler must be registered after all routes
@@ -138,6 +141,7 @@ async function startServer(): Promise<void> {
     await cleanupOrphanedProcesses()
 
     await workflowsReconcileInterrupted()
+    await scrapeJobsReconcileInterrupted()
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())

@@ -13,7 +13,6 @@ import {
   type DbWorkflowRow,
 } from '../shared/convexClient.js'
 import { DEFAULT_SETTINGS, type InstagramSettings } from '../shared/types.js'
-import { scrapeRelationships } from './scrape.js'
 import { runPool } from './pool.js'
 import {
   advanceLoop,
@@ -273,23 +272,18 @@ export async function runWorkflow(
   if (!profiles.length)
     throw new Error('No available logged-in profile in the selected lists')
 
-  const hasScrape = nodes.some(
-    (node) => nodeActivity(node) === 'scrape_relationships',
-  )
-  const parallel = hasScrape
-    ? 1
-    : Math.max(
-        1,
-        Math.min(
-          10,
-          Math.floor(
-            number(
-              input.parallelProfiles ?? startConfig.parallelProfiles,
-              1,
-            ),
-          ),
+  const parallel = Math.max(
+    1,
+    Math.min(
+      10,
+      Math.floor(
+        number(
+          input.parallelProfiles ?? startConfig.parallelProfiles,
+          1,
         ),
-      )
+      ),
+    ),
+  )
   const runProfile = async (profile: DbProfileRow) => {
     shutdownSignal.throwIfAborted()
     if (aggregateStates.__profileRuns?.[profile.id]?.completed) return
@@ -432,21 +426,6 @@ export async function runWorkflow(
                   messaging_cooldown_hours: startConfig.messagingCooldownHours,
                 },
               )
-            } else if (activity === 'scrape_relationships') {
-              await scrapeRelationships({
-                page: session.page,
-                profile: session.profile,
-                workflowId,
-                workflowName: String(workflow.name || workflowId),
-                nodeId: current.id,
-                config,
-                state: (aggregateStates[`scrape:${current.id}`] ??= {}),
-                onProgress: () =>
-                  report('task_progress', {
-                    workflowId: workflowId,
-                    nodeId: current!.id,
-                  }),
-              })
             } else if (activity === 'close_browser') {
               await controls.close()
             } else if (activity === 'start_browser') {
@@ -509,18 +488,7 @@ export async function runWorkflow(
       },
     )
   }
-  await runPool(profiles, parallel, async (profile, index) => {
-    try { await runProfile(profile) }
-    catch (error) {
-      if (
-        hasScrape &&
-        /daily scraping limit reached/.test(String(error)) &&
-        index + 1 < profiles.length
-      )
-        return
-      throw error
-    }
-  })
+  await runPool(profiles, parallel, (profile) => runProfile(profile))
 
   await event('session_ended', {
     workflowId: workflowId,

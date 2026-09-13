@@ -1,5 +1,4 @@
 import { Plus, RefreshCw, Upload } from 'lucide-react'
-import type { WorkflowArtifact } from './hooks/useWorkflowsPage'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -37,10 +36,9 @@ export function WorkflowsPage() {
         onSetEditWorkflowId={s.setEditWorkflowId} onSaveCreate={s.handleSaveCreate}
         onSaveEdit={s.handleSaveEdit} />
       <WorkflowDetailsSheet detailsWorkflow={s.detailsWorkflow}
-        artifactsLoading={s.artifactsLoading} workflowArtifacts={s.workflowArtifacts}
         onSetDetailsWorkflowId={s.setDetailsWorkflowId} onToggleActive={s.handleToggleActive}
         onEditSchedule={s.handleEditSchedule} onReset={s.handleReset}
-        onStopRun={s.handleStopRun} onDownloadArtifact={s.handleDownloadArtifact} />
+        onStopRun={s.handleStopRun} />
       <WorkflowDeleteDialog deleteWorkflowId={s.deleteWorkflowId} saving={s.saving}
         onSetDeleteWorkflowId={s.setDeleteWorkflowId} onConfirmDelete={s.handleConfirmDelete} />
       <ScheduleDialog open={Boolean(s.scheduleWorkflow)}
@@ -193,24 +191,18 @@ function WorkflowCrudDialogs({
 
 function WorkflowDetailsSheet({
   detailsWorkflow,
-  artifactsLoading,
-  workflowArtifacts,
   onSetDetailsWorkflowId,
   onToggleActive,
   onEditSchedule,
   onReset,
   onStopRun,
-  onDownloadArtifact,
 }: {
   detailsWorkflow: Workflow | null
-  artifactsLoading: boolean
-  workflowArtifacts: Record<string, WorkflowArtifact[]>
   onSetDetailsWorkflowId: (id: import('../../../../convex/_generated/dataModel').Id<'workflows'> | null) => void
   onToggleActive: (workflow: Workflow) => void
   onEditSchedule: (workflow: Workflow) => void
   onReset: (workflow: Workflow) => void
   onStopRun: (workflow: Workflow) => void
-  onDownloadArtifact: (target: import('@/lib/artifact-download').ArtifactDownloadTarget, fileName: string) => void
 }) {
   return (
     <Sheet
@@ -226,11 +218,6 @@ function WorkflowDetailsSheet({
         {detailsWorkflow ? (
           <WorkflowDetails
             workflow={detailsWorkflow}
-            artifacts={workflowArtifacts[String(detailsWorkflow._id)] ?? []}
-            artifactsLoading={artifactsLoading}
-            onDownloadArtifact={(storageId, fileName) =>
-              void onDownloadArtifact(storageId, fileName)
-            }
             onToggleActive={() => onToggleActive(detailsWorkflow)}
             onEditSchedule={() => onEditSchedule(detailsWorkflow)}
             onReset={() => onReset(detailsWorkflow)}

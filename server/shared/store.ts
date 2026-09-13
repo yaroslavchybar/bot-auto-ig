@@ -28,6 +28,11 @@ export const workflowWorkers = new Map<
     { process: ChildProcess; status: 'running' | 'stopping'; startedAt: number }
 >()
 
+export const scrapeWorkers = new Map<
+    string,
+    { process: ChildProcess; status: 'running' | 'stopping'; startedAt: number }
+>()
+
 export type ActiveDisplaySession = {
     workflowId: string
     profileName: string

@@ -1,11 +1,4 @@
 import { Router } from 'express'
-import { localArtifactFile } from './artifacts.js'
-import { artifactJson } from './artifact-stream.js'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
-import {
-  workflowArtifactsListByWorkflow,
-} from '../shared/convexClient.js'
 import { workflowWorkers } from '../shared/store.js'
 import {
   getWorkflowStatus,
@@ -33,42 +26,6 @@ router.get('/status', (req, res) => {
   ).trim()
   res.json(getWorkflowStatus(workflowId || undefined))
 })
-
-// ---------------------------------------------------------------------------
-// GET /artifacts
-// ---------------------------------------------------------------------------
-
-router.get('/artifacts', asyncHandler(async (req, res) => {
-  const workflowId = String(
-    (req.query as any)?.workflowId ??
-'',
-  ).trim()
-  if (!workflowId) {
-    throw new ValidationError('workflowId is required')
-  }
-  const artifacts = await workflowArtifactsListByWorkflow(workflowId)
-  res.json(artifacts)
-}))
-
-// ---------------------------------------------------------------------------
-// GET /artifacts/storage-url
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
-// GET /artifacts/download
-// ---------------------------------------------------------------------------
-
-router.get('/artifacts/download', asyncHandler(async (req, res) => {
-  const workflowId = String(req.query.workflowId ?? '').trim()
-  const artifactId = String(req.query.artifactId ?? '').trim()
-  if (!workflowId || !artifactId) throw new ValidationError('workflowId and artifactId are required')
-  const fileName = String(req.query.fileName ?? 'artifact.json').trim() || 'artifact.json'
-  const filename = await localArtifactFile(workflowId, artifactId)
-  res.setHeader('Content-Type', 'application/json')
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
-  await pipeline(Readable.from(artifactJson(filename)), res)
-}))
 
 // ---------------------------------------------------------------------------
 // POST /run — validates input, acquires mutex, delegates to runWorkflow
