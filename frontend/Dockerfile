@@ -6,6 +6,11 @@ WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
+# Native build tools for better-sqlite3's install script (camoufox-js dep).
+# Build-stage only: the runtime image is nginx and never sees node_modules.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 # Full workspace install: the build typechecks ../convex (needs the root
 # convex deps) and test files (needs root vitest). The build stage is
 # discarded, so dev deps never reach the nginx runtime image.

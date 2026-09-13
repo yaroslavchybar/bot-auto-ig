@@ -36,6 +36,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libavcodec-extra \
   libva2 \
   libva-drm2 \
+  # Native build tools for better-sqlite3's install script (camoufox-js dep).
+  python3 \
+  make \
+  g++ \
   && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /root/.fluxbox && \
