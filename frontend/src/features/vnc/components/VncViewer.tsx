@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import RFB from '@novnc/novnc/lib/rfb.js'
+import RFB from '@novnc/novnc'
 import { cn } from '@/lib/utils'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { buildVncWebSocketUrl } from '../utils/buildVncWebSocketUrl'
