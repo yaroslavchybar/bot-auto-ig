@@ -134,7 +134,16 @@ function browserOptions(profile: DbProfileRow, profileDir: string, options: Sess
     i_know_what_im_doing: true,
     proxy,
     geoip: Boolean(proxy),
-    humanize: true,
+    // Camoufox humanizes cursor motion (move/click trajectories) in C++.
+    // A numeric value sets humanize:maxTime: up to ~2s per move for variance.
+    // Scroll smoothness comes from small, dense wheel() ticks in actions.ts;
+    // keep mouse.move() calls step-free so Camoufox owns the curve.
+    humanize: 2.0,
+    firefox_user_prefs: {
+      // Match stock Firefox smooth-scroll behavior for wheel input.
+      'general.smoothScroll': true,
+      'general.smoothScroll.mouseWheel': true,
+    },
     locale: 'en-US',
     // NOTE: window alone does nothing when an explicit fingerprint is passed
     // (camoufox-js only uses it for internal generation). The spoofed
