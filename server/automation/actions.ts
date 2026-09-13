@@ -187,6 +187,11 @@ export async function browseFeed(
     waitUntil: 'domcontentloaded',
     timeout: 45_000,
   })
+  const duration = Math.max(0, minutes)
+  if (!(duration > 0)) {
+    log('Feed session skipped (0 minutes)')
+    return
+  }
   // Let the feed render before touching anything; humans wait for content.
   await page
     .locator('article')
@@ -207,7 +212,7 @@ export async function browseFeed(
     Math.floor(numeric(config.carousel_max_slides, 3)),
   )
 
-  const end = Date.now() + Math.max(0, minutes) * 60_000
+  const end = Date.now() + duration * 60_000
   const cursor: CursorState = { onScrollbar: false }
   log(`Starting feed session for ${minutes} minute(s)`)
   while (Date.now() < end && !shouldStop()) {
