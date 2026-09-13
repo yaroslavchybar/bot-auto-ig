@@ -36,10 +36,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libavcodec-extra \
   libva2 \
   libva-drm2 \
-  # Native build tools for better-sqlite3's install script (camoufox-js dep).
-  python3 \
-  make \
-  g++ \
   && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /root/.fluxbox && \
@@ -64,9 +60,11 @@ COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
 # Full workspace install: the build script runs root typescript and tsc
-# typechecks dev dependencies. Runtime stays minimal (bun-runtime-deps).
+# typechecks dev dependencies. Scripts are skipped: tsc only reads types,
+# it never loads native modules (better-sqlite3's script can't build without
+# node-gyp). Runtime stays minimal (bun-runtime-deps).
 RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun install --frozen-lockfile
+  bun install --frozen-lockfile --ignore-scripts
 
 FROM browser-deps AS bun-runtime-deps
 WORKDIR /app
