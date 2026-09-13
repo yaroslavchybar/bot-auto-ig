@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const watchStories: ActivityDefinition = {
   id: 'watch_stories',
+  keywords: ['stories', 'watch'],
+  pickerGroup: 'stories',
+  quickAdd: false,
   name: 'Watch Stories',
   description: 'View stories from feed',
   category: 'stories',
@@ -48,7 +51,6 @@ export const watchStories: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'stories.watch',
 }
 
 

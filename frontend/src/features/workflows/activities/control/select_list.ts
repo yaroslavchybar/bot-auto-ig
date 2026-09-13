@@ -2,6 +2,9 @@ import type { ActivityDefinition } from '../types'
 
 export const selectList: ActivityDefinition = {
   id: 'select_list',
+  quickAdd: true,
+  pickerGroup: 'setup',
+  keywords: ['profiles', 'list', 'source list', 'audience'],
   name: 'Select List',
   description: 'Select lists to pull accounts from for processing.',
   category: 'control',
@@ -17,7 +20,6 @@ export const selectList: ActivityDefinition = {
     },
   ],
   outputs: ['next'],
-  handler: 'control.select_list',
 }
 
 

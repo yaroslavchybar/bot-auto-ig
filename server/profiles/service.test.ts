@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { startProfileBrowser } from './service.js'
 import { profileManager } from './data.js'
-import { automationState, profileProcesses } from '../shared/store.js'
+import { profileProcesses } from '../shared/store.js'
 import type { ChildProcess, spawnBun } from '../shared/ProcessService.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -14,7 +14,7 @@ test('concurrent manual starts spawn once and keep ownership during delayed clea
   let launches = 0
   let finish!: () => void
   globalThis.fetch = (async (url, init) => {
-    if (String(url).endsWith('/api/profiles')) return Response.json([{ name: 'test', profile_id: 'test' }])
+    if (String(url).endsWith('/api/profiles')) return Response.json([{ name: 'test', id: 'test' }])
     if (JSON.parse(String(init?.body)).status === 'idle') await new Promise<void>(resolve => { finish = resolve })
     return Response.json({})
   }) as typeof fetch
@@ -37,9 +37,9 @@ test('reconciliation never clears a live automation profile, even before its fir
   const originalFetch = globalThis.fetch
   let calls = 0
   globalThis.fetch = (async () => { calls++; throw new Error('Must not access database') }) as typeof fetch
-  automationState.process = new EventEmitter() as ChildProcess
+  profileProcesses.set('busy', new EventEmitter() as ChildProcess)
   try {
     assert.deepEqual(await profileManager.reconcileRuntimeStatuses([]), { cleared: 0, errors: [] })
     assert.equal(calls, 0)
-  } finally { globalThis.fetch = originalFetch; automationState.process = null }
+  } finally { globalThis.fetch = originalFetch; profileProcesses.delete('busy') }
 })

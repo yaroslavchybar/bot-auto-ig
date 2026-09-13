@@ -9,6 +9,7 @@
  */
 
 import type * as crons from "../crons.js";
+import type * as errors from "../errors.js";
 import type * as http from "../http.js";
 import type * as httpRoutes_instagramAccounts from "../httpRoutes/instagramAccounts.js";
 import type * as httpRoutes_lists from "../httpRoutes/lists.js";
@@ -40,6 +41,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   crons: typeof crons;
+  errors: typeof errors;
   http: typeof http;
   "httpRoutes/instagramAccounts": typeof httpRoutes_instagramAccounts;
   "httpRoutes/lists": typeof httpRoutes_lists;

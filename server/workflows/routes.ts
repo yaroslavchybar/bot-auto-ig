@@ -4,7 +4,6 @@ import { artifactJson } from './artifact-stream.js'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import {
-  workflowArtifactsGetStorageUrl,
   workflowArtifactsListByWorkflow,
 } from '../shared/convexClient.js'
 import { workflowWorkers } from '../shared/store.js'
@@ -19,8 +18,6 @@ import { asyncHandler } from '../shared/asyncHandler.js'
 import {
   AppError,
   ValidationError,
-  NotFoundError,
-  ExternalServiceError,
 } from '../shared/errors.js'
 
 const router = Router()
@@ -32,8 +29,7 @@ const router = Router()
 router.get('/status', (req, res) => {
   const workflowId = String(
     (req.query as any)?.workflowId ??
-    (req.query as any)?.workflow_id ??
-    (req.query as any)?.id ?? '',
+'',
   ).trim()
   res.json(getWorkflowStatus(workflowId || undefined))
 })
@@ -45,8 +41,7 @@ router.get('/status', (req, res) => {
 router.get('/artifacts', asyncHandler(async (req, res) => {
   const workflowId = String(
     (req.query as any)?.workflowId ??
-    (req.query as any)?.workflow_id ??
-    (req.query as any)?.id ?? '',
+'',
   ).trim()
   if (!workflowId) {
     throw new ValidationError('workflowId is required')
@@ -59,60 +54,20 @@ router.get('/artifacts', asyncHandler(async (req, res) => {
 // GET /artifacts/storage-url
 // ---------------------------------------------------------------------------
 
-router.get('/artifacts/storage-url', asyncHandler(async (req, res) => {
-  const storageId = String((req.query as any)?.storageId ?? '').trim()
-  if (!storageId) {
-    throw new ValidationError('storageId is required')
-  }
-  const url = await workflowArtifactsGetStorageUrl(storageId)
-  if (!url) {
-    throw new NotFoundError('Artifact URL is not ready')
-  }
-  res.json({ url })
-}))
 
 // ---------------------------------------------------------------------------
 // GET /artifacts/download
 // ---------------------------------------------------------------------------
 
 router.get('/artifacts/download', asyncHandler(async (req, res) => {
-  const storageId = String((req.query as any)?.storageId ?? '').trim()
-  const fileName = String(
-    (req.query as any)?.fileName ?? 'artifact.json',
-  ).trim() || 'artifact.json'
+  const workflowId = String(req.query.workflowId ?? '').trim()
   const artifactId = String(req.query.artifactId ?? '').trim()
-  if (artifactId) {
-    const filename = await localArtifactFile(String(req.query.workflowId ?? '').trim(), artifactId)
-    res.setHeader('Content-Type', 'application/json')
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
-    await pipeline(Readable.from(artifactJson(filename)), res)
-    return
-  }
-  if (!storageId) {
-    throw new ValidationError('storageId is required')
-  }
-
-  const url = await workflowArtifactsGetStorageUrl(storageId)
-  if (!url) {
-    throw new NotFoundError('Artifact URL is not ready')
-  }
-
-  const upstream = await fetch(url)
-  if (!upstream.ok) {
-    throw new ExternalServiceError(
-      `Failed to download artifact (${upstream.status})`,
-    )
-  }
-
-  const contentType =
-    upstream.headers.get('content-type') || 'application/octet-stream'
-  const arrayBuffer = await upstream.arrayBuffer()
-  res.setHeader('Content-Type', contentType)
-  res.setHeader(
-    'Content-Disposition',
-    `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
-  )
-  res.send(Buffer.from(arrayBuffer))
+  if (!workflowId || !artifactId) throw new ValidationError('workflowId and artifactId are required')
+  const fileName = String(req.query.fileName ?? 'artifact.json').trim() || 'artifact.json'
+  const filename = await localArtifactFile(workflowId, artifactId)
+  res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+  await pipeline(Readable.from(artifactJson(filename)), res)
 }))
 
 // ---------------------------------------------------------------------------
@@ -139,7 +94,7 @@ router.post('/run', asyncHandler(async (req, res) => {
 
 router.post('/stop', asyncHandler(async (req, res) => {
   const workflowId = String(
-    req.body?.workflowId ?? req.body?.workflow_id ?? req.body?.id ?? '',
+    req.body?.workflowId ?? '',
   ).trim()
 
   const release = await automationMutex.acquire()
@@ -172,13 +127,13 @@ function parseRunInput(body: any): {
   parallelProfiles: number | undefined
 } {
   const workflowId = String(
-    body?.workflowId ?? body?.workflow_id ?? body?.id ?? '',
+    body?.workflowId ?? '',
   ).trim()
   if (!workflowId) {
     throw new ValidationError('workflowId is required')
   }
   const parallelProfiles = normalizeOptionalParallelProfiles(
-    body?.parallelProfiles ?? body?.parallel_profiles ?? body?.parallel,
+    body?.parallelProfiles,
   )
   return { workflowId, parallelProfiles }
 }

@@ -1,3 +1,4 @@
+import type { WorkerEvent } from '../shared/contracts.js'
 import {
   openCamoufoxSession,
   type CamoufoxSession,
@@ -45,7 +46,7 @@ function log(message: string, level: LogLevel = 'info'): void {
   )
 }
 
-function event(type: string, data: AnyRecord = {}): Promise<void> {
+function event(type: WorkerEvent['type'], data: AnyRecord = {}): Promise<void> {
   return new Promise((resolve, reject) => process.stdout.write(
     `__EVENT__${JSON.stringify({ type, ts: new Date().toISOString(), ...data })}__EVENT__\n`,
     error => error ? reject(error) : resolve(),
@@ -81,15 +82,15 @@ async function withProfile(
     if (!session || closed) return
     await session.close()
     closed = true
-    if (session.display) await event('display_released', { workflow_id: workflowId, profile: profile.name })
+    if (session.display) await event('display_released', { workflowId: workflowId, profileName: profile.name })
   }
   const reopen = async (headless = options.headless ?? true) => {
     if (closed) {
       session = await (options.openSession ?? openCamoufoxSession)(profile.name, { headless })
       closed = false
       if (session.display) await event('display_allocated', {
-        workflow_id: workflowId, profile: profile.name,
-        display_num: session.display.displayNum, vnc_port: session.display.vncPort,
+        workflowId: workflowId, profileName: profile.name,
+        displayNum: session.display.displayNum, vncPort: session.display.vncPort,
       })
     }
     return session!
@@ -101,30 +102,30 @@ async function withProfile(
     await profilesSyncStatus(profile.name, 'running', true)
     markedRunning = true
     await event('profile_started', {
-      profile: profile.name,
-      profile_id: profile.profile_id,
-      workflow_id: workflowId,
+      profileName: profile.name,
+      profileId: profile.id,
+      workflowId: workflowId,
     })
     if (session.display)
       await event('display_allocated', {
-        workflow_id: workflowId,
-        profile: profile.name,
-        display_num: session.display.displayNum,
-        vnc_port: session.display.vncPort,
+        workflowId: workflowId,
+        profileName: profile.name,
+        displayNum: session.display.displayNum,
+        vncPort: session.display.vncPort,
       })
     await run(session, { close, reopen })
     await event('profile_completed', {
-      profile: profile.name,
-      profile_id: profile.profile_id,
-      workflow_id: workflowId,
+      profileName: profile.name,
+      profileId: profile.id,
+      workflowId: workflowId,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     log(`${profile.name}: ${message}`, 'error')
     await event('error', {
-      profile: profile.name,
-      profile_id: profile.profile_id,
-      workflow_id: workflowId,
+      profileName: profile.name,
+      profileId: profile.id,
+      workflowId: workflowId,
       error: message,
     })
     throw error
@@ -177,11 +178,11 @@ async function runConfiguredAction(
       shouldStop,
     )
   } else if (action === 'Follow' && settings.enable_follow) {
-    await followUsers(page, profile.profile_id, logAction, shouldStop, settings)
+    await followUsers(page, profile.id, logAction, shouldStop, settings)
   } else if (action === 'Unfollow' && settings.do_unfollow) {
     await unfollowUsers(
       page,
-      profile.profile_id,
+      profile.id,
       logAction,
       shouldStop,
       settings,
@@ -191,64 +192,12 @@ async function runConfiguredAction(
   } else if (action === 'Send Messages' && settings.do_message) {
     await sendMessages(
       page,
-      profile.profile_id,
+      profile.id,
       logAction,
       shouldStop,
       settings,
     )
   }
-}
-
-async function runAutomation(input: AnyRecord): Promise<void> {
-  const settings = settingsFrom(input.settings || {})
-  const profiles = (await profilesList())
-    .filter((profile) =>
-      profileEligible(
-        profile,
-        settings.source_list_ids,
-        settings.profile_reopen_cooldown_enabled
-          ? settings.profile_reopen_cooldown_minutes
-          : 0,
-      ),
-    )
-    .slice(0, Math.max(1, number(settings.max_sessions, 5)))
-  const stop = shouldStop
-
-  await event('session_started', {
-    workflow_id: 'automation',
-    total_profiles: profiles.length,
-  })
-  log(`Starting TypeScript automation for ${profiles.length} profile(s)`)
-
-  const actions = Array.isArray(settings.action_order)
-    ? settings.action_order
-    : []
-  const parallel = Math.max(
-    1,
-    Math.min(10, Math.floor(number(settings.parallel_profiles, 1))),
-  )
-  await runPool(profiles, parallel, async profile => {
-    shutdownSignal.throwIfAborted()
-    await withProfile(
-      profile,
-      { headless: settings.headless },
-      async (session) => {
-        for (const action of actions) {
-          if (stop()) break
-          await event('task_started', {
-            workflow_id: 'automation', profile: profile.name, task: action,
-          })
-          await runConfiguredAction(String(action), session, settings, profile, stop)
-          await event('task_completed', {
-            workflow_id: 'automation', profile: profile.name, task: action,
-          })
-        }
-      },
-    )
-  })
-
-  await event('session_ended', { workflow_id: 'automation', status: 'completed' })
-  log('TypeScript automation finished', 'success')
 }
 
 function nodeConfig(node: WorkflowNode): AnyRecord {
@@ -298,7 +247,7 @@ export async function runWorkflow(
     Array.isArray(workflow.edges) ? workflow.edges : []
   ) as WorkflowEdge[]
   const nodeStates: AnyRecord = {
-    ...(workflow.nodeStates || input.options?.node_states || {}),
+    ...(workflow.nodeStates || {}),
   }
   const aggregateStates = nodeStates
   const workflowId = String(input.workflowId || 'workflow')
@@ -320,7 +269,7 @@ export async function runWorkflow(
     ),
   )
 
-  await event('session_started', { workflow_id: workflowId })
+  await event('session_started', { workflowId: workflowId })
   if (!profiles.length)
     throw new Error('No available logged-in profile in the selected lists')
 
@@ -335,7 +284,7 @@ export async function runWorkflow(
           10,
           Math.floor(
             number(
-              input.options?.parallel_profiles ?? startConfig.parallelProfiles,
+              input.parallelProfiles ?? startConfig.parallelProfiles,
               1,
             ),
           ),
@@ -343,33 +292,33 @@ export async function runWorkflow(
       )
   const runProfile = async (profile: DbProfileRow) => {
     shutdownSignal.throwIfAborted()
-    if (aggregateStates.__profileRuns?.[profile.profile_id]?.completed) return
+    if (aggregateStates.__profileRuns?.[profile.id]?.completed) return
     await withProfile(
       profile,
       {
-        headless: input.options?.headless ?? startConfig.headlessMode ?? false,
+        headless: startConfig.headlessMode ?? false,
         openSession,
         workflowId,
       },
       async (session, controls) => {
         const runs = (aggregateStates.__profileRuns ??= {})
-        const run = (runs[profile.profile_id] ??= {
+        const run = (runs[profile.id] ??= {
           states: {},
           currentNodeId: null,
           completed: false,
         })
         if (run.completed) return
         const nodeStates = run.states as AnyRecord
-        const report = async (type: string, data: AnyRecord) => {
+        const report = async (type: WorkerEvent['type'], data: AnyRecord) => {
           Object.assign(aggregateStates, nodeStates)
           await event(type, {
             ...data,
-            profile: profile.name,
+            profileName: profile.name,
           })
           await event('checkpoint', {
-            workflow_id: workflowId,
-            node_id: run.currentNodeId,
-            node_states: aggregateStates,
+            workflowId: workflowId,
+            nodeId: run.currentNodeId,
+            nodeStates: aggregateStates,
           })
         }
         let current =
@@ -392,8 +341,8 @@ export async function runWorkflow(
             error: undefined,
           }
           await report('task_started', {
-            workflow_id: workflowId,
-            node_id: current.id,
+            workflowId: workflowId,
+            nodeId: current.id,
             task: activity,
           })
 
@@ -455,7 +404,7 @@ export async function runWorkflow(
             } else if (activity === 'follow_user') {
               await followUsers(
                 session.page,
-                profile.profile_id,
+                profile.id,
                 log,
                 shouldStop,
                 config,
@@ -463,7 +412,7 @@ export async function runWorkflow(
             } else if (activity === 'unfollow_user') {
               await unfollowUsers(
                 session.page,
-                profile.profile_id,
+                profile.id,
                 log,
                 shouldStop,
                 config,
@@ -473,7 +422,7 @@ export async function runWorkflow(
             } else if (activity === 'send_dm') {
               await sendMessages(
                 session.page,
-                profile.profile_id,
+                profile.id,
                 log,
                 shouldStop,
                 {
@@ -494,8 +443,8 @@ export async function runWorkflow(
                 state: (aggregateStates[`scrape:${current.id}`] ??= {}),
                 onProgress: () =>
                   report('task_progress', {
-                    workflow_id: workflowId,
-                    node_id: current!.id,
+                    workflowId: workflowId,
+                    nodeId: current!.id,
                   }),
               })
             } else if (activity === 'close_browser') {
@@ -517,8 +466,8 @@ export async function runWorkflow(
               error: String(error),
             }
             await report('task_progress', {
-              workflow_id: workflowId,
-              node_id: current.id,
+              workflowId: workflowId,
+              nodeId: current.id,
             })
             if (
               !edges.some(
@@ -532,8 +481,8 @@ export async function runWorkflow(
             run.currentNodeId = current?.id ?? null
             run.completed = !current
             await report('task_progress', {
-              workflow_id: workflowId,
-              node_id: current?.id,
+              workflowId: workflowId,
+              nodeId: current?.id,
             })
             continue
           }
@@ -547,8 +496,8 @@ export async function runWorkflow(
           run.currentNodeId = next?.id ?? null
           run.completed = !next
           await report('task_completed', {
-            workflow_id: workflowId,
-            node_id: current.id,
+            workflowId: workflowId,
+            nodeId: current.id,
             task: activity,
           })
           current = next
@@ -574,9 +523,9 @@ export async function runWorkflow(
   })
 
   await event('session_ended', {
-    workflow_id: workflowId,
+    workflowId: workflowId,
     status: 'completed',
-    node_states: nodeStates,
+    nodeStates: nodeStates,
   })
 }
 
@@ -592,8 +541,8 @@ async function main(): Promise<void> {
       process.stdin.on('error', reject)
     }),
   ) as AnyRecord
-  if (input.workflow) await runWorkflow(input)
-  else await runAutomation(input)
+  if (!input.workflow) throw new Error('workflow is required')
+  await runWorkflow(input)
 }
 
 if (

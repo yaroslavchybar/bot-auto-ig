@@ -1,3 +1,4 @@
+import { DomainError } from './errors';
 import { v } from 'convex/values'
 import { internalMutation, internalQuery } from './_generated/server'
 // NOTE: browser-called queries/mutations below are intentionally public.
@@ -108,9 +109,6 @@ async function upsertArtifactRow(
     status?: string
     sourceProfileName?: string
     lastRunAt?: number
-    storageId?: any
-    manifestStorageId?: any
-    exportStorageId?: any
     localArtifactPath?: string
     localArtifactDeletedAt?: number
     imported?: boolean
@@ -120,8 +118,8 @@ async function upsertArtifactRow(
 ) {
   const workflowName = cleanString(args.workflowName)
   const nodeId = cleanString(args.nodeId)
-  if (!workflowName) throw new Error('workflowName is required')
-  if (!nodeId) throw new Error('nodeId is required')
+  if (!workflowName) throw new DomainError('VALIDATION', 'workflowName is required')
+  if (!nodeId) throw new DomainError('VALIDATION', 'nodeId is required')
 
   const now = Date.now()
   const targets = normalizeTargets(args.targets, args.targetUsername)
@@ -145,9 +143,6 @@ async function upsertArtifactRow(
       typeof args.lastRunAt === 'number' && Number.isFinite(args.lastRunAt)
         ? Math.max(0, Math.floor(args.lastRunAt))
         : now,
-    storageId: args.storageId,
-    manifestStorageId: args.manifestStorageId,
-    exportStorageId: args.exportStorageId,
     localArtifactPath: cleanString(args.localArtifactPath) || undefined,
     localArtifactDeletedAt:
       typeof args.localArtifactDeletedAt === 'number' && Number.isFinite(args.localArtifactDeletedAt)
@@ -162,32 +157,6 @@ async function upsertArtifactRow(
   return await getArtifact(ctx, inserted)
 }
 
-function collectArtifactStorageIds(row: any): any[] {
-  const uniqueIds = new Set<string>()
-  const storageIds: any[] = []
-  for (const candidate of [row?.storageId, row?.exportStorageId, row?.manifestStorageId]) {
-    const cleaned = cleanString(candidate)
-    if (!cleaned || uniqueIds.has(cleaned)) continue
-    uniqueIds.add(cleaned)
-    storageIds.push(candidate)
-  }
-  return storageIds
-}
-
-async function artifactHasAvailableStorage(ctx: any, row: any): Promise<boolean> {
-  const storageIds = collectArtifactStorageIds(row)
-  if (storageIds.length === 0) return true
-  for (const storageId of storageIds) {
-    try {
-      const url = await ctx.storage.getUrl(storageId)
-      if (typeof url === 'string' && url.trim()) return true
-    } catch {
-      continue
-    }
-  }
-  return false
-}
-
 async function artifactWorkflowExists(ctx: any, row: any): Promise<boolean> {
   try {
     return Boolean(await ctx.db.get(row?.workflowId))
@@ -200,7 +169,7 @@ async function filterVisibleArtifacts(ctx: any, rows: any[]) {
   const results = await Promise.all(
     rows.map(async (row) => {
       if (!(await artifactWorkflowExists(ctx, row))) return null
-      return (await artifactHasAvailableStorage(ctx, row)) ? row : null
+      return row
     }),
   )
   return results.filter(Boolean)
@@ -229,9 +198,6 @@ export const upsertInternal = internalMutation({
     status: v.optional(v.string()),
     sourceProfileName: v.optional(v.string()),
     lastRunAt: v.optional(v.number()),
-    storageId: v.optional(v.id('_storage')),
-    manifestStorageId: v.optional(v.id('_storage')),
-    exportStorageId: v.optional(v.id('_storage')),
     localArtifactPath: v.optional(v.string()),
     localArtifactDeletedAt: v.optional(v.number()),
     imported: v.optional(v.boolean()),
@@ -252,25 +218,10 @@ export const remove = mutation({
   args: { id: v.id('workflowArtifacts') },
   handler: async (ctx, args) => {
     const existing = await getArtifact(ctx, args.id)
-    if (!existing) throw new Error('Artifact not found')
-
-    for (const storageId of collectArtifactStorageIds(existing)) {
-      try {
-        await ctx.storage.delete(storageId)
-      } catch (error) {
-        const message = String((error as any)?.message || error || '')
-        if (!message.toLowerCase().includes('not found')) {
-          throw error
-        }
-      }
-    }
+    if (!existing) throw new DomainError('NOT_FOUND', 'Artifact not found')
 
     await ctx.db.delete(args.id)
     return existing
   },
 })
 
-export const getStorageUrlInternal = internalQuery({
-  args: { storageId: v.id('_storage') },
-  handler: async (ctx, args) => await ctx.storage.getUrl(args.storageId),
-})

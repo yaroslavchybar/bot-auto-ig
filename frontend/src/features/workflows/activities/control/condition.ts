@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const condition: ActivityDefinition = {
   id: 'condition',
+  quickAdd: true,
+  pickerGroup: 'control',
+  keywords: ['if', 'branch', 'true false'],
   name: 'Condition',
   description: 'Branch based on a condition',
   category: 'control',
@@ -35,7 +38,6 @@ export const condition: ActivityDefinition = {
   ],
 
   outputs: ['true', 'false'],
-  handler: 'control.condition',
 }
 
 

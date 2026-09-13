@@ -1,3 +1,4 @@
+import { DomainError } from '../errors';
 import { v } from "convex/values";
 import { internalMutation, internalAction } from "../_generated/server";
 import { components, internal } from "../_generated/api";
@@ -8,7 +9,7 @@ import {
 	scheduleConfigValidator,
 	validateScheduleConfig,
 	buildCronSchedule,
-	isNewDay,
+	prepareWorkflowRun,
 	type ScheduleType,
 	type ScheduleConfig,
 } from "./helpers";
@@ -25,7 +26,7 @@ export const updateSchedule = mutation({
 	},
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
+		if (!workflow) throw new DomainError('NOT_FOUND', "Workflow not found");
 		const scheduleConfig = args.scheduleConfig as ScheduleConfig;
 		validateScheduleConfig(args.scheduleType as ScheduleType, scheduleConfig);
 
@@ -44,7 +45,7 @@ export const updateSchedule = mutation({
 			}
 			if (args.scheduleType === "instant") {
 				// Instant doesn't need a recurring cron — clear cronJobId
-				await ctx.db.patch(args.id, { cronJobId: undefined });
+				await ctx.db.patch(args.id, { cronJobId: undefined, isActive: false });
 			} else {
 				// Create new cron
 				const schedule = buildCronSchedule(args.scheduleType as ScheduleType, scheduleConfig);
@@ -67,7 +68,7 @@ export const toggleActive = mutation({
 	args: { id: v.id("workflows") },
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
+		if (!workflow) throw new DomainError('NOT_FOUND', "Workflow not found");
 
 		if (workflow.isActive) {
 			// Deactivate
@@ -86,24 +87,16 @@ export const toggleActive = mutation({
 		} else {
 			// Activate
 			if (!workflow.scheduleType) {
-				throw new Error("Please configure a schedule before activating");
+				throw new DomainError('VALIDATION', "Please configure a schedule before activating");
 			}
 
 			const scheduleConfig = (workflow.scheduleConfig ?? {}) as ScheduleConfig;
 			validateScheduleConfig(workflow.scheduleType as ScheduleType, scheduleConfig);
 
-			if (workflow.scheduleType === "instant") {
-				// Instant run: trigger immediately, no cron job
-				await ctx.db.patch(args.id, {
-					isActive: true,
-					cronJobId: undefined,
-					updatedAt: Date.now(),
-				});
-				// Trigger immediate execution
-				await ctx.scheduler.runAfter(0, internal.workflows.scheduling.executeScheduledWorkflow, {
-					workflowId: args.id,
-				});
-			} else {
+            if (workflow.scheduleType === "instant") {
+              throw new DomainError('VALIDATION', 'Use Run now for an instant workflow');
+            }
+            {
 				const schedule = buildCronSchedule(workflow.scheduleType as ScheduleType, scheduleConfig);
 				const cronJobId = await crons.register(
 					ctx,
@@ -133,27 +126,11 @@ export const executeScheduledWorkflow = internalMutation({
 		if (!workflow.isActive) return { success: false, error: "Workflow not active" };
 		if (workflow.status === "running") return { success: false, error: "Already running" };
 
-		// Reset counter if last run was a different day
-		const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
-
-		// Check daily limit
-		const maxRuns = workflow.maxRunsPerDay ?? 0;
-		if (maxRuns > 0 && runsToday >= maxRuns) {
-			return { success: false, error: "Daily limit reached" };
-		}
-
-		// Update workflow to trigger execution
-		await ctx.db.patch(args.workflowId, {
-			status: "pending",
-			runsToday: runsToday + 1,
-			nodeStates: undefined,
-			lastRunAt: Date.now(),
-			error: undefined,
-			currentNodeId: undefined,
-			startedAt: undefined,
-			completedAt: undefined,
-			updatedAt: Date.now(),
-		});
+        try { await prepareWorkflowRun(ctx, workflow); }
+        catch (error) {
+          if (error instanceof DomainError) return { success: false, error: error.data.message };
+          throw error;
+        }
 
 		// Schedule the HTTP call to trigger the Bun worker
 		await ctx.scheduler.runAfter(0, internal.workflows.scheduling.triggerWorkflowExecution, {
@@ -211,20 +188,3 @@ export const triggerWorkflowExecution = internalAction({
 	},
 });
 
-// Reset runsToday for all active workflows (call from daily cron)
-export const resetDailyRuns = internalMutation({
-	handler: async (ctx) => {
-		const activeWorkflows = await ctx.db
-			.query("workflows")
-			.withIndex("by_isActive", (q) => q.eq("isActive", true))
-			.collect();
-
-		for (const workflow of activeWorkflows) {
-			await ctx.db.patch(workflow._id, {
-				runsToday: 0,
-			});
-		}
-
-		return { reset: activeWorkflows.length };
-	},
-});

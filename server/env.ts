@@ -1,11 +1,6 @@
-import path from 'path'
-import { fileURLToPath } from 'url'
+import path from 'node:path'
 import dotenv from 'dotenv'
+import { resolveProjectRoot } from './shared/utils.js'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-const projectRoot = path.resolve(__dirname, '..')
-
-// Single local source of truth: root .env.local.
-// Container/prod env arrives as real environment variables, which dotenv never overrides.
-dotenv.config({ path: path.join(projectRoot, '.env.local') })
+// Executables share one root rule; real environment variables take precedence.
+dotenv.config({ path: path.join(resolveProjectRoot(import.meta.url), '.env.local'), quiet: true })

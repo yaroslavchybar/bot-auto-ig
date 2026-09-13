@@ -2,6 +2,9 @@ import type { ActivityDefinition } from '../types'
 
 export const startBrowser: ActivityDefinition = {
   id: 'start_browser',
+  quickAdd: true,
+  pickerGroup: 'setup',
+  keywords: ['browser', 'launch', 'open browser'],
   name: 'Start Browser',
   description:
     'Initializes a new browser profile session with global settings.',
@@ -65,7 +68,6 @@ export const startBrowser: ActivityDefinition = {
     },
   ],
   outputs: ['next'],
-  handler: 'control.start_browser',
 }
 
 

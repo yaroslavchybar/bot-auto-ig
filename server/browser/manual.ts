@@ -18,10 +18,10 @@ async function main(): Promise<void> {
     process.stdout.write(
       `__EVENT__${JSON.stringify({
         type: 'display_allocated',
-        workflow_id: workflowId,
-        profile: profileName,
-        display_num: session.display.displayNum,
-        vnc_port: session.display.vncPort,
+        workflowId: workflowId,
+        profileName,
+        displayNum: session.display.displayNum,
+        vncPort: session.display.vncPort,
       })}__EVENT__\n`,
     )
   process.stdout.write('Browser is running...\n')

@@ -1,45 +1,14 @@
 import type { Profile } from '../types'
+import type { Doc } from '../../../../../convex/_generated/dataModel'
 
-type ProfileRecord = Record<string, unknown> & {
-  _id?: unknown
-  name?: unknown
-  proxy?: unknown
-  proxyType?: unknown
-  fingerprintOs?: unknown
-  cookiesJson?: unknown
-  testIp?: unknown
-  status?: unknown
-  using?: unknown
-  login?: unknown
-  dailyScrapingLimit?: unknown
-  assignedAccountsLimit?: unknown
-  dailyScrapingUsed?: unknown
-}
-
-export function mapProfileRecord(record: ProfileRecord | null | undefined): Profile {
+/** UI projection deliberately excludes session cookies. */
+export function mapProfileRecord(record: Doc<'profiles'>): Profile {
   return {
-    id: String(record?._id ?? ''),
-    name: String(record?.name ?? ''),
-    proxy: typeof record?.proxy === 'string' ? record.proxy : undefined,
-    proxy_type:
-      typeof record?.proxyType === 'string' ? record.proxyType : undefined,
-    fingerprint_os:
-      typeof record?.fingerprintOs === 'string' ? record.fingerprintOs : undefined,
-    cookies_json:
-      typeof record?.cookiesJson === 'string' ? record.cookiesJson : undefined,
-    test_ip: Boolean(record?.testIp),
-    status: typeof record?.status === 'string' ? record.status : undefined,
-    using: Boolean(record?.using),
-    login: Boolean(record?.login),
-    daily_scraping_limit:
-      typeof record?.dailyScrapingLimit === 'number'
-        ? record.dailyScrapingLimit
-        : null,
-    assigned_accounts_limit:
-      typeof record?.assignedAccountsLimit === 'number'
-        ? record.assignedAccountsLimit
-        : 10,
-    daily_scraping_used:
-      typeof record?.dailyScrapingUsed === 'number' ? record.dailyScrapingUsed : 0,
+    id: record._id, name: record.name, proxy: record.proxy,
+    proxyType: record.proxyType, fingerprintOs: record.fingerprintOs,
+    testIp: record.testIp, status: record.status, using: record.using, login: record.login,
+    dailyScrapingLimit: record.dailyScrapingLimit,
+    assignedAccountsLimit: record.assignedAccountsLimit,
+    dailyScrapingUsed: record.dailyScrapingUsed,
   }
 }

@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const followUser: ActivityDefinition = {
   id: 'follow_user',
+  keywords: ['follow', 'engagement'],
+  pickerGroup: 'engagement',
+  quickAdd: false,
   name: 'Follow',
   description: 'Follow users from queue',
   category: 'engagement',
@@ -105,7 +108,6 @@ export const followUser: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'engagement.follow_users',
 }
 
 

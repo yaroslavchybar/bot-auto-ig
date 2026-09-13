@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const unfollowUser: ActivityDefinition = {
   id: 'unfollow_user',
+  keywords: ['unfollow', 'engagement'],
+  pickerGroup: 'engagement',
+  quickAdd: false,
   name: 'Unfollow',
   description: 'Unfollow users',
   category: 'engagement',
@@ -55,7 +58,6 @@ export const unfollowUser: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'engagement.unfollow_users',
 }
 
 

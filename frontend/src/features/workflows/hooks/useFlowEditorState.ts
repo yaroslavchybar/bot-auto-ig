@@ -74,7 +74,7 @@ function useNodeInsertion(
   nodes: Node[],
   setNodes: ReturnType<typeof useNodesState>[1],
   setEdges: ReturnType<typeof useEdgesState>[1],
-  setSelectedNode: (node: Node | null) => void,
+  setSelectedNodeId: (id: string | null) => void,
   canvasRef: React.RefObject<HTMLDivElement | null>,
   getViewport: () => Viewport,
 ) {
@@ -96,7 +96,7 @@ function useNodeInsertion(
       const newNode = createActivityNode(activityId, nextPosition)
       rememberRecentActivity(activityId)
       setNodes((prev) => selectOnlyNode([...prev, newNode], newNode.id))
-      setSelectedNode({ ...newNode, selected: true })
+      setSelectedNodeId(newNode.id)
 
       if (!insertionContext.disconnected && sourceNode) {
         const edgeSourceHandle = insertionContext.sourceHandle || undefined
@@ -114,7 +114,7 @@ function useNodeInsertion(
         )
       }
     },
-    [canvasRef, getViewport, nodes, setEdges, setNodes, setSelectedNode],
+    [canvasRef, getViewport, nodes, setEdges, setNodes, setSelectedNodeId],
   )
 
   return insertActivity
@@ -127,7 +127,7 @@ function useNodeDeletion(
   edgesRef: React.RefObject<Edge[]>,
   setNodes: ReturnType<typeof useNodesState>[1],
   setEdges: ReturnType<typeof useEdgesState>[1],
-  setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>,
+  setSelectedNodeId: React.Dispatch<React.SetStateAction<string | null>>,
 ) {
   const deleteToastIdRef = useRef<string | number | null>(null)
 
@@ -148,9 +148,9 @@ function useNodeDeletion(
       )
       setNodes(restoredNodes)
       setEdges([...currentEdges, ...restoredEdges])
-      setSelectedNode(restoredNode)
+      setSelectedNodeId(restoredNode.id)
     },
-    [edgesRef, nodesRef, setEdges, setNodes, setSelectedNode],
+    [edgesRef, nodesRef, setEdges, setNodes, setSelectedNodeId],
   )
 
   const performDeleteNode = useCallback(
@@ -166,7 +166,7 @@ function useNodeDeletion(
       if (deleteToastIdRef.current != null) toast.dismiss(deleteToastIdRef.current)
       setNodes(currentNodes.filter((n) => n.id !== nodeId))
       setEdges(removeNodeEdges(currentEdges, nodeId))
-      setSelectedNode((prev) => (prev?.id === nodeId ? null : prev) as Node | null)
+      setSelectedNodeId(prev => prev === nodeId ? null : prev)
       deleteToastIdRef.current = toast('Node deleted', {
         description: 'You can undo this deletion for the next 5 seconds.',
         duration: DELETE_UNDO_DURATION_MS,
@@ -179,7 +179,7 @@ function useNodeDeletion(
         onAutoClose: () => { deleteToastIdRef.current = null },
       })
     },
-    [edgesRef, nodesRef, restoreDeletedNode, setEdges, setNodes, setSelectedNode],
+    [edgesRef, nodesRef, restoreDeletedNode, setEdges, setNodes, setSelectedNodeId],
   )
 
   return performDeleteNode
@@ -277,22 +277,22 @@ function useViewportPersistence(
 function useNodeActions(
   nodes: Node[],
   setNodes: ReturnType<typeof useNodesState>[1],
-  setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>,
+  setSelectedNodeId: React.Dispatch<React.SetStateAction<string | null>>,
 ) {
   const onSelectionChange = useCallback(
     ({ nodes: selectedNodes }: OnSelectionChangeParams) => {
-      setSelectedNode(selectedNodes.length === 1 ? selectedNodes[0] : null)
+      setSelectedNodeId(selectedNodes.length === 1 ? selectedNodes[0].id : null)
     },
-    [setSelectedNode],
+    [setSelectedNodeId],
   )
 
   const focusNode = useCallback(
     (nodeId: string) => {
       const matchedNode = nodes.find((n) => n.id === nodeId) ?? null
       setNodes((prev) => selectOnlyNode(prev, nodeId))
-      setSelectedNode(matchedNode ? { ...matchedNode, selected: true } : null)
+      setSelectedNodeId(matchedNode?.id ?? null)
     },
-    [nodes, setNodes, setSelectedNode],
+    [nodes, setNodes, setSelectedNodeId],
   )
 
   const handleUpdateNode = useCallback(
@@ -300,11 +300,8 @@ function useNodeActions(
       setNodes((prev) =>
         prev.map((n) => (n.id === nodeId ? { ...n, data: newData } : n)),
       )
-      setSelectedNode((prev) =>
-        prev?.id === nodeId ? { ...prev, data: newData } : prev,
-      )
     },
-    [setNodes, setSelectedNode],
+    [setNodes],
   )
 
   const duplicateNode = useCallback(
@@ -313,15 +310,15 @@ function useNodeActions(
       if (!sourceNode || sourceNode.id === 'start_node') return
       const clonedNode = duplicateWorkflowNode(sourceNode)
       setNodes((prev) => selectOnlyNode([...prev, clonedNode], clonedNode.id))
-      setSelectedNode({ ...clonedNode, selected: true })
+      setSelectedNodeId(clonedNode.id)
     },
-    [nodes, setNodes, setSelectedNode],
+    [nodes, setNodes, setSelectedNodeId],
   )
 
   const handleCloseSettings = useCallback(() => {
     setNodes((prev) => selectOnlyNode(prev, null))
-    setSelectedNode(null)
-  }, [setNodes, setSelectedNode])
+    setSelectedNodeId(null)
+  }, [setNodes, setSelectedNodeId])
 
   return { onSelectionChange, focusNode, handleUpdateNode, duplicateNode, handleCloseSettings }
 }
@@ -333,12 +330,12 @@ function useNodeActions(
 function useGraphOperations(
   setNodes: ReturnType<typeof useNodesState>[1],
   setEdges: ReturnType<typeof useEdgesState>[1],
-  setSelectedNode: React.Dispatch<React.SetStateAction<Node | null>>,
+  setSelectedNodeId: React.Dispatch<React.SetStateAction<string | null>>,
   nodesRef: { current: Node[] },
   edgesRef: { current: Edge[] },
   blockLibrary: ReturnType<typeof useBlockLibraryState>,
 ) {
-  const performDeleteNode = useNodeDeletion(nodesRef, edgesRef, setNodes, setEdges, setSelectedNode)
+  const performDeleteNode = useNodeDeletion(nodesRef, edgesRef, setNodes, setEdges, setSelectedNodeId)
   const deleteNode = useCallback(
     (nodeId: string) => {
       performDeleteNode(nodeId)
@@ -356,10 +353,10 @@ function useGraphOperations(
   const handleClear = useCallback(() => {
     setNodes([createDefaultStartNode()])
     setEdges([])
-    setSelectedNode(null)
+    setSelectedNodeId(null)
     blockLibrary.setBlockLibraryOpen(false)
     blockLibrary.setBlockLibraryContext(null)
-  }, [blockLibrary, setEdges, setNodes, setSelectedNode])
+  }, [blockLibrary, setEdges, setNodes, setSelectedNodeId])
 
   const handleDeleteDialogOpenChange = useCallback(() => {}, [])
 
@@ -384,7 +381,8 @@ export function useFlowEditorState(workflow: Workflow | null) {
   const { initialNodes, initialEdges } = useInitialGraphData(workflow)
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? null
   const [quickAddMenuOpen, setQuickAddMenuOpen] = useState(false)
 
   const blockLibrary = useBlockLibraryState()
@@ -393,9 +391,9 @@ export function useFlowEditorState(workflow: Workflow | null) {
 
   const { onMoveEnd, hasStoredViewport } = useViewportPersistence(workflow, setViewport, getViewport)
   const { onSelectionChange, focusNode, handleUpdateNode, duplicateNode, handleCloseSettings } =
-    useNodeActions(nodes, setNodes, setSelectedNode)
+    useNodeActions(nodes, setNodes, setSelectedNodeId)
 
-  const insertActivity = useNodeInsertion(nodes, setNodes, setEdges, setSelectedNode, canvasRef, getViewport)
+  const insertActivity = useNodeInsertion(nodes, setNodes, setEdges, setSelectedNodeId, canvasRef, getViewport)
 
   const insertActivityWithClose = useCallback(
     (activityId: string, insertionContext: BlockInsertionContext) => {
@@ -406,7 +404,7 @@ export function useFlowEditorState(workflow: Workflow | null) {
     [blockLibrary, insertActivity],
   )
 
-  const graphOps = useGraphOperations(setNodes, setEdges, setSelectedNode, nodesRef, edgesRef, blockLibrary)
+  const graphOps = useGraphOperations(setNodes, setEdges, setSelectedNodeId, nodesRef, edgesRef, blockLibrary)
 
   const editorContextValue = useMemo<WorkflowEditorContextValue>(
     () => ({

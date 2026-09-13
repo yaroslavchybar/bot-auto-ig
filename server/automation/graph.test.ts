@@ -33,16 +33,16 @@ test('selected lists restrict eligible profiles and enforce cooldown', () => {
       data: { activityId: 'select_list', config: { sourceLists: ['chosen'] } },
     },
   ])
-  const profile = { Using: false, login: true, list_ids: ['chosen'] }
+  const profile = { using: false, login: true, listIds: ['chosen'] }
   assert.equal(profileEligible(profile, lists), true)
   assert.equal(
-    profileEligible({ ...profile, list_ids: ['other'] }, lists),
+    profileEligible({ ...profile, listIds: ['other'] }, lists),
     false,
   )
-  assert.equal(profileEligible({ ...profile, Using: true }, lists), false)
+  assert.equal(profileEligible({ ...profile, using: true }, lists), false)
   assert.equal(
     profileEligible(
-      { ...profile, last_opened_at: new Date().toISOString() },
+      { ...profile, lastOpenedAt: Date.now() },
       lists,
       30,
     ),

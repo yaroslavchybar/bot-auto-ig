@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const loop: ActivityDefinition = {
   id: 'loop',
+  quickAdd: true,
+  pickerGroup: 'control',
+  keywords: ['repeat', 'iterate'],
   name: 'Loop',
   description: 'Repeat connected nodes N times',
   category: 'control',
@@ -26,7 +29,6 @@ export const loop: ActivityDefinition = {
   ],
 
   outputs: ['loop', 'done'],
-  handler: 'control.loop',
 }
 
 

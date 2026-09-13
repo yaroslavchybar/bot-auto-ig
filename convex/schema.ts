@@ -25,10 +25,6 @@ export default defineSchema({
 		dailyScrapingLimit: v.optional(v.number()),
 		assignedAccountsLimit: v.optional(v.number()),
 		dailyScrapingUsed: v.optional(v.number()),
-		scrapeLeaseOwner: v.optional(v.string()),
-		scrapeLeaseExpiresAt: v.optional(v.number()),
-		scrapeHealth: v.optional(v.number()),
-		lastScrapeFailureAt: v.optional(v.number()),
 	})
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
@@ -131,7 +127,6 @@ export default defineSchema({
 		)),
 		currentNodeId: v.optional(v.string()), // currently executing node
 		nodeStates: v.optional(v.any()), // map of nodeId -> execution state
-		scheduledAt: v.optional(v.number()), // when to run
 		startedAt: v.optional(v.number()),
 		completedAt: v.optional(v.number()),
 		error: v.optional(v.string()),
@@ -144,8 +139,7 @@ export default defineSchema({
 	})
 		.index("by_name", ["name"])
 		.index("by_isActive", ["isActive"])
-		.index("by_status", ["status"])
-		.index("by_scheduledAt", ["scheduledAt"]),
+		.index("by_status", ["status"]),
 
 	workflowArtifacts: defineTable({
 		name: v.string(),
@@ -160,9 +154,6 @@ export default defineSchema({
 		imported: v.optional(v.boolean()),
 		sourceProfileName: v.optional(v.string()),
 		lastRunAt: v.optional(v.number()),
-		storageId: v.optional(v.id("_storage")),
-		manifestStorageId: v.optional(v.id("_storage")),
-		exportStorageId: v.optional(v.id("_storage")),
 		localArtifactPath: v.optional(v.string()),
 		localArtifactDeletedAt: v.optional(v.number()),
 		stats: v.optional(v.object({

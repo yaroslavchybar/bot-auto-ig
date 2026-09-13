@@ -1,3 +1,4 @@
+import type { ProfileRecord } from '../shared/contracts.js'
 import fs from 'fs'
 import path from 'path'
 import {
@@ -12,7 +13,7 @@ import logger from '../shared/logger.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 import { automationMutex } from '../shared/mutex.js'
 import { getTrackedProcesses } from '../shared/ProcessService.js'
-import { automationState, profileProcesses, workflowWorkers } from '../shared/store.js'
+import { profileProcesses, workflowWorkers } from '../shared/store.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PROFILES_DIR = path.join(PROJECT_ROOT, 'data', 'profiles')
@@ -21,66 +22,29 @@ export type Profile = {
   id?: string
   name: string
   proxy?: string
-  proxy_type?: string
-  fingerprint_os?: string
-  cookies_json?: string
-  test_ip?: boolean
+  proxyType?: string
+  fingerprintOs?: string
+  cookiesJson?: string
+  testIp?: boolean
   status?: string
   using?: boolean
   login?: boolean
-  list_ids?: string[]
-  daily_scraping_limit?: number | null
-  assigned_accounts_limit?: number | null
-  daily_scraping_used?: number
+  listIds?: string[]
+  dailyScrapingLimit?: number | null
+  assignedAccountsLimit?: number | null
+  dailyScrapingUsed?: number
 }
 
-function mapDbRowToProfile(p: any): Profile {
-  return {
-    id: p.profile_id,
-    name: p.name,
-    proxy: p.proxy,
-    proxy_type: p.proxy_type,
-    fingerprint_os: p.fingerprint_os,
-    cookies_json: undefined,
-    test_ip: p.test_ip,
-    status: p.status,
-    using: p.Using,
-    login: p.login,
-    list_ids: Array.isArray(p.list_ids)
-      ? p.list_ids.map((id: unknown) => String(id || '')).filter(Boolean)
-      : [],
-    daily_scraping_limit:
-      typeof p.daily_scraping_limit === 'number' ? p.daily_scraping_limit : null,
-    assigned_accounts_limit:
-      typeof p.assigned_accounts_limit === 'number' ? p.assigned_accounts_limit : 10,
-    daily_scraping_used:
-      typeof p.daily_scraping_used === 'number' ? p.daily_scraping_used : 0,
-  }
+function mapDbRowToProfile(
+  { cookiesJson: _cookies, sessionId: _sessionId, ...profile }: ProfileRecord,
+): Profile {
+  return profile
 }
 
-function mapDbRowToProfileWithCookies(row: any): Profile | null {
-  if (!row) return null
-  return {
-    id: row.profile_id,
-    name: row.name,
-    proxy: row.proxy ?? undefined,
-    proxy_type: row.proxy_type ?? undefined,
-    fingerprint_os: row.fingerprint_os ?? undefined,
-    cookies_json: row.cookies_json ?? undefined,
-    test_ip: row.test_ip,
-    status: row.status ?? undefined,
-    using: row.Using,
-    login: row.login,
-    list_ids: Array.isArray(row.list_ids)
-      ? row.list_ids.map((id: unknown) => String(id || '')).filter(Boolean)
-      : [],
-    daily_scraping_limit:
-      typeof row.daily_scraping_limit === 'number' ? row.daily_scraping_limit : null,
-    assigned_accounts_limit:
-      typeof row.assigned_accounts_limit === 'number' ? row.assigned_accounts_limit : 10,
-    daily_scraping_used:
-      typeof row.daily_scraping_used === 'number' ? row.daily_scraping_used : 0,
-  }
+function mapDbRowToProfileWithCookies(profile: ProfileRecord | null): Profile | null {
+  if (!profile) return null
+  const { sessionId: _sessionId, ...safeProfile } = profile
+  return safeProfile
 }
 
 export class ProfileManager {
@@ -109,12 +73,12 @@ export class ProfileManager {
       await profilesCreate({
         name: profile.name,
         proxy: profile.proxy,
-        proxy_type: profile.proxy_type,
-        fingerprint_os: profile.fingerprint_os,
-        cookies_json: profile.cookies_json,
-        test_ip: profile.test_ip,
-        daily_scraping_limit: profile.daily_scraping_limit,
-        assigned_accounts_limit: profile.assigned_accounts_limit,
+        proxyType: profile.proxyType,
+        fingerprintOs: profile.fingerprintOs,
+        cookiesJson: profile.cookiesJson,
+        testIp: profile.testIp,
+        dailyScrapingLimit: profile.dailyScrapingLimit,
+        assignedAccountsLimit: profile.assignedAccountsLimit,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error creating profile in DB')
@@ -133,12 +97,12 @@ export class ProfileManager {
       await profilesUpdateByName(oldName, {
         name: profile.name,
         proxy: profile.proxy,
-        proxy_type: profile.proxy_type,
-        fingerprint_os: profile.fingerprint_os,
-        cookies_json: profile.cookies_json,
-        test_ip: profile.test_ip,
-        daily_scraping_limit: profile.daily_scraping_limit,
-        assigned_accounts_limit: profile.assigned_accounts_limit,
+        proxyType: profile.proxyType,
+        fingerprintOs: profile.fingerprintOs,
+        cookiesJson: profile.cookiesJson,
+        testIp: profile.testIp,
+        dailyScrapingLimit: profile.dailyScrapingLimit,
+        assignedAccountsLimit: profile.assignedAccountsLimit,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error updating profile in DB')
@@ -214,7 +178,7 @@ export class ProfileManager {
     const release = await automationMutex.acquire()
     try {
       // A live worker may be starting a profile before its first status event arrives.
-      if (getTrackedProcesses().size || profileProcesses.size || workflowWorkers.size || automationState.process) {
+      if (getTrackedProcesses().size || profileProcesses.size || workflowWorkers.size) {
         return { cleared: 0, errors: [] }
       }
       return await this.reconcileIdleRuntimeStatuses(activeProfileNames)

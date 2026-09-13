@@ -2,6 +2,9 @@ import type { ActivityDefinition } from '../types'
 
 export const scrapeRelationships: ActivityDefinition = {
   id: 'scrape_relationships',
+  keywords: ['scrape', 'followers', 'following', 'relationship'],
+  pickerGroup: 'browsing',
+  quickAdd: false,
   name: 'Scrape Relationships',
   description:
     'Open each target profile, click followers, following, or both in the logged-in browser session, then inject JavaScript to scrape the selected relationship list.',
@@ -115,5 +118,4 @@ export const scrapeRelationships: ActivityDefinition = {
     },
   ],
   outputs: ['success', 'failure'],
-  handler: 'browsing.scrape_relationships',
 }

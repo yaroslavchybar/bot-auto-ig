@@ -1,3 +1,4 @@
+import { DomainError } from './errors';
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internalQuery } from "./_generated/server";
@@ -8,7 +9,7 @@ export const get = query({
 	args: { kind: v.string() },
 	handler: async (ctx, args) => {
 		const cleaned = String(args.kind || "").trim();
-		if (!cleaned) throw new Error("kind is required");
+		if (!cleaned) throw new DomainError('VALIDATION', "kind is required");
 		const row = await ctx.db
 			.query("messageTemplates")
 			.withIndex("by_kind", (q) => q.eq("kind", cleaned))
@@ -23,7 +24,7 @@ export const upsert = mutation({
 	args: { kind: v.string(), texts: v.array(v.string()) },
 	handler: async (ctx, args) => {
 		const cleanedKind = String(args.kind || "").trim();
-		if (!cleanedKind) throw new Error("kind is required");
+		if (!cleanedKind) throw new DomainError('VALIDATION', "kind is required");
 		const cleanedTexts = (args.texts || []).map((t) => String(t)).filter((t) => t.trim());
 		const existing = await ctx.db
 			.query("messageTemplates")
@@ -50,7 +51,7 @@ export const getInternal = internalQuery({
 	args: { kind: v.string() },
 	handler: async (ctx, args) => {
 		const cleaned = String(args.kind || "").trim();
-		if (!cleaned) throw new Error("kind is required");
+		if (!cleaned) throw new DomainError('VALIDATION', "kind is required");
 		const row = await ctx.db
 			.query("messageTemplates")
 			.withIndex("by_kind", (q) => q.eq("kind", cleaned))

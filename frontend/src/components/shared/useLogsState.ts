@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/api'
-import type { LogEntry } from '@/lib/logs'
-import { useWebSocket } from '@/hooks/useWebSocket'
+import { mergeLogs, type LogEntry } from '@/lib/logs'
+import { parseLogEntry, useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
-
-export type LogsMode = 'live'
 
 export type LogLevel = 'info' | 'warn' | 'error' | 'success' | 'debug' | 'all'
 
@@ -55,29 +53,21 @@ export function useLogsState({
   const { handleError } = useErrorHandler()
 
   const {
-    mode, wsConnected, logs, loading, refreshing,
-    switchToLive: doSwitchToLive,
+    wsConnected, logs, loading, refreshing,
     handleRefresh, handleClearLive,
     inlineError, dismissError,
   } = useLogsFetching(liveBufferSize, workflowId, handleError)
 
   const {
     filteredLogs, visibleLogs, hasMoreLogs, loadMoreLogs,
-    resetVisibleCount,
     filterQuery, setFilterQuery, levelFilter, setLevelFilter,
     showTime, setShowTime, showSource, setShowSource,
     showProfile, setShowProfile, autoScroll, setAutoScroll,
     feedDebugOnly, setFeedDebugOnly,
   } = useLogsFiltering({ logs, workflowId, profileName })
 
-  // Wrap reload to also reset visible count
-  const switchToLive = useCallback(() => {
-    doSwitchToLive()
-    resetVisibleCount()
-  }, [doSwitchToLive, resetVisibleCount])
-
   return {
-    mode, wsConnected, switchToLive,
+    wsConnected,
     logs, filteredLogs, visibleLogs, hasMoreLogs, loadMoreLogs,
     loading, refreshing,
     handleRefresh, handleClearLive,
@@ -89,151 +79,58 @@ export function useLogsState({
   }
 }
 
-// --- Core state for logs fetching ---
-
-function useLogsCoreState(
-  liveBufferSize: number,
-  handleError: ReturnType<typeof useErrorHandler>['handleError'],
-) {
-  const [mode] = useState<LogsMode>('live')
-  const [logs, setLogs] = useState<LogEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
-  const [inlineError, setInlineError] = useState<string | null>(null)
-  const processedWsLogsRef = useRef(0)
-
-  /** Report to toast + Sentry AND surface in the panel */
-  const handleErrorWithInline = useCallback(
-    (error: unknown, context?: string) => {
-      const msg = handleError(error, context)
-      setInlineError(msg)
-    },
-    [handleError],
-  )
-
-  return {
-    mode, logs, setLogs, loading, setLoading,
-    refreshing, setRefreshing,
-    handleError: handleErrorWithInline, inlineError, setInlineError,
-    processedWsLogsRef, liveBufferSize,
-  }
-}
-
-// --- Data loading helpers ---
-
-function useLogsDataLoading(state: ReturnType<typeof useLogsCoreState>) {
-  const {
-    liveBufferSize, setLoading, handleError, setInlineError, setLogs,
-    processedWsLogsRef,
-  } = state
-
-  const loadLiveLogs = useCallback(async () => {
-    setLoading(true)
-    try {
-      const data = await apiFetch<LogEntry[]>('/api/logs')
-      setLogs(data.slice(-liveBufferSize))
-      processedWsLogsRef.current = 0
-      setInlineError(null)
-    } catch (e) {
-      handleError(e, 'Load logs')
-    } finally {
-      setLoading(false)
-    }
-  }, [liveBufferSize, processedWsLogsRef, handleError, setInlineError, setLoading, setLogs])
-
-  return { loadLiveLogs }
-}
-
-// --- Fetching hook: data loading, WebSocket, reload ---
-
+// One buffer owns both history and incoming events.
 function useLogsFetching(
   liveBufferSize: number,
   workflowId: string | null | undefined,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
-  const state = useLogsCoreState(liveBufferSize, handleError)
-  const {
-    mode, logs, loading, refreshing, setRefreshing,
-    setLogs, setLoading,
-    processedWsLogsRef, inlineError, setInlineError,
-  } = state
-  const { loadLiveLogs } = useLogsDataLoading(state)
-
-  const { logs: wsLogs, connected: wsConnected } = useWebSocket({
-    workflowId,
-    enabled: mode === 'live',
-    pauseWhenHidden: true,
-    maxBuffer: liveBufferSize,
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [inlineError, setInlineError] = useState<string | null>(null)
+  const requestVersion = useRef(0)
+  const { connected: wsConnected } = useWebSocket({
+    workflowId, pauseWhenHidden: true, eventsOnly: true,
+    onEvent: event => {
+      if (event.type !== 'log' || !event.message) return
+      const entry = parseLogEntry(event, null)
+      setLogs(current => mergeLogs(current, [entry], liveBufferSize))
+    },
   })
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
+  const loadHistory = useCallback(async () => {
+    const version = ++requestVersion.current
     try {
-      await Promise.all([
-        loadLiveLogs(),
-        new Promise((resolve) => setTimeout(resolve, 300)),
-      ])
+      const history = await apiFetch<LogEntry[]>('/api/logs')
+      if (version !== requestVersion.current) return
+      setLogs(current => mergeLogs(history, current, liveBufferSize))
+      setInlineError(null)
+    } catch (error) {
+      if (version === requestVersion.current) setInlineError(handleError(error, 'Load logs'))
     } finally {
-      setRefreshing(false)
+      if (version === requestVersion.current) setLoading(false)
     }
-  }, [loadLiveLogs, setRefreshing])
-
+  }, [handleError, liveBufferSize])
+  useEffect(() => {
+    // History updates arrive after the HTTP request resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadHistory()
+  }, [loadHistory, wsConnected])
   const handleClearLive = useCallback(async () => {
+    ++requestVersion.current
     setLoading(true)
     try {
       await apiFetch('/api/logs', { method: 'DELETE' })
+      ++requestVersion.current
       setLogs([])
       setInlineError(null)
-    } catch (e) {
-      handleError(e, 'Clear logs')
-    } finally {
-      setLoading(false)
-    }
-  }, [handleError, setInlineError, setLoading, setLogs])
-
-  useEffect(() => { void loadLiveLogs() }, [loadLiveLogs])
-  useWsLogMerge(mode, wsLogs, processedWsLogsRef, liveBufferSize, setLogs)
-
-  const switchToLive = useCallback(() => { void loadLiveLogs() }, [loadLiveLogs])
-
-  const dismissError = useCallback(() => setInlineError(null), [setInlineError])
-
+    } catch (error) { setInlineError(handleError(error, 'Clear logs')) }
+    finally { setLoading(false) }
+  }, [handleError])
   return {
-    mode, wsConnected, logs, loading, refreshing,
-    switchToLive,
-    handleRefresh, handleClearLive,
-    inlineError, dismissError,
+    logs, wsConnected, loading, refreshing: loading,
+    handleRefresh: () => { setLoading(true); return loadHistory() }, handleClearLive, inlineError,
+    dismissError: () => setInlineError(null),
   }
-}
-
-// --- WebSocket log merge effect (extracted for size) ---
-
-function useWsLogMerge(
-  mode: LogsMode,
-  wsLogs: LogEntry[],
-  processedRef: React.MutableRefObject<number>,
-  bufferSize: number,
-  setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>,
-) {
-  useEffect(() => {
-    if (mode !== 'live') return
-    if (wsLogs.length < processedRef.current) processedRef.current = 0
-    const newEntries = wsLogs.slice(processedRef.current)
-    if (newEntries.length === 0) return
-    processedRef.current = wsLogs.length
-    setLogs((prev) => {
-      const seen = new Set(prev.map((e) => `${e.ts}-${e.message}`))
-      const appended = [...prev]
-      for (const w of newEntries) {
-        const key = `${w.ts}-${w.message}`
-        if (!seen.has(key)) {
-          seen.add(key)
-          appended.push({ ...w, profileName: w.profileName || undefined })
-        }
-      }
-      return appended.slice(-bufferSize)
-    })
-  }, [bufferSize, mode, wsLogs, processedRef, setLogs])
 }
 
 // --- Filtering hook: filter state, visible logs, pagination ---

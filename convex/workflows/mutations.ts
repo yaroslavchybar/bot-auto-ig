@@ -1,3 +1,4 @@
+import { DomainError } from '../errors';
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
@@ -5,7 +6,7 @@ import {
 	statusValidator,
 	normalizeListIds,
 	getWorkflowListIds,
-	isNewDay,
+	prepareWorkflowRun,
 	assertValidStatusTransition,
 	type WorkflowStatus,
 } from "./helpers";
@@ -20,7 +21,7 @@ export const create = mutation({
 	},
 	handler: async (ctx, args) => {
 		const cleaned = String(args.name || "").trim();
-		if (!cleaned) throw new Error("name is required");
+		if (!cleaned) throw new DomainError('VALIDATION', "name is required");
 
 		const now = Date.now();
 		const id = await ctx.db.insert("workflows", {
@@ -45,31 +46,29 @@ export const update = mutation({
 		nodes: v.optional(v.any()),
 		edges: v.optional(v.any()),
 		listIds: v.optional(v.array(v.id("lists"))),
-		scheduledAt: v.optional(v.number()),
 		maxRetries: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const { id, ...updates } = args;
 		const existing = await ctx.db.get(id);
-		if (!existing) throw new Error("Workflow not found");
+		if (!existing) throw new DomainError('NOT_FOUND', "Workflow not found");
 
 		// Can only update idle/pending workflows (not running)
 		if (existing.status === "running") {
-			throw new Error("Cannot update running workflow");
+			throw new DomainError('CONFLICT', "Cannot update running workflow");
 		}
 
 		const patch: Record<string, any> = { updatedAt: Date.now() };
 
 		if (updates.name !== undefined) {
 			const cleaned = String(updates.name || "").trim();
-			if (!cleaned) throw new Error("name cannot be empty");
+			if (!cleaned) throw new DomainError('VALIDATION', "name cannot be empty");
 			patch.name = cleaned;
 		}
 		if (updates.description !== undefined) patch.description = updates.description;
 		if (updates.nodes !== undefined) patch.nodes = updates.nodes;
 		if (updates.edges !== undefined) patch.edges = updates.edges;
 		if (updates.listIds !== undefined) patch.listIds = normalizeListIds(updates.listIds);
-		if (updates.scheduledAt !== undefined) patch.scheduledAt = updates.scheduledAt;
 		if (updates.maxRetries !== undefined) patch.maxRetries = updates.maxRetries;
 
 		await ctx.db.patch(id, patch);
@@ -81,11 +80,11 @@ export const remove = mutation({
 	args: { id: v.id("workflows") },
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
+		if (!workflow) throw new DomainError('NOT_FOUND', "Workflow not found");
 
 		// Can't delete running workflows
 		if (workflow.status === "running") {
-			throw new Error("Cannot delete running workflow");
+			throw new DomainError('CONFLICT', "Cannot delete running workflow");
 		}
 
 		const artifacts = await ctx.db
@@ -93,21 +92,6 @@ export const remove = mutation({
 			.withIndex("by_workflowId", (q: any) => q.eq("workflowId", args.id))
 			.collect();
 		for (const artifact of artifacts) {
-			const storageIds = new Set<string>();
-			for (const candidate of [artifact.storageId, artifact.exportStorageId, artifact.manifestStorageId]) {
-				if (!candidate) continue;
-				const key = String(candidate || "").trim();
-				if (!key || storageIds.has(key)) continue;
-				storageIds.add(key);
-				try {
-					await ctx.storage.delete(candidate);
-				} catch (error: any) {
-					const message = String(error?.message || error || "").toLowerCase();
-					if (!message.includes("not found")) {
-						throw error;
-					}
-				}
-			}
 			await ctx.db.delete(artifact._id);
 		}
 
@@ -123,7 +107,7 @@ export const duplicate = mutation({
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db.get(args.id);
-		if (!existing) throw new Error("Workflow not found");
+		if (!existing) throw new DomainError('NOT_FOUND', "Workflow not found");
 
 		const now = Date.now();
 		const name = args.newName?.trim() || `${existing.name} (copy)`;
@@ -148,10 +132,10 @@ export const duplicate = mutation({
 
 async function startWorkflow(ctx: any, args: { id: any }) {
 	const workflow = await ctx.db.get(args.id);
-	if (!workflow) throw new Error("Workflow not found");
+	if (!workflow) throw new DomainError('NOT_FOUND', "Workflow not found");
 
 	if (workflow.status === "running") {
-		throw new Error("Workflow is already running");
+		throw new DomainError('CONFLICT', "Workflow is already running");
 	}
 
 	// If already pending (e.g., scheduled run already set it), just return
@@ -159,27 +143,7 @@ async function startWorkflow(ctx: any, args: { id: any }) {
 		return workflow;
 	}
 
-	// Reset counter if last run was a different day
-	const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
-
-	// Check daily limit
-	const maxRuns = workflow.maxRunsPerDay ?? 0;
-	if (maxRuns > 0 && runsToday >= maxRuns) {
-		throw new Error("Daily run limit reached");
-	}
-
-	await ctx.db.patch(args.id, {
-		status: "pending",
-		runsToday: runsToday + 1,
-		nodeStates: undefined,
-		lastRunAt: Date.now(),
-		error: undefined,
-		currentNodeId: undefined,
-		startedAt: undefined,
-		completedAt: undefined,
-		updatedAt: Date.now(),
-	});
-	return await ctx.db.get(args.id);
+	return await prepareWorkflowRun(ctx, workflow);
 }
 
 type UpdateStatusArgs = {
@@ -192,7 +156,7 @@ type UpdateStatusArgs = {
 
 async function updateWorkflowStatus(ctx: any, args: UpdateStatusArgs) {
 	const existing = await ctx.db.get(args.id);
-	if (!existing) throw new Error("Workflow not found");
+	if (!existing) throw new DomainError('NOT_FOUND', "Workflow not found");
 	assertValidStatusTransition(existing.status as WorkflowStatus | undefined, args.status as WorkflowStatus);
 
 	const patch: Record<string, any> = {
@@ -236,10 +200,10 @@ export const reset = mutation({
 	args: { id: v.id("workflows") },
 	handler: async (ctx, args) => {
 		const workflow = await ctx.db.get(args.id);
-		if (!workflow) throw new Error("Workflow not found");
+		if (!workflow) throw new DomainError('NOT_FOUND', "Workflow not found");
 
 		if (workflow.status === "running") {
-			throw new Error("Cannot reset running workflow");
+			throw new DomainError('CONFLICT', "Cannot reset running workflow");
 		}
 
 		await ctx.db.patch(args.id, {
@@ -254,4 +218,17 @@ export const reset = mutation({
 		});
 		return await ctx.db.get(args.id);
 	},
+});
+
+export const reconcileInterruptedInternal = internalMutation({
+  args: {},
+  handler: async ctx => {
+    const running = await ctx.db.query('workflows').withIndex('by_status', q => q.eq('status', 'running')).collect();
+    const pending = await ctx.db.query('workflows').withIndex('by_status', q => q.eq('status', 'pending')).collect();
+    const interrupted = [...running, ...pending];
+    for (const workflow of interrupted) {
+      await ctx.db.patch(workflow._id, { status: 'failed', error: 'Server restarted during execution', completedAt: Date.now(), updatedAt: Date.now() });
+    }
+    return { reconciled: interrupted.length };
+  },
 });

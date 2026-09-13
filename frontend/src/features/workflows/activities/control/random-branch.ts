@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const randomBranch: ActivityDefinition = {
   id: 'random_branch',
+  keywords: ['split', 'weighted', 'path'],
+  pickerGroup: 'control',
+  quickAdd: false,
   name: 'Random Branch',
   description: 'Randomly choose a path',
   category: 'control',
@@ -25,7 +28,6 @@ export const randomBranch: ActivityDefinition = {
   ],
 
   outputs: ['path_a', 'path_b', 'path_c'],
-  handler: 'control.random_branch',
 }
 
 

@@ -10,6 +10,7 @@ import {
 
 const workflowPaths = [
   '/api/workflows',
+  '/api/workflows/reconcile',
   '/api/workflows/by-id',
   '/api/workflows/start',
   '/api/workflows/update-status',
@@ -17,6 +18,10 @@ const workflowPaths = [
 
 export function registerWorkflowRoutes(http: HttpRouter): void {
   registerPreflight(http, workflowPaths);
+  http.route({
+    path: '/api/workflows/reconcile', method: 'POST',
+    handler: withErrorHandling(async ctx => jsonResponse(await ctx.runMutation(internal.workflows.mutations.reconcileInterruptedInternal, {}))),
+  });
 
   http.route({
     path: '/api/workflows',
@@ -37,7 +42,7 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const url = new URL(request.url);
       const workflowId =
-        url.searchParams.get('workflowId') || url.searchParams.get('id') || '';
+        url.searchParams.get('workflowId') || '';
       if (!workflowId) throw new ValidationError('workflowId is required');
       const row = await ctx.runQuery(internal.workflows.queries.getInternal, {
         id: workflowId as any,
@@ -51,7 +56,7 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
     method: 'POST',
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
-      const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
+      const id = body?.id;
       if (!id) throw new ValidationError('id is required');
       const row = await ctx.runMutation(internal.workflows.mutations.startInternal, {
         id: id as any,
@@ -65,13 +70,13 @@ export function registerWorkflowRoutes(http: HttpRouter): void {
     method: 'POST',
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
-      const id = body?.id ?? body?.workflowId ?? body?.workflow_id;
+      const id = body?.id;
       if (!id) throw new ValidationError('id is required');
       const row = await ctx.runMutation(internal.workflows.mutations.updateStatusInternal, {
         id: id as any,
         status: body?.status,
-        currentNodeId: body?.currentNodeId ?? body?.current_node_id,
-        nodeStates: body?.nodeStates ?? body?.node_states,
+        currentNodeId: body?.currentNodeId,
+        nodeStates: body?.nodeStates,
         error: body?.error,
       });
       return jsonResponse(row);

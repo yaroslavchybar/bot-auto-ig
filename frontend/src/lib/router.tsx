@@ -1,3 +1,11 @@
+import { ListsPage } from '@/features/lists/ListsPage'
+import { ProfilesPage } from '@/features/profiles/ProfilesPage'
+import { ScrapedDataPage } from '@/features/scraped-data/ScrapedDataPage'
+import { VncPage } from '@/features/vnc/VncPage'
+import { VncSessionPage } from '@/features/vnc/VncSessionPage'
+import { WorkflowEditorPage } from '@/features/workflows/WorkflowEditorPage'
+import { WorkflowsPage } from '@/features/workflows/WorkflowsPage'
+import { LoginPage } from '@/pages/LoginPage'
 import {
   createContext,
   useCallback,
@@ -14,27 +22,28 @@ import type { NavId } from '@/components/layout/app-sidebar'
 // Replaces react-router: no SSR, no loaders, just pathname matching.
 
 export type RouteMeta = {
+  Page: React.ComponentType
   breadcrumb: string
   navId?: NavId
   appChrome?: 'default' | 'immersive'
 }
 
 export const ROUTE_META: Record<string, RouteMeta> = {
-  '/profiles': { breadcrumb: 'Profiles Manager', navId: 'profiles' },
-  '/workflows': { breadcrumb: 'Workflows', navId: 'workflows' },
-  '/workflows/:workflowId/editor': {
+  '/profiles': { Page: ProfilesPage, breadcrumb: 'Profiles Manager', navId: 'profiles' },
+  '/workflows': { Page: WorkflowsPage, breadcrumb: 'Workflows', navId: 'workflows' },
+  '/workflows/:workflowId/editor': { Page: WorkflowEditorPage,
     breadcrumb: 'Workflow Editor',
     navId: 'workflows',
     appChrome: 'immersive',
   },
-  '/scraped-data': { breadcrumb: 'Scraped Data', navId: 'scraped-data' },
-  '/lists': { breadcrumb: 'Lists Manager', navId: 'lists' },
-  '/vnc': { breadcrumb: 'Browser View', navId: 'vnc' },
-  '/vnc/session/:workflowId/:profileName': {
+  '/scraped-data': { Page: ScrapedDataPage, breadcrumb: 'Scraped Data', navId: 'scraped-data' },
+  '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
+  '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
+  '/vnc/session/:workflowId/:profileName': { Page: VncSessionPage,
     breadcrumb: 'Live Session',
     navId: 'vnc',
   },
-  '/login': { breadcrumb: 'Sign In' },
+  '/login': { Page: LoginPage, breadcrumb: 'Sign In' },
 }
 
 type MatchedRoute = {

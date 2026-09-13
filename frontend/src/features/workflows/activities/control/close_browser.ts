@@ -2,6 +2,9 @@ import type { ActivityDefinition } from '../types'
 
 export const closeBrowser: ActivityDefinition = {
   id: 'close_browser',
+  keywords: ['stop browser', 'close'],
+  pickerGroup: 'setup',
+  quickAdd: false,
   name: 'Close Browser',
   description:
     'Closes the current browser profile session. Usually placed at the end of a workflow.',
@@ -10,7 +13,6 @@ export const closeBrowser: ActivityDefinition = {
   color: '#E74C3C',
   inputs: [],
   outputs: ['next'],
-  handler: 'control.close_browser',
 }
 
 

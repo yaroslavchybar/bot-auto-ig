@@ -22,10 +22,10 @@ const LAUNCHER_SCRIPT = fs.existsSync(path.join(PROJECT_ROOT, 'server', 'browser
   : path.join(PROJECT_ROOT, 'server', 'dist', 'browser', 'manual.js')
 
 export function normalizeProfileInput(body: Record<string, unknown> = {}): any {
-  const normalizedCookies = normalizeProfileCookiesJson(body.cookies_json ?? body.cookiesJson)
+  const normalizedCookies = normalizeProfileCookiesJson(body.cookiesJson)
   return {
     ...body,
-    cookies_json: normalizedCookies,
+    cookiesJson: normalizedCookies,
   }
 }
 
@@ -59,9 +59,9 @@ function handleChildStdout(name: string, data: Buffer) {
     const meta = (log.metadata as any) || {}
     const eventType = log.eventType || 'log'
     if (eventType === 'display_allocated') {
-      const vncPort = Number(meta.vnc_port ?? meta.vncPort)
-      const displayNum = Number(meta.display_num ?? meta.displayNum)
-      const workflowId = String(meta.workflow_id ?? meta.workflowId ?? 'manual')
+      const vncPort = Number(meta.vncPort)
+      const displayNum = Number(meta.displayNum)
+      const workflowId = String(meta.workflowId ?? 'manual')
       if (Number.isFinite(vncPort) && Number.isFinite(displayNum)) {
         setManualDisplay(name, vncPort, displayNum, workflowId)
       }
@@ -70,7 +70,7 @@ function handleChildStdout(name: string, data: Buffer) {
     }
     broadcast({
       type: eventType,
-      workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
+      workflowId: String(meta.workflowId ?? 'manual'),
       message: log.message,
       level: log.level,
       source: 'typescript',
@@ -87,7 +87,7 @@ function handleChildStderr(name: string, data: Buffer) {
     const meta = (log.metadata as any) || {}
     broadcast({
       type: log.eventType ? log.eventType : 'log',
-      workflowId: String(meta.workflow_id ?? meta.workflowId ?? 'manual'),
+      workflowId: String(meta.workflowId ?? 'manual'),
       message: log.message,
       level: log.explicitLevel ? log.level : 'error',
       source: 'typescript',

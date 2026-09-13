@@ -106,8 +106,8 @@ function ProfileNetworkSection({ profile }: { profile: Profile }) {
           mono={!!profile.proxy}
           className={!profile.proxy ? 'text-subtle-copy/50' : 'text-ink'}
         />
-        <DetailRow label="Protocol" value={profile.proxy_type || 'HTTP'} className="text-ink" />
-        <DetailRow label="IP Check" value={profile.test_ip ? 'Enabled' : 'Disabled'} className="text-ink" />
+        <DetailRow label="Protocol" value={profile.proxyType || 'HTTP'} className="text-ink" />
+        <DetailRow label="IP Check" value={profile.testIp ? 'Enabled' : 'Disabled'} className="text-ink" />
       </div>
     </div>
   )
@@ -132,7 +132,7 @@ function ProfileFingerprintSection({ profile }: { profile: Profile }) {
         <DetailRow
           icon={<Monitor className="h-3.5 w-3.5" />}
           label="Operating System"
-          value={OS_LABELS[profile.fingerprint_os || ''] || 'Windows'}
+          value={OS_LABELS[profile.fingerprintOs || ''] || 'Windows'}
           className="text-ink"
         />
       </div>

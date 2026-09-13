@@ -273,7 +273,7 @@ export function LoginDialog({
     }
     form.setLoading(true); form.setError(null)
     try {
-      await apiFetch('/api/automation/login', {
+      await apiFetch('/api/profiles/login', {
         method: 'POST',
         body: {
           profileName: profile.name, username: form.username.trim(),

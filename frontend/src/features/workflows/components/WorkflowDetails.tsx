@@ -26,9 +26,6 @@ export interface WorkflowDetailsProps {
     targets?: string[]
     targetUsername?: string | null
     status?: string | null
-    storageId?: string | null
-    manifestStorageId?: string | null
-    exportStorageId?: string | null
     sourceProfileName?: string | null
     lastRunAt?: number | null
     stats?: {
@@ -398,8 +395,6 @@ function ArtifactCard({
           .split(/\r?\n/)
           .map((value) => value.trim())
           .filter(Boolean)
-  const exportStorageId = artifact.exportStorageId || artifact.storageId
-  const manifestStorageId = artifact.manifestStorageId || null
   const scrapedCount = artifact.stats?.deduped ?? artifact.stats?.scraped ?? 0
 
   return (
@@ -427,13 +422,13 @@ function ArtifactCard({
         ) : null}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
-        {(exportStorageId || (artifact.localArtifactPath && !artifact.localArtifactDeletedAt)) && onDownloadArtifact ? (
+        {((artifact.localArtifactPath && !artifact.localArtifactDeletedAt)) && onDownloadArtifact ? (
           <Button
             size="sm"
             variant="outline"
             onClick={() =>
               onDownloadArtifact(
-                { storageId: exportStorageId, workflowId: artifact.workflowId, artifactId: artifact._id },
+                { workflowId: artifact.workflowId, artifactId: artifact._id },
                 `${artifact.name || artifact.nodeLabel || 'scrape-result'}.json`,
               )
             }
@@ -442,21 +437,7 @@ function ArtifactCard({
             Download Data
           </Button>
         ) : null}
-        {manifestStorageId && onDownloadArtifact ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              onDownloadArtifact(
-                { storageId: manifestStorageId },
-                `${artifact.name || artifact.nodeLabel || 'scrape-result'}_manifest.json`,
-              )
-            }
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Download Manifest
-          </Button>
-        ) : null}
+        
       </div>
     </div>
   )

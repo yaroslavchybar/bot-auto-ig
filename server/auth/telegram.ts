@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-// Telegram login: widget verification + signed sessions + bot deep-link login.
+// Telegram login: signed sessions + bot deep-link login.
 // The deep-link flow ports igscrape's server/auth.go: the app jumps straight
 // into the Telegram app via tg://resolve (no browser tab), the user taps
 // START in the bot, and the frontend polls until the webhook confirms it.
@@ -17,8 +17,6 @@ export type TelegramUser = {
 
 export const SESSION_COOKIE_NAME = 'app_session'
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000
-const MAX_AUTH_AGE_SECONDS = 86400
-const CLOCK_SKEW_SECONDS = 300
 
 export function getBotToken(): string {
     return (process.env.TELEGRAM_BOT_TOKEN || '').trim()
@@ -67,86 +65,6 @@ function timingSafeEqualString(a: string, b: string): boolean {
 export function isAdminTelegramId(telegramId: string): boolean {
     const adminId = getAdminId()
     return adminId !== '' && telegramId === adminId
-}
-
-type VerifyResult =
-    | { ok: true; user: TelegramUser }
-    | { ok: false; error: string }
-
-function toNumber(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-    if (typeof value === 'string' && value.trim() !== '') {
-        const parsed = Number(value.trim())
-        return Number.isFinite(parsed) ? parsed : null
-    }
-    return null
-}
-
-// Verifies a Telegram Login Widget payload per
-// https://core.telegram.org/widgets/login#checking-authorization
-export function verifyTelegramLogin(data: Record<string, unknown>): VerifyResult {
-    if (getBotToken() === '') {
-        return {
-            ok: false,
-            error: 'Telegram authentication is not configured on the server. Set TELEGRAM_BOT_TOKEN.',
-        }
-    }
-
-    const hash = data['hash']
-    if (typeof hash !== 'string' || hash === '') {
-        return { ok: false, error: 'Missing Telegram authentication hash.' }
-    }
-
-    const authDate = toNumber(data['auth_date'])
-    if (authDate === null) {
-        return { ok: false, error: 'Invalid or missing auth_date.' }
-    }
-    const nowSeconds = Date.now() / 1000
-    if (authDate > nowSeconds + CLOCK_SKEW_SECONDS) {
-        return { ok: false, error: 'Authentication data is from the future. Please log in again.' }
-    }
-    if (nowSeconds - authDate > MAX_AUTH_AGE_SECONDS) {
-        return { ok: false, error: 'Authentication data has expired. Please log in again.' }
-    }
-
-    const id = toNumber(data['id'])
-    if (id === null || id <= 0 || !Number.isInteger(id)) {
-        return { ok: false, error: 'Invalid Telegram user id.' }
-    }
-
-    const firstName = data['first_name']
-    if (typeof firstName !== 'string' || firstName === '') {
-        return { ok: false, error: 'Invalid Telegram user data.' }
-    }
-
-    // Data-check-string: sorted "key=value" lines, hash excluded.
-    const checkString = Object.keys(data)
-        .filter((key) => key !== 'hash')
-        .sort()
-        .map((key) => `${key}=${stringifyWidgetValue(data[key])}`)
-        .join('\n')
-
-    const secret = crypto.createHash('sha256').update(getBotToken()).digest()
-    const calculated = crypto
-        .createHmac('sha256', secret)
-        .update(checkString)
-        .digest('hex')
-
-    if (!timingSafeEqualString(calculated, hash)) {
-        return { ok: false, error: 'Cryptographic hash mismatch. Unauthorized Telegram login.' }
-    }
-
-    const user: TelegramUser = { id: String(id), firstName }
-    if (typeof data['last_name'] === 'string') user.lastName = data['last_name']
-    if (typeof data['username'] === 'string') user.username = data['username']
-    if (typeof data['photo_url'] === 'string') user.photoUrl = data['photo_url']
-    return { ok: true, user }
-}
-
-function stringifyWidgetValue(value: unknown): string {
-    if (typeof value === 'string') return value
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-    return JSON.stringify(value) ?? ''
 }
 
 export type SessionProfile = {

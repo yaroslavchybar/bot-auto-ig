@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { env } from '@/lib/env'
+import { setTokenGetter } from '@/lib/api'
 
 export type AppAuthTokenOptions = {
   template?: string
@@ -35,7 +36,6 @@ type AppAuthContextValue = {
   getToken: (options?: AppAuthTokenOptions) => Promise<string | null>
   user: AppUser | null
   authFetch: (path: string, init?: RequestInit) => Promise<Response>
-  loginWithTelegram: (payload: Record<string, unknown>) => Promise<void>
   loginWithToken: (user: AppUser, token: string) => void
   devLogin: () => Promise<void>
   signOut: () => Promise<void>
@@ -83,7 +83,6 @@ function LocalAuthProvider({ children }: { children: ReactNode }) {
     getToken: async () => null,
     user: LOCAL_USER,
     authFetch: (path, init) => fetch(authUrl(path), init),
-    loginWithTelegram: async () => undefined,
     loginWithToken: () => undefined,
     devLogin: async () => undefined,
     signOut: async () => undefined,
@@ -138,7 +137,7 @@ function TelegramAuthProvider({ children }: { children: ReactNode }) {
 
   // Revalidate any stored session on mount. The token being validated is
   // captured up front so a stale response can never overwrite a newer
-  // session established by loginWithTelegram, loginWithToken, or devLogin meanwhile.
+  // session established by loginWithToken or devLogin meanwhile.
   useEffect(() => {
     let cancelled = false
     const validating = tokenRef.current ?? readStoredToken()
@@ -168,20 +167,6 @@ function TelegramAuthProvider({ children }: { children: ReactNode }) {
     }
   }, [authFetch, clearSession])
 
-  const loginWithTelegram = useCallback(
-    async (payload: Record<string, unknown>) => {
-      const res = await authFetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) throw new Error(await readErrorMessage(res, 'Telegram login failed'))
-      const data = (await res.json()) as { user: AppUser; token: string }
-      storeSession(data.token, data.user)
-    },
-    [authFetch, storeSession],
-  )
-
   const devLogin = useCallback(async () => {
     const res = await authFetch('/api/auth/dev-login', { method: 'POST' })
     if (!res.ok) throw new Error(await readErrorMessage(res, 'Dev login failed'))
@@ -208,13 +193,17 @@ function TelegramAuthProvider({ children }: { children: ReactNode }) {
 
   const getToken = useCallback(async () => currentToken(), [currentToken])
 
+  useEffect(() => {
+    setTokenGetter(getToken)
+    return () => setTokenGetter(async () => null)
+  }, [getToken])
+
   const value: AppAuthContextValue = {
     isLoaded,
     isSignedIn: user !== null,
     getToken,
     user,
     authFetch,
-    loginWithTelegram,
     loginWithToken,
     devLogin,
     signOut,

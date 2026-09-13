@@ -13,21 +13,19 @@ import { initWebSocket } from './websocket.js'
 import { requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
 import { authRouter } from './auth/routes.js'
 
-import { automationRouter } from './automation/index.js'
+import profileLoginRouter from './profiles/login.js'
 import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
-import listsRouter from './lists/routes.js'
 import { workflowsRouter } from './workflows/index.js'
 import displaysRouter from './displays/routes.js'
-import { cleanupOrphanedProcesses } from './automation/process-manager.js'
-import { detectInterruptedRun, clearState } from './automation/state.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { getActiveRuntimeProfileNames } from './shared/store.js'
-import { isProcessRunning } from './shared/ProcessService.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
 import logger from './shared/logger.js'
+import { workflowsReconcileInterrupted } from './shared/convexClient.js'
+import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
 import { AppError } from './shared/errors.js'
 import type { Request, Response, NextFunction } from 'express'
 
@@ -99,10 +97,9 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter)
 
 // Protected API Routes - require authentication and rate limiting
-app.use('/api/automation', requireApiAuth, automationLimiter, automationRouter)
+app.use('/api/profiles/login', requireApiAuth, automationLimiter, profileLoginRouter)
 app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
-app.use('/api/lists', requireApiAuth, apiLimiter, listsRouter)
 app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 
@@ -135,11 +132,12 @@ async function startServer(): Promise<void> {
     // Register graceful shutdown handlers (SIGTERM/SIGINT)
     registerShutdownHandlers({ httpServer: server, wss })
 
-    // Detect and recover from interrupted automation runs
-    handleInterruptedRun()
 
-    // Clean up any orphaned processes from previous server runs
+    // Kill stale automation processes left behind by a crash. Detached
+    // children survive restarts, so reconcile them before touching flags.
     await cleanupOrphanedProcesses()
+
+    await workflowsReconcileInterrupted()
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())
@@ -167,31 +165,6 @@ async function startServer(): Promise<void> {
             )
         }, 2000)
     })
-}
-
-/**
- * Check for interrupted automation runs from a previous server session.
- * If found, log the interrupted state and clear it.
- */
-function handleInterruptedRun(): void {
-    const interrupted = detectInterruptedRun()
-    if (!interrupted) return
-
-    logger.warn(
-        { pid: interrupted.pid, startedAt: interrupted.startedAt, status: interrupted.status },
-        'Detected interrupted automation run from previous session',
-    )
-
-    // Check if the process is still alive (unlikely after server restart)
-    if (interrupted.pid && isProcessRunning(interrupted.pid)) {
-        logger.info({ pid: interrupted.pid }, 'Interrupted process still running — orphan cleanup will handle it')
-    } else {
-        logger.info({ pid: interrupted.pid }, 'Interrupted process is no longer running')
-    }
-
-    // Clear the stale state so we start fresh
-    clearState()
-    logger.info('Cleared interrupted automation state')
 }
 
 startServer().catch((err) => {

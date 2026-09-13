@@ -40,92 +40,11 @@ import type { ActivityCategory, ActivityDefinition } from './types'
 
 export type ActivityCategoryFilter = ActivityCategory | 'all'
 
-const ACTIVITY_METADATA: Record<
-  string,
-  Pick<ActivityDefinition, 'keywords' | 'pickerGroup' | 'quickAdd'>
-> = {
-  start_browser: {
-    quickAdd: true,
-    pickerGroup: 'setup',
-    keywords: ['browser', 'launch', 'open browser'],
-  },
-  select_list: {
-    quickAdd: true,
-    pickerGroup: 'setup',
-    keywords: ['profiles', 'list', 'source list', 'audience'],
-  },
-  send_dm: {
-    quickAdd: true,
-    pickerGroup: 'messaging',
-    keywords: ['message', 'dm', 'direct message', 'chat'],
-  },
-  delay: {
-    quickAdd: true,
-    pickerGroup: 'control',
-    keywords: ['wait', 'sleep', 'pause'],
-  },
-  condition: {
-    quickAdd: true,
-    pickerGroup: 'control',
-    keywords: ['if', 'branch', 'true false'],
-  },
-  loop: {
-    quickAdd: true,
-    pickerGroup: 'control',
-    keywords: ['repeat', 'iterate'],
-  },
-  browse_feed: {
-    quickAdd: true,
-    pickerGroup: 'browsing',
-    keywords: ['feed', 'scroll'],
-  },
-  scrape_relationships: {
-    keywords: ['scrape', 'followers', 'following', 'relationship'],
-    pickerGroup: 'browsing',
-    quickAdd: false,
-  },
-  browse_reels: {
-    keywords: ['reels', 'video'],
-    pickerGroup: 'browsing',
-    quickAdd: false,
-  },
-  random_branch: {
-    keywords: ['split', 'weighted', 'path'],
-    pickerGroup: 'control',
-    quickAdd: false,
-  },
-  close_browser: {
-    keywords: ['stop browser', 'close'],
-    pickerGroup: 'setup',
-    quickAdd: false,
-  },
-  approve_requests: {
-    keywords: ['follow requests', 'approve'],
-    pickerGroup: 'engagement',
-    quickAdd: false,
-  },
-  follow_user: {
-    keywords: ['follow', 'engagement'],
-    pickerGroup: 'engagement',
-    quickAdd: false,
-  },
-  unfollow_user: {
-    keywords: ['unfollow', 'engagement'],
-    pickerGroup: 'engagement',
-    quickAdd: false,
-  },
-  watch_stories: {
-    keywords: ['stories', 'watch'],
-    pickerGroup: 'stories',
-    quickAdd: false,
-  },
-}
-
 // ============================================================================
 // REGISTRY - All activities combined
 // ============================================================================
 
-const BASE_ACTIVITY_REGISTRY: ActivityDefinition[] = [
+export const ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...browsingActivities,
   ...engagementActivities,
   sendDm,
@@ -133,12 +52,6 @@ const BASE_ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...controlActivities,
 ]
 
-export const ACTIVITY_REGISTRY: ActivityDefinition[] = BASE_ACTIVITY_REGISTRY.map(
-  (activity) => ({
-    ...activity,
-    ...ACTIVITY_METADATA[activity.id],
-  }),
-)
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -232,29 +145,6 @@ export function normalizeActivityConfig(
   const defaults = getDefaultConfig(activityId)
   const rawConfig =
     config && typeof config === 'object' ? { ...config } : {}
-
-  if (activityId === 'start_browser') {
-    if (
-      rawConfig.profileReopenCooldownEnabled === undefined &&
-      rawConfig.profileReopenCooldownMinutes === undefined &&
-      rawConfig.profileReopenCooldown !== undefined
-    ) {
-      rawConfig.profileReopenCooldownEnabled = true
-      rawConfig.profileReopenCooldownMinutes = rawConfig.profileReopenCooldown
-    }
-
-    if (
-      rawConfig.messagingCooldownEnabled === undefined &&
-      rawConfig.messagingCooldownHours === undefined &&
-      rawConfig.messagingCooldown !== undefined
-    ) {
-      rawConfig.messagingCooldownEnabled = true
-      rawConfig.messagingCooldownHours = rawConfig.messagingCooldown
-    }
-
-    delete rawConfig.profileReopenCooldown
-    delete rawConfig.messagingCooldown
-  }
 
   return {
     ...defaults,

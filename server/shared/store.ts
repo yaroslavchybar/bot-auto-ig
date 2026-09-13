@@ -8,6 +8,7 @@ export const clients: Set<WebSocket> = new Set()
 // Store logs in memory (limited to last 1000 entries)
 export const MAX_LOGS = 1000
 export const logsStore: Array<{
+    id: string;
     message: string;
     level: string;
     source: string;
@@ -21,12 +22,6 @@ export const logsStore: Array<{
     attempt?: number;
     diagnostics?: string;
 }> = []
-
-// Automation state
-export const automationState = {
-    process: null as ChildProcess | null,
-    status: 'idle' as 'idle' | 'running' | 'stopping'
-}
 
 export const workflowWorkers = new Map<
     string,

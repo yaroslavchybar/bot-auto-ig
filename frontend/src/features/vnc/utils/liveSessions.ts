@@ -10,13 +10,10 @@ type DisplayEvent = {
   type?: unknown
   status?: unknown
   workflowId?: unknown
-  workflow_id?: unknown
   profileName?: unknown
   profile?: unknown
   vncPort?: unknown
-  vnc_port?: unknown
   displayNum?: unknown
-  display_num?: unknown
 }
 
 export function sessionKey(session: DisplaySession): string {
@@ -41,7 +38,7 @@ export function decodeRouteParam(value: string | undefined): string {
 }
 
 function getEventWorkflowId(event: DisplayEvent): string {
-  return String(event?.workflowId ?? event?.workflow_id ?? '').trim()
+  return String(event?.workflowId ?? '').trim()
 }
 
 function toNumber(value: unknown): number | null {
@@ -60,9 +57,9 @@ export function normalizeSessions(input: unknown): DisplaySession[] {
 
     const item = raw as DisplayEvent
     const workflowId = getEventWorkflowId(item)
-    const profileName = String(item.profileName ?? item.profile ?? '').trim()
-    const vncPort = toNumber(item.vncPort ?? item.vnc_port)
-    const displayNum = toNumber(item.displayNum ?? item.display_num)
+    const profileName = String(item.profileName ?? '').trim()
+    const vncPort = toNumber(item.vncPort)
+    const displayNum = toNumber(item.displayNum)
 
     if (!workflowId || !profileName || vncPort === null || displayNum === null)
       continue
@@ -102,11 +99,11 @@ export function applyDisplayEvent(
   const item = event as DisplayEvent
   const eventType = String(item.type || '')
   const workflowId = getEventWorkflowId(item)
-  const profileName = String(item.profileName ?? item.profile ?? '').trim()
+  const profileName = String(item.profileName ?? '').trim()
 
   if (eventType === 'display_allocated') {
-    const vncPort = toNumber(item.vncPort ?? item.vnc_port)
-    const displayNum = toNumber(item.displayNum ?? item.display_num)
+    const vncPort = toNumber(item.vncPort)
+    const displayNum = toNumber(item.displayNum)
 
     if (!workflowId || !profileName || vncPort === null || displayNum === null) {
       return sessions

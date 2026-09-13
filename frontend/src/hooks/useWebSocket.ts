@@ -10,53 +10,8 @@ export interface AutomationProgress {
   currentTask: string | null
 }
 
-export type WebSocketEventType =
-  | 'log'
-  | 'status'
-  | 'workflow_status'
-  | 'error'
-  | 'session_started'
-  | 'profile_started'
-  | 'task_started'
-  | 'task_progress'
-  | 'task_completed'
-  | 'checkpoint'
-  | 'profile_completed'
-  | 'session_ended'
-  | 'display_allocated'
-  | 'display_released'
-
-export interface WebSocketMessage {
-  type: WebSocketEventType
-  message?: string
-  level?: string
-  source?: string
-  status?: string
-  workflowId?: string
-  workflow_id?: string
-  total_accounts?: number
-  total_profiles?: number
-  profile?: string
-  profileName?: string
-  profile_id?: string
-  taskId?: string
-  task?: string
-  node_id?: string
-  nodeId?: string
-  node_states?: Record<string, unknown>
-  nodeStates?: Record<string, unknown>
-  targetUsername?: string
-  error?: string
-  errorCode?: string
-  outcome?: string
-  attempt?: number
-  diagnostics?: string
-  vnc_port?: number
-  vncPort?: number
-  display_num?: number
-  displayNum?: number
-  ts?: string
-}
+import type { WorkerEvent } from '../../../server/shared/contracts'
+export type WebSocketMessage = WorkerEvent
 
 interface UseWebSocketOptions {
   url?: string
@@ -96,15 +51,16 @@ function getReconnectDelay(attempt: number): number {
 
 /* ── Parse a log entry from WebSocket message ── */
 
-function parseLogEntry(
+export function parseLogEntry(
   data: WebSocketMessage,
   currentProfile: string | null,
 ): LogEntry {
   return {
+    id: data.id,
     message: data.message!,
     level: data.level || 'info',
     source: data.source || 'unknown',
-    workflowId: (data.workflowId ?? data.workflow_id) ?? undefined,
+    workflowId: (data.workflowId) ?? undefined,
     profileName: data.profileName || currentProfile || undefined,
     taskId: data.taskId || undefined,
     targetUsername: data.targetUsername || undefined,
@@ -112,7 +68,7 @@ function parseLogEntry(
     outcome: data.outcome || undefined,
     attempt: typeof data.attempt === 'number' ? data.attempt : undefined,
     diagnostics: typeof data.diagnostics === 'string' ? data.diagnostics : undefined,
-    ts: Date.now(),
+    ts: typeof data.ts === 'number' ? data.ts : Date.parse(data.ts || '') || Date.now(),
   }
 }
 
@@ -122,7 +78,7 @@ function matchesWorkflowFilter(
   data: WebSocketMessage,
   activeWorkflowId: string | null,
 ): boolean {
-  const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
+  const msgWorkflowId = data.workflowId ?? null
   if (!activeWorkflowId) return true
   return msgWorkflowId === activeWorkflowId
 }
@@ -135,10 +91,10 @@ function handleProgressUpdate(
   setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>,
 ) {
   if (data.type === 'session_started') {
-    setProgress({ totalAccounts: data.total_accounts || 0, currentProfile: null, currentTask: null })
+    setProgress({ totalAccounts: data.totalAccounts || 0, currentProfile: null, currentTask: null })
   } else if (data.type === 'profile_started') {
-    currentProfileRef.current = data.profile || null
-    setProgress((prev) => ({ ...prev, currentProfile: data.profile || null, currentTask: null }))
+    currentProfileRef.current = data.profileName || null
+    setProgress((prev) => ({ ...prev, currentProfile: data.profileName || null, currentTask: null }))
   } else if (data.type === 'task_started') {
     setProgress((prev) => ({ ...prev, currentTask: data.task || null }))
   } else if (data.type === 'profile_completed') {
@@ -187,7 +143,7 @@ function processSocketMessage(
     try { onEvent?.(data) } catch { /* ignore */ }
     if (eventsOnly) return
     const activeWorkflowId = workflowId ?? null
-    const msgWorkflowId = data.workflowId ?? data.workflow_id ?? null
+    const msgWorkflowId = data.workflowId ?? null
     const matches = matchesWorkflowFilter(data, activeWorkflowId)
 
     if (data.type === 'log' && data.message) {

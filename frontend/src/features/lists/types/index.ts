@@ -4,7 +4,7 @@ export type List = {
 }
 
 export type ProfileRow = {
-  profile_id: string
+  id: string
   name: string
   selected: boolean
   initialSelected: boolean

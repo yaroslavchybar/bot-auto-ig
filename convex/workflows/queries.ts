@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
 import { query } from "../_generated/server";
-import { statusValidator, type WorkflowStatus } from "./helpers";
+import { statusValidator, isNewDay, type WorkflowStatus } from "./helpers";
 
 async function listWorkflows(ctx: any, args: { status?: WorkflowStatus }) {
 	let rows;
@@ -16,11 +16,13 @@ async function listWorkflows(ctx: any, args: { status?: WorkflowStatus }) {
 	}
 
 	rows.sort((a: any, b: any) => b.updatedAt - a.updatedAt);
-	return rows;
+	return rows.map((row: any) => ({ ...row, runsToday: isNewDay(row.lastRunAt) ? 0 : (row.runsToday ?? 0) }));
 }
 
-async function getWorkflow(ctx: any, args: { id: any }) {
-	return await ctx.db.get(args.id);
+async function getWorkflow(ctx: any, args: { id: string }) {
+	const normalized = ctx.db.normalizeId("workflows", args.id);
+	if (!normalized) return null;
+	return await ctx.db.get(normalized);
 }
 
 export const list = query({
@@ -38,11 +40,11 @@ export const listInternal = internalQuery({
 });
 
 export const get = query({
-	args: { id: v.id("workflows") },
+	args: { id: v.string() },
 	handler: getWorkflow,
 });
 
 export const getInternal = internalQuery({
-	args: { id: v.id("workflows") },
+	args: { id: v.string() },
 	handler: getWorkflow,
 });

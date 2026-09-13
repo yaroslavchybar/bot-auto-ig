@@ -1,3 +1,4 @@
+import { DomainError } from './errors';
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
@@ -14,7 +15,7 @@ export const create = mutation({
 	args: { name: v.string() },
 	handler: async (ctx, args) => {
 		const cleaned = String(args.name || "").trim();
-		if (!cleaned) throw new Error("name is required");
+		if (!cleaned) throw new DomainError('VALIDATION', "name is required");
 		const id = await ctx.db.insert("lists", { name: cleaned, createdAt: Date.now() });
 		return await ctx.db.get(id);
 	},
@@ -24,7 +25,7 @@ export const update = mutation({
 	args: { id: v.id("lists"), name: v.string() },
 	handler: async (ctx, args) => {
 		const cleaned = String(args.name || "").trim();
-		if (!cleaned) throw new Error("name is required");
+		if (!cleaned) throw new DomainError('VALIDATION', "name is required");
 		await ctx.db.patch(args.id, { name: cleaned });
 		return await ctx.db.get(args.id);
 	},

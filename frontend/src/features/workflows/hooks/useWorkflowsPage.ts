@@ -32,9 +32,6 @@ export type WorkflowArtifact = {
   targets?: string[]
   targetUsername?: string | null
   status?: string | null
-  storageId?: string | null
-  manifestStorageId?: string | null
-  exportStorageId?: string | null
   sourceProfileName?: string | null
   lastRunAt?: number | null
   stats?: {
@@ -121,34 +118,6 @@ function useWorkflowArtifacts(
 
 /* ── CRUD: simple actions ── */
 
-function useWorkflowSimpleActions(
-  dialogState: ReturnType<typeof useWorkflowDialogState>,
-) {
-  const navigate = useNavigate()
-
-  const handleCreate = useCallback(() => {
-    dialogState.setIsCreateOpen(true)
-  }, [dialogState])
-
-  const handleEdit = useCallback((workflow: Workflow) => {
-    dialogState.setEditWorkflowId(workflow._id)
-  }, [dialogState])
-
-  const handleViewDetails = useCallback((workflow: Workflow) => {
-    dialogState.setDetailsWorkflowId(workflow._id)
-  }, [dialogState])
-
-  const handleEditFlow = useCallback((workflow: Workflow) => {
-    navigate(`/workflows/${workflow._id}/editor`)
-  }, [navigate])
-
-  const handleDelete = useCallback((workflow: Workflow) => {
-    dialogState.setDeleteWorkflowId(workflow._id)
-  }, [dialogState])
-
-  return { handleCreate, handleEdit, handleViewDetails, handleEditFlow, handleDelete }
-}
-
 /* ── CRUD: mutations ── */
 
 function useWorkflowMutations(
@@ -206,26 +175,6 @@ function useWorkflowMutations(
 }
 
 /* ── CRUD operations (composed) ── */
-
-function useWorkflowCrud(
-  dialogState: ReturnType<typeof useWorkflowDialogState>,
-  handleError: ReturnType<typeof useErrorHandler>['handleError'],
-) {
-  const actions = useWorkflowSimpleActions(dialogState)
-  const mutations = useWorkflowMutations(dialogState, handleError)
-
-  return {
-    saving: mutations.saving,
-    setSaving: mutations.setSaving,
-    createWorkflow: mutations.createWorkflow,
-    ...actions,
-    handleSaveCreate: mutations.handleSaveCreate,
-    handleSaveEdit: mutations.handleSaveEdit,
-    handleConfirmDelete: mutations.handleConfirmDelete,
-    handleDuplicate: mutations.handleDuplicate,
-    handleReset: mutations.handleReset,
-  }
-}
 
 /* ── Import/Export operations ── */
 
@@ -322,6 +271,10 @@ function useWorkflowScheduling(
 
   const handleToggleActive = useCallback(async (workflow: Workflow) => {
     try {
+      if (!workflow.scheduleType || workflow.scheduleType === 'instant') {
+        await apiFetch('/api/workflows/run', { method: 'POST', body: { workflowId: workflow._id } })
+        return
+      }
       if (workflow.isActive && workflow.status === 'running') {
         try {
           await apiFetch('/api/workflows/stop', { method: 'POST', body: { workflowId: workflow._id } })
@@ -373,13 +326,11 @@ function useWorkflowScheduling(
 /* ── Workflows data hook ── */
 
 function useWorkflowsData() {
-  const [overrideData, setOverrideData] = useState<Workflow[] | null>(null)
   const workflows = useQuery(api.workflows.queries.list, {})
-  const resolved = overrideData ?? workflows
-  const workflowsLoading = resolved === undefined
-  const workflowsList = useMemo(() => resolved ?? [], [resolved])
+  const workflowsLoading = workflows === undefined
+  const workflowsList = useMemo(() => workflows ?? [], [workflows])
 
-  return { workflowsList, workflowsLoading, setWorkflowsData: setOverrideData }
+  return { workflowsList, workflowsLoading }
 }
 
 /* ── Main hook ── */
@@ -389,26 +340,45 @@ export function useWorkflowsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const { handleError } = useErrorHandler()
 
-  const { workflowsList, workflowsLoading, setWorkflowsData } = useWorkflowsData()
+  const { workflowsList, workflowsLoading } = useWorkflowsData()
   const dialogState = useWorkflowDialogState(workflowsList)
   const { artifactsLoading, workflowArtifacts } =
     useWorkflowArtifacts(dialogState.detailsWorkflowId, handleError)
 
-  const crud = useWorkflowCrud(dialogState, handleError)
+  const crud = useWorkflowMutations(dialogState, handleError)
+  const navigate = useNavigate()
+
+  const handleCreate = useCallback(() => {
+    dialogState.setIsCreateOpen(true)
+  }, [dialogState])
+
+  const handleEdit = useCallback((workflow: Workflow) => {
+    dialogState.setEditWorkflowId(workflow._id)
+  }, [dialogState])
+
+  const handleViewDetails = useCallback((workflow: Workflow) => {
+    dialogState.setDetailsWorkflowId(workflow._id)
+  }, [dialogState])
+
+  const handleEditFlow = useCallback((workflow: Workflow) => {
+    navigate(`/workflows/${workflow._id}/editor`)
+  }, [navigate])
+
+  const handleDelete = useCallback((workflow: Workflow) => {
+    dialogState.setDeleteWorkflowId(workflow._id)
+  }, [dialogState])
+
+
   const importExport = useWorkflowImportExport(workflowsList, crud.createWorkflow, crud.setSaving, handleError)
   const scheduling = useWorkflowScheduling(dialogState, handleError, crud.setSaving)
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      const [latest] = await Promise.all([
-        convex.query(api.workflows.queries.list, {}),
-        new Promise((resolve) => setTimeout(resolve, 400)),
-      ])
-      setWorkflowsData(latest as Workflow[])
+      await convex.query(api.workflows.queries.list, {})
     } catch (e) { handleError(e, 'Refresh workflows') }
     finally { setRefreshing(false) }
-  }, [convex, handleError, setWorkflowsData])
+  }, [convex, handleError])
 
   const handleDownloadArtifact = useCallback(async (target: ArtifactDownloadTarget, fileName: string) => {
     try {
@@ -429,10 +399,10 @@ export function useWorkflowsPage() {
     setDetailsWorkflowId: dialogState.setDetailsWorkflowId,
     setScheduleWorkflowId: dialogState.setScheduleWorkflowId,
     setDeleteWorkflowId: dialogState.setDeleteWorkflowId,
-    handleCreate: crud.handleCreate, handleRefresh, handleEdit: crud.handleEdit,
-    handleViewDetails: crud.handleViewDetails, handleEditFlow: crud.handleEditFlow,
+    handleCreate, handleRefresh, handleEdit,
+    handleViewDetails, handleEditFlow,
     handleSaveCreate: crud.handleSaveCreate, handleSaveEdit: crud.handleSaveEdit,
-    handleDelete: crud.handleDelete, handleConfirmDelete: crud.handleConfirmDelete,
+    handleDelete, handleConfirmDelete: crud.handleConfirmDelete,
     handleDuplicate: crud.handleDuplicate,
     handleExport: importExport.handleExport,
     handleImportClick: importExport.handleImportClick,

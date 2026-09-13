@@ -1,11 +1,6 @@
 import { Router } from 'express'
 import { profileManager } from './data.js'
 import {
-  profilesListAssigned,
-  profilesListUnassigned,
-  profilesBulkSetListId,
-  profilesBulkAddToList,
-  profilesBulkRemoveFromList,
   profilesSyncStatus,
   profilesSetLoginTrue,
 } from '../shared/convexClient.js'
@@ -31,7 +26,7 @@ router.get('/', asyncHandler(async (_req, res) => {
 }))
 
 router.get('/by-id', asyncHandler(async (req, res) => {
-  const profileId = String(req.query.profileId || req.query.profile_id || '').trim()
+  const profileId = String(req.query.profileId || req.query.id || '').trim()
   if (!profileId) {
     throw new ValidationError('profileId is required')
   }
@@ -120,53 +115,6 @@ router.post('/set-login-true', asyncHandler(async (req, res) => {
     throw new ValidationError('name is required')
   }
   await profilesSetLoginTrue(String(name))
-  res.json({ success: true })
-}))
-
-router.get('/assigned', asyncHandler(async (req, res) => {
-  const listId = String(req.query.list_id || '').trim()
-  if (!listId) {
-    throw new ValidationError('list_id is required')
-  }
-  const rows = await profilesListAssigned(listId)
-  res.json(rows || [])
-}))
-
-router.get('/unassigned', asyncHandler(async (_req, res) => {
-  const rows = await profilesListUnassigned()
-  res.json(rows || [])
-}))
-
-router.post('/bulk-set-list-id', asyncHandler(async (req, res) => {
-  const { profileIds, listId } = req.body || {}
-  if (!Array.isArray(profileIds)) {
-    throw new ValidationError('profileIds must be an array')
-  }
-  await profilesBulkSetListId(profileIds, listId ?? null)
-  res.json({ success: true })
-}))
-
-router.post('/bulk-add-to-list', asyncHandler(async (req, res) => {
-  const { profileIds, listId } = req.body || {}
-  if (!Array.isArray(profileIds)) {
-    throw new ValidationError('profileIds must be an array')
-  }
-  if (!listId) {
-    throw new ValidationError('listId is required')
-  }
-  await profilesBulkAddToList(profileIds, String(listId))
-  res.json({ success: true })
-}))
-
-router.post('/bulk-remove-from-list', asyncHandler(async (req, res) => {
-  const { profileIds, listId } = req.body || {}
-  if (!Array.isArray(profileIds)) {
-    throw new ValidationError('profileIds must be an array')
-  }
-  if (!listId) {
-    throw new ValidationError('listId is required')
-  }
-  await profilesBulkRemoveFromList(profileIds, String(listId))
   res.json({ success: true })
 }))
 

@@ -7,6 +7,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const approveRequests: ActivityDefinition = {
   id: 'approve_requests',
+  keywords: ['follow requests', 'approve'],
+  pickerGroup: 'engagement',
+  quickAdd: false,
   name: 'Approve Requests',
   description: 'Approve pending follow requests',
   category: 'engagement',
@@ -47,7 +50,6 @@ export const approveRequests: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'engagement.approve_follow_requests',
 }
 
 

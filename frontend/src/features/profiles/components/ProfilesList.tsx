@@ -167,11 +167,11 @@ function ProfileMobileCard({
 }: {
   profile: Profile
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
-  const osLabel = getOsLabel(profile.fingerprint_os)
+  const osLabel = getOsLabel(profile.fingerprintOs)
   const statusMeta = getStatusMeta(profile)
   const dailyUsage =
-    typeof profile.daily_scraping_limit === 'number'
-      ? `${profile.daily_scraping_used ?? 0}/${profile.daily_scraping_limit}`
+    typeof profile.dailyScrapingLimit === 'number'
+      ? `${profile.dailyScrapingUsed ?? 0}/${profile.dailyScrapingLimit}`
       : null
 
   return (
@@ -420,7 +420,7 @@ function DesktopConfigBadges({ profile }: { profile: Profile }) {
     <div className="text-subtle-copy flex items-center gap-2 text-xs">
       <div className="bg-panel-muted border-line text-copy flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
         <Cpu className="h-3 w-3" />
-        {profile.fingerprint_os === 'mac' ? 'macOS' : 'Win'}
+        {getOsLabel(profile.fingerprintOs)}
       </div>
       {profile.login && (
         <div className="brand-surface brand-text flex items-center gap-1 rounded-sm border px-1.5 py-0.5">

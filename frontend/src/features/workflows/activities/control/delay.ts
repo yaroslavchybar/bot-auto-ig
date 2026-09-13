@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const delay: ActivityDefinition = {
   id: 'delay',
+  quickAdd: true,
+  pickerGroup: 'control',
+  keywords: ['wait', 'sleep', 'pause'],
   name: 'Delay',
   description: 'Wait for a random duration',
   category: 'control',
@@ -32,7 +35,6 @@ export const delay: ActivityDefinition = {
   ],
 
   outputs: ['next'],
-  handler: 'control.delay',
 }
 
 

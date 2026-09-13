@@ -4,10 +4,7 @@ import path from 'node:path'
 /** Assemble the committed snapshot a chunk at a time; downloads never load all users. */
 export async function* artifactJson(filename: string): AsyncGenerator<string> {
   const metadata = JSON.parse(await fs.readFile(filename, 'utf8'))
-  if (metadata.format !== 'ig-bot-chunks-v1') {
-    yield JSON.stringify(metadata)
-    return
-  }
+  if (metadata.format !== 'ig-bot-chunks-v1') throw new Error('Unsupported artifact format; start a fresh workflow run')
   const chunks = metadata.progress?.chunks
   if (!Number.isSafeInteger(chunks) || chunks < 0) throw new Error('Invalid artifact checkpoint')
   const { format, ...payload } = metadata

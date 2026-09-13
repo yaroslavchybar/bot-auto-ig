@@ -32,7 +32,6 @@ interface ScrapedDataListProps {
   loading: boolean
   onViewDetails: (artifact: WorkflowArtifact) => void
   onDownloadData: (artifact: WorkflowArtifact) => void
-  onDownloadManifest: (artifact: WorkflowArtifact) => void
   onDelete: (artifact: WorkflowArtifact) => void
   emptyTitle?: string
   emptyDescription?: string
@@ -42,7 +41,6 @@ interface ArtifactActionsMenuProps {
   artifact: WorkflowArtifact
   onViewDetails: (artifact: WorkflowArtifact) => void
   onDownloadData: (artifact: WorkflowArtifact) => void
-  onDownloadManifest: (artifact: WorkflowArtifact) => void
   onDelete: (artifact: WorkflowArtifact) => void
 }
 
@@ -50,7 +48,6 @@ function ArtifactActionsMenu({
   artifact,
   onViewDetails,
   onDownloadData,
-  onDownloadManifest,
   onDelete,
 }: ArtifactActionsMenuProps) {
   const [open, setOpen] = useState(false)
@@ -73,15 +70,11 @@ function ArtifactActionsMenu({
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => onDownloadData(artifact)}
-          disabled={!artifact.exportStorageId && !artifact.storageId && (!artifact.localArtifactPath || !!artifact.localArtifactDeletedAt)}
+          disabled={(!artifact.localArtifactPath || !!artifact.localArtifactDeletedAt)}
         >
           <Download className="mr-2 h-4 w-4" /> Download Data
         </DropdownMenuItem>
-        {artifact.manifestStorageId ? (
-          <DropdownMenuItem onClick={() => onDownloadManifest(artifact)}>
-            <Download className="mr-2 h-4 w-4" /> Download Manifest
-          </DropdownMenuItem>
-        ) : null}
+        
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => onDelete(artifact)}
@@ -100,7 +93,6 @@ function ArtifactMobileCard({
   artifact,
   onViewDetails,
   onDownloadData,
-  onDownloadManifest,
   onDelete,
 }: ArtifactActionsMenuProps) {
   return (
@@ -117,7 +109,6 @@ function ArtifactMobileCard({
             artifact={artifact}
             onViewDetails={onViewDetails}
             onDownloadData={onDownloadData}
-            onDownloadManifest={onDownloadManifest}
             onDelete={onDelete}
           />
         </div>
@@ -160,7 +151,6 @@ function ArtifactDesktopRow({
   artifact,
   onViewDetails,
   onDownloadData,
-  onDownloadManifest,
   onDelete,
 }: ArtifactActionsMenuProps) {
   return (
@@ -196,7 +186,6 @@ function ArtifactDesktopRow({
             artifact={artifact}
             onViewDetails={onViewDetails}
             onDownloadData={onDownloadData}
-            onDownloadManifest={onDownloadManifest}
             onDelete={onDelete}
           />
         </div>
@@ -229,7 +218,6 @@ export function ScrapedDataList({
   loading,
   onViewDetails,
   onDownloadData,
-  onDownloadManifest,
   onDelete,
   emptyTitle = 'No scraped artifacts',
   emptyDescription = 'Completed workflow scrape results will appear here.',
@@ -263,7 +251,6 @@ export function ScrapedDataList({
             artifact={artifact}
             onViewDetails={onViewDetails}
             onDownloadData={onDownloadData}
-            onDownloadManifest={onDownloadManifest}
             onDelete={onDelete}
           />
         ))}
@@ -282,7 +269,6 @@ export function ScrapedDataList({
               artifact={artifact}
               onViewDetails={onViewDetails}
               onDownloadData={onDownloadData}
-              onDownloadManifest={onDownloadManifest}
               onDelete={onDelete}
             />
           ))}

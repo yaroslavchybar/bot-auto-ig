@@ -1,3 +1,6 @@
+import type { MutationCtx } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { DomainError } from '../errors';
 import { v } from "convex/values";
 
 // Check if lastRunAt is from a previous UTC day
@@ -35,12 +38,12 @@ export function validateScheduleConfig(scheduleType: ScheduleType, config: Sched
 	switch (scheduleType) {
 		case "instant":
 			if (hasDefinedScheduleConfigValues(config)) {
-				throw new Error("Instant workflows do not accept scheduleConfig values");
+				throw new DomainError('VALIDATION', "Instant workflows do not accept scheduleConfig values");
 			}
 			return;
 		case "interval":
 			if (!Number.isInteger(config.intervalMs) || (config.intervalMs ?? 0) <= 0) {
-				throw new Error("intervalMs must be a positive integer");
+				throw new DomainError('VALIDATION', "intervalMs must be a positive integer");
 			}
 			return;
 		case "daily":
@@ -51,7 +54,7 @@ export function validateScheduleConfig(scheduleType: ScheduleType, config: Sched
 			requireIntegerInRange(config.hourUTC, "hourUTC", 0, 23);
 			requireIntegerInRange(config.minuteUTC, "minuteUTC", 0, 59);
 			if (!Array.isArray(config.daysOfWeek) || config.daysOfWeek.length === 0) {
-				throw new Error("daysOfWeek must contain at least one day");
+				throw new DomainError('VALIDATION', "daysOfWeek must contain at least one day");
 			}
 			for (const day of config.daysOfWeek) {
 				requireIntegerInRange(day, "daysOfWeek", 0, 6);
@@ -65,7 +68,7 @@ export function validateScheduleConfig(scheduleType: ScheduleType, config: Sched
 			return;
 		case "cron":
 			if (!String(config.cronspec ?? "").trim()) {
-				throw new Error("cronspec is required");
+				throw new DomainError('VALIDATION', "cronspec is required");
 			}
 			return;
 	}
@@ -84,7 +87,7 @@ export function assertValidStatusTransition(currentStatus: WorkflowStatus | unde
 	};
 
 	if (!allowedTransitions[current].includes(nextStatus)) {
-		throw new Error(`Illegal workflow status transition from ${current} to ${nextStatus}; use reset or retry`);
+		throw new DomainError('CONFLICT', `Illegal workflow status transition from ${current} to ${nextStatus}; use reset or retry`);
 	}
 }
 
@@ -160,3 +163,21 @@ export const scheduleConfigValidator = v.object({
 	dayOfMonth: v.optional(v.number()),
 	cronspec: v.optional(v.string()),
 });
+
+/** Both manual and scheduled runs reserve their daily slot in this transaction. */
+export async function prepareWorkflowRun(ctx: MutationCtx, workflow: Doc<'workflows'>) {
+  if (workflow.status === 'running' || workflow.status === 'pending') {
+    throw new DomainError('CONFLICT', 'Workflow is already running or pending');
+  }
+  const runsToday = isNewDay(workflow.lastRunAt) ? 0 : (workflow.runsToday ?? 0);
+  if ((workflow.maxRunsPerDay ?? 0) > 0 && runsToday >= workflow.maxRunsPerDay!) {
+    throw new DomainError('CONFLICT', 'Daily run limit reached');
+  }
+  const now = Date.now();
+  await ctx.db.patch(workflow._id, {
+    status: 'pending', runsToday: runsToday + 1, lastRunAt: now,
+    nodeStates: undefined, error: undefined, currentNodeId: undefined,
+    startedAt: undefined, completedAt: undefined, updatedAt: now,
+  });
+  return await ctx.db.get(workflow._id);
+}

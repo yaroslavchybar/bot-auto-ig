@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto'
 import { WebSocketServer, WebSocket } from 'ws'
 import { Server } from 'http'
-import { clients, logsStore, MAX_LOGS, automationState } from './shared/store.js'
+import { clients, logsStore, MAX_LOGS } from './shared/store.js'
 import { verifySessionUid } from './auth/telegram.js'
 import { isLocalAuthBypassEnabled } from './security/auth.js'
 import logger from './shared/logger.js'
@@ -34,8 +35,6 @@ export function initWebSocket(server: Server, path: string = '/ws') {
                 : 'WebSocket client connected (authenticated)',
         )
 
-        // Send current status
-        ws.send(JSON.stringify({ type: 'status', status: automationState.status }))
 
         ws.on('close', () => {
             clients.delete(ws)
@@ -50,6 +49,7 @@ export function broadcast(data: object) {
     // Store log entries
     if ('type' in data && (data as any).type === 'log') {
         const logEntry = {
+            id: randomUUID(),
             message: (data as any).message || '',
             level: (data as any).level || 'info',
             source: (data as any).source || 'unknown',
@@ -66,6 +66,7 @@ export function broadcast(data: object) {
                     : undefined,
             ts: Date.now()
         }
+        data = { type: 'log', ...logEntry }
         logsStore.push(logEntry)
         if (logsStore.length > MAX_LOGS) {
             logsStore.shift()

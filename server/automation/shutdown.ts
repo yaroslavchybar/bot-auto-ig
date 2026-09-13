@@ -11,10 +11,9 @@
  */
 import type { Server } from 'http'
 import type { WebSocketServer } from 'ws'
-import { automationState, workflowWorkers, profileProcesses, clients } from '../shared/store.js'
+import { workflowWorkers, profileProcesses, clients } from '../shared/store.js'
 import { automationMutex } from '../shared/mutex.js'
-import { killProcess, clearPid, getTrackedProcesses, getPid } from '../shared/ProcessService.js'
-import { saveState } from './state.js'
+import { killProcess, getTrackedProcesses, getPid, clearRegistry } from '../shared/ProcessService.js'
 import logger from '../shared/logger.js'
 
 // ---------------------------------------------------------------------------
@@ -68,14 +67,9 @@ export function registerShutdownHandlers(deps: ShutdownDeps): void {
  * Listeners are already closed before the mutex is acquired.
  */
 async function performCleanup(): Promise<void> {
-  // 1. Persist automation state before killing processes
-  persistAutomationState()
-
   // 2. Kill all Bun child processes
   await killAllChildProcesses()
 
-  // 3. Clear PID files
-  clearPid()
 }
 
 /** Stop the HTTP server from accepting new connections. */
@@ -109,22 +103,6 @@ function closeWebSocketConnections(wss: WebSocketServer): void {
   logger.info({ count: closed }, 'Closed WebSocket connections')
 }
 
-/** Persist automation state atomically before process exit. */
-function persistAutomationState(): void {
-  try {
-    const pid = automationState.process?.pid ?? null
-    saveState({
-      status: automationState.status,
-      pid,
-      startedAt: automationState.status === 'running' ? new Date().toISOString() : null,
-      settings: null,
-    })
-    logger.info('Persisted automation state to file')
-  } catch (err) {
-    logger.error({ err }, 'Failed to persist automation state during shutdown')
-  }
-}
-
 /**
  * Kill ALL tracked Bun child processes via the global ProcessService
  * registry. This catches automation, workflow, profile, login, and
@@ -132,8 +110,6 @@ function persistAutomationState(): void {
  */
 async function killAllChildProcesses(): Promise<void> {
   // Clear known state maps so the application doesn't reference dead procs
-  automationState.process = null
-  automationState.status = 'idle'
   workflowWorkers.clear()
   profileProcesses.clear()
 
@@ -149,4 +125,5 @@ async function killAllChildProcesses(): Promise<void> {
 
   await Promise.allSettled(killPromises)
   logger.info({ count: tracked.size }, 'All child processes killed')
+  clearRegistry()
 }

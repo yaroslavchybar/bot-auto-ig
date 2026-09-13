@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import type { ActivityInput } from '@/features/workflows/activities/types'
@@ -36,10 +36,9 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
   const showPresets = min === 0 && max === 100
 
   // Editable text state so typing doesn't fight the slider.
-  const [text, setText] = useState(String(clampedValue))
-  useEffect(() => {
-    setText(String(clampedValue))
-  }, [clampedValue])
+  const [draft, setDraft] = useState<{ value: number; text: string } | null>(null)
+  const text = draft?.value === clampedValue ? draft.text : String(clampedValue)
+  const setText = (text: string) => setDraft({ value: clampedValue, text })
 
   const commit = (next: number) => {
     if (!Number.isFinite(next)) {
@@ -51,7 +50,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
     // Avoid float artifacts from fractional steps.
     const fixed = Number(clamped.toFixed(4))
     onChange(fixed)
-    setText(String(fixed))
+    setDraft(null)
   }
 
   const nudge = (delta: number) => commit(clampedValue + delta)

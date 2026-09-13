@@ -106,9 +106,9 @@ export function parseLogLine(raw: string): ParsedLog | null {
 
         // Build human-readable message
         let message = label
-        if (eventData.profile) message += `: ${eventData.profile}`
+        if (eventData.profileName) message += `: ${eventData.profileName}`
         if (eventData.task) message += ` - ${eventData.task}`
-        if (eventData.total_accounts) message += ` (${eventData.total_accounts} accounts)`
+        if (eventData.totalAccounts) message += ` (${eventData.totalAccounts} accounts)`
 
         return {
             message,

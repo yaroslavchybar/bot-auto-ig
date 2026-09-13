@@ -13,7 +13,6 @@ const internalApi = internal as any;
 const workflowArtifactPaths = [
   '/api/workflow-artifacts',
   '/api/workflow-artifacts/upsert',
-  '/api/workflow-artifacts/storage-url',
 ];
 
 export function registerWorkflowArtifactRoutes(http: HttpRouter): void {
@@ -31,7 +30,7 @@ function registerArtifactQueryRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const url = new URL(request.url);
       const workflowId =
-        url.searchParams.get('workflowId') || url.searchParams.get('id') || '';
+        url.searchParams.get('workflowId') || '';
       if (!workflowId) throw new ValidationError('workflowId is required');
       const rows = await ctx.runQuery(internalApi.workflowArtifacts.listByWorkflowInternal, {
         workflowId: workflowId as any,
@@ -40,19 +39,6 @@ function registerArtifactQueryRoutes(http: HttpRouter): void {
     }),
   });
 
-  http.route({
-    path: '/api/workflow-artifacts/storage-url',
-    method: 'GET',
-    handler: withErrorHandling(async (ctx, request) => {
-      const url = new URL(request.url);
-      const storageId = url.searchParams.get('storageId') || '';
-      if (!storageId) throw new ValidationError('storageId is required');
-      const result = await ctx.runQuery(internalApi.workflowArtifacts.getStorageUrlInternal, {
-        storageId: storageId as any,
-      });
-      return jsonResponse(result);
-    }),
-  });
 }
 
 /* ── Mutation routes ── */
@@ -63,28 +49,25 @@ function registerArtifactMutationRoutes(http: HttpRouter): void {
     method: 'POST',
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
-      const workflowId = body?.workflowId ?? body?.workflow_id;
+      const workflowId = body?.workflowId;
       if (!workflowId) throw new ValidationError('workflowId is required');
-      const nodeId = body?.nodeId ?? body?.node_id;
+      const nodeId = body?.nodeId;
       if (!nodeId) throw new ValidationError('nodeId is required');
       const row = await ctx.runMutation(internalApi.workflowArtifacts.upsertInternal, {
         workflowId: workflowId as any,
-        workflowName: body?.workflowName ?? body?.workflow_name ?? '',
+        workflowName: body?.workflowName ?? '',
         nodeId: String(nodeId),
-        nodeLabel: body?.nodeLabel ?? body?.node_label,
+        nodeLabel: body?.nodeLabel,
         name: body?.name,
         kind: body?.kind,
         targets: body?.targets,
-        targetUsername: body?.targetUsername ?? body?.target_username,
+        targetUsername: body?.targetUsername,
         status: body?.status,
         imported: body?.imported,
-        sourceProfileName: body?.sourceProfileName ?? body?.source_profile_name,
-        lastRunAt: body?.lastRunAt ?? body?.last_run_at,
-        storageId: body?.storageId ?? body?.storage_id,
-        manifestStorageId: body?.manifestStorageId ?? body?.manifest_storage_id,
-        exportStorageId: body?.exportStorageId ?? body?.export_storage_id,
-        localArtifactPath: body?.localArtifactPath ?? body?.local_artifact_path,
-        localArtifactDeletedAt: body?.localArtifactDeletedAt ?? body?.local_artifact_deleted_at,
+        sourceProfileName: body?.sourceProfileName,
+        lastRunAt: body?.lastRunAt,
+        localArtifactPath: body?.localArtifactPath,
+        localArtifactDeletedAt: body?.localArtifactDeletedAt,
         stats: body?.stats,
         metadata: body?.metadata,
       });

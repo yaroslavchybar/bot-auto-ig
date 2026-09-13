@@ -62,17 +62,9 @@ COPY --from=repo_root frontend/package.json ./frontend/package.json
 # Full workspace install: the build script runs root typescript and tsc
 # typechecks dev dependencies. Scripts are skipped: tsc only reads types,
 # it never loads native modules (better-sqlite3's script can't build without
-# node-gyp). Runtime stays minimal (bun-runtime-deps).
+# node-gyp). Runtime stays minimal (browser-deps).
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --ignore-scripts
-
-FROM browser-deps AS bun-runtime-deps
-WORKDIR /app
-COPY --from=repo_root package.json bun.lock ./
-COPY --from=repo_root server/package.json ./server/package.json
-COPY --from=repo_root frontend/package.json ./frontend/package.json
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bun install --frozen-lockfile --production --filter anti-server --ignore-scripts
 
 FROM bun-build-deps AS app-build
 COPY --from=repo_root server ./server
@@ -80,11 +72,11 @@ RUN bun run --filter anti-server build
 
 FROM browser-deps AS server-runtime
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY --from=bun-runtime-deps /app/node_modules /app/node_modules
-COPY --from=bun-runtime-deps /app/server /app/server
-COPY --from=bun-runtime-deps /app/package.json /app/package.json
-COPY --from=bun-runtime-deps /app/bun.lock /app/bun.lock
-COPY --from=bun-runtime-deps /app/frontend/package.json /app/frontend/package.json
+COPY --from=browser-deps /app/node_modules /app/node_modules
+COPY --from=browser-deps /app/server /app/server
+COPY --from=browser-deps /app/package.json /app/package.json
+COPY --from=browser-deps /app/bun.lock /app/bun.lock
+COPY --from=browser-deps /app/frontend/package.json /app/frontend/package.json
 COPY --from=app-build /app/server/dist /app/server/dist
 COPY --from=app-build /app/server/package.json /app/server/package.json
 WORKDIR /app/server

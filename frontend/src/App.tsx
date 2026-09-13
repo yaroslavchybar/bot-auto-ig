@@ -1,12 +1,4 @@
 import { useEffect, useRef, type ReactNode } from 'react'
-import { ListsPage } from '@/features/lists/ListsPage'
-import { ProfilesPage } from '@/features/profiles/ProfilesPage'
-import { ScrapedDataPage } from '@/features/scraped-data/ScrapedDataPage'
-import { VncPage } from '@/features/vnc/VncPage'
-import { VncSessionPage } from '@/features/vnc/VncSessionPage'
-import { WorkflowEditorPage } from '@/features/workflows/WorkflowEditorPage'
-import { WorkflowsPage } from '@/features/workflows/WorkflowsPage'
-import { LoginPage } from '@/pages/LoginPage'
 import { AuthGuard } from '@/components/layout/AuthGuard'
 import { ProtectedLayoutShell } from '@/components/layout/ProtectedLayoutShell'
 import { ErrorBoundary as AppErrorBoundary } from '@/components/shared/ErrorBoundary'
@@ -87,63 +79,16 @@ function Routes() {
     return <Navigate to="/profiles" replace />
   }
 
-  if (pathname === '/login') {
-    return <LoginPage />
-  }
-
   const match = matchRoute(pathname)
   if (!match?.meta) {
     return <NotFoundView />
   }
 
-  const { pattern, meta } = match
+  const { meta } = match
+  const Page = meta.Page
+  if (match.pattern === '/login') return <Page />
+  return <ProtectedRoute meta={meta} pathname={pathname}><Page /></ProtectedRoute>
 
-  switch (pattern) {
-    case '/profiles':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <ProfilesPage />
-        </ProtectedRoute>
-      )
-    case '/workflows':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <WorkflowsPage />
-        </ProtectedRoute>
-      )
-    case '/workflows/:workflowId/editor':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <WorkflowEditorPage />
-        </ProtectedRoute>
-      )
-    case '/scraped-data':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <ScrapedDataPage />
-        </ProtectedRoute>
-      )
-    case '/lists':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <ListsPage />
-        </ProtectedRoute>
-      )
-    case '/vnc':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <VncPage />
-        </ProtectedRoute>
-      )
-    case '/vnc/session/:workflowId/:profileName':
-      return (
-        <ProtectedRoute meta={meta} pathname={pathname}>
-          <VncSessionPage />
-        </ProtectedRoute>
-      )
-    default:
-      return <NotFoundView />
-  }
 }
 
 export default function App() {

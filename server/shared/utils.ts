@@ -1,11 +1,12 @@
-import path from 'path'
-import { fileURLToPath } from 'url'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-export function resolveProjectRoot(moduleUrl: string) {
-    const modulePath = fileURLToPath(moduleUrl)
-    const moduleDir = path.dirname(modulePath)
-    const inDist = path.basename(path.dirname(moduleDir)) === 'dist'
-    return inDist
-        ? path.resolve(moduleDir, '../../..')
-        : path.resolve(moduleDir, '../..')
+export function resolveProjectRoot(moduleUrl: string): string {
+  let directory = path.dirname(fileURLToPath(moduleUrl))
+  while (path.basename(directory) !== 'server') {
+    const parent = path.dirname(directory)
+    if (parent === directory) throw new Error('Expected a module inside the server directory')
+    directory = parent
+  }
+  return path.dirname(directory)
 }

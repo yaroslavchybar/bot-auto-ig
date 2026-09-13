@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const browseReels: ActivityDefinition = {
   id: 'browse_reels',
+  keywords: ['reels', 'video'],
+  pickerGroup: 'browsing',
+  quickAdd: false,
   name: 'Reels Scroll',
   description: 'Scroll through reels',
   category: 'browsing',
@@ -135,7 +138,6 @@ export const browseReels: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'browsing.reels_scrolling',
 }
 
 

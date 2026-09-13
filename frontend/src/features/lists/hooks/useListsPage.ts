@@ -42,7 +42,6 @@ function useListDialogState(lists: List[]) {
 
 function useListMutations(
   dialog: ReturnType<typeof useListDialogState>,
-  backgroundRefresh: ReturnType<typeof useLists>['backgroundRefresh'],
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const createList = useMutation(api.lists.create)
@@ -56,47 +55,40 @@ function useListMutations(
     setSaving(true)
     try {
       if (dialog.isCreateOpen) {
-        await createList({ name }); await backgroundRefresh(); dialog.setIsCreateOpen(false)
+        await createList({ name }); dialog.setIsCreateOpen(false)
       } else if (dialog.editList) {
         if (dialog.editList.name !== name) await updateList({ id: dialog.editList.id as Id<'lists'>, name })
         if (addedIds.length > 0) await bulkAddToList({ profileIds: addedIds as Id<'profiles'>[], listId: dialog.editList.id as Id<'lists'> })
         if (removedIds.length > 0) await bulkRemoveFromList({ profileIds: removedIds as Id<'profiles'>[], listId: dialog.editList.id as Id<'lists'> })
-        await backgroundRefresh(); dialog.setEditListId(null)
+        dialog.setEditListId(null)
       }
     } catch (e) { handleError(e, 'Save list') }
     finally { setSaving(false) }
-  }, [backgroundRefresh, bulkAddToList, bulkRemoveFromList, createList, dialog, handleError, updateList])
+  }, [bulkAddToList, bulkRemoveFromList, createList, dialog, handleError, updateList])
 
   const handleDelete = useCallback(async () => {
     if (!dialog.deleteListTarget) return
     setSaving(true)
     try {
       await deleteListMut({ id: dialog.deleteListTarget.id as Id<'lists'> })
-      await backgroundRefresh(); dialog.setDeleteListTargetId(null)
+      dialog.setDeleteListTargetId(null)
     } catch (e) { handleError(e, 'Delete list') }
     finally { setSaving(false) }
-  }, [backgroundRefresh, deleteListMut, dialog, handleError])
+  }, [deleteListMut, dialog, handleError])
 
   return { saving, handleSave, handleDelete }
 }
 
 export function useListsPage() {
-  const { lists, loading: listsLoading, refresh, backgroundRefresh } = useLists()
+  const { lists, loading: listsLoading } = useLists()
   const loading = listsLoading
-  const [refreshing, setRefreshing] = useState(false)
   const { handleError } = useErrorHandler()
 
   const dialog = useListDialogState(lists)
-  const mutations = useListMutations(dialog, backgroundRefresh, handleError)
-
-  const handleRefreshLists = useCallback(async () => {
-    setRefreshing(true)
-    try { await Promise.all([refresh(), new Promise((r) => setTimeout(r, 300))]) }
-    finally { setRefreshing(false) }
-  }, [refresh])
+  const mutations = useListMutations(dialog, handleError)
 
   return {
-    lists, loading, saving: mutations.saving, refreshing,
+    lists, loading, saving: mutations.saving,
     isCreateOpen: dialog.isCreateOpen, editList: dialog.editList,
     deleteListTarget: dialog.deleteListTarget,
     handleCreate: dialog.handleCreate, handleEdit: dialog.handleEdit,
@@ -105,6 +97,6 @@ export function useListsPage() {
     handleCreateOpenChange: dialog.handleCreateOpenChange,
     handleEditOpenChange: dialog.handleEditOpenChange,
     handleSave: mutations.handleSave, handleDelete: mutations.handleDelete,
-    handleRefreshLists, setDeleteListTargetId: dialog.setDeleteListTargetId,
+    setDeleteListTargetId: dialog.setDeleteListTargetId,
   }
 }

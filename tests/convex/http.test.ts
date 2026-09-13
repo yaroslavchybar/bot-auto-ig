@@ -50,7 +50,7 @@ test('maps list responses for authorized requests', async () => {
   expect(body).toEqual([{ id: list!._id, name: 'Leads' }])
 })
 
-test('parses snake_case profile payloads and maps the response back to Python fields', async () => {
+test('uses camelCase profile fields across the HTTP boundary', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
@@ -62,12 +62,12 @@ test('parses snake_case profile payloads and maps the response back to Python fi
     },
     body: JSON.stringify({
       name: 'Profile A',
-      session_id: 'session-1',
-      cookies_json: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
-      daily_scraping_limit: 25,
-      assigned_accounts_limit: 6,
-      test_ip: true,
-      proxy_type: 'http',
+      sessionId: 'session-1',
+      cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
+      dailyScrapingLimit: 25,
+      assignedAccountsLimit: 6,
+      testIp: true,
+      proxyType: 'http',
     }),
   })
   const body = await response.json()
@@ -75,13 +75,13 @@ test('parses snake_case profile payloads and maps the response back to Python fi
   expect(response.status).toBe(200)
   expect(body).toMatchObject({
     name: 'Profile A',
-    session_id: 'session-1',
-    cookies_json: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
-    daily_scraping_limit: 25,
-    assigned_accounts_limit: 6,
-    daily_scraping_used: 0,
-    test_ip: true,
-    proxy_type: 'http',
+    sessionId: 'session-1',
+    cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
+    dailyScrapingLimit: 25,
+    assignedAccountsLimit: 6,
+    dailyScrapingUsed: 0,
+    testIp: true,
+    proxyType: 'http',
   })
 })
 
@@ -113,7 +113,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     body: JSON.stringify({
       old_name: 'Profile Start',
       name: 'Profile Start',
-      fingerprint_os: 'windows',
+      fingerprintOs: 'windows',
     }),
   })
   const syncResponse = await t.fetch('/api/profiles/sync-status', {
@@ -133,8 +133,8 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
   expect(updateResponse.status).toBe(200)
   await expect(updateResponse.json()).resolves.toMatchObject({
     name: 'Profile Start',
-    fingerprint_os: 'windows',
-    assigned_accounts_limit: 10,
+    fingerprintOs: 'windows',
+    assignedAccountsLimit: 10,
   })
   expect(syncResponse.status).toBe(200)
   await expect(syncResponse.json()).resolves.toEqual({ ok: true })
@@ -163,7 +163,7 @@ test('omits cookies from list responses but includes them on profile detail resp
   const listBody = await listResponse.json()
 
   expect(listResponse.status).toBe(200)
-  expect(listBody[0]).not.toHaveProperty('cookies_json')
+  expect(listBody[0]).not.toHaveProperty('cookiesJson')
 
   const detailResponse = await t.fetch(`/api/profiles/by-id?profileId=${encodeURIComponent(String(profile!._id))}`, {
     method: 'GET',
@@ -173,9 +173,9 @@ test('omits cookies from list responses but includes them on profile detail resp
 
   expect(detailResponse.status).toBe(200)
   expect(detailBody).toMatchObject({
-    profile_id: profile!._id,
-    cookies_json: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
-    assigned_accounts_limit: 10,
+    id: profile!._id,
+    cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
+    assignedAccountsLimit: 10,
   })
 })
 
@@ -290,13 +290,6 @@ test('lists workflow artifacts and rejects the removed by-id route', async () =>
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
   const workflow = await seedWorkflow(t, { name: 'Workflow Artifact Host' })
-  const storageId = await t.run(async (ctx) =>
-    ctx.storage.store(
-      new Blob([JSON.stringify({ storageKind: 'export', users: [{ username: 'target-a' }] })], {
-        type: 'application/json',
-      }),
-    ),
-  )
   const artifact = await t.mutation(internal.workflowArtifacts.upsertInternal, {
     workflowId: workflow!._id,
     workflowName: workflow!.name,
@@ -305,7 +298,7 @@ test('lists workflow artifacts and rejects the removed by-id route', async () =>
     name: 'Task A',
     kind: 'followers',
     targets: ['target-a'],
-    storageId,
+    localArtifactPath: 'scrapes/test.json',
   })
 
   const listResponse = await t.fetch(

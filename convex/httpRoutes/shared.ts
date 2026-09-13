@@ -30,53 +30,14 @@ export class ValidationError extends HttpError {
 // Error Categorization
 // ═══════════════════════════════════════════════════════════════════
 
-const NOT_FOUND_PATTERNS = [
-  'not found',
-  'does not exist',
-  'no such',
-];
-
-const CONFLICT_PATTERNS = [
-  'already running',
-  'already finished',
-  'cannot update running',
-  'cannot delete running',
-  'cannot reset running',
-  'can only pause running',
-  'can only resume paused',
-  'can only retry failed',
-  'daily run limit',
-  'maximum retries',
-];
-
-const VALIDATION_PATTERNS = [
-  'required',
-  'invalid',
-  'must be',
-  'cannot be empty',
-  'too long',
-  'too short',
-];
-
 function categorizeError(err: unknown): { message: string; status: number } {
-  if (err instanceof HttpError) {
-    return { message: err.message, status: err.statusCode };
+  if (err instanceof HttpError) return { message: err.message, status: err.statusCode };
+  const data = err && typeof err === 'object' && 'data' in err ? err.data : null;
+  if (data && typeof data === 'object' && 'code' in data && 'message' in data) {
+    const statuses: Record<string, number> = { NOT_FOUND: 404, CONFLICT: 409, VALIDATION: 400 };
+    return { message: String(data.message), status: statuses[String(data.code)] ?? 500 };
   }
-
-  const message = String((err as any)?.message || err);
-  const lower = message.toLowerCase();
-
-  if (NOT_FOUND_PATTERNS.some((p) => lower.includes(p))) {
-    return { message, status: 404 };
-  }
-  if (CONFLICT_PATTERNS.some((p) => lower.includes(p))) {
-    return { message, status: 409 };
-  }
-  if (VALIDATION_PATTERNS.some((p) => lower.includes(p))) {
-    return { message, status: 400 };
-  }
-
-  return { message, status: 500 };
+  return { message: err instanceof Error ? err.message : 'Internal error', status: 500 };
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -143,55 +104,21 @@ export function toIso(ms: unknown): string | null {
 export async function parseBody(request: Request): Promise<Record<string, any>> {
   try {
     const body = await request.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ValidationError('JSON object is required');
     return body as Record<string, any>;
   } catch {
-    return {};
+    throw new ValidationError('Invalid JSON object');
   }
 }
 
 export function mapProfileToApi(
-  profile: any,
+  profile: import('../_generated/dataModel').Doc<'profiles'> | null,
   optionsOrIndex?: { includeCookies?: boolean } | number,
-): any {
-  if (!profile) return profile;
-  const options =
-    optionsOrIndex && typeof optionsOrIndex === 'object' && !Array.isArray(optionsOrIndex)
-      ? optionsOrIndex
-      : undefined;
-  const listIds = Array.isArray(profile.listIds)
-    ? profile.listIds.filter((id: unknown) => Boolean(id))
-    : [];
-  const mapped: Record<string, unknown> = {
-    profile_id: profile._id,
-    created_at: toIso(profile.createdAt),
-    name: profile.name,
-    proxy: profile.proxy ?? null,
-    proxy_type: profile.proxyType ?? null,
-    status: profile.status ?? null,
-    mode: profile.mode ?? null,
-    session_id: typeof profile.sessionId === 'string' ? profile.sessionId : null,
-    Using: Boolean(profile.using),
-    test_ip: Boolean(profile.testIp),
-    fingerprint_os: profile.fingerprintOs ?? null,
-    list_ids: listIds,
-    last_opened_at: toIso(profile.lastOpenedAt),
-    login: Boolean(profile.login),
-    daily_scraping_limit:
-      typeof profile.dailyScrapingLimit === 'number' ? profile.dailyScrapingLimit : null,
-    assigned_accounts_limit:
-      typeof profile.assignedAccountsLimit === 'number' ? profile.assignedAccountsLimit : 10,
-    daily_scraping_used:
-      typeof profile.dailyScrapingUsed === 'number' ? profile.dailyScrapingUsed : 0,
-    scrape_lease_owner:
-      typeof profile.scrapeLeaseOwner === 'string' ? profile.scrapeLeaseOwner : null,
-    scrape_lease_expires_at: toIso(profile.scrapeLeaseExpiresAt),
-    scrape_health: typeof profile.scrapeHealth === 'number' ? profile.scrapeHealth : 100,
-    last_scrape_failure_at: toIso(profile.lastScrapeFailureAt),
-  };
-  if (options?.includeCookies) {
-    mapped.cookies_json = typeof profile.cookiesJson === 'string' ? profile.cookiesJson : null;
-  }
-  return mapped;
+) {
+  if (!profile) return null;
+  const { _id, _creationTime, cookiesJson, ...fields } = profile;
+  const includeCookies = typeof optionsOrIndex === 'object' && optionsOrIndex.includeCookies;
+  return { ...fields, id: _id, ...(includeCookies ? { cookiesJson } : {}) };
 }
 
 export function mapAccountToApi(account: any): any {

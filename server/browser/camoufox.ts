@@ -41,9 +41,9 @@ function profilePath(name: string): string {
 }
 
 function storedCookies(profile: DbProfileRow): Cookie[] {
-  if (!profile.cookies_json) return []
+  if (!profile.cookiesJson) return []
   try {
-    const value = JSON.parse(profile.cookies_json)
+    const value = JSON.parse(profile.cookiesJson)
     const cookies = Array.isArray(value) ? value : value?.cookies
     return Array.isArray(cookies) ? cookies : []
   } catch {
@@ -63,12 +63,12 @@ async function saveSession(
   try {
     const cookies = await context.cookies()
     const id = sessionId(cookies)
-    if (!id && !profile.session_id && cookies.length === 0) return
+    if (!id && !profile.sessionId && cookies.length === 0) return
     stage = 'write cookies to database'
     await profilesUpdateByName(profile.name, {
       name: profile.name,
-      cookies_json: JSON.stringify(cookies),
-      session_id: id,
+      cookiesJson: JSON.stringify(cookies),
+      sessionId: id,
     })
   } catch {
     // Browser shutdown must not hide the original action error.
@@ -80,9 +80,9 @@ type SessionOptions = { headless?: boolean; display?: string; userAgent?: string
 
 function browserOptions(profile: DbProfileRow, profileDir: string, options: SessionOptions) {
   const targetOs =
-    profile.fingerprint_os === 'mac' || profile.fingerprint_os === 'macos'
+    profile.fingerprintOs === 'mac' || profile.fingerprintOs === 'macos'
       ? 'macos'
-      : profile.fingerprint_os === 'linux'
+      : profile.fingerprintOs === 'linux'
         ? 'linux'
         : 'windows'
   const fingerprintPath = path.join(profileDir, 'fingerprint.json')
@@ -122,7 +122,7 @@ function browserOptions(profile: DbProfileRow, profileDir: string, options: Sess
       )
     }
   }
-  const proxy = parseProxy(profile.proxy, profile.proxy_type)
+  const proxy = parseProxy(profile.proxy, profile.proxyType)
   const launchOptions: Record<string, unknown> = {
     headless: options.headless ?? false,
     // lifecycle.ts handles these signals and saves cookies before closing.
@@ -251,7 +251,7 @@ export async function openCamoufoxSession(
     const launchOptions = browserOptions(profile, profileDir, {
       ...options, display: display?.display ?? options.display,
     })
-    preparedProxy = await prepareBrowserProxy(parseProxy(profile.proxy, profile.proxy_type))
+    preparedProxy = await prepareBrowserProxy(parseProxy(profile.proxy, profile.proxyType))
     checkStartup()
     context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
     context.once('close', () => {
@@ -263,11 +263,11 @@ export async function openCamoufoxSession(
     checkStartup()
     const cookies = storedCookies(profile)
     if (cookies.length) await context.addCookies(cookies)
-    else if (profile.session_id)
+    else if (profile.sessionId)
       await context.addCookies([
         {
           name: 'sessionid',
-          value: profile.session_id,
+          value: profile.sessionId,
           domain: '.instagram.com',
           path: '/',
           secure: true,

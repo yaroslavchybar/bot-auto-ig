@@ -33,7 +33,6 @@ test('registers the expected daily cron jobs', async () => {
           autoUnsubscribe: 'instagramAccounts.autoUnsubscribe',
           assignAvailableAccountsDaily: 'instagramAccounts.assignAvailableAccountsDaily',
         },
-        workflows: { scheduling: { resetDailyRuns: 'workflows.scheduling.resetDailyRuns' } },
       },
     }
   })
@@ -44,7 +43,6 @@ test('registers the expected daily cron jobs', async () => {
     ['reset daily scraping', { hourUTC: 0, minuteUTC: 1 }, 'profiles.scraping.resetDailyScrapingUsed'],
     ['auto unsubscribe', { hourUTC: 3, minuteUTC: 0 }, 'instagramAccounts.autoUnsubscribe'],
     ['assign accounts', { hourUTC: 3, minuteUTC: 15 }, 'instagramAccounts.assignAvailableAccountsDaily'],
-    ['reset workflow daily runs', { hourUTC: 0, minuteUTC: 2 }, 'workflows.scheduling.resetDailyRuns'],
   ])
 })
 
@@ -84,25 +82,4 @@ describe('cron targets', () => {
     expect(updated?.status).toBe('unsubscribed')
   })
 
-  test('resets daily workflow run counters', async () => {
-    const t = createConvexTest()
-    const workflow = await insertDoc(t, 'workflows', {
-      name: 'Workflow A',
-      description: 'cron target',
-      nodes: [],
-      edges: [],
-      listIds: [],
-      status: 'idle',
-      isActive: true,
-      runsToday: 4,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    })
-
-    const result = await t.mutation(internal.workflows.scheduling.resetDailyRuns, {})
-    const updated = await t.run(async (ctx) => ctx.db.get(workflow!._id))
-
-    expect(result).toEqual({ reset: 1 })
-    expect(updated?.runsToday).toBe(0)
-  })
 })

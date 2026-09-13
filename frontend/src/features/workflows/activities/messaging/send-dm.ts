@@ -7,6 +7,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const sendDm: ActivityDefinition = {
   id: 'send_dm',
+  quickAdd: true,
+  pickerGroup: 'messaging',
+  keywords: ['message', 'dm', 'direct message', 'chat'],
   name: 'Send Messages',
   description: 'Send direct messages to assigned accounts',
   category: 'messaging',
@@ -123,5 +126,4 @@ export const sendDm: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'messaging.send_dm',
 }

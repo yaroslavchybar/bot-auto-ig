@@ -311,7 +311,9 @@ function MobileCardFooter({
           <span className="text-subtle-copy text-[10px] font-bold tracking-[0.18em] uppercase">
             {isActive ? 'Active' : hasSchedule ? 'Paused' : 'Setup'}
           </span>
-          <Switch
+          {!workflow.scheduleType || workflow.scheduleType === 'instant' ? (
+          <Button size="sm" variant="outline" disabled={workflow.status === 'running' || workflow.status === 'pending'} onClick={() => onToggleActive(workflow)}>Run now</Button>
+        ) : (<Switch
             checked={isActive}
             onCheckedChange={() => onToggleActive(workflow)}
             disabled={!canToggleActive}
@@ -323,7 +325,7 @@ function MobileCardFooter({
                   : 'Activate'
             }
             className="brand-switch"
-          />
+          />)}
         </div>
       </div>
       {!hasSchedule && (
@@ -371,7 +373,9 @@ function WorkflowDesktopRow({
   return (
     <TableRow className="border-line-soft border-b transition-colors hover:bg-panel-subtle">
       <TableCell onClick={(e) => e.stopPropagation()}>
-        <Switch
+        {!workflow.scheduleType || workflow.scheduleType === 'instant' ? (
+          <Button size="sm" variant="outline" disabled={workflow.status === 'running' || workflow.status === 'pending'} onClick={() => onToggleActive(workflow)}>Run now</Button>
+        ) : (<Switch
           checked={isActive}
           onCheckedChange={() => onToggleActive(workflow)}
           disabled={!canToggleActive}
@@ -383,7 +387,7 @@ function WorkflowDesktopRow({
                 : 'Activate'
           }
           className="brand-switch"
-        />
+        />)}
       </TableCell>
       <TableCell className="font-medium">
         <div className="flex flex-col">

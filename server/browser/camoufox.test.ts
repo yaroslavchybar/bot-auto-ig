@@ -64,8 +64,8 @@ test(`browser cleanup: ${scenario}`, () => {
         await new Promise(resolve => setTimeout(resolve, 10))
         assert.equal(closed, false, 'browser must stay open until persistence completes')
         assert.equal(name, 'test')
-        assert.deepEqual(JSON.parse(update.cookies_json), cookies)
-        assert.equal(update.session_id, 'test-session')
+        assert.deepEqual(JSON.parse(update.cookiesJson), cookies)
+        assert.equal(update.sessionId, 'test-session')
         events.push('saved')
       },
     }))

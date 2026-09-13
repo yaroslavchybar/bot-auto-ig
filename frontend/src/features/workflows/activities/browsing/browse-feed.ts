@@ -8,6 +8,9 @@ import type { ActivityDefinition } from '../types'
  */
 export const browseFeed: ActivityDefinition = {
   id: 'browse_feed',
+  quickAdd: true,
+  pickerGroup: 'browsing',
+  keywords: ['feed', 'scroll'],
   name: 'Feed Scroll',
   description: 'Scroll through home feed',
   category: 'browsing',
@@ -158,7 +161,6 @@ export const browseFeed: ActivityDefinition = {
   ],
 
   outputs: ['success', 'failure'],
-  handler: 'browsing.feed_scrolling',
 }
 
 

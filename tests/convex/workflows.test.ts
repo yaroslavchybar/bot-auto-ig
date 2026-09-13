@@ -9,6 +9,15 @@ import {
 } from '../../frontend/src/features/workflows/activities'
 import { validateWorkflowImport } from '../../frontend/src/features/workflows/utils/workflowImportExport'
 
+test('workflow get returns null for malformed route ids', async () => {
+  const t = createConvexTest()
+  const workflow = await seedWorkflow(t, { name: 'Workflow Get Check' })
+  expect(await t.query(api.workflows.queries.get, { id: String(workflow!._id) })).toMatchObject({
+    name: 'Workflow Get Check',
+  })
+  expect(await t.query(api.workflows.queries.get, { id: 'not-a-workflow-id' })).toBeNull()
+})
+
 test('fresh runs clear completed profile state while pending runs keep checkpoints', async () => {
   vi.useFakeTimers()
   vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })))
@@ -90,7 +99,7 @@ test('allows pending-running-paused-running transitions for active runs', async 
   expect(resumed?.status).toBe('running')
 })
 
-test('executes instant workflows through scheduler and mocked fetch boundaries', async () => {
+test('executes recurring workflows through scheduler and mocked fetch boundaries', async () => {
   vi.useFakeTimers()
 
   const t = createConvexTest()
@@ -106,7 +115,7 @@ test('executes instant workflows through scheduler and mocked fetch boundaries',
   const workflow = await seedWorkflow(t, {
     name: 'Workflow B',
     isActive: true,
-    scheduleType: 'instant',
+    scheduleType: 'daily',
     scheduleConfig: {},
   })
 
@@ -134,7 +143,7 @@ test('executes instant workflows through scheduler and mocked fetch boundaries',
   )
 })
 
-test('resets daily runs for active workflows', async () => {
+test('reads reset daily counters without a cron', async () => {
   const t = createConvexTest()
   await insertDoc(t, 'workflows', {
     name: 'Workflow C',
@@ -149,23 +158,14 @@ test('resets daily runs for active workflows', async () => {
     updatedAt: Date.now(),
   })
 
-  const result = await t.mutation(internal.workflows.scheduling.resetDailyRuns, {})
   const rows = await t.query(api.workflows.queries.list, {})
 
-  expect(result).toEqual({ reset: 1 })
   expect(rows[0]?.runsToday).toBe(0)
 })
 
 test('deleting a workflow also removes its stored artifacts', async () => {
   const t = createConvexTest()
   const workflow = await seedWorkflow(t, { name: 'Workflow Delete Cascade' })
-  const storageId = await t.run(async (ctx) =>
-    ctx.storage.store(
-      new Blob([JSON.stringify({ storageKind: 'export', users: [{ userName: 'user-delete' }] })], {
-        type: 'application/json',
-      }),
-    ),
-  )
 
   const artifact = await t.mutation(internal.workflowArtifacts.upsertInternal, {
     workflowId: workflow!._id,
@@ -173,19 +173,14 @@ test('deleting a workflow also removes its stored artifacts', async () => {
     nodeId: 'node-delete-cascade',
     kind: 'followers',
     targets: ['target-delete'],
-    storageId,
-    exportStorageId: storageId,
+    localArtifactPath: 'scrapes/test.json',
   })
 
   const removed = await t.mutation(api.workflows.mutations.remove, { id: workflow!._id })
   const artifactAfterDelete = await t.run((ctx) => ctx.db.get(artifact!._id))
-  const storageUrl = await t.query(internal.workflowArtifacts.getStorageUrlInternal, {
-    storageId,
-  })
 
   expect(removed).toBe(true)
   expect(artifactAfterDelete).toBeNull()
-  expect(storageUrl).toBeNull()
 })
 
 test('provides expanded default config for workflow activities', () => {
@@ -217,11 +212,13 @@ test('provides expanded default config for workflow activities', () => {
   })
 })
 
-test('normalizes legacy start browser cooldown keys into the new workflow shape', () => {
+test('preserves explicit start browser cooldown settings', () => {
   const normalized = normalizeActivityConfig('start_browser', {
     headlessMode: true,
-    profileReopenCooldown: 45,
-    messagingCooldown: 12,
+    profileReopenCooldownEnabled: true,
+    profileReopenCooldownMinutes: 45,
+    messagingCooldownEnabled: true,
+    messagingCooldownHours: 12,
   })
 
   expect(normalized).toMatchObject({
@@ -294,4 +291,34 @@ test('workflow import keeps expanded activity config payloads intact', () => {
     typing_delay_min_ms: 120,
     typing_delay_max_ms: 240,
   })
+})
+
+
+test('manual and scheduled runs enforce the same daily limit and avoid duplicate reservations', async () => {
+  const t = createConvexTest()
+  const workflow = await seedWorkflow(t, { status: 'completed', isActive: true, maxRunsPerDay: 1, runsToday: 1, lastRunAt: Date.now() })
+  await expect(t.mutation(internal.workflows.mutations.startInternal, { id: workflow!._id })).rejects.toThrow('Daily run limit')
+  expect(await t.mutation(internal.workflows.scheduling.executeScheduledWorkflow, { workflowId: workflow!._id })).toMatchObject({ success: false })
+  await t.run(ctx => ctx.db.patch(workflow!._id, { lastRunAt: Date.now() - 86400000 }))
+  const started = await t.mutation(internal.workflows.mutations.startInternal, { id: workflow!._id })
+  expect(started?.runsToday).toBe(1)
+  expect(await t.mutation(internal.workflows.scheduling.executeScheduledWorkflow, { workflowId: workflow!._id })).toMatchObject({ success: false })
+  expect((await t.run(ctx => ctx.db.get(workflow!._id)))?.runsToday).toBe(1)
+})
+
+test('instant workflows cannot become active schedules', async () => {
+  const t = createConvexTest()
+  const workflow = await seedWorkflow(t, { scheduleType: 'instant', scheduleConfig: {}, isActive: false })
+  await expect(t.mutation(api.workflows.scheduling.toggleActive, { id: workflow!._id })).rejects.toThrow('Run now')
+  expect((await t.run(ctx => ctx.db.get(workflow!._id)))?.isActive).toBe(false)
+})
+
+
+test('startup reconciliation preserves checkpoints and schedules while ending interrupted runs', async () => {
+  const t = createConvexTest()
+  const running = await seedWorkflow(t, { status: 'running', isActive: true, nodeStates: { saved: true } })
+  const pending = await seedWorkflow(t, { status: 'pending' })
+  expect(await t.mutation(internal.workflows.mutations.reconcileInterruptedInternal, {})).toEqual({ reconciled: 2 })
+  expect(await t.run(ctx => ctx.db.get(running!._id))).toMatchObject({ status: 'failed', isActive: true, nodeStates: { saved: true } })
+  expect((await t.run(ctx => ctx.db.get(pending!._id)))?.status).toBe('failed')
 })

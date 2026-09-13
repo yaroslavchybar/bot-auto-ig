@@ -79,7 +79,7 @@ function useListEditState(initialData: List | undefined, saving: boolean) {
 
   const handleToggle = (profileId: string) => {
     if (saving) return
-    const current = profiles.find((p) => p.profile_id === profileId)
+    const current = profiles.find((p) => p.id === profileId)
     if (!current) return
     setSelectionOverrides((prev) => ({ ...prev, [profileId]: !current.selected }))
   }
@@ -88,7 +88,7 @@ function useListEditState(initialData: List | undefined, saving: boolean) {
     () => profiles.filter((p) => {
       const q = searchQuery.trim().toLowerCase()
       if (!q) return true
-      return p.name.toLowerCase().includes(q) || p.profile_id.toLowerCase().includes(q)
+      return p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
     }),
     [profiles, searchQuery],
   )
@@ -105,8 +105,8 @@ function useListEditState(initialData: List | undefined, saving: boolean) {
     setSelectionOverrides((prev) => {
       const next = { ...prev }
       profiles.forEach((p) => {
-        if (!q || p.name.toLowerCase().includes(q) || p.profile_id.toLowerCase().includes(q)) {
-          next[p.profile_id] = nextSelected
+        if (!q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)) {
+          next[p.id] = nextSelected
         }
       })
       return next
@@ -138,8 +138,8 @@ function ListsEditForm({
   const handleSubmit = () => {
     const trimmed = state.name.trim()
     if (!trimmed) { state.setLocalError('Name is required'); return }
-    const addedIds = state.profiles.filter((p) => p.selected && !p.initialSelected).map((p) => p.profile_id)
-    const removedIds = state.profiles.filter((p) => !p.selected && p.initialSelected).map((p) => p.profile_id)
+    const addedIds = state.profiles.filter((p) => p.selected && !p.initialSelected).map((p) => p.id)
+    const removedIds = state.profiles.filter((p) => !p.selected && p.initialSelected).map((p) => p.id)
     state.setLocalError(null)
     onSave(trimmed, addedIds, removedIds)
   }
@@ -186,13 +186,13 @@ function useProfileRows(
           ? p.listIds.map((lid) => String(lid || '')).filter(Boolean) : []
         const selected = listIds.includes(initialData.id)
         return {
-          profile_id: id,
+          id: id,
           name: String(p.name || ''),
           selected: selectionOverrides[id] ?? selected,
           initialSelected: selected,
         }
       })
-      .filter((row) => Boolean(row.profile_id))
+      .filter((row) => Boolean(row.id))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [initialData, liveProfiles, selectionOverrides])
 }
@@ -300,8 +300,8 @@ function ProfileListBody({ profiles, filteredProfiles, loadingProfiles, onToggle
       <ScrollArea className="h-full">
         <div className="flex flex-col">
           {filteredProfiles.map((profile, index) => (
-            <button key={profile.profile_id} type="button"
-              onClick={() => onToggle(profile.profile_id)}
+            <button key={profile.id} type="button"
+              onClick={() => onToggle(profile.id)}
               className={cn(
                 'button-panel flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left',
                 index < filteredProfiles.length - 1 && 'border-line border-b',
@@ -337,12 +337,12 @@ function SelectedProfilesSidebar({ selectedProfiles, saving, onToggle }: {
           <ScrollArea className="h-full">
             <div className="space-y-2.5 p-2.5">
               {selectedProfiles.map((profile) => (
-                <div key={profile.profile_id}
+                <div key={profile.id}
                   className="border-line bg-panel-muted flex items-center justify-between gap-2 rounded-xl border px-3 py-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-ink truncate text-[13px] font-medium leading-tight">{profile.name}</p>
                   </div>
-                  <button type="button" onClick={() => onToggle(profile.profile_id)} disabled={saving}
+                  <button type="button" onClick={() => onToggle(profile.id)} disabled={saving}
                     className="button-ghost -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
                     aria-label={`Remove ${profile.name}`}>
                     <X className="h-3.5 w-3.5" />

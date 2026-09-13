@@ -1,3 +1,5 @@
+import { DomainError } from './errors';
+import type { Id } from './_generated/dataModel';
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
@@ -28,7 +30,7 @@ export const insert = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const userName = normalizeUserName(args.userName);
-		if (!userName) throw new Error("userName is required");
+		if (!userName) throw new DomainError('VALIDATION', "userName is required");
 		const existing = await ctx.db
 			.query("instagramAccounts")
 			.withIndex("by_userName", (q) => q.eq("userName", userName))
@@ -176,13 +178,13 @@ export const getProfilesWithAssignedAccounts = internalQuery({
 	handler: async (ctx, args) => {
 		const status = typeof args.status === "string" ? args.status : null;
 		const rows = await ctx.db.query("instagramAccounts").collect();
-		const profileIds = new Set<string>();
+		const profileIds = new Set<Id<"profiles">>();
 		for (const row of rows) {
 			if (!row.assignedTo) continue;
 			if (status !== null && row.status !== status) continue;
 			profileIds.add(row.assignedTo);
 		}
-		const profiles = await Promise.all(Array.from(profileIds).map((id) => ctx.db.get(id as any)));
+		const profiles = await Promise.all(Array.from(profileIds).map((id) => ctx.db.get(id)));
 		return profiles.filter(Boolean);
 	},
 });

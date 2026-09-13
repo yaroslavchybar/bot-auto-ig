@@ -61,7 +61,7 @@ function useProfileSearch(profiles: Profile[]) {
       const status = profile.using ? 'active' : (profile.status ?? 'idle')
       const fields = [
         profile.name, profile.id, profile.proxy,
-        profile.proxy_type, profile.fingerprint_os, status,
+        profile.proxyType, profile.fingerprintOs, status,
       ]
       return fields.some((field) =>
         String(field ?? '').toLowerCase().includes(query),
@@ -119,14 +119,14 @@ function useProfileSave(
       const payload = {
         name,
         proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
-        proxyType: typeof data.proxy_type === 'string' ? data.proxy_type.trim() : '',
-        fingerprintOs: data.fingerprint_os || undefined,
-        cookiesJson: typeof data.cookies_json === 'string' ? data.cookies_json.trim() : '',
-        testIp: Boolean(data.test_ip),
+        proxyType: typeof data.proxyType === 'string' ? data.proxyType.trim() : '',
+        fingerprintOs: data.fingerprintOs || undefined,
+        cookiesJson: typeof data.cookiesJson === 'string' ? data.cookiesJson.trim() : '',
+        testIp: Boolean(data.testIp),
         dailyScrapingLimit:
-          typeof data.daily_scraping_limit === 'number' ? data.daily_scraping_limit : null,
+          typeof data.dailyScrapingLimit === 'number' ? data.dailyScrapingLimit : null,
         assignedAccountsLimit:
-          typeof data.assigned_accounts_limit === 'number' ? data.assigned_accounts_limit : 10,
+          typeof data.assignedAccountsLimit === 'number' ? data.assignedAccountsLimit : 10,
       }
       if (dialogState.isCreateOpen) {
         await createProfile(payload)
@@ -219,7 +219,7 @@ function useProfilePageActions(
   const handleRefreshProfiles = useCallback(async () => {
     setRefreshing(true)
     try {
-      await Promise.all([refreshProfiles(), new Promise((resolve) => setTimeout(resolve, 300))])
+      await refreshProfiles()
     } finally {
       setRefreshing(false)
     }

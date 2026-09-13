@@ -7,7 +7,6 @@ import { formatDateTime, formatNumber, getArtifactRowCount, getArtifactTargets }
 interface ScrapedDataDetailsProps {
   artifact: WorkflowArtifact
   onDownloadData: (artifact: WorkflowArtifact) => void
-  onDownloadManifest: (artifact: WorkflowArtifact) => void
   onDelete: (artifact: WorkflowArtifact) => void
   onOpenWorkflow: (artifact: WorkflowArtifact) => void
 }
@@ -17,7 +16,6 @@ interface ScrapedDataDetailsProps {
 function ArtifactHeaderCard({
   artifact,
   onDownloadData,
-  onDownloadManifest,
   onDelete,
   onOpenWorkflow,
 }: ScrapedDataDetailsProps) {
@@ -51,14 +49,10 @@ function ArtifactHeaderCard({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button variant="outline" size="sm" onClick={() => onDownloadData(artifact)}
-          disabled={!artifact.exportStorageId && !artifact.storageId && (!artifact.localArtifactPath || !!artifact.localArtifactDeletedAt)}>
+          disabled={(!artifact.localArtifactPath || !!artifact.localArtifactDeletedAt)}>
           <Download className="mr-2 h-4 w-4" />Download Data
         </Button>
-        {artifact.manifestStorageId ? (
-          <Button variant="outline" size="sm" onClick={() => onDownloadManifest(artifact)}>
-            <Download className="mr-2 h-4 w-4" />Download Manifest
-          </Button>
-        ) : null}
+        
         <Button variant="outline" size="sm" onClick={() => onOpenWorkflow(artifact)}>
           <GitBranch className="mr-2 h-4 w-4" />Open Workflow
         </Button>
@@ -103,8 +97,7 @@ function ArtifactMetadataCard({ artifact }: { artifact: WorkflowArtifact }) {
     { label: 'Last Run', value: formatDateTime(artifact.lastRunAt) },
     { label: 'Created', value: formatDateTime(artifact.createdAt) },
     { label: 'Updated', value: formatDateTime(artifact.updatedAt) },
-    { label: 'Data File', value: artifact.exportStorageId || artifact.storageId || (artifact.localArtifactPath && !artifact.localArtifactDeletedAt) ? 'Available' : 'Missing' },
-    ...(artifact.manifestStorageId ? [{ label: 'Manifest File', value: 'Available' }] : []),
+    { label: 'Data File', value: (artifact.localArtifactPath && !artifact.localArtifactDeletedAt) ? 'Available' : 'Missing' },
   ]
 
   return (

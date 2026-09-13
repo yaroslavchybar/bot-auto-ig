@@ -73,24 +73,24 @@ function CookiesField({ draft, saving, setDraft, setLocalError }: FieldProps) {
       <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
         <div className="grid gap-1.5">
           <Label
-            htmlFor="cookies_json"
+            htmlFor="cookiesJson"
             className="text-muted-copy text-xs"
           >
             Cookies JSON
           </Label>
           <Textarea
-            id="cookies_json"
-            value={String(draft.cookies_json ?? '')}
+            id="cookiesJson"
+            value={String(draft.cookiesJson ?? '')}
             onChange={(e) => {
               setDraft((prev) => ({
                 ...prev,
-                cookies_json: e.target.value,
+                cookiesJson: e.target.value,
               }))
               setLocalError(null)
             }}
             onBlur={() => {
               const result = normalizeCookiesJsonForForm(
-                String(draft.cookies_json ?? ''),
+                String(draft.cookiesJson ?? ''),
               )
               if (result.error) {
                 setLocalError(result.error)
@@ -99,7 +99,7 @@ function CookiesField({ draft, saving, setDraft, setLocalError }: FieldProps) {
               setLocalError(null)
               setDraft((prev) => ({
                 ...prev,
-                cookies_json: result.normalized || undefined,
+                cookiesJson: result.normalized || undefined,
               }))
             }}
             disabled={saving}
@@ -187,14 +187,14 @@ function ProxyInputRow({
       <div className="flex rounded-md shadow-xs">
         <div className="relative">
           <Select
-            value={String(draft.proxy_type ?? 'http')}
+            value={String(draft.proxyType ?? 'http')}
             onValueChange={(value) =>
-              setDraft((prev) => ({ ...prev, proxy_type: value }))
+              setDraft((prev) => ({ ...prev, proxyType: value }))
             }
             disabled={saving}
           >
             <SelectTrigger
-              id="proxy_type"
+              id="proxyType"
               className="bg-panel-muted border-line h-9 w-[100px] rounded-r-none border-r-0 text-ink focus:ring-0 focus:ring-offset-0"
             >
               <SelectValue />
@@ -283,9 +283,9 @@ function FingerprintFields({
       </div>
       <div className="bg-panel-subtle border-line-soft space-y-4 rounded-md border p-4">
         <OsSelector
-          value={draft.fingerprint_os || 'windows'}
+          value={draft.fingerprintOs || 'windows'}
           saving={saving}
-          onChange={(value) => setDraft((prev) => ({ ...prev, fingerprint_os: value }))}
+          onChange={(value) => setDraft((prev) => ({ ...prev, fingerprintOs: value }))}
         />
       </div>
     </div>
@@ -313,22 +313,22 @@ function DailyLimitField({
       <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
         <div className="grid gap-1.5">
           <Label
-            htmlFor="daily_scraping_limit"
+            htmlFor="dailyScrapingLimit"
             className="text-muted-copy text-xs"
           >
             Maximum items to scrape per day
           </Label>
           <Input
-            id="daily_scraping_limit"
+            id="dailyScrapingLimit"
             type="number"
             min="0"
             step="1"
-            value={draft.daily_scraping_limit ?? ''}
+            value={draft.dailyScrapingLimit ?? ''}
             onChange={(e) => {
               const val = e.target.value.trim()
               setDraft((prev) => ({
                 ...prev,
-                daily_scraping_limit:
+                dailyScrapingLimit:
                   val === ''
                     ? null
                     : Math.max(0, Math.floor(Number(val))),
@@ -343,17 +343,17 @@ function DailyLimitField({
             contribute each day. Leave empty for no limit.
           </p>
         </div>
-        {typeof draft.daily_scraping_used === 'number' &&
-          draft.daily_scraping_used > 0 && (
+        {typeof draft.dailyScrapingUsed === 'number' &&
+          draft.dailyScrapingUsed > 0 && (
             <div className="bg-panel-muted border-line-soft rounded-sm border p-2 text-xs">
               <span className="text-subtle-copy">Used today: </span>
               <span className="text-ink font-semibold">
-                {draft.daily_scraping_used}
+                {draft.dailyScrapingUsed}
               </span>
-              {typeof draft.daily_scraping_limit === 'number' && (
+              {typeof draft.dailyScrapingLimit === 'number' && (
                 <span className="text-subtle-copy">
                   {' '}
-                  / {draft.daily_scraping_limit}
+                  / {draft.dailyScrapingLimit}
                 </span>
               )}
             </div>
@@ -382,22 +382,22 @@ function AssignedAccountsLimitField({
       <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
         <div className="grid gap-1.5">
           <Label
-            htmlFor="assigned_accounts_limit"
+            htmlFor="assignedAccountsLimit"
             className="text-muted-copy text-xs"
           >
             Maximum assigned accounts for this profile
           </Label>
           <Input
-            id="assigned_accounts_limit"
+            id="assignedAccountsLimit"
             type="number"
             min="0"
             step="1"
-            value={draft.assigned_accounts_limit ?? ''}
+            value={draft.assignedAccountsLimit ?? ''}
             onChange={(e) => {
               const val = e.target.value.trim()
               setDraft((prev) => ({
                 ...prev,
-                assigned_accounts_limit:
+                assignedAccountsLimit:
                   val === ''
                     ? null
                     : Math.max(0, Math.floor(Number(val))),
@@ -471,13 +471,13 @@ export function ProfileForm({
 }: ProfileFormProps) {
   const [draft, setDraft] = useState<Partial<Profile>>(() => ({
     name: '',
-    test_ip: false,
+    testIp: false,
     login: false,
     using: false,
     status: 'idle',
-    proxy_type: 'http',
-    fingerprint_os: 'windows',
-    assigned_accounts_limit: 10,
+    proxyType: 'http',
+    fingerprintOs: 'windows',
+    assignedAccountsLimit: 10,
     ...initialData,
   }))
 
@@ -496,24 +496,24 @@ export function ProfileForm({
     const finalData = {
       ...draft,
       name,
-      assigned_accounts_limit:
-        typeof draft.assigned_accounts_limit === 'number'
-          ? Math.max(0, Math.floor(draft.assigned_accounts_limit))
+      assignedAccountsLimit:
+        typeof draft.assignedAccountsLimit === 'number'
+          ? Math.max(0, Math.floor(draft.assignedAccountsLimit))
           : 10,
     }
     const normalizedCookies = normalizeCookiesJsonForForm(
-      String(finalData.cookies_json ?? ''),
+      String(finalData.cookiesJson ?? ''),
     )
     if (normalizedCookies.error) { setLocalError(normalizedCookies.error); return }
-    finalData.cookies_json = normalizedCookies.normalized || undefined
+    finalData.cookiesJson = normalizedCookies.normalized || undefined
     if (connection === 'proxy' && finalData.proxy) {
-      const pType = finalData.proxy_type || 'http'
+      const pType = finalData.proxyType || 'http'
       let pVal = finalData.proxy
       if (pVal.includes('://')) pVal = pVal.split('://')[1]!
       finalData.proxy = `${pType}://${pVal}`
     } else if (connection === 'direct') {
       finalData.proxy = ''
-      finalData.proxy_type = ''
+      finalData.proxyType = ''
     }
     setLocalError(null)
     onSave(finalData)

@@ -8,7 +8,7 @@ test('retry skips completed profiles without launching or changing their status'
   let launches = 0
   globalThis.fetch = (async url => {
     assert.ok(String(url).endsWith('/api/profiles'))
-    return Response.json([{ name: 'done', profile_id: 'done', list_ids: ['chosen'], login: true, Using: false }])
+    return Response.json([{ name: 'done', id: 'done', listIds: ['chosen'], login: true, using: false }])
   }) as typeof fetch
   try {
     await runWorkflow({ workflow: {
@@ -21,7 +21,7 @@ test('retry skips completed profiles without launching or changing their status'
 
 test('close then start replaces the browser and final cleanup closes the replacement', async () => {
   const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', profile_id: 'chosen', list_ids: ['chosen'], login: true, Using: false }
+  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], login: true, using: false }
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   const sessions: Array<{ closed: boolean; visits: number }> = []
   try {
@@ -51,17 +51,17 @@ test('workflow action failures reject the run and close the browser', async () =
       return Response.json([
         {
           name: 'excluded',
-          profile_id: 'other',
-          list_ids: ['other'],
+          id: 'other',
+          listIds: ['other'],
           login: true,
-          Using: false,
+          using: false,
         },
         {
           name: 'chosen',
-          profile_id: 'chosen',
-          list_ids: ['chosen'],
+          id: 'chosen',
+          listIds: ['chosen'],
           login: true,
-          Using: false,
+          using: false,
         },
       ])
     assert.match(String(url), /sync-status$/)
@@ -119,10 +119,10 @@ test('browser startup failures never clear another session’s busy status', asy
     return Response.json([
       {
         name: 'chosen',
-        profile_id: 'chosen',
-        list_ids: ['chosen'],
+        id: 'chosen',
+        listIds: ['chosen'],
         login: true,
-        Using: false,
+        using: false,
       },
     ])
   }) as typeof fetch

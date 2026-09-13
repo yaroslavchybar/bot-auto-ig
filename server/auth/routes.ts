@@ -20,7 +20,6 @@ import {
     sessionCookie,
     signSession,
     verifySession,
-    verifyTelegramLogin,
     type TelegramUser,
 } from './telegram.js'
 import logger from '../shared/logger.js'
@@ -35,24 +34,6 @@ authRouter.get('/config', (_req: Request, res: Response) => {
         isConfigured: isTelegramConfigured(),
         isDevLoginEnabled: isDevLoginEnabled(),
     })
-})
-
-authRouter.post('/login', (req: Request, res: Response) => {
-    const body = (req.body || {}) as Record<string, unknown>
-    const result = verifyTelegramLogin(body)
-
-    if (!result.ok) {
-        res.status(401).json({ error: result.error })
-        return
-    }
-
-    if (!isAdminTelegramId(result.user.id)) {
-        logger.warn({ telegramId: result.user.id }, 'Non-admin Telegram login rejected')
-        res.status(403).json({ error: 'Access is restricted to the admin.' })
-        return
-    }
-
-    issueSession(res, result.user)
 })
 
 // App-open login (same as igscrape): mint a single-use token, jump straight

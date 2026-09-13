@@ -14,9 +14,6 @@ export type WorkflowArtifact = {
   imported?: boolean
   sourceProfileName?: string | null
   lastRunAt?: number | null
-  storageId?: Id<'_storage'> | null
-  manifestStorageId?: Id<'_storage'> | null
-  exportStorageId?: Id<'_storage'> | null
   localArtifactPath?: string | null
   localArtifactDeletedAt?: number | null
   stats?: {

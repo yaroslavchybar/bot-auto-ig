@@ -239,12 +239,12 @@ export async function scrapeRelationships(input: {
         do {
           shutdownSignal.throwIfAborted()
           const remaining =
-            profile.daily_scraping_limit == null
+            profile.dailyScrapingLimit == null
               ? Infinity
               : Math.max(
                   0,
-                  profile.daily_scraping_limit -
-                    (profile.daily_scraping_used || 0),
+                  profile.dailyScrapingLimit -
+                    (profile.dailyScrapingUsed || 0),
                 )
           if (remaining === 0)
             throw new Error('Profile daily scraping limit reached')
@@ -322,8 +322,8 @@ export async function scrapeRelationships(input: {
           // Deduped means a previous attempt already charged this chunk and
           // the reloaded profile already includes it; do not count twice.
           if (quotaApplied)
-            profile.daily_scraping_used =
-              (profile.daily_scraping_used || 0) + users.length
+            profile.dailyScrapingUsed =
+              (profile.dailyScrapingUsed || 0) + users.length
           // Commit the chunk first. A crash before the checkpoint leaves an ignored
           // chunk which is safely replaced when this cursor is retried.
           const chunkFile = path.join(chunkRoot, `${progress.chunks}.json`)

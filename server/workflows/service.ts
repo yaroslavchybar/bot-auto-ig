@@ -117,12 +117,7 @@ function buildPayload(workflowId: string, workflow: any, parallelProfiles?: numb
       nodeStates: workflow.nodeStates ?? {},
       currentNodeId: workflow.currentNodeId ?? null,
     },
-    options: {
-      ...(parallelProfiles === undefined ? {} : { parallel_profiles: parallelProfiles }),
-      node_states: workflow.nodeStates ?? {},
-      current_node_id: workflow.currentNodeId ?? null,
-      workflow_name: workflow.name,
-    },
+    parallelProfiles,
   })
 }
 
@@ -132,8 +127,8 @@ async function handleStatusEvent(
 ): Promise<void> {
   const meta = log.metadata || {}
   const eventType = log.eventType
-  const nextNodeStates = meta.node_states ?? meta.nodeStates
-  const nextCurrentNodeId = meta.node_id ?? meta.nodeId
+  const nextNodeStates = meta.nodeStates
+  const nextCurrentNodeId = meta.nodeId
   const terminal = eventType === 'session_ended'
   if (terminal) clearWorkflowProfileActive(workflowId)
   await workflowsUpdateStatus({
@@ -148,12 +143,12 @@ async function handleStatusEvent(
 function handleDisplayEvent(workflowId: string, log: any): void {
   const meta = (log?.metadata as any) || {}
   const eventType = String(log?.eventType || '')
-  const profileName = String(meta.profile ?? meta.profileName ?? '').trim()
+  const profileName = String(meta.profileName ?? '').trim()
   const key = profileName ? displayKey(workflowId, profileName) : null
 
   if (eventType === 'display_allocated' && key) {
-    const vncPort = Number(meta.vnc_port ?? meta.vncPort)
-    const displayNum = Number(meta.display_num ?? meta.displayNum)
+    const vncPort = Number(meta.vncPort)
+    const displayNum = Number(meta.displayNum)
     if (!Number.isFinite(vncPort) || !Number.isFinite(displayNum)) return
     activeDisplays.set(key, {
       workflowId,
@@ -186,7 +181,7 @@ function wireStdout(
       const stopRequested = Boolean((proc as any).__stopRequested)
       if (stopRequested && isStopNoiseLog(log?.message)) continue
       if (log.eventType === 'profile_started' || log.eventType === 'profile_completed') {
-        const name = String(log.metadata?.profile || '')
+        const name = String(log.metadata?.profileName || '')
         if (log.eventType === 'profile_started') {
           currentProfile.value = name
           if (name) markWorkflowProfileActive(workflowId, name)
@@ -199,7 +194,6 @@ function wireStdout(
         if (log.eventType === 'checkpoint') lastCheckpoint = log.metadata
         if (
           log.eventType === 'session_ended' &&
-          log.metadata?.node_states == null &&
           log.metadata?.nodeStates == null &&
           lastCheckpoint
         ) {
@@ -209,7 +203,7 @@ function wireStdout(
       }
       if (log.eventType === 'checkpoint') continue
       handleDisplayEvent(workflowId, log)
-      const { node_states, nodeStates, ...uiMetadata } = log.metadata || {}
+      const { nodeStates, ...uiMetadata } = log.metadata || {}
       broadcast({
         workflowId,
         type: log.eventType ? log.eventType : 'log',

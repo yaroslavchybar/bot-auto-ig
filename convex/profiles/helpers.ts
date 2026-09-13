@@ -1,3 +1,4 @@
+import { DomainError } from '../errors';
 export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	const s = typeof proxy === "string" ? proxy.trim() : "";
 	return s ? "proxy" : "direct";
@@ -59,7 +60,7 @@ export async function incrementDailyScrapingUsedByName(
 	commitKeyRaw?: unknown,
 ) {
 	const cleanedName = String(name || "").trim();
-	if (!cleanedName) throw new Error("name is required");
+	if (!cleanedName) throw new DomainError('VALIDATION', "name is required");
 	const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
 	if (amount === 0) return true;
 	// Idempotency key ties one quota charge to one durable chunk commit.
@@ -72,7 +73,7 @@ export async function incrementDailyScrapingUsedByName(
 			.first();
 		if (seen) {
 			if (seen.profileName !== cleanedName || seen.amount !== amount) {
-				throw new Error("commitKey was reused with different charge data");
+				throw new DomainError('VALIDATION', "commitKey was reused with different charge data");
 			}
 			return false;
 		}
@@ -136,7 +137,7 @@ export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 
 export async function createProfileRow(ctx: any, args: any) {
 	const name = String(args.name || "").trim();
-	if (!name) throw new Error("name is required");
+	if (!name) throw new DomainError('VALIDATION', "name is required");
 	const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 	const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
@@ -161,25 +162,21 @@ export async function createProfileRow(ctx: any, args: any) {
 		dailyScrapingLimit: dailyLimit,
 		assignedAccountsLimit,
 		dailyScrapingUsed: 0,
-		scrapeLeaseOwner: undefined,
-		scrapeLeaseExpiresAt: undefined,
-		scrapeHealth: 100,
-		lastScrapeFailureAt: undefined,
 	});
 	return normalizeProfileRow(await ctx.db.get(id));
 }
 
 export async function updateProfileByNameRow(ctx: any, args: any) {
 	const oldClean = String(args.oldName || "").trim();
-	if (!oldClean) throw new Error("old_name is required");
+	if (!oldClean) throw new DomainError('VALIDATION', "old_name is required");
 	const existing = await ctx.db
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", oldClean))
 		.first();
-	if (!existing) throw new Error("Profile not found");
+	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
 
 	const name = String(args.name || "").trim();
-	if (!name) throw new Error("name is required");
+	if (!name) throw new DomainError('VALIDATION', "name is required");
 
 	const next: Record<string, unknown> = { name };
 
@@ -220,9 +217,9 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 
 export async function updateProfileByIdRow(ctx: any, args: any) {
 	const name = String(args.name || "").trim();
-	if (!name) throw new Error("name is required");
+	if (!name) throw new DomainError('VALIDATION', "name is required");
 	const existing = await ctx.db.get(args.profileId);
-	if (!existing) throw new Error("Profile not found");
+	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
 
 	const next: Record<string, unknown> = { name };
 
@@ -263,7 +260,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 
 export async function removeProfileByNameRow(ctx: any, name: string) {
 	const cleaned = String(name || "").trim();
-	if (!cleaned) throw new Error("name is required");
+	if (!cleaned) throw new DomainError('VALIDATION', "name is required");
 	const existing = await ctx.db
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
@@ -293,7 +290,7 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
 export async function syncProfileStatusRow(ctx: any, name: string, status: string, using?: boolean) {
 	const cleanedName = String(name || "").trim();
 	const cleanedStatus = String(status || "").trim();
-	if (!cleanedName || !cleanedStatus) throw new Error("name and status are required");
+	if (!cleanedName || !cleanedStatus) throw new DomainError('VALIDATION', "name and status are required");
 	const existing = await ctx.db
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
@@ -309,7 +306,7 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 
 export async function setProfileLoginTrueRow(ctx: any, name: string) {
 	const cleanedName = String(name || "").trim();
-	if (!cleanedName) throw new Error("name is required");
+	if (!cleanedName) throw new DomainError('VALIDATION', "name is required");
 	const existing = await ctx.db
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))

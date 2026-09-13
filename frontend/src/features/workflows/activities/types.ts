@@ -1,3 +1,4 @@
+import type { ActivityId } from '../../../../../server/shared/contracts'
 /**
  * Activity Types
  *
@@ -65,7 +66,7 @@ export type ActivityOutput =
 
 // Full definition of an activity
 export interface ActivityDefinition {
-  id: string // Unique ID (e.g., 'browse_feed')
+  id: ActivityId // Unique ID (e.g., 'browse_feed')
   name: string // Display name (e.g., 'Browse Feed')
   description: string // What this activity does
   category: ActivityCategory
@@ -73,7 +74,6 @@ export interface ActivityDefinition {
   color: string // Hex color for the node
   inputs: ActivityInput[] // Configuration inputs
   outputs: ActivityOutput[] // Output handles for connections
-  handler: string // TypeScript activity handler identifier
   quickAdd?: boolean // Whether to feature this activity in quick-add menus
   keywords?: string[] // Search helpers for the block library
   pickerGroup?: string // Optional grouping hint for picker presentation
