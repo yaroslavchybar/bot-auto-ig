@@ -1,0 +1,5 @@
+# Copied to ~/caddy/conf.d/ by CI on every deploy, then `caddy reload`.
+# Requires DNS: bot.famezy.online -> VPS (Caddy issues HTTPS).
+bot.famezy.online {
+	reverse_proxy 127.0.0.1:3101
+}

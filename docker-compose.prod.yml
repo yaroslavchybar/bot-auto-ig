@@ -1,0 +1,40 @@
+# Production compose for the VPS (~/ig-bot/app). Only replaced via GitHub
+# Actions (.github/workflows/deploy.yml) — never deploy by hand.
+#
+# Images are built in CI and pulled from GHCR. Runtime state lives in
+# /home/alwyzon/ig-bot/data (outside the app dir, which CI wipes on every
+# deploy). Only the frontend port is published, on localhost: public traffic
+# enters through Caddy (HTTPS).
+services:
+  server:
+    image: ghcr.io/yaroslavchybar/bot-auto-ig:server
+    container_name: ig-bot-server
+    restart: unless-stopped
+    # Written by CI from GitHub secrets on every deploy.
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      SERVER_PORT: 3001
+      DISPLAY: :99
+    volumes:
+      - /home/alwyzon/ig-bot/data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  frontend:
+    image: ghcr.io/yaroslavchybar/bot-auto-ig:frontend
+    container_name: ig-bot-frontend
+    restart: unless-stopped
+    ports:
+      # Localhost only: public traffic enters through Caddy (HTTPS).
+      - "127.0.0.1:3101:80"
+    depends_on:
+      - server
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
