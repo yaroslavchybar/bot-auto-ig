@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Camoufox } from 'camoufox-js'
 import { FingerprintGenerator, type Fingerprint } from 'fingerprint-generator'
-import { parseProxy, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
+import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
 import { shutdownSignal } from './lifecycle.js'
 import { acquireBrowserSlot } from './budget.js'
 import { prepareBrowserProxy } from './proxy.js'
@@ -253,7 +253,11 @@ export async function openCamoufoxSession(
     })
     preparedProxy = await prepareBrowserProxy(parseProxy(profile.proxy, profile.proxyType))
     checkStartup()
-    context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
+    try {
+      context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
+    } catch (error) {
+      throw describeProxyLaunchError(profile.name, parseProxy(profile.proxy, profile.proxyType), error)
+    }
     context.once('close', () => {
       browserClosed = true
       requestClose()

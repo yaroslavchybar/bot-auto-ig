@@ -5,6 +5,7 @@
 		"target": "ESNext",
 		"sourceMap": true,
 		"outDir": "dist",
+		"rootDir": "server",
 		"strict": true,
 		"jsx": "react-jsx",
 		"esModuleInterop": true,

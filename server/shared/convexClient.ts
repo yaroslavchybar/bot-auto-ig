@@ -4,12 +4,12 @@ import type { ProfileRecord } from './contracts.js';
  */
 import '../env.js';
 
-const convexCloudUrl = process.env.CONVEX_URL;
+const convexCloudUrl = process.env.CONVEX_URL?.trim() || process.env.VITE_CONVEX_URL?.trim();
 // Use INTERNAL_API_KEY to call Convex HTTP endpoints (same key as CONVEX_API_KEY in Convex Dashboard)
 const convexApiKey = process.env.INTERNAL_API_KEY?.trim() || '';
 
 if (!convexCloudUrl) {
-    throw new Error('Convex config missing. Set CONVEX_URL in environment.');
+    throw new Error('Convex config missing. Set CONVEX_URL (or VITE_CONVEX_URL) in environment.');
 }
 
 if (!convexApiKey) {
