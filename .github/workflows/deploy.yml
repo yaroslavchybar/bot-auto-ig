@@ -6,8 +6,8 @@
 # GHCR) -> VPS (pull + up + Caddy reload). Each step runs only if the
 # previous one succeeded.
 #
-# Required GitHub secrets: CONVEX_DEPLOY_KEY, VPS_SSH_KEY, CONVEX_URL,
-# INTERNAL_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME,
+# Required GitHub secrets: CONVEX_DEPLOY_KEY, VPS_SSH_KEY, VPS_KNOWN_HOSTS,
+# CONVEX_URL, INTERNAL_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME,
 # TELEGRAM_ADMIN_ID.
 # Required GitHub vars: VPS_HOST, VPS_USER, APP_PUBLIC_URL, VITE_API_URL,
 # VITE_CONVEX_URL.
@@ -67,6 +67,15 @@ jobs:
 
   build-images:
     needs: [verify, changes, deploy-convex]
+    # Serialize image pushes + VPS deploys: concurrent pushes to main
+    # otherwise race (one run's `rm -rf ~/ig-bot/app` deletes the cwd of
+    # another run's deploy shell, which fails with
+    # `getwd: no such file or directory`). Images are tagged immutably
+    # per commit below, so a queued run can never deploy another run's
+    # images.
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
     # Runs when Convex deployed OR was skipped (no convex/ changes).
     # `always()` is needed so a skipped deploy-convex doesn't skip this.
     if: ${{ always() && github.event_name == 'push' && needs.verify.result == 'success' && needs.changes.result == 'success' && (needs.deploy-convex.result == 'success' || needs.deploy-convex.result == 'skipped') }}
@@ -108,7 +117,9 @@ jobs:
             repo_root=.
           pull: true
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}
+          # Immutable per-commit tag: deploy-vps pulls this exact revision,
+          # so a queued run can never mix or replace these images.
+          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -124,7 +135,7 @@ jobs:
             convex_src=./convex
           pull: true
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}
+          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
@@ -133,6 +144,11 @@ jobs:
 
   deploy-vps:
     needs: [verify, changes, deploy-convex, build-images]
+    # Same group as build-images: only one prod deploy touches the VPS
+    # at a time.
+    concurrency:
+      group: prod-deploy
+      cancel-in-progress: false
     if: ${{ always() && github.event_name == 'push' && needs.verify.result == 'success' && needs.changes.result == 'success' && (needs.deploy-convex.result == 'success' || needs.deploy-convex.result == 'skipped') && needs.build-images.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
@@ -143,11 +159,24 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/ci-key
           chmod 600 ~/.ssh/ci-key
-          ssh-keyscan -H ${{ vars.VPS_HOST }} >> ~/.ssh/known_hosts
+          # Pinned VPS host key (repo secret VPS_KNOWN_HOSTS). Never
+          # ssh-keyscan here: it trusts whatever the network returns, so a
+          # MITM could impersonate the VPS and harvest the .env secrets
+          # sent over the session below.
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          test -s ~/.ssh/known_hosts
 
       - name: Ship code
         run: |
-          git archive HEAD | ssh -i ~/.ssh/ci-key -o BatchMode=yes ${{ vars.VPS_USER }}@${{ vars.VPS_HOST }} 'rm -rf ~/ig-bot/app && mkdir -p ~/ig-bot/app && tar -x -C ~/ig-bot/app'
+          git archive HEAD | ssh -i ~/.ssh/ci-key -o BatchMode=yes ${{ vars.VPS_USER }}@${{ vars.VPS_HOST }} 'set -e
+          rm -rf ~/ig-bot/app.new
+          mkdir -p ~/ig-bot/app.new
+          tar -x -C ~/ig-bot/app.new
+          rm -rf ~/ig-bot/app.prev
+          if [ -e ~/ig-bot/app ]; then mv ~/ig-bot/app ~/ig-bot/app.prev; fi
+          mv ~/ig-bot/app.new ~/ig-bot/app
+          rm -rf ~/ig-bot/app.prev'
 
       - name: Deploy on VPS
         run: |
@@ -157,6 +186,9 @@ jobs:
           # Fresh prod env every deploy. Dev login stays off in prod.
           cat > .env <<ENV
           NODE_ENV=production
+          # Immutable image revision built above; Compose interpolates it
+          # into the :server-<sha> / :frontend-<sha> image tags.
+          IMAGE_TAG=${{ github.sha }}
           SERVER_PORT=3001
           DISPLAY=:99
           ALLOWED_ORIGINS=${{ vars.APP_PUBLIC_URL }}

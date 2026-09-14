@@ -237,7 +237,7 @@ function useProfilePageActions(
       const fullProfile = await convex.query(api.profiles.queries.getById, {
         profileId: profile.id as Id<'profiles'>,
       })
-      dialogState.setEditProfile(fullProfile ? mapProfileRecord(fullProfile) : null)
+      dialogState.setEditProfile(fullProfile ? mapProfileRecord(fullProfile, { includeCookies: true }) : null)
     } catch (e) {
       handleError(e, 'Load profile')
     } finally {

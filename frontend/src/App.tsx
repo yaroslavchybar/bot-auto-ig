@@ -10,7 +10,6 @@ import { addNavigationBreadcrumb } from '@/lib/sentry'
 import { cn } from '@/lib/utils'
 import {
   matchRoute,
-  Navigate,
   RouterProvider,
   useLocation,
   type RouteMeta,
@@ -75,10 +74,8 @@ function Routes() {
     }
   }, [pathname])
 
-  if (pathname === '/') {
-    return <Navigate to="/profiles" replace />
-  }
-
+  // Note: '/' is canonicalized to '/profiles' in readLocation, so no
+  // redirect handling is needed here.
   const match = matchRoute(pathname)
   if (!match?.meta) {
     return <NotFoundView />

@@ -1,13 +1,15 @@
 # Production compose for the VPS (~/ig-bot/app). Only replaced via GitHub
 # Actions (.github/workflows/deploy.yml) — never deploy by hand.
 #
-# Images are built in CI and pulled from GHCR. Runtime state lives in
-# /home/alwyzon/ig-bot/data (outside the app dir, which CI wipes on every
-# deploy). Only the frontend port is published, on localhost: public traffic
-# enters through Caddy (HTTPS).
+# Images are built in CI and pulled from GHCR, tagged immutably per
+# commit (:server-<sha> / :frontend-<sha>). IMAGE_TAG is written into .env
+# by the deploy workflow, which Compose reads for interpolation.
+# Runtime state lives in /home/alwyzon/ig-bot/data (outside the app dir,
+# which CI wipes on every deploy). Only the frontend port is published, on
+# localhost: public traffic enters through Caddy (HTTPS).
 services:
   server:
-    image: ghcr.io/yaroslavchybar/bot-auto-ig:server
+    image: ghcr.io/yaroslavchybar/bot-auto-ig:server-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-server
     restart: unless-stopped
     # Written by CI from GitHub secrets on every deploy.
@@ -25,7 +27,7 @@ services:
         max-file: "3"
 
   frontend:
-    image: ghcr.io/yaroslavchybar/bot-auto-ig:frontend
+    image: ghcr.io/yaroslavchybar/bot-auto-ig:frontend-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-frontend
     restart: unless-stopped
     ports:

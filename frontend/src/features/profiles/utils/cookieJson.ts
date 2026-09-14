@@ -1,3 +1,9 @@
+/** Default domain for cookies pasted without one. This app only
+ * automates Instagram, and Playwright requires a url or domain+path
+ * to set a cookie - so domain-less input gets .instagram.com. The
+ * normalized result shown in the form always makes this explicit. */
+const DEFAULT_COOKIE_DOMAIN = '.instagram.com'
+
 type CookieShape = {
   name: string
   value: string
@@ -22,7 +28,69 @@ function extractCookieList(input: unknown): unknown[] {
   if (Array.isArray(input.cookie)) return input.cookie
   if (isRecord(input.data) && Array.isArray(input.data.cookies))
     return input.data.cookies
+  // A single cookie object, e.g. {"name":"sessionid",...}
+  if (typeof input.name === 'string') return [input]
   throw new Error('Cookies JSON must be an array or include a cookies array')
+}
+
+/**
+ * Parses Netscape cookies.txt format (tab-separated lines as exported by
+ * "Get cookies.txt" style extensions and curl):
+ *   [#HttpOnly_]domain \t subdomains \t path \t secure \t expires \t name \t value
+ * Returns null when the text is not in this format.
+ */
+function parseNetscapeCookies(text: string): unknown[] | null {
+  if (!text.includes('\t')) return null
+  const list: unknown[] = []
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed) continue
+    let httpOnly = false
+    let body = trimmed
+    if (body.startsWith('#HttpOnly_')) {
+      httpOnly = true
+      body = body.slice('#HttpOnly_'.length)
+    } else if (body.startsWith('#')) {
+      continue
+    }
+    const fields = body.split('\t')
+    if (fields.length < 6 || !fields[5]?.trim()) return null
+    const expires = Number(fields[4])
+    list.push({
+      domain: fields[0]?.trim(),
+      path: fields[2]?.trim() || '/',
+      secure: fields[3]?.trim().toUpperCase() === 'TRUE',
+      ...(Number.isFinite(expires) && expires > 0 ? { expires } : {}),
+      name: fields[5]?.trim(),
+      value: (fields[6] ?? '').trim(),
+      ...(httpOnly ? { httpOnly: true } : {}),
+    })
+  }
+  return list.length > 0 ? list : null
+}
+
+const COOKIE_PAIR_NAME_PATTERN = /^[^\s;,\\"/]+$/
+
+/**
+ * Parses document.cookie style strings ("sessionid=abc; csrftoken=def").
+ * Values may contain "=" (split on the first one only). Returns null when
+ * the text does not look like cookie pairs.
+ */
+function parseCookiePairs(text: string): unknown[] | null {
+  if (!text.includes('=')) return null
+  const list: unknown[] = []
+  for (const part of text.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq <= 0) return null
+    const name = part.slice(0, eq).trim()
+    if (!name || !COOKIE_PAIR_NAME_PATTERN.test(name)) return null
+    // Keep the raw value byte-for-byte: cookie values are opaque
+    // server-issued tokens (often percent-encoded). Decoding here would
+    // corrupt them (e.g. %3A -> ":") and break the stored session.
+    const value = part.slice(eq + 1).trim()
+    list.push({ name, value })
+  }
+  return list.length > 0 ? list : null
 }
 
 function normalizeCookie(cookie: unknown, index: number): CookieShape {
@@ -31,15 +99,13 @@ function normalizeCookie(cookie: unknown, index: number): CookieShape {
   }
 
   const name = String(cookie.name ?? '').trim()
-  const value = String(cookie.value ?? '').trim()
   if (!name) throw new Error(`Cookie at index ${index} is missing name`)
-  if (!value) throw new Error(`Cookie at index ${index} is missing value`)
+  // Empty values are allowed: real browser exports include valueless
+  // cookies, and one of them must not block saving the whole jar.
+  const value = String(cookie.value ?? '').trim()
 
   const url = String(cookie.url ?? '').trim()
   const domain = String(cookie.domain ?? '').trim()
-  if (!url && !domain) {
-    throw new Error(`Cookie "${name}" must include domain or url`)
-  }
 
   const normalized: CookieShape = {
     name,
@@ -49,7 +115,7 @@ function normalizeCookie(cookie: unknown, index: number): CookieShape {
   if (url) {
     normalized.url = url
   } else {
-    normalized.domain = domain
+    normalized.domain = domain || DEFAULT_COOKIE_DOMAIN
     normalized.path = String(cookie.path ?? '/').trim() || '/'
   }
 
@@ -83,6 +149,9 @@ function normalizeCookie(cookie: unknown, index: number): CookieShape {
   return normalized
 }
 
+const PARSE_HELP =
+  'Paste cookies as a JSON array, Netscape cookies.txt, or name=value pairs'
+
 export function normalizeCookiesJsonForForm(raw: string): {
   normalized?: string
   error?: string
@@ -90,16 +159,33 @@ export function normalizeCookiesJsonForForm(raw: string): {
   const trimmed = raw.trim()
   if (!trimmed) return { normalized: '' }
 
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { error: `Cookies JSON must be valid JSON: ${message}` }
+  let list: unknown[]
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return { error: `Cookies JSON must be valid JSON: ${message}` }
+    }
+    try {
+      list = extractCookieList(parsed)
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
+    }
+  } else {
+    const netscape = parseNetscapeCookies(trimmed)
+    if (netscape) {
+      list = netscape
+    } else {
+      const pairs = parseCookiePairs(trimmed)
+      if (!pairs) return { error: PARSE_HELP }
+      list = pairs
+    }
   }
 
   try {
-    const normalized = extractCookieList(parsed).map((cookie, index) =>
+    const normalized = list.map((cookie, index) =>
       normalizeCookie(cookie, index),
     )
     if (normalized.length === 0) {
@@ -110,5 +196,3 @@ export function normalizeCookiesJsonForForm(raw: string): {
     return { error: error instanceof Error ? error.message : String(error) }
   }
 }
-
-

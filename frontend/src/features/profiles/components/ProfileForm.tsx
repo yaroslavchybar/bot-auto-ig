@@ -103,12 +103,13 @@ function CookiesField({ draft, saving, setDraft, setLocalError }: FieldProps) {
               }))
             }}
             disabled={saving}
-            placeholder='Paste raw cookie array or AdsPower-style JSON with a "cookies" array'
+            placeholder='Paste cookies as JSON, Netscape cookies.txt, or name=value pairs'
             className="brand-focus bg-field border-line min-h-[180px] resize-y font-mono text-xs text-ink"
           />
           <p className="text-subtle-copy ml-1 text-[10px]">
-            Accepted formats: raw Playwright cookie arrays and
-            AdsPower-style JSON objects with a cookies array.
+            Accepted: Playwright/AdsPower JSON arrays, Netscape
+            cookies.txt, and document.cookie strings. Cookies without a
+            domain default to .instagram.com.
           </p>
         </div>
       </div>

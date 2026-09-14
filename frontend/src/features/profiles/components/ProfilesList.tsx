@@ -422,12 +422,6 @@ function DesktopConfigBadges({ profile }: { profile: Profile }) {
         <Cpu className="h-3 w-3" />
         {getOsLabel(profile.fingerprintOs)}
       </div>
-      {profile.login && (
-        <div className="brand-surface brand-text flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
-          <LogIn className="h-3 w-3" />
-          <span className="hidden sm:inline">Auto-Login</span>
-        </div>
-      )}
     </div>
   )
 }

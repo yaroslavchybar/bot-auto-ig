@@ -107,7 +107,17 @@ export function navigate(to: string, options?: NavigateOptions) {
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
+const DEFAULT_ROUTE = '/profiles'
+
 function readLocation() {
+  // Canonicalize the root path up front so the first render already shows
+  // the default page. A <Navigate> redirect in render would only run after
+  // mount (returning blank UI meanwhile) and its popstate event would fire
+  // before RouterProvider subscribes below, leaving the app stuck blank.
+  if (window.location.pathname === '/') {
+    window.history.replaceState(null, '', DEFAULT_ROUTE + window.location.search)
+    return { pathname: DEFAULT_ROUTE, search: window.location.search }
+  }
   return {
     pathname: window.location.pathname,
     search: window.location.search,
@@ -135,6 +145,10 @@ export function RouterProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onChange = () => setLocation(readLocation())
+    // A <Navigate> rendered on the initial mount (e.g. AuthGuard -> /login)
+    // fires before this subscription exists, so its popstate event is lost.
+    // Re-read the URL after subscribing to recover instead of staying stuck.
+    onChange()
     window.addEventListener('popstate', onChange)
     return () => window.removeEventListener('popstate', onChange)
   }, [])
