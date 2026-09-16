@@ -101,6 +101,70 @@ async function apiFetchOnce<T>(
   return (await resp.json()) as T
 }
 
+// Upload a local file as raw bytes. Backend expects Content-Type + X-Filename.
+export async function apiUploadFile(
+  path: string,
+  file: File,
+  options: { timeout?: number } = {},
+): Promise<{ success: boolean; filename: string; size: number }> {
+  const timeoutMs = options.timeout ?? 60000
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  const headers: Record<string, string> = {
+    'Content-Type': file.type || 'application/octet-stream',
+    'X-Filename': file.name,
+  }
+
+  if (tokenGetter) {
+    try {
+      // Race token acquisition against the same deadline so a hanging
+      // tokenGetter can't leave the operation unresolved. On timeout the
+      // abort fires, the race rejects, and the fetch below fails fast
+      // on the already-aborted signal.
+      const token = await Promise.race([
+        tokenGetter(),
+        new Promise<null>((_, reject) => {
+          controller.signal.addEventListener(
+            'abort',
+            () => reject(new DOMException('Timed out', 'TimeoutError')),
+            { once: true },
+          )
+        }),
+      ])
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+    } catch {
+      // Continue without token (token errors) or let the aborted fetch
+      // below surface the timeout — either way the op always settles.
+      if (controller.signal.aborted) {
+        clearTimeout(timeoutId)
+        throw new DOMException('Timed out', 'TimeoutError')
+      }
+    }
+  }
+
+  let resp: Response
+  try {
+    resp = await fetch(resolveApiUrl(path), {
+      method: 'POST',
+      headers,
+      body: file,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  if (!resp.ok) {
+    const text = await resp.text()
+    throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
+  }
+
+  return (await resp.json()) as { success: boolean; filename: string; size: number }
+}
+
 export async function apiDownload(
   path: string,
   fileName: string,

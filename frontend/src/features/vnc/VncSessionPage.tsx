@@ -8,6 +8,7 @@ import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
+import { useVncFileUpload, VncUploadButton, VncDropZone } from './components/VncUpload'
 
 const LogsViewer = lazy(() =>
   import('@/components/shared/LogsViewer').then((module) => ({
@@ -284,19 +285,29 @@ function VncMobileLayout({
   onToggleLogs: () => void
 }) {
   const isInteractive = handoff.controlState === 'unlocked'
+  const upload = useVncFileUpload()
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
+      {upload.input}
       <VncMobileHeader session={session} onBack={onBack} onToggleLogs={onToggleLogs} showMobileLogs={showMobileLogs} />
 
       <div className="min-h-0 flex-1 space-y-2 p-2">
+        <div className="flex">
+          <VncUploadButton uploading={upload.uploading} onClick={upload.openPicker} />
+        </div>
         <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
-          <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
-            <VncViewer
-              url={buildVncWebSocketUrl(session.vncPort)}
-              interactive={isInteractive}
-              className="h-full w-full flex-1 object-contain"
-            />
-          </Suspense>
+          <VncDropZone
+            onFile={(file) => void upload.uploadFile(file)}
+            disabled={upload.uploading}
+          >
+            <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+              <VncViewer
+                url={buildVncWebSocketUrl(session.vncPort)}
+                interactive={isInteractive}
+                className="h-full w-full flex-1 object-contain"
+              />
+            </Suspense>
+          </VncDropZone>
         </div>
 
         <ControlToggle handoff={handoff} onBack={onBack} />
@@ -430,14 +441,25 @@ function VncDesktopLayout({
   onBack: () => void
   onRefresh: () => Promise<void>
 }) {
+  const upload = useVncFileUpload()
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
-      <VncDesktopHeader session={session} loading={loading} onBack={onBack} onRefresh={onRefresh} />
+      {upload.input}
+      <VncDesktopHeader
+        session={session}
+        loading={loading}
+        onBack={onBack}
+        onRefresh={onRefresh}
+        uploading={upload.uploading}
+        onUpload={upload.openPicker}
+      />
       <VncDesktopPanels
         session={session}
         isInteractive={isInteractive}
         handoff={handoff}
         onBack={onBack}
+        onFile={(file) => void upload.uploadFile(file)}
+        uploadDisabled={upload.uploading}
       />
     </div>
   )
@@ -448,11 +470,15 @@ function VncDesktopHeader({
   loading,
   onBack,
   onRefresh,
+  uploading,
+  onUpload,
 }: {
   session: DisplaySession
   loading: boolean
   onBack: () => void
   onRefresh: () => Promise<void>
+  uploading: boolean
+  onUpload: () => void
 }) {
   return (
     <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
@@ -469,17 +495,20 @@ function VncDesktopHeader({
           </span>
         </div>
       </div>
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => void onRefresh()}
-        aria-label="Refresh sessions"
-        title="Refresh sessions"
-        className="h-8 w-8 shrink-0 p-0"
-      >
-        <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-        <span className="sr-only">Refresh</span>
-      </Button>
+      <div className="flex items-center gap-2">
+        <VncUploadButton uploading={uploading} onClick={onUpload} />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => void onRefresh()}
+          aria-label="Refresh sessions"
+          title="Refresh sessions"
+          className="h-8 w-8 shrink-0 p-0"
+        >
+          <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+          <span className="sr-only">Refresh</span>
+        </Button>
+      </div>
     </div>
   )
 }
@@ -489,11 +518,15 @@ function VncDesktopPanels({
   isInteractive,
   handoff,
   onBack,
+  onFile,
+  uploadDisabled,
 }: {
   session: DisplaySession
   isInteractive: boolean
   handoff: ControlHandoff
   onBack: () => void
+  onFile: (file: File) => void
+  uploadDisabled: boolean
 }) {
   return (
     <div className="min-h-0 flex-1 p-1">
@@ -519,6 +552,8 @@ function VncDesktopPanels({
             isInteractive={isInteractive}
             handoff={handoff}
             onBack={onBack}
+            onFile={onFile}
+            uploadDisabled={uploadDisabled}
           />
         </Panel>
 
@@ -549,11 +584,15 @@ function VncStreamPanel({
   isInteractive,
   handoff,
   onBack,
+  onFile,
+  uploadDisabled,
 }: {
   session: DisplaySession
   isInteractive: boolean
   handoff: ControlHandoff
   onBack: () => void
+  onFile: (file: File) => void
+  uploadDisabled: boolean
 }) {
   return (
     <div className="bg-shell border-line-soft group relative flex h-full flex-col overflow-hidden rounded-[3px] border shadow-xs">
@@ -563,13 +602,15 @@ function VncStreamPanel({
         </div>
       </div>
 
-      <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
-        <VncViewer
-          url={buildVncWebSocketUrl(session.vncPort)}
-          interactive={isInteractive}
-          className="h-full w-full flex-1 object-contain"
-        />
-      </Suspense>
+      <VncDropZone onFile={onFile} disabled={uploadDisabled}>
+        <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+          <VncViewer
+            url={buildVncWebSocketUrl(session.vncPort)}
+            interactive={isInteractive}
+            className="h-full w-full flex-1 object-contain"
+          />
+        </Suspense>
+      </VncDropZone>
 
       {!isInteractive && (
         <VncControlOverlay handoff={handoff} onBack={onBack} />
