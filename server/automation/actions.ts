@@ -6,6 +6,7 @@ import {
   instagramAccountsForProfile,
   instagramAccountsToMessage,
   messageTemplatesGet,
+  type InstagramAccount,
 } from '../shared/convexClient.js'
 
 export type ActionLogger = (message: string) => void
@@ -295,42 +296,6 @@ export async function browseFeed(
   log('Feed session finished')
 }
 
-export async function browseReels(
-  page: Page,
-  minutes: number,
-  config: Record<string, unknown>,
-  log: ActionLogger,
-  shouldStop: StopCheck,
-): Promise<void> {
-  await page.goto('https://www.instagram.com/reels/', {
-    waitUntil: 'domcontentloaded',
-    timeout: 45_000,
-  })
-  const end = Date.now() + Math.max(0, minutes) * 60_000
-  log(`Starting reels session for ${minutes} minute(s)`)
-  while (Date.now() < end && !shouldStop()) {
-    const skip = chance(config.reels_skip_chance)
-    const minWatch = skip
-      ? Number(config.reels_skip_min_time)
-      : Number(config.reels_normal_min_time)
-    const maxWatch = skip
-      ? Number(config.reels_skip_max_time)
-      : Number(config.reels_normal_max_time)
-    await sleep(random(minWatch || 1, maxWatch || 3) * 1000)
-    if (chance(config.reels_like_chance)) await likeVisible(page)
-    if (chance(config.reels_follow_chance)) await followVisible(page)
-    await clickVisible(
-      page,
-      '[aria-label*="Next Reel"], [aria-label*="next Reel"]',
-    )
-    await randomDelay(
-      Number(config.reels_advance_min_seconds) || 1,
-      Number(config.reels_advance_max_seconds) || 3,
-    )
-  }
-  log('Reels session finished')
-}
-
 export async function watchStories(
   page: Page,
   maxStories: number,
@@ -454,24 +419,48 @@ export async function unfollowUsers(
   )
 }
 
-export async function approveRequests(
-  page: Page,
-  log: ActionLogger,
-  shouldStop: StopCheck,
-): Promise<void> {
-  await page.goto('https://www.instagram.com/accounts/activity/', {
-    waitUntil: 'domcontentloaded',
-    timeout: 45_000,
-  })
-  const buttons = page.locator(
-    'button:has-text("Confirm"), div[role="button"]:has-text("Confirm")',
-  )
-  const count = await buttons.count()
-  for (let i = 0; i < count && !shouldStop() && (await buttons.count()); i++) {
-    await buttons.first().click()
-    await randomDelay(1, 2)
+const MESSAGE_BUTTON = 'button:has-text("Message"), div[role="button"]:has-text("Message")'
+const SEND_BUTTON = 'button:has-text("Send"), div[role="button"]:has-text("Send")'
+
+// Poll for a visible match. Count + isVisible are protocol reads, no JS.
+async function hasVisible(
+  scope: Page | Locator,
+  selector: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const locator = 'locator' in scope ? scope.locator(selector) : scope
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  while (Date.now() < deadline) {
+    const count = await locator.count().catch(() => 0)
+    for (let i = 0; i < Math.min(count, 5); i++) {
+      if (await locator.nth(i).isVisible().catch(() => false)) return true
+    }
+    await sleep(500)
   }
-  log('Follow request approval finished')
+  return false
+}
+
+// Read composer text. inputValue works for textarea, textContent for
+// contenteditable divs. Both are reads, not JS injection. Returns null
+// when both reads fail so callers don't mistake unknown for empty.
+async function composerText(input: Locator): Promise<string | null> {
+  const value = await input.inputValue().catch(() => null)
+  if (value != null) return value
+  return await input.textContent().catch(() => null)
+}
+
+// Fill template macros for one target. Falls back down the chain so we
+// never send a literal "{matchedName}" when a field is missing.
+export function renderTemplate(template: string, target: InstagramAccount): string {
+  const userName = String(target.user_name || '').replace(/^@/, '').trim()
+  const fullName = String(target.full_name ?? '').trim()
+  const matched = String(target.matched_name ?? '').trim()
+    || fullName.split(/\s+/).filter(Boolean)[0]
+    || userName
+  return String(template || '')
+    .replace(/\{matchedName\}/g, matched ?? '')
+    .replace(/\{fullName\}/g, fullName || userName)
+    .replace(/\{userName\}/g, userName)
 }
 
 export async function sendMessages(
@@ -485,35 +474,113 @@ export async function sendMessages(
     ? Math.max(0, Number(config.messaging_cooldown_hours) || 0)
     : 0
   const targets = await instagramAccountsToMessage(profileId, cooldown)
-  const templates = await messageTemplatesGet(
+  const templates = (await messageTemplatesGet(
     String(config.template_kind || 'message'),
-  )
+  )).map((text) => String(text || '').trim()).filter(Boolean)
   if (!templates.length) {
     log('Messaging skipped: no message templates configured')
     return
   }
+  if (!targets.length) {
+    log('Messaging skipped: no accounts to message (none assigned or cooldown active)')
+    return
+  }
+
+  // Honor the Send Messages node config (previously ignored).
+  const navMin = Math.max(0, numeric(config.navigation_delay_min_seconds, 2))
+  const navMax = Math.max(navMin, numeric(config.navigation_delay_max_seconds, 3))
+  const composerMin = Math.max(0, numeric(config.composer_delay_min_seconds, 1))
+  const composerMax = Math.max(composerMin, numeric(config.composer_delay_max_seconds, 2))
+  const typeMin = Math.max(0, numeric(config.typing_delay_min_ms, 100))
+  const typeMax = Math.max(typeMin, numeric(config.typing_delay_max_ms, 200))
+  const betweenMin = Math.max(0, numeric(config.between_targets_min_seconds, 3))
+  const betweenMax = Math.max(betweenMin, numeric(config.between_targets_max_seconds, 5))
+  const followIfMissing = config.follow_if_no_message_button !== false
+
+  let sent = 0
   for (const target of targets) {
     if (shouldStop()) break
     const username = String(target.user_name || '')
       .replace(/^@/, '')
       .trim()
     if (!username) continue
-    await page.goto(
-      `https://www.instagram.com/${encodeURIComponent(username)}/`,
-      { waitUntil: 'domcontentloaded', timeout: 20_000 },
-    )
-    if (
-      await clickVisible(
-        page,
-        'button:has-text("Message"), div[role="button"]:has-text("Message")',
+    try {
+      await page.goto(
+        `https://www.instagram.com/${encodeURIComponent(username)}/`,
+        { waitUntil: 'domcontentloaded', timeout: 20_000 },
       )
-    ) {
-      const input = page.locator('textarea, [contenteditable="true"]').last()
-      await input.fill(templates[Math.floor(Math.random() * templates.length)])
-      await input.press('Enter')
+      await randomDelay(navMin, navMax)
+      // Profile header renders after navigation; the old code looked for
+      // the Message button immediately and silently skipped when too early.
+      let hasMessage = await hasVisible(page, MESSAGE_BUTTON, 8_000)
+      if (!hasMessage && followIfMissing) {
+        log(`@${username}: no Message button, following first`)
+        await followVisible(page).catch(() => undefined)
+        await sleep(random(1500, 3000))
+        hasMessage = await hasVisible(page, MESSAGE_BUTTON, 8_000)
+      }
+      if (!hasMessage) {
+        log(`@${username}: skipped (no Message button on profile)`)
+        continue
+      }
+      if (!(await clickVisible(page, MESSAGE_BUTTON))) {
+        log(`@${username}: skipped (Message button not clickable)`)
+        continue
+      }
+      await randomDelay(composerMin, composerMax)
+      const input = page
+        .locator(
+          'div[role="textbox"][contenteditable="true"], div[contenteditable="true"], textarea[aria-label*="Message"]',
+        )
+        .last()
+      try {
+        await input.waitFor({ state: 'visible', timeout: 10_000 })
+      } catch {
+        log(`@${username}: skipped (message composer never opened)`)
+        continue
+      }
+      await input.click({ timeout: 5_000 }).catch(() => undefined)
+      await sleep(random(300, 800))
+      const text = renderTemplate(
+        templates[Math.floor(Math.random() * templates.length)],
+        target,
+      )
+      if (!text) {
+        log(`@${username}: skipped (template rendered empty)`)
+        continue
+      }
+      // Human typing, not instant fill: IG sometimes ignores pasted text.
+      await input.pressSequentially(text, { delay: random(typeMin, typeMax) })
+      await sleep(random(500, 1200))
+      // Prefer the real Send button; Enter is only a fallback.
+      const send = page.locator(SEND_BUTTON).last()
+      if (await send.isVisible().catch(() => false)) {
+        await send.click({ timeout: 5_000 })
+      } else {
+        await input.press('Enter')
+      }
+      await sleep(2000)
+      const composer = await composerText(input).catch(() => null)
+      if (composer === null) {
+        // Could not verify send; do not mark as messaged.
+        log(`@${username}: skipped (could not verify message sent)`)
+        continue
+      }
+      if (composer.trim()) {
+        // Composer still full: message likely did not send. Do not mark.
+        log(`@${username}: skipped (message did not send, composer still full)`)
+        continue
+      }
       await instagramAccountUpdateMessage(username)
+      sent++
       log(`Sent message to @${username}`)
+    } catch (error) {
+      // One bad target must not kill the whole batch.
+      const reason = error instanceof Error ? error.message : String(error)
+      log(`@${username}: failed (${reason})`)
+    } finally {
+      await randomDelay(betweenMin, betweenMax)
     }
-    await randomDelay(2, 5)
   }
+  log(`Messaging finished: sent ${sent}/${targets.length}`)
 }

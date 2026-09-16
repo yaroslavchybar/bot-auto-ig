@@ -6,7 +6,7 @@
  *
  * FOLDER STRUCTURE:
  * - types.ts         → Type definitions
- * - browsing/        → Feed and reels activities
+ * - browsing/        → Feed activities
  * - engagement/      → Follow/unfollow activities
  * - messaging/       → DM activities
  * - stories/         → Story watching activities

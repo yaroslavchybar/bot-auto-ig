@@ -1,10 +1,8 @@
 export type ActionName =
     | 'Feed Scroll'
-    | 'Reels Scroll'
     | 'Watch Stories'
     | 'Follow'
     | 'Unfollow'
-    | 'Approve Requests'
     | 'Send Messages';
 
 export type InstagramSettings = {
@@ -14,23 +12,13 @@ export type InstagramSettings = {
     like_chance: number;
     carousel_watch_chance: number;
     follow_chance: number;
-    reels_like_chance: number;
-    reels_follow_chance: number;
-    reels_skip_chance: number;
-    reels_skip_min_time: number;
-    reels_skip_max_time: number;
-    reels_normal_min_time: number;
-    reels_normal_max_time: number;
     carousel_max_slides: number;
     stories_max: number;
     feed_min_time_minutes: number;
     feed_max_time_minutes: number;
-    reels_min_time_minutes: number;
-    reels_max_time_minutes: number;
     max_sessions: number;
     parallel_profiles: number;
     enable_feed: boolean;
-    enable_reels: boolean;
     enable_follow: boolean;
     watch_stories: boolean;
     headless: boolean;
@@ -50,18 +38,15 @@ export type InstagramSettings = {
     unfollow_min_count: number;
     unfollow_max_count: number;
     do_unfollow: boolean;
-    do_approve: boolean;
     do_message: boolean;
     source_list_ids: string[];
 };
 
 export const ACTIONS: ActionName[] = [
     'Feed Scroll',
-    'Reels Scroll',
     'Watch Stories',
     'Follow',
     'Unfollow',
-    'Approve Requests',
     'Send Messages',
 ];
 
@@ -72,23 +57,13 @@ export const DEFAULT_SETTINGS: InstagramSettings = {
     like_chance: 10,
     carousel_watch_chance: 0,
     follow_chance: 50,
-    reels_like_chance: 10,
-    reels_follow_chance: 50,
-    reels_skip_chance: 30,
-    reels_skip_min_time: 0.8,
-    reels_skip_max_time: 2.0,
-    reels_normal_min_time: 5.0,
-    reels_normal_max_time: 20.0,
     carousel_max_slides: 3,
     stories_max: 3,
     feed_min_time_minutes: 1,
     feed_max_time_minutes: 3,
-    reels_min_time_minutes: 1,
-    reels_max_time_minutes: 3,
     max_sessions: 5,
     parallel_profiles: 1,
     enable_feed: true,
-    enable_reels: false,
     enable_follow: false,
     watch_stories: true,
     headless: false,
@@ -108,7 +83,6 @@ export const DEFAULT_SETTINGS: InstagramSettings = {
     unfollow_min_count: 5,
     unfollow_max_count: 15,
     do_unfollow: false,
-    do_approve: false,
     do_message: false,
     source_list_ids: [],
 };

@@ -315,6 +315,8 @@ export async function messageTemplatesGet(kind: string): Promise<string[]> {
 export type InstagramAccount = {
     id: string;
     user_name: string;
+    full_name?: string | null;
+    matched_name?: string | null;
     status?: string | null;
     message?: boolean;
 };

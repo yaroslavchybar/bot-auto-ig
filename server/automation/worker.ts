@@ -24,9 +24,7 @@ import {
   type WorkflowEdge,
 } from './graph.js'
 import {
-  approveRequests,
   browseFeed,
-  browseReels,
   followUsers,
   sendMessages,
   unfollowUsers,
@@ -158,17 +156,6 @@ async function runConfiguredAction(
       logAction,
       shouldStop,
     )
-  } else if (action === 'Reels Scroll' && settings.enable_reels) {
-    await browseReels(
-      page,
-      random(
-        number(settings.reels_min_time_minutes, 1),
-        number(settings.reels_max_time_minutes, 3),
-      ),
-      settings,
-      logAction,
-      shouldStop,
-    )
   } else if (action === 'Watch Stories' && settings.watch_stories !== false) {
     await watchStories(
       page,
@@ -186,8 +173,6 @@ async function runConfiguredAction(
       shouldStop,
       settings,
     )
-  } else if (action === 'Approve Requests' && settings.do_approve) {
-    await approveRequests(page, logAction, shouldStop)
   } else if (action === 'Send Messages' && settings.do_message) {
     await sendMessages(
       page,
@@ -377,17 +362,6 @@ export async function runWorkflow(
                 log,
                 shouldStop,
               )
-            } else if (activity === 'browse_reels') {
-              await browseReels(
-                session.page,
-                random(
-                  number(config.reels_min_time_minutes, 1),
-                  number(config.reels_max_time_minutes, 3),
-                ),
-                config,
-                log,
-                shouldStop,
-              )
             } else if (activity === 'watch_stories') {
               await watchStories(
                 session.page,
@@ -411,8 +385,6 @@ export async function runWorkflow(
                 shouldStop,
                 config,
               )
-            } else if (activity === 'approve_requests') {
-              await approveRequests(session.page, log, shouldStop)
             } else if (activity === 'send_dm') {
               await sendMessages(
                 session.page,
