@@ -4,6 +4,7 @@ import { Camoufox } from 'camoufox-js'
 import { FingerprintGenerator, type Fingerprint } from 'fingerprint-generator'
 import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
 import { shutdownSignal } from './lifecycle.js'
+import { focusPageContent } from './focus.js'
 import { acquireBrowserSlot } from './budget.js'
 import { prepareBrowserProxy } from './proxy.js'
 import { allocateDisplay, type Display } from './display.js'
@@ -294,6 +295,9 @@ export async function openCamoufoxSession(
         timeout: 45_000,
       })
     }
+    // New windows open with the address bar focused. Blurs it into the page
+    // and parks the cursor over content so wheel/keys hit the feed, not chrome.
+    await focusPageContent(page)
     checkStartup()
     ready = true
     return { context, page, profile, display, close, closed }

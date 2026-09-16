@@ -1,5 +1,6 @@
 import type { Locator, Page } from 'playwright-core'
 import { sleep } from '../browser/lifecycle.js'
+import { focusPageContent } from '../browser/focus.js'
 
 export type ActionLogger = (message: string) => void
 export type StopCheck = () => boolean
@@ -180,6 +181,10 @@ export async function browseFeed(
     waitUntil: 'domcontentloaded',
     timeout: 45_000,
   })
+  // Wheel/key input only scrolls the feed when the cursor is over page
+  // content and the address bar is blurred. Re-focus after every
+  // navigation since goto can return focus to browser chrome.
+  await focusPageContent(page)
   const duration = Math.max(0, minutes)
   if (!(duration > 0)) {
     log('Feed session skipped (0 minutes)')
@@ -298,6 +303,7 @@ export async function watchStories(
     waitUntil: 'domcontentloaded',
     timeout: 45_000,
   })
+  await focusPageContent(page)
   const story = page.locator('a[href*="/stories/"]').first()
   if (!(await story.isVisible().catch(() => false))) {
     log('Stories: no story tray found')
