@@ -8,7 +8,7 @@ import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
-import { useVncFileUpload, VncUploadButton } from './components/VncUpload'
+import { useVncFileUpload, VncFilesButton, VncUploadButton, type VpsUpload } from './components/VncUpload'
 
 const LogsViewer = lazy(() =>
   import('@/components/shared/LogsViewer').then((module) => ({
@@ -292,8 +292,13 @@ function VncMobileLayout({
       <VncMobileHeader session={session} onBack={onBack} onToggleLogs={onToggleLogs} showMobileLogs={showMobileLogs} />
 
       <div className="min-h-0 flex-1 space-y-2 p-2">
-        <div className="flex">
+        <div className="flex gap-2">
           <VncUploadButton uploading={upload.uploading} onClick={upload.openPicker} />
+          <VncFilesButton
+            files={upload.files}
+            onDelete={(name) => void upload.removeFile(name)}
+            onRefresh={() => void upload.refreshFiles()}
+          />
         </div>
         <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
           <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
@@ -447,6 +452,9 @@ function VncDesktopLayout({
         onRefresh={onRefresh}
         uploading={upload.uploading}
         onUpload={upload.openPicker}
+        files={upload.files}
+        onDeleteFile={(name) => void upload.removeFile(name)}
+        onRefreshFiles={() => void upload.refreshFiles()}
       />
       <VncDesktopPanels
         session={session}
@@ -465,6 +473,9 @@ function VncDesktopHeader({
   onRefresh,
   uploading,
   onUpload,
+  files,
+  onDeleteFile,
+  onRefreshFiles,
 }: {
   session: DisplaySession
   loading: boolean
@@ -472,6 +483,9 @@ function VncDesktopHeader({
   onRefresh: () => Promise<void>
   uploading: boolean
   onUpload: () => void
+  files: VpsUpload[]
+  onDeleteFile: (name: string) => void
+  onRefreshFiles: () => void
 }) {
   return (
     <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
@@ -490,6 +504,7 @@ function VncDesktopHeader({
       </div>
       <div className="flex items-center gap-2">
         <VncUploadButton uploading={uploading} onClick={onUpload} />
+        <VncFilesButton files={files} onDelete={onDeleteFile} onRefresh={onRefreshFiles} />
         <Button
           variant="outline"
           size="icon"
@@ -535,7 +550,7 @@ function VncDesktopPanels({
           } catch { return undefined }
         })()}
       >
-        <Panel id="left-vnc" defaultSize={60} minSize={30}>
+        <Panel id="left-vnc" defaultSize={68} minSize={30}>
           <VncStreamPanel
             session={session}
             isInteractive={isInteractive}
@@ -548,7 +563,7 @@ function VncDesktopPanels({
           <div className="bg-panel-hover h-8 w-1 rounded-full transition-colors group-hover:bg-white/30" />
         </Separator>
 
-        <Panel id="right-logs" defaultSize={40} minSize={20}>
+        <Panel id="right-logs" defaultSize={32} minSize={20}>
           <div className="flex h-full flex-col overflow-hidden rounded-[3px] shadow-xs">
             <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
               <LogsViewer

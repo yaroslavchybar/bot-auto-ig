@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
+import { Maximize, Minimize } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { buildVncWebSocketUrl } from '../utils/buildVncWebSocketUrl'
@@ -242,6 +243,25 @@ export function VncViewer({
   const interactiveRef = useRef(interactive)
   const isVisible = useDocumentVisibility()
   const [inViewport, setInViewport] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  // Fullscreen gives the remote desktop (fixed 1366x768) the most room,
+  // so oversized GTK dialogs fit without clipping.
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(document.fullscreenElement === containerRef.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen().catch((err) => {
+        console.error(`Error attempting fullscreen: ${err.message}`)
+      })
+    } else {
+      document.exitFullscreen()
+    }
+  }, [])
 
   // Stop framebuffer traffic and decoding for hidden routes and off-screen tiles.
   useEffect(() => {
@@ -261,12 +281,21 @@ export function VncViewer({
   return (
     <div
       ref={containerRef}
-      className={cn('bg-overlay-strong relative h-full w-full overflow-hidden', className)}
+      className={cn('bg-overlay-strong group relative h-full w-full overflow-hidden', className)}
     >
       <div
         ref={screenRef}
         className={cn('absolute inset-0 h-full w-full', !interactive && 'pointer-events-none')}
       />
+      <button
+        type="button"
+        onClick={toggleFullscreen}
+        title={isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'}
+        aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        className="absolute top-2 right-2 z-10 rounded-md border border-white/10 bg-black/60 p-1.5 text-white/80 opacity-100 backdrop-blur-md transition-opacity hover:bg-black/80 hover:text-white"
+      >
+        {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+      </button>
       <VncConnectionOverlay overlay={connectionOverlay} />
     </div>
   )

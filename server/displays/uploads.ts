@@ -126,4 +126,38 @@ router.post(
   }),
 )
 
+// Delete an uploaded file by its stored name (the random-prefixed name
+// returned at upload). Basename-only, extension-checked, and resolved
+// inside UPLOAD_DIR so callers can't traverse out of it.
+router.delete(
+  '/:name',
+  asyncHandler(async (req, res) => {
+    await ensureDirs()
+    const raw = String(req.params.name || '')
+    const base = path.basename(raw)
+    if (!base || base !== raw || base === '.' || base === '..')
+      throw new ValidationError('Invalid filename')
+    if (!ALLOWED_EXT.has(path.extname(base).toLowerCase()))
+      throw new ValidationError('Invalid filename')
+    const full = path.resolve(UPLOAD_DIR, base)
+    if (path.dirname(full) !== path.resolve(UPLOAD_DIR))
+      throw new ValidationError('Invalid filename')
+    try {
+      await fs.unlink(full)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+        throw new ValidationError('File not found')
+      throw error
+    }
+    if (process.platform === 'linux') {
+      try {
+        await fs.unlink(path.join(os.homedir(), 'Downloads', 'Uploads', base))
+      } catch {
+        // Mirror may not exist (symlink setup covers it) — nothing to do.
+      }
+    }
+    res.json({ success: true })
+  }),
+)
+
 export default router
