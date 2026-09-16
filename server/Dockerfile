@@ -15,6 +15,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   tigervnc-standalone-server \
   novnc \
   websockify \
+  # Remote clipboard read/write (xclip on the session DISPLAY)
+  xclip \
   # X11 dependencies for browsers
   libx11-6 \
   libx11-xcb1 \

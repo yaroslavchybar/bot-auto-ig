@@ -1,10 +1,12 @@
 import { Router } from 'express'
 import { activeDisplays } from '../shared/store.js'
 import uploadsRouter from './uploads.js'
+import clipboardRouter from './clipboard.js'
 
 const router = Router()
 
 router.use('/uploads', uploadsRouter)
+router.use(clipboardRouter)
 
 router.get('/', (_req, res) => {
     const sorted = Array.from(activeDisplays.values())

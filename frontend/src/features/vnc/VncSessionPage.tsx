@@ -9,6 +9,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
 import { useVncFileUpload, VncFilesButton, VncUploadButton, type VpsUpload } from './components/VncUpload'
+import { VncClipboardButton } from './components/VncClipboard'
 
 const LogsViewer = lazy(() =>
   import('@/components/shared/LogsViewer').then((module) => ({
@@ -299,6 +300,7 @@ function VncMobileLayout({
             onDelete={(name) => void upload.removeFile(name)}
             onRefresh={() => void upload.refreshFiles()}
           />
+          <VncClipboardButton vncPort={session.vncPort} interactive={isInteractive} />
         </div>
         <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
           <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
@@ -448,6 +450,7 @@ function VncDesktopLayout({
       <VncDesktopHeader
         session={session}
         loading={loading}
+        isInteractive={isInteractive}
         onBack={onBack}
         onRefresh={onRefresh}
         uploading={upload.uploading}
@@ -469,6 +472,7 @@ function VncDesktopLayout({
 function VncDesktopHeader({
   session,
   loading,
+  isInteractive,
   onBack,
   onRefresh,
   uploading,
@@ -479,6 +483,7 @@ function VncDesktopHeader({
 }: {
   session: DisplaySession
   loading: boolean
+  isInteractive: boolean
   onBack: () => void
   onRefresh: () => Promise<void>
   uploading: boolean
@@ -503,6 +508,7 @@ function VncDesktopHeader({
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <VncClipboardButton vncPort={session.vncPort} interactive={isInteractive} />
         <VncUploadButton uploading={uploading} onClick={onUpload} />
         <VncFilesButton files={files} onDelete={onDeleteFile} onRefresh={onRefreshFiles} />
         <Button
