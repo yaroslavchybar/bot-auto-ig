@@ -8,24 +8,18 @@
  * @module
  */
 
-import type * as crons from "../crons.js";
 import type * as errors from "../errors.js";
 import type * as http from "../http.js";
-import type * as httpRoutes_instagramAccounts from "../httpRoutes/instagramAccounts.js";
 import type * as httpRoutes_lists from "../httpRoutes/lists.js";
 import type * as httpRoutes_messageTemplates from "../httpRoutes/messageTemplates.js";
 import type * as httpRoutes_profiles from "../httpRoutes/profiles.js";
-import type * as httpRoutes_scrapeJobs from "../httpRoutes/scrapeJobs.js";
 import type * as httpRoutes_shared from "../httpRoutes/shared.js";
 import type * as httpRoutes_workflows from "../httpRoutes/workflows.js";
-import type * as instagramAccounts from "../instagramAccounts.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles_helpers from "../profiles/helpers.js";
 import type * as profiles_mutations from "../profiles/mutations.js";
 import type * as profiles_queries from "../profiles/queries.js";
-import type * as profiles_scraping from "../profiles/scraping.js";
-import type * as scrapeJobs from "../scrapeJobs.js";
 import type * as workflows_helpers from "../workflows/helpers.js";
 import type * as workflows_mutations from "../workflows/mutations.js";
 import type * as workflows_queries from "../workflows/queries.js";
@@ -38,24 +32,18 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  crons: typeof crons;
   errors: typeof errors;
   http: typeof http;
-  "httpRoutes/instagramAccounts": typeof httpRoutes_instagramAccounts;
   "httpRoutes/lists": typeof httpRoutes_lists;
   "httpRoutes/messageTemplates": typeof httpRoutes_messageTemplates;
   "httpRoutes/profiles": typeof httpRoutes_profiles;
-  "httpRoutes/scrapeJobs": typeof httpRoutes_scrapeJobs;
   "httpRoutes/shared": typeof httpRoutes_shared;
   "httpRoutes/workflows": typeof httpRoutes_workflows;
-  instagramAccounts: typeof instagramAccounts;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
   "profiles/helpers": typeof profiles_helpers;
   "profiles/mutations": typeof profiles_mutations;
   "profiles/queries": typeof profiles_queries;
-  "profiles/scraping": typeof profiles_scraping;
-  scrapeJobs: typeof scrapeJobs;
   "workflows/helpers": typeof workflows_helpers;
   "workflows/mutations": typeof workflows_mutations;
   "workflows/queries": typeof workflows_queries;

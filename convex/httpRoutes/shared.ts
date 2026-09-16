@@ -121,25 +121,6 @@ export function mapProfileToApi(
   return { ...fields, id: _id, ...(includeCookies ? { cookiesJson } : {}) };
 }
 
-export function mapAccountToApi(account: any): any {
-  if (!account) return account;
-  return {
-    id: account._id,
-    user_name: account.userName,
-    full_name: account.fullName ?? null,
-    matched_name: account.matchedName ?? null,
-    assigned_to: account.assignedTo ?? null,
-    status: account.status ?? null,
-    message: Boolean(account.message),
-    is_verified: account.isVerified ?? null,
-    is_private: account.isPrivate ?? null,
-    source_job_id: account.sourceJobId ?? null,
-    subscribed_at: toIso(account.subscribedAt),
-    last_messaged_at: toIso(account.lastMessagedAt),
-    created_at: toIso(account.createdAt),
-  };
-}
-
 export function mapListToApi(list: any): any {
   if (!list) return list;
   return {

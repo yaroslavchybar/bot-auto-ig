@@ -18,7 +18,6 @@ const profilePaths = [
   '/api/profiles/delete-by-name',
   '/api/profiles/sync-status',
   '/api/profiles/set-login-true',
-  '/api/profiles/increment-daily-scraping-used',
 ];
 
 export function registerProfileRoutes(http: HttpRouter): void {
@@ -90,10 +89,6 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         cookiesJson: body?.cookiesJson ?? undefined,
         testIp: body?.testIp ?? undefined,
         sessionId: body?.sessionId ?? undefined,
-        dailyScrapingLimit:
-          body?.dailyScrapingLimit ?? undefined,
-        assignedAccountsLimit:
-          body?.assignedAccountsLimit ?? undefined,
       });
       return jsonResponse(mapProfileToApi(created, { includeCookies: true }));
     }),
@@ -113,10 +108,6 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         cookiesJson: body?.cookiesJson ?? undefined,
         testIp: body?.testIp ?? undefined,
         sessionId: body?.sessionId ?? undefined,
-        dailyScrapingLimit:
-          body?.dailyScrapingLimit ?? undefined,
-        assignedAccountsLimit:
-          body?.assignedAccountsLimit ?? undefined,
       } as any);
       return jsonResponse(mapProfileToApi(updated, { includeCookies: true }));
     }),
@@ -159,19 +150,6 @@ function registerProfileStatusRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
       const ok = await ctx.runMutation(internal.profiles.mutations.setLoginTrueInternal, body as any);
-      return jsonResponse({ ok });
-    }),
-  });
-
-  http.route({
-    path: '/api/profiles/increment-daily-scraping-used',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const ok = await ctx.runMutation(
-        internal.profiles.mutations.incrementDailyScrapingUsedInternal,
-        body as any,
-      );
       return jsonResponse({ ok });
     }),
   });

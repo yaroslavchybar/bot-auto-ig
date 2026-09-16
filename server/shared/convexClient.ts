@@ -25,13 +25,6 @@ export type DbListRow = { id: string; name: string };
 
 export type DbProfileRow = ProfileRecord;
 
-export type ScrapingTaskStats = {
-    scraped: number;
-    deduped: number;
-    chunksCompleted: number;
-    targetsCompleted: number;
-};
-
 export type ProfileInput = {
     name: string;
     proxy?: string;
@@ -39,8 +32,6 @@ export type ProfileInput = {
     fingerprintOs?: string;
     cookiesJson?: string;
     testIp?: boolean;
-    dailyScrapingLimit?: number | null;
-    assignedAccountsLimit?: number | null;
     sessionId?: string;
 };
 
@@ -227,8 +218,6 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             fingerprintOs: profile.fingerprintOs,
             cookiesJson: profile.cookiesJson,
             testIp: profile.testIp,
-            dailyScrapingLimit: profile.dailyScrapingLimit,
-            assignedAccountsLimit: profile.assignedAccountsLimit,
             sessionId: profile.sessionId,
         },
     });
@@ -249,8 +238,6 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             fingerprintOs: profile.fingerprintOs,
             cookiesJson: profile.cookiesJson,
             testIp: profile.testIp,
-            dailyScrapingLimit: profile.dailyScrapingLimit,
-            assignedAccountsLimit: profile.assignedAccountsLimit,
             sessionId: profile.sessionId,
         },
     });
@@ -276,174 +263,6 @@ export async function profilesSetLoginTrue(name: string): Promise<true> {
     if (!cleanedName) throw new Error('name is required');
     await convexFetch<any>('/api/profiles/set-login-true', { method: 'POST', body: { name: cleanedName } });
     return true;
-}
-
-export async function profilesIncrementDailyScrapingUsed(
-    name: string,
-    amount: number,
-    commitKey?: string,
-): Promise<boolean> {
-    const cleanedName = String(name || '').trim();
-    if (!cleanedName) throw new Error('name is required');
-    const safeAmount = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
-    if (safeAmount === 0) return true;
-    const cleanedKey = typeof commitKey === 'string' ? commitKey.trim() : '';
-    // Single attempt: a retry after a lost response would dedupe server-side
-    // and return false, which the caller would misread as "already charged".
-    // Let it throw instead; the outer scrape retry reuses the same commitKey.
-    const res = await convexFetch<any>('/api/profiles/increment-daily-scraping-used', {
-        method: 'POST',
-        maxRetries: 0,
-        body: cleanedKey
-            ? { name: cleanedName, amount: safeAmount, commitKey: cleanedKey }
-            : { name: cleanedName, amount: safeAmount },
-    });
-    // Server dedupes by commitKey: { ok: false } means this chunk was charged already.
-    if (res && typeof res.ok === 'boolean') return res.ok !== false ? true : false;
-    return true;
-}
-
-// ==================== MESSAGE TEMPLATES ====================
-
-export async function messageTemplatesGet(kind: string): Promise<string[]> {
-    const cleaned = String(kind || '').trim();
-    if (!cleaned) throw new Error('kind is required');
-    const result = await convexFetch<string[] | null>(`/api/message-templates?kind=${encodeURIComponent(cleaned)}`);
-    return Array.isArray(result) ? result : [];
-}
-
-export type InstagramAccount = {
-    id: string;
-    user_name: string;
-    full_name?: string | null;
-    matched_name?: string | null;
-    status?: string | null;
-    message?: boolean;
-};
-
-export async function instagramAccountsForProfile(profileId: string, status = 'assigned'): Promise<InstagramAccount[]> {
-    const result = await convexFetch<InstagramAccount[]>(
-        `/api/instagram-accounts/for-profile?profileId=${encodeURIComponent(profileId)}&status=${encodeURIComponent(status)}`,
-    );
-    return Array.isArray(result) ? result : [];
-}
-
-export async function instagramAccountsToMessage(profileId: string, cooldownHours = 0): Promise<InstagramAccount[]> {
-    const result = await convexFetch<InstagramAccount[]>(
-        `/api/instagram-accounts/to-message?profileId=${encodeURIComponent(profileId)}&cooldownHours=${encodeURIComponent(String(cooldownHours))}`,
-    );
-    return Array.isArray(result) ? result : [];
-}
-
-export async function instagramAccountUpdateStatus(id: string, status: string): Promise<void> {
-    await convexFetch('/api/instagram-accounts/update-status', {
-        method: 'POST',
-        body: { id, status },
-    });
-}
-
-export async function instagramAccountUpdateMessage(userName: string): Promise<void> {
-    await convexFetch('/api/instagram-accounts/update-message', {
-        method: 'POST',
-        body: { user_name: userName, message: true, last_messaged_at: Date.now() },
-    });
-}
-
-// ==================== SCRAPE JOBS ====================
-
-export type ScrapeJobConfig = {
-    maxToScrape: number;
-    maxAttempts: number;
-    retryBackoffSeconds: string;
-    openDelaySeconds: number;
-    fields: { fullName: boolean; isVerified: boolean; isPrivate: boolean };
-    skip: { private: boolean; verified: boolean; noFullName: boolean };
-};
-
-export type ScrapeJobStats = {
-    scraped: number;
-    deduped: number;
-    chunksCompleted: number;
-    targetsCompleted: number;
-};
-
-export type DbScrapeJobRow = {
-    _id: string;
-    name: string;
-    targets: string[];
-    listIds: string[];
-    status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
-    config: ScrapeJobConfig;
-    stats: ScrapeJobStats;
-    error?: string;
-    startedAt?: number;
-    completedAt?: number;
-    createdAt?: number;
-    updatedAt?: number;
-};
-
-export type ScrapedAccountInsert = {
-    userName: string;
-    fullName?: string;
-    isVerified?: boolean;
-    isPrivate?: boolean;
-    sourceJobId?: string;
-};
-
-export async function instagramAccountsInsertMany(
-    accounts: ScrapedAccountInsert[],
-): Promise<{ inserted: number; existed: number; skipped: number }> {
-    if (!accounts.length) return { inserted: 0, existed: 0, skipped: 0 };
-    return convexFetch('/api/instagram-accounts/insert-many', { method: 'POST', body: { accounts } });
-}
-
-// Usernames already saved for a job, used to resume a scrape without
-// re-saving rows. Mirrors igscrape seeding existingIDs from Convex.
-export async function instagramAccountsByJob(jobId: string): Promise<Array<{ userName: string }>> {
-    const cleaned = String(jobId || '').trim();
-    if (!cleaned) throw new Error('jobId is required');
-    const result = await convexFetch<Array<{ userName?: string; user_name?: string }>>(
-        `/api/instagram-accounts/by-job?jobId=${encodeURIComponent(cleaned)}`,
-    );
-    return (Array.isArray(result) ? result : []).map((account) => ({
-        userName: String(account?.userName ?? account?.user_name ?? ''),
-    }));
-}
-
-export async function scrapeJobsGetById(jobId: string): Promise<DbScrapeJobRow | null> {
-    const cleaned = String(jobId || '').trim();
-    if (!cleaned) throw new Error('jobId is required');
-    return convexFetch<DbScrapeJobRow | null>(`/api/scrape-jobs/by-id?jobId=${encodeURIComponent(cleaned)}`);
-}
-
-export async function scrapeJobsStart(jobId: string): Promise<DbScrapeJobRow | null> {
-    const cleaned = String(jobId || '').trim();
-    if (!cleaned) throw new Error('jobId is required');
-    return convexFetch<DbScrapeJobRow | null>('/api/scrape-jobs/start', { method: 'POST', body: { id: cleaned } });
-}
-
-export async function scrapeJobsFinish(
-    jobId: string,
-    status: 'completed' | 'failed' | 'cancelled',
-    error?: string,
-    stats?: ScrapingTaskStats,
-): Promise<DbScrapeJobRow | null> {
-    const cleaned = String(jobId || '').trim();
-    if (!cleaned) throw new Error('jobId is required');
-    return convexFetch<DbScrapeJobRow | null>('/api/scrape-jobs/finish', {
-        method: 'POST',
-        body: { id: cleaned, status, error, stats },
-    });
-}
-
-export async function scrapeJobsUpdateStats(jobId: string, stats: ScrapingTaskStats): Promise<void> {
-    const cleaned = String(jobId || '').trim();
-    if (!cleaned) throw new Error('jobId is required');
-    await convexFetch('/api/scrape-jobs/update-stats', { method: 'POST', body: { id: cleaned, stats } });
-}
-
-export async function scrapeJobsReconcileInterrupted(): Promise<{ reconciled: number }> {
-    return convexFetch('/api/scrape-jobs/reconcile', { method: 'POST', body: {} });
 }
 
 // ==================== WORKFLOWS ====================

@@ -9,7 +9,4 @@ export type Profile = {
   status?: string
   using?: boolean
   login?: boolean
-  dailyScrapingLimit?: number | null
-  assignedAccountsLimit?: number | null
-  dailyScrapingUsed?: number
 }

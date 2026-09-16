@@ -64,8 +64,6 @@ test('uses camelCase profile fields across the HTTP boundary', async () => {
       name: 'Profile A',
       sessionId: 'session-1',
       cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
-      dailyScrapingLimit: 25,
-      assignedAccountsLimit: 6,
       testIp: true,
       proxyType: 'http',
     }),
@@ -77,9 +75,6 @@ test('uses camelCase profile fields across the HTTP boundary', async () => {
     name: 'Profile A',
     sessionId: 'session-1',
     cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
-    dailyScrapingLimit: 25,
-    assignedAccountsLimit: 6,
-    dailyScrapingUsed: 0,
     testIp: true,
     proxyType: 'http',
   })
@@ -99,8 +94,6 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
       testIp: false,
       listIds: [],
       login: false,
-      dailyScrapingUsed: 0,
-      assignedAccountsLimit: 10,
     }),
   )
 
@@ -134,7 +127,6 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
   await expect(updateResponse.json()).resolves.toMatchObject({
     name: 'Profile Start',
     fingerprintOs: 'windows',
-    assignedAccountsLimit: 10,
   })
   expect(syncResponse.status).toBe(200)
   await expect(syncResponse.json()).resolves.toEqual({ ok: true })
@@ -143,7 +135,6 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
     fingerprintOs: 'windows',
     status: 'running',
     using: true,
-    assignedAccountsLimit: 10,
   })
   expect(typeof updated?.lastOpenedAt).toBe('number')
 })
@@ -175,7 +166,6 @@ test('omits cookies from list responses but includes them on profile detail resp
   expect(detailBody).toMatchObject({
     id: profile!._id,
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
-    assignedAccountsLimit: 10,
   })
 })
 
@@ -283,55 +273,4 @@ test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', as
     _id: workflowId,
     status: 'running',
   })
-})
-
-test('creates scrape jobs and inserts scraped accounts over HTTP', async () => {
-  const t = createConvexTest()
-  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
-  const headers = { authorization: 'Bearer secret-token' }
-
-  const createResponse = await t.fetch('/api/scrape-jobs/create', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      name: 'Job HTTP',
-      targets: ['https://www.instagram.com/p/B1LbfVPlwIA/', 'B1LbfVPlwIA'],
-      listIds: [],
-      config: { maxToScrape: 100, skip: { private: true }, fields: { fullName: false } },
-    }),
-  })
-  expect(createResponse.status).toBe(200)
-  const job = await createResponse.json()
-  expect(job.targets).toEqual([
-    'https://www.instagram.com/p/B1LbfVPlwIA/',
-    'B1LbfVPlwIA',
-  ])
-  expect(job.config.maxToScrape).toBe(100)
-  expect(job.config.skip).toMatchObject({ private: true, verified: false, noFullName: false })
-  expect(job.config.fields).toMatchObject({ fullName: false, isVerified: true, isPrivate: true })
-
-  const listResponse = await t.fetch('/api/scrape-jobs', { method: 'GET', headers })
-  expect(listResponse.status).toBe(200)
-  await expect(listResponse.json()).resolves.toMatchObject([{ _id: job._id }])
-
-  const insertResponse = await t.fetch('/api/instagram-accounts/insert-many', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      accounts: [
-        { userName: 'leada', fullName: 'Lead A', isVerified: false, isPrivate: false, sourceJobId: job._id },
-        { userName: 'leada', fullName: 'Lead A' },
-        { userName: '  ' },
-      ],
-    }),
-  })
-  expect(insertResponse.status).toBe(200)
-  await expect(insertResponse.json()).resolves.toMatchObject({ inserted: 1, existed: 1, skipped: 1 })
-
-  const byJobResponse = await t.fetch(
-    `/api/instagram-accounts/by-job?jobId=${encodeURIComponent(String(job._id))}`,
-    { method: 'GET', headers },
-  )
-  expect(byJobResponse.status).toBe(200)
-  await expect(byJobResponse.json()).resolves.toMatchObject([{ user_name: 'leada' }])
 })

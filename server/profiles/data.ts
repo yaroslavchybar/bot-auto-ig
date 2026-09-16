@@ -30,9 +30,6 @@ export type Profile = {
   using?: boolean
   login?: boolean
   listIds?: string[]
-  dailyScrapingLimit?: number | null
-  assignedAccountsLimit?: number | null
-  dailyScrapingUsed?: number
 }
 
 function mapDbRowToProfile(
@@ -77,8 +74,6 @@ export class ProfileManager {
         fingerprintOs: profile.fingerprintOs,
         cookiesJson: profile.cookiesJson,
         testIp: profile.testIp,
-        dailyScrapingLimit: profile.dailyScrapingLimit,
-        assignedAccountsLimit: profile.assignedAccountsLimit,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error creating profile in DB')
@@ -101,8 +96,6 @@ export class ProfileManager {
         fingerprintOs: profile.fingerprintOs,
         cookiesJson: profile.cookiesJson,
         testIp: profile.testIp,
-        dailyScrapingLimit: profile.dailyScrapingLimit,
-        assignedAccountsLimit: profile.assignedAccountsLimit,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error updating profile in DB')

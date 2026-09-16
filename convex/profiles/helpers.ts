@@ -4,8 +4,6 @@ export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	return s ? "proxy" : "direct";
 }
 
-export const DEFAULT_ASSIGNED_ACCOUNTS_LIMIT = 10;
-
 export function getProfileListIds(profile: any): any[] {
 	const merged = Array.isArray(profile?.listIds) ? profile.listIds : [];
 	const seen = new Set<string>();
@@ -25,74 +23,14 @@ export function buildListPatch(listIds: any[]): { listIds: any[] } {
 	};
 }
 
-export function normalizeDailyScrapingLimit(limit: unknown): number | undefined {
-	if (limit === null || typeof limit === "undefined") return undefined;
-	const numeric = Number(limit);
-	if (!Number.isFinite(numeric)) return undefined;
-	return Math.max(0, Math.floor(numeric));
-}
-
-export function normalizeAssignedAccountsLimit(limit: unknown): number {
-	if (limit === null || typeof limit === "undefined") return DEFAULT_ASSIGNED_ACCOUNTS_LIMIT;
-	const numeric = Number(limit);
-	if (!Number.isFinite(numeric)) return DEFAULT_ASSIGNED_ACCOUNTS_LIMIT;
-	return Math.max(0, Math.floor(numeric));
-}
-
 export function normalizeProfileRow(profile: any) {
-	if (!profile) return profile;
-	return {
-		...profile,
-		assignedAccountsLimit: normalizeAssignedAccountsLimit(profile.assignedAccountsLimit),
-	};
+	return profile ?? null;
 }
 
 export async function listProfileRows(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	rows.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return rows.map((row: any) => normalizeProfileRow(row));
-}
-
-export async function incrementDailyScrapingUsedByName(
-	ctx: any,
-	name: string,
-	amountRaw: number,
-	commitKeyRaw?: unknown,
-) {
-	const cleanedName = String(name || "").trim();
-	if (!cleanedName) throw new DomainError('VALIDATION', "name is required");
-	const amount = Number.isFinite(amountRaw) ? Math.max(0, Math.floor(amountRaw)) : 0;
-	if (amount === 0) return true;
-	// Idempotency key ties one quota charge to one durable chunk commit.
-	// A retry of the same cursor reuses the key and is applied at most once.
-	const commitKey = typeof commitKeyRaw === "string" ? commitKeyRaw.trim() : "";
-	if (commitKey) {
-		const seen = await ctx.db
-			.query("scrapeQuotaCommits")
-			.withIndex("by_key", (q: any) => q.eq("key", commitKey))
-			.first();
-		if (seen) {
-			if (seen.profileName !== cleanedName || seen.amount !== amount) {
-				throw new DomainError('VALIDATION', "commitKey was reused with different charge data");
-			}
-			return false;
-		}
-	}
-	const existing = await ctx.db
-		.query("profiles")
-		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
-		.first();
-	if (!existing) return true;
-	if (commitKey) {
-		await ctx.db.insert("scrapeQuotaCommits", {
-			key: commitKey,
-			profileName: cleanedName,
-			amount,
-			createdAt: Date.now(),
-		});
-	}
-	await ctx.db.patch(existing._id, { dailyScrapingUsed: (existing.dailyScrapingUsed || 0) + amount });
-	return true;
+	return rows;
 }
 
 export async function getProfileByNameRow(ctx: any, name: string) {
@@ -102,7 +40,7 @@ export async function getProfileByNameRow(ctx: any, name: string) {
 		.query("profiles")
 		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
 		.first();
-	return normalizeProfileRow(row ?? null);
+	return row ?? null;
 }
 
 export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[], cooldownMinutesRaw: number) {
@@ -119,7 +57,7 @@ export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[
 		return p.lastOpenedAt < cutoffMs;
 	});
 	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return filtered.map((row: any) => normalizeProfileRow(row));
+	return filtered;
 }
 
 export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
@@ -132,7 +70,7 @@ export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 		return listIds.some((listId) => allowed.has(String(listId)));
 	});
 	filtered.sort((a: any, b: any) => a.createdAt - b.createdAt);
-	return filtered.map((row: any) => normalizeProfileRow(row));
+	return filtered;
 }
 
 export async function createProfileRow(ctx: any, args: any) {
@@ -141,8 +79,6 @@ export async function createProfileRow(ctx: any, args: any) {
 	const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 	const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
-	const dailyLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
-	const assignedAccountsLimit = normalizeAssignedAccountsLimit(args.assignedAccountsLimit);
 
 	const id = await ctx.db.insert("profiles", {
 		createdAt: Date.now(),
@@ -159,11 +95,8 @@ export async function createProfileRow(ctx: any, args: any) {
 		listIds: [],
 		lastOpenedAt: undefined,
 		login: false,
-		dailyScrapingLimit: dailyLimit,
-		assignedAccountsLimit,
-		dailyScrapingUsed: 0,
 	});
-	return normalizeProfileRow(await ctx.db.get(id));
+	return await ctx.db.get(id);
 }
 
 export async function updateProfileByNameRow(ctx: any, args: any) {
@@ -201,18 +134,10 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		const cleaned = args.sessionId.trim();
 		next.sessionId = cleaned ? cleaned : undefined;
 	}
-	if (typeof args.dailyScrapingLimit === "number") {
-		next.dailyScrapingLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
-	} else if (args.dailyScrapingLimit === null) {
-		next.dailyScrapingLimit = undefined;
-	}
-	if (typeof args.assignedAccountsLimit === "number" || args.assignedAccountsLimit === null) {
-		next.assignedAccountsLimit = normalizeAssignedAccountsLimit(args.assignedAccountsLimit);
-	}
 	await ctx.db.patch(existing._id, {
 		...(next as any),
 	});
-	return normalizeProfileRow(await ctx.db.get(existing._id));
+	return await ctx.db.get(existing._id);
 }
 
 export async function updateProfileByIdRow(ctx: any, args: any) {
@@ -244,18 +169,10 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 		const cleaned = args.sessionId.trim();
 		next.sessionId = cleaned ? cleaned : undefined;
 	}
-	if (typeof args.dailyScrapingLimit === "number") {
-		next.dailyScrapingLimit = normalizeDailyScrapingLimit(args.dailyScrapingLimit);
-	} else if (args.dailyScrapingLimit === null) {
-		next.dailyScrapingLimit = undefined;
-	}
-	if (typeof args.assignedAccountsLimit === "number" || args.assignedAccountsLimit === null) {
-		next.assignedAccountsLimit = normalizeAssignedAccountsLimit(args.assignedAccountsLimit);
-	}
 	await ctx.db.patch(args.profileId, {
 		...(next as any),
 	});
-	return normalizeProfileRow(await ctx.db.get(args.profileId));
+	return await ctx.db.get(args.profileId);
 }
 
 export async function removeProfileByNameRow(ctx: any, name: string) {
@@ -266,11 +183,6 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
 		.first();
 	if (!existing) return true;
-	const accounts = await ctx.db
-		.query("instagramAccounts")
-		.withIndex("by_assignedTo", (q: any) => q.eq("assignedTo", existing._id))
-		.collect();
-	await Promise.all(accounts.map((a: any) => ctx.db.patch(a._id, { assignedTo: undefined, status: "available" })));
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -278,11 +190,6 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) return true;
-	const accounts = await ctx.db
-		.query("instagramAccounts")
-		.withIndex("by_assignedTo", (q: any) => q.eq("assignedTo", profileId))
-		.collect();
-	await Promise.all(accounts.map((a: any) => ctx.db.patch(a._id, { assignedTo: undefined, status: "available" })));
 	await ctx.db.delete(profileId);
 	return true;
 }
@@ -370,16 +277,4 @@ export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[],
 		}),
 	);
 	return true;
-}
-
-export async function backfillAssignedAccountsLimitRow(ctx: any) {
-	const rows = await ctx.db.query("profiles").collect();
-	let updated = 0;
-	for (const row of rows) {
-		const normalized = normalizeAssignedAccountsLimit(row.assignedAccountsLimit);
-		if (row.assignedAccountsLimit === normalized) continue;
-		await ctx.db.patch(row._id, { assignedAccountsLimit: normalized });
-		updated++;
-	}
-	return { updated };
 }

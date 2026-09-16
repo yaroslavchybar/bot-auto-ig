@@ -15,12 +15,9 @@ export type ProfileRecord = {
   listIds?: string[]
   lastOpenedAt?: number
   login: boolean
-  dailyScrapingLimit?: number
-  assignedAccountsLimit?: number
-  dailyScrapingUsed?: number
 }
 
-export const ACTIVITY_IDS = ['browse_feed', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'select_list', 'start_browser', 'follow_user', 'unfollow_user', 'send_dm', 'watch_stories'] as const
+export const ACTIVITY_IDS = ['browse_feed', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'select_list', 'start_browser', 'watch_stories'] as const
 export type ActivityId = typeof ACTIVITY_IDS[number]
 
 export type WebSocketEventType =

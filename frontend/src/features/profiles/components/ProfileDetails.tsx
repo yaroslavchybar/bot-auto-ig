@@ -157,8 +157,8 @@ export function ProfileDetails({ profile }: ProfileDetailsProps) {
           <Box className="h-4 w-4" /> Metadata
         </h4>
         <p className="text-subtle-copy text-xs leading-relaxed">
-          This profile can be used for manual browser sessions and, when it has
-          a proxy and session, contribute scraping capacity. Be careful when
+          This profile can be used for manual browser sessions and automated
+          workflows. Be careful when
           modifying fingerprint settings as it may trigger re-authentication
           verification on target platforms.
         </p>

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
-import { backfillAssignedAccountsLimitRow, createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, setProfileLoginTrueRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow, incrementDailyScrapingUsedByName } from "./helpers";
+import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, setProfileLoginTrueRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
 
 const profileArgsShape = {
 	name: v.string(),
@@ -11,8 +11,6 @@ const profileArgsShape = {
 	fingerprintOs: v.optional(v.string()),
 	cookiesJson: v.optional(v.string()),
 	sessionId: v.optional(v.string()),
-	dailyScrapingLimit: v.optional(v.union(v.number(), v.null())),
-	assignedAccountsLimit: v.optional(v.union(v.number(), v.null())),
 };
 
 export const create = mutation({
@@ -120,22 +118,5 @@ export const bulkRemoveFromListInternal = internalMutation({
 	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
 	handler: async (ctx, args) => {
 		return await bulkRemoveProfilesFromListRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-// Quota charges are internal-only: the server calls them through the
-// INTERNAL_API_KEY-gated HTTP route. A public mutation would let any client
-// inflate dailyScrapingUsed and spam scrapeQuotaCommits rows.
-export const incrementDailyScrapingUsedInternal = internalMutation({
-	args: { name: v.string(), amount: v.number(), commitKey: v.optional(v.string()) },
-	handler: async (ctx, args) => {
-		return await incrementDailyScrapingUsedByName(ctx, args.name, args.amount, args.commitKey);
-	},
-});
-
-export const backfillAssignedAccountsLimitDefaults = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		return await backfillAssignedAccountsLimitRow(ctx);
 	},
 });

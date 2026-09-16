@@ -13,7 +13,7 @@ import {
 import { Separator } from '@/components/ui/separator'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
-import { Fingerprint, Globe, Shield, Target, Users } from 'lucide-react'
+import { Fingerprint, Globe, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizeCookiesJsonForForm } from '../utils/cookieJson'
 
@@ -293,131 +293,6 @@ function FingerprintFields({
   )
 }
 
-/* ── Daily Limit Field ── */
-
-function DailyLimitField({
-  draft,
-  saving,
-  setDraft,
-}: {
-  draft: Partial<Profile>
-  saving: boolean
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
-}) {
-  return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <Label className="text-copy flex items-center gap-2 text-sm font-medium">
-          <Target className="h-4 w-4" /> Daily Scraping Limit
-        </Label>
-      </div>
-      <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
-        <div className="grid gap-1.5">
-          <Label
-            htmlFor="dailyScrapingLimit"
-            className="text-muted-copy text-xs"
-          >
-            Maximum items to scrape per day
-          </Label>
-          <Input
-            id="dailyScrapingLimit"
-            type="number"
-            min="0"
-            step="1"
-            value={draft.dailyScrapingLimit ?? ''}
-            onChange={(e) => {
-              const val = e.target.value.trim()
-              setDraft((prev) => ({
-                ...prev,
-                dailyScrapingLimit:
-                  val === ''
-                    ? null
-                    : Math.max(0, Math.floor(Number(val))),
-              }))
-            }}
-            disabled={saving}
-            placeholder="Leave empty for unlimited"
-            className="brand-focus bg-field border-line h-9 text-ink"
-          />
-          <p className="text-subtle-copy ml-1 text-[10px]">
-            Controls how much scraping capacity this profile can
-            contribute each day. Leave empty for no limit.
-          </p>
-        </div>
-        {typeof draft.dailyScrapingUsed === 'number' &&
-          draft.dailyScrapingUsed > 0 && (
-            <div className="bg-panel-muted border-line-soft rounded-sm border p-2 text-xs">
-              <span className="text-subtle-copy">Used today: </span>
-              <span className="text-ink font-semibold">
-                {draft.dailyScrapingUsed}
-              </span>
-              {typeof draft.dailyScrapingLimit === 'number' && (
-                <span className="text-subtle-copy">
-                  {' '}
-                  / {draft.dailyScrapingLimit}
-                </span>
-              )}
-            </div>
-          )}
-      </div>
-    </div>
-  )
-}
-
-function AssignedAccountsLimitField({
-  draft,
-  saving,
-  setDraft,
-}: {
-  draft: Partial<Profile>
-  saving: boolean
-  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
-}) {
-  return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <Label className="text-copy flex items-center gap-2 text-sm font-medium">
-          <Users className="h-4 w-4" /> Assigned Accounts Limit
-        </Label>
-      </div>
-      <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
-        <div className="grid gap-1.5">
-          <Label
-            htmlFor="assignedAccountsLimit"
-            className="text-muted-copy text-xs"
-          >
-            Maximum assigned accounts for this profile
-          </Label>
-          <Input
-            id="assignedAccountsLimit"
-            type="number"
-            min="0"
-            step="1"
-            value={draft.assignedAccountsLimit ?? ''}
-            onChange={(e) => {
-              const val = e.target.value.trim()
-              setDraft((prev) => ({
-                ...prev,
-                assignedAccountsLimit:
-                  val === ''
-                    ? null
-                    : Math.max(0, Math.floor(Number(val))),
-              }))
-            }}
-            disabled={saving}
-            placeholder="10"
-            className="brand-focus bg-field border-line h-9 text-ink"
-          />
-          <p className="text-subtle-copy ml-1 text-[10px]">
-            Hard cap for how many accounts can stay assigned to this profile at
-            once. Empty saves as the default limit of 10.
-          </p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /* ── Form Actions ── */
 
 function FormActions({
@@ -478,7 +353,6 @@ export function ProfileForm({
     status: 'idle',
     proxyType: 'http',
     fingerprintOs: 'windows',
-    assignedAccountsLimit: 10,
     ...initialData,
   }))
 
@@ -497,10 +371,6 @@ export function ProfileForm({
     const finalData = {
       ...draft,
       name,
-      assignedAccountsLimit:
-        typeof draft.assignedAccountsLimit === 'number'
-          ? Math.max(0, Math.floor(draft.assignedAccountsLimit))
-          : 10,
     }
     const normalizedCookies = normalizeCookiesJsonForForm(
       String(finalData.cookiesJson ?? ''),
@@ -533,10 +403,6 @@ export function ProfileForm({
           <ProxyFields {...fieldProps} connection={connection} setConnection={setConnection} />
           <Separator className="bg-panel-muted" />
           <FingerprintFields draft={draft} saving={saving} setDraft={setDraft} />
-          <Separator className="bg-panel-muted" />
-          <AssignedAccountsLimitField draft={draft} saving={saving} setDraft={setDraft} />
-          <Separator className="bg-panel-muted" />
-          <DailyLimitField draft={draft} saving={saving} setDraft={setDraft} />
         </div>
       </ScrollArea>
       <FormActions localError={localError} saving={saving} onSave={handleSave} onCancel={onCancel} />

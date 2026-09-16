@@ -25,9 +25,6 @@ import {
 } from './graph.js'
 import {
   browseFeed,
-  followUsers,
-  sendMessages,
-  unfollowUsers,
   watchStories,
 } from './actions.js'
 
@@ -162,24 +159,6 @@ async function runConfiguredAction(
       number(settings.stories_max, 3),
       logAction,
       shouldStop,
-    )
-  } else if (action === 'Follow' && settings.enable_follow) {
-    await followUsers(page, profile.id, logAction, shouldStop, settings)
-  } else if (action === 'Unfollow' && settings.do_unfollow) {
-    await unfollowUsers(
-      page,
-      profile.id,
-      logAction,
-      shouldStop,
-      settings,
-    )
-  } else if (action === 'Send Messages' && settings.do_message) {
-    await sendMessages(
-      page,
-      profile.id,
-      logAction,
-      shouldStop,
-      settings,
     )
   }
 }
@@ -368,35 +347,6 @@ export async function runWorkflow(
                 number(config.stories_max, 3),
                 log,
                 shouldStop,
-              )
-            } else if (activity === 'follow_user') {
-              await followUsers(
-                session.page,
-                profile.id,
-                log,
-                shouldStop,
-                config,
-              )
-            } else if (activity === 'unfollow_user') {
-              await unfollowUsers(
-                session.page,
-                profile.id,
-                log,
-                shouldStop,
-                config,
-              )
-            } else if (activity === 'send_dm') {
-              await sendMessages(
-                session.page,
-                profile.id,
-                log,
-                shouldStop,
-                {
-                  ...config,
-                  messaging_cooldown_enabled:
-                    startConfig.messagingCooldownEnabled,
-                  messaging_cooldown_hours: startConfig.messagingCooldownHours,
-                },
               )
             } else if (activity === 'close_browser') {
               await controls.close()

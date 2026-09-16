@@ -123,10 +123,6 @@ function useProfileSave(
         fingerprintOs: data.fingerprintOs || undefined,
         cookiesJson: typeof data.cookiesJson === 'string' ? data.cookiesJson.trim() : '',
         testIp: Boolean(data.testIp),
-        dailyScrapingLimit:
-          typeof data.dailyScrapingLimit === 'number' ? data.dailyScrapingLimit : null,
-        assignedAccountsLimit:
-          typeof data.assignedAccountsLimit === 'number' ? data.assignedAccountsLimit : 10,
       }
       if (dialogState.isCreateOpen) {
         await createProfile(payload)

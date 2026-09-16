@@ -12,7 +12,7 @@ server, Camoufox JS browser automation, Convex shared data layer. Package manage
 
 - `frontend/`: React + Vite app.
   Feature-owned UI under `src/features/` (`profiles`, `lists`, `workflows`,
-  `logs`, `vnc`, `scraped-data`, `auth`); shared
+  `logs`, `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
 - `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|displays|health`)
@@ -22,15 +22,11 @@ server, Camoufox JS browser automation, Convex shared data layer. Package manage
   general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
 - `server/browser/`: Camoufox JS sessions, profile persistence, and login/manual
   browser entrypoints.
-- `server/automation/`: Bun workers and TypeScript Instagram actions (`scrape.ts`
-  scrapes post likers and inserts survivors into `instagramAccounts`;
-  `igWebApi.ts` is the browser-session API client). Workflow workers
+- `server/automation/`: Bun workers and TypeScript Instagram actions
+  (feed browsing, story watching). Workflow workers
   emit `__EVENT__`-prefixed JSON for WebSocket propagation.
-- `server/scrapeJobs/`: standalone scrape job runner, Express routes
-  (`/api/scrape-jobs/run|stop|status`), and cursor checkpoints.
 - `convex/`: schema, queries/mutations (`profiles`, `lists`, `workflows`,
-  `scrapeJobs`, `instagramAccounts`,
-  `messageTemplates`), HTTP actions, crons. Generated code in
+  `messageTemplates`), HTTP actions. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
 - `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
 
@@ -93,14 +89,6 @@ areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounti
 
 ## Workflow & Quality Gates
 
-- Scrape jobs fetch likers per configured post (URL, shortcode, or media id)
-  in 100-user pages with `max_id` cursors (same shape as igscrape
-  `fetchViaRest`), 3 attempts per page with 1.5s backoff, a random 3–10s
-  pause between chunks and pages, filter each page (skip
-  private/verified/nameless, keep selected export fields) and persist
-  survivors into `instagramAccounts` in chunks of 25 as `available`
-  without touching existing rows. Retries resume from page one skipping
-  already-saved rows and reuse the same quota commit key per page.
 - Workflow checkpoints are separate from UI events. Pending database snapshots
   coalesce, and slow WebSocket clients are disconnected at a 1 MiB outbound buffer.
 

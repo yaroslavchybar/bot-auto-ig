@@ -22,90 +22,9 @@ export default defineSchema({
 		listIds: v.optional(v.array(v.id("lists"))),
 		lastOpenedAt: v.optional(v.number()),
 		login: v.boolean(),
-		dailyScrapingLimit: v.optional(v.number()),
-		assignedAccountsLimit: v.optional(v.number()),
-		dailyScrapingUsed: v.optional(v.number()),
 	})
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
-
-	scrapeQuotaCommits: defineTable({
-		key: v.string(),
-		profileName: v.string(),
-		amount: v.number(),
-		createdAt: v.number(),
-	}).index("by_key", ["key"]),
-
- 	instagramAccounts: defineTable({
- 		userName: v.string(),
- 		fullName: v.optional(v.string()),
- 		matchedName: v.optional(v.string()),
- 		createdAt: v.number(),
- 		assignedTo: v.optional(v.id("profiles")),
- 		isVerified: v.optional(v.boolean()),
- 		isPrivate: v.optional(v.boolean()),
-  		sourceJobId: v.optional(v.id("scrapeJobs")),
-		// Set only for scrape-inserted rows so listScraped can page the
-		// index instead of scanning the whole table. Messaging rows omit it.
-		scrapedAt: v.optional(v.number()),
-		status: v.optional(v.union(
-			v.literal("available"),
-			v.literal("assigned"),
-			v.literal("subscribed"),
-			v.literal("unsubscribed"),
-			v.literal("skipped"),
-			v.literal("done"),
-		)),
-		message: v.boolean(),
-		subscribedAt: v.optional(v.number()),
-		lastMessagedAt: v.optional(v.number()),
-	})
-		.index("by_userName", ["userName"])
-		.index("by_assignedTo", ["assignedTo"])
-		.index("by_status", ["status"])
-		.index("by_sourceJob", ["sourceJobId"])
-		.index("by_scrapedAt", ["scrapedAt"])
-		.index("by_assignedTo_status", ["assignedTo", "status"]),
-
- 	scrapeJobs: defineTable({
- 		name: v.string(),
- 		targets: v.array(v.string()),
- 		listIds: v.array(v.id("lists")),
-		status: v.union(
-			v.literal("idle"),
-			v.literal("running"),
-			v.literal("completed"),
-			v.literal("failed"),
-			v.literal("cancelled"),
-		),
- 		config: v.object({
- 			maxToScrape: v.number(),
- 			maxAttempts: v.number(),
- 			retryBackoffSeconds: v.string(),
- 			openDelaySeconds: v.number(),
-			fields: v.object({
-				fullName: v.boolean(),
-				isVerified: v.boolean(),
-				isPrivate: v.boolean(),
-			}),
-			skip: v.object({
-				private: v.boolean(),
-				verified: v.boolean(),
-				noFullName: v.boolean(),
-			}),
-		}),
-		stats: v.object({
-			scraped: v.number(),
-			deduped: v.number(),
-			chunksCompleted: v.number(),
-			targetsCompleted: v.number(),
-		}),
-		error: v.optional(v.string()),
-		startedAt: v.optional(v.number()),
-		completedAt: v.optional(v.number()),
-		createdAt: v.number(),
-		updatedAt: v.number(),
-	}).index("by_status", ["status"]),
 
 	messageTemplates: defineTable({
 		kind: v.string(),

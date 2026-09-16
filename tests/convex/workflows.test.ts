@@ -163,27 +163,8 @@ test('reads reset daily counters without a cron', async () => {
   expect(rows[0]?.runsToday).toBe(0)
 })
 
-test('deleting a scrape job keeps its scraped accounts for messaging', async () => {
-  const t = createConvexTest()
-  const job = await t.mutation(api.scrapeJobs.create, {
-    name: 'Job Delete Keeps Accounts',
-    targets: ['B1LbfVPlwIA'],
-  })
-
-  await t.mutation(internal.instagramAccounts.insertMany, {
-    accounts: [{ userName: 'leaddelete', sourceJobId: job!._id }],
-  })
-
-  const removed = await t.mutation(api.scrapeJobs.remove, { id: job!._id })
-  const accounts = await t.query(api.instagramAccounts.listScraped, {})
-
-  expect(removed).toBe(true)
-  expect(accounts.map((account) => account.userName)).toContain('leaddelete')
-})
-
 test('provides expanded default config for workflow activities', () => {
   const startBrowserDefaults = getDefaultConfig('start_browser')
-  const sendDmDefaults = getDefaultConfig('send_dm')
   const browseFeedDefaults = getDefaultConfig('browse_feed')
 
   expect(startBrowserDefaults).toMatchObject({
@@ -191,14 +172,6 @@ test('provides expanded default config for workflow activities', () => {
     parallelProfiles: 1,
     profileReopenCooldownEnabled: false,
     profileReopenCooldownMinutes: 30,
-    messagingCooldownEnabled: false,
-    messagingCooldownHours: 2,
-  })
-  expect(sendDmDefaults).toMatchObject({
-    template_kind: 'message',
-    follow_if_no_message_button: true,
-    typing_delay_min_ms: 100,
-    typing_delay_max_ms: 200,
   })
   expect(browseFeedDefaults).toMatchObject({
     watch_stories: false,
@@ -215,8 +188,6 @@ test('preserves explicit start browser cooldown settings', () => {
     headlessMode: true,
     profileReopenCooldownEnabled: true,
     profileReopenCooldownMinutes: 45,
-    messagingCooldownEnabled: true,
-    messagingCooldownHours: 12,
   })
 
   expect(normalized).toMatchObject({
@@ -224,11 +195,8 @@ test('preserves explicit start browser cooldown settings', () => {
     parallelProfiles: 1,
     profileReopenCooldownEnabled: true,
     profileReopenCooldownMinutes: 45,
-    messagingCooldownEnabled: true,
-    messagingCooldownHours: 12,
   })
   expect(normalized).not.toHaveProperty('profileReopenCooldown')
-  expect(normalized).not.toHaveProperty('messagingCooldown')
 })
 
 test('workflow import keeps expanded activity config payloads intact', () => {
@@ -255,22 +223,9 @@ test('workflow import keeps expanded activity config payloads intact', () => {
               },
             },
           },
-          {
-            id: 'send_dm_1',
-            type: 'activity',
-            data: {
-              activityId: 'send_dm',
-              config: {
-                template_kind: 'message_2',
-                typing_delay_min_ms: 120,
-                typing_delay_max_ms: 240,
-              },
-            },
-          },
         ],
         edges: [
           { id: 'e1', source: 'start_node', target: 'start_browser_1' },
-          { id: 'e2', source: 'start_browser_1', target: 'send_dm_1' },
         ],
       },
     }),
@@ -283,11 +238,6 @@ test('workflow import keeps expanded activity config payloads intact', () => {
   expect(nodes[1]?.data?.config).toMatchObject({
     parallelProfiles: 3,
     profileReopenCooldownMinutes: 90,
-  })
-  expect(nodes[2]?.data?.config).toMatchObject({
-    template_kind: 'message_2',
-    typing_delay_min_ms: 120,
-    typing_delay_max_ms: 240,
   })
 })
 

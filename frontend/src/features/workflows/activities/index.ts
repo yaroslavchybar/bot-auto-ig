@@ -7,8 +7,7 @@
  * FOLDER STRUCTURE:
  * - types.ts         → Type definitions
  * - browsing/        → Feed activities
- * - engagement/      → Follow/unfollow activities
- * - messaging/       → DM activities
+ * - engagement/      → Engagement activities (empty until activities register)
  * - stories/         → Story watching activities
  * - control/         → Flow control (delay, loop, etc.)
  *
@@ -32,7 +31,6 @@ export type {
 // Import all activity groups
 import { browsingActivities } from './browsing'
 import { engagementActivities } from './engagement'
-import { sendDm } from './messaging/send-dm'
 import { storiesActivities } from './stories'
 import { controlActivities } from './control'
 
@@ -47,7 +45,6 @@ export type ActivityCategoryFilter = ActivityCategory | 'all'
 export const ACTIVITY_REGISTRY: ActivityDefinition[] = [
   ...browsingActivities,
   ...engagementActivities,
-  sendDm,
   ...storiesActivities,
   ...controlActivities,
 ]
@@ -68,21 +65,19 @@ export function getActivityById(id: string): ActivityDefinition | undefined {
  * Get list of all categories
  */
 export function getAllCategories(): ActivityCategory[] {
-  return ['browsing', 'engagement', 'messaging', 'stories', 'control']
+  return ['browsing', 'stories', 'control']
 }
 
 /**
  * Get display label for a category
  */
 export function getCategoryLabel(category: ActivityCategory): string {
-  const labels: Record<ActivityCategory, string> = {
+  const labels: Record<string, string> = {
     browsing: 'Browsing',
-    engagement: 'Engagement',
-    messaging: 'Messaging',
     stories: 'Stories',
     control: 'Control Flow',
   }
-  return labels[category]
+  return (labels[category] ?? category) as string
 }
 
 export function getQuickPickActivities(limit = 6): ActivityDefinition[] {

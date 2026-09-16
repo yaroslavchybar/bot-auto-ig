@@ -1,6 +1,5 @@
 import { ListsPage } from '@/features/lists/ListsPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
-import { ScrapedDataPage } from '@/features/scraped-data/ScrapedDataPage'
 import { VncPage } from '@/features/vnc/VncPage'
 import { VncSessionPage } from '@/features/vnc/VncSessionPage'
 import { WorkflowEditorPage } from '@/features/workflows/WorkflowEditorPage'
@@ -36,7 +35,6 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     navId: 'workflows',
     appChrome: 'immersive',
   },
-  '/scraped-data': { Page: ScrapedDataPage, breadcrumb: 'Scrape Jobs', navId: 'scraped-data' },
   '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
   '/vnc/session/:workflowId/:profileName': { Page: VncSessionPage,

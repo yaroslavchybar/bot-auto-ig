@@ -12,9 +12,6 @@ export function mapProfileRecord(
     id: record._id, name: record.name, proxy: record.proxy,
     proxyType: record.proxyType, fingerprintOs: record.fingerprintOs,
     testIp: record.testIp, status: record.status, using: record.using, login: record.login,
-    dailyScrapingLimit: record.dailyScrapingLimit,
-    assignedAccountsLimit: record.assignedAccountsLimit,
-    dailyScrapingUsed: record.dailyScrapingUsed,
     ...(options?.includeCookies ? { cookiesJson: record.cookiesJson } : {}),
   }
 }

@@ -5,7 +5,6 @@ import {
   List,
   GitBranch,
   Monitor,
-  Database,
 } from 'lucide-react'
 
 import {
@@ -25,7 +24,6 @@ import {
 export const NAV_IDS = [
   'profiles',
   'workflows',
-  'scraped-data',
   'lists',
   'vnc',
 ] as const
@@ -46,13 +44,6 @@ export const NAV_ITEMS = [
     to: '/workflows',
     icon: GitBranch,
     breadcrumb: 'Workflows',
-  },
-  {
-    title: 'Scrape Jobs',
-    id: 'scraped-data',
-    to: '/scraped-data',
-    icon: Database,
-    breadcrumb: 'Scrape Jobs',
   },
   {
     title: 'Lists Manager',

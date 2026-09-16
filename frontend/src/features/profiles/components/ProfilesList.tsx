@@ -169,10 +169,6 @@ function ProfileMobileCard({
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
   const osLabel = getOsLabel(profile.fingerprintOs)
   const statusMeta = getStatusMeta(profile)
-  const dailyUsage =
-    typeof profile.dailyScrapingLimit === 'number'
-      ? `${profile.dailyScrapingUsed ?? 0}/${profile.dailyScrapingLimit}`
-      : null
 
   return (
     <div
@@ -203,7 +199,7 @@ function ProfileMobileCard({
         </div>
       </div>
 
-      <MobileCardTags profile={profile} osLabel={osLabel} dailyUsage={dailyUsage} />
+      <MobileCardTags profile={profile} osLabel={osLabel} />
 
       <MobileCardFooter
         profile={profile}
@@ -220,11 +216,9 @@ function ProfileMobileCard({
 function MobileCardTags({
   profile,
   osLabel,
-  dailyUsage,
 }: {
   profile: Profile
   osLabel: string
-  dailyUsage: string | null
 }) {
   return (
     <div className="text-muted-copy mt-4 space-y-3 text-xs">
@@ -237,11 +231,6 @@ function MobileCardTags({
           <div className="brand-surface brand-text-soft flex items-center gap-1 rounded-md border px-2 py-1">
             <LogIn className="h-3.5 w-3.5" />
             Auto Login
-          </div>
-        )}
-        {dailyUsage && (
-          <div className="border-line bg-panel-muted text-copy rounded-md border px-2 py-1">
-            Daily {dailyUsage}
           </div>
         )}
       </div>
