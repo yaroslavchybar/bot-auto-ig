@@ -37,6 +37,14 @@ function profilePath(name: string): string {
   if (!result.startsWith(`${root}${path.sep}`))
     throw new Error('Invalid profile name')
   fs.mkdirSync(result, { recursive: true })
+  // Drop persisted window chrome state (size/position/mode). Stale geometry
+  // from older runs restores the browser partly off-screen on the fixed
+  // 1366x768 display, and centered dialogs like the file picker get cut off.
+  try {
+    fs.unlinkSync(path.join(result, 'xulstore.json'))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
   return result
 }
 

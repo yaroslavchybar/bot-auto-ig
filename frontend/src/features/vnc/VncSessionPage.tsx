@@ -550,7 +550,7 @@ function VncDesktopPanels({
           } catch { return undefined }
         })()}
       >
-        <Panel id="left-vnc" defaultSize={68} minSize={30}>
+        <Panel id="left-vnc" defaultSize={60} minSize={30}>
           <VncStreamPanel
             session={session}
             isInteractive={isInteractive}
@@ -563,7 +563,7 @@ function VncDesktopPanels({
           <div className="bg-panel-hover h-8 w-1 rounded-full transition-colors group-hover:bg-white/30" />
         </Separator>
 
-        <Panel id="right-logs" defaultSize={32} minSize={20}>
+        <Panel id="right-logs" defaultSize={40} minSize={20}>
           <div className="flex h-full flex-col overflow-hidden rounded-[3px] shadow-xs">
             <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
               <LogsViewer
