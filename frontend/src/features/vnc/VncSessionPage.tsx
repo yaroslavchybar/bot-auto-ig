@@ -8,7 +8,7 @@ import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
-import { useVncFileUpload, VncUploadButton, VncDropZone } from './components/VncUpload'
+import { useVncFileUpload, VncUploadButton } from './components/VncUpload'
 
 const LogsViewer = lazy(() =>
   import('@/components/shared/LogsViewer').then((module) => ({
@@ -296,18 +296,13 @@ function VncMobileLayout({
           <VncUploadButton uploading={upload.uploading} onClick={upload.openPicker} />
         </div>
         <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
-          <VncDropZone
-            onFile={(file) => void upload.uploadFile(file)}
-            disabled={upload.uploading}
-          >
-            <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
-              <VncViewer
-                url={buildVncWebSocketUrl(session.vncPort)}
-                interactive={isInteractive}
-                className="h-full w-full flex-1 object-contain"
-              />
-            </Suspense>
-          </VncDropZone>
+          <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+            <VncViewer
+              url={buildVncWebSocketUrl(session.vncPort)}
+              interactive={isInteractive}
+              className="h-full w-full flex-1 object-contain"
+            />
+          </Suspense>
         </div>
 
         <ControlToggle handoff={handoff} onBack={onBack} />
@@ -458,8 +453,6 @@ function VncDesktopLayout({
         isInteractive={isInteractive}
         handoff={handoff}
         onBack={onBack}
-        onFile={(file) => void upload.uploadFile(file)}
-        uploadDisabled={upload.uploading}
       />
     </div>
   )
@@ -518,15 +511,11 @@ function VncDesktopPanels({
   isInteractive,
   handoff,
   onBack,
-  onFile,
-  uploadDisabled,
 }: {
   session: DisplaySession
   isInteractive: boolean
   handoff: ControlHandoff
   onBack: () => void
-  onFile: (file: File) => void
-  uploadDisabled: boolean
 }) {
   return (
     <div className="min-h-0 flex-1 p-1">
@@ -552,8 +541,6 @@ function VncDesktopPanels({
             isInteractive={isInteractive}
             handoff={handoff}
             onBack={onBack}
-            onFile={onFile}
-            uploadDisabled={uploadDisabled}
           />
         </Panel>
 
@@ -584,15 +571,11 @@ function VncStreamPanel({
   isInteractive,
   handoff,
   onBack,
-  onFile,
-  uploadDisabled,
 }: {
   session: DisplaySession
   isInteractive: boolean
   handoff: ControlHandoff
   onBack: () => void
-  onFile: (file: File) => void
-  uploadDisabled: boolean
 }) {
   return (
     <div className="bg-shell border-line-soft group relative flex h-full flex-col overflow-hidden rounded-[3px] border shadow-xs">
@@ -602,15 +585,13 @@ function VncStreamPanel({
         </div>
       </div>
 
-      <VncDropZone onFile={onFile} disabled={uploadDisabled}>
-        <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
-          <VncViewer
-            url={buildVncWebSocketUrl(session.vncPort)}
-            interactive={isInteractive}
-            className="h-full w-full flex-1 object-contain"
-          />
-        </Suspense>
-      </VncDropZone>
+      <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+        <VncViewer
+          url={buildVncWebSocketUrl(session.vncPort)}
+          interactive={isInteractive}
+          className="h-full w-full flex-1 object-contain"
+        />
+      </Suspense>
 
       {!isInteractive && (
         <VncControlOverlay handoff={handoff} onBack={onBack} />

@@ -11,7 +11,7 @@ import { resolveProjectRoot } from '../shared/utils.js'
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const UPLOAD_DIR = path.join(PROJECT_ROOT, 'data', 'uploads')
 
-const MAX_BYTES = 15 * 1024 * 1024
+const MAX_BYTES = 500 * 1024 * 1024
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp'])
 
@@ -87,8 +87,8 @@ router.get(
 // Raw bytes upload — no extra dep. Frontend sends File bytes with
 // Content-Type + X-Filename headers. express.raw enforces the size limit
 // while buffering; the buffer is written once, and the Downloads mirror
-// (when it's a real dir, not our symlink) is a copyFile so the 15 MB
-// payload is never held twice in memory.
+// (when it's a real dir, not our symlink) is a copyFile so the payload
+// is never held twice in memory.
 router.post(
   '/',
   express.raw({ type: '*/*', limit: MAX_BYTES }),
@@ -97,7 +97,7 @@ router.post(
     const body = req.body as Buffer | undefined
     if (!body || !(body instanceof Buffer) || body.length === 0)
       throw new ValidationError('Empty file')
-    if (body.length > MAX_BYTES) throw new ValidationError('File too large (max 15 MB)')
+    if (body.length > MAX_BYTES) throw new ValidationError('File too large (max 500 MB)')
 
     const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
     if (!ALLOWED_MIME.has(mime)) throw new ValidationError('Only jpg, png, webp allowed')
