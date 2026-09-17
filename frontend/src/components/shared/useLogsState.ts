@@ -53,8 +53,8 @@ export function useLogsState({
   const { handleError } = useErrorHandler()
 
   const {
-    wsConnected, logs, loading, refreshing,
-    handleRefresh, handleClearLive,
+    wsConnected, logs, loading,
+    handleClearLive,
     inlineError, dismissError,
   } = useLogsFetching(liveBufferSize, workflowId, handleError)
 
@@ -69,8 +69,8 @@ export function useLogsState({
   return {
     wsConnected,
     logs, filteredLogs, visibleLogs, hasMoreLogs, loadMoreLogs,
-    loading, refreshing,
-    handleRefresh, handleClearLive,
+    loading,
+    handleClearLive,
     inlineError, dismissError,
     filterQuery, setFilterQuery, levelFilter, setLevelFilter,
     showTime, setShowTime, showSource, setShowSource,
@@ -125,8 +125,8 @@ function useLogsFetching(
     finally { setLoading(false) }
   }, [handleError])
   return {
-    logs, wsConnected, loading, refreshing: loading,
-    handleRefresh: () => { setLoading(true); return loadHistory() }, handleClearLive, inlineError,
+    logs, wsConnected, loading,
+    handleClearLive, inlineError,
     dismissError: () => setInlineError(null),
   }
 }

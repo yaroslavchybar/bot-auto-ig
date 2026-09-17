@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from '@/lib/router'
 import { ApiError, apiFetch } from '@/lib/api'
 import { Panel, Group, Separator } from 'react-resizable-panels'
-import { ArrowLeft, FileText, RefreshCw } from 'lucide-react'
+import { ArrowLeft, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -29,8 +29,7 @@ function useVncSessionResolution() {
   const { workflowId: rawWorkflowId, profileName: rawProfileName } = useParams()
   const workflowId = decodeRouteParam(rawWorkflowId)
   const profileName = decodeRouteParam(rawProfileName)
-  const { sessions, loading, refresh } = useVncSessions(true)
-  const [refreshing, setRefreshing] = useState(false)
+  const { sessions, loading } = useVncSessions(true)
 
   const session = useMemo(
     () => sessions.find(
@@ -41,27 +40,20 @@ function useVncSessionResolution() {
 
   const handleBack = useCallback(() => { navigate('/vnc') }, [navigate])
 
-  const handleManualRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await Promise.all([refresh(), new Promise((resolve) => setTimeout(resolve, 300))])
-    } finally { setRefreshing(false) }
-  }, [refresh])
-
-  return { workflowId, profileName, session, loading, refreshing, handleBack, handleManualRefresh }
+  return { workflowId, profileName, session, loading, handleBack }
 }
 
 export function VncSessionPage() {
   const {
     workflowId, profileName, session, loading,
-    refreshing, handleBack, handleManualRefresh,
+    handleBack,
   } = useVncSessionResolution()
 
   if (!workflowId || !profileName) {
     return <VncMissingParamsView onBack={handleBack} message="Session information is missing from the URL." />
   }
 
-  if (loading && !session && !refreshing) {
+  if (loading && !session) {
     return (
       <div className="bg-shell text-subtle-copy flex h-full items-center justify-center text-sm">
         Loading live session...
@@ -74,8 +66,6 @@ export function VncSessionPage() {
       <VncMissingParamsView
         onBack={handleBack}
         message="This live session is no longer active."
-        onRefresh={() => void handleManualRefresh()}
-        refreshDisabled={loading || refreshing}
       />
     )
   }
@@ -83,7 +73,7 @@ export function VncSessionPage() {
   return (
     <ResolvedVncSessionPage
       key={sessionKey(session)} session={session}
-      loading={loading || refreshing} onBack={handleBack} onRefresh={handleManualRefresh}
+      onBack={handleBack}
     />
   )
 }
@@ -94,14 +84,10 @@ function VncMissingParamsView({
   onBack,
   message,
   error,
-  onRefresh,
-  refreshDisabled,
 }: {
   onBack: () => void
   message: string
   error?: string
-  onRefresh?: () => void
-  refreshDisabled?: boolean
 }) {
   return (
     <div className="bg-shell flex h-full items-center justify-center p-6">
@@ -112,17 +98,6 @@ function VncMissingParamsView({
           {error ? <p className="text-status-danger mt-3 text-sm">{error}</p> : null}
         </div>
         <div className="flex justify-center gap-3">
-          {onRefresh && (
-            <Button
-              variant="outline"
-              onClick={onRefresh}
-              disabled={refreshDisabled}
-              className="border-line bg-field hover:bg-panel-hover text-copy"
-            >
-              <RefreshCw className={refreshDisabled ? 'mr-2 h-4 w-4 animate-spin' : 'mr-2 h-4 w-4'} />
-              Refresh
-            </Button>
-          )}
           <Button onClick={onBack} className="brand-button">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Sessions
@@ -231,14 +206,10 @@ function useControlHandoff(session: DisplaySession): ControlHandoff {
 
 function ResolvedVncSessionPage({
   session,
-  loading,
   onBack,
-  onRefresh,
 }: {
   session: DisplaySession
-  loading: boolean
   onBack: () => void
-  onRefresh: () => Promise<void>
 }) {
   const isMobile = useIsMobile()
   const handoff = useControlHandoff(session)
@@ -261,11 +232,9 @@ function ResolvedVncSessionPage({
   return (
     <VncDesktopLayout
       session={session}
-      loading={loading}
       handoff={handoff}
       isInteractive={isInteractive}
       onBack={onBack}
-      onRefresh={onRefresh}
     />
   )
 }
@@ -430,18 +399,14 @@ function ControlToggle({
 
 function VncDesktopLayout({
   session,
-  loading,
   handoff,
   isInteractive,
   onBack,
-  onRefresh,
 }: {
   session: DisplaySession
-  loading: boolean
   handoff: ControlHandoff
   isInteractive: boolean
   onBack: () => void
-  onRefresh: () => Promise<void>
 }) {
   const upload = useVncFileUpload()
   return (
@@ -449,10 +414,8 @@ function VncDesktopLayout({
       {upload.input}
       <VncDesktopHeader
         session={session}
-        loading={loading}
         isInteractive={isInteractive}
         onBack={onBack}
-        onRefresh={onRefresh}
         uploading={upload.uploading}
         onUpload={upload.openPicker}
         files={upload.files}
@@ -471,10 +434,8 @@ function VncDesktopLayout({
 
 function VncDesktopHeader({
   session,
-  loading,
   isInteractive,
   onBack,
-  onRefresh,
   uploading,
   onUpload,
   files,
@@ -482,10 +443,8 @@ function VncDesktopHeader({
   onRefreshFiles,
 }: {
   session: DisplaySession
-  loading: boolean
   isInteractive: boolean
   onBack: () => void
-  onRefresh: () => Promise<void>
   uploading: boolean
   onUpload: () => void
   files: VpsUpload[]
@@ -511,17 +470,6 @@ function VncDesktopHeader({
         <VncClipboardButton vncPort={session.vncPort} interactive={isInteractive} />
         <VncUploadButton uploading={uploading} onClick={onUpload} />
         <VncFilesButton files={files} onDelete={onDeleteFile} onRefresh={onRefreshFiles} />
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => void onRefresh()}
-          aria-label="Refresh sessions"
-          title="Refresh sessions"
-          className="h-8 w-8 shrink-0 p-0"
-        >
-          <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-          <span className="sr-only">Refresh</span>
-        </Button>
       </div>
     </div>
   )

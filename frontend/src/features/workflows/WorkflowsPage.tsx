@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Upload } from 'lucide-react'
+import { Plus, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -26,9 +26,9 @@ export function WorkflowsPage() {
   const s = useWorkflowsPage()
   return (
     <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
-      <WorkflowsHeader saving={s.saving} workflowsLoading={s.workflowsLoading}
-        refreshing={s.refreshing} importInputRef={s.importInputRef}
-        onCreate={s.handleCreate} onRefresh={() => void s.handleRefresh()}
+      <WorkflowsHeader saving={s.saving}
+        importInputRef={s.importInputRef}
+        onCreate={s.handleCreate}
         onImportClick={s.handleImportClick} onImportFile={s.handleImportFile} />
       <WorkflowsContent s={s} />
       <WorkflowCrudDialogs isCreateOpen={s.isCreateOpen} editWorkflow={s.editWorkflow}
@@ -69,20 +69,14 @@ import type { ChangeEvent, RefObject } from 'react'
 
 function WorkflowsHeader({
   saving,
-  workflowsLoading,
-  refreshing,
   importInputRef,
   onCreate,
-  onRefresh,
   onImportClick,
   onImportFile,
 }: {
   saving: boolean
-  workflowsLoading: boolean
-  refreshing: boolean
   importInputRef: RefObject<HTMLInputElement | null>
   onCreate: () => void
-  onRefresh: () => void
   onImportClick: () => void
   onImportFile: (event: ChangeEvent<HTMLInputElement>) => void
 }) {
@@ -100,22 +94,6 @@ function WorkflowsHeader({
             New Workflow
           </Button>
           <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onRefresh}
-              disabled={workflowsLoading || saving || refreshing}
-              aria-label="Refresh workflows"
-              title="Refresh workflows"
-              className="h-8 w-8 shrink-0 p-0"
-            >
-              <RefreshCw
-                className={
-                  workflowsLoading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
-                }
-              />
-              <span className="sr-only">Refresh</span>
-            </Button>
             <Button
               variant="outline"
               size="icon"

@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Search, Terminal } from 'lucide-react'
+import { Plus, Search, Terminal } from 'lucide-react'
 import type { LogEntry } from '@/lib/logs'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileDetails } from './components/ProfileDetails'
@@ -28,8 +28,8 @@ export function ProfilesPage() {
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
       <ProfilesHeader searchQuery={s.searchQuery} onSearchChange={s.setSearchQuery}
-        onRefresh={() => void s.handleRefreshProfiles()} onCreate={s.handleCreate}
-        loading={s.loading} saving={s.saving} refreshing={s.refreshing} />
+        onCreate={s.handleCreate}
+        loading={s.loading} saving={s.saving} />
       <ProfilesContent s={s} />
       <ProfileFormDialogs profiles={s.profiles} isCreateOpen={s.isCreateOpen}
         editProfile={s.editProfile} saving={s.saving}
@@ -42,7 +42,7 @@ export function ProfilesPage() {
         onSetLogsProfileId={s.setLogsProfileId} onSetDetailsProfileId={s.setDetailsProfileId}
         onSetDeleteProfileId={s.setDeleteProfileId} onSetLoginProfileId={s.setLoginProfileId}
         onDeleteConfirm={s.handleDeleteConfirm}
-        onRefreshProfiles={s.refreshProfiles} onLoadLogs={s.loadLogs} />
+        onRefreshProfiles={s.refreshProfiles} />
     </div>
   )
 }
@@ -68,19 +68,15 @@ function ProfilesContent({ s }: { s: ReturnType<typeof useProfilesPage> }) {
 function ProfilesHeader({
   searchQuery,
   onSearchChange,
-  onRefresh,
   onCreate,
   loading,
   saving,
-  refreshing,
 }: {
   searchQuery: string
   onSearchChange: (value: string) => void
-  onRefresh: () => void
   onCreate: () => void
   loading: boolean
   saving: boolean
-  refreshing: boolean
 }) {
   return (
     <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
@@ -95,22 +91,6 @@ function ProfilesHeader({
               className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
             />
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={onRefresh}
-            disabled={loading || saving || refreshing}
-            aria-label="Refresh profiles"
-            title="Refresh profiles"
-            className="h-8 w-8 shrink-0 p-0"
-          >
-            <RefreshCw
-              className={
-                loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'
-              }
-            />
-            <span className="sr-only">Refresh</span>
-          </Button>
         </div>
         <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
           <Button
@@ -199,10 +179,10 @@ function ProfileFormDialogs({
 /* ── Logs Dialog ── */
 
 function ProfileLogsDialog({
-  logsProfile, logs, logsLoading, onClose, onLoadLogs,
+  logsProfile, logs, logsLoading, onClose,
 }: {
   logsProfile: Profile | null; logs: LogEntry[]; logsLoading: boolean
-  onClose: () => void; onLoadLogs: (profileName?: string) => Promise<void>
+  onClose: () => void
 }) {
   return (
     <Dialog open={Boolean(logsProfile)} onOpenChange={(open) => { if (!open) onClose() }}>
@@ -214,7 +194,7 @@ function ProfileLogsDialog({
           </DialogTitle>
         </DialogHeader>
         {logsProfile && (
-          <ProfileLogs logs={logs} loading={logsLoading} onRefresh={() => onLoadLogs(logsProfile.name)} />
+          <ProfileLogs logs={logs} loading={logsLoading} />
         )}
       </DialogContent>
     </Dialog>
@@ -257,14 +237,13 @@ interface ProfileViewDialogsProps {
   onSetLoginProfileId: (id: string | null) => void
   onDeleteConfirm: () => void
   onRefreshProfiles: () => Promise<void>
-  onLoadLogs: (profileName?: string) => Promise<void>
 }
 
 function ProfileViewDialogsInner(p: ProfileViewDialogsProps) {
   return (
     <>
       <ProfileLogsDialog logsProfile={p.logsProfile} logs={p.logs} logsLoading={p.logsLoading}
-        onClose={() => p.onSetLogsProfileId(null)} onLoadLogs={p.onLoadLogs} />
+        onClose={() => p.onSetLogsProfileId(null)} />
       <ProfileDetailsSheet detailsProfile={p.detailsProfile}
         onClose={() => p.onSetDetailsProfileId(null)} />
     </>

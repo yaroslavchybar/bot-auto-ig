@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useConvex, useMutation } from 'convex/react'
 import { apiFetch } from '@/lib/api'
 import type { LogEntry } from '@/lib/logs'
@@ -77,11 +77,14 @@ function useProfileSearch(profiles: Profile[]) {
 function useProfileLogs(handleError: ReturnType<typeof useErrorHandler>['handleError']) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [logsLoading, setLogsLoading] = useState(false)
+  const requestVersion = useRef(0)
 
   const loadLogs = useCallback(async (profileName?: string) => {
+    const version = ++requestVersion.current
     setLogsLoading(true)
     try {
       const data = await apiFetch<LogEntry[]>('/api/logs')
+      if (version !== requestVersion.current) return
       const filtered = profileName
         ? data.filter((log) => {
             const structuredProfile = String(log.profileName || '').trim()
@@ -92,9 +95,9 @@ function useProfileLogs(handleError: ReturnType<typeof useErrorHandler>['handleE
         : data
       setLogs(filtered.slice(-500))
     } catch (e) {
-      handleError(e, 'Profile logs')
+      if (version === requestVersion.current) handleError(e, 'Profile logs')
     } finally {
-      setLogsLoading(false)
+      if (version === requestVersion.current) setLogsLoading(false)
     }
   }, [handleError])
 
@@ -208,19 +211,7 @@ function useProfilePageActions(
   setSaving: (v: boolean) => void,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
   clearWsLogs: () => void,
-  refreshProfiles: () => Promise<void>,
 ) {
-  const [refreshing, setRefreshing] = useState(false)
-
-  const handleRefreshProfiles = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await refreshProfiles()
-    } finally {
-      setRefreshing(false)
-    }
-  }, [refreshProfiles])
-
   const handleCreate = useCallback(() => {
     dialogState.setEditProfile(null)
     dialogState.setIsCreateOpen(true)
@@ -270,7 +261,6 @@ function useProfilePageActions(
   }, [clearWsLogs, dialogState])
 
   return {
-    refreshing, handleRefreshProfiles,
     handleCreate, handleEdit, handleDeleteClick,
     handleLogs, handleDetails, handleCloseCreate, handleCloseEdit, handleLogin,
   }
@@ -318,17 +308,22 @@ export function useProfilesPage() {
   useRuntimeReconciliation(refreshProfiles)
 
   useEffect(() => {
-    if (dialogState.logsProfile?.name) void loadLogs(dialogState.logsProfile.name)
+    const name = dialogState.logsProfile?.name
+    if (!name) return
+    void loadLogs(name)
+    // Auto-refresh while the dialog stays open; no manual button.
+    const timer = setInterval(() => { void loadLogs(name) }, 5000)
+    return () => clearInterval(timer)
   }, [dialogState.logsProfile?.name, loadLogs])
 
   const actions = useProfilePageActions(
     convex, dialogState, save.setSaving, handleError,
-    clearWsLogs, refreshProfiles,
+    clearWsLogs,
   )
 
   return {
     profiles, filteredProfiles, loading: profilesLoading,
-    saving: save.saving, refreshing: actions.refreshing,
+    saving: save.saving,
     isCreateOpen: dialogState.isCreateOpen,
     logs, logsLoading, searchQuery, wsLogs,
     editProfile: dialogState.editProfile,
@@ -344,7 +339,6 @@ export function useProfilesPage() {
     setDeleteProfileId: dialogState.setDeleteProfileId,
     setLogsProfileId: dialogState.setLogsProfileId,
     setLoginProfileId: dialogState.setLoginProfileId,
-    handleRefreshProfiles: actions.handleRefreshProfiles,
     handleCreate: actions.handleCreate, handleEdit: actions.handleEdit,
     handleDeleteClick: actions.handleDeleteClick,
     handleLogs: actions.handleLogs, handleDetails: actions.handleDetails,
@@ -352,6 +346,6 @@ export function useProfilesPage() {
     handleCloseEdit: actions.handleCloseEdit, handleLogin: actions.handleLogin,
     handleSaveProfile: save.handleSaveProfile,
     handleDeleteConfirm: crud.handleDeleteConfirm,
-    toggleUsing: crud.toggleUsing, refreshProfiles, loadLogs,
+    toggleUsing: crud.toggleUsing, refreshProfiles,
   }
 }

@@ -2,13 +2,12 @@ import { useState } from 'react'
 import type { LogEntry } from '@/lib/logs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { Check, Copy, RefreshCw, Terminal } from 'lucide-react'
+import { Check, Copy, Terminal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ProfileLogsProps {
   logs: LogEntry[]
   loading: boolean
-  onRefresh: () => void
 }
 
 /* ── Toolbar ── */
@@ -18,13 +17,11 @@ function LogsToolbar({
   logsEmpty,
   copied,
   onCopy,
-  onRefresh,
 }: {
   loading: boolean
   logsEmpty: boolean
   copied: boolean
   onCopy: () => void
-  onRefresh: () => void
 }) {
   return (
     <div className="border-line-soft bg-panel-subtle flex items-center justify-between border-b p-4">
@@ -42,18 +39,6 @@ function LogsToolbar({
           ) : (
             <><Copy className="mr-1.5 h-3.5 w-3.5" />Copy Output</>
           )}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={onRefresh}
-          disabled={loading}
-          aria-label="Refresh logs"
-          title="Refresh logs"
-          className="h-8 w-8 shrink-0 p-0"
-        >
-          <RefreshCw className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-          <span className="sr-only">Refresh</span>
         </Button>
       </div>
     </div>
@@ -117,7 +102,7 @@ function LogEntries({ logs, loading }: { logs: LogEntry[]; loading: boolean }) {
 
 /* ── Main Component ── */
 
-export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
+export function ProfileLogs({ logs, loading }: ProfileLogsProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -144,7 +129,6 @@ export function ProfileLogs({ logs, loading, onRefresh }: ProfileLogsProps) {
         logsEmpty={logs.length === 0}
         copied={copied}
         onCopy={handleCopy}
-        onRefresh={onRefresh}
       />
       <div className="bg-shell text-copy min-h-0 flex-1 overflow-hidden font-mono text-[11px] leading-relaxed">
         <ScrollArea className="h-full">

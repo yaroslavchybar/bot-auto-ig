@@ -27,8 +27,6 @@ export function LogsViewer({
         <LogsStreamControls
           wsConnected={state.wsConnected}
           loading={state.loading}
-          refreshing={state.refreshing}
-          onRefresh={state.handleRefresh}
           onClearLive={state.handleClearLive}
         />
 

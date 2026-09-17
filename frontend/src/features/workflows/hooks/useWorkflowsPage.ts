@@ -5,7 +5,7 @@ import {
   useState,
   type ChangeEvent,
 } from 'react'
-import { useConvex, useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { useNavigate } from '@/lib/router'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -273,8 +273,6 @@ function useWorkflowsData() {
 /* ── Main hook ── */
 
 export function useWorkflowsPage() {
-  const convex = useConvex()
-  const [refreshing, setRefreshing] = useState(false)
   const { handleError } = useErrorHandler()
 
   const { workflowsList, workflowsLoading } = useWorkflowsData()
@@ -307,17 +305,9 @@ export function useWorkflowsPage() {
   const importExport = useWorkflowImportExport(workflowsList, crud.createWorkflow, crud.setSaving, handleError)
   const scheduling = useWorkflowScheduling(dialogState, handleError, crud.setSaving)
 
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await convex.query(api.workflows.queries.list, {})
-    } catch (e) { handleError(e, 'Refresh workflows') }
-    finally { setRefreshing(false) }
-  }, [convex, handleError])
-
   return {
     importInputRef: importExport.importInputRef,
-    workflowsList, workflowsLoading, saving: crud.saving, refreshing,
+    workflowsList, workflowsLoading, saving: crud.saving,
     isCreateOpen: dialogState.isCreateOpen, editWorkflow: dialogState.editWorkflow,
     detailsWorkflow: dialogState.detailsWorkflow, scheduleWorkflow: dialogState.scheduleWorkflow,
     deleteWorkflowId: dialogState.deleteWorkflowId,
@@ -325,7 +315,7 @@ export function useWorkflowsPage() {
     setDetailsWorkflowId: dialogState.setDetailsWorkflowId,
     setScheduleWorkflowId: dialogState.setScheduleWorkflowId,
     setDeleteWorkflowId: dialogState.setDeleteWorkflowId,
-    handleCreate, handleRefresh, handleEdit,
+    handleCreate, handleEdit,
     handleViewDetails, handleEditFlow,
     handleSaveCreate: crud.handleSaveCreate, handleSaveEdit: crud.handleSaveEdit,
     handleDelete, handleConfirmDelete: crud.handleConfirmDelete,

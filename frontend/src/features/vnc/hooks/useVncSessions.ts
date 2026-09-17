@@ -56,11 +56,15 @@ export function useVncSessions(enabled: boolean) {
     }
 
     let disposed = false
-    // Schedule the next poll after completion so slow requests cannot pile up.
+    // Auto-refresh: fast poll while disconnected, slow re-sync while
+    // connected so a missed socket event still heals without any button.
     const poll = async () => {
       await refresh()
-      if (!disposed && !connected) {
-        timer = setTimeout(() => { void poll() }, isMobile ? 15000 : 5000)
+      if (!disposed) {
+        const nextMs = connected
+          ? (isMobile ? 30000 : 15000)
+          : (isMobile ? 15000 : 5000)
+        timer = setTimeout(() => { void poll() }, nextMs)
       }
     }
     let timer = setTimeout(() => { void poll() }, 0)

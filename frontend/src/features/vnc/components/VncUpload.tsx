@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Files, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { Files, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -125,9 +125,6 @@ export function VncFilesButton({
       <PopoverContent className="w-80" align="end">
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm font-medium">Files on VPS</p>
-          <Button variant="ghost" size="icon" onClick={onRefresh} title="Refresh list" className="h-7 w-7">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
         </div>
         {files.length === 0 ? (
           <p className="text-muted-foreground text-xs">Nothing uploaded yet.</p>

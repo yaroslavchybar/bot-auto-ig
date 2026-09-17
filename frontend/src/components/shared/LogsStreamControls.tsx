@@ -1,46 +1,22 @@
 import { Button } from '@/components/ui/button'
 import {
-  RefreshCw,
   Trash2,
 } from 'lucide-react'
 
 interface LogsStreamControlsProps {
   wsConnected: boolean
   loading: boolean
-  refreshing: boolean
-  onRefresh: () => void
   onClearLive: () => void
 }
 
 export function LogsStreamControls({
   wsConnected,
   loading,
-  refreshing,
-  onRefresh,
   onClearLive,
 }: LogsStreamControlsProps) {
   return (
     <div className="border-line-soft flex flex-col justify-between gap-2 border-b px-2 py-1.5 sm:flex-row sm:items-center sm:gap-0">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          variant="outline"
-          size="icon"
-          onClick={() => void onRefresh()}
-          aria-label="Refresh logs"
-          title="Refresh logs"
-          className="h-8 w-8 shrink-0 p-0"
-          disabled={loading || refreshing}
-        >
-          <RefreshCw
-            className={
-              loading || refreshing
-                ? 'h-4 w-4 animate-spin'
-                : 'h-4 w-4'
-            }
-          />
-          <span className="sr-only">Refresh</span>
-        </Button>
-
         <Button
           variant="outline"
           size="sm"

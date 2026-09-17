@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { parseSidebarOpen } from '@/lib/sidebar-state'
 import type { RouteMeta } from '@/lib/router'
+import { useVncSessions } from '@/features/vnc/hooks/useVncSessions'
 
 type ProtectedLayoutShellProps = {
   routeMeta: RouteMeta
@@ -30,11 +31,13 @@ function readSidebarDefaultOpen() {
 
 export function ProtectedLayoutShell({
   routeMeta,
+  pathname,
   children,
 }: ProtectedLayoutShellProps) {
 
   const breadcrumb = routeMeta.breadcrumb ?? 'Profiles Manager'
   const appChrome = routeMeta.appChrome ?? 'default'
+  const showVncCount = pathname === '/vnc'
 
   if (appChrome === 'immersive') {
     return (
@@ -61,10 +64,11 @@ export function ProtectedLayoutShell({
                 <SidebarTrigger className="text-muted-copy hover:text-ink -ml-1 size-8 md:hidden" />
                 <Breadcrumb className="min-w-0">
                   <BreadcrumbList>
-                    <BreadcrumbItem>
+                    <BreadcrumbItem className="flex items-center gap-2">
                       <BreadcrumbPage className="page-title-gradient text-lg font-medium">
                         {breadcrumb}
                       </BreadcrumbPage>
+                      {showVncCount ? <VncActiveCount /> : null}
                     </BreadcrumbItem>
                   </BreadcrumbList>
                 </Breadcrumb>
@@ -79,8 +83,17 @@ export function ProtectedLayoutShell({
                 {children}
               </div>
             </div>
-          </SidebarInset>
+            </SidebarInset>
         </SidebarProvider>
     </ConvexClientProvider>
+  )
+}
+
+// Shows live VNC session count next to the "Browser View" breadcrumb.
+// Mounted only on /vnc so polling pauses on other routes.
+function VncActiveCount() {
+  const { sessions } = useVncSessions(true)
+  return (
+    <span className="text-subtle-copy font-mono text-xs">[{sessions.length} live]</span>
   )
 }

@@ -1,8 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useNavigate } from '@/lib/router'
-import { LayoutGrid, RefreshCw } from 'lucide-react'
+import { LayoutGrid } from 'lucide-react'
 import { VncTile } from './components/VncTile'
-import { Button } from '@/components/ui/button'
 import { useVncSessions } from './hooks/useVncSessions'
 import { useRouteActive } from '@/hooks/useRouteActive'
 import { buildVncSessionPath, sessionKey } from './utils/liveSessions'
@@ -10,8 +9,7 @@ import { buildVncSessionPath, sessionKey } from './utils/liveSessions'
 export function VncPage() {
   const navigate = useNavigate()
   const isActive = useRouteActive('/vnc')
-  const { sessions, loading, connected, refresh } = useVncSessions(isActive)
-  const [refreshing, setRefreshing] = useState(false)
+  const { sessions } = useVncSessions(isActive)
 
   const handleSelect = useCallback(
     (workflowId: string, profileName: string) => {
@@ -20,57 +18,12 @@ export function VncPage() {
     [navigate],
   )
 
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await Promise.all([refresh(), new Promise((resolve) => setTimeout(resolve, 300))])
-    } finally { setRefreshing(false) }
-  }, [refresh])
-
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
-      <VncHeader
-        sessionCount={sessions.length}
-        connected={connected}
-        loading={loading}
-        refreshing={refreshing}
-        onRefresh={() => void handleRefresh()}
-      />
       <VncSessionGrid
         sessions={sessions}
         onSelect={handleSelect}
       />
-    </div>
-  )
-}
-
-/* ── Header ── */
-
-function VncHeader({
-  sessionCount, connected, loading, refreshing, onRefresh,
-}: {
-  sessionCount: number; connected: boolean; loading: boolean; refreshing: boolean
-  onRefresh: () => void
-}) {
-  return (
-    <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
-      <div className="flex items-center gap-3">
-        <div className="flex items-baseline gap-2">
-          <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">Active Sessions</h2>
-          <span className="text-subtle-copy font-mono text-[10px]">[{sessionCount} live]</span>
-        </div>
-        <div className="text-muted-copy flex items-center gap-1.5 font-mono text-[10px]">
-          <span className={`h-2 w-2 rounded-full ${connected ? 'status-dot-success' : 'status-dot-danger'}`} />
-          <span className={connected ? 'text-status-success' : 'text-status-danger'}>
-            {connected ? 'ws connected' : 'ws reconnecting'}
-          </span>
-        </div>
-        <Button variant="outline" size="icon" onClick={onRefresh} disabled={loading || refreshing}
-          aria-label="Refresh sessions" title="Refresh sessions" className="h-8 w-8 shrink-0 p-0">
-          <RefreshCw className={loading || refreshing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-          <span className="sr-only">Refresh</span>
-        </Button>
-      </div>
     </div>
   )
 }

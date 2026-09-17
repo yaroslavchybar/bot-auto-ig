@@ -232,7 +232,7 @@ function LoginLogsList({
 
       <div className="flex justify-end">
         <Button onClick={onClose} size="sm" className="w-full">
-          Close & Refresh
+          Close
         </Button>
       </div>
     </div>
