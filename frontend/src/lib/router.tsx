@@ -1,5 +1,6 @@
 import { ListsPage } from '@/features/lists/ListsPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
+import { ProxiesPage } from '@/features/proxies/ProxiesPage'
 import { VncPage } from '@/features/vnc/VncPage'
 import { VncSessionPage } from '@/features/vnc/VncSessionPage'
 import { WorkflowEditorPage } from '@/features/workflows/WorkflowEditorPage'
@@ -36,6 +37,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     appChrome: 'immersive',
   },
   '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
+  '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
   '/vnc/session/:workflowId/:profileName': { Page: VncSessionPage,
     breadcrumb: 'Live Session',

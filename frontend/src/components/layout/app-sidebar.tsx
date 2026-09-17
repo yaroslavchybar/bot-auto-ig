@@ -5,6 +5,7 @@ import {
   List,
   GitBranch,
   Monitor,
+  Globe,
 } from 'lucide-react'
 
 import {
@@ -25,6 +26,7 @@ export const NAV_IDS = [
   'profiles',
   'workflows',
   'lists',
+  'proxies',
   'vnc',
 ] as const
 
@@ -51,6 +53,13 @@ export const NAV_ITEMS = [
     to: '/lists',
     icon: List,
     breadcrumb: 'Lists Manager',
+  },
+  {
+    title: 'Proxies',
+    id: 'proxies',
+    to: '/proxies',
+    icon: Globe,
+    breadcrumb: 'Proxies',
   },
   {
     title: 'Browser View',

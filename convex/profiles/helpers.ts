@@ -1,4 +1,5 @@
 import { DomainError } from '../errors';
+import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles } from '../proxies';
 export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	const s = typeof proxy === "string" ? proxy.trim() : "";
 	return s ? "proxy" : "direct";
@@ -25,6 +26,49 @@ export function buildListPatch(listIds: any[]): { listIds: any[] } {
 
 export function normalizeProfileRow(profile: any) {
 	return profile ?? null;
+}
+
+// Saved proxies stay in sync with profiles: whenever a profile is saved
+// with a proxy, keep a matching row in the proxies table (deduped by
+// proxy value so shared proxies only appear once). Runs inside the same
+// mutation so it covers UI, API and internal callers.
+export async function ensureProxySaved(ctx: any, proxyRaw: unknown, proxyTypeRaw: unknown, suggestedName: unknown) {
+	const proxyType = typeof proxyTypeRaw === "string" ? proxyTypeRaw.trim().toLowerCase() : "http";
+	if (proxyType !== "http" && proxyType !== "socks5") return;
+	// Store the canonical type://rest form so bare "host:port" values dedup
+	// against existing rows instead of creating a second row per format.
+	const canonical = proxyKey(proxyRaw, proxyType);
+	if (!canonical) return;
+	const rows = await ctx.db.query("proxies").collect();
+	if (rows.some((p: any) => proxyKey(p.proxy, p.proxyType) === canonical)) return;
+	const base = String(suggestedName || "").trim() || canonical;
+	const taken = new Set(rows.map((p: any) => String(p.name)));
+	let name = base;
+	let n = 2;
+	while (taken.has(name)) {
+		name = `${base} ${n++}`;
+	}
+	await ctx.db.insert("proxies", { name, proxy: canonical, proxyType, maxProfiles: DEFAULT_MAX_PROFILES, createdAt: Date.now() });
+}
+
+// Blocks assigning a proxy that already reached its profile limit.
+// Only runs for new assignments: edits that keep the current proxy
+// always pass so legacy over-limit profiles stay editable.
+async function assertProxyLimit(ctx: any, proxyRaw: unknown, proxyTypeRaw: unknown, excludeProfileId: unknown) {
+	const key = proxyKey(proxyRaw, proxyTypeRaw);
+	if (!key) return;
+	const [proxies, profiles] = await Promise.all([
+		ctx.db.query("proxies").collect(),
+		ctx.db.query("profiles").collect(),
+	]);
+	const row = proxies.find((p: any) => proxyKey(p.proxy, p.proxyType) === key);
+	const limit = row ? resolveMaxProfiles(row) : DEFAULT_MAX_PROFILES;
+	const used = profiles.filter((p: any) =>
+		String(p._id) !== String(excludeProfileId) && proxyKey(p.proxy, p.proxyType) === key,
+	);
+	if (used.length >= limit) {
+		throw new DomainError('VALIDATION', `Proxy "${row ? row.name : key}" already used by ${used.length} profiles (limit ${limit})`);
+	}
 }
 
 export async function listProfileRows(ctx: any) {
@@ -80,6 +124,7 @@ export async function createProfileRow(ctx: any, args: any) {
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 	const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 
+	await assertProxyLimit(ctx, proxy, args.proxyType, null);
 	const id = await ctx.db.insert("profiles", {
 		createdAt: Date.now(),
 		name,
@@ -96,6 +141,7 @@ export async function createProfileRow(ctx: any, args: any) {
 		lastOpenedAt: undefined,
 		login: false,
 	});
+	await ensureProxySaved(ctx, proxy, args.proxyType, name);
 	return await ctx.db.get(id);
 }
 
@@ -134,9 +180,20 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		const cleaned = args.sessionId.trim();
 		next.sessionId = cleaned ? cleaned : undefined;
 	}
+	const effectiveProxyByName = typeof args.proxy === "string" ? args.proxy : existing.proxy;
+	const effectiveTypeByName = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
+	if (proxyKey(effectiveProxyByName, effectiveTypeByName) !== proxyKey(existing.proxy, existing.proxyType)) {
+		await assertProxyLimit(ctx, effectiveProxyByName, effectiveTypeByName, existing._id);
+	}
 	await ctx.db.patch(existing._id, {
 		...(next as any),
 	});
+	await ensureProxySaved(
+		ctx,
+		typeof args.proxy === "string" ? args.proxy : existing.proxy,
+		typeof args.proxyType === "string" ? args.proxyType : existing.proxyType,
+		name,
+	);
 	return await ctx.db.get(existing._id);
 }
 
@@ -169,9 +226,20 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 		const cleaned = args.sessionId.trim();
 		next.sessionId = cleaned ? cleaned : undefined;
 	}
+	const effectiveProxyById = typeof args.proxy === "string" ? args.proxy : existing.proxy;
+	const effectiveTypeById = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
+	if (proxyKey(effectiveProxyById, effectiveTypeById) !== proxyKey(existing.proxy, existing.proxyType)) {
+		await assertProxyLimit(ctx, effectiveProxyById, effectiveTypeById, args.profileId);
+	}
 	await ctx.db.patch(args.profileId, {
 		...(next as any),
 	});
+	await ensureProxySaved(
+		ctx,
+		typeof args.proxy === "string" ? args.proxy : existing.proxy,
+		typeof args.proxyType === "string" ? args.proxyType : existing.proxyType,
+		name,
+	);
 	return await ctx.db.get(args.profileId);
 }
 

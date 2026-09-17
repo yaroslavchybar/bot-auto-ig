@@ -7,6 +7,16 @@ export default defineSchema({
 		createdAt: v.number(),
 	}),
 
+	proxies: defineTable({
+		name: v.string(),
+		proxy: v.string(),
+		proxyType: v.string(),
+		// Max profiles allowed to use this proxy. Optional so rows written
+		// before the limit existed still read; code treats missing as 3.
+		maxProfiles: v.optional(v.number()),
+		createdAt: v.number(),
+	}).index("by_name", ["name"]),
+
 	profiles: defineTable({
 		createdAt: v.number(),
 		name: v.string(),

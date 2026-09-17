@@ -20,6 +20,7 @@ import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles_helpers from "../profiles/helpers.js";
 import type * as profiles_mutations from "../profiles/mutations.js";
 import type * as profiles_queries from "../profiles/queries.js";
+import type * as proxies from "../proxies.js";
 import type * as workflows_helpers from "../workflows/helpers.js";
 import type * as workflows_mutations from "../workflows/mutations.js";
 import type * as workflows_queries from "../workflows/queries.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   "profiles/helpers": typeof profiles_helpers;
   "profiles/mutations": typeof profiles_mutations;
   "profiles/queries": typeof profiles_queries;
+  proxies: typeof proxies;
   "workflows/helpers": typeof workflows_helpers;
   "workflows/mutations": typeof workflows_mutations;
   "workflows/queries": typeof workflows_queries;

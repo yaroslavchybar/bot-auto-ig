@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { useQuery } from 'convex/react'
+import { api } from '../../../../../convex/_generated/api'
+import { buildProxyUsage, proxyUsageKey } from '../../proxies/utils/proxyUsage'
 import type { Profile } from '../types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -166,8 +169,93 @@ function ProxyFields({
       </div>
 
       {connection === 'proxy' && (
-        <ProxyInputRow draft={draft} saving={saving} setDraft={setDraft} />
+        <>
+          <SavedProxyPicker
+            saving={saving}
+            setDraft={setDraft}
+            currentProxy={draft.proxy}
+            currentProxyType={draft.proxyType}
+          />
+          <ProxyInputRow draft={draft} saving={saving} setDraft={setDraft} />
+        </>
       )}
+    </div>
+  )
+}
+
+/* ── Saved Proxy Picker ── */
+
+// Pick from proxies managed on the Proxies page. Fills the manual
+// fields below so the stored profile keeps a plain proxy string.
+// Options at their profile limit are disabled unless already selected.
+function SavedProxyPicker({
+  saving,
+  setDraft,
+  currentProxy,
+  currentProxyType,
+}: {
+  saving: boolean
+  setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
+  currentProxy?: string
+  currentProxyType?: string
+}) {
+  const saved = useQuery(api.proxies.list, {})
+  const profiles = useQuery(api.profiles.queries.list, {})
+  if (saved === undefined) return null
+  if (saved.length === 0) return null
+
+  const usage = buildProxyUsage(
+    saved.map((p) => ({ id: String(p._id), proxy: p.proxy, proxyType: p.proxyType })),
+    (profiles ?? []).map((p: { name: string; proxy?: string; proxyType?: string }) => ({
+      name: p.name,
+      proxy: p.proxy,
+      proxyType: p.proxyType,
+    })),
+  )
+  const currentKey = proxyUsageKey(currentProxy, currentProxyType)
+  const selectedId = saved.find(
+    (p) => currentKey !== null && proxyUsageKey(p.proxy, p.proxyType) === currentKey,
+  )
+
+  return (
+    <div className="grid gap-1.5">
+      <Label className="text-muted-copy text-xs">Saved proxy</Label>
+      <Select
+        disabled={saving}
+        value={selectedId ? String(selectedId._id) : ''}
+        onValueChange={(id) => {
+          const found = saved.find((p) => String(p._id) === id)
+          if (!found) return
+          setDraft((prev) => ({
+            ...prev,
+            proxy: found.proxy,
+            proxyType: found.proxyType,
+          }))
+        }}
+      >
+        <SelectTrigger className="brand-focus bg-field border-line h-9 text-ink">
+          <SelectValue placeholder="Choose a saved proxy..." />
+        </SelectTrigger>
+        <SelectContent className="panel-dropdown">
+          {saved.map((p) => {
+            const id = String(p._id)
+            const limit = typeof p.maxProfiles === 'number' ? p.maxProfiles : 3
+            const used = usage[id]?.count ?? 0
+            const isCurrent = currentKey !== null && currentKey === proxyUsageKey(p.proxy, p.proxyType)
+            const full = used >= limit && !isCurrent
+            return (
+              <SelectItem
+                key={id}
+                value={id}
+                disabled={full}
+                className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+              >
+                {p.name} ({p.proxyType}) · {used}/{limit}{full ? ' · full' : ''}
+              </SelectItem>
+            )
+          })}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

@@ -35,6 +35,7 @@ export async function insertDoc(
     | 'lists'
     | 'messageTemplates'
     | 'profiles'
+    | 'proxies'
     | 'workflows',
   value: Record<string, unknown>
 ) {

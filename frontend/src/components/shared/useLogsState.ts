@@ -111,8 +111,6 @@ function useLogsFetching(
     }
   }, [handleError, liveBufferSize])
   useEffect(() => {
-    // History updates arrive after the HTTP request resolves.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadHistory()
   }, [loadHistory, wsConnected])
   const handleClearLive = useCallback(async () => {
