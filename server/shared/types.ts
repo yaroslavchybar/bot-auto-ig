@@ -12,6 +12,14 @@ export type InstagramSettings = {
     like_chance: number;
     carousel_watch_chance: number;
     follow_chance: number;
+    profile_visit_chance: number;
+    liked_profile_visit_chance: number;
+    own_profile_chance: number;
+    dm_chance: number;
+    reels_chance: number;
+    reels_min: number;
+    reels_max: number;
+    reels_skip_chance: number;
     carousel_max_slides: number;
     stories_max: number;
     feed_min_time_minutes: number;
@@ -57,6 +65,14 @@ export const DEFAULT_SETTINGS: InstagramSettings = {
     like_chance: 10,
     carousel_watch_chance: 0,
     follow_chance: 50,
+    profile_visit_chance: 35,
+    liked_profile_visit_chance: 80,
+    own_profile_chance: 10,
+    dm_chance: 8,
+    reels_chance: 12,
+    reels_min: 3,
+    reels_max: 8,
+    reels_skip_chance: 25,
     carousel_max_slides: 3,
     stories_max: 3,
     feed_min_time_minutes: 1,
