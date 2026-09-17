@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { launchPersistentContext } from 'cloakbrowser'
+import { launchPersistentContext, binaryInfo } from 'cloakbrowser'
 import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
 import { shutdownSignal, sleep } from './lifecycle.js'
 import { focusPageContent } from './focus.js'
@@ -191,6 +191,28 @@ function withLaunchTimeout<T extends { close?: () => Promise<unknown> }>(promise
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
+/**
+ * One-line binary report for the run log: which tier is actually on disk and
+ * whether a key is present. A free tier is a supported Cloak configuration,
+ * but this app targets Pro (the fingerprint-spoofing flags need the Pro
+ * binary), so free is worth a warning here. Diagnostics only: never throws,
+ * never prints the key.
+ */
+export function cloakBinaryNote(): string {
+  let tier = 'unknown'
+  let version = ''
+  try {
+    const info = typeof binaryInfo === 'function' ? binaryInfo() : undefined
+    if (info && typeof info.tier === 'string') tier = info.tier
+    if (info && typeof info.version === 'string') version = info.version
+  } catch { /* fall through with unknown tier */ }
+  const key = (process.env.CLOAKBROWSER_LICENSE_KEY || '').trim() ? 'set' : 'missing'
+  const label = `Cloak binary: ${tier}${version ? ` ${version}` : ''} (license key ${key})`
+  if (tier !== 'pro' && tier !== 'unknown')
+    return `WARN: ${label} — this app targets the Pro binary`
+  return `INFO: ${label}`
+}
+
 /** A profile directory can belong to only one worker, including during startup. */
 function lockProfile(profileDir: string): () => void {
   const lockPath = path.join(profileDir, 'worker.lock')
@@ -222,6 +244,7 @@ export async function openBrowserSession(
   // Migrate only while holding the lock: concurrent openers serialize here
   // instead of racing the directory wipe.
   migrateFirefoxProfile(profileDir)
+  process.stdout.write(`${cloakBinaryNote()}\n`)
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
   let context: BrowserContext | undefined

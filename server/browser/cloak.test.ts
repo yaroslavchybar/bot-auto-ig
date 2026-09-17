@@ -44,8 +44,7 @@ test(`browser cleanup: ${scenario}`, () => {
       events.push('close')
       context.emit('close')
     }
-    mock.module('cloakbrowser', () => ({ launchPersistentContext: async options => {
-      launchOptions = options
+    mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async options => {      launchOptions = options
       if (scenario === 'stop during launch') process.emit('SIGTERM')
       if (scenario === 'budget lost during launch') loseBudget()
       // Model Playwright's default competing shutdown handler.
@@ -133,7 +132,7 @@ test('cloak seed is stable per profile and platform', () => {
 
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cloak-seed-'))
     try {
-      mock.module('cloakbrowser', () => ({ launchPersistentContext: async () => { throw new Error('no launch') } }))
+      mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async () => { throw new Error('no launch') } }))
       mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
       mock.module('./server/shared/convexClient.ts', () => ({
         profilesGetByName: async () => undefined,

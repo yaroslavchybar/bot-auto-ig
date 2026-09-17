@@ -5,8 +5,7 @@
 
 import { StringDecoder } from 'node:string_decoder'
 
-interface ParsedLog {
-    message: string
+export interface ParsedLog {    message: string
     level: 'info' | 'warn' | 'error' | 'success' | 'debug'
     source: 'typescript' | 'server'
     eventType?: string
@@ -175,10 +174,31 @@ export function parseLogLine(raw: string): ParsedLog | null {
 }
 
 /**
+ * CloakBrowser prints its startup banner and routine notices (GeoIP, font
+ * check) to the child's stderr, where our handlers would paint them red.
+ * These exact lines carry no failure signal — real errors
+ * (CloakBrowserLicenseError, launch failures) never match these patterns.
+ */
+const BENIGN_BROWSER_STDERR = [
+  /^CloakBrowser - stealth Chromium for automation$/,
+  /^https:\/\/github\.com\/CloakHQ\/CloakBrowser$/,
+  /^CloakBrowser (free|pro) \(v[^)]*\):/i,
+  /^For more than one concurrent session/i,
+  /^Star us if CloakBrowser helps your project!$/,
+  /Incomplete Windows font set/i,
+  /^\[cloakbrowser\] (Downloading GeoIP|GeoIP database ready)/i,
+]
+
+export function isBenignBrowserStderr(message: string): boolean {
+  const line = String(message || '').trim()
+  if (!line) return false
+  return BENIGN_BROWSER_STDERR.some((pattern) => pattern.test(line))
+}
+
+/**
  * Parse multiple log lines from a worker stream.
  */
-export function parseLogOutput(raw: string): ParsedLog[] {
-    const lines = raw.split('\n')
+export function parseLogOutput(raw: string): ParsedLog[] {    const lines = raw.split('\n')
     const results: ParsedLog[] = []
 
     for (const line of lines) {

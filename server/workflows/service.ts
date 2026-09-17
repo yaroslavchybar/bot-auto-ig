@@ -8,7 +8,7 @@ import {
 } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { automationMutex } from '../shared/mutex.js'
-import { createLogStreamParser, parseLogOutput } from '../logs/parser.js'
+import { createLogStreamParser, parseLogOutput, isBenignBrowserStderr, type ParsedLog } from '../logs/parser.js'
 import {
   workflowsGetById,
   workflowsStart,
@@ -223,21 +223,25 @@ function wireStdout(
 }
 
 function wireStderr(proc: any, workflowId: string): void {
-  proc.stderr?.on('data', (data: Buffer) => {
-    const raw = data.toString()
-    const parsed = parseLogOutput(raw)
-    for (const log of parsed) {
+  // Buffered like stdout: a banner line split across chunks would classify
+  // as error in halves. Flush leftovers when the stream (or child) ends.
+  const parser = createLogStreamParser()
+  const consume = (logs: ParsedLog[]) => {
+    for (const log of logs) {
       const stopRequested = Boolean((proc as any).__stopRequested)
       if (stopRequested && isStopNoiseLog(log?.message)) continue
       broadcast({
         type: 'log',
         workflowId,
         message: log.message,
-        level: log.explicitLevel ? log.level : 'error',
+        level: log.explicitLevel ? log.level : (isBenignBrowserStderr(log.message) ? 'info' : 'error'),
         source: 'typescript',
       })
     }
-  })
+  }
+  proc.stderr?.on('data', (data: Buffer) => consume(parser.write(data)))
+  proc.stderr?.on('end', () => consume(parser.end()))
+  proc.on('close', () => consume(parser.end()))
 }
 
 export function wireProcessLifecycle(proc: any, workflowId: string): void {

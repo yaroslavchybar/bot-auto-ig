@@ -6,7 +6,7 @@ import {
 } from '../shared/convexClient.js'
 import { activeDisplays, profileProcesses } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
-import { parseLogOutput } from '../logs/parser.js'
+import { parseLogOutput, isBenignBrowserStderr, createLogStreamParser, type ParsedLog } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
 import { spawnBun, killProcess, requestChildStop, guardChildStdin } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
@@ -80,16 +80,14 @@ function handleChildStdout(name: string, data: Buffer) {
   }
 }
 
-function handleChildStderr(name: string, data: Buffer) {
-  const raw = data.toString()
-  const parsed = parseLogOutput(raw)
-  for (const log of parsed) {
+function handleChildStderr(name: string, logs: ParsedLog[]) {
+  for (const log of logs) {
     const meta = (log.metadata as any) || {}
     broadcast({
       type: log.eventType ? log.eventType : 'log',
       workflowId: String(meta.workflowId ?? 'manual'),
       message: log.message,
-      level: log.explicitLevel ? log.level : 'error',
+      level: log.explicitLevel ? log.level : (isBenignBrowserStderr(log.message) ? 'info' : 'error'),
       source: 'typescript',
       profileName: name,
       ...meta,
@@ -176,7 +174,12 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
   guardChildStdin(child)
 
   child.stdout?.on('data', (data) => handleChildStdout(name, data))
-  child.stderr?.on('data', (data) => handleChildStderr(name, data))
+  // Buffered: pipe chunks can split a banner line, and classifying halves
+  // would paint both red. Flush leftovers when the stream (or child) ends.
+  const stderrParser = createLogStreamParser()
+  child.stderr?.on('data', (data) => handleChildStderr(name, stderrParser.write(data)))
+  child.stderr?.on('end', () => handleChildStderr(name, stderrParser.end()))
+  child.once('close', () => handleChildStderr(name, stderrParser.end()))
   profileProcesses.set(name, child)
   const running = profilesSyncStatus(name, 'running', true)
   let cleanup: Promise<void> | undefined
