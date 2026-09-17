@@ -8,7 +8,7 @@ import { activeDisplays, profileProcesses } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
 import { parseLogOutput } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
-import { spawnBun, killProcess } from '../shared/ProcessService.js'
+import { spawnBun, killProcess, requestChildStop, guardChildStdin } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 import { automationMutex } from '../shared/mutex.js'
@@ -168,9 +168,12 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
 
   const child = spawn({
     args,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: process.platform === 'win32',
+    // stdin stays piped: UI stop sends `stop` for a clean shutdown
+    // (Windows cannot signal detached children, so this replaces SIGBREAK).
+    stdio: ['pipe', 'pipe', 'pipe'],
   })
+  // Injected spawn doubles in tests skip spawnBun's own guard.
+  guardChildStdin(child)
 
   child.stdout?.on('data', (data) => handleChildStdout(name, data))
   child.stderr?.on('data', (data) => handleChildStderr(name, data))
@@ -226,6 +229,15 @@ async function stopProfileBrowserLocked(name: string): Promise<void> {
     source: 'server',
     profileName: name,
   })
+
+  // Cooperative stop first: the child saves cookies and closes Chromium,
+  // which frees the Cloak license seat. A force-kill leaves the seat held
+  // ~15 minutes. Chromium shutdown + DB save can take seconds, so allow
+  // more time than the generic kill chain before escalating.
+  if (await requestChildStop(proc)) {
+    await profileCleanup.get(proc)
+    return
+  }
 
   await killProcess(proc)
 

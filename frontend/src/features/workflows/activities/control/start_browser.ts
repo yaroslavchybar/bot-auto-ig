@@ -26,8 +26,8 @@ export const startBrowser: ActivityDefinition = {
       label: 'Parallel Profiles',
       default: 1,
       min: 1,
-      max: 10,
-      helpText: 'How many profiles this workflow may run in parallel.',
+      max: 1,
+      helpText: 'Free Cloak tier runs one profile at a time.',
       group: 'Execution',
     },
     {

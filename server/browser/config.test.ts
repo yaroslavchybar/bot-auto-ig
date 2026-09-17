@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseProxy, describeProxyLaunchError, normalizeFingerprintScreen } from './config.js'
+import { parseProxy, describeProxyLaunchError } from './config.js'
 
 test('bare proxy strings respect the profile protocol; explicit schemes take precedence', () => {
   assert.deepEqual(parseProxy('proxy.example:1080:user:password', 'socks5'), {
@@ -28,19 +28,6 @@ test('proxy schemes, IPv6 and encoded credentials survive parsing', () => {
     username: 'u',
     password: 'p:extra',
   })
-})
-
-test('fingerprint screen is locked to window size', () => {
-  const fp: any = { screen: { width: 3840, height: 1080, outerWidth: 100, innerHeight: 10 } }
-  normalizeFingerprintScreen(fp)
-  assert.equal(fp.screen.width, 1366)
-  assert.equal(fp.screen.height, 768)
-  assert.equal(fp.screen.availWidth, 1366)
-  assert.equal(fp.screen.availHeight, 768)
-  assert.equal(fp.screen.outerWidth, 1366)
-  assert.equal(fp.screen.outerHeight, 768)
-  assert.equal(fp.screen.innerWidth, 1366)
-  assert.equal(fp.screen.innerHeight, 768)
 })
 
 test('geoip lookup failure maps to profile and proxy host without credentials', () => {

@@ -33,8 +33,8 @@ export function browserBudgetEndpoint(): string {
   if (endpoint) return endpoint
   const name = `ig-bot-${process.pid}-${randomUUID()}`
   endpoint = process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : path.join(os.tmpdir(), `${name}.sock`)
-  const configured = Number(process.env.BROWSER_MAX_CONCURRENCY ?? 3)
-  const limit = Number.isFinite(configured) ? Math.max(1, Math.floor(configured)) : 3
+  const configured = Number(process.env.BROWSER_MAX_CONCURRENCY ?? 1)
+  const limit = Number.isFinite(configured) ? Math.max(1, Math.floor(configured)) : 1
   createBrowserBudget(endpoint, limit).on('error', error => {
     // Do not silently run without the resource limit.
     process.stderr.write(`Browser budget failed: ${error.message}\n`)

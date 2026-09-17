@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import type { CamoufoxSession } from '../browser/camoufox.js'
+import type { BrowserSession } from '../browser/cloak.js'
 import { runWorkflow } from './worker.js'
 
 test('retry skips completed profiles without launching or changing their status', async () => {
@@ -36,7 +36,7 @@ test('close then start replaces the browser and final cleanup closes the replace
     } }, async () => {
       const state = { closed: false, visits: 0 }
       sessions.push(state)
-      return { page: { goto: async () => { assert.equal(state.closed, false); state.visits++ } }, close: async () => { state.closed = true } } as unknown as CamoufoxSession
+      return { page: { goto: async () => { assert.equal(state.closed, false); state.visits++ } }, close: async () => { state.closed = true } } as unknown as BrowserSession
     })
     assert.deepEqual(sessions, [{ closed: true, visits: 0 }, { closed: true, visits: 1 }])
   } finally { globalThis.fetch = originalFetch }
@@ -98,7 +98,7 @@ test('workflow action failures reject the run and close the browser', async () =
             close: async () => {
               closed = true
             },
-          } as unknown as CamoufoxSession
+          } as unknown as BrowserSession
         },
       ),
       /Navigation failed/,

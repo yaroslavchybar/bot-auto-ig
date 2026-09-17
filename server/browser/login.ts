@@ -1,5 +1,6 @@
-import { openCamoufoxSession } from './camoufox.js'
+import { openBrowserSession } from './cloak.js'
 import { profilesSetLoginTrue } from '../shared/convexClient.js'
+import { sleep } from './lifecycle.js'
 import crypto from 'node:crypto'
 
 type LoginInput = {
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
   const credentials = await readStdin()
   log('Starting login session')
 
-  const session = await openCamoufoxSession(profileName, { headless })
+  const session = await openBrowserSession(profileName, { headless })
   try {
     const { page, context } = session
     // An old session cookie must not make a failed credential check look successful.
@@ -75,8 +76,11 @@ async function main(): Promise<void> {
       .locator("input[name='password'], input[name='pass']")
       .first()
     await username.waitFor({ state: 'visible', timeout: 20_000 })
-    await username.fill(credentials.username)
-    await password.fill(credentials.password)
+    // Cloak flags fill() (no keyboard events) — type like a human instead.
+    await username.click()
+    await username.pressSequentially(credentials.username, { delay: 50 })
+    await password.click()
+    await password.pressSequentially(credentials.password, { delay: 50 })
     await page
       .locator("button[type='submit'], div[role='button']:has-text('Log in')")
       .first()
@@ -99,12 +103,14 @@ async function main(): Promise<void> {
       if (!submittedTwoFactor && (await field.isVisible())) {
         if (!credentials.two_factor_secret)
           throw new Error('Login requires a 2FA secret')
-        await field.fill(generateTotp(credentials.two_factor_secret))
+        await field.click()
+        await field.pressSequentially(generateTotp(credentials.two_factor_secret), { delay: 50 })
         await field.press('Enter')
         submittedTwoFactor = true
         log('Submitted 2FA code')
       }
-      await page.waitForTimeout(500)
+      // Native sleep: page.waitForTimeout() sends CDP traffic Cloak flags.
+      await sleep(500)
     }
     if (!authenticated)
       throw new Error('Login was not confirmed by an Instagram session cookie')

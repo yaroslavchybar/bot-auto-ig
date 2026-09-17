@@ -28,7 +28,7 @@ export async function followVisible(page: Page | Locator): Promise<boolean> {
   )
 }
 
-// Park the cursor somewhere neutral. A single move call lets Camoufox draw
+// Park the cursor somewhere neutral. A single move call lets Cloak draw
 // its own human curve instead of our linear interpolation.
 export async function driftMouse(page: Page, x?: number, y?: number): Promise<void> {
   const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
@@ -52,7 +52,7 @@ export async function hoverPost(
     // Never chase off-screen posts; the cursor would fly to the window top.
     const vp = page.viewportSize() ?? { width: 1280, height: 800 }
     if (!clickPointOnScreen(box, vp)) return
-    // Single move: Camoufox draws the human curve.
+    // Single move: Cloak draws the human curve.
     await page.mouse.move(
       box.x + box.width * random(0.3, 0.7),
       box.y + Math.min(box.height * random(0.3, 0.6), 500),

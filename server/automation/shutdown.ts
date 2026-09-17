@@ -13,7 +13,7 @@ import type { Server } from 'http'
 import type { WebSocketServer } from 'ws'
 import { workflowWorkers, profileProcesses, clients } from '../shared/store.js'
 import { automationMutex } from '../shared/mutex.js'
-import { killProcess, getTrackedProcesses, getPid, clearRegistry } from '../shared/ProcessService.js'
+import { killProcess, requestChildStop, getTrackedProcesses, getPid, clearRegistry } from '../shared/ProcessService.js'
 import logger from '../shared/logger.js'
 
 // ---------------------------------------------------------------------------
@@ -106,21 +106,27 @@ function closeWebSocketConnections(wss: WebSocketServer): void {
 /**
  * Kill ALL tracked Bun child processes via the global ProcessService
  * registry. This catches automation, workflow, profile, login, and
- * fingerprint subprocesses — nothing is orphaned.
+ * manual browser subprocesses — nothing is orphaned.
  */
 async function killAllChildProcesses(): Promise<void> {
   // Clear known state maps so the application doesn't reference dead procs
   workflowWorkers.clear()
   profileProcesses.clear()
 
-  // Kill every child tracked in the global registry
+  // Ask each child to stop cleanly first (stdin `stop` closes browsers and
+  // frees license seats); force-kill only the ones that stay alive.
   const tracked = getTrackedProcesses()
   const killPromises: Promise<void>[] = []
 
   for (const proc of tracked) {
     const pid = getPid(proc)
-    logger.info({ pid }, 'Killing tracked child process')
-    killPromises.push(killProcess(proc))
+    logger.info({ pid }, 'Stopping tracked child process')
+    killPromises.push(
+      (async () => {
+        if (await requestChildStop(proc, 10_000)) return
+        await killProcess(proc)
+      })(),
+    )
   }
 
   await Promise.allSettled(killPromises)

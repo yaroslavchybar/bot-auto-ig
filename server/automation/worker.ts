@@ -1,11 +1,11 @@
 import type { WorkerEvent } from '../shared/contracts.js'
 import {
-  openCamoufoxSession,
-  type CamoufoxSession,
-} from '../browser/camoufox.js'
+  openBrowserSession,
+  type BrowserSession,
+} from '../browser/cloak.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { sleep, shouldStop, shutdownSignal } from '../browser/lifecycle.js'
+import { sleep, shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
   profilesList,
   profilesSyncStatus,
@@ -61,15 +61,15 @@ async function withProfile(
   options: {
     headless?: boolean
     workflowId?: string
-    openSession?: typeof openCamoufoxSession
+    openSession?: typeof openBrowserSession
   } = {},
-  run: (session: CamoufoxSession, controls: {
+  run: (session: BrowserSession, controls: {
     close: () => Promise<void>
-    reopen: (headless?: boolean) => Promise<CamoufoxSession>
+    reopen: (headless?: boolean) => Promise<BrowserSession>
   }) => Promise<void>,
 ): Promise<void> {
   const workflowId = options.workflowId || 'automation'
-  let session: CamoufoxSession | undefined
+  let session: BrowserSession | undefined
   let closed = false
   let markedRunning = false
   const close = async () => {
@@ -80,7 +80,7 @@ async function withProfile(
   }
   const reopen = async (headless = options.headless ?? true) => {
     if (closed) {
-      session = await (options.openSession ?? openCamoufoxSession)(profile.name, { headless })
+      session = await (options.openSession ?? openBrowserSession)(profile.name, { headless })
       closed = false
       if (session.display) await event('display_allocated', {
         workflowId: workflowId, profileName: profile.name,
@@ -90,7 +90,7 @@ async function withProfile(
     return session!
   }
   try {
-    session = await (options.openSession ?? openCamoufoxSession)(profile.name, {
+    session = await (options.openSession ?? openBrowserSession)(profile.name, {
       headless: options.headless ?? true,
     })
     await profilesSyncStatus(profile.name, 'running', true)
@@ -134,7 +134,7 @@ async function withProfile(
 
 async function runConfiguredAction(
   action: string,
-  session: CamoufoxSession,
+  session: BrowserSession,
   settings: AnyRecord,
   profile: DbProfileRow,
   shouldStop: () => boolean,
@@ -200,7 +200,7 @@ function chooseBranch(config: AnyRecord): string {
 
 export async function runWorkflow(
   input: AnyRecord,
-  openSession = openCamoufoxSession,
+  openSession = openBrowserSession,
 ): Promise<void> {
   const workflow = (input.workflow || {}) as DbWorkflowRow & AnyRecord
   const nodes = (
@@ -236,18 +236,8 @@ export async function runWorkflow(
   if (!profiles.length)
     throw new Error('No available logged-in profile in the selected lists')
 
-  const parallel = Math.max(
-    1,
-    Math.min(
-      10,
-      Math.floor(
-        number(
-          input.parallelProfiles ?? startConfig.parallelProfiles,
-          1,
-        ),
-      ),
-    ),
-  )
+  // Free Cloak tier allows one browser at a time.
+  const parallel = 1
   const runProfile = async (profile: DbProfileRow) => {
     shutdownSignal.throwIfAborted()
     if (aggregateStates.__profileRuns?.[profile.id]?.completed) return
@@ -419,20 +409,55 @@ export async function runWorkflow(
   })
 }
 
+/**
+ * One JSON payload on the first stdin line, then an open channel: later
+ * `stop` lines abort the run through the lifecycle, exactly like SIGTERM.
+ * (Signals don't reach detached children on Windows, stdin always does.)
+ */
+function readCommandInput(): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    let pending = ''
+    let settled = false
+    const onData = (chunk: unknown) => {
+      pending += String(chunk)
+      let index: number
+      while ((index = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, index).trim()
+        pending = pending.slice(index + 1)
+        if (!line) continue
+        if (!settled) {
+          settled = true
+          resolve(line)
+        } else if (line === 'stop') {
+          requestStop()
+        }
+      }
+    }
+    process.stdin.setEncoding('utf8')
+    process.stdin.on('data', onData)
+    process.stdin.once('end', () => {
+      if (settled) return
+      settled = true
+      if (pending.trim()) resolve(pending.trim())
+      else reject(new Error('No workflow input received on stdin'))
+    })
+    process.stdin.once('error', (error) => {
+      if (!settled) {
+        settled = true
+        reject(error)
+      }
+    })
+  })
+}
+
 async function main(): Promise<void> {
-  const input = JSON.parse(
-    await new Promise<string>((resolve, reject) => {
-      let value = ''
-      process.stdin.setEncoding('utf8')
-      process.stdin.on('data', (chunk) => {
-        value += chunk
-      })
-      process.stdin.on('end', () => resolve(value))
-      process.stdin.on('error', reject)
-    }),
-  ) as AnyRecord
+  const input = JSON.parse(await readCommandInput()) as AnyRecord
   if (!input.workflow) throw new Error('workflow is required')
-  await runWorkflow(input)
+  try {
+    await runWorkflow(input)
+  } finally {
+    releaseStdin()
+  }
 }
 
 if (

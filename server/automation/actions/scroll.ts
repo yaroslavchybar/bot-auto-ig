@@ -42,7 +42,7 @@ async function keyScroll(page: Page): Promise<void> {
 }
 
 // Grab the scrollbar and drag it, like a mouse user. Every move goes through
-// Camoufox's humanized cursor. Leaves the cursor parked on the scrollbar.
+// Cloak's humanized cursor. Leaves the cursor parked on the scrollbar.
 async function dragScrollbar(page: Page): Promise<void> {
   const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
   const x = viewport.width - random(4, 12)

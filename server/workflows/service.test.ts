@@ -11,7 +11,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve))
 test('checkpoint bursts coalesce, stay off websocket, and survive a state-less terminal event', async () => {
   const originalFetch = globalThis.fetch
   const stdout = new EventEmitter()
-  const proc = Object.assign(new EventEmitter(), { stdout, stdin: { write: () => {}, end: () => {} } }) as unknown as ChildProcess
+  const proc = Object.assign(new EventEmitter(), { stdout, stdin: { write: (_value: string, callback?: (error?: Error | null) => void) => callback?.(), end: () => {}, on: () => ({}) } }) as unknown as ChildProcess
   const writes: Array<Record<string, any>> = []
   const messages: Array<Record<string, any>> = []
   const client = { readyState: WebSocket.OPEN, bufferedAmount: 0,
@@ -52,7 +52,7 @@ test('worker payload uses the newly started workflow rather than the old complet
   const originalFetch = globalThis.fetch
   let payload = ''
   const proc = Object.assign(new EventEmitter(), {
-    stdin: { write: (value: string) => { payload = value }, end: () => {} },
+    stdin: { write: (value: string, callback?: (error?: Error | null) => void) => { payload = value; callback?.() }, end: () => {}, on: () => ({}) },
   }) as unknown as ChildProcess
   globalThis.fetch = (async url => {
     if (String(url).includes('/by-id')) return Response.json({ name: 'Old', nodeStates: { __profileRuns: { profile: { completed: true } } } })

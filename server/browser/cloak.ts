@@ -1,12 +1,11 @@
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { Camoufox } from 'camoufox-js'
-import { FingerprintGenerator, type Fingerprint } from 'fingerprint-generator'
-import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT, normalizeFingerprintScreen } from './config.js'
-import { shutdownSignal } from './lifecycle.js'
+import { launchPersistentContext } from 'cloakbrowser'
+import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
+import { shutdownSignal, sleep } from './lifecycle.js'
 import { focusPageContent } from './focus.js'
 import { acquireBrowserSlot } from './budget.js'
-import { prepareBrowserProxy } from './proxy.js'
 import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
 import {
@@ -19,7 +18,7 @@ import { resolveProjectRoot } from '../shared/utils.js'
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PROFILE_ROOT = path.join(PROJECT_ROOT, 'data', 'profiles')
 
-export type CamoufoxSession = {
+export type BrowserSession = {
   context: BrowserContext
   page: Page
   profile: DbProfileRow
@@ -38,15 +37,29 @@ function profilePath(name: string): string {
   if (!result.startsWith(`${root}${path.sep}`))
     throw new Error('Invalid profile name')
   fs.mkdirSync(result, { recursive: true })
-  // Drop persisted window chrome state (size/position/mode). Stale geometry
-  // from older runs restores the browser partly off-screen on the fixed
-  // 1366x768 display, and centered dialogs like the file picker get cut off.
-  try {
-    fs.unlinkSync(path.join(result, 'xulstore.json'))
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
   return result
+}
+
+// One-time reclaim: a directory from the Camoufox era holds only Firefox
+// files, which Chromium ignores. Cookies live in the database, so on the
+// first Cloak open the directory is wiped for the new engine. Later opens
+// (cloak-seed.json present) hold live Chromium data and are never touched.
+const FIREFOX_MARKERS = [
+  'fingerprint.json',
+  'xulstore.json',
+  'prefs.js',
+  'places.sqlite',
+  'cookies.sqlite',
+]
+
+export function migrateFirefoxProfile(profileDir: string): void {
+  if (fs.existsSync(path.join(profileDir, 'cloak-seed.json'))) return
+  if (!FIREFOX_MARKERS.some((file) => fs.existsSync(path.join(profileDir, file)))) return
+  for (const entry of fs.readdirSync(profileDir)) {
+    // The caller holds worker.lock; never sweep it with migrated contents.
+    if (entry === 'worker.lock') continue
+    fs.rmSync(path.join(profileDir, entry), { recursive: true, force: true })
+  }
 }
 
 function storedCookies(profile: DbProfileRow): Cookie[] {
@@ -79,97 +92,103 @@ async function saveSession(
       cookiesJson: JSON.stringify(cookies),
       sessionId: id,
     })
-  } catch {
-    // Browser shutdown must not hide the original action error.
+  } catch (error) {
+    // Browser shutdown must not hide the original action error, but a lost
+    // cookie save must not report success either: the DB would keep stale auth.
     process.stderr.write(`Could not save browser session cookies: failed to ${stage}\n`)
+    throw error
   }
 }
 
-type SessionOptions = { headless?: boolean; display?: string; userAgent?: string }
+type SessionOptions = { headless?: boolean; display?: string }
+
+/** Cloak platform persona. mac stays mac, everything else runs as Windows. */
+export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
+  const os = String(fingerprintOs || '').trim().toLowerCase()
+  return os === 'mac' || os === 'macos' ? 'macos' : 'windows'
+}
+
+/**
+ * Deterministic fingerprint seed per profile + platform. Same seed returns
+ * as a returning visitor; a random seed every launch looks like a new device.
+ */
+export function cloakSeed(profileDir: string, platform: string): number {
+  const seedPath = path.join(profileDir, 'cloak-seed.json')
+  try {
+    const cached = JSON.parse(fs.readFileSync(seedPath, 'utf8'))
+    if (cached.platform === platform && Number.isSafeInteger(cached.seed))
+      return cached.seed
+  } catch (error) {
+    // A missing or corrupt seed file regenerates below. Anything with a
+    // filesystem error code other than ENOENT (EACCES, EPERM, ...) is real
+    // and propagates.
+    if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  const seed = crypto.randomInt(10000, 100000)
+  fs.writeFileSync(seedPath, JSON.stringify({ platform, seed }))
+  return seed
+}
 
 function browserOptions(profile: DbProfileRow, profileDir: string, options: SessionOptions) {
-  const targetOs =
-    profile.fingerprintOs === 'mac' || profile.fingerprintOs === 'macos'
-      ? 'macos'
-      : profile.fingerprintOs === 'linux'
-        ? 'linux'
-        : 'windows'
-  const fingerprintPath = path.join(profileDir, 'fingerprint.json')
-  let fingerprint: Fingerprint | undefined
-  try {
-    const cached = JSON.parse(fs.readFileSync(fingerprintPath, 'utf8'))
-    if (cached.os === targetOs && cached.fingerprint)
-      fingerprint = cached.fingerprint
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-  }
-  if (!fingerprint) {
-    fingerprint = normalizeFingerprintScreen(
-      new FingerprintGenerator({
-        browsers: ['firefox'],
-        operatingSystems: [targetOs],
-      }).getFingerprint().fingerprint,
-    )
-    fs.writeFileSync(
-      fingerprintPath,
-      JSON.stringify({
-        os: targetOs,
-        fingerprint,
-      }),
-    )
-  } else {
-    // Old caches hold random screens (e.g. 3840x1080). Patch and persist.
-    const before = JSON.stringify(fingerprint.screen)
-    normalizeFingerprintScreen(fingerprint)
-    if (JSON.stringify(fingerprint.screen) !== before) {
-      fs.writeFileSync(
-        fingerprintPath,
-        JSON.stringify({
-          os: targetOs,
-          fingerprint,
-        }),
-      )
-    }
-  }
+  const platform = cloakPlatform(profile.fingerprintOs)
+  const seed = cloakSeed(profileDir, platform)
   const proxy = parseProxy(profile.proxy, profile.proxyType)
-  const launchOptions: Record<string, unknown> = {
+  return {
+    userDataDir: profileDir,
     headless: options.headless ?? false,
-    // lifecycle.ts handles these signals and saves cookies before closing.
-    handleSIGINT: false,
-    handleSIGTERM: false,
-    user_data_dir: profileDir,
-    os: targetOs,
-    fingerprint,
-    i_know_what_im_doing: true,
+    locale: 'en-US',
+    // Viewport matches the VNC desktop geometry so window and page agree.
+    viewport: { width: BROWSER_WINDOW_WIDTH, height: BROWSER_WINDOW_HEIGHT },
+    args: [
+      `--fingerprint=${seed}`,
+      `--fingerprint-platform=${platform}`,
+      `--fingerprint-screen-width=${BROWSER_WINDOW_WIDTH}`,
+      `--fingerprint-screen-height=${BROWSER_WINDOW_HEIGHT}`,
+    ],
     proxy,
     geoip: Boolean(proxy),
-    // Camoufox humanizes cursor motion (move/click trajectories) in C++.
-    // A numeric value sets humanize:maxTime: up to ~2s per move for variance.
-    // Scroll smoothness comes from small, dense wheel() ticks in actions.ts;
-    // keep mouse.move() calls step-free so Camoufox owns the curve.
-    humanize: 2.0,
-    firefox_user_prefs: {
-      // Match stock Firefox smooth-scroll behavior for wheel input.
-      'general.smoothScroll': true,
-      'general.smoothScroll.mouseWheel': true,
+    // Behavioral stealth: human mouse curves, typing rhythm, scroll shape.
+    humanize: true as const,
+    humanPreset: 'careful' as const,
+    ...(process.env.CLOAKBROWSER_LICENSE_KEY
+      ? { licenseKey: process.env.CLOAKBROWSER_LICENSE_KEY }
+      : {}),
+    // lifecycle.ts owns signals and saves cookies before closing.
+    launchOptions: {
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+      ...(options.display
+        ? { env: { ...process.env, DISPLAY: options.display } }
+        : {}),
     },
-    locale: 'en-US',
-    // NOTE: window alone does nothing when an explicit fingerprint is passed
-    // (camoufox-js only uses it for internal generation). The spoofed
-    // outer/inner dims are set by normalizeFingerprintScreen above to match.
-    window: [BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT],
-    ...(options.display
-      ? { env: { ...process.env, DISPLAY: options.display } }
-      : {}),
-    ...(options.userAgent
-      ? {
-          config: { 'navigator.userAgent': options.userAgent },
-          i_know_what_im_doing: true,
-        }
-      : {}),
   }
+}
 
-  return launchOptions
+/** Rejects if the launch hangs (proxy stalls, transport wedges) so a stuck
+ *  launch can never wedge the runner forever. The hung attempt holds no
+ *  seat yet, so timing out is always safe. */
+const LAUNCH_TIMEOUT_MS = 90_000
+
+function withLaunchTimeout<T extends { close?: () => Promise<unknown> }>(promise: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
+  let timedOut = false
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      timedOut = true
+      reject(new Error('Browser launch timed out'))
+    }, LAUNCH_TIMEOUT_MS)
+  })
+  // A launch that resolves after the timeout already lost the race: close the
+  // orphaned browser so it cannot hold the license seat.
+  void promise.then(
+    async (result) => {
+      if (!timedOut) return
+      try { await result?.close?.() } catch { /* orphan already gone */ }
+    },
+    () => undefined,
+  )
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
 /** A profile directory can belong to only one worker, including during startup. */
@@ -193,16 +212,18 @@ function lockProfile(profileDir: string): () => void {
   return () => fs.unlinkSync(lockPath)
 }
 
-export async function openCamoufoxSession(
+export async function openBrowserSession(
   profileName: string,
   options: SessionOptions = {},
-): Promise<CamoufoxSession> {
+): Promise<BrowserSession> {
   shutdownSignal.throwIfAborted()
   const profileDir = profilePath(profileName)
   const releaseLock = lockProfile(profileDir)
+  // Migrate only while holding the lock: concurrent openers serialize here
+  // instead of racing the directory wipe.
+  migrateFirefoxProfile(profileDir)
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
-  let preparedProxy: Awaited<ReturnType<typeof prepareBrowserProxy>> | undefined
   let context: BrowserContext | undefined
   let profile: DbProfileRow | undefined
   let ready = false
@@ -226,7 +247,6 @@ export async function openCamoufoxSession(
       const steps = [
         () => ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
         () => !browserClosed ? context?.close() : undefined,
-        () => preparedProxy?.close(),
         () => display?.close(),
         releaseLock,
         () => releaseSlot?.(),
@@ -260,12 +280,27 @@ export async function openCamoufoxSession(
     const launchOptions = browserOptions(profile, profileDir, {
       ...options, display: display?.display ?? options.display,
     })
-    preparedProxy = await prepareBrowserProxy(parseProxy(profile.proxy, profile.proxyType))
     checkStartup()
-    try {
-      context = (await Camoufox({ ...launchOptions, proxy: preparedProxy.proxy })) as BrowserContext
-    } catch (error) {
-      throw describeProxyLaunchError(profile.name, parseProxy(profile.proxy, profile.proxyType), error)
+    // The license seat can lag a few seconds behind a clean close. Retry a
+    // genuinely-held seat briefly instead of failing the run over timing.
+    let launchError: unknown
+    for (let attempt = 0; attempt < 4; attempt++) {
+      checkStartup()
+      try {
+        // Cloak speaks native SOCKS5 with inline credentials, no local relay.
+        context = await withLaunchTimeout(launchPersistentContext(launchOptions))
+        launchError = undefined
+        break
+      } catch (error) {
+        launchError = error
+        const message = error instanceof Error ? error.message : String(error)
+        if (!/session limit|concurrent session/i.test(message) || attempt === 3) break
+        process.stderr.write(`Cloak session seat busy, retrying (${attempt + 1}/3)...\n`)
+        await sleep(10_000)
+      }
+    }
+    if (!context) {
+      throw describeProxyLaunchError(profile.name, launchOptions.proxy, launchError)
     }
     context.once('close', () => {
       browserClosed = true

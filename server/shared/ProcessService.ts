@@ -66,7 +66,7 @@ export function isProcessRunning(pid: number): boolean {
 
 // ---------------------------------------------------------------------------
 // Global process registry — tracks ALL spawned children so shutdown can
-// kill every one, including login & fingerprint subprocesses that are
+// kill every one, including login & manual browser subprocesses that are
 // not stored in workflowWorkers / profileProcesses.
 // ---------------------------------------------------------------------------
 
@@ -427,6 +427,7 @@ export function spawnBun(options: SpawnBunOptions): ChildProcess {
     shell,
     env,
   })
+  guardChildStdin(child)
 
   const scriptArg = options.args[0] || ''
   trackProcess(child, {
@@ -482,6 +483,38 @@ export function waitForExit(
     }
     proc.once('exit', onExit)
   })
+}
+
+/**
+ * Guard a child's stdin against async pipe errors (EPIPE). A failed write
+ * emits `error` on the stream, which throws inside the server process when
+ * no listener is attached — the try/catch around `write` only covers the
+ * synchronous part.
+ */
+export function guardChildStdin(proc: ChildProcess): void {
+  try { proc.stdin?.on('error', () => undefined) } catch { /* stdio may be ignored */ }
+}
+
+/**
+ * Cooperative stop: ask the child to shut itself down with a `stop` line on
+ * stdin. Runner children (manual browser, workflow worker) turn it into a
+ * lifecycle abort and close browsers cleanly, freeing the license seat.
+ * Unlike signals, stdin delivery works on every platform — Bun on Windows
+ * cannot signal detached children (ENOSYS) and force-kills them instead.
+ * Resolves true when the child exited in time.
+ */
+export async function requestChildStop(proc: ChildProcess, ms = 15_000): Promise<boolean> {
+  try {
+    const stdin = proc.stdin
+    if (!stdin || stdin.destroyed) return waitForExit(proc, 0)
+    guardChildStdin(proc)
+    await new Promise<void>((resolve, reject) => {
+      stdin.write('stop\n', (error?: Error | null) => error ? reject(error) : resolve())
+    })
+  } catch {
+    return waitForExit(proc, 0)
+  }
+  return waitForExit(proc, ms)
 }
 
 /**

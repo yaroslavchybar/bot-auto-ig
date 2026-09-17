@@ -20,6 +20,7 @@ test(`browser cleanup: ${scenario}`, () => {
     const context = new EventEmitter()
     let loseBudget
     let closed = false
+    let launchOptions
     context.pages = () => [{
       url: () => ['startup failure', 'stop during navigation'].includes(scenario) ? 'about:blank' : 'https://www.instagram.com/',
       goto: async () => {
@@ -43,19 +44,17 @@ test(`browser cleanup: ${scenario}`, () => {
       events.push('close')
       context.emit('close')
     }
-    mock.module('camoufox-js', () => ({ Camoufox: async options => {
+    mock.module('cloakbrowser', () => ({ launchPersistentContext: async options => {
+      launchOptions = options
       if (scenario === 'stop during launch') process.emit('SIGTERM')
       if (scenario === 'budget lost during launch') loseBudget()
       // Model Playwright's default competing shutdown handler.
       for (const signal of ['SIGINT', 'SIGTERM']) {
-        if (options['handle' + signal] !== false)
+        if (options.launchOptions?.['handle' + signal] !== false)
           process.once(signal, () => { void context.close() })
       }
       return context
     } }))
-    mock.module('fingerprint-generator', () => ({
-      FingerprintGenerator: class { getFingerprint() { return { fingerprint: { screen: {} } } } },
-    }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => ({ name: 'test' }),
@@ -76,41 +75,42 @@ test(`browser cleanup: ${scenario}`, () => {
         events.push('slot')
       }
     } }))
-    mock.module('./server/browser/proxy.ts', () => ({
-      prepareBrowserProxy: async () => ({ proxy: undefined, close: async () => {
-        events.push('proxy')
-        if (scenario === 'cleanup failure') throw new Error('Proxy cleanup failed')
-      } }),
-    }))
     mock.module('./server/browser/display.ts', () => ({ allocateDisplay: async () => ({
-      display: ':100', close: async () => { events.push('display') },
+      display: ':100', close: async () => {
+        events.push('display')
+        if (scenario === 'cleanup failure') throw new Error('Display cleanup failed')
+      },
     }) }))
     try {
-      const { openCamoufoxSession } = await import('./server/browser/camoufox.ts')
+      const { openBrowserSession } = await import('./server/browser/cloak.ts')
       if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch'].includes(scenario)) {
         const expected = ['startup failure', 'stop during navigation'].includes(scenario) ? /Navigation failed/
           : scenario === 'stop during launch' ? /Browser worker stopped/ : /budget disconnected/
-        await assert.rejects(openCamoufoxSession('test'), expected)
-        assert.deepEqual(events, ['close', 'proxy', 'display', 'slot'])
+        await assert.rejects(openBrowserSession('test'), expected)
+        assert.deepEqual(events, ['close', 'display', 'slot'])
       } else {
-        const session = await openCamoufoxSession('test')
+        const session = await openBrowserSession('test')
+        // Cloak stealth wiring: persistent profile, human behavior, seed identity.
+        assert.ok(String(launchOptions.userDataDir).endsWith('test'))
+        assert.equal(launchOptions.humanize, true)
+        assert.ok(launchOptions.args.some(arg => String(arg).startsWith('--fingerprint=')))
         if (scenario === 'crash') {
           closed = true
           context.emit('close')
           await session.closed
-          assert.deepEqual(events, ['proxy', 'display', 'slot'])
+          assert.deepEqual(events, ['display', 'slot'])
         } else {
           process.emit('SIGTERM')
           assert.equal(session.close(), session.close())
-          if (scenario === 'cleanup failure') {
+          if (scenario === 'cleanup failure' || scenario === 'save failure') {
             await assert.rejects(session.close(), /Browser cleanup failed/)
             await assert.rejects(session.closed, /Browser cleanup failed/)
           } else {
             await Promise.all([session.close(), session.closed])
           }
           assert.deepEqual(events, scenario === 'save failure'
-            ? ['read', 'close', 'proxy', 'display', 'slot']
-            : ['read', 'saved', 'close', 'proxy', 'display', 'slot'])
+            ? ['read', 'close', 'display', 'slot']
+            : ['read', 'saved', 'close', 'display', 'slot'])
         }
       }
       console.log('shutdown order verified')
@@ -122,3 +122,47 @@ test(`browser cleanup: ${scenario}`, () => {
   assert.match(output, /shutdown order verified/)
 })
 }
+
+test('cloak seed is stable per profile and platform', () => {
+  const output = execFileSync('bun', ['--eval', `
+    import { mock } from 'bun:test'
+    import assert from 'node:assert/strict'
+    import fs from 'node:fs'
+    import os from 'node:os'
+    import path from 'node:path'
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cloak-seed-'))
+    try {
+      mock.module('cloakbrowser', () => ({ launchPersistentContext: async () => { throw new Error('no launch') } }))
+      mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
+      mock.module('./server/shared/convexClient.ts', () => ({
+        profilesGetByName: async () => undefined,
+        profilesUpdateByName: async () => undefined,
+      }))
+      const { cloakSeed, cloakPlatform, migrateFirefoxProfile } = await import('./server/browser/cloak.ts')
+      assert.equal(cloakPlatform('mac'), 'macos')
+      assert.equal(cloakPlatform('windows'), 'windows')
+      assert.equal(cloakPlatform('linux'), 'windows')
+      const dir = path.join(root, 'data', 'profiles', 'test')
+      fs.mkdirSync(dir, { recursive: true })
+      const first = cloakSeed(dir, 'windows')
+      assert.equal(cloakSeed(dir, 'windows'), first)
+      assert.notEqual(cloakSeed(dir, 'macos'), first)
+      const mig = path.join(root, 'data', 'profiles', 'mig')
+      fs.mkdirSync(path.join(mig, 'cache2'), { recursive: true })
+      fs.writeFileSync(path.join(mig, 'fingerprint.json'), '{}')
+      fs.writeFileSync(path.join(mig, 'prefs.js'), '')
+      fs.writeFileSync(path.join(mig, 'cache2', 'data'), 'x')
+      migrateFirefoxProfile(mig)
+      assert.deepEqual(fs.readdirSync(mig), [])
+      fs.writeFileSync(path.join(mig, 'cloak-seed.json'), '{}')
+      fs.writeFileSync(path.join(mig, 'keep.txt'), '')
+      migrateFirefoxProfile(mig)
+      assert.deepEqual(fs.readdirSync(mig).sort(), ['cloak-seed.json', 'keep.txt'])
+      console.log('seed stable verified')
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
+  assert.match(output, /seed stable verified/)
+})

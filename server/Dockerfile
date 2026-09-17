@@ -27,13 +27,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libxrandr2 \
   libxrender1 \
   libxtst6 \
+  libxkbcommon0 \
   libgtk-3-0 \
   libasound2 \
-  libdbus-glib-1-2 \
   libpci3 \
+  # Chromium (CloakBrowser) libraries
+  libnss3 \
+  libnspr4 \
+  libatk1.0-0 \
+  libatk-bridge2.0-0 \
+  libcups2 \
+  libdrm2 \
+  libgbm1 \
+  libpango-1.0-0 \
+  libcairo2 \
+  libatspi2.0-0 \
+  libxss1 \
   procps \
   supervisor \
-  # Video codecs for Firefox video playback
+  # Video codecs for Chromium media playback
   ffmpeg \
   libavcodec-extra \
   libva2 \
@@ -53,8 +65,12 @@ COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --production --filter anti-server --ignore-scripts
-RUN --mount=type=cache,target=/root/.bun/install/cache \
-  bunx --no-install camoufox-js fetch
+# License key arrives as a BuildKit secret (never a build-arg): secrets are
+# not baked into layers. Without it `install` downloads the free binary;
+# with it, the Pro binary this migration targets.
+RUN --mount=type=secret,id=cloak_key,env=CLOAKBROWSER_LICENSE_KEY \
+  --mount=type=cache,target=/root/.bun/install/cache \
+  bunx --no-install cloakbrowser install
 
 FROM browser-deps AS bun-build-deps
 WORKDIR /app
@@ -62,9 +78,8 @@ COPY --from=repo_root package.json bun.lock ./
 COPY --from=repo_root server/package.json ./server/package.json
 COPY --from=repo_root frontend/package.json ./frontend/package.json
 # Full workspace install: the build script runs root typescript and tsc
-# typechecks dev dependencies. Scripts are skipped: tsc only reads types,
-# it never loads native modules (better-sqlite3's script can't build without
-# node-gyp). Runtime stays minimal (browser-deps).
+# typechecks dev dependencies. Scripts are skipped for a fast hermetic build;
+# runtime stays minimal (browser-deps).
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile --ignore-scripts
 

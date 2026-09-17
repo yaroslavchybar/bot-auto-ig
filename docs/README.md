@@ -7,7 +7,7 @@ Conflict order: `docs/` → `AGENTS.md` → README stubs.
 ## What This Repo Is
 
 Instagram automation platform: React frontend, Express orchestration
-server, Camoufox JS browser automation, Convex shared data layer. Package manager and server runtime: Bun
+server, CloakBrowser stealth Chromium automation, Convex shared data layer. Package manager and server runtime: Bun
 (`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
 - `frontend/`: React + Vite app.
@@ -16,11 +16,11 @@ server, Camoufox JS browser automation, Convex shared data layer. Package manage
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
 - `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|displays|health`)
-  + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/Camoufox
+  + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
   subprocess orchestration. Admin session middleware globally;
   `/api/workflows` also accepts `INTERNAL_API_KEY`. Rate limits:
   general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
-- `server/browser/`: Camoufox JS sessions, profile persistence, and login/manual
+- `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
 - `server/automation/`: Bun workers and TypeScript Instagram actions
   (feed browsing, story watching). Workflow workers
@@ -80,7 +80,7 @@ dev-login button (`POST /api/auth/dev-login`, non-production only) or
 Secrets live in `.env.local`, never committed. Key vars: `VITE_CONVEX_URL`
 (convex dev manages it; server also accepts `CONVEX_URL`), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls).
-`BROWSER_MAX_CONCURRENCY` (default `3`) caps active browser sessions across all
+`BROWSER_MAX_CONCURRENCY` (default `1`, free Cloak tier allows one browser) caps active browser sessions across all
 workers launched by one server, including manual/login sessions. Workers must be
 launched through the server so they share its resource budget; waiting is cancellable.
 `DISABLE_AUTH=true` bypasses auth in local dev only. High-risk edit

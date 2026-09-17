@@ -19,6 +19,8 @@ import { latestQueue } from '../shared/latest-queue.js'
 import {
   spawnBun,
   killProcess,
+  requestChildStop,
+  guardChildStdin,
   getPid,
   waitForExit,
 } from '../shared/ProcessService.js'
@@ -65,7 +67,8 @@ export function normalizeOptionalParallelProfiles(value: unknown): number | unde
   if (value === undefined || value === null) return undefined
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return undefined
-  return Math.max(1, Math.min(10, Math.floor(parsed)))
+  // Free Cloak tier allows one browser at a time.
+  return 1
 }
 
 export function normalizeWorkflowTerminalStatus(
@@ -306,11 +309,24 @@ export async function runWorkflow(input: RunWorkflowInput, spawn = spawnBun): Pr
   const proc = spawn({
     args: [WORKFLOW_RUNNER],
   })
+  // Injected spawn doubles in tests skip spawnBun's own guard.
+  guardChildStdin(proc)
   workflowWorkers.set(workflowId, { process: proc, status: 'running', startedAt: Date.now() })
 
   const payload = buildPayload(workflowId, workflow, parallelProfiles)
-  proc.stdin?.write(payload)
-  proc.stdin?.end()
+  // One JSON line, stdin stays open: later `stop` lines abort the run
+  // (signals don't reach detached children on Windows).
+  try {
+    const stdin = proc.stdin
+    if (!stdin || stdin.destroyed) throw new Error('stdin unavailable')
+    stdin.on('error', () => undefined)
+    await new Promise<void>((resolve, reject) => {
+      stdin.write(`${payload}\n`, (error?: Error | null) => error ? reject(error) : resolve())
+    })
+  } catch {
+    await stopProcess(proc)
+    throw new Error('Workflow worker closed stdin before reading input')
+  }
 
   const currentProfile = { value: null as string | null }
   wireStdout(proc, workflowId, currentProfile)
@@ -342,7 +358,11 @@ export async function stopWorkflows(workflowId?: string): Promise<string[]> {
       level: 'warn',
       source: 'server',
     })
-    await stopProcess(worker.process)
+    // Cooperative stop first so open browsers close cleanly and free the
+    // license seat; force-kill only if the worker stays alive.
+    if (!(await requestChildStop(worker.process))) {
+      await stopProcess(worker.process)
+    }
     stopped.push(id)
   }
 
