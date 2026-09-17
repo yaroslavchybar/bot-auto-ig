@@ -68,8 +68,9 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 # License key arrives as a BuildKit secret (never a build-arg): secrets are
 # not baked into layers. Without it `install` downloads the free binary;
 # with it, the Pro binary this migration targets.
-RUN --mount=type=secret,id=cloak_key,env=CLOAKBROWSER_LICENSE_KEY \
+RUN --mount=type=secret,id=cloak_key \
   --mount=type=cache,target=/root/.bun/install/cache \
+  CLOAKBROWSER_LICENSE_KEY="$(cat /run/secrets/cloak_key)" \
   bunx --no-install cloakbrowser install
 
 FROM browser-deps AS bun-build-deps
