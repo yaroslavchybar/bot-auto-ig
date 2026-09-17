@@ -1,9 +1,11 @@
 // Single source of truth for browser resolution.
-// Window size, VNC desktop geometry and Cloak viewport + fingerprint screen
-// flags must match, otherwise sites see e.g. screen.width=3840 on a 1366px
-// window (fingerprint leak).
+// The page viewport and spoofed screen stay 1366x768 (common laptop). The
+// VNC desktop is taller (960): the real window is viewport + Chrome's own
+// UI (~900px), and a desktop shorter than the window lets the toolbar slip
+// off-screen, where Chrome then remembers the bad position forever.
 export const BROWSER_WINDOW_WIDTH = 1366
 export const BROWSER_WINDOW_HEIGHT = 768
+export const BROWSER_DESKTOP_HEIGHT = 960
 
 export function parseProxy(
   value: string | null | undefined,

@@ -52,8 +52,25 @@ const FIREFOX_MARKERS = [
   'cookies.sqlite',
 ]
 
-export function migrateFirefoxProfile(profileDir: string): void {
-  if (fs.existsSync(path.join(profileDir, 'cloak-seed.json'))) return
+/**
+ * Drop Chromium's remembered window position. The real window is taller than
+ * the old 768px desktop, so a previously saved position can park the toolbar
+ * off-screen — and Chrome would restore it on every open. Best-effort:
+ * a corrupt or locked Preferences file must never break a launch.
+ */
+export function clearSavedWindowPlacement(profileDir: string): void {
+  const prefsPath = path.join(profileDir, 'Default', 'Preferences')
+  try {
+    if (!fs.existsSync(prefsPath)) return
+    const prefs = JSON.parse(fs.readFileSync(prefsPath, 'utf8'))
+    if (!prefs || typeof prefs !== 'object' || !prefs.browser) return
+    if (!('window_placement' in prefs.browser)) return
+    delete prefs.browser.window_placement
+    fs.writeFileSync(prefsPath, JSON.stringify(prefs))
+  } catch { /* keep the launch going; worst case the position persists */ }
+}
+
+export function migrateFirefoxProfile(profileDir: string): void {  if (fs.existsSync(path.join(profileDir, 'cloak-seed.json'))) return
   if (!FIREFOX_MARKERS.some((file) => fs.existsSync(path.join(profileDir, file)))) return
   for (const entry of fs.readdirSync(profileDir)) {
     // The caller holds worker.lock; never sweep it with migrated contents.
@@ -244,6 +261,7 @@ export async function openBrowserSession(
   // Migrate only while holding the lock: concurrent openers serialize here
   // instead of racing the directory wipe.
   migrateFirefoxProfile(profileDir)
+  clearSavedWindowPlacement(profileDir)
   process.stdout.write(`${cloakBinaryNote()}\n`)
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
