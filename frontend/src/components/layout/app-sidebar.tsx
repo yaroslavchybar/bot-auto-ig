@@ -6,6 +6,7 @@ import {
   GitBranch,
   Monitor,
   Globe,
+  FolderOpen,
 } from 'lucide-react'
 
 import {
@@ -28,6 +29,7 @@ export const NAV_IDS = [
   'lists',
   'proxies',
   'vnc',
+  'files',
 ] as const
 
 export type NavId = (typeof NAV_IDS)[number]
@@ -67,6 +69,13 @@ export const NAV_ITEMS = [
     to: '/vnc',
     icon: Monitor,
     breadcrumb: 'Browser View',
+  },
+  {
+    title: 'Files',
+    id: 'files',
+    to: '/files',
+    icon: FolderOpen,
+    breadcrumb: 'Files',
   },
 ] as const satisfies ReadonlyArray<{
   title: string

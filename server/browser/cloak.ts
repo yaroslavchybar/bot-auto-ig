@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { launchPersistentContext, binaryInfo } from 'cloakbrowser'
 import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
@@ -13,6 +14,8 @@ import {
   profilesUpdateByName,
   type DbProfileRow,
 } from '../shared/convexClient.js'
+import { UPLOADS_ROOT, profileUploadsDir } from '../files/uploads.js'
+import { setupProfileFileAccess } from './profileFiles.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
@@ -117,7 +120,7 @@ async function saveSession(
   }
 }
 
-type SessionOptions = { headless?: boolean; display?: string }
+type SessionOptions = { headless?: boolean; display?: string; xdgConfigDir?: string }
 
 /** Cloak platform persona. mac stays mac, everything else runs as Windows. */
 export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
@@ -175,9 +178,12 @@ function browserOptions(profile: DbProfileRow, profileDir: string, options: Sess
       handleSIGINT: false,
       handleSIGTERM: false,
       handleSIGHUP: false,
-      ...(options.display
-        ? { env: { ...process.env, DISPLAY: options.display } }
-        : {}),
+      env: {
+        ...process.env,
+        ...(options.display ? { DISPLAY: options.display } : {}),
+        // Scope the remote GTK file dialog to this profile's folder.
+        ...(options.xdgConfigDir ? { XDG_CONFIG_HOME: options.xdgConfigDir } : {}),
+      },
     },
   }
 }
@@ -262,6 +268,26 @@ export async function openBrowserSession(
   // instead of racing the directory wipe.
   migrateFirefoxProfile(profileDir)
   clearSavedWindowPlacement(profileDir)
+  // This profile's uploads folder + file-dialog scoping. Runs before the
+  // launch so the dialog opens scoped on the very first run. Outside the
+  // startup try below, so a setup failure must release the lock itself —
+  // otherwise worker.lock keeps this PID and every later open fails with
+  // "Profile is already open" until the server restarts.
+  let fileAccess: ReturnType<typeof setupProfileFileAccess>
+  try {
+    fileAccess = setupProfileFileAccess({
+      profileDir,
+      uploadsDir: profileUploadsDir(profileName),
+      legacyDirs: [
+        UPLOADS_ROOT,
+        path.join(os.homedir(), 'Downloads', 'Uploads'),
+        path.join(os.homedir(), 'Downloads'),
+      ],
+    })
+  } catch (error) {
+    releaseLock()
+    throw error
+  }
   process.stdout.write(`${cloakBinaryNote()}\n`)
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
@@ -320,6 +346,7 @@ export async function openBrowserSession(
     checkStartup()
     const launchOptions = browserOptions(profile, profileDir, {
       ...options, display: display?.display ?? options.display,
+      xdgConfigDir: fileAccess.xdgConfigDir,
     })
     checkStartup()
     // The license seat can lag a few seconds behind a clean close. Retry a

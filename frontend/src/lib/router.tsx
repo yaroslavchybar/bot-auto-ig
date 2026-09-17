@@ -1,4 +1,5 @@
 import { ListsPage } from '@/features/lists/ListsPage'
+import { FilesPage } from '@/features/files/FilesPage'
 import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ProxiesPage } from '@/features/proxies/ProxiesPage'
 import { VncPage } from '@/features/vnc/VncPage'
@@ -43,6 +44,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
     breadcrumb: 'Live Session',
     navId: 'vnc',
   },
+  '/files': { Page: FilesPage, breadcrumb: 'Files', navId: 'files' },
   '/login': { Page: LoginPage, breadcrumb: 'Sign In' },
 }
 

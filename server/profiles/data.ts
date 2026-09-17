@@ -14,6 +14,7 @@ import { resolveProjectRoot } from '../shared/utils.js'
 import { automationMutex } from '../shared/mutex.js'
 import { getTrackedProcesses } from '../shared/ProcessService.js'
 import { profileProcesses, workflowWorkers } from '../shared/store.js'
+import { isSafeSegment, ensureProfileUploadsDir, profileUploadsDir } from '../files/uploads.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
 const PROFILES_DIR = path.join(PROJECT_ROOT, 'data', 'profiles')
@@ -84,6 +85,13 @@ export class ProfileManager {
       fs.mkdirSync(PROFILES_DIR, { recursive: true })
     }
 
+    // Its uploads folder shows up in the Files tab right away.
+    try {
+      await ensureProfileUploadsDir(profile.name)
+    } catch (e) {
+      logger.error({ err: e }, 'Error creating profile uploads directory')
+    }
+
     return true
   }
 
@@ -112,6 +120,18 @@ export class ProfileManager {
           logger.error({ err: e }, 'Error renaming profile directory')
         }
       }
+      // The profile's uploads folder follows the rename.
+      try {
+        if (isSafeSegment(oldName) && isSafeSegment(profile.name)) {
+          const oldUploads = profileUploadsDir(oldName)
+          const newUploads = profileUploadsDir(profile.name)
+          if (fs.existsSync(oldUploads) && !fs.existsSync(newUploads)) {
+            fs.renameSync(oldUploads, newUploads)
+          }
+        }
+      } catch (e) {
+        logger.error({ err: e }, 'Error renaming profile uploads directory')
+      }
     }
 
     return true
@@ -127,6 +147,18 @@ export class ProfileManager {
 
     // Only touch browser data after a confirmed DB delete.
     this.removeLocalProfileDir(name)
+
+    // The delete dialog warns "and its data" — the uploads folder goes too.
+    try {
+      if (isSafeSegment(name)) {
+        const uploads = profileUploadsDir(String(name))
+        if (fs.existsSync(uploads)) {
+          fs.rmSync(uploads, { recursive: true, force: true })
+        }
+      }
+    } catch (e) {
+      logger.error({ err: e }, 'Error deleting profile uploads directory')
+    }
 
     return true
   }

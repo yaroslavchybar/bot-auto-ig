@@ -18,6 +18,7 @@ import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
 import { workflowsRouter } from './workflows/index.js'
 import displaysRouter from './displays/routes.js'
+import filesRouter from './files/routes.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { getActiveRuntimeProfileNames } from './shared/store.js'
@@ -58,7 +59,7 @@ app.use((req, res, next) => {
     // If origin is not allowed in production, don't set the header (browser will block)
 
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Telegram-Bot-Api-Secret-Token')
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Telegram-Bot-Api-Secret-Token, X-Filename')
     res.header('Access-Control-Allow-Credentials', 'true')
 
     if (req.method === 'OPTIONS') {
@@ -67,7 +68,13 @@ app.use((req, res, next) => {
     next()
 })
 
-app.use(express.json())
+const jsonParser = express.json()
+app.use((req, _res, next) => {
+    // The file upload streams its raw body — the JSON parser must not
+    // consume it first when an uploaded file happens to be application/json.
+    if (req.method === 'POST' && req.path === '/api/files/upload') return next()
+    jsonParser(req, _res, next)
+})
 
 // HTTP request logging middleware
 let requestCounter = 0
@@ -102,6 +109,7 @@ app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
+app.use('/api/files', requireApiAuth, apiLimiter, filesRouter)
 
 // Sentry error handler must be registered after all routes
 Sentry.setupExpressErrorHandler(app)
