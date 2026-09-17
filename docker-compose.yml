@@ -17,6 +17,9 @@ services:
     environment:
       - SERVER_PORT=3001
       - DISPLAY=:99
+      # Same persisted-cache reasoning as prod: the 70MB GeoIP db and the
+      # browser binary survive container recreates.
+      - CLOAKBROWSER_CACHE_DIR=/app/data/.cloakbrowser
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}

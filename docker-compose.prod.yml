@@ -18,6 +18,10 @@ services:
       NODE_ENV: production
       SERVER_PORT: 3001
       DISPLAY: :99
+      # Cloak cache (Pro binary, GeoIP db) lives on the persisted data
+      # volume: without this the container re-downloads ~70MB+ on every
+      # redeploy, since /root/.cloakbrowser is ephemeral.
+      CLOAKBROWSER_CACHE_DIR: /app/data/.cloakbrowser
     volumes:
       - /home/alwyzon/ig-bot/data:/app/data
     logging:

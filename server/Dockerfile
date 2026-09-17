@@ -17,6 +17,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   websockify \
   # Remote clipboard read/write (xclip on the session DISPLAY)
   xclip \
+  # Font discovery for the browser + cloak's Windows-font check
+  fontconfig \
   # X11 dependencies for browsers
   libx11-6 \
   libx11-xcb1 \
@@ -58,6 +60,11 @@ RUN mkdir -p /root/.fluxbox && \
   echo "  [Deco] {NONE}" >> /root/.fluxbox/apps && \
   echo "[end]" >> /root/.fluxbox/apps
 
+# Real Windows fonts for the Windows persona: a Linux font set contradicts
+# the spoofed platform and font-fingerprinting checks flag the mismatch.
+COPY --from=repo_root server/fonts /usr/share/fonts/truetype/windows
+RUN fc-cache -f /usr/share/fonts/truetype/windows
+
 FROM system-base AS browser-deps
 WORKDIR /app
 COPY --from=repo_root package.json bun.lock ./
@@ -90,6 +97,7 @@ RUN bun run --filter anti-server build
 
 FROM browser-deps AS server-runtime
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY --chmod=755 scripts/seed-cloak-cache.sh /app/server/scripts/seed-cloak-cache.sh
 COPY --from=browser-deps /app/node_modules /app/node_modules
 COPY --from=browser-deps /app/server /app/server
 COPY --from=browser-deps /app/package.json /app/package.json
