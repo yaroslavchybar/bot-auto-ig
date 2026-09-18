@@ -10,8 +10,6 @@ test('creates, updates, and removes lists while clearing profile links', async (
     createdAt: Date.now(),
     name: 'Profile A',
     using: false,
-    testIp: false,
-    login: true,
     mode: 'direct',
     listIds: [list!._id],
   })

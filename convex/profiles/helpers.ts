@@ -122,7 +122,6 @@ export async function createProfileRow(ctx: any, args: any) {
 	if (!name) throw new DomainError('VALIDATION', "name is required");
 	const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
-	const sessionIdRaw = typeof args.sessionId === "string" ? args.sessionId.trim() : "";
 
 	await assertProxyLimit(ctx, proxy, args.proxyType, null);
 	const id = await ctx.db.insert("profiles", {
@@ -132,14 +131,11 @@ export async function createProfileRow(ctx: any, args: any) {
 		proxyType: args.proxyType,
 		status: "idle",
 		mode: computeProfileMode(proxy),
-		sessionId: sessionIdRaw ? sessionIdRaw : undefined,
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
 		using: false,
-		testIp: args.testIp ?? false,
 		fingerprintOs: args.fingerprintOs,
 		listIds: [],
 		lastOpenedAt: undefined,
-		login: false,
 	});
 	await ensureProxySaved(ctx, proxy, args.proxyType, name);
 	return await ctx.db.get(id);
@@ -166,19 +162,12 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	if (typeof args.proxyType === "string") {
 		next.proxyType = args.proxyType;
 	}
-	if (typeof args.testIp === "boolean") {
-		next.testIp = args.testIp;
-	}
 	if (typeof args.fingerprintOs === "string") {
 		next.fingerprintOs = args.fingerprintOs;
 	}
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
-	}
-	if (typeof args.sessionId === "string") {
-		const cleaned = args.sessionId.trim();
-		next.sessionId = cleaned ? cleaned : undefined;
 	}
 	const effectiveProxyByName = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeByName = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -212,19 +201,12 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	if (typeof args.proxyType === "string") {
 		next.proxyType = args.proxyType;
 	}
-	if (typeof args.testIp === "boolean") {
-		next.testIp = args.testIp;
-	}
 	if (typeof args.fingerprintOs === "string") {
 		next.fingerprintOs = args.fingerprintOs;
 	}
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
-	}
-	if (typeof args.sessionId === "string") {
-		const cleaned = args.sessionId.trim();
-		next.sessionId = cleaned ? cleaned : undefined;
 	}
 	const effectiveProxyById = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeById = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -279,22 +261,10 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 	return true;
 }
 
-export async function setProfileLoginTrueRow(ctx: any, name: string) {
-	const cleanedName = String(name || "").trim();
-	if (!cleanedName) throw new DomainError('VALIDATION', "name is required");
-	const existing = await ctx.db
-		.query("profiles")
-		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
-		.first();
-	if (!existing) return true;
-	await ctx.db.patch(existing._id, { login: true });
-	return true;
-}
-
 export async function listAssignedProfilesRow(ctx: any, listId: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	const result = rows
-		.filter((r: any) => r.login && getProfileListIds(r).some((id) => String(id) === String(listId)))
+		.filter((r: any) => getProfileListIds(r).some((id) => String(id) === String(listId)))
 		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
 		.sort((a: any, b: any) => a.createdAt - b.createdAt)
 		.map((r: any) => ({ profileId: r._id, name: r.name }));
@@ -304,7 +274,7 @@ export async function listAssignedProfilesRow(ctx: any, listId: any) {
 export async function listUnassignedProfilesRow(ctx: any) {
 	const rows = await ctx.db.query("profiles").collect();
 	const result = rows
-		.filter((r: any) => r.login && getProfileListIds(r).length === 0)
+		.filter((r: any) => getProfileListIds(r).length === 0)
 		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
 		.sort((a: any, b: any) => a.createdAt - b.createdAt)
 		.map((r: any) => ({ profileId: r._id, name: r.name }));

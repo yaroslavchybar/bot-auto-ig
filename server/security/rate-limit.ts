@@ -14,15 +14,3 @@ export const apiLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 })
-
-/**
- * Stricter limit for automation routes - 10 requests per minute.
- * Prevents accidental spam of start/stop commands.
- */
-export const automationLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: 10,
-    message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many automation requests' } },
-    standardHeaders: true,
-    legacyHeaders: false,
-})

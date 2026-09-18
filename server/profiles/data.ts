@@ -26,22 +26,28 @@ export type Profile = {
   proxyType?: string
   fingerprintOs?: string
   cookiesJson?: string
-  testIp?: boolean
   status?: string
   using?: boolean
-  login?: boolean
   listIds?: string[]
 }
 
+// Stored rows may predate field removals, so tolerate legacy extra fields
+// at this boundary and strip them before returning API-facing profiles.
+type StoredProfileRow = ProfileRecord & {
+  sessionId?: unknown
+  login?: unknown
+  testIp?: unknown
+}
+
 function mapDbRowToProfile(
-  { cookiesJson: _cookies, sessionId: _sessionId, ...profile }: ProfileRecord,
+  { cookiesJson: _cookies, sessionId: _sessionId, login: _login, testIp: _testIp, ...profile }: StoredProfileRow,
 ): Profile {
   return profile
 }
 
-function mapDbRowToProfileWithCookies(profile: ProfileRecord | null): Profile | null {
+function mapDbRowToProfileWithCookies(profile: StoredProfileRow | null): Profile | null {
   if (!profile) return null
-  const { sessionId: _sessionId, ...safeProfile } = profile
+  const { sessionId: _sessionId, login: _login, testIp: _testIp, ...safeProfile } = profile
   return safeProfile
 }
 
@@ -74,7 +80,6 @@ export class ProfileManager {
         proxyType: profile.proxyType,
         fingerprintOs: profile.fingerprintOs,
         cookiesJson: profile.cookiesJson,
-        testIp: profile.testIp,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error creating profile in DB')
@@ -103,7 +108,6 @@ export class ProfileManager {
         proxyType: profile.proxyType,
         fingerprintOs: profile.fingerprintOs,
         cookiesJson: profile.cookiesJson,
-        testIp: profile.testIp,
       })
     } catch (e) {
       logger.error({ err: e }, 'Error updating profile in DB')

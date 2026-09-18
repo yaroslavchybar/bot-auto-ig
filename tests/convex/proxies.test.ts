@@ -53,8 +53,6 @@ test('importFromProfiles backfills proxies stored on profiles', async () => {  c
     proxyType: 'http',
     status: 'idle',
     using: false,
-    testIp: false,
-    login: false,
   })
   await insertDoc(t, 'profiles', {
     createdAt: Date.now(),
@@ -63,8 +61,6 @@ test('importFromProfiles backfills proxies stored on profiles', async () => {  c
     proxyType: 'http',
     status: 'idle',
     using: false,
-    testIp: false,
-    login: false,
   })
 
   const first = await t.mutation(api.proxies.importFromProfiles, {})
@@ -161,8 +157,6 @@ test('edits that keep the current proxy pass even at the limit', async () => {
       proxyType: 'http',
       status: 'idle',
       using: false,
-      testIp: false,
-      login: false,
     })
     firstId ??= row!._id
   }

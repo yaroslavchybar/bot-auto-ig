@@ -2,7 +2,6 @@ import { Router } from 'express'
 import { profileManager } from './data.js'
 import {
   profilesSyncStatus,
-  profilesSetLoginTrue,
 } from '../shared/convexClient.js'
 import { getActiveRuntimeProfileNames, profileProcesses } from '../shared/store.js'
 import {
@@ -106,15 +105,6 @@ router.post('/sync-status', asyncHandler(async (req, res) => {
     throw new ValidationError('name and status are required')
   }
   await profilesSyncStatus(String(name), String(status), Boolean(using))
-  res.json({ success: true })
-}))
-
-router.post('/set-login-true', asyncHandler(async (req, res) => {
-  const { name } = req.body || {}
-  if (!name) {
-    throw new ValidationError('name is required')
-  }
-  await profilesSetLoginTrue(String(name))
   res.json({ success: true })
 }))
 

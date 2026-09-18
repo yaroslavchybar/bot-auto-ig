@@ -13,7 +13,6 @@ import { initWebSocket } from './websocket.js'
 import { requireApiAuth, requireApiAuthOrInternalKey } from './security/auth.js'
 import { authRouter } from './auth/routes.js'
 
-import profileLoginRouter from './profiles/login.js'
 import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
 import { automationsRouter } from './automations/index.js'
@@ -22,7 +21,7 @@ import filesRouter from './files/routes.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { getActiveRuntimeProfileNames } from './shared/store.js'
-import { apiLimiter, automationLimiter } from './security/rate-limit.js'
+import { apiLimiter } from './security/rate-limit.js'
 import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
 import logger from './shared/logger.js'
 import { automationsReconcileInterrupted } from './shared/convexClient.js'
@@ -104,7 +103,6 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter)
 
 // Protected API Routes - require authentication and rate limiting
-app.use('/api/profiles/login', requireApiAuth, automationLimiter, profileLoginRouter)
 app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/automations', requireApiAuthOrInternalKey, apiLimiter, automationsRouter)

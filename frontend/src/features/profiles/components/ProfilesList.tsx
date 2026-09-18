@@ -23,7 +23,6 @@ import {
   Terminal,
   Pencil,
   Trash2,
-  LogIn,
   Info,
   Monitor,
   Cpu,
@@ -40,7 +39,6 @@ interface ProfilesListProps {
   onDelete: (profile: Profile) => void
   onLogs: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
-  onLogin: (profile: Profile) => void
   emptyTitle?: string
   emptyDescription?: string
 }
@@ -50,7 +48,6 @@ interface ProfileActionsMenuProps {
   onDetails: (profile: Profile) => void
   onEdit: (profile: Profile) => void
   onLogs: (profile: Profile) => void
-  onLogin: (profile: Profile) => void
   onDelete: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
 }
@@ -87,7 +84,6 @@ function ProfileActionsMenu({
   onDetails,
   onEdit,
   onLogs,
-  onLogin,
   onDelete,
   onToggleStatus,
 }: ProfileActionsMenuProps) {
@@ -135,14 +131,6 @@ function ProfileActionsMenu({
           <Terminal className="mr-2 h-4 w-4" /> View Logs
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-panel-muted" />
-        {!profile.login && (
-          <DropdownMenuItem
-            onClick={() => onLogin(profile)}
-            className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
-          >
-            <LogIn className="mr-2 h-4 w-4" /> Run Login Script
-          </DropdownMenuItem>
-        )}
         <DropdownMenuItem
           onClick={() => onDelete(profile)}
           className="text-status-danger focus:text-status-danger focus:bg-status-danger-soft hover:bg-status-danger-soft cursor-pointer"
@@ -163,7 +151,6 @@ function ProfileMobileCard({
   onDelete,
   onLogs,
   onToggleStatus,
-  onLogin,
 }: {
   profile: Profile
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
@@ -192,7 +179,6 @@ function ProfileMobileCard({
             onDetails={onDetails}
             onEdit={onEdit}
             onLogs={onLogs}
-            onLogin={onLogin}
             onDelete={onDelete}
             onToggleStatus={onToggleStatus}
           />
@@ -227,12 +213,6 @@ function MobileCardTags({
           <Cpu className="h-3.5 w-3.5" />
           {osLabel}
         </div>
-        {profile.login && (
-          <div className="brand-surface brand-text-soft flex items-center gap-1 rounded-md border px-2 py-1">
-            <LogIn className="h-3.5 w-3.5" />
-            Auto Login
-          </div>
-        )}
       </div>
 
       <div className="flex items-start gap-2">
@@ -313,7 +293,6 @@ function ProfileDesktopRow({
   onDelete,
   onLogs,
   onToggleStatus,
-  onLogin,
 }: {
   profile: Profile
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
@@ -370,7 +349,6 @@ function ProfileDesktopRow({
               onDetails={onDetails}
               onEdit={onEdit}
               onLogs={onLogs}
-              onLogin={onLogin}
               onDelete={onDelete}
               onToggleStatus={onToggleStatus}
             />
@@ -440,7 +418,6 @@ export function ProfilesList({
   onDelete,
   onLogs,
   onToggleStatus,
-  onLogin,
   emptyTitle = 'No profiles',
   emptyDescription = 'Create a new profile to get started.',
 }: ProfilesListProps) {
@@ -464,7 +441,7 @@ export function ProfilesList({
     )
   }
 
-  const actionProps = { onDetails, onEdit, onDelete, onLogs, onToggleStatus, onLogin }
+  const actionProps = { onDetails, onEdit, onDelete, onLogs, onToggleStatus }
 
   if (isMobile) {
     return (

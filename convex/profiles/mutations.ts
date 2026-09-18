@@ -1,16 +1,14 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
-import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, setProfileLoginTrueRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
+import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
 
 const profileArgsShape = {
 	name: v.string(),
 	proxy: v.optional(v.string()),
 	proxyType: v.optional(v.string()),
-	testIp: v.optional(v.boolean()),
 	fingerprintOs: v.optional(v.string()),
 	cookiesJson: v.optional(v.string()),
-	sessionId: v.optional(v.string()),
 };
 
 export const create = mutation({
@@ -76,13 +74,6 @@ export const syncStatusInternal = internalMutation({
 	args: { name: v.string(), status: v.string(), using: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		return await syncProfileStatusRow(ctx, args.name, args.status, args.using);
-	},
-});
-
-export const setLoginTrueInternal = internalMutation({
-	args: { name: v.string() },
-	handler: async (ctx, args) => {
-		return await setProfileLoginTrueRow(ctx, args.name);
 	},
 });
 

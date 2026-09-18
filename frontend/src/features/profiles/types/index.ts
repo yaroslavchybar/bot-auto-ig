@@ -5,8 +5,6 @@ export type Profile = {
   proxyType?: string
   fingerprintOs?: string
   cookiesJson?: string
-  testIp?: boolean
   status?: string
   using?: boolean
-  login?: boolean
 }

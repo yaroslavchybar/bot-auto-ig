@@ -107,7 +107,6 @@ function ProfileNetworkSection({ profile }: { profile: Profile }) {
           className={!profile.proxy ? 'text-subtle-copy/50' : 'text-ink'}
         />
         <DetailRow label="Protocol" value={profile.proxyType || 'HTTP'} className="text-ink" />
-        <DetailRow label="IP Check" value={profile.testIp ? 'Enabled' : 'Disabled'} className="text-ink" />
       </div>
     </div>
   )

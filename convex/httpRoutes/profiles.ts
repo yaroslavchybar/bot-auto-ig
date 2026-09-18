@@ -17,7 +17,6 @@ const profilePaths = [
   '/api/profiles/update-by-name',
   '/api/profiles/delete-by-name',
   '/api/profiles/sync-status',
-  '/api/profiles/set-login-true',
 ];
 
 export function registerProfileRoutes(http: HttpRouter): void {
@@ -87,8 +86,6 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         proxyType: body?.proxyType ?? undefined,
         fingerprintOs: body?.fingerprintOs ?? undefined,
         cookiesJson: body?.cookiesJson ?? undefined,
-        testIp: body?.testIp ?? undefined,
-        sessionId: body?.sessionId ?? undefined,
       });
       return jsonResponse(mapProfileToApi(created, { includeCookies: true }));
     }),
@@ -106,8 +103,6 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         proxyType: body?.proxyType ?? undefined,
         fingerprintOs: body?.fingerprintOs ?? undefined,
         cookiesJson: body?.cookiesJson ?? undefined,
-        testIp: body?.testIp ?? undefined,
-        sessionId: body?.sessionId ?? undefined,
       } as any);
       return jsonResponse(mapProfileToApi(updated, { includeCookies: true }));
     }),
@@ -140,16 +135,6 @@ function registerProfileStatusRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
       const ok = await ctx.runMutation(internal.profiles.mutations.syncStatusInternal, body as any);
-      return jsonResponse({ ok });
-    }),
-  });
-
-  http.route({
-    path: '/api/profiles/set-login-true',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request);
-      const ok = await ctx.runMutation(internal.profiles.mutations.setLoginTrueInternal, body as any);
       return jsonResponse({ ok });
     }),
   });

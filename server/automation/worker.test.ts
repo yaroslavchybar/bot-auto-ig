@@ -8,7 +8,7 @@ test('retry skips completed profiles without launching or changing their status'
   let launches = 0
   globalThis.fetch = (async url => {
     assert.ok(String(url).endsWith('/api/profiles'))
-    return Response.json([{ name: 'done', id: 'done', listIds: ['chosen'], login: true, using: false }])
+    return Response.json([{ name: 'done', id: 'done', listIds: ['chosen'], using: false }])
   }) as typeof fetch
   try {
     await runAutomation({ automation: {
@@ -21,7 +21,7 @@ test('retry skips completed profiles without launching or changing their status'
 
 test('close browser ends the session and final cleanup stays safe', async () => {
   const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], login: true, using: false }
+  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], using: false }
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   const sessions: Array<{ closed: boolean; visits: number }> = []
   try {
@@ -42,7 +42,7 @@ test('close browser ends the session and final cleanup stays safe', async () => 
 
 test('nodes after close browser never run against the closed session', async () => {
   const originalFetch = globalThis.fetch
-  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], login: true, using: false }
+  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], using: false }
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   let navigations = 0
   try {
@@ -75,14 +75,12 @@ test('automation action failures reject the run and close the browser', async ()
           name: 'excluded',
           id: 'other',
           listIds: ['other'],
-          login: true,
           using: false,
         },
         {
           name: 'chosen',
           id: 'chosen',
           listIds: ['chosen'],
-          login: true,
           using: false,
         },
       ])
@@ -143,7 +141,6 @@ test('browser startup failures never clear another session’s busy status', asy
         name: 'chosen',
         id: 'chosen',
         listIds: ['chosen'],
-        login: true,
         using: false,
       },
     ])

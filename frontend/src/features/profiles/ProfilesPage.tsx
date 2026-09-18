@@ -5,7 +5,6 @@ import { ProfileDetails } from './components/ProfileDetails'
 import { ProfileForm } from './components/ProfileForm'
 import { ProfileLogs } from './components/ProfileLogs'
 import { ProfilesList } from './components/ProfilesList'
-import { LoginDialog } from './components/LoginDialog'
 import type { Profile } from './types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,12 +36,11 @@ export function ProfilesPage() {
         onCloseEdit={s.handleCloseEdit} onSaveProfile={s.handleSaveProfile}
         onCloseCreate={s.handleCloseCreate} />
       <ProfileViewDialogs logsProfile={s.logsProfile} detailsProfile={s.detailsProfile}
-        deleteProfile={s.deleteProfile} loginProfile={s.loginProfile} saving={s.saving}
-        logs={s.logs} logsLoading={s.logsLoading} wsLogs={s.wsLogs}
+        deleteProfile={s.deleteProfile} saving={s.saving}
+        logs={s.logs} logsLoading={s.logsLoading}
         onSetLogsProfileId={s.setLogsProfileId} onSetDetailsProfileId={s.setDetailsProfileId}
-        onSetDeleteProfileId={s.setDeleteProfileId} onSetLoginProfileId={s.setLoginProfileId}
-        onDeleteConfirm={s.handleDeleteConfirm}
-        onRefreshProfiles={s.refreshProfiles} />
+        onSetDeleteProfileId={s.setDeleteProfileId}
+        onDeleteConfirm={s.handleDeleteConfirm} />
     </div>
   )
 }
@@ -53,7 +51,7 @@ function ProfilesContent({ s }: { s: ReturnType<typeof useProfilesPage> }) {
       <div className="mx-auto max-w-[2000px] space-y-4">
         <ProfilesList profiles={s.filteredProfiles} loading={s.loading}
           onDetails={s.handleDetails} onEdit={s.handleEdit} onDelete={s.handleDeleteClick}
-          onLogs={s.handleLogs} onToggleStatus={(p) => s.toggleUsing(p)} onLogin={s.handleLogin}
+          onLogs={s.handleLogs} onToggleStatus={(p) => s.toggleUsing(p)}
           emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
           emptyDescription={s.searchQuery.trim()
             ? 'Try a different search term or clear the filter.'
@@ -228,15 +226,13 @@ function ProfileDetailsSheet({
 
 interface ProfileViewDialogsProps {
   logsProfile: Profile | null; detailsProfile: Profile | null
-  deleteProfile: Profile | null; loginProfile: Profile | null
+  deleteProfile: Profile | null
   saving: boolean
-  logs: LogEntry[]; logsLoading: boolean; wsLogs: LogEntry[]
+  logs: LogEntry[]; logsLoading: boolean
   onSetLogsProfileId: (id: string | null) => void
   onSetDetailsProfileId: (id: string | null) => void
   onSetDeleteProfileId: (id: string | null) => void
-  onSetLoginProfileId: (id: string | null) => void
   onDeleteConfirm: () => void
-  onRefreshProfiles: () => Promise<void>
 }
 
 function ProfileViewDialogsInner(p: ProfileViewDialogsProps) {
@@ -259,9 +255,6 @@ function ProfileViewDeleteAndLogin(p: ProfileViewDialogsProps) {
           saving={p.saving} error={null} onConfirm={p.onDeleteConfirm}
           onCancel={() => p.onSetDeleteProfileId(null)} />
       ) : null}
-      <LoginDialog key={p.loginProfile?.id ?? 'no-login'} open={Boolean(p.loginProfile)}
-        profile={p.loginProfile} logs={p.wsLogs}
-        onClose={() => p.onSetLoginProfileId(null)} onSuccess={p.onRefreshProfiles} />
     </>
   )
 }

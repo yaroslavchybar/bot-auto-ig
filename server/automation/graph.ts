@@ -67,14 +67,13 @@ export function profileEligible(
   profile: {
     using: boolean
     status?: string | null
-    login: boolean
     listIds?: string[] | null
     lastOpenedAt?: number | null
   },
   lists: string[],
   cooldownMinutes = 0,
 ): boolean {
-  if (profile.using || profile.status === 'running' || !profile.login)
+  if (profile.using || profile.status === 'running')
     return false
   if (lists.length && !profile.listIds?.some((id) => lists.includes(id)))
     return false

@@ -62,9 +62,7 @@ test('uses camelCase profile fields across the HTTP boundary', async () => {
     },
     body: JSON.stringify({
       name: 'Profile A',
-      sessionId: 'session-1',
       cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
-      testIp: true,
       proxyType: 'http',
     }),
   })
@@ -73,9 +71,7 @@ test('uses camelCase profile fields across the HTTP boundary', async () => {
   expect(response.status).toBe(200)
   expect(body).toMatchObject({
     name: 'Profile A',
-    sessionId: 'session-1',
     cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
-    testIp: true,
     proxyType: 'http',
   })
 })
@@ -91,9 +87,7 @@ test('updates and syncs profiles over the internal HTTP surface without Clerk id
       status: 'idle',
       mode: 'direct',
       using: false,
-      testIp: false,
       listIds: [],
-      login: false,
     }),
   )
 

@@ -31,8 +31,6 @@ export type ProfileInput = {
     proxyType?: string;
     fingerprintOs?: string;
     cookiesJson?: string;
-    testIp?: boolean;
-    sessionId?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -217,8 +215,6 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             proxyType: profile.proxyType,
             fingerprintOs: profile.fingerprintOs,
             cookiesJson: profile.cookiesJson,
-            testIp: profile.testIp,
-            sessionId: profile.sessionId,
         },
     });
 }
@@ -237,8 +233,6 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             proxyType: profile.proxyType,
             fingerprintOs: profile.fingerprintOs,
             cookiesJson: profile.cookiesJson,
-            testIp: profile.testIp,
-            sessionId: profile.sessionId,
         },
     });
 }
@@ -255,13 +249,6 @@ export async function profilesSyncStatus(name: string, status: string, using: bo
     const cleanedStatus = String(status || '').trim();
     if (!cleanedName || !cleanedStatus) throw new Error('name and status are required');
     await convexFetch<any>('/api/profiles/sync-status', { method: 'POST', body: { name: cleanedName, status: cleanedStatus, using } });
-    return true;
-}
-
-export async function profilesSetLoginTrue(name: string): Promise<true> {
-    const cleanedName = String(name || '').trim();
-    if (!cleanedName) throw new Error('name is required');
-    await convexFetch<any>('/api/profiles/set-login-true', { method: 'POST', body: { name: cleanedName } });
     return true;
 }
 

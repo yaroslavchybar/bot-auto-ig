@@ -10,7 +10,6 @@ test('creates profiles and selects available profiles by list with cooldown logi
     name: 'Profile A',
     proxy: 'http://proxy',
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
-    sessionId: ' session-1 ',
   })
 
   await t.mutation(api.profiles.mutations.bulkAddToList, {
@@ -26,7 +25,6 @@ test('creates profiles and selects available profiles by list with cooldown logi
   expect(profile).toMatchObject({
     mode: 'proxy',
     cookiesJson: '[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]',
-    sessionId: 'session-1',
   })
   expect(available).toHaveLength(1)
   expect(available[0]?._id).toBe(profile!._id)

@@ -34,7 +34,7 @@ test('selected lists restrict eligible profiles and enforce cooldown', () => {
       data: { config: { sourceLists: ['chosen'] } },
     },
   ])
-  const profile = { using: false, login: true, listIds: ['chosen'] }
+  const profile = { using: false, listIds: ['chosen'] }
   assert.equal(profileEligible(profile, lists), true)
   assert.equal(
     profileEligible({ ...profile, listIds: ['other'] }, lists),

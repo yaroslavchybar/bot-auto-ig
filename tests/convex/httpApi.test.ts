@@ -8,7 +8,6 @@ test('keeps internal HTTP-facing profile queries available without identity', as
 
   await t.mutation(internal.profiles.mutations.createInternal, {
     name: 'Profile A',
-    sessionId: 'session-a',
     cookiesJson:
       '[{"name":"sessionid","value":"cookie-a","domain":".instagram.com","path":"/"}]',
   })
@@ -18,7 +17,6 @@ test('keeps internal HTTP-facing profile queries available without identity', as
   expect(profiles).toHaveLength(1)
   expect(profiles[0]).toMatchObject({
     name: 'Profile A',
-    sessionId: 'session-a',
   })
   await expect(t.query(api.profiles.queries.list, {})).resolves.toHaveLength(1)
 })

@@ -93,10 +93,6 @@ function storedCookies(profile: DbProfileRow): Cookie[] {
   }
 }
 
-function sessionId(cookies: Cookie[]): string {
-  return cookies.find((cookie) => cookie.name === 'sessionid')?.value || ''
-}
-
 async function saveSession(
   profile: DbProfileRow,
   context: BrowserContext,
@@ -104,13 +100,10 @@ async function saveSession(
   let stage = 'read cookies from browser'
   try {
     const cookies = await context.cookies()
-    const id = sessionId(cookies)
-    if (!id && !profile.sessionId && cookies.length === 0) return
     stage = 'write cookies to database'
     await profilesUpdateByName(profile.name, {
       name: profile.name,
       cookiesJson: JSON.stringify(cookies),
-      sessionId: id,
     })
   } catch (error) {
     // Browser shutdown must not hide the original action error, but a lost
@@ -379,18 +372,6 @@ export async function openBrowserSession(
     checkStartup()
     const cookies = storedCookies(profile)
     if (cookies.length) await context.addCookies(cookies)
-    else if (profile.sessionId)
-      await context.addCookies([
-        {
-          name: 'sessionid',
-          value: profile.sessionId,
-          domain: '.instagram.com',
-          path: '/',
-          secure: true,
-          httpOnly: true,
-          sameSite: 'None',
-        },
-      ])
     const page = context.pages()[0] || (await context.newPage())
     if (page.url() === 'about:blank') {
       await page.goto('https://www.instagram.com/', {

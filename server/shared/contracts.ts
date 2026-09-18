@@ -7,14 +7,11 @@ export type ProfileRecord = {
   proxyType?: string
   status?: string
   mode?: string
-  sessionId?: string
   using: boolean
-  testIp: boolean
   fingerprintOs?: string
   cookiesJson?: string
   listIds?: string[]
   lastOpenedAt?: number
-  login: boolean
 }
 
 export const ACTIVITY_IDS = ['browse_feed', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'watch_stories'] as const

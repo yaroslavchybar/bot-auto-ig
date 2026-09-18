@@ -7,8 +7,6 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useProfiles } from './useProfiles'
 import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
-import { useWebSocket } from '@/hooks/useWebSocket'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 /* ── Dialog state management ── */
@@ -18,7 +16,6 @@ function useProfileDialogState(profiles: Profile[]) {
   const [detailsProfileId, setDetailsProfileId] = useState<string | null>(null)
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
   const [logsProfileId, setLogsProfileId] = useState<string | null>(null)
-  const [loginProfileId, setLoginProfileId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const detailsProfile = useMemo(
@@ -33,19 +30,13 @@ function useProfileDialogState(profiles: Profile[]) {
     () => (logsProfileId ? profiles.find((p) => p.id === logsProfileId) ?? null : null),
     [logsProfileId, profiles],
   )
-  const loginProfile = useMemo(
-    () => (loginProfileId ? profiles.find((p) => p.id === loginProfileId) ?? null : null),
-    [loginProfileId, profiles],
-  )
-
   return {
     editProfile, setEditProfile,
     detailsProfileId, setDetailsProfileId,
     deleteProfileId, setDeleteProfileId,
     logsProfileId, setLogsProfileId,
-    loginProfileId, setLoginProfileId,
     isCreateOpen, setIsCreateOpen,
-    detailsProfile, deleteProfile, logsProfile, loginProfile,
+    detailsProfile, deleteProfile, logsProfile,
   }
 }
 
@@ -125,7 +116,6 @@ function useProfileSave(
         proxyType: typeof data.proxyType === 'string' ? data.proxyType.trim() : '',
         fingerprintOs: data.fingerprintOs || undefined,
         cookiesJson: typeof data.cookiesJson === 'string' ? data.cookiesJson.trim() : '',
-        testIp: Boolean(data.testIp),
       }
       if (dialogState.isCreateOpen) {
         await createProfile(payload)
@@ -210,7 +200,6 @@ function useProfilePageActions(
   dialogState: ReturnType<typeof useProfileDialogState>,
   setSaving: (v: boolean) => void,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
-  clearWsLogs: () => void,
 ) {
   const handleCreate = useCallback(() => {
     dialogState.setEditProfile(null)
@@ -254,15 +243,9 @@ function useProfilePageActions(
     dialogState.setEditProfile(null)
   }, [dialogState])
 
-  const handleLogin = useCallback((profile: Profile) => {
-    dialogState.setLoginProfileId(profile.id)
-    dialogState.setDetailsProfileId(null)
-    clearWsLogs()
-  }, [clearWsLogs, dialogState])
-
   return {
     handleCreate, handleEdit, handleDeleteClick,
-    handleLogs, handleDetails, handleCloseCreate, handleCloseEdit, handleLogin,
+    handleLogs, handleDetails, handleCloseCreate, handleCloseEdit,
   }
 }
 
@@ -289,18 +272,11 @@ function useRuntimeReconciliation(refreshProfiles: () => Promise<void>) {
 export function useProfilesPage() {
   const convex = useConvex()
   const { profiles, loading: profilesLoading, refresh: refreshProfiles } = useProfiles()
-  const isMobile = useIsMobile()
   const { handleError } = useErrorHandler()
 
   const dialogState = useProfileDialogState(profiles)
   const { searchQuery, setSearchQuery, filteredProfiles } = useProfileSearch(profiles)
   const { logs, logsLoading, loadLogs } = useProfileLogs(handleError)
-
-  const { logs: wsLogs, clearLogs: clearWsLogs } = useWebSocket({
-    enabled: dialogState.loginProfileId !== null,
-    pauseWhenHidden: true,
-    maxBuffer: isMobile ? 250 : 500,
-  })
 
   const save = useProfileSave(dialogState, refreshProfiles, handleError)
   const crud = useProfileCrud(dialogState, refreshProfiles, save.setSaving, handleError)
@@ -318,32 +294,28 @@ export function useProfilesPage() {
 
   const actions = useProfilePageActions(
     convex, dialogState, save.setSaving, handleError,
-    clearWsLogs,
   )
 
   return {
     profiles, filteredProfiles, loading: profilesLoading,
     saving: save.saving,
     isCreateOpen: dialogState.isCreateOpen,
-    logs, logsLoading, searchQuery, wsLogs,
+    logs, logsLoading, searchQuery,
     editProfile: dialogState.editProfile,
     detailsProfile: dialogState.detailsProfile,
     deleteProfile: dialogState.deleteProfile,
     logsProfile: dialogState.logsProfile,
-    loginProfile: dialogState.loginProfile,
     detailsProfileId: dialogState.detailsProfileId,
     logsProfileId: dialogState.logsProfileId,
-    loginProfileId: dialogState.loginProfileId,
     setSearchQuery, setIsCreateOpen: dialogState.setIsCreateOpen,
     setDetailsProfileId: dialogState.setDetailsProfileId,
     setDeleteProfileId: dialogState.setDeleteProfileId,
     setLogsProfileId: dialogState.setLogsProfileId,
-    setLoginProfileId: dialogState.setLoginProfileId,
     handleCreate: actions.handleCreate, handleEdit: actions.handleEdit,
     handleDeleteClick: actions.handleDeleteClick,
     handleLogs: actions.handleLogs, handleDetails: actions.handleDetails,
     handleCloseCreate: actions.handleCloseCreate,
-    handleCloseEdit: actions.handleCloseEdit, handleLogin: actions.handleLogin,
+    handleCloseEdit: actions.handleCloseEdit,
     handleSaveProfile: save.handleSaveProfile,
     handleDeleteConfirm: crud.handleDeleteConfirm,
     toggleUsing: crud.toggleUsing, refreshProfiles,

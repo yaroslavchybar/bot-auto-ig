@@ -24,14 +24,11 @@ export default defineSchema({
 		proxyType: v.optional(v.string()),
 		status: v.optional(v.string()),
 		mode: v.optional(v.string()),
-		sessionId: v.optional(v.string()),
 		using: v.boolean(),
-		testIp: v.boolean(),
 		fingerprintOs: v.optional(v.string()),
 		cookiesJson: v.optional(v.string()),
 		listIds: v.optional(v.array(v.id("lists"))),
 		lastOpenedAt: v.optional(v.number()),
-		login: v.boolean(),
 	})
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),

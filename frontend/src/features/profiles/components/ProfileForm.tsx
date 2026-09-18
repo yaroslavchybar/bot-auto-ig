@@ -435,8 +435,6 @@ export function ProfileForm({
 }: ProfileFormProps) {
   const [draft, setDraft] = useState<Partial<Profile>>(() => ({
     name: '',
-    testIp: false,
-    login: false,
     using: false,
     status: 'idle',
     proxyType: 'http',
