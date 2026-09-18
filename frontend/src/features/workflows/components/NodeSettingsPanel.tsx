@@ -3,6 +3,7 @@ import type { Node } from 'reactflow'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { getActivityById, type ActivityDefinition } from '@/features/workflows/activities/index'
+import { START_NODE_INPUTS } from './StartNode'
 import { X, Play } from 'lucide-react'
 import { GroupedInputs } from '@/features/workflows/activity-ui/GroupedInputs'
 import { ActivityIcon } from './activityIcons'
@@ -28,7 +29,15 @@ export function NodeSettingsPanel({
   const isStartNode = selectedNode.type === 'start'
 
   if (isStartNode) {
-    return <StartNodeSettings onClose={onClose} suppressed={suppressed} />
+    return (
+      <StartNodeSettings
+        key={selectedNode.id}
+        node={selectedNode}
+        onUpdate={onUpdateNode}
+        onClose={onClose}
+        suppressed={suppressed}
+      />
+    )
   }
 
   return (
@@ -112,14 +121,30 @@ function SettingsPanelHeader({
 // ============================================================================
 
 interface StartNodeSettingsProps {
+  node: Node
+  onUpdate: (nodeId: string, data: Record<string, unknown>) => void
   onClose: () => void
   suppressed?: boolean
 }
 
 function StartNodeSettings({
+  node,
+  onUpdate,
   onClose,
   suppressed = false,
 }: StartNodeSettingsProps) {
+  const initialConfig =
+    (node.data?.config as Record<string, unknown>) || {}
+  const [config, setConfig] = useState<Record<string, unknown>>(initialConfig)
+
+  const handleChange = useCallback((name: string, value: unknown) => {
+    const base = (node.data?.config as Record<string, unknown>) || {}
+    const next = { ...base, [name]: value }
+    setConfig(next)
+    // Live-apply: no Apply button needed.
+    onUpdate(node.id, { ...node.data, config: next })
+  }, [node.id, node.data, onUpdate])
+
   return (
     <SettingsPanelShell suppressed={suppressed}>
       <SettingsPanelHeader
@@ -132,9 +157,15 @@ function StartNodeSettings({
         category="Entry point"
         onClose={onClose}
       />
-      <div className="text-muted-copy p-4 text-xs">
-        Connect it to your first block.
-      </div>
+      <ScrollArea className="min-h-0 flex-1 bg-transparent">
+        <div className="space-y-4 p-4">
+          <GroupedInputs
+            inputs={START_NODE_INPUTS}
+            config={config}
+            onChange={handleChange}
+          />
+        </div>
+      </ScrollArea>
     </SettingsPanelShell>
   )
 }

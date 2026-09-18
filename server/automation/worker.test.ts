@@ -12,14 +12,14 @@ test('retry skips completed profiles without launching or changing their status'
   }) as typeof fetch
   try {
     await runWorkflow({ workflow: {
-      nodes: [{ id: 'select', data: { activityId: 'select_list', config: { sourceLists: ['chosen'] } } }],
+      nodes: [{ id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } }],
       nodeStates: { __profileRuns: { done: { completed: true } } },
     } }, async () => { launches++; throw new Error('Must not launch') })
     assert.equal(launches, 0)
   } finally { globalThis.fetch = originalFetch }
 })
 
-test('close then start replaces the browser and final cleanup closes the replacement', async () => {
+test('close browser ends the session and final cleanup stays safe', async () => {
   const originalFetch = globalThis.fetch
   const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], login: true, using: false }
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
@@ -27,18 +27,40 @@ test('close then start replaces the browser and final cleanup closes the replace
   try {
     await runWorkflow({ workflow: {
       nodes: [
-        { id: 'select', data: { activityId: 'select_list', config: { sourceLists: ['chosen'] } } },
+        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
         { id: 'close', data: { activityId: 'close_browser' } },
-        { id: 'open', data: { activityId: 'start_browser', config: { headlessMode: true } } },
-        { id: 'feed', data: { activityId: 'browse_feed', config: { feed_min_time_minutes: 0, feed_max_time_minutes: 0 } } },
       ],
-      edges: [['select', 'close'], ['close', 'open'], ['open', 'feed']].map(([source, target]) => ({ source, target, sourceHandle: 'next' })),
+      edges: [{ source: 'start_node', target: 'close', sourceHandle: 'next' }],
     } }, async () => {
       const state = { closed: false, visits: 0 }
       sessions.push(state)
       return { page: { goto: async () => { assert.equal(state.closed, false); state.visits++ } }, close: async () => { state.closed = true } } as unknown as BrowserSession
     })
-    assert.deepEqual(sessions, [{ closed: true, visits: 0 }, { closed: true, visits: 1 }])
+    assert.deepEqual(sessions, [{ closed: true, visits: 0 }])
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('nodes after close browser never run against the closed session', async () => {
+  const originalFetch = globalThis.fetch
+  const profile = { name: 'chosen', id: 'chosen', listIds: ['chosen'], login: true, using: false }
+  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
+  let navigations = 0
+  try {
+    await runWorkflow({ workflow: {
+      nodes: [
+        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
+        { id: 'close', data: { activityId: 'close_browser' } },
+        { id: 'feed', data: { activityId: 'browse_feed', config: { feed_min_time_minutes: 0, feed_max_time_minutes: 0 } } },
+      ],
+      edges: [
+        { source: 'start_node', target: 'close', sourceHandle: 'next' },
+        { source: 'close', target: 'feed', sourceHandle: 'next' },
+      ],
+    } }, async () => ({
+      page: { goto: async () => { navigations++ } },
+      close: async () => {},
+    } as unknown as BrowserSession))
+    assert.equal(navigations, 0)
   } finally { globalThis.fetch = originalFetch }
 })
 
@@ -76,15 +98,15 @@ test('workflow action failures reject the run and close the browser', async () =
           workflow: {
             nodes: [
               {
-                id: 'select',
+                id: 'start_node',
+                type: 'start',
                 data: {
-                  activityId: 'select_list',
                   config: { sourceLists: ['chosen'] },
                 },
               },
               { id: 'feed', data: { activityId: 'browse_feed' } },
             ],
-            edges: [{ source: 'select', target: 'feed', sourceHandle: 'next' }],
+            edges: [{ source: 'start_node', target: 'feed', sourceHandle: 'next' }],
           },
         },
         async (name) => {
@@ -133,9 +155,9 @@ test('browser startup failures never clear another session’s busy status', asy
           workflow: {
             nodes: [
               {
-                id: 'select',
+                id: 'start_node',
+                type: 'start',
                 data: {
-                  activityId: 'select_list',
                   config: { sourceLists: ['chosen'] },
                 },
               },

@@ -5,8 +5,11 @@ import { createConvexTest, insertDoc, seedList, seedWorkflow } from './helpers'
 import {
   getActivityById,
   getDefaultConfig,
-  normalizeActivityConfig,
 } from '../../frontend/src/features/workflows/activities'
+import {
+  getDefaultStartConfig,
+  normalizeStartConfig,
+} from '../../frontend/src/features/workflows/startNode'
 import { validateWorkflowImport } from '../../frontend/src/features/workflows/utils/workflowImportExport'
 
 test('workflow get returns null for malformed route ids', async () => {
@@ -163,16 +166,19 @@ test('reads reset daily counters without a cron', async () => {
   expect(rows[0]?.runsToday).toBe(0)
 })
 
-test('provides expanded default config for workflow activities', () => {
-  const startBrowserDefaults = getDefaultConfig('start_browser')
-  const browseFeedDefaults = getDefaultConfig('browse_feed')
-
-  expect(startBrowserDefaults).toMatchObject({
+test('provides default config for the start node', () => {
+  expect(getDefaultStartConfig()).toMatchObject({
+    sourceLists: [],
     headlessMode: false,
-    parallelProfiles: 1,
     profileReopenCooldownEnabled: false,
     profileReopenCooldownMinutes: 30,
   })
+  expect(normalizeStartConfig({ headlessMode: true })).toMatchObject({
+    headlessMode: true,
+    profileReopenCooldownMinutes: 30,
+  })
+
+  const browseFeedDefaults = getDefaultConfig('browse_feed')
   expect(browseFeedDefaults).toMatchObject({
     watch_stories: false,
     stories_min_view_seconds: 2,
@@ -183,8 +189,8 @@ test('provides expanded default config for workflow activities', () => {
   })
 })
 
-test('preserves explicit start browser cooldown settings', () => {
-  const normalized = normalizeActivityConfig('start_browser', {
+test('preserves explicit start node cooldown settings', () => {
+  const normalized = normalizeStartConfig({
     headlessMode: true,
     profileReopenCooldownEnabled: true,
     profileReopenCooldownMinutes: 45,
@@ -192,14 +198,13 @@ test('preserves explicit start browser cooldown settings', () => {
 
   expect(normalized).toMatchObject({
     headlessMode: true,
-    parallelProfiles: 1,
     profileReopenCooldownEnabled: true,
     profileReopenCooldownMinutes: 45,
   })
   expect(normalized).not.toHaveProperty('profileReopenCooldown')
 })
 
-test('workflow import keeps expanded activity config payloads intact', () => {
+test('workflow import keeps start node config payloads intact', () => {
   const result = validateWorkflowImport({
     fileName: 'workflow.json',
     fileSizeBytes: 1024,
@@ -210,23 +215,20 @@ test('workflow import keeps expanded activity config payloads intact', () => {
       workflow: {
         name: 'Expanded Workflow',
         nodes: [
-          { id: 'start_node', type: 'start', data: {} },
           {
-            id: 'start_browser_1',
-            type: 'activity',
+            id: 'start_node',
+            type: 'start',
             data: {
-              activityId: 'start_browser',
               config: {
-                parallelProfiles: 3,
+                sourceLists: [],
+                headlessMode: true,
                 profileReopenCooldownEnabled: true,
                 profileReopenCooldownMinutes: 90,
               },
             },
           },
         ],
-        edges: [
-          { id: 'e1', source: 'start_node', target: 'start_browser_1' },
-        ],
+        edges: [],
       },
     }),
     existingWorkflowNames: [],
@@ -235,8 +237,8 @@ test('workflow import keeps expanded activity config payloads intact', () => {
   })
 
   const nodes = result.workflow.nodes as Array<Record<string, any>>
-  expect(nodes[1]?.data?.config).toMatchObject({
-    parallelProfiles: 3,
+  expect(nodes[0]?.data?.config).toMatchObject({
+    headlessMode: true,
     profileReopenCooldownMinutes: 90,
   })
 })

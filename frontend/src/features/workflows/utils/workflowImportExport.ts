@@ -234,12 +234,13 @@ function validateNodes(
     if (activityId) {
       validateNodeActivity(
         activityId,
-        nodeData,
-        availableListIds,
         resolveActivityById,
         unknownActivityIds,
-        missingListIds,
       )
+    }
+
+    if (nodeType === 'start' || nodeId === 'start_node') {
+      collectMissingLists(nodeData, availableListIds, missingListIds)
     }
   })
 
@@ -250,31 +251,34 @@ function validateNodes(
 
 function validateNodeActivity(
   activityId: string,
-  nodeData: JsonRecord | null,
-  availableListIds: Set<string>,
   resolveActivityById: (activityId: string) => unknown,
   unknownActivityIds: Set<string>,
-  missingListIds: Set<string>,
 ) {
   if (!resolveActivityById(activityId)) {
     unknownActivityIds.add(activityId)
   }
+}
 
-  if (activityId === 'select_list') {
-    const config = isRecord(nodeData?.config) ? nodeData.config : null
-    const sourceLists = Array.isArray(config?.sourceLists)
-      ? config.sourceLists
-      : []
+/* ── Collect sourceLists refs from a Start node config ── */
 
-    sourceLists.forEach((listId) => {
-      if (typeof listId !== 'string') return
-      const cleanedId = listId.trim()
-      if (!cleanedId) return
-      if (!availableListIds.has(cleanedId)) {
-        missingListIds.add(cleanedId)
-      }
-    })
-  }
+function collectMissingLists(
+  nodeData: JsonRecord | null,
+  availableListIds: Set<string>,
+  missingListIds: Set<string>,
+) {
+  const config = isRecord(nodeData?.config) ? nodeData.config : null
+  const sourceLists = Array.isArray(config?.sourceLists)
+    ? config.sourceLists
+    : []
+
+  sourceLists.forEach((listId) => {
+    if (typeof listId !== 'string') return
+    const cleanedId = listId.trim()
+    if (!cleanedId) return
+    if (!availableListIds.has(cleanedId)) {
+      missingListIds.add(cleanedId)
+    }
+  })
 }
 
 /* ── Edge validation ── */
@@ -370,7 +374,7 @@ export function validateWorkflowImport(
 
   if (missingListIds.size > 0) {
     warnings.push(
-      `Select List node references missing list IDs: ${Array.from(missingListIds).sort().join(', ')}`,
+      `Start node references missing list IDs: ${Array.from(missingListIds).sort().join(', ')}`,
     )
   }
 

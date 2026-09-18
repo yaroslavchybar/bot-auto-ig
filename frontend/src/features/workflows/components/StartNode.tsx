@@ -1,13 +1,26 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from 'reactflow'
-import { Play } from 'lucide-react'
+import { AlertTriangle, Play } from 'lucide-react'
 import { NodeActionToolbar } from './NodeActionToolbar'
 import { QuickAddMenu } from './QuickAddMenu'
 import { cn } from '@/lib/utils'
 
-export type StartNodeData = Record<string, never>
+export type StartNodeData = {
+  config?: Record<string, unknown>
+}
 
-function StartNodeComponent({ id, selected }: NodeProps<StartNodeData>) {
+export {
+  START_NODE_INPUTS,
+  getDefaultStartConfig,
+  normalizeStartConfig,
+} from '../startNode'
+import { getDefaultStartConfig } from '../startNode'
+
+function StartNodeComponent({ id, data, selected }: NodeProps<StartNodeData>) {
+  const sourceLists = (data?.config as Record<string, unknown> | undefined)
+    ?.sourceLists
+  const missingRequired =
+    !Array.isArray(sourceLists) || sourceLists.length === 0
   return (
     <div
       className={cn(
@@ -30,6 +43,11 @@ function StartNodeComponent({ id, selected }: NodeProps<StartNodeData>) {
         <div className="truncate text-[13px] font-semibold text-[var(--ink)]">
           Start
         </div>
+        {missingRequired && (
+          <span title="Select at least one source list">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-[var(--status-warning)]" />
+          </span>
+        )}
       </div>
 
       <div className="border-t border-[var(--line-soft)] p-1.5">
@@ -58,5 +76,9 @@ function StartNodeComponent({ id, selected }: NodeProps<StartNodeData>) {
 }
 
 export const StartNode = memo(StartNodeComponent)
+
+export function createDefaultStartData(): StartNodeData {
+  return { config: getDefaultStartConfig() }
+}
 
 export const DEFAULT_START_DATA: StartNodeData = {}

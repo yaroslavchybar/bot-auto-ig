@@ -19,6 +19,7 @@ import {
   nextNode,
   nodeActivity,
   selectedLists,
+  startConfig,
   profileEligible,
   type WorkflowNode,
   type WorkflowEdge,
@@ -65,7 +66,6 @@ async function withProfile(
   } = {},
   run: (session: BrowserSession, controls: {
     close: () => Promise<void>
-    reopen: (headless?: boolean) => Promise<BrowserSession>
   }) => Promise<void>,
 ): Promise<void> {
   const workflowId = options.workflowId || 'automation'
@@ -77,17 +77,6 @@ async function withProfile(
     await session.close()
     closed = true
     if (session.display) await event('display_released', { workflowId: workflowId, profileName: profile.name })
-  }
-  const reopen = async (headless = options.headless ?? true) => {
-    if (closed) {
-      session = await (options.openSession ?? openBrowserSession)(profile.name, { headless })
-      closed = false
-      if (session.display) await event('display_allocated', {
-        workflowId: workflowId, profileName: profile.name,
-        displayNum: session.display.displayNum, vncPort: session.display.vncPort,
-      })
-    }
-    return session!
   }
   try {
     session = await (options.openSession ?? openBrowserSession)(profile.name, {
@@ -107,7 +96,7 @@ async function withProfile(
         displayNum: session.display.displayNum,
         vncPort: session.display.vncPort,
       })
-    await run(session, { close, reopen })
+    await run(session, { close })
     await event('profile_completed', {
       profileName: profile.name,
       profileId: profile.id,
@@ -214,9 +203,7 @@ export async function runWorkflow(
   }
   const aggregateStates = nodeStates
   const workflowId = String(input.workflowId || 'workflow')
-  const startConfig = nodeConfig(
-    nodes.find((node) => nodeActivity(node) === 'start_browser') || { id: '' },
-  )
+  const setupConfig = startConfig(nodes)
   const lists = selectedLists(nodes)
   if (!lists.length)
     throw new Error(
@@ -226,8 +213,8 @@ export async function runWorkflow(
     profileEligible(
       profile,
       lists,
-      startConfig.profileReopenCooldownEnabled
-        ? number(startConfig.profileReopenCooldownMinutes, 30)
+      setupConfig.profileReopenCooldownEnabled
+        ? number(setupConfig.profileReopenCooldownMinutes, 30)
         : 0,
     ),
   )
@@ -244,7 +231,7 @@ export async function runWorkflow(
     await withProfile(
       profile,
       {
-        headless: startConfig.headlessMode ?? false,
+        headless: setupConfig.headlessMode ?? false,
         openSession,
         workflowId,
       },
@@ -294,13 +281,7 @@ export async function runWorkflow(
             task: activity,
           })
 
-          let handle = [
-            'start',
-            'start_browser',
-            'select_list',
-            'close_browser',
-            'delay',
-          ].includes(activity)
+          let handle = ['start', 'delay'].includes(activity)
             ? 'next'
             : 'success'
           try {
@@ -340,13 +321,8 @@ export async function runWorkflow(
               )
             } else if (activity === 'close_browser') {
               await controls.close()
-            } else if (activity === 'start_browser') {
-              session = await controls.reopen(config.headlessMode)
-            } else if (
-              activity === 'select_list' ||
-              activity === 'start'
-            ) {
-              // The workflow already owns its browser session. These nodes only configure/control it.
+            } else if (activity === 'start') {
+              // The workflow already owns its browser session. Start only configures it.
             } else {
               throw new Error(`Unsupported workflow activity: ${activity}`)
             }
@@ -382,6 +358,18 @@ export async function runWorkflow(
             ...nodeStates[current.id],
             status: 'completed',
             completedAt: Date.now(),
+          }
+          if (activity === 'close_browser') {
+            // Terminal: the browser session is gone, so nothing downstream can run.
+            run.currentNodeId = null
+            run.completed = true
+            await report('task_completed', {
+              workflowId: workflowId,
+              nodeId: current.id,
+              task: activity,
+            })
+            current = undefined
+            continue
           }
           const next = nextNode(nodes, edges, current, handle)
           run.currentNodeId = next?.id ?? null

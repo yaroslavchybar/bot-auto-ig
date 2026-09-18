@@ -29,8 +29,9 @@ test('loops finish after N visits and can run again inside an outer loop', () =>
 test('selected lists restrict eligible profiles and enforce cooldown', () => {
   const lists = selectedLists([
     {
-      id: 'lists',
-      data: { activityId: 'select_list', config: { sourceLists: ['chosen'] } },
+      id: 'start_node',
+      type: 'start',
+      data: { config: { sourceLists: ['chosen'] } },
     },
   ])
   const profile = { using: false, login: true, listIds: ['chosen'] }

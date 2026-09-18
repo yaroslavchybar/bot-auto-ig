@@ -51,9 +51,16 @@ export function advanceLoop(
 
 export function selectedLists(nodes: WorkflowNode[]): string[] {
   const lists = nodes
-    .filter((node) => nodeActivity(node) === 'select_list')
+    .filter((node) => node.type === 'start' || nodeActivity(node) === 'start')
     .flatMap((node) => node.data?.config?.sourceLists || [])
   return lists
+}
+
+export function startConfig(nodes: WorkflowNode[]): Record<string, any> {
+  return (
+    nodes.find((node) => node.type === 'start' || nodeActivity(node) === 'start')
+      ?.data?.config || {}
+  )
 }
 
 export function profileEligible(

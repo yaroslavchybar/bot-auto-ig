@@ -18,7 +18,7 @@ import {
 } from 'reactflow'
 import { toast } from 'sonner'
 import type { Workflow } from '../types'
-import { DEFAULT_START_DATA } from '../components/StartNode'
+import { DEFAULT_START_DATA, createDefaultStartData } from '../components/StartNode'
 import { WORKFLOW_EDGE_DEFAULTS } from '../components/WorkflowEdge'
 import {
   createActivityNode,
@@ -64,7 +64,7 @@ function createDefaultStartNode(): Node {
     id: 'start_node',
     type: 'start',
     position: { x: 250, y: 50 },
-    data: { ...DEFAULT_START_DATA },
+    data: { ...DEFAULT_START_DATA, ...createDefaultStartData() },
   }
 }
 

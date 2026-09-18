@@ -5,6 +5,7 @@ import {
   normalizeActivityConfig,
   type ActivityOutput,
 } from '@/features/workflows/activities'
+import { normalizeStartConfig } from '../startNode'
 
 export interface BlockInsertionContext {
   sourceNodeId?: string | null
@@ -78,6 +79,20 @@ export function createActivityNode(
 }
 
 export function normalizeWorkflowNode(node: Node): Node {
+  if (node.type === 'start') {
+    return {
+      ...node,
+      data: {
+        ...node.data,
+        config: normalizeStartConfig(
+          node.data && typeof node.data.config === 'object'
+            ? (node.data.config as Record<string, unknown>)
+            : {},
+        ),
+      },
+    }
+  }
+
   if (node.type !== 'activity') {
     return node
   }
