@@ -1,5 +1,5 @@
 import { ACTIVITY_IDS, type ActivityId } from '../shared/contracts.js'
-export type WorkflowNode = {
+export type AutomationNode = {
   id: string
   type?: string
   data?: {
@@ -7,24 +7,24 @@ export type WorkflowNode = {
     config?: Record<string, any>
   }
 }
-export type WorkflowEdge = {
+export type AutomationEdge = {
   source: string
   target: string
   sourceHandle?: string | null
 }
 
-export function nodeActivity(node: WorkflowNode): ActivityId | 'start' {
+export function nodeActivity(node: AutomationNode): ActivityId | 'start' {
   const id = node.type === 'start' ? 'start' : node.data?.activityId
   if (id === 'start' || ACTIVITY_IDS.includes(id as ActivityId)) return id as ActivityId | 'start'
-  throw new Error(`Unsupported workflow activity: ${id ?? node.type}`)
+  throw new Error(`Unsupported automation activity: ${id ?? node.type}`)
 }
 
 export function nextNode(
-  nodes: WorkflowNode[],
-  edges: WorkflowEdge[],
-  current: WorkflowNode,
+  nodes: AutomationNode[],
+  edges: AutomationEdge[],
+  current: AutomationNode,
   handle: string,
-): WorkflowNode | undefined {
+): AutomationNode | undefined {
   const outgoing = edges.filter((edge) => edge.source === current.id)
   const edge =
     outgoing.find((edge) => edge.sourceHandle === handle) ||
@@ -32,7 +32,7 @@ export function nextNode(
   if (!edge) return undefined
   const node = nodes.find((node) => node.id === edge.target)
   if (!node)
-    throw new Error(`Workflow edge points to missing node: ${edge.target}`)
+    throw new Error(`Automation edge points to missing node: ${edge.target}`)
   return node
 }
 
@@ -49,14 +49,14 @@ export function advanceLoop(
   return 'loop'
 }
 
-export function selectedLists(nodes: WorkflowNode[]): string[] {
+export function selectedLists(nodes: AutomationNode[]): string[] {
   const lists = nodes
     .filter((node) => node.type === 'start' || nodeActivity(node) === 'start')
     .flatMap((node) => node.data?.config?.sourceLists || [])
   return lists
 }
 
-export function startConfig(nodes: WorkflowNode[]): Record<string, any> {
+export function startConfig(nodes: AutomationNode[]): Record<string, any> {
   return (
     nodes.find((node) => node.type === 'start' || nodeActivity(node) === 'start')
       ?.data?.config || {}

@@ -4,14 +4,14 @@
  * On SIGTERM/SIGINT:
  * 1. Stop accepting new HTTP connections (close the server)
  * 2. Close all WebSocket connections
- * 3. Kill all Bun child processes (automation, workflows, profiles)
+ * 3. Kill all Bun child processes (automation, automations, profiles)
  * 4. Persist automation state atomically
  * 5. Clear PID files
  * 6. Exit cleanly with code 0
  */
 import type { Server } from 'http'
 import type { WebSocketServer } from 'ws'
-import { workflowWorkers, profileProcesses, clients } from '../shared/store.js'
+import { automationWorkers, profileProcesses, clients } from '../shared/store.js'
 import { automationMutex } from '../shared/mutex.js'
 import { killProcess, requestChildStop, getTrackedProcesses, getPid, clearRegistry } from '../shared/ProcessService.js'
 import logger from '../shared/logger.js'
@@ -105,12 +105,12 @@ function closeWebSocketConnections(wss: WebSocketServer): void {
 
 /**
  * Kill ALL tracked Bun child processes via the global ProcessService
- * registry. This catches automation, workflow, profile, login, and
+ * registry. This catches automation, automation, profile, login, and
  * manual browser subprocesses — nothing is orphaned.
  */
 async function killAllChildProcesses(): Promise<void> {
   // Clear known state maps so the application doesn't reference dead procs
-  workflowWorkers.clear()
+  automationWorkers.clear()
   profileProcesses.clear()
 
   // Ask each child to stop cleanly first (stdin `stop` closes browsers and

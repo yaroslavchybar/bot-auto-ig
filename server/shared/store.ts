@@ -14,7 +14,7 @@ export const logsStore: Array<{
     source: string;
     ts: number;
     profileName?: string;
-    workflowId?: string;
+    automationId?: string;
     taskId?: string;
     targetUsername?: string;
     errorCode?: string;
@@ -23,13 +23,13 @@ export const logsStore: Array<{
     diagnostics?: string;
 }> = []
 
-export const workflowWorkers = new Map<
+export const automationWorkers = new Map<
     string,
     { process: ChildProcess; status: 'running' | 'stopping'; startedAt: number }
 >()
 
 export type ActiveDisplaySession = {
-    workflowId: string
+    automationId: string
     profileName: string
     vncPort: number
     displayNum: number
@@ -41,41 +41,41 @@ export const activeDisplays = new Map<string, ActiveDisplaySession>()
 // Profile browser processes
 export const profileProcesses = new Map<string, ChildProcess>()
 
-// Workflow-owned active profiles. Each workflow can run one or more profiles.
-export const workflowProfileSessions = new Map<string, Set<string>>()
+// Automation-owned active profiles. Each automation can run one or more profiles.
+export const automationProfileSessions = new Map<string, Set<string>>()
 
-export function markWorkflowProfileActive(workflowId: string, profileName: string): void {
-    const cleanWorkflowId = String(workflowId || '').trim()
+export function markAutomationProfileActive(automationId: string, profileName: string): void {
+    const cleanAutomationId = String(automationId || '').trim()
     const cleanProfileName = String(profileName || '').trim()
-    if (!cleanWorkflowId || !cleanProfileName) return
+    if (!cleanAutomationId || !cleanProfileName) return
 
-    const existing = workflowProfileSessions.get(cleanWorkflowId)
+    const existing = automationProfileSessions.get(cleanAutomationId)
     if (existing) {
         existing.add(cleanProfileName)
         return
     }
 
-    workflowProfileSessions.set(cleanWorkflowId, new Set([cleanProfileName]))
+    automationProfileSessions.set(cleanAutomationId, new Set([cleanProfileName]))
 }
 
-export function clearWorkflowProfileActive(workflowId: string, profileName?: string): void {
-    const cleanWorkflowId = String(workflowId || '').trim()
-    if (!cleanWorkflowId) return
+export function clearAutomationProfileActive(automationId: string, profileName?: string): void {
+    const cleanAutomationId = String(automationId || '').trim()
+    if (!cleanAutomationId) return
 
     if (typeof profileName === 'undefined') {
-        workflowProfileSessions.delete(cleanWorkflowId)
+        automationProfileSessions.delete(cleanAutomationId)
         return
     }
 
     const cleanProfileName = String(profileName || '').trim()
     if (!cleanProfileName) return
 
-    const existing = workflowProfileSessions.get(cleanWorkflowId)
+    const existing = automationProfileSessions.get(cleanAutomationId)
     if (!existing) return
 
     existing.delete(cleanProfileName)
     if (existing.size === 0) {
-        workflowProfileSessions.delete(cleanWorkflowId)
+        automationProfileSessions.delete(cleanAutomationId)
     }
 }
 
@@ -87,7 +87,7 @@ export function getActiveRuntimeProfileNames(): string[] {
         if (cleanName) activeNames.add(cleanName)
     }
 
-    for (const profiles of workflowProfileSessions.values()) {
+    for (const profiles of automationProfileSessions.values()) {
         for (const name of profiles) {
             const cleanName = String(name || '').trim()
             if (cleanName) activeNames.add(cleanName)

@@ -3,7 +3,7 @@ import { registerListRoutes } from './httpRoutes/lists';
 import { registerMessageTemplateRoutes } from './httpRoutes/messageTemplates';
 import { registerProfileRoutes } from './httpRoutes/profiles';
 
-import { registerWorkflowRoutes } from './httpRoutes/workflows';
+import { registerAutomationRoutes } from './httpRoutes/automations';
 
 const http = httpRouter();
 
@@ -11,6 +11,6 @@ const http = httpRouter();
 registerProfileRoutes(http);
 registerListRoutes(http);
 registerMessageTemplateRoutes(http);
-registerWorkflowRoutes(http);
+registerAutomationRoutes(http);
 
 export default http;

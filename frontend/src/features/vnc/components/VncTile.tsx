@@ -62,7 +62,7 @@ export function VncTile({ session, onSelect }: VncTileProps) {
           </Suspense>
         )}
         <div className="absolute right-2 bottom-2 rounded-[3px] bg-black/55 px-2 py-1 font-mono text-[10px] text-white/80 opacity-0 transition-opacity group-hover:opacity-100">
-          {session.workflowId}
+          {session.automationId}
         </div>
       </div>
     </button>

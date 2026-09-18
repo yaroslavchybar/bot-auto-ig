@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import express from 'express'
 import type { AddressInfo } from 'node:net'
-import { activeDisplays, workflowWorkers } from '../shared/store.js'
+import { activeDisplays, automationWorkers } from '../shared/store.js'
 import { AppError } from '../shared/errors.js'
 import clipboardRouter from './clipboard.js'
 
@@ -40,14 +40,14 @@ const MANUAL_PORT = 59992
 
 function seedDisplays(): void {
   activeDisplays.set(`wf-1:agent-profile`, {
-    workflowId: 'wf-1',
+    automationId: 'wf-1',
     profileName: 'agent-profile',
     vncPort: AGENT_PORT,
     displayNum: 191,
     status: 'active',
   })
   activeDisplays.set(`manual:solo`, {
-    workflowId: 'manual',
+    automationId: 'manual',
     profileName: 'solo',
     vncPort: MANUAL_PORT,
     displayNum: 192,
@@ -58,12 +58,12 @@ function seedDisplays(): void {
 function clearSeeds(): void {
   activeDisplays.delete(`wf-1:agent-profile`)
   activeDisplays.delete(`manual:solo`)
-  workflowWorkers.delete('wf-1')
+  automationWorkers.delete('wf-1')
 }
 
 test('clipboard writes are denied while an agent controls the session', async () => {
   seedDisplays()
-  workflowWorkers.set('wf-1', { process: {} as never, status: 'running', startedAt: Date.now() })
+  automationWorkers.set('wf-1', { process: {} as never, status: 'running', startedAt: Date.now() })
   try {
     await withServer(async (base) => {
       const res = await fetch(`${base}/${AGENT_PORT}/clipboard`, {

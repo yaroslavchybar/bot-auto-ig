@@ -25,7 +25,7 @@ import {
 
 export const NAV_IDS = [
   'profiles',
-  'workflows',
+  'automations',
   'lists',
   'proxies',
   'vnc',
@@ -43,11 +43,11 @@ export const NAV_ITEMS = [
     breadcrumb: 'Profiles Manager',
   },
   {
-    title: 'Workflows',
-    id: 'workflows',
-    to: '/workflows',
+    title: 'Automations',
+    id: 'automations',
+    to: '/automations',
     icon: GitBranch,
-    breadcrumb: 'Workflows',
+    breadcrumb: 'Automations',
   },
   {
     title: 'Lists Manager',

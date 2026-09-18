@@ -18,7 +18,6 @@
     "lint": "bun run --filter frontend lint"
   },
   "dependencies": {
-    "@convex-dev/crons": "^0.2.0",
     "convex": "^1.45.0"
   },
   "devDependencies": {

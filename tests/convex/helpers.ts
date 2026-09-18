@@ -1,6 +1,5 @@
 import { convexTest } from 'convex-test'
 import type { UserIdentity } from 'convex/server'
-import { register as registerCronsComponent } from '@convex-dev/crons/test'
 
 import { api } from '../../convex/_generated/api'
 import schema from '../../convex/schema'
@@ -19,13 +18,11 @@ const TEST_IDENTITY: Partial<UserIdentity> = {
 
 export function createConvexTest() {
   const t = convexTest(schema, modules)
-  registerCronsComponent(t)
   return t.withIdentity(TEST_IDENTITY)
 }
 
 export function createUnauthenticatedConvexTest() {
   const t = convexTest(schema, modules)
-  registerCronsComponent(t)
   return t
 }
 
@@ -36,7 +33,7 @@ export async function insertDoc(
     | 'messageTemplates'
     | 'profiles'
     | 'proxies'
-    | 'workflows',
+    | 'automations',
   value: Record<string, unknown>
 ) {
   const id = await t.run(async (ctx) => ctx.db.insert(table as never, value as never))
@@ -62,21 +59,18 @@ export async function seedProfile(
   })
 }
 
-export async function seedWorkflow(
+export async function seedAutomation(
   t: ReturnType<typeof createConvexTest>,
   overrides: Record<string, unknown> = {}
 ) {
-  return await insertDoc(t, 'workflows', {
-    name: 'Workflow A',
-    description: 'test workflow',
+  return await insertDoc(t, 'automations', {
+    name: 'Automation A',
+    description: 'test automation',
     nodes: [],
     edges: [],
     listIds: [],
     status: 'idle',
-    isActive: false,
-    scheduleType: 'daily',
-    scheduleConfig: { hourUTC: 9, minuteUTC: 0 },
-    runsToday: 0,
+    isActive: true,
     retryCount: 0,
     maxRetries: 2,
     createdAt: Date.now(),

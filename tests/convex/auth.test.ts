@@ -11,7 +11,7 @@ test('allows unauthenticated public queries', async () => {
 
   await expect(t.query(api.lists.list, {})).resolves.toEqual([])
   await expect(t.query(api.profiles.queries.list, {})).resolves.toEqual([])
-  await expect(t.query(api.workflows.queries.list, {})).resolves.toEqual([])
+  await expect(t.query(api.automations.queries.list, {})).resolves.toEqual([])
 })
 
 test('allows unauthenticated public mutations', async () => {
@@ -24,11 +24,11 @@ test('allows unauthenticated public mutations', async () => {
     }),
   ).resolves.toBe(true)
 
-  const created = await t.mutation(api.workflows.mutations.create, {
-    name: 'Workflow A',
+  const created = await t.mutation(api.automations.mutations.create, {
+    name: 'Automation A',
     nodes: [],
     edges: [],
   })
 
-  expect(created).toMatchObject({ name: 'Workflow A' })
+  expect(created).toMatchObject({ name: 'Automation A' })
 })

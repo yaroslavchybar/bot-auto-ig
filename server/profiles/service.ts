@@ -37,10 +37,10 @@ function setManualDisplay(
   profileName: string,
   vncPort: number,
   displayNum: number,
-  workflowId: string = 'manual',
+  automationId: string = 'manual',
 ) {
   activeDisplays.set(manualDisplayKey(profileName), {
-    workflowId,
+    automationId,
     profileName,
     vncPort,
     displayNum,
@@ -61,16 +61,16 @@ function handleChildStdout(name: string, data: Buffer) {
     if (eventType === 'display_allocated') {
       const vncPort = Number(meta.vncPort)
       const displayNum = Number(meta.displayNum)
-      const workflowId = String(meta.workflowId ?? 'manual')
+      const automationId = String(meta.automationId ?? 'manual')
       if (Number.isFinite(vncPort) && Number.isFinite(displayNum)) {
-        setManualDisplay(name, vncPort, displayNum, workflowId)
+        setManualDisplay(name, vncPort, displayNum, automationId)
       }
     } else if (eventType === 'display_released') {
       clearManualDisplay(name)
     }
     broadcast({
       type: eventType,
-      workflowId: String(meta.workflowId ?? 'manual'),
+      automationId: String(meta.automationId ?? 'manual'),
       message: log.message,
       level: log.level,
       source: 'typescript',
@@ -85,7 +85,7 @@ function handleChildStderr(name: string, logs: ParsedLog[]) {
     const meta = (log.metadata as any) || {}
     broadcast({
       type: log.eventType ? log.eventType : 'log',
-      workflowId: String(meta.workflowId ?? 'manual'),
+      automationId: String(meta.automationId ?? 'manual'),
       message: log.message,
       level: log.explicitLevel ? log.level : (isBenignBrowserStderr(log.message) ? 'info' : 'error'),
       source: 'typescript',
@@ -100,7 +100,7 @@ function handleChildExit(name: string, code: number | null) {
   if (hadDisplay) {
     broadcast({
       type: 'display_released',
-      workflowId: 'manual',
+      automationId: 'manual',
       profile: name,
       profileName: name,
       source: 'server',
@@ -120,7 +120,7 @@ function handleChildError(name: string, err: Error) {
   if (hadDisplay) {
     broadcast({
       type: 'display_released',
-      workflowId: 'manual',
+      automationId: 'manual',
       profile: name,
       profileName: name,
       source: 'server',
@@ -154,7 +154,7 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
     throw new NotFoundError('Profile not found')
   }
 
-  const args = [LAUNCHER_SCRIPT, '--name', name, '--workflow-id', 'manual']
+  const args = [LAUNCHER_SCRIPT, '--name', name, '--automation-id', 'manual']
 
   broadcast({
     type: 'log',

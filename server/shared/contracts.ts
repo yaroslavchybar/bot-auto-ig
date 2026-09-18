@@ -23,7 +23,7 @@ export type ActivityId = typeof ACTIVITY_IDS[number]
 export type WebSocketEventType =
   | 'log'
   | 'status'
-  | 'workflow_status'
+  | 'automation_status'
   | 'error'
   | 'session_started'
   | 'profile_started'
@@ -37,7 +37,7 @@ export type WebSocketEventType =
   | 'display_released'
 
 type EventFields = {
-  workflowId?: string
+  automationId?: string
   id?: string
   message?: string
   level?: string

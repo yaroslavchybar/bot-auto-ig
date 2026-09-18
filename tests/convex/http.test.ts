@@ -6,7 +6,7 @@ import {
   createUnauthenticatedConvexTest,
   seedList,
   seedProfile,
-  seedWorkflow,
+  seedAutomation,
 } from './helpers'
 
 function stubEnv(env: Record<string, string>) {
@@ -169,11 +169,11 @@ test('omits cookies from list responses but includes them on profile detail resp
   })
 })
 
-test('returns a route-level validation error when workflow start is missing an id', async () => {
+test('returns a route-level validation error when automation start is missing an id', async () => {
   const t = createConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
-  const response = await t.fetch('/api/workflows/start', {
+  const response = await t.fetch('/api/automations/start', {
     method: 'POST',
     headers: {
       authorization: 'Bearer secret-token',
@@ -186,12 +186,12 @@ test('returns a route-level validation error when workflow start is missing an i
   await expect(response.json()).resolves.toEqual({ error: 'id is required' })
 })
 
-test('maps workflow rows through the http router', async () => {
+test('maps automation rows through the http router', async () => {
   const t = createConvexTest()
-  await seedWorkflow(t, { name: 'Workflow B', status: 'running' })
+  await seedAutomation(t, { name: 'Automation B', status: 'running' })
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
-  const response = await t.fetch('/api/workflows?status=running', {
+  const response = await t.fetch('/api/automations?status=running', {
     method: 'GET',
     headers: { authorization: 'Bearer secret-token' },
   })
@@ -199,25 +199,22 @@ test('maps workflow rows through the http router', async () => {
 
   expect(response.status).toBe(200)
   expect(body).toHaveLength(1)
-  expect(body[0]).toMatchObject({ name: 'Workflow B', status: 'running' })
+  expect(body[0]).toMatchObject({ name: 'Automation B', status: 'running' })
 })
 
-test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', async () => {
+test('serves automation routes over INTERNAL_API_KEY without a Clerk identity', async () => {
   const t = createUnauthenticatedConvexTest()
   stubEnv({ INTERNAL_API_KEY: 'secret-token' })
 
-  const workflowId = await t.run(async (ctx) =>
-    await ctx.db.insert('workflows', {
-      name: 'Workflow Internal Auth',
-      description: 'workflow auth bridge',
+  const automationId = await t.run(async (ctx) =>
+    await ctx.db.insert('automations', {
+      name: 'Automation Internal Auth',
+      description: 'automation auth bridge',
       nodes: [],
       edges: [],
       listIds: [],
       status: 'idle',
-      isActive: false,
-      scheduleType: 'instant',
-      scheduleConfig: {},
-      runsToday: 0,
+      isActive: true,
       retryCount: 0,
       maxRetries: 2,
       createdAt: Date.now(),
@@ -225,52 +222,52 @@ test('serves workflow routes over INTERNAL_API_KEY without a Clerk identity', as
     }),
   )
 
-  const listResponse = await t.fetch('/api/workflows?status=idle', {
+  const listResponse = await t.fetch('/api/automations?status=idle', {
     method: 'GET',
     headers: { authorization: 'Bearer secret-token' },
   })
   const byIdResponse = await t.fetch(
-    `/api/workflows/by-id?workflowId=${encodeURIComponent(String(workflowId))}`,
+    `/api/automations/by-id?automationId=${encodeURIComponent(String(automationId))}`,
     {
       method: 'GET',
       headers: { authorization: 'Bearer secret-token' },
     },
   )
-  const startResponse = await t.fetch('/api/workflows/start', {
+  const startResponse = await t.fetch('/api/automations/start', {
     method: 'POST',
     headers: {
       authorization: 'Bearer secret-token',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ id: workflowId }),
+    body: JSON.stringify({ id: automationId }),
   })
-  const updateStatusResponse = await t.fetch('/api/workflows/update-status', {
+  const updateStatusResponse = await t.fetch('/api/automations/update-status', {
     method: 'POST',
     headers: {
       authorization: 'Bearer secret-token',
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ id: workflowId, status: 'running' }),
+    body: JSON.stringify({ id: automationId, status: 'running' }),
   })
 
   expect(listResponse.status).toBe(200)
   await expect(listResponse.json()).resolves.toMatchObject([
-    { _id: workflowId, name: 'Workflow Internal Auth', status: 'idle' },
+    { _id: automationId, name: 'Automation Internal Auth', status: 'idle' },
   ])
   expect(byIdResponse.status).toBe(200)
   await expect(byIdResponse.json()).resolves.toMatchObject({
-    _id: workflowId,
-    name: 'Workflow Internal Auth',
+    _id: automationId,
+    name: 'Automation Internal Auth',
     status: 'idle',
   })
   expect(startResponse.status).toBe(200)
   await expect(startResponse.json()).resolves.toMatchObject({
-    _id: workflowId,
+    _id: automationId,
     status: 'pending',
   })
   expect(updateStatusResponse.status).toBe(200)
   await expect(updateStatusResponse.json()).resolves.toMatchObject({
-    _id: workflowId,
+    _id: automationId,
     status: 'running',
   })
 })

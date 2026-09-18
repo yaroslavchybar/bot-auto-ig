@@ -67,7 +67,7 @@ export function isProcessRunning(pid: number): boolean {
 // ---------------------------------------------------------------------------
 // Global process registry — tracks ALL spawned children so shutdown can
 // kill every one, including login & manual browser subprocesses that are
-// not stored in workflowWorkers / profileProcesses.
+// not stored in automationWorkers / profileProcesses.
 // ---------------------------------------------------------------------------
 
 const processRegistry = new Set<ChildProcess>()
@@ -497,7 +497,7 @@ export function guardChildStdin(proc: ChildProcess): void {
 
 /**
  * Cooperative stop: ask the child to shut itself down with a `stop` line on
- * stdin. Runner children (manual browser, workflow worker) turn it into a
+ * stdin. Runner children (manual browser, automation worker) turn it into a
  * lifecycle abort and close browsers cleanly, freeing the license seat.
  * Unlike signals, stdin delivery works on every platform — Bun on Windows
  * cannot signal detached children (ENOSYS) and force-kills them instead.

@@ -20,7 +20,7 @@ interface UseWebSocketOptions {
   pauseWhenHidden?: boolean
   maxBuffer?: number
   eventsOnly?: boolean
-  workflowId?: string | null
+  automationId?: string | null
   onEvent?: (message: WebSocketMessage) => void
 }
 
@@ -60,7 +60,7 @@ export function parseLogEntry(
     message: data.message!,
     level: data.level || 'info',
     source: data.source || 'unknown',
-    workflowId: (data.workflowId) ?? undefined,
+    automationId: (data.automationId) ?? undefined,
     profileName: data.profileName || currentProfile || undefined,
     taskId: data.taskId || undefined,
     targetUsername: data.targetUsername || undefined,
@@ -72,15 +72,15 @@ export function parseLogEntry(
   }
 }
 
-/* ── Check if message matches the workflow filter ── */
+/* ── Check if message matches the automation filter ── */
 
-function matchesWorkflowFilter(
+function matchesAutomationFilter(
   data: WebSocketMessage,
-  activeWorkflowId: string | null,
+  activeAutomationId: string | null,
 ): boolean {
-  const msgWorkflowId = data.workflowId ?? null
-  if (!activeWorkflowId) return true
-  return msgWorkflowId === activeWorkflowId
+  const msgAutomationId = data.automationId ?? null
+  if (!activeAutomationId) return true
+  return msgAutomationId === activeAutomationId
 }
 
 /* ── Handle progress-related messages (pure function) ── */
@@ -129,7 +129,7 @@ function useVisibility() {
 
 function processSocketMessage(
   rawMessage: string,
-  workflowId: string | null | undefined,
+  automationId: string | null | undefined,
   maxBuffer: number,
   eventsOnly: boolean,
   onEvent: ((message: WebSocketMessage) => void) | undefined,
@@ -142,25 +142,25 @@ function processSocketMessage(
     const data: WebSocketMessage = JSON.parse(rawMessage)
     try { onEvent?.(data) } catch { /* ignore */ }
     if (eventsOnly) return
-    const activeWorkflowId = workflowId ?? null
-    const msgWorkflowId = data.workflowId ?? null
-    const matches = matchesWorkflowFilter(data, activeWorkflowId)
+    const activeAutomationId = automationId ?? null
+    const msgAutomationId = data.automationId ?? null
+    const matches = matchesAutomationFilter(data, activeAutomationId)
 
     if (data.type === 'log' && data.message) {
       if (!matches) return
-      if (activeWorkflowId && !msgWorkflowId) return
+      if (activeAutomationId && !msgAutomationId) return
       const entry = parseLogEntry(data, currentProfileRef.current)
       setLogs((prev) => {
         const next = prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
         return [...next, entry]
       })
     } else if (data.type === 'status' && data.status) {
-      if (activeWorkflowId || msgWorkflowId) return
+      if (activeAutomationId || msgAutomationId) return
       setStatus(data.status as 'idle' | 'running' | 'stopping')
-    } else if (data.type === 'workflow_status' && data.status) {
-      if (!matches || (activeWorkflowId && !msgWorkflowId)) return
+    } else if (data.type === 'automation_status' && data.status) {
+      if (!matches || (activeAutomationId && !msgAutomationId)) return
       setStatus(data.status as 'idle' | 'running' | 'stopping')
-    } else if (matches && !(activeWorkflowId && !msgWorkflowId)) {
+    } else if (matches && !(activeAutomationId && !msgAutomationId)) {
       handleProgressUpdate(data, currentProfileRef, setProgress)
     }
   } catch { /* ignore parse errors */ }
@@ -264,7 +264,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
     url, autoConnect = true, enabled = true,
     pauseWhenHidden = false, maxBuffer = 500,
-    workflowId, onEvent, eventsOnly = false,
+    automationId, onEvent, eventsOnly = false,
   } = options
   const wsUrl = url ?? getDefaultWebSocketUrl()
   const { getToken } = useAppAuth()
@@ -286,7 +286,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
     processSocketMessage(
-      rawMessage, workflowId, maxBuffer, eventsOnly, onEvent,
+      rawMessage, automationId, maxBuffer, eventsOnly, onEvent,
       currentProfileRef, setLogs, setStatus, setProgress,
     )
   })

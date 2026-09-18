@@ -49,7 +49,7 @@ test('keeps name-based profile maintenance on the internal HTTP surface', async 
   expect(profiles).toEqual([])
 })
 
-test('keeps list and workflow HTTP-facing queries callable without public auth wrappers', async () => {
+test('keeps list and automation HTTP-facing queries callable without public auth wrappers', async () => {
   const t = createUnauthenticatedConvexTest()
   const now = Date.now()
   const listId = await t.run((ctx) =>
@@ -59,9 +59,9 @@ test('keeps list and workflow HTTP-facing queries callable without public auth w
     }),
   )
   await t.run((ctx) =>
-    ctx.db.insert('workflows', {
-      name: 'Workflow A',
-      description: 'workflow',
+    ctx.db.insert('automations', {
+      name: 'Automation A',
+      description: 'automation',
       nodes: [],
       edges: [],
       listIds: [listId],
@@ -73,20 +73,20 @@ test('keeps list and workflow HTTP-facing queries callable without public auth w
   )
 
   const lists = await t.query(api.lists.list, {})
-  const workflows = await t.query(internal.workflows.queries.listInternal, {
+  const automations = await t.query(internal.automations.queries.listInternal, {
     status: 'running',
   })
 
   expect(lists).toHaveLength(1)
-  expect(workflows).toHaveLength(1)
-  expect(workflows[0]).toMatchObject({
-    name: 'Workflow A',
+  expect(automations).toHaveLength(1)
+  expect(automations[0]).toMatchObject({
+    name: 'Automation A',
     status: 'running',
     listIds: [listId],
   })
   await expect(t.query(api.lists.list, {})).resolves.toHaveLength(1)
   await expect(
-    t.query(api.workflows.queries.list, {
+    t.query(api.automations.queries.list, {
       status: 'running',
     }),
   ).resolves.toHaveLength(1)

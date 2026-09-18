@@ -432,16 +432,16 @@
   box-shadow: var(--shadow-status-danger-tight);
 }
 
-@utility workflow-node {
+@utility automation-node {
   box-shadow: var(--shadow-node);
 }
 
-@utility workflow-node-selected {
+@utility automation-node-selected {
   box-shadow: var(--shadow-node-selected);
 }
 
-@utility workflow-handle {
-  background-color: var(--workflow-edge) !important;
+@utility automation-handle {
+  background-color: var(--automation-edge) !important;
 
   &:hover {
     background-color: var(--ink) !important;

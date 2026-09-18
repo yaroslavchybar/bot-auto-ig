@@ -54,7 +54,7 @@ export function broadcast(data: object) {
             level: (data as any).level || 'info',
             source: (data as any).source || 'unknown',
             profileName: (data as any).profileName,
-            workflowId: (data as any).workflowId,
+            automationId: (data as any).automationId,
             taskId: (data as any).taskId,
             targetUsername: (data as any).targetUsername,
             errorCode: (data as any).errorCode,

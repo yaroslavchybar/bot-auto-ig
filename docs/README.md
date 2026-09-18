@@ -11,21 +11,21 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
 (`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
 - `frontend/`: React + Vite app.
-  Feature-owned UI under `src/features/` (`profiles`, `lists`, `workflows`,
+  Feature-owned UI under `src/features/` (`profiles`, `lists`, `automations`,
   `logs`, `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
-- `server/`: Express REST (`/api/automation|profiles|lists|logs|workflows|displays|health`)
+- `server/`: Express REST (`/api/automation|profiles|lists|logs|automations|displays|health`)
   + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
   subprocess orchestration. Admin session middleware globally;
-  `/api/workflows` also accepts `INTERNAL_API_KEY`. Rate limits:
+  `/api/automations` also accepts `INTERNAL_API_KEY`. Rate limits:
   general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
 - `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
 - `server/automation/`: Bun workers and TypeScript Instagram actions
-  (feed browsing, story watching). Workflow workers
+  (feed browsing, story watching). Automation workers
   emit `__EVENT__`-prefixed JSON for WebSocket propagation.
-- `convex/`: schema, queries/mutations (`profiles`, `lists`, `workflows`,
+- `convex/`: schema, queries/mutations (`profiles`, `lists`, `automations`,
   `messageTemplates`), HTTP actions. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
 - `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
@@ -87,9 +87,9 @@ launched through the server so they share its resource budget; waiting is cancel
 areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounting),
 `server/websocket.ts`, `convex/http.ts`.
 
-## Workflow & Quality Gates
+## Automation & Quality Gates
 
-- Workflow checkpoints are separate from UI events. Pending database snapshots
+- Automation checkpoints are separate from UI events. Pending database snapshots
   coalesce, and slow WebSocket clients are disconnected at a 1 MiB outbound buffer.
 
 - Live VNC streams disconnect while the tab or viewer is hidden/off-screen and

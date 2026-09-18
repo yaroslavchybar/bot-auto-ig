@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { execFile } from 'node:child_process'
-import { activeDisplays, workflowWorkers, type ActiveDisplaySession } from '../shared/store.js'
+import { activeDisplays, automationWorkers, type ActiveDisplaySession } from '../shared/store.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import { AppError, ExternalServiceError, NotFoundError, ValidationError } from '../shared/errors.js'
 
@@ -23,13 +23,13 @@ function resolveDisplay(vncPortRaw: unknown): ActiveDisplaySession {
   throw new NotFoundError('Display session not found')
 }
 
-// Writes are denied while an agent owns the session. A workflow worker entry
+// Writes are denied while an agent owns the session. An automation worker entry
 // means the agent is driving the browser (or is being stopped) — replacing
 // the clipboard then would corrupt its next paste. Manual sessions have no
 // worker entry, so they are always writable. Never trust the frontend's
 // control state for this; it is only a UI hint.
 function assertNoAgentControls(session: ActiveDisplaySession): void {
-  if (workflowWorkers.has(session.workflowId)) {
+  if (automationWorkers.has(session.automationId)) {
     throw new AppError(
       'Agent still controls this session — stop the agent before pasting',
       409,

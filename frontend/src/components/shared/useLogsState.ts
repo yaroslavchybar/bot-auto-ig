@@ -40,12 +40,12 @@ export const LevelAppearance: Record<
 }
 
 interface UseLogsStateOptions {
-  workflowId?: string | null
+  automationId?: string | null
   profileName?: string | null
 }
 
 export function useLogsState({
-  workflowId = null,
+  automationId = null,
   profileName = null,
 }: UseLogsStateOptions = {}) {
   const isMobile = useIsMobile()
@@ -56,7 +56,7 @@ export function useLogsState({
     wsConnected, logs, loading,
     handleClearLive,
     inlineError, dismissError,
-  } = useLogsFetching(liveBufferSize, workflowId, handleError)
+  } = useLogsFetching(liveBufferSize, automationId, handleError)
 
   const {
     filteredLogs, visibleLogs, hasMoreLogs, loadMoreLogs,
@@ -64,7 +64,7 @@ export function useLogsState({
     showTime, setShowTime, showSource, setShowSource,
     showProfile, setShowProfile, autoScroll, setAutoScroll,
     feedDebugOnly, setFeedDebugOnly,
-  } = useLogsFiltering({ logs, workflowId, profileName })
+  } = useLogsFiltering({ logs, automationId, profileName })
 
   return {
     wsConnected,
@@ -82,7 +82,7 @@ export function useLogsState({
 // One buffer owns both history and incoming events.
 function useLogsFetching(
   liveBufferSize: number,
-  workflowId: string | null | undefined,
+  automationId: string | null | undefined,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -90,7 +90,7 @@ function useLogsFetching(
   const [inlineError, setInlineError] = useState<string | null>(null)
   const requestVersion = useRef(0)
   const { connected: wsConnected } = useWebSocket({
-    workflowId, pauseWhenHidden: true, eventsOnly: true,
+    automationId, pauseWhenHidden: true, eventsOnly: true,
     onEvent: event => {
       if (event.type !== 'log' || !event.message) return
       const entry = parseLogEntry(event, null)
@@ -135,13 +135,13 @@ function useLogsFetching(
 
 interface UseLogsFilteringOptions {
   logs: LogEntry[]
-  workflowId: string | null | undefined
+  automationId: string | null | undefined
   profileName: string | null | undefined
 }
 
 function useLogsFiltering({
   logs,
-  workflowId,
+  automationId,
   profileName,
 }: UseLogsFilteringOptions) {
   const [filterQuery, setFilterQueryRaw] = useState('')
@@ -169,8 +169,8 @@ function useLogsFiltering({
   )
 
   const filteredLogs = useMemo(
-    () => filterLogs(logs, { workflowId, profileName, levelFilter, feedDebugOnly, filterQuery }),
-    [logs, filterQuery, levelFilter, feedDebugOnly, workflowId, profileName],
+    () => filterLogs(logs, { automationId, profileName, levelFilter, feedDebugOnly, filterQuery }),
+    [logs, filterQuery, levelFilter, feedDebugOnly, automationId, profileName],
   )
   const visibleLogs = useMemo(
     () => filteredLogs.slice(Math.max(filteredLogs.length - visibleCount, 0)),
@@ -194,7 +194,7 @@ function useLogsFiltering({
 // --- Pure filtering logic ---
 
 interface FilterOptions {
-  workflowId: string | null | undefined
+  automationId: string | null | undefined
   profileName: string | null | undefined
   levelFilter: LogLevel
   feedDebugOnly: boolean
@@ -206,9 +206,9 @@ function filterLogs(logs: LogEntry[], opts: FilterOptions): LogEntry[] {
   const scopedProfile = String(opts.profileName || '').trim().toLowerCase()
 
   return logs.filter((log) => {
-    if (opts.workflowId) {
-      const logWfId = String(log.workflowId || '').trim()
-      if (!logWfId || logWfId !== opts.workflowId) return false
+    if (opts.automationId) {
+      const logWfId = String(log.automationId || '').trim()
+      if (!logWfId || logWfId !== opts.automationId) return false
     }
     if (scopedProfile) {
       const logProfile = String(log.profileName || '').trim().toLowerCase()

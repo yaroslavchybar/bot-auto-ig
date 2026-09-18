@@ -35,13 +35,13 @@ export const remove = mutation({
 	args: { id: v.id("lists") },
 	handler: async (ctx, args) => {
 		const profiles = await ctx.db.query("profiles").collect();
-		const workflows = await ctx.db.query("workflows").collect();
+		const automations = await ctx.db.query("automations").collect();
 		const impacted = profiles.filter((profile: any) => {
 			const listIds = Array.isArray(profile.listIds) ? profile.listIds : [];
 			return listIds.some((listId: any) => String(listId) === String(args.id));
 		});
-		const impactedWorkflows = workflows.filter((workflow: any) => {
-			const listIds = Array.isArray(workflow.listIds) ? workflow.listIds : [];
+		const impactedAutomations = automations.filter((automation: any) => {
+			const listIds = Array.isArray(automation.listIds) ? automation.listIds : [];
 			return listIds.some((listId: any) => String(listId) === String(args.id));
 		});
 		await Promise.all(
@@ -54,10 +54,10 @@ export const remove = mutation({
 			}),
 		);
 		await Promise.all(
-			impactedWorkflows.map((workflow: any) => {
-				const listIds = Array.isArray(workflow.listIds) ? workflow.listIds : [];
+			impactedAutomations.map((automation: any) => {
+				const listIds = Array.isArray(automation.listIds) ? automation.listIds : [];
 				const nextListIds = listIds.filter((listId: any) => String(listId) !== String(args.id));
-				return ctx.db.patch(workflow._id, {
+				return ctx.db.patch(automation._id, {
 					listIds: nextListIds,
 				});
 			}),

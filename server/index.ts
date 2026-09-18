@@ -16,7 +16,7 @@ import { authRouter } from './auth/routes.js'
 import profileLoginRouter from './profiles/login.js'
 import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
-import { workflowsRouter } from './workflows/index.js'
+import { automationsRouter } from './automations/index.js'
 import displaysRouter from './displays/routes.js'
 import filesRouter from './files/routes.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
@@ -25,7 +25,7 @@ import { getActiveRuntimeProfileNames } from './shared/store.js'
 import { apiLimiter, automationLimiter } from './security/rate-limit.js'
 import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
 import logger from './shared/logger.js'
-import { workflowsReconcileInterrupted } from './shared/convexClient.js'
+import { automationsReconcileInterrupted } from './shared/convexClient.js'
 import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
 import { AppError } from './shared/errors.js'
 import type { Request, Response, NextFunction } from 'express'
@@ -107,7 +107,7 @@ app.use('/api/auth', authRouter)
 app.use('/api/profiles/login', requireApiAuth, automationLimiter, profileLoginRouter)
 app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
-app.use('/api/workflows', requireApiAuthOrInternalKey, apiLimiter, workflowsRouter)
+app.use('/api/automations', requireApiAuthOrInternalKey, apiLimiter, automationsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 app.use('/api/files', requireApiAuth, apiLimiter, filesRouter)
 
@@ -136,6 +136,27 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 const PORT = process.env.SERVER_PORT || 3001
 
+const STARTUP_RETRY_ATTEMPTS = 10
+const STARTUP_RETRY_DELAY_MS = 3000
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+/** Retry a startup step while Convex dev is still deploying. Throws on final failure. */
+async function retryStartup<T>(step: () => Promise<T>, label: string): Promise<T> {
+    let lastError: unknown
+    for (let attempt = 1; attempt <= STARTUP_RETRY_ATTEMPTS; attempt++) {
+        try {
+            return await step()
+        } catch (err) {
+            lastError = err
+            if (attempt === STARTUP_RETRY_ATTEMPTS) break
+            logger.warn({ attempt, label }, 'Startup step failed, retrying')
+            await sleep(STARTUP_RETRY_DELAY_MS)
+        }
+    }
+    throw lastError
+}
+
 async function startServer(): Promise<void> {
     // Register graceful shutdown handlers (SIGTERM/SIGINT)
     registerShutdownHandlers({ httpServer: server, wss })
@@ -145,7 +166,9 @@ async function startServer(): Promise<void> {
     // children survive restarts, so reconcile them before touching flags.
     await cleanupOrphanedProcesses()
 
-    await workflowsReconcileInterrupted()
+    // Convex dev deploys alongside the server, so the reconcile endpoint
+    // may 404 until the new functions are live. Retry instead of crashing.
+    await retryStartup(() => automationsReconcileInterrupted(), 'automation reconcile')
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())

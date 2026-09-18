@@ -12,8 +12,8 @@ export function VncPage() {
   const { sessions } = useVncSessions(isActive)
 
   const handleSelect = useCallback(
-    (workflowId: string, profileName: string) => {
-      navigate(buildVncSessionPath({ workflowId, profileName }))
+    (automationId: string, profileName: string) => {
+      navigate(buildVncSessionPath({ automationId, profileName }))
     },
     [navigate],
   )
@@ -34,7 +34,7 @@ function VncSessionGrid({
   sessions, onSelect,
 }: {
   sessions: ReturnType<typeof useVncSessions>['sessions']
-  onSelect: (workflowId: string, profileName: string) => void
+  onSelect: (automationId: string, profileName: string) => void
 }) {
   return (
     <div className="z-10 min-h-0 flex-1 overflow-auto p-2">
@@ -42,13 +42,13 @@ function VncSessionGrid({
         <div className="border-line bg-panel-subtle text-subtle-copy flex h-full min-h-[260px] flex-col items-center justify-center gap-2 rounded-[4px] border backdrop-blur-xs">
           <LayoutGrid className="h-6 w-6" />
           <p className="text-xs font-medium">No active sessions</p>
-          <p className="text-[11px]">Start a workflow to see browser displays.</p>
+          <p className="text-[11px]">Start an automation to see browser displays.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2 md:grid-cols-[repeat(auto-fill,minmax(400px,1fr))]">
           {sessions.map((session) => (
             <VncTile key={sessionKey(session)} session={session}
-              onSelect={() => onSelect(session.workflowId, session.profileName)} />
+              onSelect={() => onSelect(session.automationId, session.profileName)} />
           ))}
         </div>
       )}

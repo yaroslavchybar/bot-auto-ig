@@ -31,7 +31,7 @@ async function main(): Promise<void> {
   watchStdinForStop()
   const profileName = String(arg('--name') || '').trim()
   if (!profileName) throw new Error('--name is required')
-  const workflowId = arg('--workflow-id') || 'manual'
+  const automationId = arg('--automation-id') || 'manual'
   const session = await openBrowserSession(profileName, {
     headless: process.argv.includes('--headless'),
     display: process.env.DISPLAY,
@@ -41,7 +41,7 @@ async function main(): Promise<void> {
     process.stdout.write(
       `__EVENT__${JSON.stringify({
         type: 'display_allocated',
-        workflowId: workflowId,
+        automationId: automationId,
         profileName,
         displayNum: session.display.displayNum,
         vncPort: session.display.vncPort,

@@ -10,7 +10,7 @@ import {
   profilesList,
   profilesSyncStatus,
   type DbProfileRow,
-  type DbWorkflowRow,
+  type DbAutomationRow,
 } from '../shared/convexClient.js'
 import { DEFAULT_SETTINGS, type InstagramSettings } from '../shared/types.js'
 import { runPool } from './pool.js'
@@ -21,8 +21,8 @@ import {
   selectedLists,
   startConfig,
   profileEligible,
-  type WorkflowNode,
-  type WorkflowEdge,
+  type AutomationNode,
+  type AutomationEdge,
 } from './graph.js'
 import {
   browseFeed,
@@ -61,14 +61,14 @@ async function withProfile(
   profile: DbProfileRow,
   options: {
     headless?: boolean
-    workflowId?: string
+    automationId?: string
     openSession?: typeof openBrowserSession
   } = {},
   run: (session: BrowserSession, controls: {
     close: () => Promise<void>
   }) => Promise<void>,
 ): Promise<void> {
-  const workflowId = options.workflowId || 'automation'
+  const automationId = options.automationId || 'automation'
   let session: BrowserSession | undefined
   let closed = false
   let markedRunning = false
@@ -76,7 +76,7 @@ async function withProfile(
     if (!session || closed) return
     await session.close()
     closed = true
-    if (session.display) await event('display_released', { workflowId: workflowId, profileName: profile.name })
+    if (session.display) await event('display_released', { automationId: automationId, profileName: profile.name })
   }
   try {
     session = await (options.openSession ?? openBrowserSession)(profile.name, {
@@ -87,11 +87,11 @@ async function withProfile(
     await event('profile_started', {
       profileName: profile.name,
       profileId: profile.id,
-      workflowId: workflowId,
+      automationId: automationId,
     })
     if (session.display)
       await event('display_allocated', {
-        workflowId: workflowId,
+        automationId: automationId,
         profileName: profile.name,
         displayNum: session.display.displayNum,
         vncPort: session.display.vncPort,
@@ -100,7 +100,7 @@ async function withProfile(
     await event('profile_completed', {
       profileName: profile.name,
       profileId: profile.id,
-      workflowId: workflowId,
+      automationId: automationId,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -108,7 +108,7 @@ async function withProfile(
     await event('error', {
       profileName: profile.name,
       profileId: profile.id,
-      workflowId: workflowId,
+      automationId: automationId,
       error: message,
     })
     throw error
@@ -152,7 +152,7 @@ async function runConfiguredAction(
   }
 }
 
-function nodeConfig(node: WorkflowNode): AnyRecord {
+function nodeConfig(node: AutomationNode): AnyRecord {
   return node.data?.config || {}
 }
 
@@ -187,27 +187,27 @@ function chooseBranch(config: AnyRecord): string {
   return 'path_a'
 }
 
-export async function runWorkflow(
+export async function runAutomation(
   input: AnyRecord,
   openSession = openBrowserSession,
 ): Promise<void> {
-  const workflow = (input.workflow || {}) as DbWorkflowRow & AnyRecord
+  const automation = (input.automation || {}) as DbAutomationRow & AnyRecord
   const nodes = (
-    Array.isArray(workflow.nodes) ? workflow.nodes : []
-  ) as WorkflowNode[]
+    Array.isArray(automation.nodes) ? automation.nodes : []
+  ) as AutomationNode[]
   const edges = (
-    Array.isArray(workflow.edges) ? workflow.edges : []
-  ) as WorkflowEdge[]
+    Array.isArray(automation.edges) ? automation.edges : []
+  ) as AutomationEdge[]
   const nodeStates: AnyRecord = {
-    ...(workflow.nodeStates || {}),
+    ...(automation.nodeStates || {}),
   }
   const aggregateStates = nodeStates
-  const workflowId = String(input.workflowId || 'workflow')
+  const automationId = String(input.automationId || 'automation')
   const setupConfig = startConfig(nodes)
   const lists = selectedLists(nodes)
   if (!lists.length)
     throw new Error(
-      'Select at least one profile list before running the workflow',
+      'Select at least one profile list before running the automation',
     )
   const profiles = (await profilesList()).filter((profile) =>
     profileEligible(
@@ -219,7 +219,7 @@ export async function runWorkflow(
     ),
   )
 
-  await event('session_started', { workflowId: workflowId })
+  await event('session_started', { automationId: automationId })
   if (!profiles.length)
     throw new Error('No available logged-in profile in the selected lists')
 
@@ -233,7 +233,7 @@ export async function runWorkflow(
       {
         headless: setupConfig.headlessMode ?? false,
         openSession,
-        workflowId,
+        automationId,
       },
       async (session, controls) => {
         const runs = (aggregateStates.__profileRuns ??= {})
@@ -251,7 +251,7 @@ export async function runWorkflow(
             profileName: profile.name,
           })
           await event('checkpoint', {
-            workflowId: workflowId,
+            automationId: automationId,
             nodeId: run.currentNodeId,
             nodeStates: aggregateStates,
           })
@@ -260,7 +260,7 @@ export async function runWorkflow(
           nodes.find((node) => node.id === run.currentNodeId) ||
           nodes.find((node) => node.type === 'start') ||
           nodes.find((node) => !edges.some((edge) => edge.target === node.id))
-        if (!current) throw new Error('Workflow has no start node')
+        if (!current) throw new Error('Automation has no start node')
         let iterations = 0
 
         while (current && iterations++ < 500) {
@@ -276,7 +276,7 @@ export async function runWorkflow(
             error: undefined,
           }
           await report('task_started', {
-            workflowId: workflowId,
+            automationId: automationId,
             nodeId: current.id,
             task: activity,
           })
@@ -322,9 +322,9 @@ export async function runWorkflow(
             } else if (activity === 'close_browser') {
               await controls.close()
             } else if (activity === 'start') {
-              // The workflow already owns its browser session. Start only configures it.
+              // The automation already owns its browser session. Start only configures it.
             } else {
-              throw new Error(`Unsupported workflow activity: ${activity}`)
+              throw new Error(`Unsupported automation activity: ${activity}`)
             }
           } catch (error) {
             nodeStates[current.id] = {
@@ -333,7 +333,7 @@ export async function runWorkflow(
               error: String(error),
             }
             await report('task_progress', {
-              workflowId: workflowId,
+              automationId: automationId,
               nodeId: current.id,
             })
             if (
@@ -348,7 +348,7 @@ export async function runWorkflow(
             run.currentNodeId = current?.id ?? null
             run.completed = !current
             await report('task_progress', {
-              workflowId: workflowId,
+              automationId: automationId,
               nodeId: current?.id,
             })
             continue
@@ -364,7 +364,7 @@ export async function runWorkflow(
             run.currentNodeId = null
             run.completed = true
             await report('task_completed', {
-              workflowId: workflowId,
+              automationId: automationId,
               nodeId: current.id,
               task: activity,
             })
@@ -375,14 +375,14 @@ export async function runWorkflow(
           run.currentNodeId = next?.id ?? null
           run.completed = !next
           await report('task_completed', {
-            workflowId: workflowId,
+            automationId: automationId,
             nodeId: current.id,
             task: activity,
           })
           current = next
         }
         if (current)
-          throw new Error('Workflow exceeded the 500-node execution limit')
+          throw new Error('Automation exceeded the 500-node execution limit')
         run.completed = true
         run.currentNodeId = null
       },
@@ -391,7 +391,7 @@ export async function runWorkflow(
   await runPool(profiles, parallel, (profile) => runProfile(profile))
 
   await event('session_ended', {
-    workflowId: workflowId,
+    automationId: automationId,
     status: 'completed',
     nodeStates: nodeStates,
   })
@@ -427,7 +427,7 @@ function readCommandInput(): Promise<string> {
       if (settled) return
       settled = true
       if (pending.trim()) resolve(pending.trim())
-      else reject(new Error('No workflow input received on stdin'))
+      else reject(new Error('No automation input received on stdin'))
     })
     process.stdin.once('error', (error) => {
       if (!settled) {
@@ -440,9 +440,9 @@ function readCommandInput(): Promise<string> {
 
 async function main(): Promise<void> {
   const input = JSON.parse(await readCommandInput()) as AnyRecord
-  if (!input.workflow) throw new Error('workflow is required')
+  if (!input.automation) throw new Error('automation is required')
   try {
-    await runWorkflow(input)
+    await runAutomation(input)
   } finally {
     releaseStdin()
   }

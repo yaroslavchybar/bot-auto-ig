@@ -6,16 +6,16 @@ import { LogsEntryList } from './LogsEntryList'
 
 interface LogsViewerProps {
   className?: string
-  workflowId?: string | null
+  automationId?: string | null
   profileName?: string | null
 }
 
 export function LogsViewer({
   className,
-  workflowId = null,
+  automationId = null,
   profileName = null,
 }: LogsViewerProps) {
-  const state = useLogsState({ workflowId, profileName })
+  const state = useLogsState({ automationId, profileName })
 
   return (
     <div

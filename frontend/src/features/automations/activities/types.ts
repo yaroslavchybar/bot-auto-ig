@@ -1,0 +1,82 @@
+import type { ActivityId } from '../../../../../server/shared/contracts'
+/**
+ * Activity Types
+ *
+ * This file defines all the types used for automation activities.
+ * Each activity node in an automation uses these types.
+ */
+
+// Which category an activity belongs to
+export type ActivityCategory =
+  | 'browsing'
+  | 'engagement'
+  | 'messaging'
+  | 'stories'
+  | 'control'
+
+// Types of inputs an activity can have
+export type InputType =
+  | 'string'
+  | 'string_list'
+  | 'number'
+  | 'boolean'
+  | 'select'
+  | 'template'
+  | 'profile'
+  | 'range'
+  | 'code'
+  | 'list_select'
+
+// Options for dropdown/select inputs
+export interface ActivityInputOption {
+  label: string
+  value: string
+}
+
+// Definition of a single input field
+export interface ActivityInput {
+  name: string // Internal field name (used in code)
+  type: InputType // What kind of input
+  label: string // Display label
+  required?: boolean // Is this required?
+  default?: unknown // Default value
+  options?: ActivityInputOption[] // For select type
+  min?: number // For number/range
+  max?: number // For number/range
+  step?: number // For number/range
+  unit?: string // Display unit (e.g., 'min', 'sec', '%')
+  placeholder?: string // Placeholder text
+  helpText?: string // Help text shown below
+  group?: string // Group related inputs together
+  templateKindField?: string // Sibling config field that selects template bank
+}
+
+// Possible output handles from an activity
+export type ActivityOutput =
+  | 'success'
+  | 'failure'
+  | 'next'
+  | 'loop'
+  | 'done'
+  | 'true'
+  | 'false'
+  | 'path_a'
+  | 'path_b'
+  | 'path_c'
+
+// Full definition of an activity
+export interface ActivityDefinition {
+  id: ActivityId // Unique ID (e.g., 'browse_feed')
+  name: string // Display name (e.g., 'Browse Feed')
+  description: string // What this activity does
+  category: ActivityCategory
+  icon: string // Lucide icon name
+  color: string // Hex color for the node
+  inputs: ActivityInput[] // Configuration inputs
+  outputs: ActivityOutput[] // Output handles for connections
+  quickAdd?: boolean // Whether to feature this activity in quick-add menus
+  keywords?: string[] // Search helpers for the block library
+  pickerGroup?: string // Optional grouping hint for picker presentation
+}
+
+

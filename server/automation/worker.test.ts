@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
-import { runWorkflow } from './worker.js'
+import { runAutomation } from './worker.js'
 
 test('retry skips completed profiles without launching or changing their status', async () => {
   const originalFetch = globalThis.fetch
@@ -11,7 +11,7 @@ test('retry skips completed profiles without launching or changing their status'
     return Response.json([{ name: 'done', id: 'done', listIds: ['chosen'], login: true, using: false }])
   }) as typeof fetch
   try {
-    await runWorkflow({ workflow: {
+    await runAutomation({ automation: {
       nodes: [{ id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } }],
       nodeStates: { __profileRuns: { done: { completed: true } } },
     } }, async () => { launches++; throw new Error('Must not launch') })
@@ -25,7 +25,7 @@ test('close browser ends the session and final cleanup stays safe', async () => 
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   const sessions: Array<{ closed: boolean; visits: number }> = []
   try {
-    await runWorkflow({ workflow: {
+    await runAutomation({ automation: {
       nodes: [
         { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
         { id: 'close', data: { activityId: 'close_browser' } },
@@ -46,7 +46,7 @@ test('nodes after close browser never run against the closed session', async () 
   globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? [profile] : {})) as typeof fetch
   let navigations = 0
   try {
-    await runWorkflow({ workflow: {
+    await runAutomation({ automation: {
       nodes: [
         { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
         { id: 'close', data: { activityId: 'close_browser' } },
@@ -64,7 +64,7 @@ test('nodes after close browser never run against the closed session', async () 
   } finally { globalThis.fetch = originalFetch }
 })
 
-test('workflow action failures reject the run and close the browser', async () => {
+test('automation action failures reject the run and close the browser', async () => {
   const originalFetch = globalThis.fetch
   let closed = false
   const statuses: string[] = []
@@ -92,10 +92,10 @@ test('workflow action failures reject the run and close the browser', async () =
   }) as typeof fetch
   try {
     await assert.rejects(
-      runWorkflow(
+      runAutomation(
         {
-          workflowId: 'test',
-          workflow: {
+          automationId: 'test',
+          automation: {
             nodes: [
               {
                 id: 'start_node',
@@ -150,9 +150,9 @@ test('browser startup failures never clear another session’s busy status', asy
   }) as typeof fetch
   try {
     await assert.rejects(
-      runWorkflow(
+      runAutomation(
         {
-          workflow: {
+          automation: {
             nodes: [
               {
                 id: 'start_node',

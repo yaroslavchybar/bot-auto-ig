@@ -4,7 +4,7 @@ export type LogEntry = {
   level: string
   source: string
   profileName?: string
-  workflowId?: string
+  automationId?: string
   taskId?: string
   targetUsername?: string
   errorCode?: string
@@ -26,7 +26,7 @@ export function mergeLogs(current: LogEntry[], incoming: LogEntry[], capacity: n
           entry.message,
           entry.level,
           entry.source,
-          entry.workflowId,
+          entry.automationId,
           entry.profileName,
           entry.taskId,
           entry.targetUsername,

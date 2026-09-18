@@ -30,7 +30,7 @@ function sessionAuth(req: Request, res: Response, next: NextFunction) {
 // Middleware to require authentication for API routes (admin session).
 export const requireApiAuth = LOCAL_AUTH_BYPASS ? bypassAuth : sessionAuth
 
-// Internal API key for server-to-server calls (from Convex cron jobs)
+// Internal API key for server-to-server calls (from Convex actions)
 const INTERNAL_API_KEY = (process.env.INTERNAL_API_KEY || '').trim()
 
 logger.info({ configured: !!INTERNAL_API_KEY }, 'INTERNAL_API_KEY status')

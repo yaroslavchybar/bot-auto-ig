@@ -25,30 +25,30 @@ const VncViewer = lazy(() =>
 
 function useVncSessionResolution() {
   const navigate = useNavigate()
-  const { workflowId: rawWorkflowId, profileName: rawProfileName } = useParams()
-  const workflowId = decodeRouteParam(rawWorkflowId)
+  const { automationId: rawAutomationId, profileName: rawProfileName } = useParams()
+  const automationId = decodeRouteParam(rawAutomationId)
   const profileName = decodeRouteParam(rawProfileName)
   const { sessions, loading } = useVncSessions(true)
 
   const session = useMemo(
     () => sessions.find(
-      (item) => item.workflowId === workflowId && item.profileName === profileName,
+      (item) => item.automationId === automationId && item.profileName === profileName,
     ) ?? null,
-    [profileName, sessions, workflowId],
+    [profileName, sessions, automationId],
   )
 
   const handleBack = useCallback(() => { navigate('/vnc') }, [navigate])
 
-  return { workflowId, profileName, session, loading, handleBack }
+  return { automationId, profileName, session, loading, handleBack }
 }
 
 export function VncSessionPage() {
   const {
-    workflowId, profileName, session, loading,
+    automationId, profileName, session, loading,
     handleBack,
   } = useVncSessionResolution()
 
-  if (!workflowId || !profileName) {
+  if (!automationId || !profileName) {
     return <VncMissingParamsView onBack={handleBack} message="Session information is missing from the URL." />
   }
 
@@ -109,9 +109,9 @@ function VncMissingParamsView({
 
 /* ── Control handoff ──
  *
- * A workflow session has a live agent driving the browser, so enabling VNC
+ * An automation session has a live agent driving the browser, so enabling VNC
  * input directly would race the agent. Taking control therefore stops the
- * workflow first and waits for the server ack. The stop kills the worker
+ * automation first and waits for the server ack. The stop kills the worker
  * (and its browser stream), so input stays locked and the UI says so.
  * Manual sessions have no agent, so input unlocks immediately.
  */
@@ -147,7 +147,7 @@ function useControlHandoff(session: DisplaySession): ControlHandoff {
   const [working, setWorking] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const isManual = session.workflowId === 'manual'
+  const isManual = session.automationId === 'manual'
 
   const requestTake = useCallback(() => {
     setError(null)
@@ -172,9 +172,9 @@ function useControlHandoff(session: DisplaySession): ControlHandoff {
     setError(null)
     void (async () => {
       try {
-        await apiFetch('/api/workflows/stop', {
+        await apiFetch('/api/automations/stop', {
           method: 'POST',
-          body: { workflowId: session.workflowId },
+          body: { automationId: session.automationId },
         })
         setControlState('agent-stopped')
       } catch (e) {
@@ -188,7 +188,7 @@ function useControlHandoff(session: DisplaySession): ControlHandoff {
         setWorking(false)
       }
     })()
-  }, [isManual, session.workflowId])
+  }, [isManual, session.automationId])
 
   const returnToView = useCallback(() => {
     setError(null)
@@ -279,7 +279,7 @@ function VncMobileLayout({
             <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
               <LogsViewer
                 className="h-full border-0"
-                workflowId={session.workflowId === 'manual' ? null : session.workflowId}
+                automationId={session.automationId === 'manual' ? null : session.automationId}
                 profileName={session.profileName}
               />
             </Suspense>
@@ -312,7 +312,7 @@ function VncMobileHeader({
             {session.profileName}
           </h2>
           <span className="text-subtle-copy font-mono text-[10px]">
-            {session.workflowId} / :{session.displayNum}
+            {session.automationId} / :{session.displayNum}
           </span>
         </div>
       </div>
@@ -436,7 +436,7 @@ function VncDesktopHeader({
             {session.profileName}
           </h2>
           <span className="text-subtle-copy font-mono text-[10px]">
-            {session.workflowId} / :{session.displayNum}
+            {session.automationId} / :{session.displayNum}
           </span>
         </div>
       </div>
@@ -494,7 +494,7 @@ function VncDesktopPanels({
             <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
               <LogsViewer
                 className="h-full border-0"
-                workflowId={session.workflowId === 'manual' ? null : session.workflowId}
+                automationId={session.automationId === 'manual' ? null : session.automationId}
                 profileName={session.profileName}
               />
             </Suspense>

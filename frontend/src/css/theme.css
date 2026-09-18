@@ -80,8 +80,8 @@
 
   --title-gradient-start: var(--ink);
   --title-gradient-end: var(--muted-copy);
-  --workflow-edge: rgb(94 95 110);
-  --workflow-grid: rgb(217 217 222);
+  --automation-edge: rgb(94 95 110);
+  --automation-grid: rgb(217 217 222);
   --button-positive-bg: rgb(102 222 166 / 0.8);
   --button-positive-bg-hover: rgb(102 222 166);
   --button-positive-border: rgb(9 124 79);
@@ -243,8 +243,8 @@
 
   --title-gradient-start: var(--ink);
   --title-gradient-end: var(--muted-copy);
-  --workflow-edge: rgb(147 148 161);
-  --workflow-grid: rgb(51 51 56);
+  --automation-edge: rgb(147 148 161);
+  --automation-grid: rgb(51 51 56);
   --button-positive-bg: rgb(27 108 72 / 0.733);
   --button-positive-bg-hover: rgb(27 108 72 / 0.9);
   --button-positive-border: rgb(62 207 142);

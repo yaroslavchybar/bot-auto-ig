@@ -1,0 +1,393 @@
+export const AUTOMATION_EXPORT_FORMAT = 'bot-auto-ig.automation'
+export const AUTOMATION_EXPORT_VERSION = '1.0'
+export const AUTOMATION_IMPORT_MAX_FILE_BYTES = 2 * 1024 * 1024
+export const AUTOMATION_IMPORT_MAX_NODES = 500
+export const AUTOMATION_IMPORT_MAX_EDGES = 2000
+
+type JsonRecord = Record<string, unknown>
+
+export interface AutomationImportEnvelope {
+  format: string
+  version: string
+  exportedAt: string
+  automation: {
+    name: string
+    description?: string
+    nodes: JsonRecord[]
+    edges: JsonRecord[]
+  }
+}
+
+export interface ValidateAutomationImportInput {
+  fileName: string
+  fileSizeBytes: number
+  rawText: string
+  existingAutomationNames: string[]
+  existingListIds: string[]
+  resolveActivityById: (activityId: string) => unknown
+  now?: Date
+}
+
+export interface ValidateAutomationImportResult {
+  automation: {
+    name: string
+    description?: string
+    nodes: JsonRecord[]
+    edges: JsonRecord[]
+  }
+  warnings: string[]
+}
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeName(name: string) {
+  return name.trim().toLowerCase()
+}
+
+function toDisplayImportTimestamp(now: Date): string {
+  const yyyy = now.getFullYear()
+  const mm = String(now.getMonth() + 1).padStart(2, '0')
+  const dd = String(now.getDate()).padStart(2, '0')
+  const hh = String(now.getHours()).padStart(2, '0')
+  const min = String(now.getMinutes()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd} ${hh}:${min}`
+}
+
+export function getImportedAutomationName(
+  name: string,
+  existingNames: string[],
+  now = new Date(),
+): string {
+  const cleaned = name.trim()
+  const usedNames = new Set(existingNames.map(normalizeName))
+  if (!usedNames.has(normalizeName(cleaned))) {
+    return cleaned
+  }
+
+  const renamed = `${cleaned} (imported ${toDisplayImportTimestamp(now)})`
+  if (!usedNames.has(normalizeName(renamed))) {
+    return renamed
+  }
+
+  let counter = 2
+  while (true) {
+    const candidate = `${renamed} ${counter}`
+    if (!usedNames.has(normalizeName(candidate))) {
+      return candidate
+    }
+    counter += 1
+  }
+}
+
+export function buildAutomationExportEnvelope(automation: {
+  name: string
+  description?: string
+  nodes: unknown
+  edges: unknown
+}): AutomationImportEnvelope {
+  return {
+    format: AUTOMATION_EXPORT_FORMAT,
+    version: AUTOMATION_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    automation: {
+      name: automation.name,
+      description: automation.description,
+      nodes: Array.isArray(automation.nodes)
+        ? (automation.nodes as JsonRecord[])
+        : [],
+      edges: Array.isArray(automation.edges)
+        ? (automation.edges as JsonRecord[])
+        : [],
+    },
+  }
+}
+
+/* ── Envelope validation helpers ── */
+
+function parseAndValidateEnvelope(
+  fileName: string,
+  fileSizeBytes: number,
+  rawText: string,
+): { parsed: JsonRecord; automationRaw: JsonRecord } {
+  if (!fileName.toLowerCase().endsWith('.json')) {
+    throw new Error('Import accepts only .json files')
+  }
+
+  if (fileSizeBytes > AUTOMATION_IMPORT_MAX_FILE_BYTES) {
+    throw new Error(
+      `File is too large. Maximum size is ${AUTOMATION_IMPORT_MAX_FILE_BYTES} bytes (2MB)`,
+    )
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawText)
+  } catch {
+    throw new Error('Invalid JSON file')
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error('Invalid import envelope')
+  }
+
+  if (parsed.format !== AUTOMATION_EXPORT_FORMAT) {
+    throw new Error(`Invalid format. Expected "${AUTOMATION_EXPORT_FORMAT}"`)
+  }
+
+  if (parsed.version !== AUTOMATION_EXPORT_VERSION) {
+    throw new Error(
+      `Unsupported version. Expected "${AUTOMATION_EXPORT_VERSION}"`,
+    )
+  }
+
+  if (typeof parsed.exportedAt !== 'string' || !parsed.exportedAt.trim()) {
+    throw new Error('Invalid import envelope: missing exportedAt')
+  }
+
+  const automationRaw = parsed.automation
+  if (!isRecord(automationRaw)) {
+    throw new Error('Invalid import envelope: missing automation object')
+  }
+
+  const rawName =
+    typeof automationRaw.name === 'string' ? automationRaw.name.trim() : ''
+  if (!rawName) {
+    throw new Error('automation.name is required')
+  }
+
+  if (
+    automationRaw.description !== undefined &&
+    typeof automationRaw.description !== 'string'
+  ) {
+    throw new Error('automation.description must be a string when provided')
+  }
+
+  if (!Array.isArray(automationRaw.nodes)) {
+    throw new Error('automation.nodes must be an array')
+  }
+
+  if (!Array.isArray(automationRaw.edges)) {
+    throw new Error('automation.edges must be an array')
+  }
+
+  return { parsed, automationRaw }
+}
+
+/* ── Node validation ── */
+
+function validateNodes(
+  nodes: unknown[],
+  existingListIds: string[],
+  resolveActivityById: (activityId: string) => unknown,
+): {
+  nodeIds: Set<string>
+  hasStartNode: boolean
+  unknownActivityIds: Set<string>
+  missingListIds: Set<string>
+} {
+  if (nodes.length > AUTOMATION_IMPORT_MAX_NODES) {
+    throw new Error(`automation.nodes exceeds cap (${AUTOMATION_IMPORT_MAX_NODES})`)
+  }
+
+  const nodeIds = new Set<string>()
+  const unknownActivityIds = new Set<string>()
+  const missingListIds = new Set<string>()
+  const availableListIds = new Set(
+    existingListIds.map((id) => String(id).trim()).filter(Boolean),
+  )
+  let hasStartNode = false
+
+  nodes.forEach((node, index) => {
+    if (!isRecord(node)) {
+      throw new Error(`automation.nodes[${index}] must be an object`)
+    }
+
+    const nodeId = typeof node.id === 'string' ? node.id.trim() : ''
+    if (!nodeId) {
+      throw new Error(`automation.nodes[${index}].id must be a non-empty string`)
+    }
+
+    if (nodeIds.has(nodeId)) {
+      throw new Error(`Duplicate node id "${nodeId}"`)
+    }
+    nodeIds.add(nodeId)
+
+    const nodeType = typeof node.type === 'string' ? node.type : ''
+    if (nodeType === 'start' || nodeId === 'start_node') {
+      hasStartNode = true
+    }
+
+    const nodeData = isRecord(node.data) ? node.data : null
+    const activityId =
+      nodeData && typeof nodeData.activityId === 'string'
+        ? nodeData.activityId.trim()
+        : ''
+
+    if (nodeType === 'activity' && !activityId) {
+      throw new Error(
+        `automation.nodes[${index}] is an activity node without data.activityId`,
+      )
+    }
+
+    if (activityId) {
+      validateNodeActivity(
+        activityId,
+        resolveActivityById,
+        unknownActivityIds,
+      )
+    }
+
+    if (nodeType === 'start' || nodeId === 'start_node') {
+      collectMissingLists(nodeData, availableListIds, missingListIds)
+    }
+  })
+
+  return { nodeIds, hasStartNode, unknownActivityIds, missingListIds }
+}
+
+/* ── Validate a single node's activity references ── */
+
+function validateNodeActivity(
+  activityId: string,
+  resolveActivityById: (activityId: string) => unknown,
+  unknownActivityIds: Set<string>,
+) {
+  if (!resolveActivityById(activityId)) {
+    unknownActivityIds.add(activityId)
+  }
+}
+
+/* ── Collect sourceLists refs from a Start node config ── */
+
+function collectMissingLists(
+  nodeData: JsonRecord | null,
+  availableListIds: Set<string>,
+  missingListIds: Set<string>,
+) {
+  const config = isRecord(nodeData?.config) ? nodeData.config : null
+  const sourceLists = Array.isArray(config?.sourceLists)
+    ? config.sourceLists
+    : []
+
+  sourceLists.forEach((listId) => {
+    if (typeof listId !== 'string') return
+    const cleanedId = listId.trim()
+    if (!cleanedId) return
+    if (!availableListIds.has(cleanedId)) {
+      missingListIds.add(cleanedId)
+    }
+  })
+}
+
+/* ── Edge validation ── */
+
+function validateEdges(
+  edges: unknown[],
+  nodeIds: Set<string>,
+): void {
+  if (edges.length > AUTOMATION_IMPORT_MAX_EDGES) {
+    throw new Error(`automation.edges exceeds cap (${AUTOMATION_IMPORT_MAX_EDGES})`)
+  }
+
+  const missingEdgeEndpoints = new Set<string>()
+  edges.forEach((edge, index) => {
+    if (!isRecord(edge)) {
+      throw new Error(`automation.edges[${index}] must be an object`)
+    }
+
+    const source = typeof edge.source === 'string' ? edge.source.trim() : ''
+    const target = typeof edge.target === 'string' ? edge.target.trim() : ''
+
+    if (!source || !target) {
+      throw new Error(
+        `automation.edges[${index}] must include non-empty source and target`,
+      )
+    }
+
+    if (!nodeIds.has(source)) missingEdgeEndpoints.add(source)
+    if (!nodeIds.has(target)) missingEdgeEndpoints.add(target)
+  })
+
+  if (missingEdgeEndpoints.size > 0) {
+    throw new Error(
+      `Edge endpoints reference missing node IDs: ${Array.from(missingEdgeEndpoints).sort().join(', ')}`,
+    )
+  }
+}
+
+/* ── Main validation function ── */
+
+export function validateAutomationImport(
+  input: ValidateAutomationImportInput,
+): ValidateAutomationImportResult {
+  const {
+    fileName,
+    fileSizeBytes,
+    rawText,
+    existingAutomationNames,
+    existingListIds,
+    resolveActivityById,
+    now = new Date(),
+  } = input
+
+  const { automationRaw } = parseAndValidateEnvelope(
+    fileName,
+    fileSizeBytes,
+    rawText,
+  )
+
+  const nodes = automationRaw.nodes as unknown[]
+  const edges = automationRaw.edges as unknown[]
+
+  const { nodeIds, hasStartNode, unknownActivityIds, missingListIds } =
+    validateNodes(nodes, existingListIds, resolveActivityById)
+
+  if (!hasStartNode) {
+    throw new Error(
+      'automation must include at least one start node (type "start" or id "start_node")',
+    )
+  }
+
+  validateEdges(edges, nodeIds)
+
+  if (unknownActivityIds.size > 0) {
+    throw new Error(
+      `Unknown activity IDs: ${Array.from(unknownActivityIds).sort().join(', ')}`,
+    )
+  }
+
+  const rawName = (automationRaw.name as string).trim()
+  const automationName = getImportedAutomationName(
+    rawName,
+    existingAutomationNames,
+    now,
+  )
+  const warnings: string[] = []
+
+  if (automationName !== rawName) {
+    warnings.push(
+      `Automation name already exists. Imported as "${automationName}".`,
+    )
+  }
+
+  if (missingListIds.size > 0) {
+    warnings.push(
+      `Start node references missing list IDs: ${Array.from(missingListIds).sort().join(', ')}`,
+    )
+  }
+
+  return {
+    automation: {
+      name: automationName,
+      description:
+        typeof automationRaw.description === 'string'
+          ? automationRaw.description
+          : undefined,
+      nodes: nodes as JsonRecord[],
+      edges: edges as JsonRecord[],
+    },
+    warnings,
+  }
+}

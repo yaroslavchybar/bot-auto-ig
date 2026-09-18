@@ -44,44 +44,18 @@ export default defineSchema({
 	}).index("by_kind", ["kind"]),
 
 	// ═══════════════════════════════════════════════════════════════════
-	// WORKFLOW SYSTEM TABLES
+	// AUTOMATION SYSTEM TABLES
 	// ═══════════════════════════════════════════════════════════════════
 
-	workflows: defineTable({
+	automations: defineTable({
 		// Definition fields
 		name: v.string(),
 		description: v.optional(v.string()),
 		nodes: v.any(), // ReactFlow nodes array with positions and configs
 		edges: v.any(), // ReactFlow edges array with connections
 
-		// Scheduling fields
-		isActive: v.optional(v.boolean()), // whether workflow is scheduled to run
-		scheduleType: v.optional(v.union(
-			v.literal("interval"),
-			v.literal("daily"),
-			v.literal("weekly"),
-			v.literal("monthly"),
-			v.literal("cron"),
-			v.literal("instant")
-		)),
-		scheduleConfig: v.optional(v.object({
-			// For interval: milliseconds between runs
-			intervalMs: v.optional(v.number()),
-			// For daily/weekly/monthly: time of day (UTC)
-			hourUTC: v.optional(v.number()),
-			minuteUTC: v.optional(v.number()),
-			// For weekly: days of week (0-6, 0=Sunday)
-			daysOfWeek: v.optional(v.array(v.number())),
-			// For monthly: day of month (1-31)
-			dayOfMonth: v.optional(v.number()),
-			// For cron: raw cron expression
-			cronspec: v.optional(v.string()),
-		})),
-		timezone: v.optional(v.string()), // e.g., "America/New_York"
-		maxRunsPerDay: v.optional(v.number()),
-		runsToday: v.optional(v.number()),
-		lastRunAt: v.optional(v.number()),
-		cronJobId: v.optional(v.string()), // ID from @convex-dev/crons
+		// Active toggle: disabled automations cannot be started
+		isActive: v.optional(v.boolean()),
 
 		// Execution fields
 		listIds: v.optional(v.array(v.id("lists"))),
@@ -96,6 +70,7 @@ export default defineSchema({
 		)),
 		currentNodeId: v.optional(v.string()), // currently executing node
 		nodeStates: v.optional(v.any()), // map of nodeId -> execution state
+		lastRunAt: v.optional(v.number()),
 		startedAt: v.optional(v.number()),
 		completedAt: v.optional(v.number()),
 		error: v.optional(v.string()),

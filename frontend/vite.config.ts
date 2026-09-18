@@ -32,7 +32,7 @@ function getManualChunk(id: string): string | undefined {
     packageName.startsWith('d3-') ||
     packageName === 'zustand'
   ) {
-    return 'workflow-editor'
+    return 'automation-editor'
   }
   if (packageName === 'convex') return 'convex'
   if (

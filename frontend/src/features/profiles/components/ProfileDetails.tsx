@@ -158,7 +158,7 @@ export function ProfileDetails({ profile }: ProfileDetailsProps) {
         </h4>
         <p className="text-subtle-copy text-xs leading-relaxed">
           This profile can be used for manual browser sessions and automated
-          workflows. Be careful when
+          automations. Be careful when
           modifying fingerprint settings as it may trigger re-authentication
           verification on target platforms.
         </p>

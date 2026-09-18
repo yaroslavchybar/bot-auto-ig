@@ -265,40 +265,41 @@ export async function profilesSetLoginTrue(name: string): Promise<true> {
     return true;
 }
 
-// ==================== WORKFLOWS ====================
+// ==================== AUTOMATIONS ====================
 
-export type DbWorkflowRow = {
+export type DbAutomationRow = {
     _id: string
     name: string
-    nodes: import('../automation/graph.js').WorkflowNode[]
-    edges: import('../automation/graph.js').WorkflowEdge[]
+    nodes: import('../automation/graph.js').AutomationNode[]
+    edges: import('../automation/graph.js').AutomationEdge[]
     status?: string
+    isActive?: boolean
     currentNodeId?: string
     nodeStates?: Record<string, unknown>
 }
 
-export async function workflowsGetById(workflowId: string): Promise<DbWorkflowRow | null> {
-    const cleaned = String(workflowId || '').trim()
-    if (!cleaned) throw new Error('workflowId is required')
-    return convexFetch<DbWorkflowRow | null>(`/api/workflows/by-id?workflowId=${encodeURIComponent(cleaned)}`)
+export async function automationsGetById(automationId: string): Promise<DbAutomationRow | null> {
+    const cleaned = String(automationId || '').trim()
+    if (!cleaned) throw new Error('automationId is required')
+    return convexFetch<DbAutomationRow | null>(`/api/automations/by-id?automationId=${encodeURIComponent(cleaned)}`)
 }
 
-export async function workflowsStart(workflowId: string): Promise<DbWorkflowRow | null> {
-    const cleaned = String(workflowId || '').trim()
-    if (!cleaned) throw new Error('workflowId is required')
-    return convexFetch<DbWorkflowRow | null>('/api/workflows/start', { method: 'POST', body: { id: cleaned } })
+export async function automationsStart(automationId: string): Promise<DbAutomationRow | null> {
+    const cleaned = String(automationId || '').trim()
+    if (!cleaned) throw new Error('automationId is required')
+    return convexFetch<DbAutomationRow | null>('/api/automations/start', { method: 'POST', body: { id: cleaned } })
 }
 
-export async function workflowsUpdateStatus(input: {
-    workflowId: string
+export async function automationsUpdateStatus(input: {
+    automationId: string
     status: string
     currentNodeId?: string
     nodeStates?: any
     error?: string
-}): Promise<DbWorkflowRow | null> {
-    const cleaned = String(input?.workflowId || '').trim()
-    if (!cleaned) throw new Error('workflowId is required')
-    return convexFetch<DbWorkflowRow | null>('/api/workflows/update-status', {
+}): Promise<DbAutomationRow | null> {
+    const cleaned = String(input?.automationId || '').trim()
+    if (!cleaned) throw new Error('automationId is required')
+    return convexFetch<DbAutomationRow | null>('/api/automations/update-status', {
         method: 'POST',
         body: {
             id: cleaned,
@@ -312,6 +313,6 @@ export async function workflowsUpdateStatus(input: {
 
 
 
-export async function workflowsReconcileInterrupted(): Promise<{ reconciled: number }> {
-    return convexFetch('/api/workflows/reconcile', { method: 'POST', body: {} });
+export async function automationsReconcileInterrupted(): Promise<{ reconciled: number }> {
+    return convexFetch('/api/automations/reconcile', { method: 'POST', body: {} });
 }

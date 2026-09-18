@@ -13,7 +13,7 @@ import logger from '../shared/logger.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 import { automationMutex } from '../shared/mutex.js'
 import { getTrackedProcesses } from '../shared/ProcessService.js'
-import { profileProcesses, workflowWorkers } from '../shared/store.js'
+import { profileProcesses, automationWorkers } from '../shared/store.js'
 import { isSafeSegment, ensureProfileUploadsDir, profileUploadsDir } from '../files/uploads.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
@@ -203,7 +203,7 @@ export class ProfileManager {
     const release = await automationMutex.acquire()
     try {
       // A live worker may be starting a profile before its first status event arrives.
-      if (getTrackedProcesses().size || profileProcesses.size || workflowWorkers.size) {
+      if (getTrackedProcesses().size || profileProcesses.size || automationWorkers.size) {
         return { cleared: 0, errors: [] }
       }
       return await this.reconcileIdleRuntimeStatuses(activeProfileNames)
