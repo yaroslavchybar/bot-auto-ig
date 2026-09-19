@@ -51,6 +51,8 @@ test('creates automations, deduplicates list ids, and transitions status', async
     edges: [],
     listIds: [list!._id, list!._id],
   })
+  expect(created?.isActive).toBe(false)
+  await t.mutation(api.automations.mutations.setActive, { id: created!._id, isActive: true })
   const started = await t.mutation(internal.automations.mutations.startInternal, { id: created!._id })
   const running = await t.mutation(internal.automations.mutations.updateStatusInternal, {
     id: created!._id,
@@ -249,14 +251,14 @@ test('disabled automations cannot start but can be re-enabled', async () => {
   expect(disabled?.isActive).toBe(false)
 })
 
-test('new automations start active', async () => {
+test('new automations start disabled', async () => {
   const t = createConvexTest()
   const created = await t.mutation(api.automations.mutations.create, {
     name: 'Automation D',
     nodes: [],
     edges: [],
   })
-  expect(created?.isActive).toBe(true)
+  expect(created?.isActive).toBe(false)
 })
 
 

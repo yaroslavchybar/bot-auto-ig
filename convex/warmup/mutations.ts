@@ -28,7 +28,12 @@ export const recordRunInternal = internalMutation({
 	args: {
 		profileId: v.id("profiles"),
 		automationId: v.string(),
+		// Minutes this run consumed. Capped by the worker so the daily
+		// budget (todayMinutes) is never exceeded.
 		minutes: v.number(),
+		// Daily budget. Applied when the row is created or rolls over to a
+		// new day; ignored when today is already set.
+		todayMinutes: v.number(),
 		// Stable id generated once per run by the worker. Retried record
 		// calls carry the same id and must not increment the counter twice.
 		runId: v.string(),
@@ -43,7 +48,8 @@ export const recordRunInternal = internalMutation({
 				day: 1,
 				date: today,
 				runsToday: 1,
-				todayMinutes: args.minutes,
+				todayMinutes: args.todayMinutes,
+				minutesUsedToday: Math.min(Math.max(0, args.minutes), args.todayMinutes),
 				lastAutomationId: args.automationId,
 				lastRunAt: now,
 				recentRunIds: [args.runId],
@@ -63,15 +69,31 @@ export const recordRunInternal = internalMutation({
 		}
 		let day = existing.day;
 		let runsToday = existing.runsToday;
+		let todayMinutes = existing.todayMinutes;
+		// Legacy rows (written before the cap) have no usage recorded. When
+		// such a row already ran today, treat its budget as fully consumed
+		// rather than granting it again.
+		let minutesUsedToday =
+			existing.minutesUsedToday ??
+			(existing.runsToday > 0 ? existing.todayMinutes : 0);
 		if (existing.date !== today) {
 			if (runsToday > 0) day += 1;
 			runsToday = 0;
+			todayMinutes = args.todayMinutes;
+			minutesUsedToday = 0;
 		}
+		// Enforce the cap here too: never trust the caller with the budget.
+		// Over-reported durations count the run but only consume what's left.
+		const consumed = Math.min(
+			Math.max(0, args.minutes),
+			Math.max(0, todayMinutes - minutesUsedToday),
+		);
 		await ctx.db.patch(existing._id, {
 			day,
 			date: today,
 			runsToday: runsToday + 1,
-			todayMinutes: args.minutes,
+			todayMinutes,
+			minutesUsedToday: minutesUsedToday + consumed,
 			lastAutomationId: args.automationId,
 			lastRunAt: now,
 			recentRunIds: [...recentRunIds, args.runId].slice(-20),
@@ -134,6 +156,7 @@ export const rolloverDayInternal = internalMutation({
 				date: today,
 				runsToday: 0,
 				todayMinutes: randomMinutes(plan),
+				minutesUsedToday: 0,
 				updatedAt: now,
 			});
 			rolled += 1;

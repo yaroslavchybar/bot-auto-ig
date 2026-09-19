@@ -10,6 +10,7 @@ function toApi(row: any) {
 		date: row.date,
 		runsToday: row.runsToday,
 		todayMinutes: row.todayMinutes,
+		minutesUsedToday: row.minutesUsedToday ?? 0,
 		lastAutomationId: row.lastAutomationId,
 		lastRunAt: row.lastRunAt,
 	};

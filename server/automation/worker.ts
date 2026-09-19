@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { sleep, shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
+  automationsGetById,
   profilesList,
   profilesSyncStatus,
   warmupGetByProfile,
@@ -56,6 +57,25 @@ function number(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+// How often a running automation re-scans its lists for newly added profiles.
+let profilePollIntervalMs = 5 * 60 * 1000
+
+/** Override the poll interval (tests). */
+export function setProfilePollIntervalMs(ms: number): void {
+  profilePollIntervalMs = ms
+}
+
+// Keep watching only while the automation is still running and active.
+// Fail-closed: any fetch problem ends the watch instead of looping forever.
+async function shouldKeepWatching(automationId: string): Promise<boolean> {
+  try {
+    const row = await automationsGetById(automationId)
+    return !!row && row.status === 'running' && row.isActive !== false
+  } catch {
+    return false
+  }
+}
+
 // Editable warm-up range from the warm-up node config. Mirrors
 // convex/warmup/helpers.ts, which owns the canonical version used by the cron.
 function warmupPlanFromConfig(config: AnyRecord): {
@@ -78,13 +98,41 @@ function warmupPlanFromConfig(config: AnyRecord): {
   }
 }
 
-// Minutes for this run: today's assigned time when the cron already rolled
-// over, otherwise a random pick from the plan range.
+// Planned warm-up for one run: how long to browse, and the daily budget it
+// counts against. Duration never exceeds the remaining budget.
+export type WarmupRunPlan = {
+  minutes: number
+  todayMinutes: number
+}
+
+export function planWarmupRun(
+  state: {
+    date: string
+    todayMinutes: number
+    minutesUsedToday?: number
+  } | null,
+  config: AnyRecord,
+  today: string,
+): WarmupRunPlan {
+  const plan = warmupPlanFromConfig(config)
+  const draw = () =>
+    plan.minMinutes + Math.random() * Math.max(0, plan.maxMinutes - plan.minMinutes)
+  if (state && state.date === today) {
+    const remaining = Math.max(
+      0,
+      state.todayMinutes - (state.minutesUsedToday ?? 0),
+    )
+    return { minutes: Math.min(draw(), remaining), todayMinutes: state.todayMinutes }
+  }
+  const todayMinutes = draw()
+  return { minutes: Math.min(draw(), todayMinutes), todayMinutes }
+}
+
 // Falls back to the legacy min/max range when tracking is unavailable.
-async function resolveWarmupMinutes(
+async function resolveWarmupRun(
   profile: DbProfileRow,
   config: AnyRecord,
-): Promise<number> {
+): Promise<WarmupRunPlan> {
   const fallback = () =>
     random(
       number(config.feed_min_time_minutes, 1),
@@ -92,12 +140,10 @@ async function resolveWarmupMinutes(
     )
   try {
     const state = await warmupGetByProfile(profile.id)
-    const today = new Date().toISOString().slice(0, 10)
-    if (state && state.date === today) return state.todayMinutes
-    const plan = warmupPlanFromConfig(config)
-    return plan.minMinutes + Math.random() * Math.max(0, plan.maxMinutes - plan.minMinutes)
+    return planWarmupRun(state, config, new Date().toISOString().slice(0, 10))
   } catch {
-    return fallback()
+    const minutes = fallback()
+    return { minutes, todayMinutes: minutes }
   }
 }
 
@@ -353,10 +399,10 @@ export async function runAutomation(
               // Stable id for this run: fetch retries reuse it, and the
               // mutation dedupes on it so a retry never double-counts.
               const runId = randomUUID()
-              const minutes = await resolveWarmupMinutes(profile, config)
+              const run = await resolveWarmupRun(profile, config)
               await browseFeed(
                 session.page,
-                minutes,
+                run.minutes,
                 config,
                 log,
                 shouldStop,
@@ -364,7 +410,8 @@ export async function runAutomation(
               await warmupRecordRun({
                 profileId: profile.id,
                 automationId: automationId,
-                minutes,
+                minutes: run.minutes,
+                todayMinutes: run.todayMinutes,
                 runId,
               })
             } else if (activity === 'watch_stories') {
@@ -444,6 +491,31 @@ export async function runAutomation(
     )
   }
   await runPool(profiles, parallel, (profile) => runProfile(profile))
+
+  // Active automations keep watching their lists: profiles added after the
+  // start are picked up on each poll. Finished profiles are skipped via
+  // their completed checkpoint, so only new work runs.
+  const cooldownMinutes = setupConfig.profileReopenCooldownEnabled
+    ? number(setupConfig.profileReopenCooldownMinutes, 30)
+    : 0
+  while (await shouldKeepWatching(automationId)) {
+    await sleep(profilePollIntervalMs).catch(() => undefined)
+    shutdownSignal.throwIfAborted()
+    // Status may have changed during the delay; never open profiles after stop.
+    if (!(await shouldKeepWatching(automationId))) break
+    try {
+      const completedRuns = aggregateStates.__profileRuns ?? {}
+      const fresh = (await profilesList()).filter(
+        (profile) =>
+          !completedRuns[profile.id]?.completed &&
+          profileEligible(profile, lists, cooldownMinutes),
+      )
+      if (fresh.length) await runPool(fresh, parallel, runProfile)
+    } catch (error) {
+      // Best-effort watch: log and keep polling instead of killing the run.
+      log(`watch poll failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+    }
+  }
 
   await event('session_ended', {
     automationId: automationId,

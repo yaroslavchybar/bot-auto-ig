@@ -313,6 +313,7 @@ export type DbWarmupState = {
     date: string
     runsToday: number
     todayMinutes: number
+    minutesUsedToday: number
     lastAutomationId?: string
     lastRunAt?: number
 }
@@ -329,6 +330,7 @@ export async function warmupRecordRun(input: {
     profileId: string
     automationId: string
     minutes: number
+    todayMinutes: number
     runId: string
 }): Promise<DbWarmupState | null> {
     try {
@@ -338,6 +340,7 @@ export async function warmupRecordRun(input: {
                 profileId: input.profileId,
                 automationId: input.automationId,
                 minutes: input.minutes,
+                todayMinutes: input.todayMinutes,
                 runId: input.runId,
             },
         })

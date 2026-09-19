@@ -8,6 +8,7 @@ type WarmupState = {
   date: string
   runsToday: number
   todayMinutes: number
+  minutesUsedToday: number
 }
 
 /**
@@ -42,6 +43,7 @@ export function WarmUpStatesTable() {
               <th className="px-2 py-1.5 text-right font-medium">Day</th>
               <th className="px-2 py-1.5 text-right font-medium">Today</th>
               <th className="px-2 py-1.5 text-right font-medium">Min</th>
+              <th className="px-2 py-1.5 text-right font-medium">Used</th>
             </tr>
           </thead>
           <tbody>
@@ -52,7 +54,8 @@ export function WarmUpStatesTable() {
                 </td>
                 <td className="px-2 py-1.5 text-right">{s.day}</td>
                 <td className="px-2 py-1.5 text-right">{s.runsToday}×</td>
-                <td className="px-2 py-1.5 text-right">{s.todayMinutes}</td>
+                <td className="px-2 py-1.5 text-right">{Math.round(s.todayMinutes)}</td>
+                <td className="px-2 py-1.5 text-right">{Math.round(s.minutesUsedToday ?? 0)}</td>
               </tr>
             ))}
           </tbody>

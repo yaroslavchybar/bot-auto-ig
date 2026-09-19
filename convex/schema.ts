@@ -53,6 +53,11 @@ export default defineSchema({
 		runsToday: v.number(),
 		// Minutes assigned for today's warm-up runs.
 		todayMinutes: v.number(),
+		// Minutes already consumed by today's runs. Each run is capped so
+		// this never exceeds todayMinutes. Optional so rows written before
+		// the cap existed still validate; code treats missing usage
+		// conservatively (see recordRunInternal).
+		minutesUsedToday: v.optional(v.number()),
 		lastAutomationId: v.optional(v.string()),
 		lastRunAt: v.optional(v.number()),
 		// Recent run ids for deduping retried record calls. Bounded so the

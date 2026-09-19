@@ -30,7 +30,8 @@ export const create = mutation({
 			nodes: args.nodes || [],
 			edges: args.edges || [],
 			listIds: normalizeListIds(args.listIds),
-			isActive: true,
+			// New automations start disabled; enabling is an explicit action.
+			isActive: false,
 			status: "idle",
 			createdAt: now,
 			updatedAt: now,

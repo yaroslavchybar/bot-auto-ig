@@ -46,12 +46,15 @@ export function registerWarmupRoutes(http: HttpRouter): void {
       if (!body?.profileId) throw new ValidationError('profileId is required');
       if (!body?.automationId) throw new ValidationError('automationId is required');
       const minutes = Number(body?.minutes);
-      if (!Number.isFinite(minutes) || minutes <= 0) throw new ValidationError('minutes must be a positive number');
+      if (!Number.isFinite(minutes) || minutes < 0) throw new ValidationError('minutes must be a non-negative number');
+      const todayMinutes = Number(body?.todayMinutes);
+      if (!Number.isFinite(todayMinutes) || todayMinutes <= 0) throw new ValidationError('todayMinutes must be a positive number');
       if (!body?.runId) throw new ValidationError('runId is required');
       return jsonResponse(await ctx.runMutation(internal.warmup.mutations.recordRunInternal, {
         profileId: body.profileId as any,
         automationId: String(body.automationId),
         minutes,
+        todayMinutes,
         runId: String(body.runId),
       }));
     }),

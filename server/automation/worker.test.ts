@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
-import { runAutomation } from './worker.js'
+import { planWarmupRun, runAutomation, setProfilePollIntervalMs } from './worker.js'
 
 test('retry skips completed profiles without launching or changing their status', async () => {
   const originalFetch = globalThis.fetch
@@ -170,5 +170,76 @@ test('browser startup failures never clear another session’s busy status', asy
     assert.equal(calls, 1)
   } finally {
     globalThis.fetch = originalFetch
+  }
+})
+
+test('warm-up duration never exceeds the remaining daily budget', () => {
+  const config = { warmup_min_minutes: 30, warmup_max_minutes: 60 }
+  const today = '2026-01-01'
+
+  const fresh = planWarmupRun(
+    { date: today, todayMinutes: 40, minutesUsedToday: 35 },
+    config,
+    today,
+  )
+  assert.equal(fresh.todayMinutes, 40)
+  assert.ok(fresh.minutes <= 5, `expected capped minutes, got ${fresh.minutes}`)
+  assert.ok(fresh.minutes >= 0)
+
+  const exhausted = planWarmupRun(
+    { date: today, todayMinutes: 40, minutesUsedToday: 40 },
+    config,
+    today,
+  )
+  assert.equal(exhausted.minutes, 0)
+
+  const noState = planWarmupRun(null, config, '2026-01-02')
+  assert.ok(noState.todayMinutes >= 30 && noState.todayMinutes <= 60)
+  assert.ok(noState.minutes <= noState.todayMinutes)
+})
+
+test('running automations pick up newly added profiles on each poll', async () => {
+  setProfilePollIntervalMs(10)
+  const originalFetch = globalThis.fetch
+  const profiles = [{ name: 'old', id: 'old', listIds: ['chosen'], using: false }]
+  let watchChecks = 0
+  globalThis.fetch = (async (url: RequestInfo | URL) => {
+    const u = String(url)
+    if (u.endsWith('/api/profiles')) return Response.json(profiles)
+    if (u.includes('/api/automations/by-id')) {
+      watchChecks++
+      if (watchChecks <= 2) {
+        if (watchChecks === 1) {
+          profiles.push({ name: 'new', id: 'new', listIds: ['chosen'], using: false })
+        }
+        return Response.json({ status: 'running', isActive: true })
+      }
+      return Response.json({ status: 'completed', isActive: true })
+    }
+    return Response.json({})
+  }) as typeof fetch
+  const opened: string[] = []
+  try {
+    await runAutomation(
+      {
+        automationId: 'test',
+        automation: {
+          nodes: [
+            { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
+            { id: 'close', data: { activityId: 'close_browser' } },
+          ],
+          edges: [{ source: 'start_node', target: 'close', sourceHandle: 'next' }],
+        },
+      },
+      async (name) => {
+        opened.push(name)
+        return { page: {}, close: async () => {} } as unknown as BrowserSession
+      },
+    )
+    assert.deepEqual(opened, ['old', 'new'])
+    assert.equal(watchChecks, 3)
+  } finally {
+    globalThis.fetch = originalFetch
+    setProfilePollIntervalMs(5 * 60 * 1000)
   }
 })
