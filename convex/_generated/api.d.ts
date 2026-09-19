@@ -11,6 +11,7 @@
 import type * as automations_helpers from "../automations/helpers.js";
 import type * as automations_mutations from "../automations/mutations.js";
 import type * as automations_queries from "../automations/queries.js";
+import type * as crons from "../crons.js";
 import type * as errors from "../errors.js";
 import type * as http from "../http.js";
 import type * as httpRoutes_automations from "../httpRoutes/automations.js";
@@ -18,12 +19,16 @@ import type * as httpRoutes_lists from "../httpRoutes/lists.js";
 import type * as httpRoutes_messageTemplates from "../httpRoutes/messageTemplates.js";
 import type * as httpRoutes_profiles from "../httpRoutes/profiles.js";
 import type * as httpRoutes_shared from "../httpRoutes/shared.js";
+import type * as httpRoutes_warmup from "../httpRoutes/warmup.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
 import type * as profiles_helpers from "../profiles/helpers.js";
 import type * as profiles_mutations from "../profiles/mutations.js";
 import type * as profiles_queries from "../profiles/queries.js";
 import type * as proxies from "../proxies.js";
+import type * as warmup_helpers from "../warmup/helpers.js";
+import type * as warmup_mutations from "../warmup/mutations.js";
+import type * as warmup_queries from "../warmup/queries.js";
 
 import type {
   ApiFromModules,
@@ -35,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   "automations/helpers": typeof automations_helpers;
   "automations/mutations": typeof automations_mutations;
   "automations/queries": typeof automations_queries;
+  crons: typeof crons;
   errors: typeof errors;
   http: typeof http;
   "httpRoutes/automations": typeof httpRoutes_automations;
@@ -42,12 +48,16 @@ declare const fullApi: ApiFromModules<{
   "httpRoutes/messageTemplates": typeof httpRoutes_messageTemplates;
   "httpRoutes/profiles": typeof httpRoutes_profiles;
   "httpRoutes/shared": typeof httpRoutes_shared;
+  "httpRoutes/warmup": typeof httpRoutes_warmup;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
   "profiles/helpers": typeof profiles_helpers;
   "profiles/mutations": typeof profiles_mutations;
   "profiles/queries": typeof profiles_queries;
   proxies: typeof proxies;
+  "warmup/helpers": typeof warmup_helpers;
+  "warmup/mutations": typeof warmup_mutations;
+  "warmup/queries": typeof warmup_queries;
 }>;
 
 /**

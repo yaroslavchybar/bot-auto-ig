@@ -190,6 +190,7 @@ test('automation import keeps start node config payloads intact', () => {
     existingAutomationNames: [],
     existingListIds: [],
     resolveActivityById: (activityId: string) => getActivityById(activityId),
+    singletonActivityIds: ['browse_feed'],
   })
 
   const nodes = result.automation.nodes as Array<Record<string, any>>
@@ -199,6 +200,42 @@ test('automation import keeps start node config payloads intact', () => {
   })
 })
 
+
+test('automation import rejects a second warm up block', () => {
+  const feedNode = (id: string) => ({
+    id,
+    type: 'activity',
+    data: { activityId: 'browse_feed', config: {} },
+  })
+  const rawText = JSON.stringify({
+    format: 'bot-auto-ig.automation',
+    version: '1.0',
+    exportedAt: '2026-03-12T10:00:00.000Z',
+    automation: {
+      name: 'Double Warm Up',
+      nodes: [
+        { id: 'start_node', type: 'start', data: { config: {} } },
+        feedNode('warm-1'),
+        feedNode('warm-2'),
+      ],
+      edges: [],
+    },
+  })
+  const input = {
+    fileName: 'automation.json',
+    fileSizeBytes: 1024,
+    rawText,
+    existingAutomationNames: [] as string[],
+    existingListIds: [] as string[],
+    resolveActivityById: (activityId: string) => getActivityById(activityId),
+    singletonActivityIds: ['browse_feed'],
+  }
+  expect(() => validateAutomationImport(input)).toThrow('Only one block allowed')
+
+  const single = JSON.parse(rawText)
+  single.automation.nodes.pop()
+  expect(() => validateAutomationImport({ ...input, rawText: JSON.stringify(single) })).not.toThrow()
+})
 
 test('disabled automations cannot start but can be re-enabled', async () => {
   const t = createConvexTest()

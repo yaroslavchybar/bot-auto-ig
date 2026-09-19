@@ -25,6 +25,8 @@ export interface ValidateAutomationImportInput {
   existingAutomationNames: string[]
   existingListIds: string[]
   resolveActivityById: (activityId: string) => unknown
+  /** Activities allowed at most once per automation. */
+  singletonActivityIds: string[]
   now?: Date
 }
 
@@ -181,11 +183,13 @@ function validateNodes(
   nodes: unknown[],
   existingListIds: string[],
   resolveActivityById: (activityId: string) => unknown,
+  singletonActivityIds: string[],
 ): {
   nodeIds: Set<string>
   hasStartNode: boolean
   unknownActivityIds: Set<string>
   missingListIds: Set<string>
+  singletonActivityCounts: Map<string, number>
 } {
   if (nodes.length > AUTOMATION_IMPORT_MAX_NODES) {
     throw new Error(`automation.nodes exceeds cap (${AUTOMATION_IMPORT_MAX_NODES})`)
@@ -194,6 +198,8 @@ function validateNodes(
   const nodeIds = new Set<string>()
   const unknownActivityIds = new Set<string>()
   const missingListIds = new Set<string>()
+  const singletonActivityCounts = new Map<string, number>()
+  const singletonIds = new Set(singletonActivityIds)
   const availableListIds = new Set(
     existingListIds.map((id) => String(id).trim()).filter(Boolean),
   )
@@ -237,6 +243,12 @@ function validateNodes(
         resolveActivityById,
         unknownActivityIds,
       )
+      if (singletonIds.has(activityId)) {
+        singletonActivityCounts.set(
+          activityId,
+          (singletonActivityCounts.get(activityId) ?? 0) + 1,
+        )
+      }
     }
 
     if (nodeType === 'start' || nodeId === 'start_node') {
@@ -244,7 +256,7 @@ function validateNodes(
     }
   })
 
-  return { nodeIds, hasStartNode, unknownActivityIds, missingListIds }
+  return { nodeIds, hasStartNode, unknownActivityIds, missingListIds, singletonActivityCounts }
 }
 
 /* ── Validate a single node's activity references ── */
@@ -329,6 +341,7 @@ export function validateAutomationImport(
     existingAutomationNames,
     existingListIds,
     resolveActivityById,
+    singletonActivityIds,
     now = new Date(),
   } = input
 
@@ -341,8 +354,8 @@ export function validateAutomationImport(
   const nodes = automationRaw.nodes as unknown[]
   const edges = automationRaw.edges as unknown[]
 
-  const { nodeIds, hasStartNode, unknownActivityIds, missingListIds } =
-    validateNodes(nodes, existingListIds, resolveActivityById)
+  const { nodeIds, hasStartNode, unknownActivityIds, missingListIds, singletonActivityCounts } =
+    validateNodes(nodes, existingListIds, resolveActivityById, singletonActivityIds)
 
   if (!hasStartNode) {
     throw new Error(
@@ -355,6 +368,15 @@ export function validateAutomationImport(
   if (unknownActivityIds.size > 0) {
     throw new Error(
       `Unknown activity IDs: ${Array.from(unknownActivityIds).sort().join(', ')}`,
+    )
+  }
+
+  const duplicatedSingletons = Array.from(singletonActivityCounts.entries())
+    .filter(([, count]) => count > 1)
+    .map(([activityId]) => activityId)
+  if (duplicatedSingletons.length > 0) {
+    throw new Error(
+      `Only one block allowed per automation: ${duplicatedSingletons.sort().join(', ')}`,
     )
   }
 

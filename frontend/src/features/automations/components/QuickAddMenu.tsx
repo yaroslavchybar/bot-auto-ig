@@ -42,8 +42,11 @@ function ActivityMenuItem({
   badge?: string
   onSelect: () => void
 }) {
+  const { isActivityTaken } = useAutomationEditor()
+  const taken = isActivityTaken(activity.id)
   return (
     <DropdownMenuItem
+      disabled={taken}
       onSelect={onSelect}
       className="items-start gap-3"
     >
@@ -56,10 +59,10 @@ function ActivityMenuItem({
       <div className="min-w-0 flex-1">
         <div className="text-ink text-sm font-medium">{activity.name}</div>
         <div className="text-subtle-copy line-clamp-1 text-xs">
-          {activity.description}
+          {taken ? 'Already added — only one per automation' : activity.description}
         </div>
       </div>
-      {badge && (
+      {badge && !taken && (
         <span className="text-subtle-copy ml-auto text-[10px] font-semibold tracking-[0.18em] uppercase">
           {badge}
         </span>

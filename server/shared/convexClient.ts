@@ -303,3 +303,49 @@ export async function automationsUpdateStatus(input: {
 export async function automationsReconcileInterrupted(): Promise<{ reconciled: number }> {
     return convexFetch('/api/automations/reconcile', { method: 'POST', body: {} });
 }
+
+// ==================== WARM-UP ====================
+
+export type DbWarmupState = {
+    id: string
+    profileId: string
+    day: number
+    date: string
+    runsToday: number
+    todayMinutes: number
+    lastAutomationId?: string
+    lastRunAt?: number
+}
+
+/** Warm-up state for one profile, or null before its first warm-up run. */
+export async function warmupGetByProfile(profileId: string): Promise<DbWarmupState | null> {
+    const cleaned = String(profileId || '').trim()
+    if (!cleaned) throw new Error('profileId is required')
+    return convexFetch<DbWarmupState | null>(`/api/warmup/by-profile?profileId=${encodeURIComponent(cleaned)}`)
+}
+
+/** Record one warm-up run. Never throws — tracking must not break runs. */
+export async function warmupRecordRun(input: {
+    profileId: string
+    automationId: string
+    minutes: number
+    runId: string
+}): Promise<DbWarmupState | null> {
+    try {
+        return await convexFetch<DbWarmupState | null>('/api/warmup/record', {
+            method: 'POST',
+            body: {
+                profileId: input.profileId,
+                automationId: input.automationId,
+                minutes: input.minutes,
+                runId: input.runId,
+            },
+        })
+    } catch {
+        return null
+    }
+}
+
+export async function warmupList(): Promise<DbWarmupState[]> {
+    return convexFetch<DbWarmupState[]>('/api/warmup/states');
+}

@@ -1,5 +1,5 @@
 export type ActionName =
-    | 'Feed Scroll'
+    | 'Warm Up'
     | 'Watch Stories'
     | 'Follow'
     | 'Unfollow'
@@ -51,7 +51,7 @@ export type InstagramSettings = {
 };
 
 export const ACTIONS: ActionName[] = [
-    'Feed Scroll',
+    'Warm Up',
     'Watch Stories',
     'Follow',
     'Unfollow',

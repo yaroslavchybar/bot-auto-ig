@@ -33,7 +33,8 @@ export async function insertDoc(
     | 'messageTemplates'
     | 'profiles'
     | 'proxies'
-    | 'automations',
+    | 'automations'
+    | 'warmupStates',
   value: Record<string, unknown>
 ) {
   const id = await t.run(async (ctx) => ctx.db.insert(table as never, value as never))

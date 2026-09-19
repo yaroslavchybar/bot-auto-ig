@@ -4,11 +4,14 @@ import {
   type BrowserSession,
 } from '../browser/cloak.js'
 import path from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { sleep, shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
   profilesList,
   profilesSyncStatus,
+  warmupGetByProfile,
+  warmupRecordRun,
   type DbProfileRow,
   type DbAutomationRow,
 } from '../shared/convexClient.js'
@@ -51,6 +54,51 @@ function event(type: WorkerEvent['type'], data: AnyRecord = {}): Promise<void> {
 function number(value: unknown, fallback: number): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+// Editable warm-up range from the warm-up node config. Mirrors
+// convex/warmup/helpers.ts, which owns the canonical version used by the cron.
+function warmupPlanFromConfig(config: AnyRecord): {
+  minMinutes: number
+  maxMinutes: number
+} {
+  const planNumber = (value: unknown, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0
+      ? value
+      : fallback
+  // Floor at 1: matches the node input mins and the record API contract,
+  // which rejects non-positive minutes.
+  const minMinutes = Math.max(1, planNumber(config.warmup_min_minutes, 30))
+  return {
+    minMinutes,
+    maxMinutes: Math.max(
+      minMinutes,
+      planNumber(config.warmup_max_minutes, 60),
+    ),
+  }
+}
+
+// Minutes for this run: today's assigned time when the cron already rolled
+// over, otherwise a random pick from the plan range.
+// Falls back to the legacy min/max range when tracking is unavailable.
+async function resolveWarmupMinutes(
+  profile: DbProfileRow,
+  config: AnyRecord,
+): Promise<number> {
+  const fallback = () =>
+    random(
+      number(config.feed_min_time_minutes, 1),
+      number(config.feed_max_time_minutes, 3),
+    )
+  try {
+    const state = await warmupGetByProfile(profile.id)
+    const today = new Date().toISOString().slice(0, 10)
+    if (state && state.date === today) return state.todayMinutes
+    const plan = warmupPlanFromConfig(config)
+    return plan.minMinutes + Math.random() * Math.max(0, plan.maxMinutes - plan.minMinutes)
+  } catch {
+    return fallback()
+  }
 }
 
 function settingsFrom(input: AnyRecord): InstagramSettings {
@@ -131,7 +179,7 @@ async function runConfiguredAction(
   const logAction = (message: string) => log(`${profile.name}: ${message}`)
   const page = session.page
 
-  if (action === 'Feed Scroll' && settings.enable_feed !== false) {
+  if (action === 'Warm Up' && settings.enable_feed !== false) {
     await browseFeed(
       page,
       random(
@@ -302,16 +350,23 @@ export async function runAutomation(
                 number(config.iterations, 3),
               )
             } else if (activity === 'browse_feed') {
+              // Stable id for this run: fetch retries reuse it, and the
+              // mutation dedupes on it so a retry never double-counts.
+              const runId = randomUUID()
+              const minutes = await resolveWarmupMinutes(profile, config)
               await browseFeed(
                 session.page,
-                random(
-                  number(config.feed_min_time_minutes, 1),
-                  number(config.feed_max_time_minutes, 3),
-                ),
+                minutes,
                 config,
                 log,
                 shouldStop,
               )
+              await warmupRecordRun({
+                profileId: profile.id,
+                automationId: automationId,
+                minutes,
+                runId,
+              })
             } else if (activity === 'watch_stories') {
               await watchStories(
                 session.page,

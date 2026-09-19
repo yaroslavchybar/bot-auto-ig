@@ -6,6 +6,8 @@ export interface AutomationEditorContextValue {
     activityId: string,
     insertionContext: BlockInsertionContext,
   ) => void
+  /** True when a singleton activity is already on the canvas. */
+  isActivityTaken: (activityId: string) => boolean
   setQuickAddMenuOpen: (open: boolean) => void
   openBlockLibrary: (insertionContext: BlockInsertionContext) => void
   duplicateNode: (nodeId: string) => void

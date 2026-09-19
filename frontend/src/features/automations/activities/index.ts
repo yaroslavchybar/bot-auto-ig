@@ -146,3 +146,11 @@ export function normalizeActivityConfig(
     ...rawConfig,
   }
 }
+
+/**
+ * Activities allowed at most once per automation.
+ * The editor, duplicate, and import paths all enforce this.
+ */
+export const SINGLETON_ACTIVITY_IDS: ReadonlySet<string> = new Set([
+  'browse_feed',
+])

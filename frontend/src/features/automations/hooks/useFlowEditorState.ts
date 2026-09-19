@@ -27,6 +27,7 @@ import {
   fixOverlappingNodes,
   getConnectedInsertPosition,
   getDisconnectedInsertPosition,
+  isSingletonActivityTaken,
   normalizeAutomationNode,
   removeNodeEdges,
   selectOnlyNode,
@@ -80,6 +81,10 @@ function useNodeInsertion(
 ) {
   const insertActivity = useCallback(
     (activityId: string, insertionContext: BlockInsertionContext) => {
+      if (isSingletonActivityTaken(nodes, activityId)) {
+        toast.warning('Only one Warm Up block is allowed per automation')
+        return
+      }
       const sourceNode = insertionContext.sourceNodeId != null
         ? nodes.find((n) => n.id === insertionContext.sourceNodeId) ?? null
         : null
@@ -308,6 +313,11 @@ function useNodeActions(
     (nodeId: string) => {
       const sourceNode = nodes.find((n) => n.id === nodeId)
       if (!sourceNode || sourceNode.id === 'start_node') return
+      const sourceActivityId = sourceNode.data?.activityId as string | undefined
+      if (sourceActivityId && isSingletonActivityTaken(nodes, sourceActivityId)) {
+        toast.warning('Only one Warm Up block is allowed per automation')
+        return
+      }
       const clonedNode = duplicateAutomationNode(sourceNode)
       setNodes((prev) => selectOnlyNode([...prev, clonedNode], clonedNode.id))
       setSelectedNodeId(clonedNode.id)
@@ -406,14 +416,20 @@ export function useFlowEditorState(automation: Automation | null) {
 
   const graphOps = useGraphOperations(setNodes, setEdges, setSelectedNodeId, nodesRef, edgesRef, blockLibrary)
 
+  const isActivityTaken = useCallback(
+    (activityId: string) => isSingletonActivityTaken(nodes, activityId),
+    [nodes],
+  )
+
   const editorContextValue = useMemo<AutomationEditorContextValue>(
     () => ({
       insertActivity: insertActivityWithClose,
+      isActivityTaken,
       setQuickAddMenuOpen,
       openBlockLibrary: blockLibrary.openBlockLibrary,
       duplicateNode, deleteNode: graphOps.deleteNode, focusNode,
     }),
-    [graphOps.deleteNode, duplicateNode, focusNode, insertActivityWithClose, blockLibrary.openBlockLibrary, setQuickAddMenuOpen],
+    [graphOps.deleteNode, duplicateNode, focusNode, insertActivityWithClose, isActivityTaken, blockLibrary.openBlockLibrary, setQuickAddMenuOpen],
   )
 
   const isEmptyCanvas = nodes.length === 1 && nodes[0]?.id === 'start_node' && edges.length === 0

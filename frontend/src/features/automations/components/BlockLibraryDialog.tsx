@@ -80,10 +80,13 @@ function BlockLibraryItem({
   badgeLabel: string
   onInsert: (activityId: string) => void
 }) {
+  const { isActivityTaken } = useAutomationEditor()
+  const taken = isActivityTaken(activity.id)
   return (
     <button
       type="button"
-      className="button-panel flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left"
+      disabled={taken}
+      className="button-panel flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left disabled:cursor-not-allowed disabled:opacity-50"
       onClick={() => onInsert(activity.id)}
     >
       <div className="bg-panel-subtle border-line-soft rounded-lg border p-2">
@@ -98,11 +101,11 @@ function BlockLibraryItem({
             {activity.name}
           </span>
           <span className="text-subtle-copy text-[10px] font-semibold tracking-[0.18em] uppercase">
-            {badgeLabel}
+            {taken ? 'Added' : badgeLabel}
           </span>
         </div>
         <p className="text-muted-copy mt-1 text-[13px] leading-relaxed">
-          {activity.description}
+          {taken ? 'Only one Warm Up block is allowed per automation.' : activity.description}
         </p>
       </div>
     </button>

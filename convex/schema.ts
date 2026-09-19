@@ -40,6 +40,27 @@ export default defineSchema({
 		updatedAt: v.number(),
 	}).index("by_kind", ["kind"]),
 
+	// Per-profile warm-up progress. The daily cron bumps `day` when the
+	// profile ran warm-up, resets `runsToday`, and assigns `todayMinutes`
+	// from the warm-up node's plan. The worker records each run here.
+	warmupStates: defineTable({
+		profileId: v.id("profiles"),
+		// Warm-up day counter. Starts at 1, bumped once per day the profile runs warm-up.
+		day: v.number(),
+		// UTC date (YYYY-MM-DD) the counters below belong to.
+		date: v.string(),
+		// How many times warm-up ran for this profile today.
+		runsToday: v.number(),
+		// Minutes assigned for today's warm-up runs.
+		todayMinutes: v.number(),
+		lastAutomationId: v.optional(v.string()),
+		lastRunAt: v.optional(v.number()),
+		// Recent run ids for deduping retried record calls. Bounded so the
+		// row cannot grow without limit; retries arrive within seconds.
+		recentRunIds: v.optional(v.array(v.string())),
+		updatedAt: v.number(),
+	}).index("by_profile", ["profileId"]),
+
 	// ═══════════════════════════════════════════════════════════════════
 	// AUTOMATION SYSTEM TABLES
 	// ═══════════════════════════════════════════════════════════════════

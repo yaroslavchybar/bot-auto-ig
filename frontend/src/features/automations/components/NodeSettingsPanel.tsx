@@ -6,6 +6,7 @@ import { getActivityById, type ActivityDefinition } from '@/features/automations
 import { START_NODE_INPUTS } from './StartNode'
 import { X, Play } from 'lucide-react'
 import { GroupedInputs } from '@/features/automations/activity-ui/GroupedInputs'
+import { WarmUpStatesTable } from './WarmUpStatesTable'
 import { ActivityIcon } from './activityIcons'
 import { cn } from '@/lib/utils'
 
@@ -230,6 +231,7 @@ function ActivitySettingsBody({
         ) : (
           <GroupedInputs inputs={activity.inputs} config={config} onChange={onChange} />
         )}
+        {activity.id === 'browse_feed' ? <WarmUpStatesTable /> : null}
       </div>
     </ScrollArea>
   )

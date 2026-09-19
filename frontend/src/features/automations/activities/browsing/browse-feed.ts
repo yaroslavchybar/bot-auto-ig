@@ -1,24 +1,44 @@
 import type { ActivityDefinition } from '../types'
 
 /**
- * Browse Feed Activity
+ * Warm Up Activity
  *
- * Scrolls through the Instagram home feed.
+ * Scrolls through the Instagram home feed to warm up the account.
  * Settings mirror: FeedSettingsDialog
  */
 export const browseFeed: ActivityDefinition = {
   id: 'browse_feed',
   quickAdd: true,
   pickerGroup: 'browsing',
-  keywords: ['feed', 'scroll'],
-  name: 'Feed Scroll',
-  description: 'Scroll through home feed',
+  keywords: ['warm', 'warm up', 'feed', 'scroll'],
+  name: 'Warm Up',
+  description: 'Scroll the home feed to warm up the account',
   category: 'browsing',
   icon: 'Scroll',
   color: '#3b82f6',
 
   inputs: [
-    // Duration (Min Time / Max Time)
+    // Warm-up plan: minutes assigned at random from this range each day
+    {
+      name: 'warmup_min_minutes',
+      type: 'number',
+      label: 'Min Minutes',
+      default: 30,
+      min: 1,
+      group: 'Warm-Up Plan',
+      helpText: 'Lower bound of the daily assigned time.',
+    },
+    {
+      name: 'warmup_max_minutes',
+      type: 'number',
+      label: 'Max Minutes',
+      default: 60,
+      min: 1,
+      group: 'Warm-Up Plan',
+      helpText: 'Upper bound of the daily assigned time.',
+    },
+
+    // Duration fallback (Min Time / Max Time)
     {
       name: 'feed_min_time_minutes',
       type: 'number',
@@ -87,7 +107,7 @@ export const browseFeed: ActivityDefinition = {
       type: 'boolean',
       label: 'Watch Stories Before Feed',
       default: false,
-      helpText: 'Open the stories tray before feed scrolling starts.',
+      helpText: 'Open the stories tray before warm up starts.',
       group: 'Stories',
     },
     {

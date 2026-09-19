@@ -11,7 +11,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
-import { getActivityById } from '@/features/automations/activities'
+import { getActivityById, SINGLETON_ACTIVITY_IDS } from '@/features/automations/activities'
 import type { Automation } from '../types'
 import {
   buildAutomationExportEnvelope,
@@ -162,6 +162,7 @@ function useAutomationImportExport(
         existingAutomationNames: automationsList.map((w) => w.name),
         existingListIds: (lists ?? []).map((list) => String(list._id)),
         resolveActivityById: getActivityById,
+        singletonActivityIds: [...SINGLETON_ACTIVITY_IDS],
       })
       await createAutomation(imported.automation)
       imported.warnings.forEach((warning) => toast.warning(warning))

@@ -1,5 +1,6 @@
 import type { Edge, Node, Viewport, XYPosition } from 'reactflow'
 import {
+  SINGLETON_ACTIVITY_IDS,
   getActivityById,
   getDefaultConfig,
   normalizeActivityConfig,
@@ -59,13 +60,11 @@ function getActivityOutputs(node: Node): ActivityOutput[] {
   const activity = getActivityById(activityId)
   return activity?.outputs ?? []
 }
-
 export function createActivityNode(
   activityId: string,
   position: XYPosition,
 ): Node {
   const activity = getActivityById(activityId)
-
   return {
     id: `${activityId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     type: 'activity',
@@ -76,6 +75,19 @@ export function createActivityNode(
       config: normalizeActivityConfig(activityId, getDefaultConfig(activityId)),
     },
   }
+}
+
+/** True when the activity is singleton and the canvas already has one. */
+export function isSingletonActivityTaken(
+  nodes: Node[],
+  activityId: string,
+): boolean {
+  if (!SINGLETON_ACTIVITY_IDS.has(activityId)) return false
+  return nodes.some(
+    (node) =>
+      node.type === 'activity' &&
+      (node.data?.activityId as string | undefined) === activityId,
+  )
 }
 
 export function normalizeAutomationNode(node: Node): Node {
