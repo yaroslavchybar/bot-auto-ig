@@ -1,6 +1,27 @@
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
+import { DomainError } from '../errors';
+
+export const beginDeleteInternal = internalMutation({
+	args: { name: v.string() },
+	handler: async (ctx, { name }) => {
+		const profile = await ctx.db.query('profiles').withIndex('by_name', q => q.eq('name', name)).first();
+		if (!profile) return null;
+		await ctx.db.patch(profile._id, { status: 'deleting' });
+		return { ...profile, status: 'deleting' };
+	},
+});
+
+export const finishRenameInternal = internalMutation({
+	args: { profileId: v.id('profiles') },
+	handler: async (ctx, { profileId }) => {
+		const profile = await ctx.db.get(profileId);
+		if (!profile) return;
+		if (profile.status === 'deleting') throw new DomainError('CONFLICT', 'Profile is being deleted');
+		await ctx.db.patch(profileId, { renameFrom: undefined });
+	},
+});
 import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
 
 const profileArgsShape = {

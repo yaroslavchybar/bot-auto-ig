@@ -14,7 +14,7 @@ const CACHE_DIRS = [
   'GraphiteDawnCache',
 ]
 
-/** Call only before launch, while holding worker.lock. Keep all site storage. */
+/** Call only before launch, while holding the profile lock. Keep all site storage. */
 export async function pruneProfileCache(profileDir: string): Promise<void> {
   const root = await fs.realpath(profileDir)
   for (const relative of CACHE_DIRS) {

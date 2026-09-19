@@ -103,7 +103,6 @@ function useProfileSave(
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const createProfile = useMutation(api.profiles.mutations.create)
-  const updateProfile = useMutation(api.profiles.mutations.updateById)
   const [saving, setSaving] = useState(false)
 
   const handleSaveProfile = useCallback(async (data: Partial<Profile>) => {
@@ -122,9 +121,8 @@ function useProfileSave(
         await refreshProfiles()
         dialogState.setIsCreateOpen(false)
       } else if (dialogState.editProfile) {
-        await updateProfile({
-          profileId: dialogState.editProfile.id as Id<'profiles'>,
-          ...payload,
+        await apiFetch(`/api/profiles/${encodeURIComponent(dialogState.editProfile.name)}`, {
+          method: 'PUT', body: payload,
         })
         await refreshProfiles()
         dialogState.setEditProfile(null)
@@ -134,7 +132,7 @@ function useProfileSave(
     } finally {
       setSaving(false)
     }
-  }, [createProfile, dialogState, handleError, refreshProfiles, updateProfile])
+  }, [createProfile, dialogState, handleError, refreshProfiles])
 
   return { saving, setSaving, handleSaveProfile }
 }

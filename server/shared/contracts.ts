@@ -1,5 +1,6 @@
 /** Internal profile DTO. Field names and timestamps match Convex. */
 export type ProfileRecord = {
+  renameFrom?: string
   id: string
   name: string
   createdAt?: number

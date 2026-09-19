@@ -2,6 +2,40 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 
+test('missing and pending profiles cannot recreate folders and always release their lock', () => {
+  execFileSync('bun', ['--eval', `
+    import { mock } from 'bun:test'
+    import assert from 'node:assert/strict'
+    import fs from 'node:fs'
+    import os from 'node:os'
+    import path from 'node:path'
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-launch-'))
+    let row
+    mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
+    mock.module('./server/shared/convexClient.ts', () => ({
+      profilesGetByName: async () => row,
+      profilesUpdateByName: async () => undefined,
+    }))
+    mock.module('cloakbrowser', () => ({
+      binaryInfo: () => ({}),
+      launchPersistentContext: async () => { throw new Error('Must not launch') },
+    }))
+    const { openBrowserSession } = await import('./server/browser/cloak.ts')
+    const { lockProfile } = await import('./server/profiles/paths.ts')
+    try {
+      for (const value of [null, { name: 'test', status: 'deleting' }, { name: 'test', renameFrom: 'old' }]) {
+        row = value
+        await assert.rejects(openBrowserSession('test'), /not found|maintenance/)
+        assert.equal(fs.existsSync(path.join(root, 'data/profiles/test')), false)
+        lockProfile('test')()
+      }
+    } finally {
+      assert.equal(path.dirname(root), path.resolve(os.tmpdir()))
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
+})
+
 for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure']) {
 test(`browser cleanup: ${scenario}`, () => {
   // Isolate module mocks and process signal handlers from other tests.
@@ -50,7 +84,7 @@ test(`browser cleanup: ${scenario}`, () => {
     mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async options => {      launchOptions = options
       assert.equal(fs.existsSync(cache), false, 'cache is pruned before launch')
       assert.ok(options.args.includes('--disk-cache-size=134217728'))
-      assert.ok(fs.existsSync(path.join(root, 'data/profiles/test/worker.lock')))
+      assert.throws(() => lockProfile('test'), /already open/)
       if (scenario === 'stop during launch') process.emit('SIGTERM')
       if (scenario === 'budget lost during launch') loseBudget()
       // Model Playwright's default competing shutdown handler.
@@ -75,7 +109,7 @@ test(`browser cleanup: ${scenario}`, () => {
     mock.module('./server/browser/budget.ts', () => ({ acquireBrowserSlot: async (_signal, _address, onLost) => {
       loseBudget = onLost
       return () => {
-        assert.equal(fs.existsSync(path.join(root, 'data/profiles/test/worker.lock')), false)
+        lockProfile('test')()
         events.push('slot')
       }
     } }))
@@ -85,6 +119,7 @@ test(`browser cleanup: ${scenario}`, () => {
         if (scenario === 'cleanup failure') throw new Error('Display cleanup failed')
       },
     }) }))
+    const { lockProfile } = await import('./server/profiles/paths.ts')
     try {
       const { openBrowserSession } = await import('./server/browser/cloak.ts')
       if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch'].includes(scenario)) {

@@ -17,10 +17,7 @@ import {
 import { UPLOADS_ROOT, profileUploadsDir } from '../files/uploads.js'
 import { setupProfileFileAccess } from './profileFiles.js'
 import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
-import { resolveProjectRoot } from '../shared/utils.js'
-
-const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
-const PROFILE_ROOT = path.join(PROJECT_ROOT, 'data', 'profiles')
+import { lockProfile, profileDirectory } from '../profiles/paths.js'
 
 export type BrowserSession = {
   context: BrowserContext
@@ -29,19 +26,6 @@ export type BrowserSession = {
   display?: Display
   close: () => Promise<void>
   closed: Promise<void>
-}
-
-function profilePath(name: string): string {
-  const clean = String(name || '').trim()
-  if (!clean || clean === '.' || clean === '..' || /[\\/]/.test(clean)) {
-    throw new Error('Invalid profile name')
-  }
-  const root = path.resolve(PROFILE_ROOT)
-  const result = path.resolve(root, clean)
-  if (!result.startsWith(`${root}${path.sep}`))
-    throw new Error('Invalid profile name')
-  fs.mkdirSync(result, { recursive: true })
-  return result
 }
 
 // One-time reclaim: a directory from the Camoufox era holds only Firefox
@@ -231,45 +215,24 @@ export function cloakBinaryNote(): string {
   return `INFO: ${label}`
 }
 
-/** A profile directory can belong to only one worker, including during startup. */
-function lockProfile(profileDir: string): () => void {
-  const lockPath = path.join(profileDir, 'worker.lock')
-  if (fs.existsSync(lockPath)) {
-    const pid = Number(fs.readFileSync(lockPath, 'utf8'))
-    if (!Number.isSafeInteger(pid) || pid <= 0)
-      throw new Error('Invalid profile lock')
-    try {
-      process.kill(pid, 0)
-      throw new Error(`Profile is already open: ${path.basename(profileDir)}`)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
-      fs.unlinkSync(lockPath)
-    }
-  }
-  const lock = fs.openSync(lockPath, 'wx')
-  fs.writeFileSync(lock, String(process.pid))
-  fs.closeSync(lock)
-  return () => fs.unlinkSync(lockPath)
-}
-
 export async function openBrowserSession(
   profileName: string,
   options: SessionOptions = {},
 ): Promise<BrowserSession> {
   shutdownSignal.throwIfAborted()
-  const profileDir = profilePath(profileName)
-  const releaseLock = lockProfile(profileDir)
-  // Migrate only while holding the lock: concurrent openers serialize here
-  // instead of racing the directory wipe.
-  migrateFirefoxProfile(profileDir)
-  clearSavedWindowPlacement(profileDir)
-  // This profile's uploads folder + file-dialog scoping. Runs before the
-  // launch so the dialog opens scoped on the very first run. Outside the
-  // startup try below, so a setup failure must release the lock itself —
-  // otherwise worker.lock keeps this PID and every later open fails with
-  // "Profile is already open" until the server restarts.
+  const profileDir = profileDirectory(profileName)
+  const releaseLock = lockProfile(profileName)
+  let profile: DbProfileRow | undefined
   let fileAccess: ReturnType<typeof setupProfileFileAccess>
   try {
+    // Check under the deletion lock, before creating any directories.
+    profile = await profilesGetByName(profileName) ?? undefined
+    if (!profile) throw new Error(`Profile not found: ${profileName}`)
+    if (profile.status === 'deleting' || profile.renameFrom)
+      throw new Error('Profile maintenance is in progress')
+    fs.mkdirSync(profileDir, { recursive: true })
+    migrateFirefoxProfile(profileDir)
+    clearSavedWindowPlacement(profileDir)
     await pruneProfileCache(profileDir)
     fileAccess = setupProfileFileAccess({
       profileDir,
@@ -288,7 +251,6 @@ export async function openBrowserSession(
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
   let context: BrowserContext | undefined
-  let profile: DbProfileRow | undefined
   let ready = false
   let browserClosed = false
   let budgetLost = false
@@ -337,6 +299,8 @@ export async function openBrowserSession(
     checkStartup()
     profile = await profilesGetByName(profileName) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
+    if (profile.status === 'deleting' || profile.renameFrom)
+      throw new Error('Profile maintenance is in progress')
     checkStartup()
     display = options.headless ? undefined : await allocateDisplay()
     checkStartup()

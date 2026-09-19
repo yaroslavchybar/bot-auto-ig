@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { profileManager } from './data.js'
+import { deleteProfile, updateProfile } from './maintenance.js'
 import {
   profilesSyncStatus,
 } from '../shared/convexClient.js'
@@ -56,24 +57,14 @@ router.put('/:name', asyncHandler(async (req, res) => {
   if (!profile.name) {
     throw new ValidationError('name is required')
   }
-  const success = await profileManager.updateProfile(oldName, profile)
-  if (!success) {
-    throw new AppError('Failed to update profile', 500, 'INTERNAL_ERROR')
-  }
+  await updateProfile(oldName, profile)
   res.json({ success: true })
 }))
 
 // Delete a profile
 router.delete('/:name', asyncHandler(async (req, res) => {
   const name = req.params.name
-  // Stop a running browser first, otherwise its locked files survive deletion.
-  if (profileProcesses.has(name)) {
-    await stopProfileBrowser(name)
-  }
-  const success = await profileManager.deleteProfile(name)
-  if (!success) {
-    throw new AppError('Failed to delete profile', 500, 'INTERNAL_ERROR')
-  }
+  await deleteProfile(name)
   res.json({ success: true })
 }))
 

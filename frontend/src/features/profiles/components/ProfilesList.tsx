@@ -66,6 +66,9 @@ function getOsLabel(fingerprintOs?: string) {
 }
 
 function getStatusMeta(profile: Profile) {
+  if (profile.status === 'deleting' || profile.renameFrom) {
+    return { label: profile.status === 'deleting' ? 'DELETING' : 'RENAMING', className: 'text-muted-copy' }
+  }
   const label = profile.using
     ? 'ACTIVE'
     : String(profile.status ?? 'IDLE').toUpperCase()
@@ -104,6 +107,7 @@ function ProfileActionsMenu({
         </DropdownMenuLabel>
         <DropdownMenuItem
           onClick={() => onToggleStatus(profile)}
+          disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
         >
           {profile.using ? (
@@ -120,6 +124,7 @@ function ProfileActionsMenu({
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onEdit(profile)}
+          disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
         >
           <Pencil className="mr-2 h-4 w-4" /> Edit Configuration
@@ -271,6 +276,7 @@ function MobileCardFooter({
               : 'border-status-success-border bg-status-success-soft text-status-success hover:bg-status-success hover:text-inverse border',
           )}
           onClick={() => onToggleStatus(profile)}
+          disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
         >
           {profile.using ? (
             <Square className="h-4 w-4 fill-current" />
@@ -326,6 +332,7 @@ function ProfileDesktopRow({
             size="icon"
             className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
             onClick={(e) => { e.stopPropagation(); onToggleStatus(profile) }}
+            disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
             title={profile.using ? 'Stop Browser' : 'Start Browser'}
           >
             {profile.using ? (
@@ -376,7 +383,7 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
             profile.using ? 'status-dot-success-tight' : 'bg-subtle-copy',
           )}
         />
-        {profile.using ? 'Active' : 'Idle'}
+        {profile.status === 'deleting' ? 'Deleting' : profile.renameFrom ? 'Renaming' : profile.using ? 'Active' : 'Idle'}
       </div>
     </div>
   )

@@ -153,6 +153,8 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
   if (!profile) {
     throw new NotFoundError('Profile not found')
   }
+  if (profile.status === 'deleting' || profile.renameFrom)
+    throw new ValidationError('Profile maintenance is in progress')
 
   const args = [LAUNCHER_SCRIPT, '--name', name, '--automation-id', 'manual']
 
@@ -219,7 +221,7 @@ export async function stopProfileBrowser(name: string): Promise<void> {
   }
 }
 
-async function stopProfileBrowserLocked(name: string): Promise<void> {
+export async function stopProfileBrowserLocked(name: string): Promise<void> {
   const proc = profileProcesses.get(name)
   if (!proc) {
     throw new ValidationError('No browser running for this profile')

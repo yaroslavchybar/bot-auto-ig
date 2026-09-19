@@ -18,6 +18,7 @@ export default defineSchema({
 	}).index("by_name", ["name"]),
 
 	profiles: defineTable({
+		renameFrom: v.optional(v.string()),
 		createdAt: v.number(),
 		name: v.string(),
 		proxy: v.optional(v.string()),

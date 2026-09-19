@@ -1,5 +1,20 @@
 import { DomainError } from '../errors';
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles } from '../proxies';
+
+function assertProfileEditable(profile: any) {
+	if (profile.status === 'deleting' || profile.renameFrom)
+		throw new DomainError('CONFLICT', 'Profile maintenance is in progress');
+}
+
+async function assertProfileNameAvailable(ctx: any, name: string, exceptId?: string) {
+	if (!name || name === '.' || name === '..' || /[\\/\x00<>:"|?*]/.test(name) || /[. ]$/.test(name) ||
+		/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name))
+		throw new DomainError('VALIDATION', 'Invalid profile name');
+	const rows = await ctx.db.query('profiles').collect();
+	if (rows.some((p: any) => p._id !== exceptId &&
+		[p.name, p.renameFrom].some(n => n?.toLowerCase() === name.toLowerCase())))
+		throw new DomainError('CONFLICT', 'Profile name is already in use');
+}
 export function computeProfileMode(proxy: unknown): "proxy" | "direct" {
 	const s = typeof proxy === "string" ? proxy.trim() : "";
 	return s ? "proxy" : "direct";
@@ -95,6 +110,7 @@ export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[
 	const allowed = new Set(cleanIds);
 	const rows = await ctx.db.query("profiles").collect();
 	const filtered = rows.filter((p: any) => {
+		if (p.status === 'deleting' || p.renameFrom) return false;
 		const listIds = getProfileListIds(p);
 		if (!listIds.some((listId) => allowed.has(String(listId)))) return false;
 		if (typeof p.lastOpenedAt !== "number") return true;
@@ -120,6 +136,7 @@ export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 export async function createProfileRow(ctx: any, args: any) {
 	const name = String(args.name || "").trim();
 	if (!name) throw new DomainError('VALIDATION', "name is required");
+	await assertProfileNameAvailable(ctx, name);
 	const proxy = typeof args.proxy === "string" ? args.proxy : undefined;
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 
@@ -149,11 +166,14 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		.withIndex("by_name", (q: any) => q.eq("name", oldClean))
 		.first();
 	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
+	assertProfileEditable(existing);
 
 	const name = String(args.name || "").trim();
 	if (!name) throw new DomainError('VALIDATION', "name is required");
 
 	const next: Record<string, unknown> = { name };
+	await assertProfileNameAvailable(ctx, name, existing._id);
+	if (name !== existing.name) next.renameFrom = existing.name;
 
 	if (typeof args.proxy === "string") {
 		next.proxy = args.proxy;
@@ -191,8 +211,11 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	if (!name) throw new DomainError('VALIDATION', "name is required");
 	const existing = await ctx.db.get(args.profileId);
 	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
+	assertProfileEditable(existing);
 
 	const next: Record<string, unknown> = { name };
+	await assertProfileNameAvailable(ctx, name, existing._id);
+	if (name !== existing.name) next.renameFrom = existing.name;
 
 	if (typeof args.proxy === "string") {
 		next.proxy = args.proxy;
@@ -233,6 +256,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
 		.first();
 	if (!existing) return true;
+	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -240,6 +264,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) return true;
+	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
 	await ctx.db.delete(profileId);
 	return true;
 }
@@ -253,6 +278,7 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 		.withIndex("by_name", (q: any) => q.eq("name", cleanedName))
 		.first();
 	if (!existing) return true;
+	if (existing.status === 'deleting') return true;
 	const next: Record<string, unknown> = { status: cleanedStatus, using: Boolean(using) };
 	if (cleanedStatus.toLowerCase() === "running") {
 		next.lastOpenedAt = Date.now();

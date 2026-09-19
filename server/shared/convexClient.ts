@@ -341,6 +341,18 @@ export async function warmupBeginRun(input: {
     return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
 }
 
+export function profilesBeginDelete(name: string): Promise<DbProfileRow | null> {
+    return convexFetch('/api/profiles/begin-delete', { method: 'POST', body: { name } });
+}
+
+export function profilesFinishDelete(profileId: string): Promise<{ ok: true }> {
+    return convexFetch('/api/profiles/finish-delete', { method: 'POST', body: { profileId } });
+}
+
+export function profilesFinishRename(profileId: string): Promise<{ ok: true }> {
+    return convexFetch('/api/profiles/finish-rename', { method: 'POST', body: { profileId } });
+}
+
 export async function warmupFinishRun(input: {
     profileId: string; runId: string; date: string; minutes: number
 }): Promise<void> {

@@ -37,6 +37,23 @@ local storage, IndexedDB, service workers, preferences, and fingerprint seeds
 are preserved. Existing profiles are cleaned when next opened; running browsers
 are never pruned. Cleanup errors are logged and do not prevent launch.
 
+Profile deletion first persists `status: deleting`, then stops manual browsers
+and any automation using the profile (stopping its whole worker). Browser and
+upload folders are removed before the database row. Failures remain visible as
+Deleting and retry at startup and every 30 seconds. Browser launches and folder
+maintenance share process locks in `data/profile-locks/`; pending profiles cannot
+launch or be edited. Names remain reserved until cleanup finishes.
+Locks use Bun's built-in SQLite writer transactions, backed by OS file locks.
+They release on normal close or process death without PID checks or stale-file
+reclamation. Their `.sqlite` files stay in place, including during startup;
+never remove them while workers may be running. Windows device names such as
+`CON`, `NUL.txt`, and `COM1` are rejected on all platforms.
+
+UI edits go through the backend. Renames persist `renameFrom` until browser and
+upload folders have both moved; partial moves resume through the same retry loop.
+Both names stay reserved meanwhile. Existing orphan folders are not automatically
+deleted: missing database rows alone are not treated as permission to wipe data.
+
 ## Commands
 
 Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`, `lint`.

@@ -1,4 +1,5 @@
 export type Profile = {
+  renameFrom?: string
   id: string
   name: string
   proxy?: string

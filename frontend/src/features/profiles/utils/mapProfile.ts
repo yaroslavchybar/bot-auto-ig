@@ -12,6 +12,7 @@ export function mapProfileRecord(
     id: record._id, name: record.name, proxy: record.proxy,
     proxyType: record.proxyType, fingerprintOs: record.fingerprintOs,
     status: record.status, using: record.using,
+    renameFrom: record.renameFrom,
     ...(options?.includeCookies ? { cookiesJson: record.cookiesJson } : {}),
   }
 }

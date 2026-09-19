@@ -3,23 +3,33 @@ import fs from 'fs'
 import path from 'path'
 import {
   profilesCreate,
-  profilesDeleteByName,
+  profilesFinishDelete,
+  profilesFinishRename,
   profilesGetById,
   profilesList,
   profilesSyncStatus,
   profilesUpdateByName,
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
-import { resolveProjectRoot } from '../shared/utils.js'
+import { PROFILES_DIR, profileDirectory } from './paths.js'
 import { automationMutex } from '../shared/mutex.js'
 import { getTrackedProcesses } from '../shared/ProcessService.js'
 import { profileProcesses, automationWorkers } from '../shared/store.js'
-import { isSafeSegment, ensureProfileUploadsDir, profileUploadsDir } from '../files/uploads.js'
+import { PROFILE_UPLOADS_ROOT, ensureProfileUploadsDir, profileUploadsDir } from '../files/uploads.js'
 
-const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
-const PROFILES_DIR = path.join(PROJECT_ROOT, 'data', 'profiles')
+async function removeProfileData(root: string, target: string): Promise<void> {
+  if (path.dirname(path.resolve(target)) !== path.resolve(root)) throw new Error('Invalid profile directory')
+  try {
+    if (await fs.promises.realpath(root) !== path.resolve(root)) throw new Error('Profile root is redirected')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+}
 
 export type Profile = {
+  renameFrom?: string
   id?: string
   name: string
   proxy?: string
@@ -114,77 +124,39 @@ export class ProfileManager {
       return false
     }
 
-    if (oldName !== profile.name) {
-      const oldPath = path.join(PROFILES_DIR, oldName)
-      const newPath = path.join(PROFILES_DIR, profile.name)
-      if (fs.existsSync(oldPath)) {
-        try {
-          fs.renameSync(oldPath, newPath)
-        } catch (e) {
-          logger.error({ err: e }, 'Error renaming profile directory')
-        }
+    return true
+  }
+
+  /** Called with all affected profile locks held. Retry-safe after partial cleanup. */
+  async finishDeletion(profile: Profile): Promise<void> {
+    if (!profile.id || profile.status !== 'deleting') throw new Error('Profile is not pending deletion')
+    for (const name of new Set([profile.name, ...(profile.renameFrom ? [profile.renameFrom] : [])])) {
+      await removeProfileData(PROFILES_DIR, profileDirectory(name))
+      await removeProfileData(PROFILE_UPLOADS_ROOT, profileUploadsDir(name))
+    }
+    await profilesFinishDelete(profile.id)
+  }
+
+  /** Keep renameFrom until both directory moves succeed, including across restarts. */
+  async finishRename(profile: Profile): Promise<void> {
+    if (!profile.renameFrom || !profile.id) return
+    for (const [oldPath, newPath] of [
+      [profileDirectory(profile.renameFrom), profileDirectory(profile.name)],
+      [profileUploadsDir(profile.renameFrom), profileUploadsDir(profile.name)],
+    ]) {
+      try { await fs.promises.lstat(oldPath) } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue
+        throw error
       }
-      // The profile's uploads folder follows the rename.
       try {
-        if (isSafeSegment(oldName) && isSafeSegment(profile.name)) {
-          const oldUploads = profileUploadsDir(oldName)
-          const newUploads = profileUploadsDir(profile.name)
-          if (fs.existsSync(oldUploads) && !fs.existsSync(newUploads)) {
-            fs.renameSync(oldUploads, newUploads)
-          }
-        }
-      } catch (e) {
-        logger.error({ err: e }, 'Error renaming profile uploads directory')
+        await fs.promises.lstat(newPath)
+        if (oldPath.toLowerCase() !== newPath.toLowerCase()) throw new Error('Rename destination already exists')
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
+      await fs.promises.rename(oldPath, newPath)
     }
-
-    return true
-  }
-
-  async deleteProfile(name: string): Promise<boolean> {
-    try {
-      await profilesDeleteByName(name)
-    } catch (e) {
-      logger.error({ err: e }, 'Error deleting profile from DB')
-      return false
-    }
-
-    // Only touch browser data after a confirmed DB delete.
-    this.removeLocalProfileDir(name)
-
-    // The delete dialog warns "and its data" — the uploads folder goes too.
-    try {
-      if (isSafeSegment(name)) {
-        const uploads = profileUploadsDir(String(name))
-        if (fs.existsSync(uploads)) {
-          fs.rmSync(uploads, { recursive: true, force: true })
-        }
-      }
-    } catch (e) {
-      logger.error({ err: e }, 'Error deleting profile uploads directory')
-    }
-
-    return true
-  }
-
-  /**
-   * Recovery helper for orphan profile directories left behind by older
-   * deletes (e.g. direct DB removes that bypassed the backend). Deliberately
-   * separate from deleteProfile so a failed DB delete can never wipe a live
-   * profile's cookies and fingerprint cache.
-   */
-  removeLocalProfileDir(name: string): boolean {
-    const clean = String(name || '').trim()
-    if (!clean || clean === '.' || clean === '..' || /[/\\]/.test(clean)) return false
-    const profilePath = path.join(PROFILES_DIR, clean)
-    if (!fs.existsSync(profilePath)) return false
-    try {
-      fs.rmSync(profilePath, { recursive: true, force: true })
-      return true
-    } catch (e) {
-      logger.error({ err: e }, 'Error deleting profile directory')
-      return false
-    }
+    await profilesFinishRename(profile.id)
   }
 
   async syncProfileStatus(name: string, status: string, using: boolean): Promise<boolean> {

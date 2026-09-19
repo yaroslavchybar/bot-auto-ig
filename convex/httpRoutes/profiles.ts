@@ -16,6 +16,9 @@ const profilePaths = [
   '/api/profiles/by-id',
   '/api/profiles/update-by-name',
   '/api/profiles/delete-by-name',
+  '/api/profiles/begin-delete',
+  '/api/profiles/finish-delete',
+  '/api/profiles/finish-rename',
   '/api/profiles/sync-status',
 ];
 
@@ -111,6 +114,30 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
 }
 
 function registerProfileDeleteRoutes(http: HttpRouter): void {
+  http.route({
+    path: '/api/profiles/begin-delete', method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      const profile = await ctx.runMutation(internal.profiles.mutations.beginDeleteInternal, { name: body.name });
+      return jsonResponse(mapProfileToApi(profile));
+    }),
+  });
+  http.route({
+    path: '/api/profiles/finish-delete', method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      await ctx.runMutation(internal.profiles.mutations.removeByIdInternal, { profileId: body.profileId });
+      return jsonResponse({ ok: true });
+    }),
+  });
+  http.route({
+    path: '/api/profiles/finish-rename', method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      await ctx.runMutation(internal.profiles.mutations.finishRenameInternal, { profileId: body.profileId });
+      return jsonResponse({ ok: true });
+    }),
+  });
 
 
   // Alias for /api/profiles/remove-by-name
