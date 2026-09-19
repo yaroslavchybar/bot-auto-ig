@@ -30,6 +30,13 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
 - `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
 
+Browser profiles use a 128 MiB Chromium disk-cache budget (a hint, not a hard
+quota for the whole profile). Before each launch, while holding the profile
+lock, disposable HTTP, code, GPU, media, and shader caches are pruned. Cookies,
+local storage, IndexedDB, service workers, preferences, and fingerprint seeds
+are preserved. Existing profiles are cleaned when next opened; running browsers
+are never pruned. Cleanup errors are logged and do not prevent launch.
+
 ## Commands
 
 Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`, `lint`.

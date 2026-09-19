@@ -16,6 +16,7 @@ import {
 } from '../shared/convexClient.js'
 import { UPLOADS_ROOT, profileUploadsDir } from '../files/uploads.js'
 import { setupProfileFileAccess } from './profileFiles.js'
+import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 
 const PROJECT_ROOT = resolveProjectRoot(import.meta.url)
@@ -153,6 +154,7 @@ function browserOptions(profile: DbProfileRow, profileDir: string, options: Sess
     // Viewport matches the VNC desktop geometry so window and page agree.
     viewport: { width: BROWSER_WINDOW_WIDTH, height: BROWSER_WINDOW_HEIGHT },
     args: [
+      `--disk-cache-size=${DISK_CACHE_BYTES}`,
       `--fingerprint=${seed}`,
       `--fingerprint-platform=${platform}`,
       `--fingerprint-screen-width=${BROWSER_WINDOW_WIDTH}`,
@@ -268,6 +270,7 @@ export async function openBrowserSession(
   // "Profile is already open" until the server restarts.
   let fileAccess: ReturnType<typeof setupProfileFileAccess>
   try {
+    await pruneProfileCache(profileDir)
     fileAccess = setupProfileFileAccess({
       profileDir,
       uploadsDir: profileUploadsDir(profileName),

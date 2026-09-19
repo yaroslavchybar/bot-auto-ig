@@ -15,6 +15,9 @@ test(`browser cleanup: ${scenario}`, () => {
 
     const scenario = ${JSON.stringify(scenario)}
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-shutdown-'))
+    const cache = path.join(root, 'data/profiles/test/Default/Cache')
+    fs.mkdirSync(cache, { recursive: true })
+    fs.writeFileSync(path.join(cache, 'old-cache'), 'cached video')
     const events = []
     const cookies = [{ name: 'sessionid', value: 'test-session', domain: '.instagram.com', path: '/' }]
     const context = new EventEmitter()
@@ -45,6 +48,9 @@ test(`browser cleanup: ${scenario}`, () => {
       context.emit('close')
     }
     mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async options => {      launchOptions = options
+      assert.equal(fs.existsSync(cache), false, 'cache is pruned before launch')
+      assert.ok(options.args.includes('--disk-cache-size=134217728'))
+      assert.ok(fs.existsSync(path.join(root, 'data/profiles/test/worker.lock')))
       if (scenario === 'stop during launch') process.emit('SIGTERM')
       if (scenario === 'budget lost during launch') loseBudget()
       // Model Playwright's default competing shutdown handler.
