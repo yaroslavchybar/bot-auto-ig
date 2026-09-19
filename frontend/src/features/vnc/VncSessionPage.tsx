@@ -265,6 +265,7 @@ function VncMobileLayout({
         <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
           <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
             <VncViewer
+              vncPort={session.vncPort}
               url={buildVncWebSocketUrl(session.vncPort)}
               interactive={isInteractive}
               className="h-full w-full flex-1 object-contain"
@@ -528,6 +529,7 @@ function VncStreamPanel({
 
       <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
         <VncViewer
+          vncPort={session.vncPort}
           url={buildVncWebSocketUrl(session.vncPort)}
           interactive={isInteractive}
           className="h-full w-full flex-1 object-contain"

@@ -23,6 +23,7 @@ declare module '@novnc/novnc' {
     blur(): void
     disconnect(): void
     focus(): void
+    sendKey(keysym: number, code: string, down?: boolean): void
     sendCtrlAltDel(): void
     sendCredentials(credentials: {
       username?: string

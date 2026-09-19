@@ -8,8 +8,7 @@ import { ApiError, apiFetch } from '@/lib/api'
 
 // Server-side clipboard (option 2): the API reads/writes the X CLIPBOARD
 // selection on the session DISPLAY via xclip. Local access still needs a
-// user click (browsers gate navigator.clipboard behind a gesture), so this
-// stays an explicit button flow — no background sync.
+// user click. This panel is the fallback when viewer clipboard sync is blocked.
 
 function clipboardErrorMessage(e: unknown, fallback: string): string {
   if (e instanceof ApiError) {
@@ -49,7 +48,7 @@ export function VncClipboardButton({
         method: 'POST',
         body: { text },
       })
-      toast.success('Sent — press Ctrl+V inside the remote browser')
+      toast.success('Sent — press Shift+Insert inside the remote browser')
     } catch (e) {
       toast.error(clipboardErrorMessage(e, 'Could not send to remote'))
     } finally {
@@ -72,7 +71,7 @@ export function VncClipboardButton({
         method: 'POST',
         body: { text },
       })
-      toast.success('Sent — press Ctrl+V inside the remote browser')
+      toast.success('Sent — press Shift+Insert inside the remote browser')
     } catch (e) {
       toast.error(clipboardErrorMessage(e, 'Could not send to remote'))
     } finally {
@@ -158,7 +157,7 @@ export function VncClipboardButton({
         {!interactive ? (
           <p className="text-subtle-copy mb-3 text-[11px]">Take control to paste.</p>
         ) : (
-          <p className="text-subtle-copy mb-3 text-[11px]">After sending, press Ctrl+V inside the remote.</p>
+          <p className="text-subtle-copy mb-3 text-[11px]">Ctrl+V pastes from your PC. After sending with this panel, use Shift+Insert in the remote.</p>
         )}
 
         <p className="text-subtle-copy mb-1 text-[11px]">From remote</p>

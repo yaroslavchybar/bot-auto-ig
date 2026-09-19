@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { execFile } from 'node:child_process'
+import childProcess, { execFile } from 'node:child_process'
 import { activeDisplays, automationWorkers, type ActiveDisplaySession } from '../shared/store.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
 import { AppError, ExternalServiceError, NotFoundError, ValidationError } from '../shared/errors.js'
@@ -43,8 +43,9 @@ function xclipErrorMessage(stderr: string): string {
 }
 
 function runXclip(displayNum: number, args: string[], input?: string): Promise<string> {
+  if (input !== undefined) return writeXclip(displayNum, args, input)
   return new Promise((resolve, reject) => {
-    const child = execFile(
+    execFile(
       'xclip',
       args,
       {
@@ -70,12 +71,46 @@ function runXclip(displayNum: number, args: string[], input?: string): Promise<s
         resolve(String(stdout ?? ''))
       },
     )
-    if (input !== undefined) {
-      child.stdin?.write(input, (writeError) => {
-        if (writeError) reject(new ExternalServiceError('Clipboard failed: could not write'))
-        child.stdin?.end()
-      })
+  })
+}
+
+// xclip forks a clipboard owner that inherits its output pipes. Wait for the
+// parent to exit after taking ownership, not for the owner's pipes to close.
+function writeXclip(displayNum: number, args: string[], input: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = childProcess.spawn('xclip', args, {
+      env: { ...process.env, DISPLAY: `:${displayNum}` },
+      stdio: ['pipe', 'ignore', 'pipe'],
+    })
+    let stderr = ''
+    const timer = setTimeout(() => {
+      child.kill()
+      finish(new ExternalServiceError('Clipboard failed: timed out'))
+    }, TIMEOUT_MS)
+
+    function finish(error?: Error): void {
+      clearTimeout(timer)
+      child.stdin.destroy()
+      child.stderr.destroy()
+      if (error) reject(error)
+      else resolve('')
     }
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString()).slice(0, 4096)
+    })
+    child.on('error', (error: NodeJS.ErrnoException) => {
+      finish(new ExternalServiceError(error.code === 'ENOENT'
+        ? 'Clipboard unavailable on this host'
+        : 'Clipboard failed: could not start'))
+    })
+    child.on('exit', (code) => {
+      finish(code === 0 ? undefined : new ExternalServiceError(`Clipboard failed: ${xclipErrorMessage(stderr)}`))
+    })
+    child.stdin.on('error', () => {
+      finish(new ExternalServiceError('Clipboard failed: could not write'))
+    })
+    child.stdin.end(input)
   })
 }
 

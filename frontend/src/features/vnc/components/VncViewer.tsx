@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import RFB from '@novnc/novnc'
+import { toast } from 'sonner'
+import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { buildVncWebSocketUrl } from '../utils/buildVncWebSocketUrl'
+import { attachClipboardBridge } from '../utils/clipboardBridge'
 
 interface VncViewerProps {
+  vncPort: number
   url?: string
   className?: string
   interactive?: boolean
@@ -29,8 +33,6 @@ type OverlayState = {
 } | null
 
 const RECONNECT_DELAY_MS = 1500
-
-const DEFAULT_VNC_URL = buildVncWebSocketUrl(6080)
 
 /* ── Fullscreen keyboard shortcut ── */
 
@@ -85,6 +87,7 @@ function useSyncInteractive(
 function useRfbConnection(
   enabled: boolean,
   url: string,
+  vncPort: number,
   screenRef: React.RefObject<HTMLDivElement | null>,
   rfbRef: React.MutableRefObject<RFB | null>,
   interactiveRef: React.MutableRefObject<boolean>,
@@ -132,13 +135,28 @@ function useRfbConnection(
     configureRfb(rfb, interactiveRef)
     attachRfbListeners(rfb, lifecycle, clearReconnectTimer,
       reconnectAttemptRef, setConnectionOverlay, scheduleReconnect)
+    let connected = false
+    rfb.addEventListener('connect', () => { connected = true })
+    rfb.addEventListener('disconnect', () => { connected = false })
+    const detachClipboard = attachClipboardBridge({
+      screen,
+      rfb,
+      canInteract: () => connected && interactiveRef.current,
+      clipboard: navigator.clipboard,
+      writeRemoteText: (text) => apiFetch(`/api/displays/${vncPort}/clipboard`, {
+        method: 'POST',
+        body: { text },
+      }),
+      onError: (message) => toast.error(message, { id: `clipboard-${vncPort}` }),
+    })
 
     return () => {
       lifecycle.disposed = true
       clearReconnectTimer()
+      detachClipboard()
       detachAndDisconnect(rfb, rfbRef, screen)
     }
-  }, [enabled, reconnectKey, url, screenRef, rfbRef, interactiveRef])
+  }, [enabled, reconnectKey, url, vncPort, screenRef, rfbRef, interactiveRef])
 
   return { connectionOverlay }
 }
@@ -232,7 +250,8 @@ function VncConnectionOverlay({ overlay }: { overlay: OverlayState }) {
 /* ── Main component ── */
 
 export function VncViewer({
-  url = DEFAULT_VNC_URL,
+  vncPort,
+  url = buildVncWebSocketUrl(vncPort),
   className,
   interactive = true,
 }: VncViewerProps) {
@@ -256,7 +275,7 @@ export function VncViewer({
 
   useFullscreenKey(interactive, containerRef)
   useSyncInteractive(interactive, rfbRef, interactiveRef)
-  const { connectionOverlay } = useRfbConnection(isVisible && inViewport, url, screenRef, rfbRef, interactiveRef)
+  const { connectionOverlay } = useRfbConnection(isVisible && inViewport, url, vncPort, screenRef, rfbRef, interactiveRef)
 
   return (
     <div

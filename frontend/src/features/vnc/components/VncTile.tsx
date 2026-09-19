@@ -55,6 +55,7 @@ export function VncTile({ session, onSelect }: VncTileProps) {
             }
           >
             <VncViewer
+              vncPort={session.vncPort}
               url={buildVncWebSocketUrl(session.vncPort)}
               interactive={false}
               className="h-full w-full"
