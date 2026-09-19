@@ -27,6 +27,7 @@ export async function apiFetch<T>(
     method?: string
     body?: unknown
     timeout?: number
+    signal?: AbortSignal
     maxRetries?: number
     onRetry?: RetryOptions['onRetry']
   } = {},
@@ -51,54 +52,67 @@ function getDefaultRetryAttempts(method?: string) {
 /** Single (non-retried) fetch — used internally by apiFetch's retry loop. */
 async function apiFetchOnce<T>(
   path: string,
-  options: { method?: string; body?: unknown; timeout?: number } = {},
+  options: { method?: string; body?: unknown; timeout?: number; signal?: AbortSignal } = {},
 ): Promise<T> {
   const controller = new AbortController()
   const timeoutId = setTimeout(
     () => controller.abort(),
     options.timeout ?? DEFAULT_TIMEOUT_MS,
   )
+  const signal = options.signal
+    ? AbortSignal.any([controller.signal, options.signal])
+    : controller.signal
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  }
-
-  // Add auth token if available
-  if (tokenGetter) {
-    try {
-      const token = await tokenGetter()
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-    } catch {
-      // Continue without token
-    }
-  }
-
-  const method = options.method ?? 'GET'
-  const url = resolveApiUrl(path)
-  let resp: Response
   try {
-    resp = await fetch(url, {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    }
+
+    // Add auth token if available
+    if (tokenGetter) {
+      try {
+        const token = await waitForToken(tokenGetter(), signal)
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+      } catch {
+        signal.throwIfAborted()
+        // Continue without token
+      }
+    }
+
+    const method = options.method ?? 'GET'
+    const url = resolveApiUrl(path)
+    const resp = await fetch(url, {
       method,
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: controller.signal,
+      signal,
     })
+
+    addApiBreadcrumb(method, path, resp.status)
+
+    if (!resp.ok) {
+      const text = await resp.text()
+      throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
+    }
+
+    if (resp.status === 204) return undefined as T
+    return (await resp.json()) as T
   } finally {
     clearTimeout(timeoutId)
   }
+}
 
-  addApiBreadcrumb(method, path, resp.status)
-
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
-  }
-
-  if (resp.status === 204) return undefined as T
-  return (await resp.json()) as T
+// An aborted request must also stop waiting for authentication.
+function waitForToken(promise: Promise<string | null>, signal: AbortSignal): Promise<string | null> {
+  signal.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason)
+    signal.addEventListener('abort', abort, { once: true })
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
+  })
 }
 
 // Upload a local file as raw bytes. Backend expects Content-Type + X-Filename.

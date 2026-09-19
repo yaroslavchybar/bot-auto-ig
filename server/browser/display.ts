@@ -112,10 +112,14 @@ export async function allocateDisplay(): Promise<Display | undefined> {
         'None',
         '-AlwaysShared',
         '-localhost',
+        // Sync explicit copies, not every change while selecting text.
+        '-SendPrimary=0',
+        '-SetPrimary=0',
       ])
       await ready(rfbPort)
       start('fluxbox', ['-display', `:${displayNum}`])
       start('websockify', [
+        '--heartbeat=20',
         '--web=/usr/share/novnc',
         String(vncPort),
         `127.0.0.1:${rfbPort}`,

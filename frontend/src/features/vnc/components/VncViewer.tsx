@@ -3,9 +3,12 @@ import RFB from '@novnc/novnc'
 import { toast } from 'sonner'
 import { apiFetch } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import { useDocumentVisibility } from '@/hooks/use-document-visibility'
+import { Maximize, Minimize } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { useViewerVisibility } from '../hooks/useViewerVisibility'
 import { buildVncWebSocketUrl } from '../utils/buildVncWebSocketUrl'
 import { attachClipboardBridge } from '../utils/clipboardBridge'
+import { attachRfbListeners, type OverlayState } from '../utils/connectionEvents'
 
 interface VncViewerProps {
   vncPort: number
@@ -14,57 +17,8 @@ interface VncViewerProps {
   interactive?: boolean
 }
 
-type DisconnectEvent = Event & {
-  detail?: {
-    clean?: boolean
-  }
-}
-
-type SecurityFailureEvent = Event & {
-  detail?: {
-    reason?: string
-    status?: number
-  }
-}
-
-type OverlayState = {
-  tone: 'info' | 'error'
-  text: string
-} | null
-
 const RECONNECT_DELAY_MS = 1500
-
-/* ── Fullscreen keyboard shortcut ── */
-
-function useFullscreenKey(
-  interactive: boolean,
-  containerRef: React.RefObject<HTMLDivElement | null>,
-) {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!interactive) return
-      if (
-        document.activeElement?.tagName === 'INPUT' ||
-        document.activeElement?.tagName === 'TEXTAREA' ||
-        document.activeElement?.tagName === 'SELECT' ||
-        (document.activeElement as HTMLElement)?.isContentEditable
-      ) {
-        return
-      }
-      if (e.key.toLowerCase() === 'f') {
-        if (!document.fullscreenElement) {
-          containerRef.current?.requestFullscreen().catch((err) => {
-            console.error(`Error attempting to enable fullscreen: ${err.message}`)
-          })
-        } else {
-          document.exitFullscreen()
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [interactive, containerRef])
-}
+type ClipboardBridge = ReturnType<typeof attachClipboardBridge>
 
 /* ── Sync interactive state to RFB ── */
 
@@ -72,14 +26,16 @@ function useSyncInteractive(
   interactive: boolean,
   rfbRef: React.RefObject<RFB | null>,
   interactiveRef: React.MutableRefObject<boolean>,
+  clipboardRef: React.RefObject<ClipboardBridge | null>,
 ) {
   useEffect(() => {
     interactiveRef.current = interactive
+    clipboardRef.current?.cancel()
     const rfb = rfbRef.current
     if (!rfb) return
     rfb.viewOnly = !interactive
     rfb.focusOnClick = interactive
-  }, [interactive, rfbRef, interactiveRef])
+  }, [interactive, rfbRef, interactiveRef, clipboardRef])
 }
 
 /* ── RFB connection lifecycle ── */
@@ -91,6 +47,7 @@ function useRfbConnection(
   screenRef: React.RefObject<HTMLDivElement | null>,
   rfbRef: React.MutableRefObject<RFB | null>,
   interactiveRef: React.MutableRefObject<boolean>,
+  clipboardRef: React.MutableRefObject<ClipboardBridge | null>,
 ) {
   const reconnectTimerRef = useRef<number | null>(null)
   const reconnectAttemptRef = useRef(0)
@@ -137,26 +94,32 @@ function useRfbConnection(
       reconnectAttemptRef, setConnectionOverlay, scheduleReconnect)
     let connected = false
     rfb.addEventListener('connect', () => { connected = true })
-    rfb.addEventListener('disconnect', () => { connected = false })
-    const detachClipboard = attachClipboardBridge({
+    rfb.addEventListener('disconnect', () => {
+      connected = false
+      if (!lifecycle.disposed) clipboardRef.current?.cancel()
+    })
+    const clipboard = attachClipboardBridge({
       screen,
       rfb,
       canInteract: () => connected && interactiveRef.current,
       clipboard: navigator.clipboard,
-      writeRemoteText: (text) => apiFetch(`/api/displays/${vncPort}/clipboard`, {
+      writeRemoteText: (text, signal) => apiFetch(`/api/displays/${vncPort}/clipboard`, {
         method: 'POST',
         body: { text },
+        signal,
       }),
       onError: (message) => toast.error(message, { id: `clipboard-${vncPort}` }),
     })
+    clipboardRef.current = clipboard
 
     return () => {
       lifecycle.disposed = true
       clearReconnectTimer()
-      detachClipboard()
+      clipboard.dispose()
+      if (clipboardRef.current === clipboard) clipboardRef.current = null
       detachAndDisconnect(rfb, rfbRef, screen)
     }
-  }, [enabled, reconnectKey, url, vncPort, screenRef, rfbRef, interactiveRef])
+  }, [enabled, reconnectKey, url, vncPort, screenRef, rfbRef, interactiveRef, clipboardRef])
 
   return { connectionOverlay }
 }
@@ -170,51 +133,6 @@ function configureRfb(rfb: RFB, interactiveRef: React.MutableRefObject<boolean>)
   rfb.resizeSession = false
   rfb.focusOnClick = interactiveRef.current
   rfb.viewOnly = !interactiveRef.current
-}
-
-function attachRfbListeners(
-  rfb: RFB,
-  lifecycle: { disposed: boolean; terminalFailure: boolean },
-  clearReconnectTimer: () => void,
-  reconnectAttemptRef: React.MutableRefObject<number>,
-  setConnectionOverlay: (s: OverlayState) => void,
-  scheduleReconnect: () => void,
-) {
-  rfb.addEventListener('connect', () => {
-    if (lifecycle.disposed || lifecycle.terminalFailure) return
-    reconnectAttemptRef.current = 0
-    clearReconnectTimer()
-    setConnectionOverlay(null)
-  })
-  rfb.addEventListener('disconnect', (event: Event) => {
-    if (lifecycle.disposed || lifecycle.terminalFailure) return
-    if ((event as DisconnectEvent).detail?.clean) {
-      setConnectionOverlay({ tone: 'info', text: 'Display disconnected.' })
-      return
-    }
-    scheduleReconnect()
-  })
-  rfb.addEventListener('securityfailure', (event: Event) => {
-    if (lifecycle.disposed) return
-    lifecycle.terminalFailure = true
-    clearReconnectTimer()
-    const reason = (event as SecurityFailureEvent).detail?.reason
-    const status = (event as SecurityFailureEvent).detail?.status
-    setConnectionOverlay({
-      tone: 'error',
-      text: reason
-        ? `Security handshake failed: ${reason}`
-        : status
-          ? `Security handshake failed (code ${status}).`
-          : 'Security handshake failed.',
-    })
-  })
-  rfb.addEventListener('credentialsrequired', () => {
-    if (lifecycle.disposed) return
-    lifecycle.terminalFailure = true
-    clearReconnectTimer()
-    setConnectionOverlay({ tone: 'error', text: 'Display requested credentials.' })
-  })
 }
 
 function detachAndDisconnect(
@@ -259,23 +177,27 @@ export function VncViewer({
   const screenRef = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const interactiveRef = useRef(interactive)
-  const isVisible = useDocumentVisibility()
-  const [inViewport, setInViewport] = useState(false)
-
-  // Stop framebuffer traffic and decoding for hidden routes and off-screen tiles.
+  const clipboardRef = useRef<ClipboardBridge | null>(null)
+  const { enabled, visible } = useViewerVisibility(containerRef, 3000)
+  const [fullscreen, setFullscreen] = useState(false)
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-    const observer = new IntersectionObserver(([entry]) => {
-      setInViewport(entry.isIntersecting)
-    })
-    observer.observe(container)
-    return () => observer.disconnect()
+    const update = () => setFullscreen(document.fullscreenElement === containerRef.current)
+    document.addEventListener('fullscreenchange', update)
+    return () => document.removeEventListener('fullscreenchange', update)
   }, [])
+  const toggleFullscreen = async (button: HTMLElement | null) => {
+    try {
+      if (document.fullscreenElement === containerRef.current) await document.exitFullscreen()
+      else await containerRef.current?.requestFullscreen()
+    } catch {
+      toast.error('Fullscreen is unavailable in this browser')
+    } finally {
+      button?.blur()
+    }
+  }
 
-  useFullscreenKey(interactive, containerRef)
-  useSyncInteractive(interactive, rfbRef, interactiveRef)
-  const { connectionOverlay } = useRfbConnection(isVisible && inViewport, url, vncPort, screenRef, rfbRef, interactiveRef)
+  useSyncInteractive(interactive && visible, rfbRef, interactiveRef, clipboardRef)
+  const { connectionOverlay } = useRfbConnection(enabled, url, vncPort, screenRef, rfbRef, interactiveRef, clipboardRef)
 
   return (
     <div
@@ -287,6 +209,15 @@ export function VncViewer({
         className={cn('absolute inset-0 h-full w-full', !interactive && 'pointer-events-none')}
       />
       <VncConnectionOverlay overlay={connectionOverlay} />
+      <Button
+        type="button" variant="outline" size="icon"
+        className="absolute top-2 right-2 z-10 h-8 w-8"
+        aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+        onClick={(event) => void toggleFullscreen(event.currentTarget)}
+      >
+        {fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+      </Button>
     </div>
   )
 }

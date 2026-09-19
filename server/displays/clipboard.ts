@@ -1,8 +1,9 @@
 import { Router } from 'express'
 import childProcess, { execFile } from 'node:child_process'
-import { activeDisplays, automationWorkers, type ActiveDisplaySession } from '../shared/store.js'
+import { automationWorkers, type ActiveDisplaySession } from '../shared/store.js'
+import { resolveDisplay } from './session.js'
 import { asyncHandler } from '../shared/asyncHandler.js'
-import { AppError, ExternalServiceError, NotFoundError, ValidationError } from '../shared/errors.js'
+import { AppError, ExternalServiceError, ValidationError } from '../shared/errors.js'
 
 // Server-side clipboard for a remote display (option 2).
 // Reads/writes the X CLIPBOARD selection on the session's DISPLAY via xclip,
@@ -12,16 +13,6 @@ import { AppError, ExternalServiceError, NotFoundError, ValidationError } from '
 
 const MAX_CHARS = 100_000
 const TIMEOUT_MS = 5_000
-
-function resolveDisplay(vncPortRaw: unknown): ActiveDisplaySession {
-  const vncPort = Number(vncPortRaw)
-  if (!Number.isSafeInteger(vncPort) || vncPort <= 0 || vncPort > 65535)
-    throw new ValidationError('Invalid display port')
-  for (const session of activeDisplays.values()) {
-    if (session.vncPort === vncPort) return session
-  }
-  throw new NotFoundError('Display session not found')
-}
 
 // Writes are denied while an agent owns the session. An automation worker entry
 // means the agent is driving the browser (or is being stopped) — replacing

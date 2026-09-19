@@ -10,7 +10,7 @@ function setup() {
   const writes: string[] = []
   const errors: string[] = []
   const screen = Object.assign(new EventTarget(), {
-    ownerDocument: { hasFocus: () => state.focused, activeElement: {} },
+    ownerDocument: Object.assign(new EventTarget(), { hasFocus: () => state.focused, activeElement: {}, visibilityState: 'visible' }),
     contains: () => state.focused,
   })
   const rfb = Object.assign(new EventTarget(), {
@@ -21,7 +21,7 @@ function setup() {
     writeText: async (text: string) => { state.local = text },
   }
   let acknowledge: () => void = () => {}
-  const cleanup = attachClipboardBridge({
+  const bridge = attachClipboardBridge({
     screen: screen as unknown as HTMLElement,
     rfb,
     canInteract: () => state.active,
@@ -41,7 +41,7 @@ function setup() {
     return event
   }
   const remoteCopy = (text: string) => rfb.dispatchEvent(new CustomEvent('clipboard', { detail: { text } }))
-  return { state, keys, writes, errors, clipboard, screen, key, remoteCopy, cleanup, acknowledge: () => acknowledge() }
+  return { state, keys, writes, errors, clipboard, screen, key, remoteCopy, cleanup: bridge.dispose, cancel: bridge.cancel, acknowledge: () => acknowledge() }
 }
 
 test('paste sends Unicode text, waits for clipboard readiness, and then presses Ctrl+V', async () => {
@@ -53,8 +53,9 @@ test('paste sends Unicode text, waits for clipboard readiness, and then presses 
     assert.deepEqual(h.keys, [])
     h.acknowledge()
     await flush()
-    assert.deepEqual(h.keys.slice(-3), [
+    assert.deepEqual(h.keys.slice(-4), [
       [0xffe3, 'ControlLeft', true], [0x76, 'KeyV', undefined], [0xffe3, 'ControlLeft', false],
+      [0xffe3, 'ControlLeft', true],
     ])
   } finally { h.cleanup() }
 })
@@ -63,12 +64,12 @@ test('Cmd+Shift+V uses the remote plain-text paste shortcut and ignores repeat p
   const h = setup()
   try {
     h.key({ ctrlKey: false, metaKey: true, shiftKey: true })
-    h.key({ repeat: true })
+    h.key({ ctrlKey: false, metaKey: true, shiftKey: true, repeat: true })
     await flush()
     assert.equal(h.writes.length, 1)
     h.acknowledge()
     await flush()
-    assert.deepEqual(h.keys.slice(-5), [
+    assert.deepEqual(h.keys.slice(-7, -2), [
       [0xffe3, 'ControlLeft', true], [0xffe1, 'ShiftLeft', true],
       [0x76, 'KeyV', undefined], [0xffe1, 'ShiftLeft', false], [0xffe3, 'ControlLeft', false],
     ])
@@ -107,6 +108,7 @@ test('remote copies sync only from the focused interactive viewer', async () => 
   const h = setup()
   try {
     h.remoteCopy('remote text')
+    await flush()
     assert.equal(h.state.local, 'remote text')
     h.state.focused = false
     h.remoteCopy('background text')
@@ -120,6 +122,55 @@ test('remote copies sync only from the focused interactive viewer', async () => 
     h.remoteCopy('disconnected text')
     assert.equal(h.state.local, 'remote text')
     assert.deepEqual(h.writes, [])
+  } finally { h.cleanup() }
+})
+
+test('paste does not re-press Ctrl if it was released while waiting', async () => {
+  const h = setup()
+  try {
+    h.key()
+    await flush()
+    h.screen.dispatchEvent(Object.assign(new Event('keyup'), {
+      code: 'ControlLeft', ctrlKey: false, shiftKey: false, altKey: false, metaKey: false,
+    }))
+    h.acknowledge()
+    await flush()
+    assert.deepEqual(h.keys.at(-1), [0xffe3, 'ControlLeft', false])
+  } finally { h.cleanup() }
+})
+
+test('pointer, keyboard, focus, and control changes permanently cancel delayed paste', async () => {
+  for (const action of ['pointerdown', 'wheel', 'focusout', 'keydown', 'control']) {
+    const h = setup()
+    try {
+      h.key()
+      await flush()
+      if (action === 'control') h.cancel()
+      else if (action === 'keydown') h.key({ code: 'Tab', key: 'Tab', ctrlKey: false })
+      else h.screen.dispatchEvent(new Event(action))
+      // Focus/control can be regained before the old response arrives.
+      h.state.focused = true
+      h.state.active = true
+      h.acknowledge()
+      await flush()
+      assert.deepEqual(h.keys, [], action)
+    } finally { h.cleanup() }
+  }
+})
+
+test('duplicate remote copy notifications create only one local clipboard write', async () => {
+  const h = setup()
+  const copied: string[] = []
+  h.clipboard.writeText = async (text) => { copied.push(text) }
+  try {
+    h.remoteCopy('complete text')
+    h.remoteCopy('complete text')
+    await flush()
+    assert.deepEqual(copied, ['complete text'])
+    h.screen.dispatchEvent(new Event('focusout'))
+    h.remoteCopy('complete text')
+    await flush()
+    assert.equal(copied.length, 2)
   } finally { h.cleanup() }
 })
 

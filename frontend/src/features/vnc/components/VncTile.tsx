@@ -1,14 +1,7 @@
-import { lazy, Suspense } from 'react'
 import { Monitor } from 'lucide-react'
-import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
 import type { DisplaySession } from '../utils/liveSessions'
-
-const VncViewer = lazy(() =>
-  import('@/features/vnc/components/VncViewer').then((module) => ({
-    default: module.VncViewer,
-  })),
-)
+import { VncPreview } from './VncPreview'
 
 type VncTileProps = {
   session: DisplaySession
@@ -49,18 +42,7 @@ export function VncTile({ session, onSelect }: VncTileProps) {
             </div>
           </div>
         ) : (
-          <Suspense
-            fallback={
-              <div className="bg-overlay h-full w-full animate-pulse" />
-            }
-          >
-            <VncViewer
-              vncPort={session.vncPort}
-              url={buildVncWebSocketUrl(session.vncPort)}
-              interactive={false}
-              className="h-full w-full"
-            />
-          </Suspense>
+          <VncPreview vncPort={session.vncPort} />
         )}
         <div className="absolute right-2 bottom-2 rounded-[3px] bg-black/55 px-2 py-1 font-mono text-[10px] text-white/80 opacity-0 transition-opacity group-hover:opacity-100">
           {session.automationId}

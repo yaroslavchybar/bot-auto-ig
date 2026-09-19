@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -9,6 +9,7 @@ import {
   type DisplaySession,
 } from '../utils/liveSessions'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
+import { createSessionSnapshotGuard, isSessionEvent } from '../utils/sessionSnapshot'
 
 /**
  * Fetches and live-updates VNC display sessions.
@@ -26,22 +27,33 @@ export function useVncSessions(enabled: boolean) {
   const { handleError } = useErrorHandler()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
   const [loading, setLoading] = useState(false)
+  const [snapshots] = useState(createSessionSnapshotGuard)
+  const requestRef = useRef<AbortController | null>(null)
 
   const refresh = useCallback(async () => {
+    requestRef.current?.abort()
+    const controller = new AbortController()
+    requestRef.current = controller
+    const snapshot = snapshots.begin()
     setLoading(true)
     try {
-      const data = await apiFetch<DisplaySession[]>('/api/displays')
-      setSessions(normalizeSessions(data))
+      const data = await apiFetch<DisplaySession[]>('/api/displays', { signal: controller.signal })
+      if (!controller.signal.aborted && snapshots.isCurrent(snapshot)) setSessions(normalizeSessions(data))
     } catch (cause) {
-      handleError(cause, 'VNC sessions')
+      if (!controller.signal.aborted) handleError(cause, 'VNC sessions')
     } finally {
-      setLoading(false)
+      if (requestRef.current === controller) {
+        requestRef.current = null
+        setLoading(false)
+      }
     }
-  }, [handleError])
+  }, [handleError, snapshots])
 
   const handleSocketEvent = useCallback((event: unknown) => {
+    if (!isSessionEvent(event)) return
+    snapshots.invalidate()
     setSessions((current) => applyDisplayEvent(current, event))
-  }, [])
+  }, [snapshots])
 
   const { connected } = useWebSocket({
     onEvent: handleSocketEvent,
@@ -70,9 +82,11 @@ export function useVncSessions(enabled: boolean) {
     let timer = setTimeout(() => { void poll() }, 0)
     return () => {
       disposed = true
+      snapshots.invalidate()
+      requestRef.current?.abort()
       clearTimeout(timer)
     }
-  }, [connected, isMobile, active, refresh])
+  }, [connected, isMobile, active, refresh, snapshots])
 
   return {
     sessions,
