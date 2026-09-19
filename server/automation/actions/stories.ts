@@ -8,6 +8,7 @@ export async function watchStories(
   maxStories: number,
   log: ActionLogger,
   shouldStop: StopCheck,
+  timing: { minSeconds: number; maxSeconds: number; deadline?: number } = { minSeconds: 2, maxSeconds: 5 },
 ): Promise<void> {
   await page.goto('https://www.instagram.com/', {
     waitUntil: 'domcontentloaded',
@@ -22,7 +23,13 @@ export async function watchStories(
   await story.click()
   let watched = 0
   while (watched < Math.max(0, maxStories) && !shouldStop()) {
-    await randomDelay(2, 5)
+    const remaining = Math.max(0, ((timing.deadline ?? Infinity) - Date.now()) / 1000)
+    if (remaining <= 0) break
+    await randomDelay(
+      Math.min(remaining, Math.max(0, timing.minSeconds)),
+      Math.min(remaining, Math.max(0, timing.minSeconds, timing.maxSeconds)),
+    )
+    if (shouldStop()) break
     watched++
     await clickVisible(page, '[aria-label*="Next"], button:has-text("Next")')
   }

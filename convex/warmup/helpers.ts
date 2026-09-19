@@ -3,7 +3,7 @@ export type WarmupPlan = {
 	maxMinutes: number;
 };
 
-/** Fallback plan when no warm-up node config is available. */
+/** Default daily budget. */
 export const DEFAULT_WARMUP_PLAN: WarmupPlan = {
 	minMinutes: 30,
 	maxMinutes: 60,
@@ -22,8 +22,7 @@ function planNumber(value: unknown, fallback: number): number {
 
 /** Read the editable warm-up plan from a warm-up node config. */
 export function planFromConfig(config: Record<string, unknown>): WarmupPlan {
-	// Floor at 1: a zero-minute plan would record minutes the API rejects,
-	// and browsing for 0 minutes is meaningless. Matches the node input mins.
+	// Match the minimum allowed by the node inputs.
 	const minMinutes = Math.max(
 		1,
 		planNumber(config.warmup_min_minutes, DEFAULT_WARMUP_PLAN.minMinutes),
@@ -37,7 +36,7 @@ export function planFromConfig(config: Record<string, unknown>): WarmupPlan {
 	};
 }
 
-/** Minutes assigned for a run: random within the plan range. */
+/** Minutes assigned once per UTC day. */
 export function randomMinutes(plan: WarmupPlan): number {
 	return plan.minMinutes + Math.random() * Math.max(0, plan.maxMinutes - plan.minMinutes);
 }

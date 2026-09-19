@@ -25,7 +25,7 @@ export const browseFeed: ActivityDefinition = {
       label: 'Min Minutes',
       default: 30,
       min: 1,
-      group: 'Warm-Up Plan',
+      group: 'Daily Budget',
       helpText: 'Lower bound of the daily assigned time.',
     },
     {
@@ -34,26 +34,27 @@ export const browseFeed: ActivityDefinition = {
       label: 'Max Minutes',
       default: 60,
       min: 1,
-      group: 'Warm-Up Plan',
+      group: 'Daily Budget',
       helpText: 'Upper bound of the daily assigned time.',
     },
 
-    // Duration fallback (Min Time / Max Time)
     {
-      name: 'feed_min_time_minutes',
-      type: 'number',
-      label: 'Min Time (min)',
-      default: 1,
-      min: 1,
-      group: 'Duration',
+      name: 'session_min_minutes', type: 'number', label: 'Min Minutes',
+      default: 5, min: 1, group: 'Session Duration',
+      helpText: 'Each session is capped by the remaining daily budget.',
     },
     {
-      name: 'feed_max_time_minutes',
-      type: 'number',
-      label: 'Max Time (min)',
-      default: 3,
-      min: 1,
-      group: 'Duration',
+      name: 'session_max_minutes', type: 'number', label: 'Max Minutes',
+      default: 10, min: 1, group: 'Session Duration',
+    },
+    {
+      name: 'rest_min_minutes', type: 'number', label: 'Min Minutes',
+      default: 60, min: 0, group: 'Rest Between Sessions',
+    },
+    {
+      name: 'rest_max_minutes', type: 'number', label: 'Max Minutes',
+      default: 120, min: 0, group: 'Rest Between Sessions',
+      helpText: 'Enable Repeat While Active in Start to automatically queue the next session.',
     },
 
     // Engagement chances

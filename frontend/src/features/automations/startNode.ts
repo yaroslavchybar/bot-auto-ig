@@ -20,6 +20,14 @@ export const START_NODE_INPUTS: ActivityInput[] = [
     group: 'Execution',
   },
   {
+    name: 'repeatWhileActive',
+    type: 'boolean',
+    label: 'Repeat While Active',
+    default: false,
+    helpText: 'Repeat warm-up sessions after their rest period, up to each profile’s daily budget. Continue on future UTC days.',
+    group: 'Execution',
+  },
+  {
     name: 'profileReopenCooldownEnabled',
     type: 'boolean',
     label: 'Profile Reopen Cooldown',

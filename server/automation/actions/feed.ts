@@ -118,11 +118,12 @@ async function videoDuration(target: Locator): Promise<number> {
 // "You're all caught up" marker means no more feed to load.
 async function isFeedEnd(page: Page): Promise<boolean> {
   try {
-    return await page
+    const box = await page
       .getByText(/you're all caught up|you are all caught up/i)
       .first()
-      .isVisible()
-      .catch(() => false)
+      .boundingBox()
+    const height = page.viewportSize()?.height ?? 800
+    return !!box && box.y < height && box.y + box.height > 0
   } catch {
     return false
   }
@@ -138,13 +139,33 @@ async function postId(target: Locator): Promise<string> {
   return href?.match(/\/([A-Za-z0-9_-]+)\/?$/)?.[1] ?? ''
 }
 
+/** Find an unread post in view, or the lowest visible post when all were seen. */
+export async function visibleFeedPost(page: Page, seen: ReadonlySet<string>): Promise<{ locator: Locator; id: string } | null> {
+  const articles = page.locator('article')
+  const count = await articles.count().catch(() => 0)
+  const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
+  let fallback: { locator: Locator; id: string } | null = null
+  for (let i = 0; i < count; i++) {
+    const locator = articles.nth(i)
+    const box = await locator.boundingBox().catch(() => null)
+    if (!box || box.y >= viewport.height * 0.65 || box.y + box.height <= viewport.height * 0.3) continue
+    const id = await postId(locator)
+    fallback = { locator, id }
+    if (!id || !seen.has(id)) return fallback
+  }
+  return fallback
+}
+
 export async function browseFeed(
   page: Page,
   minutes: number,
   config: Record<string, unknown>,
   log: ActionLogger,
   shouldStop: StopCheck,
-): Promise<void> {
+): Promise<'finished' | 'stopped' | 'stalled'> {
+  if (!(minutes > 0) || shouldStop()) return 'stopped'
+  const start = Date.now()
+  const end = start + minutes * 60_000
   await page.goto('https://www.instagram.com/', {
     waitUntil: 'domcontentloaded',
     timeout: 45_000,
@@ -153,11 +174,6 @@ export async function browseFeed(
   // content and the address bar is blurred. Re-focus after every
   // navigation since goto can return focus to browser chrome.
   await focusPageContent(page)
-  const duration = Math.max(0, minutes)
-  if (!(duration > 0)) {
-    log('Feed session skipped (0 minutes)')
-    return
-  }
   // Let the feed render before touching anything; humans wait for content.
   await page
     .locator('article')
@@ -178,15 +194,11 @@ export async function browseFeed(
     Math.floor(numeric(config.carousel_max_slides, 3)),
   )
 
-  const end = Date.now() + duration * 60_000
-  const start = Date.now()
   const durationMs = Math.max(1, end - start)
   const cursor: CursorState = { onScrollbar: false }
-  // Stuck detection: same post count + page height 3 scrolls in a row
-  // means end-of-feed or load stall. Reload once, then quit early.
+  // Detect lack of scroll progress, including skips and already-seen posts.
   let stuckRounds = 0
-  let lastCount = -1
-  let lastHeight = -1
+  let lastPosition = ''
   let reloaded = false
   let detours = 0
   const MAX_DETOURS = 3
@@ -194,57 +206,41 @@ export async function browseFeed(
   const seen = new Set<string>()
   log(`Starting feed session for ${minutes} minute(s)`)
   while (Date.now() < end && !shouldStop()) {
-    const articles = page.locator('article')
-    const count = await articles.count().catch(() => 0)
-
-    // Pick the post actually in view (not always the first) via layout boxes.
-    // boundingBox() only observes layout; scrolling stays input-only.
-    // Overlap check (not just top edge) so tall videos filling the screen match.
-    // Seen posts are skipped so one dwell can't loop on the same post.
-    let target = articles.first()
-    let targetId = ''
-    if (count > 1) {
-      const viewport = page.viewportSize() ?? { width: 1280, height: 800 }
-      const check = Math.min(count, 6)
-      let fallback: { locator: Locator; id: string } | null = null
-      for (let i = 0; i < check; i++) {
-        const candidate = articles.nth(i)
-        const box = await candidate.boundingBox().catch(() => null)
-        if (
-          !box ||
-          box.y >= viewport.height * 0.65 ||
-          box.y + box.height <= viewport.height * 0.3
-        )
-          continue
-        const id = await postId(candidate)
-        // Forward bias: keep the bottom-most as fallback so we never
-        // align back up to an old post when everything is seen.
-        fallback = { locator: candidate, id }
-        if (!id || !seen.has(id)) {
-          target = candidate
-          targetId = id
-          break
-        }
+    if (await isFeedEnd(page)) return 'finished'
+    const position = await page.evaluate(() => `${window.scrollY}:${document.documentElement.scrollHeight}`).catch(() => '')
+    stuckRounds = position && position === lastPosition ? stuckRounds + 1 : 0
+    lastPosition = position
+    if (stuckRounds >= 3) {
+      if (reloaded) {
+        log('Feed stuck, ending early')
+        return 'stalled'
       }
-      if (!targetId && fallback) {
-        // Everything in view already seen; take the bottom-most to keep
-        // moving forward rather than stall.
-        target = fallback.locator
-        targetId = fallback.id
-      }
+      reloaded = true
+      stuckRounds = 0
+      log('Feed stalled, reloading once')
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 15_000 })
+      await focusPageContent(page)
+      continue
     }
-    if (!targetId && count) targetId = await postId(target)
+    const visible = await visibleFeedPost(page, seen)
+    if (!visible) {
+      await smoothScroll(page, random(450, 750))
+      await sleep(random(300, 700))
+      continue
+    }
+    const target = visible.locator
+    const targetId = visible.id
 
     // Already read this one (Back nav landing or short scroll): nudge
     // forward instead of dwelling and liking it again.
-    if (count && targetId && seen.has(targetId)) {
+    if (targetId && seen.has(targetId)) {
       await smoothScroll(page, random(600, 1000))
       await sleep(random(300, 700))
       continue
     }
 
     // Bored skip: glide past posts fast without reading.
-    if (count && chance(config.skip_post_chance)) {
+    if (chance(config.skip_post_chance)) {
       const skips = Math.round(random(1, skipMax))
       for (let i = 0; i < skips && Date.now() < end && !shouldStop(); i++) {
         await smoothScroll(page, random(450, 950))
@@ -254,14 +250,14 @@ export async function browseFeed(
     }
 
     // Ads / suggested posts: fast-scroll past, never engage.
-    if (count && (await isPromoPost(target).catch(() => false))) {
+    if (await isPromoPost(target)) {
       await smoothScroll(page, random(500, 950))
       await sleep(random(300, 800))
       continue
     }
 
     // Settle the post fully into view before reading or touching it.
-    if (count) await alignPostOnScreen(page, target)
+    await alignPostOnScreen(page, target)
     if (targetId) seen.add(targetId)
 
     // Dwell on the post like reading. Split into slices so micro-behaviors
@@ -273,7 +269,7 @@ export async function browseFeed(
     )
     const sessionScale = 1 + 0.5 * Math.sin(progress * Math.PI)
     let dwell: number
-    if (count && (await hasVideo(target).catch(() => false))) {
+    if (await hasVideo(target)) {
       // Video/reel: watch a human share of the actual clip length.
       const clip = await videoDuration(target).catch(() => 0)
       dwell =
@@ -298,8 +294,9 @@ export async function browseFeed(
     let likedThisPost = false
     while (Date.now() < sliceEnd && Date.now() < end && !shouldStop()) {
       await sleep(random(400, 1100))
+      if (Date.now() >= end || shouldStop()) break
       const roll = Math.random()
-      if (!engaged && count) {
+      if (!engaged) {
         engaged = true
         // One decision per post: like and/or follow, on the viewed post.
         if (targetOnScreen && chance(config.like_chance))
@@ -309,14 +306,13 @@ export async function browseFeed(
           await followVisible(target).catch(() => undefined)
       } else if (
         !carouselDone &&
-        count &&
         targetOnScreen &&
         chance(config.carousel_watch_chance)
       ) {
         carouselDone = true
         // Swipe carousels with the on-screen arrow (real click, no JS).
         const slides = Math.round(random(1, carouselMax))
-        for (let s = 0; s < slides; s++) {
+        for (let s = 0; s < slides && Date.now() < end && !shouldStop(); s++) {
           const selector = 'button[aria-label*="Next"], [aria-label="Next"]'
           const next = target.locator(selector)
           if (!(await next.count().catch(() => 0))) break
@@ -338,7 +334,7 @@ export async function browseFeed(
     // Detours: own profile, DMs, reels, or someone else's profile — checked
     // rarest first so each gets a fair shot. All UI-driven, all lead home.
     const canDetour =
-      count && detours < MAX_DETOURS && Date.now() < end && !shouldStop()
+      detours < MAX_DETOURS && Date.now() < end && !shouldStop()
     let detoured = false
     if (canDetour && chance(config.own_profile_chance ?? 10)) {
       detours++
@@ -412,40 +408,8 @@ export async function browseFeed(
     if (Date.now() >= end || shouldStop()) break
     await scrollPastPost(page, cursor, targetBox?.height ?? 0)
 
-    // Stuck / end-of-feed: count + page height unchanged means nothing new loaded.
-    // boundingBox/evaluate only observe; scrolling stays input-only.
-    if (await isFeedEnd(page).catch(() => false)) {
-      log('Feed end reached, ending early')
-      break
-    }
-    const afterCount = await articles.count().catch(() => count)
-    const height = await page
-      .evaluate(
-        () =>
-          document.documentElement?.scrollHeight ??
-          document.body?.scrollHeight ??
-          0,
-      )
-      .catch(() => -1)
-    if (afterCount === lastCount && height === lastHeight) stuckRounds++
-    else stuckRounds = 0
-    lastCount = afterCount
-    lastHeight = height
-    if (stuckRounds >= 3) {
-      if (!reloaded) {
-        reloaded = true
-        stuckRounds = 0
-        log('Feed stalled, reloading once')
-        await page
-          .reload({ waitUntil: 'domcontentloaded', timeout: 15_000 })
-          .catch(() => undefined)
-        await focusPageContent(page)
-        await sleep(random(1500, 3000))
-      } else {
-        log('Feed stuck, ending early')
-        break
-      }
-    }
+
   }
   log('Feed session finished')
+  return shouldStop() ? 'stopped' : 'finished'
 }

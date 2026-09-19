@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
-import { planWarmupRun, runAutomation, setProfilePollIntervalMs } from './worker.js'
+import { runAutomation, setProfilePollIntervalMs } from './worker.js'
 
 test('retry skips completed profiles without launching or changing their status', async () => {
   const originalFetch = globalThis.fetch
@@ -17,6 +17,46 @@ test('retry skips completed profiles without launching or changing their status'
     } }, async () => { launches++; throw new Error('Must not launch') })
     assert.equal(launches, 0)
   } finally { globalThis.fetch = originalFetch }
+})
+
+test('repeating warm-ups requeue completed profiles but never open resting or exhausted profiles', async () => {
+  const originalFetch = globalThis.fetch
+  setProfilePollIntervalMs(10)
+  const date = new Date().toISOString().slice(0, 10)
+  const profiles = ['ready', 'resting', 'exhausted'].map(id => ({ name: id, id, listIds: ['chosen'], using: false }))
+  let used = 0
+  let nextRunAt = 0
+  let checks = 0
+  globalThis.fetch = (async url => {
+    const u = String(url)
+    if (u.endsWith('/api/profiles')) return Response.json(profiles)
+    if (u.includes('/api/warmup/by-profile')) {
+      const id = new URL(u).searchParams.get('profileId')
+      return Response.json({ date, todayMinutes: 20, reservedMinutes: 0,
+        minutesUsedToday: id === 'exhausted' ? 20 : used,
+        nextRunAt: id === 'resting' ? Date.now() + 60_000 : nextRunAt })
+    }
+    // Scheduling test: skip browser actions; closing simulates completed session accounting.
+    if (u.endsWith('/api/warmup/begin')) return Response.json({ date, minutes: 0 })
+    if (u.includes('/api/automations/by-id')) return Response.json({ status: ++checks <= 12 ? 'running' : 'completed' })
+    return Response.json({})
+  }) as typeof fetch
+  const opened: string[] = []
+  try {
+    await runAutomation({ automation: {
+      nodes: [
+        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'], repeatWhileActive: true } } },
+        { id: 'warm', data: { activityId: 'browse_feed' } },
+      ],
+      edges: [{ source: 'start_node', target: 'warm', sourceHandle: 'next' }],
+      nodeStates: { __profileRuns: { ready: { completed: true, date } } },
+    } }, async name => {
+      assert.ok(Date.now() >= nextRunAt)
+      opened.push(name)
+      return { page: {}, close: async () => { used += 10; nextRunAt = Date.now() + 20 } } as unknown as BrowserSession
+    })
+    assert.deepEqual(opened, ['ready', 'ready'])
+  } finally { globalThis.fetch = originalFetch; setProfilePollIntervalMs(5 * 60 * 1000) }
 })
 
 test('close browser ends the session and final cleanup stays safe', async () => {
@@ -84,6 +124,9 @@ test('automation action failures reject the run and close the browser', async ()
           using: false,
         },
       ])
+    if (String(url).includes('/api/warmup/by-profile')) return Response.json(null)
+    if (String(url).endsWith('/api/warmup/begin')) return Response.json({ date: new Date().toISOString().slice(0, 10), minutes: 30 })
+    if (String(url).endsWith('/api/warmup/finish')) return Response.json({ ok: true })
     assert.match(String(url), /sync-status$/)
     statuses.push(JSON.parse(String(init?.body)).status)
     return Response.json({})
@@ -173,35 +216,10 @@ test('browser startup failures never clear another session’s busy status', asy
   }
 })
 
-test('warm-up duration never exceeds the remaining daily budget', () => {
-  const config = { warmup_min_minutes: 30, warmup_max_minutes: 60 }
-  const today = '2026-01-01'
-
-  const fresh = planWarmupRun(
-    { date: today, todayMinutes: 40, minutesUsedToday: 35 },
-    config,
-    today,
-  )
-  assert.equal(fresh.todayMinutes, 40)
-  assert.ok(fresh.minutes <= 5, `expected capped minutes, got ${fresh.minutes}`)
-  assert.ok(fresh.minutes >= 0)
-
-  const exhausted = planWarmupRun(
-    { date: today, todayMinutes: 40, minutesUsedToday: 40 },
-    config,
-    today,
-  )
-  assert.equal(exhausted.minutes, 0)
-
-  const noState = planWarmupRun(null, config, '2026-01-02')
-  assert.ok(noState.todayMinutes >= 30 && noState.todayMinutes <= 60)
-  assert.ok(noState.minutes <= noState.todayMinutes)
-})
-
 test('running automations pick up newly added profiles on each poll', async () => {
   setProfilePollIntervalMs(10)
   const originalFetch = globalThis.fetch
-  const profiles = [{ name: 'old', id: 'old', listIds: ['chosen'], using: false }]
+  const profiles = [{ name: 'old', id: 'old', listIds: ['chosen'], using: false, proxy: 'proxy-a:8080' }]
   let watchChecks = 0
   globalThis.fetch = (async (url: RequestInfo | URL) => {
     const u = String(url)
@@ -210,7 +228,10 @@ test('running automations pick up newly added profiles on each poll', async () =
       watchChecks++
       if (watchChecks <= 2) {
         if (watchChecks === 1) {
-          profiles.push({ name: 'new', id: 'new', listIds: ['chosen'], using: false })
+          profiles.push(
+            { name: 'same', id: 'same', listIds: ['chosen'], using: false, proxy: 'proxy-a:8080' },
+            { name: 'different', id: 'different', listIds: ['chosen'], using: false, proxy: 'proxy-b:8080' },
+          )
         }
         return Response.json({ status: 'running', isActive: true })
       }
@@ -236,10 +257,29 @@ test('running automations pick up newly added profiles on each poll', async () =
         return { page: {}, close: async () => {} } as unknown as BrowserSession
       },
     )
-    assert.deepEqual(opened, ['old', 'new'])
+    assert.deepEqual(opened, ['old', 'different', 'same'])
     assert.equal(watchChecks, 3)
   } finally {
     globalThis.fetch = originalFetch
     setProfilePollIntervalMs(5 * 60 * 1000)
   }
+})
+
+test('queue interleaves proxies after excluding completed checkpoints', async () => {
+  const originalFetch = globalThis.fetch
+  const profiles = ['a1', 'a2', 'b1', 'b2', 'b3'].map(id => ({
+    id, name: id, listIds: ['chosen'], using: false, proxy: `proxy-${id[0]}:8080`,
+  }))
+  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles') ? profiles : {})) as typeof fetch
+  const opened: string[] = []
+  try {
+    await runAutomation({ automation: {
+      nodes: [{ id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } }],
+      nodeStates: { __profileRuns: { b2: { completed: true }, b3: { completed: true } } },
+    } }, async name => {
+      opened.push(name)
+      return { page: {}, close: async () => {} } as unknown as BrowserSession
+    })
+    assert.deepEqual(opened, ['a1', 'b1', 'a2'])
+  } finally { globalThis.fetch = originalFetch }
 })

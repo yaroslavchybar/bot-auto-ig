@@ -314,6 +314,8 @@ export type DbWarmupState = {
     runsToday: number
     todayMinutes: number
     minutesUsedToday: number
+    reservedMinutes: number
+    nextRunAt?: number
     lastAutomationId?: string
     lastRunAt?: number
 }
@@ -325,28 +327,24 @@ export async function warmupGetByProfile(profileId: string): Promise<DbWarmupSta
     return convexFetch<DbWarmupState | null>(`/api/warmup/by-profile?profileId=${encodeURIComponent(cleaned)}`)
 }
 
-/** Record one warm-up run. Never throws — tracking must not break runs. */
-export async function warmupRecordRun(input: {
+export async function warmupBeginRun(input: {
     profileId: string
     automationId: string
-    minutes: number
-    todayMinutes: number
     runId: string
-}): Promise<DbWarmupState | null> {
-    try {
-        return await convexFetch<DbWarmupState | null>('/api/warmup/record', {
-            method: 'POST',
-            body: {
-                profileId: input.profileId,
-                automationId: input.automationId,
-                minutes: input.minutes,
-                todayMinutes: input.todayMinutes,
-                runId: input.runId,
-            },
-        })
-    } catch {
-        return null
-    }
+    minMinutes: number
+    maxMinutes: number
+    sessionMinMinutes: number
+    sessionMaxMinutes: number
+    restMinMinutes: number
+    restMaxMinutes: number
+}): Promise<{ date: string; minutes: number }> {
+    return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
+}
+
+export async function warmupFinishRun(input: {
+    profileId: string; runId: string; date: string; minutes: number
+}): Promise<void> {
+    await convexFetch('/api/warmup/finish', { method: 'POST', body: input })
 }
 
 export async function warmupList(): Promise<DbWarmupState[]> {

@@ -40,9 +40,7 @@ export default defineSchema({
 		updatedAt: v.number(),
 	}).index("by_kind", ["kind"]),
 
-	// Per-profile warm-up progress. The daily cron bumps `day` when the
-	// profile ran warm-up, resets `runsToday`, and assigns `todayMinutes`
-	// from the warm-up node's plan. The worker records each run here.
+	// Per-profile daily budget, initialized on the first warm-up attempt each UTC day.
 	warmupStates: defineTable({
 		profileId: v.id("profiles"),
 		// Warm-up day counter. Starts at 1, bumped once per day the profile runs warm-up.
@@ -53,11 +51,11 @@ export default defineSchema({
 		runsToday: v.number(),
 		// Minutes assigned for today's warm-up runs.
 		todayMinutes: v.number(),
-		// Minutes already consumed by today's runs. Each run is capped so
-		// this never exceeds todayMinutes. Optional so rows written before
-		// the cap existed still validate; code treats missing usage
-		// conservatively (see recordRunInternal).
+		// Elapsed session time, capped at the assigned daily budget.
 		minutesUsedToday: v.optional(v.number()),
+		// An interrupted worker keeps its reservation until the next UTC day.
+		activeRun: v.optional(v.object({ id: v.string(), minutes: v.number(), restMinutes: v.number() })),
+		nextRunAt: v.optional(v.number()),
 		lastAutomationId: v.optional(v.string()),
 		lastRunAt: v.optional(v.number()),
 		// Recent run ids for deduping retried record calls. Bounded so the
