@@ -1,9 +1,10 @@
 import type { Locator, Page } from 'playwright-core'
+import { BrowseSession } from './session.js'
+import { viewVideo } from './viewing.js'
 import {
   chance,
   numeric,
   random,
-  sleep,
   type ActionLogger,
   type StopCheck,
 } from './shared.js'
@@ -15,27 +16,29 @@ function reelId(url: string): string {
 }
 
 // Sidebar Reels button. UI only, no direct navigation.
-export async function openReels(page: Page, log: ActionLogger): Promise<boolean> {
+export async function openReels(page: Page, log: ActionLogger, session = new BrowseSession()): Promise<boolean> {
+  const sleep = session.wait
+  session.check()
   try {
     const btn = page.locator('a:has(svg[aria-label="Reels"])').first()
     if (!(await btn.isVisible().catch(() => false))) return false
-    await btn.click({ timeout: 5_000 }).catch(() => undefined)
+    await btn.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
     await sleep(random(1500, 2500))
     // Lands on /reels/ first; the first reel auto-opens right after.
     await page
-      .waitForURL(/\/reels\//, { timeout: 12_000 })
+      .waitForURL(/\/reels\//, { timeout: session.timeout(12_000) })
       .catch(() => undefined)
     if (!/\/reels\//.test(page.url())) {
       // Sidebar shifts while the feed loads; one retry clicks the right spot.
-      await btn.click({ timeout: 5_000 }).catch(() => undefined)
+      await btn.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
       await page
-        .waitForURL(/\/reels\//, { timeout: 12_000 })
+        .waitForURL(/\/reels\//, { timeout: session.timeout(12_000) })
         .catch(() => undefined)
     }
     await page
       .locator('video')
       .first()
-      .waitFor({ state: 'visible', timeout: 15_000 })
+      .waitFor({ state: 'visible', timeout: session.timeout(15_000) })
       .catch(() => undefined)
     await sleep(random(1500, 2500))
     if (!/\/reels\//.test(page.url())) return false
@@ -95,17 +98,9 @@ async function inViewVideo(page: Page): Promise<Locator | null> {
 
 // Like button on the rail of the reel in view (a preloaded neighbor has
 // its own copy below the fold). Null when already liked or not visible.
-async function inViewLike(page: Page): Promise<Locator | null> {
+async function inViewLike(page: Page, label: 'Like' | 'Unlike' = 'Like'): Promise<Locator | null> {
   try {
-    if (
-      await page
-        .locator('svg[aria-label="Unlike"]')
-        .first()
-        .isVisible()
-        .catch(() => false)
-    )
-      return null
-    const btns = page.locator('div[role="button"]:has(svg[aria-label="Like"])')
+    const btns = page.locator(`div[role="button"]:has(svg[aria-label="${label}"])`)
     const n = await btns.count().catch(() => 0)
     const vp = page.viewportSize() ?? { width: 1280, height: 800 }
     for (let i = 0; i < n; i++) {
@@ -146,7 +141,9 @@ async function centeredCount(page: Page): Promise<number> {
 
 // Wait until the viewer seats on exactly one reel (batch loads and snap
 // animation leave it floating between reels for a bit).
-async function waitForSettle(page: Page): Promise<void> {
+async function waitForSettle(page: Page, session: BrowseSession): Promise<void> {
+  const sleep = session.wait
+  session.check()
   for (let i = 0; i < 10; i++) {
     if ((await centeredCount(page)) === 1) return
     await sleep(500)
@@ -156,10 +153,12 @@ async function waitForSettle(page: Page): Promise<void> {
 // Next reel the human way: cursor over the video, one short wheel tick,
 // then wait. A continuous eased glide carries momentum through the whole
 // loaded batch, so never smoothScroll here — tick, check, repeat.
-async function advanceReel(page: Page): Promise<boolean> {
+async function advanceReel(page: Page, session: BrowseSession): Promise<boolean> {
+  const sleep = session.wait
+  session.check()
   const before = reelId(page.url())
   try {
-    const box = await page.locator('video').first().boundingBox().catch(() => null)
+    const box = await (await inViewVideo(page))?.boundingBox().catch(() => null)
     if (box) {
       await page.mouse.move(
         box.x + box.width * random(0.4, 0.6),
@@ -172,7 +171,7 @@ async function advanceReel(page: Page): Promise<boolean> {
       await sleep(random(1000, 1400))
       const now = reelId(page.url())
       if (now && now !== before) {
-        await waitForSettle(page)
+        await waitForSettle(page, session)
         return true
       }
     }
@@ -181,7 +180,7 @@ async function advanceReel(page: Page): Promise<boolean> {
       .catch(() => undefined)
     await sleep(random(2000, 3000))
     const now = reelId(page.url())
-    if (now && now !== before) await waitForSettle(page)
+    if (now && now !== before) await waitForSettle(page, session)
     return !!now && now !== before
   } catch {
     return false
@@ -197,7 +196,10 @@ export async function watchReels(
   log: ActionLogger,
   shouldStop: StopCheck,
   end: number,
+  session = new BrowseSession(end, shouldStop),
 ): Promise<void> {
+  const sleep = session.wait
+  session.check()
   const viewMin = Math.max(0, numeric(config.post_view_min_seconds, 2))
   const viewMax = Math.max(viewMin, numeric(config.post_view_max_seconds, 5))
   const seen = new Set<string>()
@@ -208,7 +210,7 @@ export async function watchReels(
     if (id) {
       if (seen.has(id)) {
         // Same reel stuck (advance failed): nudge once, then bail.
-        if (!(await advanceReel(page).catch(() => false))) break
+        if (!(await advanceReel(page, session).catch(() => false))) break
         continue
       }
       seen.add(id)
@@ -218,7 +220,7 @@ export async function watchReels(
       log('Skipped reel ad')
       await sleep(random(400, 900))
       if (Date.now() >= end || shouldStop()) break
-      if (!(await advanceReel(page).catch(() => false))) {
+      if (!(await advanceReel(page, session).catch(() => false))) {
         log('Reels stuck, heading back')
         break
       }
@@ -229,7 +231,7 @@ export async function watchReels(
     if (chance(config.reels_skip_chance ?? 25)) {
       await sleep(random(300, 800))
       if (Date.now() >= end || shouldStop()) break
-      if (!(await advanceReel(page).catch(() => false))) {
+      if (!(await advanceReel(page, session).catch(() => false))) {
         log('Reels stuck, heading back')
         break
       }
@@ -237,6 +239,7 @@ export async function watchReels(
       continue
     }
     const video = await inViewVideo(page)
+    if (!video) break
     // Clip length drives the watch time, same as feed videos.
     let clip = 0
     try {
@@ -251,21 +254,20 @@ export async function watchReels(
       (clip > 0
         ? Math.min(Math.max(viewMin, clip * random(0.5, 1)), 20)
         : random(Math.max(viewMin, 5), Math.max(viewMax, 12))) * 1000
-    if (chance(config.like_chance)) {
+    const wantsLike = chance(config.like_chance)
+    const viewed = await viewVideo(video, dwell, session)
+    if (viewed && wantsLike) {
       const like = await inViewLike(page)
       if (like) {
-        await like.click({ timeout: 5_000 }).catch(() => undefined)
-        await sleep(random(400, 900))
+        await like.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
+        await sleep(400)
+        if (await inViewLike(page, 'Unlike')) log('Liked reel')
       }
     }
-    // Stare at the reel; slice the wait so stop/end checks stay responsive.
-    const sliceEnd = Date.now() + dwell
-    while (Date.now() < sliceEnd && Date.now() < end && !shouldStop())
-      await sleep(random(400, 1000))
     if (Date.now() >= end || shouldStop()) break
     watched++
     if (watched >= target) break
-    if (!(await advanceReel(page).catch(() => false))) {
+    if (!(await advanceReel(page, session).catch(() => false))) {
       log('Reels stuck, heading back')
       break
     }
