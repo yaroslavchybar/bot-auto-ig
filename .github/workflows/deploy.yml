@@ -214,4 +214,17 @@ jobs:
           sleep 5
           # Health through the frontend proxy; proves nginx + server are up.
           curl -sf http://127.0.0.1:3101/api/health > /dev/null
+          # Auto-prune old images: keep 2 newest server + 2 newest frontend.
+          KEEP_IDS=$( ( (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' server-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' frontend-' || true) | sort -r | head -n 2 ) | awk '{print $5}' | sort -u)
+          if [ -z "$KEEP_IDS" ]; then
+            echo "prune skipped: empty keep list"
+          else
+            for id in $(docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.ID}}' | sort -u); do
+              case " $KEEP_IDS " in
+                *" $id "*) echo "keep $id" ;;
+                *) docker rmi "$id" || true ;;
+              esac
+            done
+            docker image prune -f || true
+          fi
           EOF
