@@ -4,6 +4,13 @@
  * normalized result shown in the form always makes this explicit. */
 const DEFAULT_COOKIE_DOMAIN = '.instagram.com'
 
+/** Omit unchanged cookies so saving other fields preserves the live session. */
+export function getCookieUpdate(next: string | undefined, previous: string | undefined): string | undefined {
+  const normalizedNext = normalizeCookiesJsonForForm(next ?? '').normalized
+  const normalizedPrevious = normalizeCookiesJsonForForm(previous ?? '').normalized
+  return normalizedNext === normalizedPrevious ? undefined : next?.trim() || ''
+}
+
 type CookieShape = {
   name: string
   value: string
@@ -188,9 +195,7 @@ export function normalizeCookiesJsonForForm(raw: string): {
     const normalized = list.map((cookie, index) =>
       normalizeCookie(cookie, index),
     )
-    if (normalized.length === 0) {
-      return { error: 'Cookies JSON must include at least one cookie' }
-    }
+    if (normalized.length === 0) return { normalized: '' }
     return { normalized: JSON.stringify(normalized, null, 2) }
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error) }

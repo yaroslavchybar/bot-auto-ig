@@ -36,7 +36,7 @@ test('missing and pending profiles cannot recreate folders and always release th
   `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
 })
 
-for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure']) {
+for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies']) {
 test(`browser cleanup: ${scenario}`, () => {
   // Isolate module mocks and process signal handlers from other tests.
   const output = execFileSync('bun', ['--eval', `
@@ -55,6 +55,9 @@ test(`browser cleanup: ${scenario}`, () => {
     const events = []
     const cookies = [{ name: 'sessionid', value: 'test-session', domain: '.instagram.com', path: '/' }]
     const context = new EventEmitter()
+    let jar = [{ name: 'old-session', value: 'stale', domain: '.instagram.com', path: '/' }]
+    context.clearCookies = async () => { jar = [] }
+    context.addCookies = async values => { jar.push(...values) }
     let loseBudget
     let closed = false
     let launchOptions
@@ -74,7 +77,7 @@ test(`browser cleanup: ${scenario}`, () => {
       await new Promise(resolve => setTimeout(resolve, 10))
       assert.equal(closed, false, 'browser must stay open while reading cookies')
       events.push('read')
-      return cookies
+      return scenario === 'clear cookies' || scenario === 'replace cookies' ? jar : cookies
     }
     context.close = async () => {
       closed = true
@@ -96,13 +99,13 @@ test(`browser cleanup: ${scenario}`, () => {
     } }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
-      profilesGetByName: async () => ({ name: 'test' }),
+      profilesGetByName: async () => ({ name: 'test', cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
       profilesUpdateByName: async (name, update) => {
         if (scenario === 'save failure') throw new Error('Database unavailable')
         await new Promise(resolve => setTimeout(resolve, 10))
         assert.equal(closed, false, 'browser must stay open until persistence completes')
         assert.equal(name, 'test')
-        assert.deepEqual(JSON.parse(update.cookiesJson), cookies)
+        assert.deepEqual(JSON.parse(update.cookiesJson), scenario === 'clear cookies' ? [] : cookies)
         events.push('saved')
       },
     }))
@@ -129,6 +132,8 @@ test(`browser cleanup: ${scenario}`, () => {
         assert.deepEqual(events, ['close', 'display', 'slot'])
       } else {
         const session = await openBrowserSession('test')
+        if (scenario === 'clear cookies') assert.deepEqual(jar, [], 'cleared cookies must not survive on disk')
+        if (scenario === 'replace cookies') assert.deepEqual(jar, cookies, 'imports must replace rather than merge old cookies')
         // Cloak stealth wiring: persistent profile, human behavior, seed identity.
         assert.ok(String(launchOptions.userDataDir).endsWith('test'))
         assert.equal(launchOptions.humanize, true)

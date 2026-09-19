@@ -338,6 +338,8 @@ export async function openBrowserSession(
     shutdownSignal.addEventListener('abort', requestClose, { once: true })
     checkStartup()
     const cookies = storedCookies(profile)
+    // The saved jar replaces the persistent browser jar, including removals.
+    await context.clearCookies()
     if (cookies.length) await context.addCookies(cookies)
     const page = context.pages()[0] || (await context.newPage())
     if (page.url() === 'about:blank') {

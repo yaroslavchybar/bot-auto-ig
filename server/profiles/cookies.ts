@@ -64,7 +64,6 @@ function normalizeCookie(cookie: unknown, index: number): NormalizedCookie {
   const name = String(cookie.name ?? '').trim()
   const value = String(cookie.value ?? '').trim()
   if (!name) throw new Error(`Cookie at index ${index} is missing name`)
-  if (!value) throw new Error(`Cookie at index ${index} is missing value`)
 
   const url = String(cookie.url ?? '').trim()
   const domain = String(cookie.domain ?? '').trim()
@@ -116,8 +115,5 @@ export function normalizeProfileCookiesJson(input: unknown): string | undefined 
 
   const candidates = extractCookieList(parsed)
   const normalized = candidates.map((cookie, index) => normalizeCookie(cookie, index))
-  if (normalized.length === 0) {
-    throw new Error('Cookies JSON must include at least one cookie')
-  }
   return JSON.stringify(normalized)
 }

@@ -83,3 +83,15 @@ test('updates profile cookies by id and clears them when empty string is provide
   })
   expect(cleared?.cookiesJson).toBeUndefined()
 })
+
+test('editing other fields preserves cookies saved during browser shutdown', async () => {
+  const t = createConvexTest()
+  const profile = await seedProfile(t, { name: 'Live profile', cookiesJson: 'old' })
+  await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: profile!.name, name: profile!.name, cookiesJson: 'fresh',
+  })
+  const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: profile!.name, name: 'Renamed profile', proxy: '',
+  })
+  expect(updated?.cookiesJson).toBe('fresh')
+})

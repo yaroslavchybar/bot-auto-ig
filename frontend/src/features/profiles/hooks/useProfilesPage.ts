@@ -7,6 +7,7 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useProfiles } from './useProfiles'
 import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
+import { getCookieUpdate } from '../utils/cookieJson'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 /* ── Dialog state management ── */
@@ -114,7 +115,9 @@ function useProfileSave(
         proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
         proxyType: typeof data.proxyType === 'string' ? data.proxyType.trim() : '',
         fingerprintOs: data.fingerprintOs || undefined,
-        cookiesJson: typeof data.cookiesJson === 'string' ? data.cookiesJson.trim() : '',
+        cookiesJson: dialogState.isCreateOpen
+          ? data.cookiesJson?.trim()
+          : getCookieUpdate(data.cookiesJson, dialogState.editProfile?.cookiesJson),
       }
       if (dialogState.isCreateOpen) {
         await createProfile(payload)
