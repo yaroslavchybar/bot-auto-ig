@@ -76,7 +76,7 @@ export function normalizeAutomationTerminalStatus(
 ): 'completed' | 'failed' | 'cancelled' {
   const normalized = String(value ?? '').trim().toLowerCase()
   if (normalized === 'failed') return 'failed'
-  if (normalized === 'cancelled') return 'cancelled'
+  if (normalized === 'cancelled' || normalized === 'stopped') return 'cancelled'
   return 'completed'
 }
 

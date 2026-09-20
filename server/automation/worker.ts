@@ -66,7 +66,8 @@ export function setProfilePollIntervalMs(ms: number): void {
 async function shouldKeepWatching(automationId: string): Promise<boolean> {
   try {
     const row = await automationsGetById(automationId)
-    return !!row && row.status === 'running' && row.isActive !== false
+    // The parent's session_started update may still be in flight on the first check.
+    return !!row && (row.status === 'running' || row.status === 'pending') && row.isActive !== false
   } catch {
     return false
   }
@@ -205,7 +206,7 @@ export async function runAutomation(
 
   await event('session_started', { automationId: automationId })
   if (!profiles.length)
-    throw new Error('No available logged-in profile in the selected lists')
+    log('No available profiles in the selected lists; waiting for profiles')
 
   // Free Cloak tier allows one browser at a time.
   const parallel = 1
@@ -305,6 +306,10 @@ export async function runAutomation(
                 number(config.stories_max, 3),
                 log,
                 shouldStop,
+                {
+                  minSeconds: number(config.stories_min_view_seconds, 2),
+                  maxSeconds: number(config.stories_max_view_seconds, 5),
+                },
               )
             } else if (activity === 'close_browser') {
               await controls.close()
@@ -475,7 +480,7 @@ if (
     const message = error instanceof Error ? error.message : String(error)
     log(message, 'error')
     await event('session_ended', {
-      status: shouldStop() ? 'stopped' : 'failed',
+      status: shouldStop() ? 'cancelled' : 'failed',
       error: message,
     }).catch(() => undefined)
     process.exitCode = shouldStop() ? 0 : 1

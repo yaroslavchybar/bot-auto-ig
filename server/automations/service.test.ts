@@ -5,8 +5,42 @@ import type { ChildProcess } from '../shared/ProcessService.js'
 import { runAutomation, wireProcessLifecycle, automationWorkers } from './service.js'
 import { clients } from '../shared/store.js'
 import { WebSocket } from 'ws'
+import { assertValidStatusTransition, type AutomationStatus } from '../../convex/automations/helpers.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
+
+test('cooperative stop stays cancelled through the terminal event and process close', async () => {
+  const originalFetch = globalThis.fetch
+  const stdout = new EventEmitter()
+  const proc = Object.assign(new EventEmitter(), {
+    stdout,
+    __stopRequested: true,
+    stdin: { write: (_value: string, callback?: () => void) => callback?.(), on: () => ({}) },
+  }) as unknown as ChildProcess
+  const writes: AutomationStatus[] = []
+  let status: AutomationStatus = 'running'
+  globalThis.fetch = (async (url, options) => {
+    if (String(url).endsWith('/update-status')) {
+      const next = JSON.parse(String(options?.body)).status as AutomationStatus
+      assertValidStatusTransition(status, next)
+      status = next
+      writes.push(next)
+    }
+    return Response.json({ name: 'Stop test', nodes: [], edges: [] })
+  }) as typeof fetch
+  try {
+    await runAutomation({ automationId: 'stop-test' }, () => proc)
+    stdout.emit('data', Buffer.from('__EVENT__{"type":"session_ended","status":"stopped"}__EVENT__\n'))
+    await (proc as any).__statusUpdates
+    proc.emit('close', 0)
+    await tick()
+    assert.deepEqual(writes, ['cancelled', 'cancelled'])
+    assert.equal(automationWorkers.has('stop-test'), false)
+  } finally {
+    globalThis.fetch = originalFetch
+    automationWorkers.delete('stop-test')
+  }
+})
 
 test('checkpoint bursts coalesce, stay off websocket, and survive a state-less terminal event', async () => {
   const originalFetch = globalThis.fetch

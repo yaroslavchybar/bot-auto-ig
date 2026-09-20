@@ -3,6 +3,84 @@ import assert from 'node:assert/strict'
 import type { BrowserSession } from '../browser/cloak.js'
 import { runAutomation, setProfilePollIntervalMs } from './worker.js'
 
+for (const initialState of ['empty', 'busy', 'cooldown'] as const) {
+  test(`initially ${initialState} profiles are picked up when available`, async () => {
+    const originalFetch = globalThis.fetch
+    setProfilePollIntervalMs(1)
+    let reads = 0
+    let checks = 0
+    const opened: string[] = []
+    globalThis.fetch = (async url => {
+      const u = String(url)
+      if (u.endsWith('/api/profiles')) {
+        const first = ++reads === 1
+        return Response.json(first && initialState === 'empty' ? [] : [{
+          id: 'chosen', name: 'chosen', listIds: ['chosen'],
+          using: first && initialState === 'busy',
+          lastOpenedAt: first && initialState === 'cooldown' ? Date.now() : 0,
+        }])
+      }
+      if (u.includes('/api/automations/by-id')) {
+        return Response.json({ status: ++checks === 1 ? 'pending' : opened.length ? 'completed' : 'running', isActive: true })
+      }
+      return Response.json({})
+    }) as typeof fetch
+    try {
+      await runAutomation({ automation: { nodes: [{
+        id: 'start_node', type: 'start', data: { config: {
+          sourceLists: ['chosen'], profileReopenCooldownEnabled: true, profileReopenCooldownMinutes: 30,
+        } },
+      }] } }, async name => {
+        opened.push(name)
+        return { page: {}, close: async () => {} } as unknown as BrowserSession
+      })
+      assert.deepEqual(opened, ['chosen'])
+      assert.equal(reads, 2)
+    } finally {
+      globalThis.fetch = originalFetch
+      setProfilePollIntervalMs(5 * 60 * 1000)
+    }
+  })
+}
+
+test('standalone stories use configured viewing times', async () => {
+  const originalFetch = globalThis.fetch
+  const originalTimeout = globalThis.setTimeout
+  const delays: number[] = []
+  globalThis.setTimeout = ((callback: (...args: any[]) => void, ms?: number, ...args: any[]) => {
+    delays.push(ms ?? 0)
+    return originalTimeout(callback, 0, ...args)
+  }) as typeof setTimeout
+  globalThis.fetch = (async url => Response.json(String(url).endsWith('/api/profiles')
+    ? [{ id: 'chosen', name: 'chosen', listIds: ['chosen'], using: false }] : {})) as typeof fetch
+  try {
+    await runAutomation({ automation: {
+      nodes: [
+        { id: 'start_node', type: 'start', data: { config: { sourceLists: ['chosen'] } } },
+        { id: 'stories', data: { activityId: 'watch_stories', config: {
+          stories_max: 1, stories_min_view_seconds: 12, stories_max_view_seconds: 15,
+        } } },
+      ],
+      edges: [{ source: 'start_node', target: 'stories', sourceHandle: 'next' }],
+    } }, async () => ({
+      page: {
+        goto: async () => {},
+        keyboard: { press: async () => {} },
+        locator: () => ({
+          first: () => ({ isVisible: async () => true, click: async () => {} }),
+          count: async () => 0,
+        }),
+      },
+      close: async () => {},
+    } as unknown as BrowserSession))
+    assert.equal(delays.length, 1)
+    assert.ok(delays[0] >= 12_000 && delays[0] <= 15_000, `Unexpected viewing delay: ${delays[0]}`)
+  } finally {
+    globalThis.fetch = originalFetch
+    globalThis.setTimeout = originalTimeout
+  }
+})
+
 test('retry skips completed profiles without launching or changing their status', async () => {
   const originalFetch = globalThis.fetch
   let launches = 0
