@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { normalizeCookiesJsonForForm } from '../utils/cookieJson'
 import { normalizeProxy } from '../../../../../server/shared/proxy'
 import { stripScheme } from '../../proxies/utils/maskProxy'
+import { formatProxyForInput } from '../../proxies/utils/formatProxyForInput'
 
 interface ProfileFormProps {
   mode: 'create' | 'edit'
@@ -230,7 +231,7 @@ function SavedProxyPicker({
           if (!found) return
           setDraft((prev) => ({
             ...prev,
-            proxy: found.proxy,
+            proxy: formatProxyForInput(found.proxy, found.proxyType),
             proxyType: found.proxyType,
           }))
         }}
@@ -316,6 +317,16 @@ function ProxyInputRow({
             }
             disabled={saving}
             placeholder="host:port:user:pass"
+            onBlur={() => {
+              try {
+                const normalized = normalizeProxy(draft.proxy, draft.proxyType)
+                setDraft((prev) => ({
+                  ...prev,
+                  proxy: formatProxyForInput(normalized.proxy, normalized.proxyType),
+                  proxyType: normalized.proxyType || prev.proxyType,
+                }))
+              } catch { /* Keep invalid input for submit validation. */ }
+            }}
             className="brand-focus bg-field border-line h-9 rounded-l-none font-mono text-sm text-ink focus-visible:ring-1 focus-visible:ring-offset-0"
           />
         </div>
@@ -443,6 +454,7 @@ export function ProfileForm({
     proxyType: 'http',
     fingerprintOs: 'windows',
     ...initialData,
+    proxy: formatProxyForInput(initialData?.proxy, initialData?.proxyType),
   }))
 
   const [connection, setConnection] = useState<'direct' | 'proxy'>(

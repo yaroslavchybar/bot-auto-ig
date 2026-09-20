@@ -1,3 +1,4 @@
+import { maskProxyForDisplay } from '../../proxies/utils/maskProxy'
 import type { Profile } from '../types'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -102,7 +103,7 @@ function ProfileNetworkSection({ profile }: { profile: Profile }) {
       <div className="border-line-soft ml-1.5 grid gap-4 border-l pl-2">
         <DetailRow
           label="Proxy Host"
-          value={profile.proxy || 'Direct Connection'}
+          value={maskProxyForDisplay(profile.proxy ?? '') || 'Direct Connection'}
           mono={!!profile.proxy}
           className={!profile.proxy ? 'text-subtle-copy/50' : 'text-ink'}
         />

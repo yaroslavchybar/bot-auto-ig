@@ -1,3 +1,4 @@
+import { maskProxyForDisplay } from '../../proxies/utils/maskProxy'
 import {
   Table,
   TableBody,
@@ -223,7 +224,7 @@ function MobileCardTags({
       <div className="flex items-start gap-2">
         <Globe className="text-subtle-copy mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span className="text-copy truncate">
-          {profile.proxy ? profile.proxy : 'Direct connection'}
+          {profile.proxy ? maskProxyForDisplay(profile.proxy ?? '') : 'Direct connection'}
         </span>
       </div>
     </div>
@@ -407,10 +408,10 @@ function DesktopProxyCell({ profile }: { profile: Profile }) {
   return (
     <div
       className="text-muted-copy flex max-w-[200px] items-center gap-1.5 text-xs"
-      title={profile.proxy}
+      title={maskProxyForDisplay(profile.proxy ?? '')}
     >
       <Globe className="h-3 w-3 shrink-0" />
-      <span className="truncate font-mono">{profile.proxy}</span>
+      <span className="truncate font-mono">{maskProxyForDisplay(profile.proxy ?? '')}</span>
     </div>
   )
 }

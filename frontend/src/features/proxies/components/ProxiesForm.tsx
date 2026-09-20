@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils'
 import type { ProxyFormValues, ProxyItem } from '../types'
 import { normalizeProxy } from '../../../../../server/shared/proxy'
 import { stripScheme } from '../utils/maskProxy'
+import { formatProxyForInput } from '../utils/formatProxyForInput'
 
 interface ProxiesFormProps {
   mode: 'create' | 'edit'
@@ -35,7 +36,7 @@ export function ProxiesForm({
 }: ProxiesFormProps) {
   const [name, setName] = useState(initialData?.name ?? '')
   const [proxyType, setProxyType] = useState(initialData?.proxyType ?? 'http')
-  const [proxy, setProxy] = useState(initialData?.proxy ?? '')
+  const [proxy, setProxy] = useState(() => formatProxyForInput(initialData?.proxy, initialData?.proxyType))
   const [maxProfiles, setMaxProfiles] = useState(
     initialData && initialData.maxProfiles >= 1 ? String(initialData.maxProfiles) : '3',
   )
@@ -138,6 +139,13 @@ export function ProxiesForm({
             }}
             disabled={saving}
             placeholder="host:port:user:pass"
+            onBlur={() => {
+              try {
+                const normalized = normalizeProxy(proxy, proxyType)
+                setProxy(formatProxyForInput(normalized.proxy, normalized.proxyType))
+                if (normalized.proxyType) setProxyType(normalized.proxyType)
+              } catch { /* Keep invalid input for submit validation. */ }
+            }}
             className="brand-focus bg-field border-line h-10 font-mono text-sm text-ink"
           />
           <p className="text-subtle-copy ml-1 text-[10px]">
