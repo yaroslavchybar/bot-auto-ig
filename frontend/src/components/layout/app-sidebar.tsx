@@ -34,7 +34,6 @@ export const NAV_IDS = [
 export type NavId = (typeof NAV_IDS)[number]
 
 export const NAV_ITEMS = [
-  { title: 'Leads', id: 'leads', to: '/leads', icon: Users, breadcrumb: 'Leads' },
   {
     title: 'Profiles Manager',
     id: 'profiles',
@@ -56,6 +55,7 @@ export const NAV_ITEMS = [
     icon: List,
     breadcrumb: 'Lists Manager',
   },
+  { title: 'Leads', id: 'leads', to: '/leads', icon: Users, breadcrumb: 'Leads' },
   {
     title: 'Proxies',
     id: 'proxies',

@@ -176,11 +176,12 @@ function ProfileMobileCard({
           <h3 className="text-ink truncate text-base font-semibold">
             {profile.name}
           </h3>
-          <p className="text-subtle-copy mt-1 truncate font-mono text-[11px]">
-            {profile.id}
-          </p>
         </div>
-        <div onClick={(event) => event.stopPropagation()}>
+        <div
+          className="flex items-center gap-2"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <IgStateToggles profile={profile} />
           <ProfileActionsMenu
             profile={profile}
             onDetails={onDetails}
@@ -193,7 +194,6 @@ function ProfileMobileCard({
       </div>
 
       <MobileCardTags profile={profile} osLabel={osLabel} />
-      <IgStateToggles profile={profile} />
 
       <MobileCardFooter
         profile={profile}
@@ -314,10 +314,6 @@ function ProfileDesktopRow({
       <TableCell className="pl-4 font-medium">
         <div className="flex flex-col gap-0.5">
           <span className="text-ink truncate">{profile.name}</span>
-          <IgStateToggles profile={profile} />
-          <span className="text-subtle-copy max-w-[200px] truncate font-mono text-[10px]">
-            {profile.id}
-          </span>
         </div>
       </TableCell>
       <TableCell>
@@ -330,7 +326,9 @@ function ProfileDesktopRow({
         <DesktopProxyCell profile={profile} />
       </TableCell>
       <TableCell className="pr-4 text-right">
-        <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="flex items-center justify-end gap-2">
+          <IgStateToggles profile={profile} />
+          <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <Button
             variant="ghost"
             size="icon"
@@ -363,6 +361,7 @@ function ProfileDesktopRow({
               onDelete={onDelete}
               onToggleStatus={onToggleStatus}
             />
+          </div>
           </div>
         </div>
       </TableCell>

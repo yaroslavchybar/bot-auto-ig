@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
+import { CircleAlert } from 'lucide-react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
@@ -11,17 +12,30 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
 } from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { GroupedInputs } from '../activity-ui/GroupedInputs'
 import { browseFeed } from '../activities/browsing/browse-feed'
+import { cn } from '@/lib/utils'
 
 const tabs = ['General', 'Warm-up & activity', 'Outreach', 'Profiles'] as const
-const fieldClass = 'bg-field border-line w-full rounded-md border p-2 text-sm'
 
 export function RoutinePopup({
   automation,
@@ -43,7 +57,6 @@ export function RoutinePopup({
   const leadLists = useQuery(api.leads.lists, {})
   const create = useMutation(api.automations.mutations.create)
   const update = useMutation(api.automations.mutations.update)
-  const setActive = useMutation(api.automations.mutations.setActive)
   const locked =
     automation?.isActive === true ||
     automation?.status === 'running' ||
@@ -58,16 +71,18 @@ export function RoutinePopup({
     min: number,
     max: number,
   ) => (
-    <label className="grid gap-1 text-sm">
-      {label}
+    <div className="grid gap-1.5">
+      <Label htmlFor={`routine-${key}`}>{label}</Label>
       <Input
+        id={`routine-${key}`}
         type="number"
         value={policy[key]}
         min={min}
         max={max}
         onChange={(e) => change(key, Number(e.target.value))}
+        className="bg-field border-line"
       />
-    </label>
+    </div>
   )
   async function save() {
     setSaving(true)
@@ -99,69 +114,56 @@ export function RoutinePopup({
         if (!open && !saving) onClose()
       }}
     >
-      <DialogContent className="bg-panel text-ink flex max-h-[90vh] flex-col sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-4xl">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="page-title-gradient">
             {automation ? automation.name : 'New automation'}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-subtle-copy">
             One daily IG routine for every profile in the selected lists.
           </DialogDescription>
         </DialogHeader>
+
         <div
-          className="flex flex-wrap gap-2"
+          className="flex shrink-0 flex-wrap gap-2"
           role="tablist"
           aria-label="Automation settings"
         >
           {tabs.map((t) => (
-            <Button
+            <button
               key={t}
+              type="button"
               role="tab"
               aria-selected={t === tab}
-              variant={t === tab ? 'default' : 'outline'}
               onClick={() => setTab(t)}
+              className={cn(
+                'inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors',
+                t === tab
+                  ? 'border-line-strong bg-panel-selected text-ink'
+                  : 'border-line text-muted-copy hover:border-line-strong hover:text-ink',
+              )}
             >
               {t}
-            </Button>
+            </button>
           ))}
         </div>
-        {automation && (
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span>
-              {automation.isActive
-                ? 'Enabled — runs daily while the server is online'
-                : 'Disabled'}{' '}
-              · {automation.status ?? 'idle'}
-            </span>
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  await setActive({
-                    id: automation._id,
-                    isActive: !automation.isActive,
-                  })
-                } catch (e) {
-                  toast.error(String(e))
-                }
-              }}
-            >
-              {automation.isActive ? 'Disable' : 'Enable'}
-            </Button>
-          </div>
-        )}
+
         {locked && tab !== 'Profiles' && (
-          <p className="text-subtle-copy text-sm">
+          <div className="bg-status-info-soft border-status-info-border text-status-info flex shrink-0 items-start gap-2 rounded-xl border px-4 py-2.5 text-xs">
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             Disable and wait for the current session to stop before editing
             settings. Profiles and list membership can still be managed.
-          </p>
+          </div>
         )}
+
         <div className="min-h-0 flex-1 overflow-auto py-2">
           {tab === 'Profiles' ? (
             automation ? (
               <RoutineProfiles automationId={automation._id} />
             ) : (
-              <p>Save the automation to manage profile setup and progress.</p>
+              <p className="text-subtle-copy text-sm">
+                Save the automation to manage profile setup and progress.
+              </p>
             )
           ) : (
             <fieldset
@@ -170,45 +172,67 @@ export function RoutinePopup({
             >
               {tab === 'General' && (
                 <>
-                  <label className="grid gap-1 text-sm">
-                    Name
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="routine-name">Name</Label>
                     <Input
+                      id="routine-name"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
+                      placeholder="My automation"
+                      className="bg-field border-line"
                     />
-                  </label>
+                  </div>
                   <div className="space-y-2">
-                    <p className="text-sm font-medium">Sender profile lists</p>
+                    <Label>Sender profile lists</Label>
                     {lists === undefined ? (
-                      <p>Loading lists…</p>
+                      <p className="text-subtle-copy text-sm">Loading lists…</p>
                     ) : lists.length === 0 ? (
-                      <p>Create a profile list in Lists Manager first.</p>
+                      <p className="text-subtle-copy text-sm">
+                        Create a profile list in Lists Manager first.
+                      </p>
                     ) : (
-                      lists.map((list) => (
-                        <label key={list._id} className="flex gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={listIds.includes(list._id)}
-                            onChange={(e) =>
-                              setListIds((ids) =>
-                                e.target.checked
-                                  ? [...ids, list._id]
-                                  : ids.filter((id) => id !== list._id),
-                              )
-                            }
-                          />
-                          {list.name}
-                        </label>
-                      ))
+                      <div className="border-line-soft overflow-hidden rounded-xl border">
+                        {lists.map((list, i) => (
+                          <label
+                            key={list._id}
+                            className={cn(
+                              'bg-panel-subtle/40 flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-panel-subtle',
+                              i > 0 && 'border-line-soft border-t',
+                            )}
+                          >
+                            <Checkbox
+                              checked={listIds.includes(list._id)}
+                              onCheckedChange={(checked) =>
+                                setListIds((ids) =>
+                                  checked
+                                    ? [...ids, list._id]
+                                    : ids.filter((id) => id !== list._id),
+                                )
+                              }
+                              className="brand-checkbox"
+                            />
+                            <span className="text-copy">{list.name}</span>
+                          </label>
+                        ))}
+                      </div>
                     )}
                   </div>
-                  <label className="flex gap-2 text-sm">
-                    <input
-                      type="checkbox"
+                  <label className="bg-panel-subtle/40 border-line-soft flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3">
+                    <span>
+                      <span className="text-copy block text-sm font-medium">
+                        Run without a visible browser
+                      </span>
+                      <span className="text-subtle-copy mt-0.5 block text-xs">
+                        Headless sessions use fewer resources
+                      </span>
+                    </span>
+                    <Switch
                       checked={policy.headless}
-                      onChange={(e) => change('headless', e.target.checked)}
+                      onCheckedChange={(checked) =>
+                        change('headless', checked)
+                      }
+                      className="brand-switch shrink-0"
                     />
-                    Run without a visible browser
                   </label>
                 </>
               )}
@@ -235,15 +259,22 @@ export function RoutinePopup({
               )}
               {tab === 'Outreach' && (
                 <>
-                  <label className="flex gap-2">
-                    <input
-                      type="checkbox"
+                  <label className="bg-panel-subtle/40 border-line-soft flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3">
+                    <span>
+                      <span className="text-copy block text-sm font-medium">
+                        Enable outreach
+                      </span>
+                      <span className="text-subtle-copy mt-0.5 block text-xs">
+                        Send DMs to Ready leads within the daily allowance
+                      </span>
+                    </span>
+                    <Switch
                       checked={policy.outreachEnabled}
-                      onChange={(e) =>
-                        change('outreachEnabled', e.target.checked)
+                      onCheckedChange={(checked) =>
+                        change('outreachEnabled', checked)
                       }
+                      className="brand-switch shrink-0"
                     />
-                    Enable outreach
                   </label>
                   <div className="grid gap-4 sm:grid-cols-2">
                     {numberField(
@@ -266,38 +297,50 @@ export function RoutinePopup({
                     )}
                     {numberField('maxDms', 'Maximum DMs per day', 1, 35)}
                   </div>
-                  <label className="grid gap-1 text-sm">
-                    Recipient lead list
-                    <select
-                      className={fieldClass}
-                      value={policy.leadListId ?? ''}
-                      onChange={(e) =>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="routine-lead-list">Recipient lead list</Label>
+                    <Select
+                      value={policy.leadListId ?? 'none'}
+                      onValueChange={(v) =>
                         change(
                           'leadListId',
-                          e.target.value
-                            ? (e.target.value as Id<'leadLists'>)
-                            : undefined,
+                          v === 'none' ? undefined : (v as Id<'leadLists'>),
                         )
                       }
                     >
-                      <option value="">Select lead list</option>
-                      {leadLists?.map((l) => (
-                        <option key={l._id} value={l._id}>
-                          {l.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm">
-                    Message
-                    <textarea
-                      className={fieldClass}
+                      <SelectTrigger
+                        id="routine-lead-list"
+                        className="bg-field border-line"
+                      >
+                        <SelectValue placeholder="Select lead list" />
+                      </SelectTrigger>
+                      <SelectContent className="panel-dropdown">
+                        <SelectItem value="none">No lead list</SelectItem>
+                        {leadLists?.map((l) => (
+                          <SelectItem key={l._id} value={l._id}>
+                            {l.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <div className="flex items-baseline justify-between">
+                      <Label htmlFor="routine-message">Message</Label>
+                      <span className="text-subtle-copy font-mono text-[11px]">
+                        {policy.message.length}/1000
+                      </span>
+                    </div>
+                    <Textarea
+                      id="routine-message"
                       rows={5}
                       maxLength={1000}
                       value={policy.message}
                       onChange={(e) => change('message', e.target.value)}
+                      placeholder="Hi {{username}} ..."
+                      className="bg-field border-line"
                     />
-                  </label>
+                  </div>
                   <p className="text-subtle-copy text-sm">
                     Use {'{{username}}'} for the recipient. Only Ready leads are
                     contacted. Messages are spread between browsing sessions,
@@ -308,14 +351,24 @@ export function RoutinePopup({
             </fieldset>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t pt-3">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
+
+        <DialogFooter className="shrink-0 gap-2 border-t border-line pt-3">
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            disabled={saving}
+            className="button-ghost"
+          >
             Close
           </Button>
-          <Button onClick={() => void save()} disabled={locked || saving}>
+          <Button
+            onClick={() => void save()}
+            disabled={locked || saving}
+            className="brand-button"
+          >
             {saving ? 'Saving…' : 'Save automation'}
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -335,26 +388,44 @@ function RoutineProfiles({
       toast.error(String(e))
     }
   }
-  if (!rows) return <p>Loading profiles…</p>
-  if (!rows.length) return <p>Add profiles to the selected lists to start.</p>
+  if (!rows)
+    return <p className="text-subtle-copy text-sm">Loading profiles…</p>
+  if (!rows.length)
+    return (
+      <p className="text-subtle-copy text-sm">
+        Add profiles to the selected lists to start.
+      </p>
+    )
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {rows.map((row) => (
         <div
           key={row.profileId}
-          className="border-line space-y-3 rounded-lg border p-4"
+          className="bg-panel-subtle/40 border-line-soft space-y-3 rounded-xl border p-4"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong>{row.name}</strong>
-            <span className="text-sm">
+            <span className="text-ink text-sm font-semibold">{row.name}</span>
+            <Badge
+              variant="outline"
+              className={cn(
+                'border text-[10px] tracking-[0.18em] uppercase',
+                row.paused
+                  ? 'border-line bg-panel-muted text-copy'
+                  : row.issue
+                    ? 'border-status-danger-border bg-status-danger-soft text-status-danger'
+                    : 'border-status-success-border bg-status-success-soft text-status-success',
+              )}
+            >
               {row.paused
                 ? 'Paused'
                 : row.issue
                   ? 'Needs attention'
-                  : row.stage}{' '}
-              · {row.activeDays} active days · DMs {row.used}/{row.allowance}
-            </span>
+                  : row.stage}
+            </Badge>
           </div>
+          <p className="text-muted-copy text-xs">
+            {row.activeDays} active days · DMs {row.used}/{row.allowance}
+          </p>
           {row.issue && (
             <p className="text-status-danger text-sm">{row.issue}</p>
           )}
@@ -362,6 +433,7 @@ function RoutineProfiles({
             <Button
               size="sm"
               variant="outline"
+              className="h-8"
               onClick={() =>
                 void mutate({ profileId: row.profileId, paused: !row.paused })
               }
@@ -372,6 +444,7 @@ function RoutineProfiles({
               <Button
                 size="sm"
                 variant="outline"
+                className="h-8"
                 onClick={() =>
                   void mutate({ profileId: row.profileId, clearIssue: true })
                 }
@@ -379,8 +452,8 @@ function RoutineProfiles({
                 Issue resolved
               </Button>
             )}
-            <span className="text-subtle-copy text-xs">
-              Next eligible session:{' '}
+            <span className="text-subtle-copy ml-auto text-xs">
+              Next session:{' '}
               {row.nextRunAt
                 ? new Date(row.nextRunAt).toLocaleString()
                 : 'When logged in and its rest period ends'}
