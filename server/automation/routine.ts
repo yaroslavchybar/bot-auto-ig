@@ -6,9 +6,13 @@ import {
   routineBeginSend,
   routineFinishSend,
   routineRecordSession,
+  routineBeginFollow,
+  routineFollowTasks,
+  routineRecordFollow,
   type DbAutomationRow,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
+import { profileControls, followButton, followingButton, hasMessageButton, isFollowing, unfollow } from './follow.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 
 const dependencies = {
@@ -18,6 +22,9 @@ const dependencies = {
   finish: routineFinishSend,
   record: routineRecordSession,
   warmup: runWarmup,
+  beginFollow: routineBeginFollow,
+  followTasks: routineFollowTasks,
+  recordFollow: routineRecordFollow,
 };
 
 /** Check membership throughout long browsing sessions; a failed check stops activity. */
@@ -53,6 +60,19 @@ export async function runRoutineSession(
     if (shouldStop()) return;
     if (/\/accounts\/login|\/challenge|\/checkpoint/.test(page.url()))
       throw new Error("Instagram login or challenge needs attention");
+    for (const task of await deps.followTasks(automation._id, profileId)) {
+      await check();
+      if (shouldStop()) return;
+      await page.goto(`https://www.instagram.com/${task.username}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+      if (task.recover) {
+        await deps.recordFollow(automation._id, profileId, task.leadId, await isFollowing(page));
+      } else {
+        const removed = await unfollow(page, async () => { await check(); return !shouldStop(); });
+        if (!removed) return;
+        await deps.recordFollow(automation._id, profileId, task.leadId, false);
+        log(`Unfollowed @${task.username} after seven days`);
+      }
+    }
     const warmup = await deps.warmup(
       profileId,
       automation._id,
@@ -82,7 +102,19 @@ export async function runRoutineSession(
           waitUntil: "domcontentloaded",
           timeout: 30_000,
         });
-        await page
+        if (!await hasMessageButton(page)) {
+          // Existing relationships are never claimed as automation-created follows.
+          if (await followButton(page).isVisible()) {
+            await check();
+            if (shouldStop()) throw new Error('Session stopped before following');
+            const leadId = await deps.beginFollow(attempt.requestId);
+            if (!leadId) throw new Error('Follow was not authorized');
+            await followButton(page).click({ timeout: 10_000 });
+            await followingButton(page).waitFor({ state: 'visible', timeout: 15_000 });
+            await deps.recordFollow(automation._id, profileId, leadId, true);
+          }
+        }
+        await profileControls(page)
           .getByRole("button", { name: "Message", exact: true })
           .click({ timeout: 15_000 });
         await page.waitForURL(/\/direct\//, { timeout: 15_000 });
@@ -90,10 +122,10 @@ export async function runRoutineSession(
         await composer.fill(attempt.message, { timeout: 15_000 });
         await check();
         if (shouldStop()) {
-          await deps.finish(attempt.attemptId, false);
+          await deps.finish(attempt.requestId, false);
           return;
         }
-        if (!(await deps.begin(attempt.attemptId))) return;
+        if (!(await deps.begin(attempt.requestId))) return;
         let sent = false;
         try {
           await composer.press("Enter", { timeout: 10_000 });
@@ -104,11 +136,11 @@ export async function runRoutineSession(
             .waitFor({ state: "visible", timeout: 15_000 });
           sent = true;
         } finally {
-          await deps.finish(attempt.attemptId, sent);
+          await deps.finish(attempt.requestId, sent);
         }
         log(`Message sent to @${attempt.username}`);
       } catch (error) {
-        await deps.finish(attempt.attemptId, false);
+        await deps.finish(attempt.requestId, false);
         throw new Error(
           `Delivery needs review: ${error instanceof Error ? error.message : String(error)}`,
         );

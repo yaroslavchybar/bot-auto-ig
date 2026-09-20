@@ -70,6 +70,8 @@ export const importLeads = mutation({
           listIds: [args.listId],
           source: args.source.trim(),
           status: "new",
+          dmSent: false,
+          followed: false,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
@@ -97,21 +99,14 @@ export const setStatus = mutation({
         throw new Error(
           "Previously contacted or reserved leads cannot be queued again",
         );
-      await ctx.db.patch(id, { status, updatedAt: Date.now() });
-      if (status !== "ready") {
-        const attempts = await ctx.db
-          .query("outreachAttempts")
-          .withIndex("by_lead", (q) => q.eq("leadId", id))
-          .collect();
-        for (const attempt of attempts.filter((a) =>
-          ["reserved", "sending", "uncertain"].includes(a.status),
-        )) {
-          await ctx.db.patch(attempt._id, {
-            status: status === "do_not_contact" ? "cancelled" : "sent",
-            updatedAt: Date.now(),
-          });
-        }
-      }
+      const confirmed = status === 'contacted' || status === 'replied';
+      await ctx.db.patch(id, {
+        status, updatedAt: Date.now(),
+        ...(confirmed ? { dmSent: true } : {}),
+        ...(lead.delivery && status !== 'ready' ? {
+          delivery: { ...lead.delivery, state: confirmed || lead.dmSent ? 'sent' as const : 'cancelled' as const },
+        } : {}),
+      });
     }
   },
 });

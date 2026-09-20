@@ -17,6 +17,10 @@ The Leads tab accepts pasted usernames/profile URLs or CSV with a `username`, `p
 
 Delivery reservations and budgets are updated atomically. The worker obtains a one-time send authorization before pressing Enter; ambiguous results stop that account for review. Resolve the recipient as contacted, replied, or do not contact in Leads, then clear the account's issue in the popup. Server restart recovery preserves progress and marks interrupted deliveries uncertain.
 
+Delivery tracking lives directly on each lead: `dmSent`, `senderId`, and the current delivery request/state. There is no separate attempts table or growing delivery history. The Leads view shows DM sent as Yes, No, or Needs review. Reimports and do-not-contact changes preserve confirmed sends. Startup recovery processes only reserved/sending leads in indexed batches.
+
+When a recipient has no Message button, the routine follows them first if their profile offers Follow, then waits for Message. Leads display `followed` and `followDate`. The sender that created the follow removes it in its first eligible session after seven full days, keeping the date for reference and setting followed to false. Existing follows are left alone. Pending requests are also cancelled after seven days. Cleanup requires the sender to remain logged in and eligible in an enabled routine; it runs before browsing and does not require outreach to remain enabled. Interrupted Follow actions are checked against Instagram before repeating any action. A private account may still require approval before messaging becomes available; missing messaging controls stop delivery for review.
+
 Profile setup and login are manual. These changes do not upload profile pictures or log in automatically. Browser message selectors require validation against the logged-in Instagram UI before live outreach; automated tests use simulated browser interactions.
 
 Deploy the Convex schema/functions and the server/frontend together. Saving settings does not enable a routine. Existing graph automations can be replaced by saving their settings in the new popup while disabled.

@@ -8,6 +8,9 @@ function setup() {
   let sent = false,
     deliveryFailed = false;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    beginFollow: async () => 'lead',
+    followTasks: async () => [],
+    recordFollow: async () => undefined,
     ready: async () => true,
     warmup: async () => {
       calls.push("browse");
@@ -17,7 +20,7 @@ function setup() {
       calls.includes("reserve")
         ? null
         : (calls.push("reserve"),
-          { attemptId: "attempt", username: "alice", message: "Hello alice" }),
+          { requestId: "attempt", username: "alice", message: "Hello alice" }),
     begin: async () => {
       calls.push("authorize");
       return true;
@@ -51,6 +54,7 @@ function setup() {
     },
   };
   const page = {
+    locator: () => ({ getByRole: () => ({ ...locator, waitFor: async () => {}, isVisible: async () => true }) }),
     url: () => "https://www.instagram.com/",
     goto: async () => {},
     waitForURL: async () => {},
@@ -132,4 +136,53 @@ test("login challenges stop before browsing and are reported", async () => {
   await s.run();
   assert.deepEqual(s.calls, ["record-incomplete"]);
   assert.equal(s.result().deliveryFailed, true);
+});
+
+test('missing Message follows once and records the relationship before sending', async () => {
+  const s = setup();
+  const events: string[] = [];
+  let following = false;
+  s.page.locator = (() => ({ getByRole: (_: string, options: { name: string | RegExp }) => {
+    if (options.name === 'Message') return {
+      waitFor: async () => { if (!following) throw new Error('missing'); },
+      click: async () => { assert.equal(following, true); events.push('message'); },
+    };
+    if (String(options.name).includes('Following')) return { waitFor: async () => { assert.equal(following, true); } };
+    return { isVisible: async () => true, click: async () => { following = true; events.push('follow'); } };
+  } })) as unknown as Page['locator'];
+  s.deps.beginFollow = async () => { events.push('authorize-follow'); return 'lead'; };
+  s.deps.recordFollow = async (_, profileId, leadId, followed) => {
+    assert.equal(profileId, 'profile'); assert.equal(leadId, 'lead'); assert.equal(followed, true);
+    events.push('record-follow');
+  };
+  await s.run();
+  assert.deepEqual(events, ['authorize-follow', 'follow', 'record-follow', 'message']);
+  assert.equal(s.result().sent, true);
+});
+
+test('existing Message does not authorize or record a follow', async () => {
+  const s = setup();
+  s.deps.beginFollow = async () => { throw new Error('unexpected follow'); };
+  s.deps.recordFollow = async () => { throw new Error('unexpected record'); };
+  await s.run();
+  assert.equal(s.result().sent, true);
+});
+
+test('due unfollows run before browsing even with no remaining browsing budget', async () => {
+  const s = setup();
+  let following = true;
+  const events: string[] = [];
+  const follow = { waitFor: async () => { assert.equal(following, false); } };
+  const relationship = {
+    or: () => ({ waitFor: async () => {} }),
+    isVisible: async () => following,
+    click: async () => { events.push('open-following'); },
+  };
+  s.page.locator = (() => ({ getByRole: (_: string, options: { name: RegExp }) => String(options.name).includes('Following') ? relationship : follow })) as unknown as Page['locator'];
+  s.page.getByRole = (() => ({ waitFor: async () => {}, click: async () => { following = false; events.push('unfollow'); } })) as unknown as Page['getByRole'];
+  s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice', recover: false }];
+  s.deps.recordFollow = async (_, __, ___, followed) => { assert.equal(followed, false); events.push('record'); };
+  s.deps.warmup = async () => { events.push('browse'); return { minutes: 0, reason: 'skipped' }; };
+  await s.run();
+  assert.deepEqual(events, ['open-following', 'unfollow', 'record', 'browse']);
 });

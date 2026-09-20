@@ -8,17 +8,16 @@ test('startup drains active reservations in batches and leaves historical record
   const automation = (await seedAutomation(t, { status: 'running' }))!
   const profile = (await seedProfile(t))!
   const ids = await t.run(async ctx => {
-    const leadId = await ctx.db.insert('leads', { username: 'recipient', listIds: [], source: 'test', status: 'reserved', createdAt: 1, updatedAt: 1 })
     const progressId = await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 0, outreachDays: 0, date: '2026-09-20', used: 1, allowance: 3, nextRunAt: 0, startedAt: 1, updatedAt: 1 })
     const idleWarmup = await ctx.db.insert('warmupStates', { profileId: profile._id, date: '2026-09-20', day: 1, runsToday: 1, todayMinutes: 30, minutesUsedToday: 10, updatedAt: 1 })
     for (let i = 0; i < 101; i++) {
       const profileId = await ctx.db.insert('profiles', { name: `Profile ${i}`, createdAt: 1, using: false })
       await ctx.db.insert('warmupStates', { profileId, date: '2026-09-20', day: 1, runsToday: 1, todayMinutes: 30, minutesUsedToday: 10, activeRun: { id: `run-${i}`, minutes: 5, restMinutes: 60 }, updatedAt: 1 })
       for (const status of ['reserved', 'sending', 'sent', 'cancelled', 'uncertain'] as const) {
-        await ctx.db.insert('outreachAttempts', { requestId: `${status}-${i}`, profileId: profile._id, automationId: automation._id, leadId, date: '2026-09-20', message: 'Hello', status, createdAt: 1, updatedAt: 1 })
+        await ctx.db.insert('leads', { username: `${status}-${i}`, listIds: [], source: 'test', senderId: profile._id, dmSent: status === 'sent', followed: false, status: status === 'sent' ? 'contacted' : 'reserved', delivery: { requestId: `${status}-${i}`, automationId: automation._id, date: '2026-09-20', message: 'Hello', state: status }, createdAt: 1, updatedAt: 1 })
       }
     }
-    return { idleWarmup, progressId, leadId }
+    return { idleWarmup, progressId }
   })
   const first = await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
   expect(first).toEqual({ reconciled: 1, hasMore: true })
@@ -29,10 +28,9 @@ test('startup drains active reservations in batches and leaves historical record
     expect(warmups.every(row => !row.activeRun)).toBe(true)
     expect(warmups.filter(row => row._id !== ids.idleWarmup).every(row => row.minutesUsedToday === 15)).toBe(true)
     expect(await ctx.db.get(ids.idleWarmup)).toMatchObject({ minutesUsedToday: 10, updatedAt: 1 })
-    const attempts = await ctx.db.query('outreachAttempts').collect()
-    expect(attempts.filter(row => row.requestId.startsWith('reserved-') || row.requestId.startsWith('sending-')).every(row => row.status === 'uncertain' && row.updatedAt > 1)).toBe(true)
-    expect(attempts.filter(row => !row.requestId.startsWith('reserved-') && !row.requestId.startsWith('sending-')).every(row => row.updatedAt === 1)).toBe(true)
-    expect(await ctx.db.get(ids.leadId)).toMatchObject({ status: 'uncertain' })
+    const leads = await ctx.db.query('leads').collect()
+    expect(leads.filter(row => row.username.startsWith('reserved-') || row.username.startsWith('sending-')).every(row => row.status === 'uncertain' && row.delivery?.state === 'uncertain' && !row.dmSent && row.updatedAt > 1)).toBe(true)
+    expect(leads.filter(row => !row.username.startsWith('reserved-') && !row.username.startsWith('sending-')).every(row => row.updatedAt === 1)).toBe(true)
     expect((await ctx.db.get(ids.progressId))?.issue).toContain('Interrupted delivery')
   })
   expect(await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})).toEqual({ reconciled: 0 })

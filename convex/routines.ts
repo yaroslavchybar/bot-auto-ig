@@ -102,16 +102,10 @@ export const setAccount = mutation({
     const state = await ensureProgress(ctx, args.profileId);
     // Unresolved deliveries must be reviewed in Leads before resuming the account.
     if (args.clearIssue) {
-      const attempts = await ctx.db
-        .query("outreachAttempts")
-        .withIndex("by_profile", (q) => q.eq("profileId", args.profileId))
-        .collect();
-      for (const attempt of attempts.filter((a) =>
-        ["reserved", "sending", "uncertain"].includes(a.status),
-      )) {
-        const lead = await ctx.db.get(attempt.leadId);
-        if (lead && ["reserved", "uncertain"].includes(lead.status))
-          throw new Error("Review uncertain deliveries in Leads first");
+      for (const state of ['reserved', 'sending', 'uncertain'] as const) {
+        const lead = await ctx.db.query('leads').withIndex('by_sender_delivery', q =>
+          q.eq('senderId', args.profileId).eq('delivery.state', state)).first();
+        if (lead) throw new Error('Review uncertain deliveries in Leads first');
       }
     }
     await ctx.db.patch(state._id, {
@@ -233,22 +227,21 @@ export const reserve = internalMutation({
   },
   handler: async (ctx, args) => {
     const old = await ctx.db
-      .query("outreachAttempts")
-      .withIndex("by_request", (q) => q.eq("requestId", args.requestId))
+      .query("leads")
+      .withIndex("by_request", (q) => q.eq("delivery.requestId", args.requestId))
       .unique();
     if (old) {
+      if (old.delivery!.state !== 'reserved' || old.dmSent) return null;
       if (
-        old.profileId !== args.profileId ||
-        old.automationId !== args.automationId
+        old.senderId !== args.profileId ||
+        old.delivery!.automationId !== args.automationId
       )
         throw new Error("Request ID already used");
-      return old.status === "reserved"
-        ? {
-            attemptId: old._id,
-            username: (await ctx.db.get(old.leadId))!.username,
-            message: old.message,
-          }
-        : null;
+      return {
+            requestId: old.delivery!.requestId,
+            username: old.username,
+            message: old.delivery!.message,
+          };
     }
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (
@@ -259,24 +252,14 @@ export const reserve = internalMutation({
     )
       return null;
     const state = await ensureProgress(ctx, args.profileId);
-    const pending = (
-      await ctx.db
-        .query("outreachAttempts")
-        .withIndex("by_profile", (q) => q.eq("profileId", args.profileId))
-        .collect()
-    ).find((a) => a.status === "reserved" || a.status === "sending");
-    if (pending) {
-      await ctx.db.patch(state._id, {
-        issue:
-          "Interrupted delivery: review the recipient in Leads before resuming",
-      });
+    for (const deliveryState of ['reserved', 'sending', 'uncertain'] as const) {
+      const pending = await ctx.db.query('leads').withIndex('by_sender_delivery', q =>
+        q.eq('senderId', args.profileId).eq('delivery.state', deliveryState)).first();
+      if (!pending) continue;
+      await ctx.db.patch(state._id, { issue: 'Interrupted delivery: review the recipient in Leads before resuming' });
       await ctx.db.patch(pending._id, {
-        status: "uncertain",
-        updatedAt: Date.now(),
+        status: 'uncertain', delivery: { ...pending.delivery!, state: 'uncertain' }, updatedAt: Date.now(),
       });
-      const lead = await ctx.db.get(pending.leadId);
-      if (lead?.status === "reserved")
-        await ctx.db.patch(lead._id, { status: "uncertain" });
       return null;
     }
     const used = state.date === e.date ? state.used : 0;
@@ -296,22 +279,13 @@ export const reserve = internalMutation({
         .query("leads")
         .withIndex("by_status", (q) => q.eq("status", "ready"))
         .collect()
-    ).find((l) => !l.senderId && l.listIds.includes(e.policy.leadListId!));
+    ).find((l) => !l.dmSent && !l.senderId && l.listIds.includes(e.policy.leadListId!));
     if (!lead) return null;
     const now = Date.now();
     const message = e.policy.message.replaceAll("{{username}}", lead.username);
-    const attemptId = await ctx.db.insert("outreachAttempts", {
-      ...args,
-      leadId: lead._id,
-      date: e.date,
-      message,
-      status: "reserved",
-      createdAt: now,
-      updatedAt: now,
-    });
     await ctx.db.patch(lead._id, {
-      status: "reserved",
-      senderId: args.profileId,
+      status: 'reserved', senderId: args.profileId, dmSent: false,
+      delivery: { requestId: args.requestId, automationId: args.automationId, date: e.date, message, state: 'reserved' },
       updatedAt: now,
     });
     await ctx.db.patch(state._id, {
@@ -320,66 +294,87 @@ export const reserve = internalMutation({
       allowance,
       updatedAt: now,
     });
-    return { attemptId, username: lead.username, message };
+    return { requestId: args.requestId, username: lead.username, message };
   },
 });
 
+// Requests identify a particular reservation, so stale callbacks cannot change a newer send.
 export const beginSend = internalMutation({
-  args: { attemptId: v.id("outreachAttempts") },
-  handler: async (ctx, { attemptId }) => {
-    const a = await ctx.db.get(attemptId);
-    if (!a || a.status !== "reserved") return false;
-    const e = await eligibility(ctx, a.automationId, a.profileId);
-    const lead = await ctx.db.get(a.leadId);
-    if (
-      !e ||
-      !e.profile.outreachReady ||
-      !e.policy.outreachEnabled ||
-      e.date !== a.date ||
-      lead?.status !== "reserved"
-    ) {
-      await ctx.db.patch(a._id, { status: "cancelled", updatedAt: Date.now() });
-      if (lead?.status === "reserved")
-        await ctx.db.patch(lead._id, { status: "ready", senderId: undefined });
+  args: { requestId: v.string() },
+  handler: async (ctx, { requestId }) => {
+    const lead = await ctx.db.query('leads').withIndex('by_request', q => q.eq('delivery.requestId', requestId)).unique();
+    const delivery = lead?.delivery;
+    if (!lead || !delivery || delivery.state !== 'reserved' || lead.dmSent || !lead.senderId) return false;
+    const e = await eligibility(ctx, delivery.automationId, lead.senderId);
+    if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled || e.date !== delivery.date || lead.status !== 'reserved') {
+      await ctx.db.patch(lead._id, {
+        delivery: { ...delivery, state: 'cancelled' }, updatedAt: Date.now(),
+        ...(lead.status === 'reserved' ? { status: 'ready' as const, senderId: undefined } : {}),
+      });
       return false;
     }
-    await ctx.db.patch(a._id, { status: "sending", updatedAt: Date.now() });
+    await ctx.db.patch(lead._id, { delivery: { ...delivery, state: 'sending' }, updatedAt: Date.now() });
     return true;
   },
 });
 
 export const finishSend = internalMutation({
-  args: { attemptId: v.id("outreachAttempts"), sent: v.boolean() },
-  handler: async (ctx, { attemptId, sent }) => {
-    const a = await ctx.db.get(attemptId);
-    if (!a || !["reserved", "sending"].includes(a.status)) return;
-    if (a.status === "reserved" && sent)
-      throw new Error("Send was not authorized");
-    await ctx.db.patch(a._id, {
-      status: sent ? "sent" : "uncertain",
-      updatedAt: Date.now(),
+  args: { requestId: v.string(), sent: v.boolean() },
+  handler: async (ctx, { requestId, sent }) => {
+    const lead = await ctx.db.query('leads').withIndex('by_request', q => q.eq('delivery.requestId', requestId)).unique();
+    const delivery = lead?.delivery;
+    if (!lead || !delivery || !['reserved', 'sending'].includes(delivery.state) || !lead.senderId) return;
+    if (delivery.state === 'reserved' && sent) throw new Error('Send was not authorized');
+    await ctx.db.patch(lead._id, {
+      delivery: { ...delivery, state: sent ? 'sent' : 'uncertain' },
+      dmSent: sent,
+      status: sent ? 'contacted' : 'uncertain', updatedAt: Date.now(),
     });
-    const lead = await ctx.db.get(a.leadId);
-    if (lead && lead.status === "reserved")
-      await ctx.db.patch(lead._id, {
-        status: sent ? "contacted" : "uncertain",
-        updatedAt: Date.now(),
-      });
-    const state = await progress(ctx, a.profileId);
-    if (state)
-      await ctx.db.patch(
-        state._id,
-        sent
-          ? {
-              outreachDays:
-                state.outreachDays +
-                (state.lastOutreachDate !== a.date ? 1 : 0),
-              lastOutreachDate: a.date,
-            }
-          : {
-              issue:
-                "Delivery uncertain: review the recipient in Leads before resuming",
-            },
-      );
+    const state = await progress(ctx, lead.senderId);
+    if (state) await ctx.db.patch(state._id, sent ? {
+      outreachDays: state.outreachDays + (state.lastOutreachDate !== delivery.date ? 1 : 0),
+      lastOutreachDate: delivery.date,
+    } : { issue: 'Delivery uncertain: review the recipient in Leads before resuming' });
+  },
+});
+
+const followDelay = 7 * 24 * 60 * 60_000;
+
+/** Persist intent before clicking Follow so interrupted actions can be checked later. */
+export const beginFollow = internalMutation({
+  args: { requestId: v.string() },
+  handler: async (ctx, { requestId }) => {
+    const lead = await ctx.db.query('leads').withIndex('by_request', q => q.eq('delivery.requestId', requestId)).unique();
+    if (!lead?.delivery || !lead.senderId || lead.status !== 'reserved' || lead.delivery.state !== 'reserved' || lead.followed || lead.followPending) return null;
+    const e = await eligibility(ctx, lead.delivery.automationId, lead.senderId);
+    if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled || e.date !== lead.delivery.date) return null;
+    await ctx.db.patch(lead._id, { followedBy: lead.senderId, followPending: true, updatedAt: Date.now() });
+    return lead._id;
+  },
+});
+
+export const followTasks = internalQuery({
+  args: { automationId: v.id('automations'), profileId: v.id('profiles') },
+  handler: async (ctx, args) => {
+    if (!await eligibility(ctx, args.automationId, args.profileId)) return [];
+    const pending = await ctx.db.query('leads').withIndex('by_follow_pending', q => q.eq('followedBy', args.profileId).eq('followPending', true)).take(5);
+    const due = await ctx.db.query('leads').withIndex('by_follow_due', q => q.eq('followedBy', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', Date.now() - followDelay)).take(5);
+    return [...pending, ...due].map(lead => ({ leadId: lead._id, username: lead.username, recover: lead.followPending === true }));
+  },
+});
+
+export const recordFollow = internalMutation({
+  args: { automationId: v.id('automations'), profileId: v.id('profiles'), leadId: v.id('leads'), followed: v.boolean() },
+  handler: async (ctx, args) => {
+    const lead = await ctx.db.get(args.leadId);
+    // Recording an observed result must still work if the automation was disabled during the click.
+    if (!lead || lead.followedBy !== args.profileId) throw new Error('Follow belongs to another profile');
+    if (!lead.followPending && args.followed === lead.followed) return;
+    if (args.followed && !lead.followPending) throw new Error('Follow was not authorized');
+    if (!args.followed && !lead.followPending && (lead.followDate ?? Infinity) > Date.now() - followDelay) throw new Error('Follow is not due for removal');
+    await ctx.db.patch(lead._id, {
+      followed: args.followed, followPending: false,
+      ...(args.followed ? { followDate: Date.now() } : {}), updatedAt: Date.now(),
+    });
   },
 });

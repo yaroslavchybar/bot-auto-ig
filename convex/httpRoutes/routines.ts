@@ -4,6 +4,19 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
+  http.route({ path: '/api/routines/begin-follow', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    return jsonResponse(await ctx.runMutation(internal.routines.beginFollow, { requestId: String(b.requestId) }));
+  }) });
+  http.route({ path: '/api/routines/follow-tasks', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    return jsonResponse(await ctx.runQuery(internal.routines.followTasks, { automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'> }));
+  }) });
+  http.route({ path: '/api/routines/record-follow', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    await ctx.runMutation(internal.routines.recordFollow, { automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>, leadId: b.leadId as Id<'leads'>, followed: b.followed === true });
+    return jsonResponse({ ok: true });
+  }) });
   http.route({
     path: "/api/routines/ready",
     method: "POST",
@@ -53,7 +66,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
       const b = await parseBody(request);
       return jsonResponse(
         await ctx.runMutation(internal.routines.beginSend, {
-          attemptId: b.attemptId as Id<"outreachAttempts">,
+          requestId: String(b.requestId),
         }),
       );
     }),
@@ -64,7 +77,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
     handler: withErrorHandling(async (ctx, request) => {
       const b = await parseBody(request);
       await ctx.runMutation(internal.routines.finishSend, {
-        attemptId: b.attemptId as Id<"outreachAttempts">,
+        requestId: String(b.requestId),
         sent: b.sent === true,
       });
       return jsonResponse({ ok: true });

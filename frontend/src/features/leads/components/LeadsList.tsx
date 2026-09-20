@@ -16,6 +16,10 @@ export type Lead = {
   _id: Id<'leads'>
   username: string
   status: string
+  dmSent: boolean
+  followed: boolean
+  followDate?: number
+  followPending?: boolean
   senderName?: string
   source: string
   createdAt: number
@@ -132,6 +136,18 @@ function LeadMobileCard({
       </div>
       <div className="text-muted-copy mt-4 space-y-1.5 border-t border-line pt-3 text-xs">
         <div className="flex items-center justify-between gap-2">
+          <span className="text-subtle-copy">DM sent</span>
+          <span>{lead.dmSent ? 'Yes' : lead.status === 'uncertain' ? 'Needs review' : 'No'}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-subtle-copy">Followed</span>
+          <span>{lead.followPending ? 'Needs review' : lead.followed ? 'Yes' : 'No'}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-subtle-copy">Follow date</span>
+          <span>{lead.followDate ? new Date(lead.followDate).toLocaleDateString() : '—'}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
           <span className="text-subtle-copy">Sender</span>
           <span className="text-copy truncate">{lead.senderName ?? '—'}</span>
         </div>
@@ -183,6 +199,15 @@ function LeadDesktopRow({
       </TableCell>
       <TableCell>
         <LeadStatusBadge status={lead.status} />
+      </TableCell>
+      <TableCell className="max-w-[160px]">
+        <span className="text-copy text-xs">{lead.dmSent ? 'Yes' : lead.status === 'uncertain' ? 'Needs review' : 'No'}</span>
+      </TableCell>
+      <TableCell className="text-copy text-xs">
+        {lead.followPending ? 'Needs review' : lead.followed ? 'Yes' : 'No'}
+      </TableCell>
+      <TableCell className="text-muted-copy text-xs whitespace-nowrap">
+        {lead.followDate ? new Date(lead.followDate).toLocaleDateString() : '—'}
       </TableCell>
       <TableCell className="max-w-[160px]">
         <span className="text-copy block truncate text-xs">
@@ -271,6 +296,9 @@ export function LeadsList({
             </TableHead>
             <TableHead className="text-muted-copy h-12 font-medium">Username</TableHead>
             <TableHead className="text-muted-copy h-12 w-[150px] font-medium">Status</TableHead>
+            <TableHead className="text-muted-copy h-12 font-medium">DM sent</TableHead>
+            <TableHead className="text-muted-copy h-12 font-medium">Followed</TableHead>
+            <TableHead className="text-muted-copy h-12 font-medium">Follow date</TableHead>
             <TableHead className="text-muted-copy h-12 w-[160px] font-medium">Sender</TableHead>
             <TableHead className="text-muted-copy h-12 font-medium">Source</TableHead>
             <TableHead className="text-muted-copy h-12 w-[120px] pr-4 font-medium">Imported</TableHead>

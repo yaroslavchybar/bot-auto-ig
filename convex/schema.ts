@@ -8,7 +8,18 @@ export default defineSchema({
     username: v.string(), listIds: v.array(v.id('leadLists')), source: v.string(),
     status: v.union(v.literal('new'), v.literal('ready'), v.literal('reserved'), v.literal('contacted'), v.literal('replied'), v.literal('uncertain'), v.literal('do_not_contact')),
     senderId: v.optional(v.id('profiles')), createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_username', ['username']).index('by_status', ['status']),
+    dmSent: v.boolean(),
+    followed: v.boolean(), followDate: v.optional(v.number()), followedBy: v.optional(v.id('profiles')),
+    followPending: v.optional(v.boolean()),
+    delivery: v.optional(v.object({
+      requestId: v.string(), automationId: v.id('automations'), date: v.string(), message: v.string(),
+      state: v.union(v.literal('reserved'), v.literal('sending'), v.literal('uncertain'), v.literal('sent'), v.literal('cancelled')),
+    })),
+  }).index('by_username', ['username']).index('by_status', ['status'])
+    .index('by_request', ['delivery.requestId']).index('by_delivery', ['delivery.state'])
+    .index('by_sender_delivery', ['senderId', 'delivery.state'])
+    .index('by_follow_pending', ['followedBy', 'followPending'])
+    .index('by_follow_due', ['followedBy', 'followed', 'followDate']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     paused: v.boolean(), issue: v.optional(v.string()), activeDays: v.number(), outreachDays: v.number(),
@@ -16,11 +27,6 @@ export default defineSchema({
     date: v.string(), used: v.number(), allowance: v.number(), nextRunAt: v.number(),
     startedAt: v.number(), updatedAt: v.number(),
   }).index('by_profile', ['profileId']),
-  outreachAttempts: defineTable({
-    requestId: v.string(), profileId: v.id('profiles'), automationId: v.id('automations'), leadId: v.id('leads'),
-    date: v.string(), message: v.string(), status: v.union(v.literal('reserved'), v.literal('sending'), v.literal('sent'), v.literal('uncertain'), v.literal('cancelled')),
-    createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_request', ['requestId']).index('by_profile', ['profileId']).index('by_lead', ['leadId']).index('by_status', ['status']),
 	lists: defineTable({
 		name: v.string(),
 		createdAt: v.number(),
