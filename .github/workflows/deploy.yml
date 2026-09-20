@@ -23,14 +23,14 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Dummy values: server tests stub fetch, they only need the vars present
     # at import time. Never point checks at a real deployment.
     env:
       CONVEX_URL: https://ci-test.convex.cloud
       INTERNAL_API_KEY: ci-test-key
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun test server
@@ -39,12 +39,12 @@ jobs:
       - run: bun run typecheck
 
   changes:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       convex: ${{ steps.filter.outputs.convex }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -54,9 +54,9 @@ jobs:
   deploy-convex:
     needs: [verify, changes]
     if: github.event_name == 'push' && needs.changes.outputs.convex == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       # Prod Convex (schema, functions, indexes). The key scopes this to
@@ -79,7 +79,7 @@ jobs:
     # Runs when Convex deployed OR was skipped (no convex/ changes).
     # `always()` is needed so a skipped deploy-convex doesn't skip this.
     if: ${{ always() && github.event_name == 'push' && needs.verify.result == 'success' && needs.changes.result == 'success' && (needs.deploy-convex.result == 'success' || needs.deploy-convex.result == 'skipped') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -94,21 +94,21 @@ jobs:
             tag: frontend
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push server
         if: matrix.service == 'server'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./server
           file: ./${{ matrix.dockerfile }}
@@ -120,15 +120,15 @@ jobs:
           # Immutable per-commit tag: deploy-vps pulls this exact revision,
           # so a queued run can never mix or replace these images.
           tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           # Pro browser binary: the key is a secret mount, never baked in.
           secrets: |
             cloak_key=${{ secrets.CLOAKBROWSER_LICENSE_KEY }}
 
       - name: Build and push frontend
         if: matrix.service == 'frontend'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./${{ matrix.dockerfile }}
@@ -139,8 +139,8 @@ jobs:
           pull: true
           push: true
           tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL }}
             VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
@@ -153,9 +153,9 @@ jobs:
       group: prod-deploy
       cancel-in-progress: false
     if: ${{ always() && github.event_name == 'push' && needs.verify.result == 'success' && needs.changes.result == 'success' && (needs.deploy-convex.result == 'success' || needs.deploy-convex.result == 'skipped') && needs.build-images.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Prepare SSH
         run: |
