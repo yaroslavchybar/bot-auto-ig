@@ -17,7 +17,6 @@ import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
 import { automationsRouter } from './automations/index.js'
 import displaysRouter from './displays/routes.js'
-import filesRouter from './files/routes.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { retryProfileMaintenance } from './profiles/maintenance.js'
@@ -59,7 +58,7 @@ app.use((req, res, next) => {
     // If origin is not allowed in production, don't set the header (browser will block)
 
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Telegram-Bot-Api-Secret-Token, X-Filename')
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Telegram-Bot-Api-Secret-Token')
     res.header('Access-Control-Allow-Credentials', 'true')
 
     if (req.method === 'OPTIONS') {
@@ -70,9 +69,8 @@ app.use((req, res, next) => {
 
 const jsonParser = express.json()
 app.use((req, _res, next) => {
-    // The file upload streams its raw body — the JSON parser must not
-    // consume it first when an uploaded file happens to be application/json.
-    if (req.method === 'POST' && req.path === '/api/files/upload') return next()
+    // File bytes are streamed to the browser worker without JSON parsing.
+    if (req.method === 'POST' && /^\/api\/displays\/\d+\/file-picker$/.test(req.path)) return next()
     jsonParser(req, _res, next)
 })
 
@@ -108,7 +106,6 @@ app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/automations', requireApiAuthOrInternalKey, apiLimiter, automationsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
-app.use('/api/files', requireApiAuth, apiLimiter, filesRouter)
 
 // Sentry error handler must be registered after all routes
 Sentry.setupExpressErrorHandler(app)

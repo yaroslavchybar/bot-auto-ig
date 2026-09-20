@@ -15,7 +15,6 @@ import { PROFILES_DIR, profileDirectory } from './paths.js'
 import { automationMutex } from '../shared/mutex.js'
 import { getTrackedProcesses } from '../shared/ProcessService.js'
 import { profileProcesses, automationWorkers } from '../shared/store.js'
-import { PROFILE_UPLOADS_ROOT, ensureProfileUploadsDir, profileUploadsDir } from '../files/uploads.js'
 
 async function removeProfileData(root: string, target: string): Promise<void> {
   if (path.dirname(path.resolve(target)) !== path.resolve(root)) throw new Error('Invalid profile directory')
@@ -100,13 +99,6 @@ export class ProfileManager {
       fs.mkdirSync(PROFILES_DIR, { recursive: true })
     }
 
-    // Its uploads folder shows up in the Files tab right away.
-    try {
-      await ensureProfileUploadsDir(profile.name)
-    } catch (e) {
-      logger.error({ err: e }, 'Error creating profile uploads directory')
-    }
-
     return true
   }
 
@@ -132,17 +124,15 @@ export class ProfileManager {
     if (!profile.id || profile.status !== 'deleting') throw new Error('Profile is not pending deletion')
     for (const name of new Set([profile.name, ...(profile.renameFrom ? [profile.renameFrom] : [])])) {
       await removeProfileData(PROFILES_DIR, profileDirectory(name))
-      await removeProfileData(PROFILE_UPLOADS_ROOT, profileUploadsDir(name))
     }
     await profilesFinishDelete(profile.id)
   }
 
-  /** Keep renameFrom until both directory moves succeed, including across restarts. */
+  /** Keep renameFrom until the browser directory move succeeds, including across restarts. */
   async finishRename(profile: Profile): Promise<void> {
     if (!profile.renameFrom || !profile.id) return
     for (const [oldPath, newPath] of [
       [profileDirectory(profile.renameFrom), profileDirectory(profile.name)],
-      [profileUploadsDir(profile.renameFrom), profileUploadsDir(profile.name)],
     ]) {
       try { await fs.promises.lstat(oldPath) } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue

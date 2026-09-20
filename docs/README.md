@@ -38,8 +38,8 @@ are preserved. Existing profiles are cleaned when next opened; running browsers
 are never pruned. Cleanup errors are logged and do not prevent launch.
 
 Profile deletion first persists `status: deleting`, then stops manual browsers
-and any automation using the profile (stopping its whole worker). Browser and
-upload folders are removed before the database row. Failures remain visible as
+and any automation using the profile (stopping its whole worker). Browser
+folders are removed before the database row. Failures remain visible as
 Deleting and retry at startup and every 30 seconds. Browser launches and folder
 maintenance share process locks in `data/profile-locks/`; pending profiles cannot
 launch or be edited. Names remain reserved until cleanup finishes.
@@ -49,8 +49,8 @@ reclamation. Their `.sqlite` files stay in place, including during startup;
 never remove them while workers may be running. Windows device names such as
 `CON`, `NUL.txt`, and `COM1` are rejected on all platforms.
 
-UI edits go through the backend. Renames persist `renameFrom` until browser and
-upload folders have both moved; partial moves resume through the same retry loop.
+UI edits go through the backend. Renames persist `renameFrom` until the browser
+folder has moved; partial moves resume through the same retry loop.
 Both names stay reserved meanwhile. Existing orphan folders are not automatically
 deleted: missing database rows alone are not treated as permission to wipe data.
 
@@ -131,3 +131,9 @@ areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounti
 - Troubleshooting first checks: Telegram env present, backend on :3001,
   `bun` on PATH, `wt.exe` for `-UseTabs`, Convex URLs consistent.
 - Update this file in the same change as runtime behavior changes.
+
+Remote website file inputs open a local chooser in the viewer. Files travel as
+in-memory buffers to Playwright (less than 50 MiB total, up to 20 files); the app creates
+no upload files or temporary files. Nginx request buffering is disabled for this
+route. If browser permissions prevent opening the local picker automatically,
+the viewer shows a Choose files from this PC button.

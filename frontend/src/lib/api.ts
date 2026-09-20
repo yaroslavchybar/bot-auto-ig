@@ -80,7 +80,7 @@ async function apiFetchOnce<T>(
 
   try {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      'Content-Type': options.body instanceof Blob ? 'application/octet-stream' : 'application/json',
       Accept: accept,
     }
 
@@ -102,7 +102,7 @@ async function apiFetchOnce<T>(
     const resp = await fetch(url, {
       method,
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: options.body instanceof Blob ? options.body : options.body ? JSON.stringify(options.body) : undefined,
       signal,
     })
 
@@ -128,123 +128,6 @@ function waitForToken(promise: Promise<string | null>, signal: AbortSignal): Pro
     signal.addEventListener('abort', abort, { once: true })
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort))
   })
-}
-
-// Upload a local file as raw bytes. Backend expects Content-Type + X-Filename.
-export async function apiUploadFile(
-  path: string,
-  file: File,
-  options: { timeout?: number } = {},
-): Promise<{ success: boolean; filename: string; size: number }> {
-  const timeoutMs = options.timeout ?? 60000
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-  const headers: Record<string, string> = {
-    'Content-Type': file.type || 'application/octet-stream',
-    'X-Filename': file.name,
-  }
-
-  if (tokenGetter) {
-    try {
-      // Race token acquisition against the same deadline so a hanging
-      // tokenGetter can't leave the operation unresolved. On timeout the
-      // abort fires, the race rejects, and the fetch below fails fast
-      // on the already-aborted signal.
-      const token = await Promise.race([
-        tokenGetter(),
-        new Promise<null>((_, reject) => {
-          controller.signal.addEventListener(
-            'abort',
-            () => reject(new DOMException('Timed out', 'TimeoutError')),
-            { once: true },
-          )
-        }),
-      ])
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-    } catch {
-      // Continue without token (token errors) or let the aborted fetch
-      // below surface the timeout — either way the op always settles.
-      if (controller.signal.aborted) {
-        clearTimeout(timeoutId)
-        throw new DOMException('Timed out', 'TimeoutError')
-      }
-    }
-  }
-
-  let resp: Response
-  try {
-    resp = await fetch(resolveApiUrl(path), {
-      method: 'POST',
-      headers,
-      body: file,
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timeoutId)
-  }
-
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
-  }
-
-  return (await resp.json()) as { success: boolean; filename: string; size: number }
-}
-
-export async function apiDownload(
-  path: string,
-  fileName: string,
-  options: { timeout?: number } = {},
-): Promise<void> {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    options.timeout ?? DEFAULT_TIMEOUT_MS,
-  )
-
-  const headers: Record<string, string> = {
-    Accept: '*/*',
-  }
-
-  if (tokenGetter) {
-    try {
-      const token = await tokenGetter()
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`
-      }
-    } catch {
-      // Continue without token
-    }
-  }
-
-  let resp: Response
-  try {
-    resp = await fetch(resolveApiUrl(path), {
-      method: 'GET',
-      headers,
-      signal: controller.signal,
-    })
-  } finally {
-    clearTimeout(timeoutId)
-  }
-
-  if (!resp.ok) {
-    const text = await resp.text()
-    throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
-  }
-
-  const blob = await resp.blob()
-  const blobUrl = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = blobUrl
-  link.download = fileName
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(blobUrl)
 }
 
 // Custom error class to preserve HTTP status

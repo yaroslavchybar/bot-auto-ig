@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useViewerVisibility } from '../hooks/useViewerVisibility'
 import { buildVncWebSocketUrl } from '../utils/buildVncWebSocketUrl'
 import { attachClipboardBridge } from '../utils/clipboardBridge'
+import { VncFilePicker } from './VncFilePicker'
 import { attachRfbListeners, type OverlayState } from '../utils/connectionEvents'
 
 interface VncViewerProps {
@@ -209,6 +210,7 @@ export function VncViewer({
         className={cn('absolute inset-0 h-full w-full', !interactive && 'pointer-events-none')}
       />
       <VncConnectionOverlay overlay={connectionOverlay} />
+      {interactive && <VncFilePicker key={vncPort} vncPort={vncPort} visible={visible} />}
       <Button
         type="button" variant="outline" size="icon"
         className="absolute top-2 right-2 z-10 h-8 w-8"

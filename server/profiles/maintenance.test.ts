@@ -13,8 +13,7 @@ for (const scenario of ['delete', 'partial cleanup', 'database unavailable', 'fi
       const scenario = ${JSON.stringify(scenario)}
       const root = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-maintenance-'))
       const browserDir = path.join(root, 'data/profiles/Old')
-      const uploadsDir = path.join(root, 'data/uploads/profiles/Old')
-      for (const dir of [browserDir, uploadsDir]) {
+      for (const dir of [browserDir]) {
         fs.mkdirSync(dir, { recursive: true })
         fs.writeFileSync(path.join(dir, 'keep'), 'identity')
       }
@@ -37,7 +36,6 @@ for (const scenario of ['delete', 'partial cleanup', 'database unavailable', 'fi
           assert.equal(id, row.id)
           for (const name of ['Old', 'New']) {
             assert.equal(fs.existsSync(path.join(root, 'data/profiles', name)), false)
-            assert.equal(fs.existsSync(path.join(root, 'data/uploads/profiles', name)), false)
           }
           if (failFinalize) { failFinalize = false; throw new Error('offline') }
           row = null
@@ -65,12 +63,11 @@ for (const scenario of ['delete', 'partial cleanup', 'database unavailable', 'fi
       try {
         if (scenario === 'database unavailable') {
           await assert.rejects(deleteProfile('Old'), /offline/)
-          assert.ok(fs.existsSync(browserDir) && fs.existsSync(uploadsDir))
+          assert.ok(fs.existsSync(browserDir))
         } else if (scenario === 'finalize unavailable') {
           await assert.rejects(deleteProfile('Old'), /pending/)
           assert.equal(row.status, 'deleting')
           assert.equal(fs.existsSync(browserDir), false)
-          assert.equal(fs.existsSync(uploadsDir), false)
           await retryProfileMaintenance()
           assert.equal(row, null)
         } else if (scenario === 'locked') {
@@ -82,20 +79,19 @@ for (const scenario of ['delete', 'partial cleanup', 'database unavailable', 'fi
           assert.equal(row, null)
         } else if (scenario === 'partial cleanup') {
           fs.promises.rm = async (target, options) => {
-            if (target === uploadsDir) throw Object.assign(new Error('locked file'), { code: 'EBUSY' })
+            if (target === browserDir) throw Object.assign(new Error('locked file'), { code: 'EBUSY' })
             return originalRm(target, options)
           }
           await assert.rejects(deleteProfile('Old'), /pending/)
           assert.equal(row.status, 'deleting')
-          assert.equal(fs.existsSync(browserDir), false)
-          assert.equal(fs.existsSync(uploadsDir), true)
+          assert.equal(fs.existsSync(browserDir), true)
           fs.promises.rm = originalRm
           await retryProfileMaintenance()
           assert.equal(row, null)
         } else if (['rename', 'partial rename', 'delete during rename'].includes(scenario)) {
           if (scenario !== 'rename') {
             fs.promises.rename = async (from, to) => {
-              if (from === uploadsDir) throw new Error('locked upload')
+              if (from === browserDir) throw new Error('locked browser directory')
               return originalRename(from, to)
             }
             await assert.rejects(updateProfile('Old', { name: 'New' }), /pending/)
@@ -108,7 +104,7 @@ for (const scenario of ['delete', 'partial cleanup', 'database unavailable', 'fi
           } else await updateProfile('Old', { name: 'New' })
           if (row) {
             assert.equal(row.renameFrom, undefined)
-            for (const folder of ['profiles', 'uploads/profiles']) {
+            for (const folder of ['profiles']) {
               assert.equal(fs.readFileSync(path.join(root, 'data', folder, 'New/keep'), 'utf8'), 'identity')
               assert.equal(fs.existsSync(path.join(root, 'data', folder, 'Old')), false)
             }

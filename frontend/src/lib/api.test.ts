@@ -6,6 +6,30 @@ import type { AddressInfo } from 'node:net'
 process.env.VITE_CONVEX_URL ??= 'https://example.invalid'
 const { apiFetch, apiFetchBlob, setTokenGetter } = await import('./api')
 
+test('upload blobs preserve binary bytes and use the normal authentication', async () => {
+  const bytes = Buffer.from([0, 255, 128, 1])
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = []
+    for await (const chunk of req) chunks.push(chunk)
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({
+      bytes: Array.from(Buffer.concat(chunks)),
+      auth: req.headers.authorization,
+      type: req.headers['content-type'],
+    }))
+  }).listen(0, '127.0.0.1')
+  await new Promise<void>(resolve => server.once('listening', resolve))
+  setTokenGetter(() => Promise.resolve('test-token'))
+  try {
+    const result = await apiFetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}`, { method: 'POST', body: new Blob([bytes]) })
+    assert.deepEqual(result, { bytes: Array.from(bytes), auth: 'Bearer test-token', type: 'application/octet-stream' })
+  } finally {
+    setTokenGetter(() => Promise.resolve(null))
+    server.closeAllConnections()
+    server.close()
+  }
+})
+
 test('cancel and timeout both stop waiting for a stalled auth token', async () => {
   setTokenGetter(() => new Promise(() => {}))
   try {

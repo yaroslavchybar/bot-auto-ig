@@ -1,5 +1,6 @@
 import { Router } from 'express'
 import { activeDisplays } from '../shared/store.js'
+import filePickerRouter from './filePicker.js'
 import clipboardRouter from './clipboard.js'
 import { resolveDisplay } from './session.js'
 import { getPreview } from './preview.js'
@@ -8,6 +9,7 @@ import { asyncHandler } from '../shared/asyncHandler.js'
 const router = Router()
 
 router.use(clipboardRouter)
+router.use(filePickerRouter)
 
 router.get('/:vncPort/preview', asyncHandler(async (req, res) => {
     const controller = new AbortController()

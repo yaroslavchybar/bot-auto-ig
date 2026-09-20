@@ -1,6 +1,5 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 import { launchPersistentContext, binaryInfo } from 'cloakbrowser'
 import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
@@ -14,8 +13,7 @@ import {
   profilesUpdateByName,
   type DbProfileRow,
 } from '../shared/convexClient.js'
-import { UPLOADS_ROOT, profileUploadsDir } from '../files/uploads.js'
-import { setupProfileFileAccess } from './profileFiles.js'
+import { startFilePicker, pickerSocket } from './filePicker.js'
 import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
 import { lockProfile, profileDirectory } from '../profiles/paths.js'
 
@@ -98,7 +96,7 @@ async function saveSession(
   }
 }
 
-type SessionOptions = { headless?: boolean; display?: string; xdgConfigDir?: string }
+type SessionOptions = { headless?: boolean; display?: string }
 
 /** Cloak platform persona. mac stays mac, everything else runs as Windows. */
 export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
@@ -161,7 +159,6 @@ function browserOptions(profile: DbProfileRow, profileDir: string, options: Sess
         ...process.env,
         ...(options.display ? { DISPLAY: options.display } : {}),
         // Scope the remote GTK file dialog to this profile's folder.
-        ...(options.xdgConfigDir ? { XDG_CONFIG_HOME: options.xdgConfigDir } : {}),
       },
     },
   }
@@ -223,7 +220,6 @@ export async function openBrowserSession(
   const profileDir = profileDirectory(profileName)
   const releaseLock = lockProfile(profileName)
   let profile: DbProfileRow | undefined
-  let fileAccess: ReturnType<typeof setupProfileFileAccess>
   try {
     // Check under the deletion lock, before creating any directories.
     profile = await profilesGetByName(profileName) ?? undefined
@@ -234,15 +230,6 @@ export async function openBrowserSession(
     migrateFirefoxProfile(profileDir)
     clearSavedWindowPlacement(profileDir)
     await pruneProfileCache(profileDir)
-    fileAccess = setupProfileFileAccess({
-      profileDir,
-      uploadsDir: profileUploadsDir(profileName),
-      legacyDirs: [
-        UPLOADS_ROOT,
-        path.join(os.homedir(), 'Downloads', 'Uploads'),
-        path.join(os.homedir(), 'Downloads'),
-      ],
-    })
   } catch (error) {
     releaseLock()
     throw error
@@ -251,6 +238,7 @@ export async function openBrowserSession(
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
   let context: BrowserContext | undefined
+  let stopFilePicker: (() => void) | undefined
   let ready = false
   let browserClosed = false
   let budgetLost = false
@@ -270,6 +258,7 @@ export async function openBrowserSession(
       shutdownSignal.removeEventListener('abort', requestClose)
       const errors: unknown[] = []
       const steps = [
+        () => stopFilePicker?.(),
         () => ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
         () => !browserClosed ? context?.close() : undefined,
         () => display?.close(),
@@ -306,7 +295,6 @@ export async function openBrowserSession(
     checkStartup()
     const launchOptions = browserOptions(profile, profileDir, {
       ...options, display: display?.display ?? options.display,
-      xdgConfigDir: fileAccess.xdgConfigDir,
     })
     checkStartup()
     // The license seat can lag a few seconds behind a clean close. Retry a
@@ -330,6 +318,7 @@ export async function openBrowserSession(
     if (!context) {
       throw describeProxyLaunchError(profile.name, launchOptions.proxy, launchError)
     }
+    if (display) stopFilePicker = await startFilePicker(context, pickerSocket(display.vncPort))
     context.once('close', () => {
       browserClosed = true
       requestClose()

@@ -48,6 +48,7 @@ test(`browser cleanup: ${scenario}`, () => {
     import { EventEmitter } from 'node:events'
 
     const scenario = ${JSON.stringify(scenario)}
+    mock.module('./server/browser/filePicker.ts', () => ({ pickerSocket: () => 'test', startFilePicker: async () => () => {} }))
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-shutdown-'))
     const cache = path.join(root, 'data/profiles/test/Default/Cache')
     fs.mkdirSync(cache, { recursive: true })
