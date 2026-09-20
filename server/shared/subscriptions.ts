@@ -1,4 +1,5 @@
-export type SocketTopic = 'all' | 'displays' | 'logs'
+import type { SocketTopic } from './contracts.js'
+
 export type SocketSubscription = {
   topic: SocketTopic
   automationId?: string

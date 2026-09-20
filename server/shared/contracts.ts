@@ -18,6 +18,8 @@ export type ProfileRecord = {
 export const ACTIVITY_IDS = ['browse_feed', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'watch_stories'] as const
 export type ActivityId = typeof ACTIVITY_IDS[number]
 
+export type SocketTopic = 'all' | 'displays' | 'logs'
+
 export type WebSocketEventType =
   | 'log'
   | 'status'

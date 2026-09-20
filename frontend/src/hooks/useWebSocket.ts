@@ -3,7 +3,6 @@ import { env } from '@/lib/env'
 import { useAppAuth } from '@/lib/auth'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
 import type { LogEntry } from '@/lib/logs'
-import type { SocketTopic } from '../../../server/shared/subscriptions'
 
 export interface AutomationProgress {
   totalAccounts: number
@@ -11,7 +10,7 @@ export interface AutomationProgress {
   currentTask: string | null
 }
 
-import type { WorkerEvent } from '../../../server/shared/contracts'
+import type { SocketTopic, WorkerEvent } from '../../../server/shared/contracts'
 export type WebSocketMessage = WorkerEvent
 
 interface UseWebSocketOptions {
