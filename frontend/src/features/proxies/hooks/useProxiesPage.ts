@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useProxies } from './useProxies'
 import { useProfiles } from '../../profiles/hooks/useProfiles'
 import type { ProxyFormValues, ProxyItem } from '../types'
-import { normalizeProxyValue } from '../utils/maskProxy'
+import { normalizeProxy } from '../../../../../server/shared/proxy'
 import { buildProxyUsage } from '../utils/proxyUsage'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
@@ -23,16 +23,6 @@ export function useProxiesPage() {
   const createProxy = useMutation(api.proxies.create)
   const updateProxy = useMutation(api.proxies.update)
   const deleteProxy = useMutation(api.proxies.remove)
-  const importFromProfiles = useMutation(api.proxies.importFromProfiles)
-
-  // Backfill proxies stored on profiles before auto-save existed.
-  // Runs once per page open, silently; the list updates via subscription.
-  const didBackfill = useRef(false)
-  useEffect(() => {
-    if (didBackfill.current) return
-    didBackfill.current = true
-    void importFromProfiles({}).catch(() => {})
-  }, [importFromProfiles])
 
   const editProxy = useMemo(
     () => (editProxyId ? proxies.find((p) => p.id === editProxyId) ?? null : null),
@@ -64,14 +54,13 @@ export function useProxiesPage() {
       const name = values.name.trim()
       const rawProxy = values.proxy.trim()
       if (!name || !rawProxy) return
-      const proxy = normalizeProxyValue(rawProxy, values.proxyType)
-      const proxyType = String(values.proxyType || 'http').trim().toLowerCase() || 'http'
       const maxProfiles =
         Number.isFinite(values.maxProfiles) && values.maxProfiles >= 1
           ? Math.floor(values.maxProfiles)
           : 3
       setSaving(true)
       try {
+        const { proxy, proxyType } = normalizeProxy(rawProxy, values.proxyType)
         if (isCreateOpen) {
           await createProxy({ name, proxy, proxyType, maxProfiles })
           setIsCreateOpen(false)

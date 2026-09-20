@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { ProxyFormValues, ProxyItem } from '../types'
+import { normalizeProxy } from '../../../../../server/shared/proxy'
+import { stripScheme } from '../utils/maskProxy'
 
 interface ProxiesFormProps {
   mode: 'create' | 'edit'
@@ -60,8 +62,14 @@ export function ProxiesForm({
       setLocalError('Name already exists')
       return
     }
-    setLocalError(null)
-    onSave({ name: trimmedName, proxy: trimmedProxy, proxyType, maxProfiles: limit })
+    try {
+      const normalized = normalizeProxy(trimmedProxy, proxyType)
+      if (!normalized.proxy) { setLocalError('Proxy is required'); return }
+      setLocalError(null)
+      onSave({ name: trimmedName, ...normalized, maxProfiles: limit })
+    } catch {
+      setLocalError('Invalid proxy URL or protocol')
+    }
   }
 
   return (
@@ -95,7 +103,7 @@ export function ProxiesForm({
           >
             Type
           </Label>
-          <Select value={proxyType} onValueChange={setProxyType} disabled={saving}>
+          <Select value={proxyType} onValueChange={(value) => { setProxyType(value); setProxy(stripScheme(proxy)) }} disabled={saving}>
             <SelectTrigger
               id="proxy-type"
               className="brand-focus bg-field border-line h-10 text-ink"
@@ -109,6 +117,7 @@ export function ProxiesForm({
               <SelectItem value="socks5" className="focus:bg-panel-hover cursor-pointer focus:text-ink">
                 SOCKS5
               </SelectItem>
+              <SelectItem value="https">HTTPS</SelectItem>
             </SelectContent>
           </Select>
         </div>

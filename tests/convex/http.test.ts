@@ -63,6 +63,7 @@ test('uses camelCase profile fields across the HTTP boundary', async () => {
     body: JSON.stringify({
       name: 'Profile A',
       cookiesJson: '{"cookies":[{"name":"sessionid","value":"cookie-1","domain":".instagram.com","path":"/"}]}',
+      proxy: 'host:8080',
       proxyType: 'http',
     }),
   })

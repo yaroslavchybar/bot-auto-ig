@@ -1,5 +1,5 @@
 import { DomainError } from '../errors';
-import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles } from '../proxies';
+import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 
 function assertProfileEditable(profile: any) {
 	if (profile.status === 'deleting' || profile.renameFrom)
@@ -48,11 +48,7 @@ export function normalizeProfileRow(profile: any) {
 // proxy value so shared proxies only appear once). Runs inside the same
 // mutation so it covers UI, API and internal callers.
 export async function ensureProxySaved(ctx: any, proxyRaw: unknown, proxyTypeRaw: unknown, suggestedName: unknown) {
-	const proxyType = typeof proxyTypeRaw === "string" ? proxyTypeRaw.trim().toLowerCase() : "http";
-	if (proxyType !== "http" && proxyType !== "socks5") return;
-	// Store the canonical type://rest form so bare "host:port" values dedup
-	// against existing rows instead of creating a second row per format.
-	const canonical = proxyKey(proxyRaw, proxyType);
+	const { proxy: canonical, proxyType } = cleanProxyFields(proxyRaw, proxyTypeRaw);
 	if (!canonical) return;
 	const rows = await ctx.db.query("proxies").collect();
 	if (rows.some((p: any) => proxyKey(p.proxy, p.proxyType) === canonical)) return;
@@ -134,6 +130,7 @@ export async function getProfilesByListIds(ctx: any, listIdsRaw: string[]) {
 }
 
 export async function createProfileRow(ctx: any, args: any) {
+	args = { ...args, ...cleanProxyFields(args.proxy, args.proxyType) };
 	const name = String(args.name || "").trim();
 	if (!name) throw new DomainError('VALIDATION', "name is required");
 	await assertProfileNameAvailable(ctx, name);
@@ -167,6 +164,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		.first();
 	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
 	assertProfileEditable(existing);
+	args = { ...args, ...cleanProxyFields(args.proxy ?? existing.proxy, args.proxyType ?? existing.proxyType) };
 
 	const name = String(args.name || "").trim();
 	if (!name) throw new DomainError('VALIDATION', "name is required");
@@ -212,6 +210,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	const existing = await ctx.db.get(args.profileId);
 	if (!existing) throw new DomainError('NOT_FOUND', "Profile not found");
 	assertProfileEditable(existing);
+	args = { ...args, ...cleanProxyFields(args.proxy ?? existing.proxy, args.proxyType ?? existing.proxyType) };
 
 	const next: Record<string, unknown> = { name };
 	await assertProfileNameAvailable(ctx, name, existing._id);

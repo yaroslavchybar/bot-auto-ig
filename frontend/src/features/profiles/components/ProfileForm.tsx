@@ -19,6 +19,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Fingerprint, Globe, Shield } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizeCookiesJsonForForm } from '../utils/cookieJson'
+import { normalizeProxy } from '../../../../../server/shared/proxy'
+import { stripScheme } from '../../proxies/utils/maskProxy'
 
 interface ProfileFormProps {
   mode: 'create' | 'edit'
@@ -278,7 +280,7 @@ function ProxyInputRow({
           <Select
             value={String(draft.proxyType ?? 'http')}
             onValueChange={(value) =>
-              setDraft((prev) => ({ ...prev, proxyType: value }))
+              setDraft((prev) => ({ ...prev, proxyType: value, proxy: stripScheme(prev.proxy ?? '') }))
             }
             disabled={saving}
           >
@@ -301,6 +303,7 @@ function ProxyInputRow({
               >
                 SOCKS5
               </SelectItem>
+              <SelectItem value="https">HTTPS</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -463,11 +466,14 @@ export function ProfileForm({
     )
     if (normalizedCookies.error) { setLocalError(normalizedCookies.error); return }
     finalData.cookiesJson = normalizedCookies.normalized || undefined
-    if (connection === 'proxy' && finalData.proxy) {
-      const pType = finalData.proxyType || 'http'
-      let pVal = finalData.proxy
-      if (pVal.includes('://')) pVal = pVal.split('://')[1]!
-      finalData.proxy = `${pType}://${pVal}`
+    if (connection === 'proxy') {
+      try {
+        const normalized = normalizeProxy(finalData.proxy, finalData.proxyType)
+        if (!normalized.proxy) { setLocalError('Proxy is required'); return }
+        Object.assign(finalData, normalized)
+      } catch {
+        setLocalError('Invalid proxy URL or protocol'); return
+      }
     } else if (connection === 'direct') {
       finalData.proxy = ''
       finalData.proxyType = ''

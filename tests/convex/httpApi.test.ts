@@ -32,6 +32,7 @@ test('keeps name-based profile maintenance on the internal HTTP surface', async 
   const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
     oldName: 'Profile A',
     name: 'Profile B',
+    proxy: 'host:1080',
     proxyType: 'socks5',
   })
   await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: 'Profile B' })

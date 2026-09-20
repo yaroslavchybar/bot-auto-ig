@@ -20,6 +20,8 @@ COPY --from=convex_src . /app/convex/
 # Both are `import type`, erased from the bundle. Keep this in sync if the
 # frontend imports more files from outside frontend/ and convex/.
 COPY --from=repo_root server/shared/contracts.ts ./server/shared/contracts.ts
+# Runtime parser shared by the frontend, Convex functions, and browser startup.
+COPY --from=repo_root server/shared/proxy.ts ./server/shared/proxy.ts
 
 ARG VITE_CONVEX_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL

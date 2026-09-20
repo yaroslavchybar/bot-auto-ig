@@ -1,21 +1,14 @@
 import { DomainError } from './errors';
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-
-const PROXY_TYPES = ["http", "socks5"] as const;
+import { normalizeProxy, proxyKey } from '../server/shared/proxy';
+export { proxyKey } from '../server/shared/proxy';
 
 export const DEFAULT_MAX_PROFILES = 3;
 
-// Profiles reference proxies by value copy, so a proxy is identified by
-// its canonical "type://value" key on both sides. The scheme is stripped
-// before rebuilding so "host:port" and "http://host:port" match.
-export function proxyKey(proxy: unknown, proxyType: unknown): string | null {
-	const value = String(proxy || "").trim();
-	if (!value) return null;
-	const type = String(proxyType || "http").trim().toLowerCase() || "http";
-	if (type !== "http" && type !== "socks5") return null;
-	const bare = value.includes("://") ? value.slice(value.indexOf("://") + 3) : value;
-	return `${type}://${bare}`;
+export function cleanProxyFields(proxy: unknown, proxyType: unknown) {
+	try { return normalizeProxy(proxy, proxyType); }
+	catch { throw new DomainError('VALIDATION', 'Invalid proxy URL or protocol'); }
 }
 
 export function resolveMaxProfiles(row: { maxProfiles?: unknown }): number {
@@ -26,20 +19,6 @@ export function resolveMaxProfiles(row: { maxProfiles?: unknown }): number {
 function cleanName(name: unknown) {
 	const cleaned = String(name || "").trim();
 	if (!cleaned) throw new DomainError('VALIDATION', "name is required");
-	return cleaned;
-}
-
-function cleanProxyType(proxyType: unknown) {
-	const cleaned = String(proxyType || "http").trim().toLowerCase();
-	if (!PROXY_TYPES.includes(cleaned as (typeof PROXY_TYPES)[number])) {
-		throw new DomainError('VALIDATION', "proxyType must be http or socks5");
-	}
-	return cleaned;
-}
-
-function cleanProxy(proxy: unknown) {
-	const cleaned = String(proxy || "").trim();
-	if (!cleaned) throw new DomainError('VALIDATION', "proxy is required");
 	return cleaned;
 }
 
@@ -65,14 +44,17 @@ export const create = mutation({
 	args: { name: v.string(), proxy: v.string(), proxyType: v.string(), maxProfiles: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const name = cleanName(args.name);
-		const proxy = cleanProxy(args.proxy);
-		const proxyType = cleanProxyType(args.proxyType);
+		const { proxy, proxyType } = cleanProxyFields(args.proxy, args.proxyType);
+		if (!proxy) throw new DomainError('VALIDATION', 'proxy is required');
 		const maxProfiles = cleanMaxProfiles(args.maxProfiles);
 		const existing = await ctx.db
 			.query("proxies")
 			.withIndex("by_name", (q) => q.eq("name", name))
 			.first();
 		if (existing) throw new DomainError('VALIDATION', "Name already exists");
+		const rows = await ctx.db.query('proxies').collect();
+		if (rows.some(row => proxyKey(row.proxy, row.proxyType) === proxy))
+			throw new DomainError('VALIDATION', 'Proxy already exists');
 		const id = await ctx.db.insert("proxies", { name, proxy, proxyType, maxProfiles, createdAt: Date.now() });
 		return await ctx.db.get(id);
 	},
@@ -82,17 +64,33 @@ export const update = mutation({
 	args: { id: v.id("proxies"), name: v.string(), proxy: v.string(), proxyType: v.string(), maxProfiles: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const name = cleanName(args.name);
-		const proxy = cleanProxy(args.proxy);
-		const proxyType = cleanProxyType(args.proxyType);
+		const { proxy, proxyType } = cleanProxyFields(args.proxy, args.proxyType);
+		if (!proxy) throw new DomainError('VALIDATION', 'proxy is required');
 		const maxProfiles = cleanMaxProfiles(args.maxProfiles);
 		const existing = await ctx.db.get(args.id);
 		if (!existing) throw new DomainError('NOT_FOUND', "Proxy not found");
+		const rows = await ctx.db.query('proxies').collect();
+		if (rows.some(row => row._id !== args.id && proxyKey(row.proxy, row.proxyType) === proxy))
+			throw new DomainError('VALIDATION', 'Proxy already exists');
 		if (name !== existing.name) {
 			const clash = await ctx.db
 				.query("proxies")
 				.withIndex("by_name", (q) => q.eq("name", name))
 				.first();
 			if (clash) throw new DomainError('VALIDATION', "Name already exists");
+		}
+		const oldKey = proxyKey(existing.proxy, existing.proxyType);
+		const profiles = await ctx.db.query('profiles').collect();
+		const assigned = oldKey ? profiles.filter(profile => proxyKey(profile.proxy, profile.proxyType) === oldKey) : [];
+		if (oldKey === proxy && assigned.length > maxProfiles)
+			throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles');
+		if (oldKey && oldKey !== proxy) {
+			if (assigned.some(profile => profile.using || profile.status === 'running' || profile.status === 'starting' || profile.status === 'deleting' || profile.renameFrom))
+				throw new DomainError('CONFLICT', 'Stop assigned profiles and wait for maintenance before changing their proxy');
+			const targetCount = profiles.filter(profile => proxyKey(profile.proxy, profile.proxyType) === proxy).length;
+			if (targetCount + assigned.length > maxProfiles)
+				throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles');
+			for (const profile of assigned) await ctx.db.patch(profile._id, { proxy, proxyType, mode: 'proxy' });
 		}
 		await ctx.db.patch(args.id, { name, proxy, proxyType, maxProfiles });
 		return await ctx.db.get(args.id);
@@ -102,6 +100,12 @@ export const update = mutation({
 export const remove = mutation({
 	args: { id: v.id("proxies") },
 	handler: async (ctx, args) => {
+		const existing = await ctx.db.get(args.id);
+		if (!existing) return true;
+		const key = proxyKey(existing.proxy, existing.proxyType);
+		const profiles = await ctx.db.query('profiles').collect();
+		if (key && profiles.some(profile => proxyKey(profile.proxy, profile.proxyType) === key))
+			throw new DomainError('CONFLICT', 'Reassign profiles before deleting this proxy');
 		await ctx.db.delete(args.id);
 		return true;
 	},
@@ -119,10 +123,9 @@ export const importFromProfiles = mutation({
 		profiles.sort((a, b) => a.createdAt - b.createdAt);
 		let imported = 0;
 		for (const profile of profiles) {
-			const proxyType = String((profile as any).proxyType || "http").trim().toLowerCase();
-			if (proxyType !== "http" && proxyType !== "socks5") continue;
-			const key = proxyKey((profile as any).proxy, proxyType);
+			const key = proxyKey(profile.proxy, profile.proxyType);
 			if (!key || seen.has(key)) continue;
+			const { proxyType } = normalizeProxy(key);
 			const base = String((profile as any).name || "").trim() || key;
 			let name = base;
 			let n = 2;

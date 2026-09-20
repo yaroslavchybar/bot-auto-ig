@@ -20,7 +20,7 @@ test('saving a profile auto-saves its proxy once', async () => {
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({
     name: 'Profile A',
-    proxy: 'http://host-a:8080:user:pass',
+    proxy: 'http://user:pass@host-a:8080',
     proxyType: 'http',
   })
 })
@@ -39,7 +39,7 @@ test('updating a profile with a new proxy auto-saves it', async () => {
   const rows = await t.query(api.proxies.list, {})
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({
-    proxy: 'socks5://host-b:1080:user:pass',
+    proxy: 'socks5://user:pass@host-b:1080',
     proxyType: 'socks5',
   })
 })
@@ -140,7 +140,7 @@ test('bare host:port values dedup against canonical rows', async () => {
   const rows = await t.query(api.proxies.list, {})
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({
-    proxy: 'http://host-a:8080:user:pass',
+    proxy: 'http://user:pass@host-a:8080',
     proxyType: 'http',
   })
 })

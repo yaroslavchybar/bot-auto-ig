@@ -1,17 +1,11 @@
+import { proxyKey as proxyUsageKey } from '../../../../../server/shared/proxy'
+export { proxyKey as proxyUsageKey } from '../../../../../server/shared/proxy'
+
 // Matches profiles to saved proxies. Both sides store the proxy as a
 // plain string, so a profile belongs to a proxy when the normalized
 // "type://value" keys match.
 
 export const DEFAULT_MAX_PROFILES = 3
-
-export function proxyUsageKey(proxy: unknown, proxyType: unknown): string | null {
-  const value = String(proxy ?? '').trim()
-  if (!value) return null
-  const type = String(proxyType ?? 'http').trim().toLowerCase() || 'http'
-  if (type !== 'http' && type !== 'socks5') return null
-  const bare = value.includes('://') ? value.slice(value.indexOf('://') + 3) : value
-  return `${type}://${bare}`
-}
 
 export type ProxyUsage = {
   count: number
