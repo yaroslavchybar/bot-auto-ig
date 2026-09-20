@@ -3,6 +3,7 @@ import { env } from '@/lib/env'
 import { useAppAuth } from '@/lib/auth'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
 import type { LogEntry } from '@/lib/logs'
+import type { SocketTopic } from '../../../server/shared/subscriptions'
 
 export interface AutomationProgress {
   totalAccounts: number
@@ -21,6 +22,8 @@ interface UseWebSocketOptions {
   maxBuffer?: number
   eventsOnly?: boolean
   automationId?: string | null
+  topic?: SocketTopic
+  profileName?: string | null
   onEvent?: (message: WebSocketMessage) => void
 }
 
@@ -187,10 +190,10 @@ async function connectWebSocket(
   cancelled: { current: boolean },
 ) {
   connectingRef.current = true
-  let tokenParam = ''
+  const connectionUrl = new URL(wsUrl)
   try {
     const token = await getToken()
-    if (token) tokenParam = `?token=${encodeURIComponent(token)}`
+    if (token) connectionUrl.searchParams.set('token', token)
   } catch { /* continue */ }
   if (cancelled.current) { connectingRef.current = false; return }
 
@@ -198,7 +201,7 @@ async function connectWebSocket(
   safeCloseSocket(wsRef.current)
   wsRef.current = null
 
-  const ws = new WebSocket(`${wsUrl}${tokenParam}`)
+  const ws = new WebSocket(connectionUrl.toString())
   wsRef.current = ws
 
   ws.onopen = () => {
@@ -264,9 +267,16 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
     url, autoConnect = true, enabled = true,
     pauseWhenHidden = false, maxBuffer = 500,
-    automationId, onEvent, eventsOnly = false,
+    automationId, onEvent, eventsOnly = false, topic = 'all', profileName,
   } = options
-  const wsUrl = url ?? getDefaultWebSocketUrl()
+  const defaultUrl = getDefaultWebSocketUrl()
+  const subscriptionUrl = new URL(url ?? defaultUrl, defaultUrl)
+  subscriptionUrl.searchParams.set('topic', topic)
+  if (topic === 'logs') {
+    if (automationId) subscriptionUrl.searchParams.set('automationId', automationId)
+    if (profileName) subscriptionUrl.searchParams.set('profileName', profileName)
+  }
+  const wsUrl = subscriptionUrl.toString()
   const { getToken } = useAppAuth()
 
   const [logs, setLogs] = useState<LogEntry[]>([])

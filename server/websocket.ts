@@ -5,6 +5,7 @@ import { clients, logsStore, MAX_LOGS } from './shared/store.js'
 import { verifySessionUid } from './auth/telegram.js'
 import { isLocalAuthBypassEnabled } from './security/auth.js'
 import logger from './shared/logger.js'
+import { matchesSubscription, parseSubscription } from './shared/subscriptions.js'
 
 const LOCAL_AUTH_BYPASS = isLocalAuthBypassEnabled()
 
@@ -28,7 +29,7 @@ export function initWebSocket(server: Server, path: string = '/ws') {
             }
         }
 
-        clients.add(ws)
+        clients.add(Object.assign(ws, { subscription: parseSubscription(url.searchParams) }))
         logger.info(
             LOCAL_AUTH_BYPASS
                 ? 'WebSocket client connected (local auth bypass)'
@@ -76,7 +77,7 @@ export function broadcast(data: object) {
     if (clients.size === 0) return
     const message = JSON.stringify(data)
     clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
+        if (client.readyState === WebSocket.OPEN && matchesSubscription(data, client.subscription)) {
             sendBounded(client, message)
         }
     })

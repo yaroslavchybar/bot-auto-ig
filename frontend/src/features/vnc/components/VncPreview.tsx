@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetchBlob } from '@/lib/api'
 import { useViewerVisibility } from '../hooks/useViewerVisibility'
 
 export function VncPreview({ vncPort }: { vncPort: number }) {
@@ -8,6 +8,11 @@ export function VncPreview({ vncPort }: { vncPort: number }) {
   const [preview, setPreview] = useState<{ port: number; image: string } | null>(null)
   const [failed, setFailed] = useState(false)
 
+  // Retain the snapshot while hidden; release it after replacement or unmount.
+  useEffect(() => {
+    return () => { if (preview) URL.revokeObjectURL(preview.image) }
+  }, [preview])
+
   useEffect(() => {
     if (!visible) return
     let disposed = false
@@ -15,11 +20,11 @@ export function VncPreview({ vncPort }: { vncPort: number }) {
     const controller = new AbortController()
     const refresh = async () => {
       try {
-        const result = await apiFetch<{ image: string }>(`/api/displays/${vncPort}/preview`, {
+        const result = await apiFetchBlob(`/api/displays/${vncPort}/preview`, {
           signal: controller.signal, maxRetries: 1, timeout: 15000,
         })
         if (!disposed) {
-          setPreview({ port: vncPort, image: result.image })
+          setPreview({ port: vncPort, image: URL.createObjectURL(result) })
           setFailed(false)
         }
       } catch {

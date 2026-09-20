@@ -1,9 +1,10 @@
 
 import { WebSocket } from 'ws'
 import type { ChildProcess } from './ProcessService.js'
+import type { SocketSubscription } from './subscriptions.js'
 
 // Store connected WebSocket clients
-export const clients: Set<WebSocket> = new Set()
+export const clients: Set<WebSocket & { subscription?: SocketSubscription }> = new Set()
 
 // Store logs in memory (limited to last 1000 entries)
 export const MAX_LOGS = 1000

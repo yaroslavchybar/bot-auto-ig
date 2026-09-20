@@ -10,8 +10,17 @@ const router = Router()
 router.use(clipboardRouter)
 
 router.get('/:vncPort/preview', asyncHandler(async (req, res) => {
-    const image = await getPreview(resolveDisplay(req.params.vncPort))
-    res.set('Cache-Control', 'no-store').json({ image })
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    res.once('close', abort)
+    try {
+        const image = await getPreview(resolveDisplay(req.params.vncPort), controller.signal)
+        if (!controller.signal.aborted) res.set('Cache-Control', 'no-store').type('image/jpeg').send(image)
+    } catch (error) {
+        if (!controller.signal.aborted) throw error
+    } finally {
+        res.removeListener('close', abort)
+    }
 }))
 
 router.get('/', (_req, res) => {

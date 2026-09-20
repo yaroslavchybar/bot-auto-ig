@@ -21,23 +21,36 @@ export function resolveApiUrl(path: string): string {
   return new URL(path, `${env.apiUrl}/`).toString()
 }
 
-export async function apiFetch<T>(
+type ApiFetchOptions = {
+  method?: string
+  body?: unknown
+  timeout?: number
+  signal?: AbortSignal
+  maxRetries?: number
+  onRetry?: RetryOptions['onRetry']
+}
+
+export function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  return apiRequest(path, options, 'application/json', (response) => response.json() as Promise<T>)
+}
+
+// Binary responses use the same authentication, cancellation and retry handling.
+export function apiFetchBlob(path: string, options: ApiFetchOptions = {}): Promise<Blob> {
+  return apiRequest(path, options, '*/*', (response) => response.blob())
+}
+
+async function apiRequest<T>(
   path: string,
-  options: {
-    method?: string
-    body?: unknown
-    timeout?: number
-    signal?: AbortSignal
-    maxRetries?: number
-    onRetry?: RetryOptions['onRetry']
-  } = {},
+  options: ApiFetchOptions,
+  accept: string,
+  readResponse: (response: Response) => Promise<T>,
 ): Promise<T> {
   const { maxRetries, onRetry, ...fetchOptions } = options
   const retryAttempts =
     maxRetries ?? getDefaultRetryAttempts(fetchOptions.method)
 
   return withRetry(
-    () => apiFetchOnce<T>(path, fetchOptions),
+    () => apiFetchOnce(path, fetchOptions, accept, readResponse),
     { maxRetries: retryAttempts, onRetry },
   )
 }
@@ -52,7 +65,9 @@ function getDefaultRetryAttempts(method?: string) {
 /** Single (non-retried) fetch — used internally by apiFetch's retry loop. */
 async function apiFetchOnce<T>(
   path: string,
-  options: { method?: string; body?: unknown; timeout?: number; signal?: AbortSignal } = {},
+  options: ApiFetchOptions,
+  accept: string,
+  readResponse: (response: Response) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController()
   const timeoutId = setTimeout(
@@ -66,7 +81,7 @@ async function apiFetchOnce<T>(
   try {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      Accept: 'application/json',
+      Accept: accept,
     }
 
     // Add auth token if available
@@ -99,7 +114,7 @@ async function apiFetchOnce<T>(
     }
 
     if (resp.status === 204) return undefined as T
-    return (await resp.json()) as T
+    return await readResponse(resp)
   } finally {
     clearTimeout(timeoutId)
   }

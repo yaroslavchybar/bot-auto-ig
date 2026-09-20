@@ -56,6 +56,7 @@ export function useVncSessions(enabled: boolean) {
   }, [snapshots])
 
   const { connected } = useWebSocket({
+    topic: 'displays',
     onEvent: handleSocketEvent,
     enabled: active,
     eventsOnly: true,

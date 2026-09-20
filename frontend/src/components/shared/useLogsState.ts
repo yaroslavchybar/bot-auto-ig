@@ -56,7 +56,7 @@ export function useLogsState({
     wsConnected, logs, loading,
     handleClearLive,
     inlineError, dismissError,
-  } = useLogsFetching(liveBufferSize, automationId, handleError)
+  } = useLogsFetching(liveBufferSize, automationId, profileName, handleError)
 
   const {
     filteredLogs, visibleLogs, hasMoreLogs, loadMoreLogs,
@@ -83,6 +83,7 @@ export function useLogsState({
 function useLogsFetching(
   liveBufferSize: number,
   automationId: string | null | undefined,
+  profileName: string | null | undefined,
   handleError: ReturnType<typeof useErrorHandler>['handleError'],
 ) {
   const [logs, setLogs] = useState<LogEntry[]>([])
@@ -90,7 +91,7 @@ function useLogsFetching(
   const [inlineError, setInlineError] = useState<string | null>(null)
   const requestVersion = useRef(0)
   const { connected: wsConnected } = useWebSocket({
-    automationId, pauseWhenHidden: true, eventsOnly: true,
+    automationId, profileName, topic: 'logs', pauseWhenHidden: true, eventsOnly: true,
     onEvent: event => {
       if (event.type !== 'log' || !event.message) return
       const entry = parseLogEntry(event, null)
