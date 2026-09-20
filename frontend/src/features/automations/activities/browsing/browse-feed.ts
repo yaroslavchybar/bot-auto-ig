@@ -24,7 +24,8 @@ export const browseFeed: ActivityDefinition = {
       type: 'number',
       label: 'Min Minutes',
       default: 30,
-      min: 1,
+      min: 30,
+      max: 60,
       group: 'Daily Budget',
       helpText: 'Lower bound of the daily assigned time.',
     },
@@ -33,28 +34,29 @@ export const browseFeed: ActivityDefinition = {
       type: 'number',
       label: 'Max Minutes',
       default: 60,
-      min: 1,
+      min: 30,
+      max: 60,
       group: 'Daily Budget',
       helpText: 'Upper bound of the daily assigned time.',
     },
 
     {
       name: 'session_min_minutes', type: 'number', label: 'Min Minutes',
-      default: 5, min: 1, group: 'Session Duration',
+      default: 5, min: 1, max: 15, group: 'Session Duration',
       helpText: 'Each session is capped by the remaining daily budget.',
     },
     {
       name: 'session_max_minutes', type: 'number', label: 'Max Minutes',
-      default: 10, min: 1, group: 'Session Duration',
+      default: 10, min: 1, max: 15, group: 'Session Duration',
     },
     {
       name: 'rest_min_minutes', type: 'number', label: 'Min Minutes',
-      default: 60, min: 0, group: 'Rest Between Sessions',
+      default: 60, min: 1, max: 1440, group: 'Rest Between Sessions',
     },
     {
       name: 'rest_max_minutes', type: 'number', label: 'Max Minutes',
-      default: 120, min: 0, group: 'Rest Between Sessions',
-      helpText: 'Enable Repeat While Active in Start to automatically queue the next session.',
+      default: 120, min: 1, max: 1440, group: 'Rest Between Sessions',
+      helpText: 'This profile rests between sessions while the automation runs other eligible profiles.',
     },
 
     // Engagement chances

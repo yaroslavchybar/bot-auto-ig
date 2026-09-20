@@ -3,6 +3,15 @@ import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
 
+export const setIgState = mutation({
+  args: { profileId: v.id('profiles'), igLoggedIn: v.optional(v.boolean()), outreachReady: v.optional(v.boolean()) },
+  handler: async (ctx, { profileId, ...state }) => {
+    const profile = await ctx.db.get(profileId)
+    if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
+    await ctx.db.patch(profileId, state)
+  },
+})
+
 export const beginDeleteInternal = internalMutation({
 	args: { name: v.string() },
 	handler: async (ctx, { name }) => {

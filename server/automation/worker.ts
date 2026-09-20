@@ -15,6 +15,8 @@ import {
   type DbAutomationRow,
 } from '../shared/convexClient.js'
 import { runWarmup, warmupReady } from './warmup.js'
+import { runRoutineSession } from './routine.js'
+import { routineReady, routineRecordSession } from '../shared/convexClient.js'
 import { runPool } from './pool.js'
 import { orderProfileQueue, profileProxyKey } from './profile-queue.js'
 import {
@@ -189,7 +191,7 @@ export async function runAutomation(
   const aggregateStates = nodeStates
   const automationId = String(input.automationId || 'automation')
   const setupConfig = startConfig(nodes)
-  const lists = selectedLists(nodes)
+  const lists = automation.routine ? automation.listIds ?? [] : selectedLists(nodes)
   if (!lists.length)
     throw new Error(
       'Select at least one profile list before running the automation',
@@ -212,7 +214,7 @@ export async function runAutomation(
   const parallel = 1
   let previousProxy: string | undefined
   const hasWarmup = nodes.some(node => node.data?.activityId === 'browse_feed')
-  const repeat = setupConfig.repeatWhileActive === true && hasWarmup
+  const repeat = !!automation.routine || setupConfig.repeatWhileActive === true && hasWarmup
   const profileDone = (profileId: string) => {
     const run = aggregateStates.__profileRuns?.[profileId]
     return !!run?.completed && !repeat
@@ -220,6 +222,18 @@ export async function runAutomation(
   const runProfile = async (profile: DbProfileRow) => {
     shutdownSignal.throwIfAborted()
     if (profileDone(profile.id)) return
+    if (automation.routine) {
+      if (!await routineReady(automationId, profile.id)) return
+      try {
+        await withProfile(profile, { headless: automation.routine.headless, openSession, automationId }, async session => {
+          await runRoutineSession(automation, profile.id, session.page, log, shouldStop)
+        })
+      } catch (error) {
+        if (shouldStop()) throw error
+        await routineRecordSession(automationId, profile.id, false, error instanceof Error ? error.message : String(error))
+      }
+      return
+    }
     if (hasWarmup && !warmupReady(await warmupGetByProfile(profile.id))) return
     await withProfile(
       profile,
@@ -397,7 +411,7 @@ export async function runAutomation(
     ? number(setupConfig.profileReopenCooldownMinutes, 30)
     : 0
   while (await shouldKeepWatching(automationId)) {
-    await sleep(profilePollIntervalMs).catch(() => undefined)
+    await sleep(automation.routine ? Math.min(profilePollIntervalMs, 15_000) : profilePollIntervalMs).catch(() => undefined)
     shutdownSignal.throwIfAborted()
     // Status may have changed during the delay; never open profiles after stop.
     if (!(await shouldKeepWatching(automationId))) break

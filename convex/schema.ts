@@ -1,7 +1,26 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { routineValidator } from './routinePolicy';
 
 export default defineSchema({
+  leadLists: defineTable({ name: v.string(), createdAt: v.number() }),
+  leads: defineTable({
+    username: v.string(), listIds: v.array(v.id('leadLists')), source: v.string(),
+    status: v.union(v.literal('new'), v.literal('ready'), v.literal('reserved'), v.literal('contacted'), v.literal('replied'), v.literal('uncertain'), v.literal('do_not_contact')),
+    senderId: v.optional(v.id('profiles')), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_username', ['username']).index('by_status', ['status']),
+  accountProgress: defineTable({
+    profileId: v.id('profiles'),
+    paused: v.boolean(), issue: v.optional(v.string()), activeDays: v.number(), outreachDays: v.number(),
+    lastActivityDate: v.optional(v.string()), lastOutreachDate: v.optional(v.string()),
+    date: v.string(), used: v.number(), allowance: v.number(), nextRunAt: v.number(),
+    startedAt: v.number(), updatedAt: v.number(),
+  }).index('by_profile', ['profileId']),
+  outreachAttempts: defineTable({
+    requestId: v.string(), profileId: v.id('profiles'), automationId: v.id('automations'), leadId: v.id('leads'),
+    date: v.string(), message: v.string(), status: v.union(v.literal('reserved'), v.literal('sending'), v.literal('sent'), v.literal('uncertain'), v.literal('cancelled')),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_request', ['requestId']).index('by_profile', ['profileId']).index('by_lead', ['leadId']).index('by_status', ['status']),
 	lists: defineTable({
 		name: v.string(),
 		createdAt: v.number(),
@@ -18,6 +37,8 @@ export default defineSchema({
 	}).index("by_name", ["name"]),
 
 	profiles: defineTable({
+        igLoggedIn: v.optional(v.boolean()),
+        outreachReady: v.optional(v.boolean()),
 		renameFrom: v.optional(v.string()),
 		createdAt: v.number(),
 		name: v.string(),
@@ -63,13 +84,14 @@ export default defineSchema({
 		// row cannot grow without limit; retries arrive within seconds.
 		recentRunIds: v.optional(v.array(v.string())),
 		updatedAt: v.number(),
-	}).index("by_profile", ["profileId"]),
+	}).index("by_profile", ["profileId"]).index('by_active_run', ['activeRun.id']),
 
 	// ═══════════════════════════════════════════════════════════════════
 	// AUTOMATION SYSTEM TABLES
 	// ═══════════════════════════════════════════════════════════════════
 
 	automations: defineTable({
+    routine: v.optional(routineValidator),
 		// Definition fields
 		name: v.string(),
 		description: v.optional(v.string()),

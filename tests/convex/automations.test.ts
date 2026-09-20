@@ -11,6 +11,32 @@ import {
   normalizeStartConfig,
 } from '../../frontend/src/features/automations/startNode'
 import { validateAutomationImport } from '../../frontend/src/features/automations/utils/automationImportExport'
+import { selectedLists } from '../../server/automation/graph'
+
+test('editor saves preserve source list selections for reopening and execution', async () => {
+  const t = createConvexTest()
+  const list = await seedList(t)
+  const automation = await seedAutomation(t)
+  const nodes = [{
+    id: 'start_node',
+    type: 'start',
+    data: { config: { sourceLists: [list!._id] } },
+  }]
+
+  await t.mutation(api.automations.mutations.update, {
+    id: automation!._id,
+    nodes,
+    edges: [],
+  })
+  const reopened = await t.query(api.automations.queries.get, { id: automation!._id })
+  expect(normalizeStartConfig(reopened!.nodes[0].data.config).sourceLists).toEqual([list!._id])
+  expect(selectedLists(reopened!.nodes)).toEqual([list!._id])
+
+  nodes[0].data.config.sourceLists = []
+  await t.mutation(api.automations.mutations.update, { id: automation!._id, nodes })
+  const cleared = await t.query(api.automations.queries.get, { id: automation!._id })
+  expect(selectedLists(cleared!.nodes)).toEqual([])
+})
 
 test('automation get returns null for malformed route ids', async () => {
   const t = createConvexTest()

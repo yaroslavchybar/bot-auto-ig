@@ -1,4 +1,6 @@
 import { DomainError } from '../errors';
+import { routineValidator, validateRoutine } from '../routinePolicy';
+import { assertAssignments } from '../routines';
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
@@ -14,6 +16,7 @@ import {
 export const create = mutation({
 	args: {
 		name: v.string(),
+		routine: v.optional(routineValidator),
 		description: v.optional(v.string()),
 		nodes: v.any(),
 		edges: v.any(),
@@ -24,8 +27,10 @@ export const create = mutation({
 		if (!cleaned) throw new DomainError('VALIDATION', "name is required");
 
 		const now = Date.now();
+		if (args.routine) validateRoutine(args.routine);
 		const id = await ctx.db.insert("automations", {
 			name: cleaned,
+			routine: args.routine,
 			description: args.description,
 			nodes: args.nodes || [],
 			edges: args.edges || [],
@@ -44,6 +49,7 @@ export const update = mutation({
 	args: {
 		id: v.id("automations"),
 		name: v.optional(v.string()),
+		routine: v.optional(routineValidator),
 		description: v.optional(v.string()),
 		nodes: v.optional(v.any()),
 		edges: v.optional(v.any()),
@@ -56,8 +62,8 @@ export const update = mutation({
 		if (!existing) throw new DomainError('NOT_FOUND', "Automation not found");
 
 		// Can only update idle/pending automations (not running)
-		if (existing.status === "running") {
-			throw new DomainError('CONFLICT', "Cannot update running automation");
+		if (existing.status === "running" || (existing.routine && (existing.isActive || existing.status === 'pending'))) {
+			throw new DomainError('CONFLICT', "Disable the automation and wait for the current session to stop before editing");
 		}
 
 		const patch: Record<string, any> = { updatedAt: Date.now() };
@@ -74,6 +80,11 @@ export const update = mutation({
 		if (updates.maxRetries !== undefined) patch.maxRetries = updates.maxRetries;
 
 		await ctx.db.patch(id, patch);
+		if (updates.routine) {
+          validateRoutine(updates.routine);
+          await ctx.db.patch(id, { routine: updates.routine });
+        }
+        await assertAssignments(ctx);
 		return await ctx.db.get(id);
 	},
 });
@@ -85,8 +96,8 @@ export const remove = mutation({
 		if (!automation) throw new DomainError('NOT_FOUND', "Automation not found");
 
 		// Can't delete running automations
-		if (automation.status === "running") {
-			throw new DomainError('CONFLICT', "Cannot delete running automation");
+		if (automation.status === "running" || (automation.routine && (automation.isActive || automation.status === 'pending'))) {
+			throw new DomainError('CONFLICT', "Disable the automation and wait for the current session to stop before deleting");
 		}
 
 		await ctx.db.delete(args.id);
@@ -112,7 +123,8 @@ export const duplicate = mutation({
 			nodes: existing.nodes,
 			edges: existing.edges,
 			listIds: getAutomationListIds(existing),
-			isActive: existing.isActive ?? true,
+			isActive: false,
+            routine: existing.routine,
 			status: "idle",
 			createdAt: now,
 			updatedAt: now,
@@ -134,6 +146,15 @@ export const setActive = mutation({
 		const automation = await ctx.db.get(args.id);
 		if (!automation) throw new DomainError('NOT_FOUND', "Automation not found");
 
+        if (args.isActive) {
+          await assertAssignments(ctx, { ...automation, isActive: true });
+          if (automation.routine) {
+            validateRoutine(automation.routine);
+            if (!automation.listIds?.length) {
+              throw new DomainError('VALIDATION', 'Select at least one profile list');
+            }
+          }
+        }
 		await ctx.db.patch(args.id, {
 			isActive: args.isActive,
 			updatedAt: Date.now(),
@@ -239,12 +260,36 @@ export const reset = mutation({
 export const reconcileInterruptedInternal = internalMutation({
   args: {},
   handler: async ctx => {
-    const running = await ctx.db.query('automations').withIndex('by_status', q => q.eq('status', 'running')).collect();
-    const pending = await ctx.db.query('automations').withIndex('by_status', q => q.eq('status', 'pending')).collect();
+    // Drain bounded batches before startup continues. Updated rows leave these
+    // index ranges, so the next call resumes without a cursor or a history scan.
+    const batchSize = 100;
+    const running = await ctx.db.query('automations').withIndex('by_status', q => q.eq('status', 'running')).take(batchSize);
+    const pending = await ctx.db.query('automations').withIndex('by_status', q => q.eq('status', 'pending')).take(batchSize);
     const interrupted = [...running, ...pending];
     for (const automation of interrupted) {
       await ctx.db.patch(automation._id, { status: 'failed', error: 'Server restarted during execution', completedAt: Date.now(), updatedAt: Date.now() });
     }
-    return { reconciled: interrupted.length };
+    // Called only after orphan workers are stopped. Charge interrupted reserved time
+    // conservatively, then release it so other sessions can continue today.
+    const activeWarmups = await ctx.db.query('warmupStates').withIndex('by_active_run', q => q.gt('activeRun.id', undefined)).take(batchSize);
+    for (const state of activeWarmups) {
+      if (!state.activeRun) continue;
+      await ctx.db.patch(state._id, {
+        minutesUsedToday: Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + state.activeRun.minutes),
+        nextRunAt: Date.now() + state.activeRun.restMinutes * 60_000,
+        activeRun: undefined,
+      });
+    }
+    const reserved = await ctx.db.query('outreachAttempts').withIndex('by_status', q => q.eq('status', 'reserved')).take(batchSize);
+    const sending = await ctx.db.query('outreachAttempts').withIndex('by_status', q => q.eq('status', 'sending')).take(batchSize);
+    for (const attempt of [...reserved, ...sending]) {
+      await ctx.db.patch(attempt._id, { status: 'uncertain', updatedAt: Date.now() });
+      const lead = await ctx.db.get(attempt.leadId);
+      if (lead?.status === 'reserved') await ctx.db.patch(lead._id, { status: 'uncertain' });
+      const state = await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', attempt.profileId)).unique();
+      if (state) await ctx.db.patch(state._id, { issue: 'Interrupted delivery: review the recipient in Leads before resuming' });
+    }
+    const hasMore = [running, pending, activeWarmups, reserved, sending].some(rows => rows.length === batchSize);
+    return { reconciled: interrupted.length, ...(hasMore ? { hasMore: true } : {}) };
   },
 });

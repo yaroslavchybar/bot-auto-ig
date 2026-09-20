@@ -3,7 +3,7 @@ import { ProfilesPage } from '@/features/profiles/ProfilesPage'
 import { ProxiesPage } from '@/features/proxies/ProxiesPage'
 import { VncPage } from '@/features/vnc/VncPage'
 import { VncSessionPage } from '@/features/vnc/VncSessionPage'
-import { AutomationEditorPage } from '@/features/automations/AutomationEditorPage'
+import { LeadsPage } from '@/features/leads/LeadsPage'
 import { AutomationsPage } from '@/features/automations/AutomationsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import {
@@ -31,11 +31,7 @@ export type RouteMeta = {
 export const ROUTE_META: Record<string, RouteMeta> = {
   '/profiles': { Page: ProfilesPage, breadcrumb: 'Profiles Manager', navId: 'profiles' },
   '/automations': { Page: AutomationsPage, breadcrumb: 'Automations', navId: 'automations' },
-  '/automations/:automationId/editor': { Page: AutomationEditorPage,
-    breadcrumb: 'Automation Editor',
-    navId: 'automations',
-    appChrome: 'immersive',
-  },
+  '/leads': { Page: LeadsPage, breadcrumb: 'Leads', navId: 'leads' },
   '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
   '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },

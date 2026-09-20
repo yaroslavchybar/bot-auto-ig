@@ -255,6 +255,8 @@ export async function profilesSyncStatus(name: string, status: string, using: bo
 // ==================== AUTOMATIONS ====================
 
 export type DbAutomationRow = {
+    listIds?: string[]
+    routine?: { activity: Record<string, number | boolean>; headless: boolean }
     _id: string
     name: string
     nodes: import('../automation/graph.js').AutomationNode[]
@@ -301,7 +303,12 @@ export async function automationsUpdateStatus(input: {
 
 
 export async function automationsReconcileInterrupted(): Promise<{ reconciled: number }> {
-    return convexFetch('/api/automations/reconcile', { method: 'POST', body: {} });
+    let reconciled = 0;
+    while (true) {
+        const batch = await convexFetch<{ reconciled: number; hasMore?: boolean }>('/api/automations/reconcile', { method: 'POST', body: {} });
+        reconciled += batch.reconciled;
+        if (!batch.hasMore) return { reconciled };
+    }
 }
 
 // ==================== WARM-UP ====================
@@ -340,6 +347,14 @@ export async function warmupBeginRun(input: {
 }): Promise<{ date: string; minutes: number }> {
     return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
 }
+
+export const automationsList = () => convexFetch<DbAutomationRow[]>('/api/automations')
+export const routineReady = (automationId: string, profileId: string, checkpoint = false) => convexFetch<boolean>('/api/routines/ready', { method: 'POST', body: { automationId, profileId, checkpoint } })
+export const routineRecordSession = (automationId: string, profileId: string, activityCompleted: boolean, issue?: string) => convexFetch('/api/routines/session', { method: 'POST', body: { automationId, profileId, activityCompleted, issue } })
+export const routineReserve = (automationId: string, profileId: string, requestId: string) => convexFetch<{ attemptId: string; username: string; message: string } | null>('/api/routines/reserve', { method: 'POST', body: { automationId, profileId, requestId } })
+// Never retry authorization to send: a lost response must not cause a duplicate delivery.
+export const routineBeginSend = (attemptId: string) => convexFetch<boolean>('/api/routines/begin-send', { method: 'POST', body: { attemptId }, maxRetries: 0 })
+export const routineFinishSend = (attemptId: string, sent: boolean) => convexFetch('/api/routines/finish-send', { method: 'POST', body: { attemptId, sent } })
 
 export function profilesBeginDelete(name: string): Promise<DbProfileRow | null> {
     return convexFetch('/api/profiles/begin-delete', { method: 'POST', body: { name } });

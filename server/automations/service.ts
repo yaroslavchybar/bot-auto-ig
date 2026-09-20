@@ -114,6 +114,9 @@ function buildPayload(automationId: string, automation: any, parallelProfiles?: 
   return JSON.stringify({
     automationId,
     automation: {
+      _id: automationId,
+      routine: automation.routine,
+      listIds: automation.listIds,
       name: automation.name,
       nodes: automation.nodes ?? [],
       edges: automation.edges ?? [],

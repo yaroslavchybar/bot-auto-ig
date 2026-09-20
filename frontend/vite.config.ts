@@ -26,14 +26,6 @@ function getManualChunk(id: string): string | undefined {
 
   if (!packageName) return undefined
   if (packageName === '@novnc/novnc') return 'vnc'
-  if (
-    packageName === 'reactflow' ||
-    packageName.startsWith('@reactflow/') ||
-    packageName.startsWith('d3-') ||
-    packageName === 'zustand'
-  ) {
-    return 'automation-editor'
-  }
   if (packageName === 'convex') return 'convex'
   if (
     packageName.startsWith('@radix-ui/') ||

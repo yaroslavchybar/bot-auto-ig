@@ -1,9 +1,10 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
 import { query } from "../_generated/server";
+import type { QueryCtx } from '../_generated/server';
 import { statusValidator, type AutomationStatus } from "./helpers";
 
-async function listAutomations(ctx: any, args: { status?: AutomationStatus }) {
+async function listAutomations(ctx: QueryCtx, args: { status?: AutomationStatus }) {
 	let rows;
 
 	if (args.status) {

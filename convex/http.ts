@@ -5,6 +5,7 @@ import { registerProfileRoutes } from './httpRoutes/profiles';
 
 import { registerAutomationRoutes } from './httpRoutes/automations';
 import { registerWarmupRoutes } from './httpRoutes/warmup';
+import { registerRoutineRoutes } from './httpRoutes/routines';
 
 const http = httpRouter();
 
@@ -14,5 +15,6 @@ registerListRoutes(http);
 registerMessageTemplateRoutes(http);
 registerAutomationRoutes(http);
 registerWarmupRoutes(http);
+registerRoutineRoutes(http);
 
 export default http;

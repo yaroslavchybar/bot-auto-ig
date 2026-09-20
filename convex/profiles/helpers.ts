@@ -310,6 +310,7 @@ export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listI
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	const nextListIds = listId === null || typeof listId === "undefined" ? [] : [listId];
 	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildListPatch(nextListIds))));
+    await assertAssignments(ctx);
 	return true;
 }
 
@@ -326,6 +327,7 @@ export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], list
 			await ctx.db.patch(id, buildListPatch(next));
 		}),
 	);
+    await assertAssignments(ctx);
 	return true;
 }
 
@@ -341,3 +343,4 @@ export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[],
 	);
 	return true;
 }
+import { assertAssignments } from '../routines';

@@ -182,6 +182,8 @@ async function startServer(): Promise<void> {
     }
 
     server.listen(PORT, () => {
+        const stopRoutineScheduler = startRoutineScheduler()
+        server.once('close', stopRoutineScheduler)
         logger.info({ port: PORT }, 'API server running')
         logger.info({ port: PORT }, 'WebSocket available')
         // Point the bot at our webhook so deep-link logins complete.
@@ -202,3 +204,4 @@ startServer().catch((err) => {
     logger.fatal({ err }, 'Startup failed')
     process.exit(1)
 })
+import { startRoutineScheduler } from './automations/scheduler.js'

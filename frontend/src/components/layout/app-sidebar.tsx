@@ -25,6 +25,7 @@ import {
 export const NAV_IDS = [
   'profiles',
   'automations',
+  'leads',
   'lists',
   'proxies',
   'vnc',
@@ -33,6 +34,7 @@ export const NAV_IDS = [
 export type NavId = (typeof NAV_IDS)[number]
 
 export const NAV_ITEMS = [
+  { title: 'Leads', id: 'leads', to: '/leads', icon: Users, breadcrumb: 'Leads' },
   {
     title: 'Profiles Manager',
     id: 'profiles',

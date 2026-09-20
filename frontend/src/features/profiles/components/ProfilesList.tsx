@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
+import { IgStateToggles } from './IgStateToggles'
 
 interface ProfilesListProps {
   profiles: Profile[]
@@ -192,6 +193,7 @@ function ProfileMobileCard({
       </div>
 
       <MobileCardTags profile={profile} osLabel={osLabel} />
+      <IgStateToggles profile={profile} />
 
       <MobileCardFooter
         profile={profile}
@@ -312,6 +314,7 @@ function ProfileDesktopRow({
       <TableCell className="pl-4 font-medium">
         <div className="flex flex-col gap-0.5">
           <span className="text-ink truncate">{profile.name}</span>
+          <IgStateToggles profile={profile} />
           <span className="text-subtle-copy max-w-[200px] truncate font-mono text-[10px]">
             {profile.id}
           </span>

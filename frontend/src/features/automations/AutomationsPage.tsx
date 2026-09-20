@@ -1,255 +1,107 @@
-import { Plus, Upload } from 'lucide-react'
+import { useState } from 'react'
+import { useMutation, useQuery } from 'convex/react'
+import { toast } from 'sonner'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 import { Button } from '@/components/ui/button'
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { AutomationsList } from './components/AutomationsList'
-import { AutomationDialog } from './components/AutomationDialog'
-import { AutomationDetails } from './components/AutomationDetails'
-import { useAutomationsPage } from './hooks/useAutomationsPage'
+import { RoutinePopup } from './components/RoutinePopup'
 
 export function AutomationsPage() {
-  const s = useAutomationsPage()
+  const rows = useQuery(api.automations.queries.list, {})
+  const [editing, setEditing] = useState<Id<'automations'> | 'new' | null>(null)
+  const toggle = useMutation(api.automations.mutations.setActive)
+  const duplicate = useMutation(api.automations.mutations.duplicate)
+  const remove = useMutation(api.automations.mutations.remove)
+  const selected = rows?.find((a) => a._id === editing)
+  const act = async (action: () => Promise<unknown>) => {
+    try {
+      await action()
+    } catch (e) {
+      toast.error(String(e))
+    }
+  }
   return (
-    <div className="bg-shell text-ink relative flex h-full flex-col overflow-hidden">
-      <AutomationsHeader saving={s.saving}
-        importInputRef={s.importInputRef}
-        onCreate={s.handleCreate}
-        onImportClick={s.handleImportClick} onImportFile={s.handleImportFile} />
-      <AutomationsContent s={s} />
-      <AutomationCrudDialogs isCreateOpen={s.isCreateOpen} editAutomation={s.editAutomation}
-        saving={s.saving} onSetIsCreateOpen={s.setIsCreateOpen}
-        onSetEditAutomationId={s.setEditAutomationId} onSaveCreate={s.handleSaveCreate}
-        onSaveEdit={s.handleSaveEdit} />
-      <AutomationDetailsSheet detailsAutomation={s.detailsAutomation}
-        onSetDetailsAutomationId={s.setDetailsAutomationId} onToggleActive={s.handleToggleActive}
-        onRun={s.handleRun} onReset={s.handleReset}
-        onStopRun={s.handleStopRun} />
-      <AutomationDeleteDialog deleteAutomationId={s.deleteAutomationId} saving={s.saving}
-        onSetDeleteAutomationId={s.setDeleteAutomationId} onConfirmDelete={s.handleConfirmDelete} />
-    </div>
-  )
-}
-
-function AutomationsContent({ s }: { s: ReturnType<typeof useAutomationsPage> }) {
-  return (
-    <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-        <AutomationsList automations={s.automationsList} loading={s.automationsLoading}
-          onToggleActive={s.handleToggleActive} onRun={s.handleRun} onStopRun={s.handleStopRun}
-          onEdit={s.handleEdit} onEditFlow={s.handleEditFlow}
-          onDuplicate={s.handleDuplicate}
-          onExport={s.handleExport} onDelete={s.handleDelete}
-          onViewDetails={s.handleViewDetails} />
-      </div>
-    </div>
-  )
-}
-
-/* ── Header sub-component ── */
-
-import type { ChangeEvent, RefObject } from 'react'
-
-function AutomationsHeader({
-  saving,
-  importInputRef,
-  onCreate,
-  onImportClick,
-  onImportFile,
-}: {
-  saving: boolean
-  importInputRef: RefObject<HTMLInputElement | null>
-  onCreate: () => void
-  onImportClick: () => void
-  onImportFile: (event: ChangeEvent<HTMLInputElement>) => void
-}) {
-  return (
-    <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
-          <Button
-            size="icon"
-            onClick={onCreate}
-            disabled={saving}
-            className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm font-medium"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Automation
-          </Button>
-          <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={onImportClick}
-              disabled={saving}
-              className="h-8 w-auto px-3.5 text-sm font-medium"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              <span>Import JSON</span>
-            </Button>
-          </div>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={(event) => void onImportFile(event)}
-          />
+    <div className="bg-shell text-ink h-full overflow-auto p-4 md:p-6">
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Automations</h1>
+          <p className="text-subtle-copy text-sm">
+            Daily IG routines, managed through profile lists.
+          </p>
         </div>
+        <Button onClick={() => setEditing('new')}>New automation</Button>
       </div>
+      {rows === undefined ? (
+        <p>Loading automations…</p>
+      ) : rows.length === 0 ? (
+        <p>
+          Create an automation and select the profile lists it should manage.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((a) => (
+            <div
+              key={a._id}
+              className="bg-panel border-line flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4"
+            >
+              <button className="text-left" onClick={() => setEditing(a._id)}>
+                <strong>{a.name}</strong>
+                <p className="text-subtle-copy text-sm">
+                  {a.isActive ? 'Enabled' : 'Disabled'} · {a.status ?? 'idle'} ·{' '}
+                  {a.listIds?.length ?? 0} profile lists
+                </p>
+                {a.error && (
+                  <p className="text-status-danger text-sm">{a.error}</p>
+                )}
+              </button>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setEditing(a._id)}>
+                  Manage
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    void act(() => toggle({ id: a._id, isActive: !a.isActive }))
+                  }
+                >
+                  {a.isActive ? 'Disable' : 'Enable'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => void act(() => duplicate({ id: a._id }))}
+                >
+                  Duplicate
+                </Button>
+                <Button
+                  variant="ghost"
+                  disabled={
+                    a.isActive ||
+                    a.status === 'running' ||
+                    a.status === 'pending'
+                  }
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `Delete ${a.name}? Profile progress and lead history will remain.`,
+                      )
+                    )
+                      void act(() => remove({ id: a._id }))
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {(editing === 'new' || selected) && (
+        <RoutinePopup
+          key={editing}
+          automation={selected}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </div>
-  )
-}
-
-/* ── Crud Dialogs (Create + Edit) ── */
-
-import type { Automation } from './types'
-
-function AutomationCrudDialogs({
-  isCreateOpen,
-  editAutomation,
-  saving,
-  onSetIsCreateOpen,
-  onSetEditAutomationId,
-  onSaveCreate,
-  onSaveEdit,
-}: {
-  isCreateOpen: boolean
-  editAutomation: Automation | null
-  saving: boolean
-  onSetIsCreateOpen: (open: boolean) => void
-  onSetEditAutomationId: (id: import('../../../../convex/_generated/dataModel').Id<'automations'> | null) => void
-  onSaveCreate: (data: { name: string }) => void
-  onSaveEdit: (data: { name: string }) => void
-}) {
-  return (
-    <>
-      <AutomationDialog
-        open={isCreateOpen}
-        onOpenChange={onSetIsCreateOpen}
-        mode="create"
-        saving={saving}
-        onSave={onSaveCreate}
-        onCancel={() => onSetIsCreateOpen(false)}
-      />
-
-      <AutomationDialog
-        open={Boolean(editAutomation)}
-        onOpenChange={(open) => {
-          if (!open) onSetEditAutomationId(null)
-        }}
-        mode="edit"
-        automation={editAutomation}
-        saving={saving}
-        onSave={onSaveEdit}
-        onCancel={() => onSetEditAutomationId(null)}
-      />
-    </>
-  )
-}
-
-/* ── Details Sheet ── */
-
-function AutomationDetailsSheet({
-  detailsAutomation,
-  onSetDetailsAutomationId,
-  onToggleActive,
-  onRun,
-  onReset,
-  onStopRun,
-}: {
-  detailsAutomation: Automation | null
-  onSetDetailsAutomationId: (id: import('../../../../convex/_generated/dataModel').Id<'automations'> | null) => void
-  onToggleActive: (automation: Automation) => void
-  onRun: (automation: Automation) => void
-  onReset: (automation: Automation) => void
-  onStopRun: (automation: Automation) => void
-}) {
-  return (
-    <Sheet
-      open={Boolean(detailsAutomation)}
-      onOpenChange={(open) => {
-        if (!open) onSetDetailsAutomationId(null)
-      }}
-    >
-      <SheetContent className="bg-panel border-line text-ink w-full max-w-full border-l p-0 sm:w-[540px]">
-        <SheetHeader className="border-line-soft bg-panel-subtle border-b p-6 pb-4">
-          <SheetTitle className="text-ink">Automation Details</SheetTitle>
-        </SheetHeader>
-        {detailsAutomation ? (
-          <AutomationDetails
-            automation={detailsAutomation}
-            onToggleActive={() => onToggleActive(detailsAutomation)}
-            onRun={() => onRun(detailsAutomation)}
-            onReset={() => onReset(detailsAutomation)}
-            onStopRun={() => onStopRun(detailsAutomation)}
-          />
-        ) : (
-          <div className="text-muted-foreground p-8 text-center">
-            Automation unavailable.
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
-  )
-}
-
-/* ── Delete Confirmation Dialog ── */
-
-import type { Id } from './../../../../convex/_generated/dataModel'
-
-function AutomationDeleteDialog({
-  deleteAutomationId,
-  saving,
-  onSetDeleteAutomationId,
-  onConfirmDelete,
-}: {
-  deleteAutomationId: Id<'automations'> | null
-  saving: boolean
-  onSetDeleteAutomationId: (id: Id<'automations'> | null) => void
-  onConfirmDelete: () => void
-}) {
-  return (
-    <AlertDialog
-      open={Boolean(deleteAutomationId)}
-      onOpenChange={(open) => {
-        if (!open) onSetDeleteAutomationId(null)
-      }}
-    >
-      <AlertDialogContent className="bg-panel border-line border shadow-xl">
-        <AlertDialogHeader>
-          <AlertDialogTitle className="text-ink">
-            Delete Automation
-          </AlertDialogTitle>
-          <AlertDialogDescription className="text-muted-copy">
-            Are you sure you want to delete this automation? This action cannot
-            be undone.
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-          <AlertDialogAction
-            variant="destructive"
-            onClick={onConfirmDelete}
-            disabled={saving}
-          >
-            {saving ? 'Deleting...' : 'Delete'}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
   )
 }
