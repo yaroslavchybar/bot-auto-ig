@@ -52,6 +52,17 @@ export default defineSchema({
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
 
+	// One row per profile/list membership so runtime workers can query only
+	// profiles assigned to their lists instead of scanning the whole table.
+	profileListAssignments: defineTable({
+		profileId: v.id("profiles"),
+		listId: v.id("lists"),
+	})
+		.index("by_profile", ["profileId"])
+		.index("by_list", ["listId"])
+		.index("by_profile_list", ["profileId", "listId"]),
+
+
 	messageTemplates: defineTable({
 		kind: v.string(),
 		texts: v.array(v.string()),

@@ -33,6 +33,35 @@ export function getProfileListIds(profile: any): any[] {
 	return deduped;
 }
 
+/** Keep the indexed membership table in sync with the profile's listIds. */
+export async function syncProfileListAssignments(ctx: any, profileId: any, listIds: any[]) {
+	const desired = new Map<string, any>();
+	for (const listId of getProfileListIds({ listIds })) desired.set(String(listId), listId);
+	const existing = await ctx.db
+		.query("profileListAssignments")
+		.withIndex("by_profile", (q: any) => q.eq("profileId", profileId))
+		.collect();
+	const current = new Set(existing.map((row: any) => String(row.listId)));
+	for (const row of existing) {
+		if (!desired.has(String(row.listId))) await ctx.db.delete(row._id);
+	}
+	for (const [key, listId] of desired) {
+		if (!current.has(key)) await ctx.db.insert("profileListAssignments", { profileId, listId });
+	}
+}
+
+/** One-time repair for profiles that predate the indexed membership table. */
+export async function rebuildProfileListAssignments(ctx: any) {
+	for (const row of await ctx.db.query("profileListAssignments").collect()) {
+		await ctx.db.delete(row._id);
+	}
+	for (const profile of await ctx.db.query("profiles").collect()) {
+		for (const listId of getProfileListIds(profile)) {
+			await ctx.db.insert("profileListAssignments", { profileId: profile._id, listId });
+		}
+	}
+}
+
 export function buildListPatch(listIds: any[]): { listIds: any[] } {
 	return {
 		listIds,
@@ -256,6 +285,8 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 		.first();
 	if (!existing) return true;
 	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
+	for (const assignment of await ctx.db.query("profileListAssignments").withIndex("by_profile", (q: any) => q.eq("profileId", existing._id)).collect())
+		await ctx.db.delete(assignment._id);
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -264,6 +295,8 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	const existing = await ctx.db.get(profileId);
 	if (!existing) return true;
 	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
+	for (const assignment of await ctx.db.query("profileListAssignments").withIndex("by_profile", (q: any) => q.eq("profileId", profileId)).collect())
+		await ctx.db.delete(assignment._id);
 	await ctx.db.delete(profileId);
 	return true;
 }
@@ -287,9 +320,9 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 }
 
 export async function listAssignedProfilesRow(ctx: any, listId: any) {
-	const rows = await ctx.db.query("profiles").collect();
+	const assignments = await ctx.db.query("profileListAssignments").withIndex("by_list", (q: any) => q.eq("listId", listId)).collect();
+	const rows = (await Promise.all(assignments.map((assignment: any) => ctx.db.get(assignment.profileId)))).filter(Boolean);
 	const result = rows
-		.filter((r: any) => getProfileListIds(r).some((id) => String(id) === String(listId)))
 		.map((r: any) => ({ _id: r._id, name: r.name, createdAt: r.createdAt }))
 		.sort((a: any, b: any) => a.createdAt - b.createdAt)
 		.map((r: any) => ({ profileId: r._id, name: r.name }));
@@ -310,6 +343,7 @@ export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listI
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	const nextListIds = listId === null || typeof listId === "undefined" ? [] : [listId];
 	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildListPatch(nextListIds))));
+	await Promise.all(profileIds.map((id) => syncProfileListAssignments(ctx, id, nextListIds)));
     await assertAssignments(ctx);
 	return true;
 }
@@ -325,6 +359,7 @@ export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], list
 				next.push(listId);
 			}
 			await ctx.db.patch(id, buildListPatch(next));
+			await syncProfileListAssignments(ctx, id, next);
 		}),
 	);
     await assertAssignments(ctx);
@@ -339,8 +374,10 @@ export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[],
 			if (!row) return;
 			const next = getProfileListIds(row).filter((existingListId) => String(existingListId) !== String(listId));
 			await ctx.db.patch(id, buildListPatch(next));
+			await syncProfileListAssignments(ctx, id, next);
 		}),
 	);
+	await assertAssignments(ctx);
 	return true;
 }
 import { assertAssignments } from '../routines';

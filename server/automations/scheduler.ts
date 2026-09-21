@@ -1,33 +1,57 @@
-import { automationsList } from "../shared/convexClient.js";
 import {
   automationMutex,
   automationWorkers,
   runAutomation,
   stopAutomations,
 } from "./service.js";
+import { closeConvexRealtime, watchActiveRoutines } from "../shared/convexRealtime.js";
 import logger from "../shared/logger.js";
 
-/** Enabled routines resume after restarts and keep watching list membership. */
+type SchedulerRoutine = {
+  _id: string;
+  hasRoutine?: boolean;
+  isActive?: boolean;
+};
+
+/** Enabled routines resume after restarts and react to state changes. */
 export function startRoutineScheduler() {
   let busy = false;
+  let queued = false;
+  let stopped = false;
+  let rows: SchedulerRoutine[] = [];
+  const maxConcurrency = () => Math.max(
+    1,
+    Number(process.env.AUTOMATION_MAX_CONCURRENCY) || 3,
+  );
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleRetry = () => {
+    if (stopped || retryTimer) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      void tick();
+    }, 1000);
+    retryTimer.unref?.();
+  };
   const tick = async () => {
-    if (busy) return;
+    if (stopped || busy) {
+      queued = true;
+      return;
+    }
     busy = true;
     const release = await automationMutex.acquire();
     try {
-      const rows = await automationsList();
       for (const row of rows) {
-        if (!row.routine) continue;
+        if (!row.hasRoutine) continue;
         if (!row.isActive) {
           if (automationWorkers.has(row._id)) await stopAutomations(row._id);
           continue;
         }
         if (automationWorkers.has(row._id)) continue;
-        const max = Math.max(
-          1,
-          Number(process.env.AUTOMATION_MAX_CONCURRENCY) || 3,
-        );
-        if (automationWorkers.size >= max) continue;
+        const max = maxConcurrency();
+        if (automationWorkers.size >= max) {
+          scheduleRetry();
+          continue;
+        }
         try {
           await runAutomation({ automationId: row._id });
         } catch (err) {
@@ -42,12 +66,30 @@ export function startRoutineScheduler() {
     } finally {
       release();
       busy = false;
+      if (!stopped && rows.some(row => row.isActive && !automationWorkers.has(row._id)) && automationWorkers.size >= maxConcurrency())
+        scheduleRetry();
+      if (queued && !stopped) {
+        queued = false;
+        void tick();
+      }
     }
   };
-  const timer = setInterval(() => {
-    void tick();
-  }, 15_000);
-  timer.unref();
-  void tick();
-  return () => clearInterval(timer);
+
+  const subscription = watchActiveRoutines(
+    nextRows => {
+      rows = nextRows as SchedulerRoutine[];
+      void tick();
+    },
+    err => logger.warn({ err }, "Routine scheduler subscription failed"),
+  );
+  void subscription.initial.catch(err =>
+    logger.warn({ err }, "Routine scheduler could not load"),
+  );
+
+  return () => {
+    stopped = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    subscription.unsubscribe();
+    void closeConvexRealtime();
+  };
 }

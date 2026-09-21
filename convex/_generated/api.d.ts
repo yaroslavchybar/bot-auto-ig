@@ -31,6 +31,7 @@ import type * as profiles_queries from "../profiles/queries.js";
 import type * as proxies from "../proxies.js";
 import type * as routinePolicy from "../routinePolicy.js";
 import type * as routines from "../routines.js";
+import type * as serverBridgeAuth from "../serverBridgeAuth.js";
 import type * as warmup_helpers from "../warmup/helpers.js";
 import type * as warmup_mutations from "../warmup/mutations.js";
 import type * as warmup_queries from "../warmup/queries.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   proxies: typeof proxies;
   routinePolicy: typeof routinePolicy;
   routines: typeof routines;
+  serverBridgeAuth: typeof serverBridgeAuth;
   "warmup/helpers": typeof warmup_helpers;
   "warmup/mutations": typeof warmup_mutations;
   "warmup/queries": typeof warmup_queries;

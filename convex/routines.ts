@@ -9,6 +9,7 @@ import {
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { dmAllowance, dayKey, routineLists } from "./routinePolicy";
+import { requireServerBridgeAuth } from "./serverBridgeAuth";
 
 const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
   ctx.db
@@ -86,7 +87,6 @@ async function eligibility(
     policy: a.routine,
     state,
     profile: p,
-    date: dayKey(),
   };
 }
 
@@ -105,6 +105,22 @@ export const setAccount = mutation({
       ...(args.clearIssue ? { issue: undefined } : {}),
       updatedAt: Date.now(),
     });
+  },
+});
+
+/**
+ * Time-independent access state for a live worker subscription.
+ * Time-based budget checks remain in `ready`, immediately before actions.
+ */
+export const access = query({
+  args: {
+    bridgeToken: v.string(),
+    automationId: v.id("automations"),
+    profileId: v.id("profiles"),
+  },
+  handler: async (ctx, args) => {
+    requireServerBridgeAuth(args.bridgeToken);
+    return Boolean(await eligibility(ctx, args.automationId, args.profileId));
   },
 });
 
@@ -156,20 +172,23 @@ export const ready = internalQuery({
     automationId: v.id("automations"),
     profileId: v.id("profiles"),
     checkpoint: v.optional(v.boolean()),
+    now: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const result = await eligibility(ctx, args.automationId, args.profileId);
     if (!result) return false;
     if (args.checkpoint) return true;
+    const now = args.now ?? Date.now();
+    const date = dayKey(now);
     const warmup = await ctx.db
       .query("warmupStates")
       .withIndex("by_profile", (q) => q.eq("profileId", args.profileId))
       .unique();
     return (
-      (result.state?.nextRunAt ?? 0) <= Date.now() &&
-      (warmup?.nextRunAt ?? 0) <= Date.now() &&
+      (result.state?.nextRunAt ?? 0) <= now &&
+      (warmup?.nextRunAt ?? 0) <= now &&
       (!warmup ||
-        warmup.date !== dayKey() ||
+        warmup.date !== date ||
         (!warmup.activeRun &&
           (warmup.minutesUsedToday ?? 0) < warmup.todayMinutes))
     );
@@ -216,11 +235,12 @@ export const reserve = internalMutation({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled || !e.policy.leadListId) return null;
+    const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
-    const used = state.date === e.date ? state.used : 0;
-    const activeBeforeToday = state.activeDays - (state.lastActivityDate === e.date ? 1 : 0);
-    const outreachBeforeToday = state.outreachDays - (state.lastOutreachDate === e.date ? 1 : 0);
-    const allowance = Math.min(e.policy.maxDms, state.date === e.date ? state.allowance : dmAllowance(e.policy, activeBeforeToday, outreachBeforeToday));
+    const used = state.date === date ? state.used : 0;
+    const activeBeforeToday = state.activeDays - (state.lastActivityDate === date ? 1 : 0);
+    const outreachBeforeToday = state.outreachDays - (state.lastOutreachDate === date ? 1 : 0);
+    const allowance = Math.min(e.policy.maxDms, state.date === date ? state.allowance : dmAllowance(e.policy, activeBeforeToday, outreachBeforeToday));
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
     for await (const candidate of ctx.db.query('leads').withIndex('by_available', q => q.eq('senderId', undefined).eq('dmSent', false).eq('followed', false))) {
@@ -228,17 +248,18 @@ export const reserve = internalMutation({
     }
     if (!lead) return null;
     await ctx.db.patch(lead._id, { senderId: args.profileId });
-    await ctx.db.patch(state._id, { date: e.date, used: used + 1, allowance, updatedAt: Date.now() });
-    return { leadId: lead._id, username: lead.username, message: e.policy.message.replaceAll('{{username}}', lead.username), date: e.date };
+    await ctx.db.patch(state._id, { date, used: used + 1, allowance, updatedAt: Date.now() });
+    return { leadId: lead._id, username: lead.username, message: e.policy.message.replaceAll('{{username}}', lead.username), date };
   },
 });
 
 export const beginSend = internalQuery({
-  args: { automationId: v.id('automations'), profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string() },
+  args: { automationId: v.id('automations'), profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    return !!(lead && lead.senderId === args.profileId && !lead.dmSent && e && e.profile.outreachReady && e.policy.outreachEnabled && e.date === args.date);
+    const today = dayKey(args.now ?? Date.now());
+    return !!(lead && lead.senderId === args.profileId && !lead.dmSent && e && e.profile.outreachReady && e.policy.outreachEnabled && today === args.date);
   },
 });
 
@@ -266,10 +287,10 @@ export const finishSend = internalMutation({
 
 const followDelay = 7 * 24 * 60 * 60_000;
 export const followTasks = internalQuery({
-  args: { automationId: v.id('automations'), profileId: v.id('profiles') },
+  args: { automationId: v.id('automations'), profileId: v.id('profiles'), now: v.optional(v.number()) },
   handler: async (ctx, args) => {
     if (!await eligibility(ctx, args.automationId, args.profileId)) return [];
-    const due = await ctx.db.query('leads').withIndex('by_follow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', Date.now() - followDelay)).take(5);
+    const due = await ctx.db.query('leads').withIndex('by_follow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', (args.now ?? Date.now()) - followDelay)).take(5);
     return due.map(lead => ({ leadId: lead._id, username: lead.username }));
   },
 });

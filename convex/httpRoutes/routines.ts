@@ -6,7 +6,11 @@ import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 export function registerRoutineRoutes(http: HttpRouter) {
   http.route({ path: '/api/routines/follow-tasks', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
-    return jsonResponse(await ctx.runQuery(internal.routines.followTasks, { automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'> }));
+    return jsonResponse(await ctx.runQuery(internal.routines.followTasks, {
+      automationId: b.automationId as Id<'automations'>,
+      profileId: b.profileId as Id<'profiles'>,
+      now: Date.now(),
+    }));
   }) });
   http.route({ path: '/api/routines/record-follow', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
@@ -23,6 +27,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
           automationId: b.automationId as Id<"automations">,
           profileId: b.profileId as Id<"profiles">,
           checkpoint: b.checkpoint === true,
+          now: Date.now(),
         }),
       );
     }),
@@ -65,6 +70,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
           profileId: b.profileId as Id<"profiles">,
           leadId: b.leadId as Id<"leads">,
           date: String(b.date),
+          now: Date.now(),
         }),
       );
     }),

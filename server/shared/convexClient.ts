@@ -19,7 +19,6 @@ if (!convexApiKey) {
 // HTTP Actions are served at .convex.site, not .convex.cloud
 // Convert the URL if needed
 const convexUrl = convexCloudUrl.replace('.convex.cloud', '.convex.site');
-
 // Database types
 export type DbListRow = { id: string; name: string };
 
@@ -192,6 +191,10 @@ export async function profilesList(): Promise<DbProfileRow[]> {
     return convexFetch<DbProfileRow[]>('/api/profiles');
 }
 
+export async function profilesRebuildListAssignments(): Promise<true> {
+    return convexFetch<{ ok: true }>('/api/profiles/rebuild-list-assignments', { method: 'POST' }).then(() => true);
+}
+
 export async function profilesGetById(profileId: string): Promise<DbProfileRow | null> {
     const cleaned = String(profileId || '').trim();
     if (!cleaned) throw new Error('id is required');
@@ -346,6 +349,41 @@ export async function warmupBeginRun(input: {
     restMaxMinutes: number
 }): Promise<{ date: string; minutes: number }> {
     return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
+}
+
+/** Reduced profile payload returned by runtimeListPageInternal (see toRuntimeProfile). */
+export type RuntimeProfile = {
+    id: string
+    name: string
+    status?: string
+    using: boolean
+    listIds?: string[]
+    lastOpenedAt?: number
+    igLoggedIn?: boolean
+    outreachReady?: boolean
+    renameFrom?: string
+}
+
+export type RuntimePage = {
+    automation?: { status?: string; isActive?: boolean; configRevision?: string }
+    profiles: RuntimeProfile[]
+    warmups?: Array<{ profileId: string; nextRunAt?: number }>
+    progress?: Array<{ profileId: string; nextRunAt?: number }>
+    nextCursor?: string | null
+    isDone?: boolean
+} | null
+
+export async function automationsRuntimePage(
+    automationId: string,
+    listId: string,
+    cursor?: string | null,
+): Promise<RuntimePage> {
+    const cleaned = String(automationId || '').trim()
+    if (!cleaned) throw new Error('automationId is required')
+    if (!String(listId || '').trim()) throw new Error('listId is required')
+    const params = new URLSearchParams({ automationId: cleaned, listId: String(listId) })
+    if (cursor) params.set('cursor', cursor)
+    return convexFetch<RuntimePage>(`/api/automations/runtime-page?${params.toString()}`)
 }
 
 export const automationsList = () => convexFetch<DbAutomationRow[]>('/api/automations')

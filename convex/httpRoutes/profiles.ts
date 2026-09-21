@@ -20,6 +20,7 @@ const profilePaths = [
   '/api/profiles/finish-delete',
   '/api/profiles/finish-rename',
   '/api/profiles/sync-status',
+  '/api/profiles/rebuild-list-assignments',
 ];
 
 export function registerProfileRoutes(http: HttpRouter): void {
@@ -162,6 +163,15 @@ function registerProfileStatusRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
       const ok = await ctx.runMutation(internal.profiles.mutations.syncStatusInternal, body as any);
+      return jsonResponse({ ok });
+    }),
+  });
+
+  http.route({
+    path: '/api/profiles/rebuild-list-assignments',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx) => {
+      const ok = await ctx.runMutation(internal.profiles.mutations.rebuildListAssignmentsInternal, {});
       return jsonResponse({ ok });
     }),
   });

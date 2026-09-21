@@ -53,6 +53,13 @@ export const remove = mutation({
 				});
 			}),
 		);
+		// Keep the indexed membership table in sync — otherwise orphan rows diverge.
+		for (const row of await ctx.db
+			.query("profileListAssignments")
+			.withIndex("by_list", (q: any) => q.eq("listId", args.id))
+			.collect()) {
+			await ctx.db.delete(row._id);
+		}
 		await Promise.all(
 			impactedAutomations.map((automation: any) => {
 				const listIds = Array.isArray(automation.listIds) ? automation.listIds : [];

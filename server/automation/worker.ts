@@ -8,12 +8,19 @@ import { fileURLToPath } from 'node:url'
 import { sleep, shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
   automationsGetById,
+  automationsRuntimePage,
   profilesList,
   profilesSyncStatus,
   warmupGetByProfile,
   type DbProfileRow,
   type DbAutomationRow,
 } from '../shared/convexClient.js'
+import {
+  closeConvexRealtime,
+  watchRoutineAccess,
+  watchRoutineRuntime,
+  type RuntimeSnapshot,
+} from '../shared/convexRealtime.js'
 import { runWarmup, warmupReady } from './warmup.js'
 import { runRoutineSession } from './routine.js'
 import { routineReady, routineRecordSession } from '../shared/convexClient.js'
@@ -55,7 +62,7 @@ function number(value: unknown, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-// How often a running automation re-scans its lists for newly added profiles.
+// Kept for the injected test runner. Production workers use Convex subscriptions.
 let profilePollIntervalMs = 5 * 60 * 1000
 
 /** Override the poll interval (tests). */
@@ -63,8 +70,103 @@ export function setProfilePollIntervalMs(ms: number): void {
   profilePollIntervalMs = ms
 }
 
-// Keep watching only while the automation is still running and active.
-// Fail-closed: any fetch problem ends the watch instead of looping forever.
+/** Safety cap so a missed subscription update never sleeps forever. */
+export const MAX_REALTIME_SLEEP_MS = 15 * 60 * 1000
+
+export function msUntilMidnightUtc(now = Date.now()): number {
+  const date = new Date(now)
+  const nextMidnight = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + 1,
+  )
+  return Math.max(0, nextMidnight - now)
+}
+
+/**
+ * How long the realtime loop may sleep before a time-based readiness change.
+ * Covers profile reopen cooldown, warmup/account rest periods, and UTC day
+ * rollover (daily budgets reset). Same logic for routine and warmup paths.
+ */
+export function nextWakeupDelayMs(
+  snapshot: RuntimeSnapshot | null,
+  cooldownMinutes: number,
+  now = Date.now(),
+): number {
+  const candidates: number[] = [msUntilMidnightUtc(now)]
+  for (const profile of snapshot?.profiles ?? []) {
+    const lastOpened = Number((profile as AnyRecord).lastOpenedAt)
+    if (cooldownMinutes > 0 && Number.isFinite(lastOpened) && lastOpened > 0) {
+      const expiry = lastOpened + cooldownMinutes * 60_000
+      if (expiry > now) candidates.push(expiry - now)
+    }
+  }
+  for (const row of snapshot?.warmups ?? []) {
+    const at = Number((row as AnyRecord).nextRunAt)
+    if (Number.isFinite(at) && at > now) candidates.push(at - now)
+  }
+  for (const row of snapshot?.progress ?? []) {
+    const at = Number((row as AnyRecord).nextRunAt)
+    if (Number.isFinite(at) && at > now) candidates.push(at - now)
+  }
+  return Math.max(0, Math.min(...candidates, MAX_REALTIME_SLEEP_MS))
+}
+
+function isTruncatedSnapshot(snapshot: RuntimeSnapshot): boolean {
+  return !!snapshot && !!snapshot.truncated
+}
+
+/**
+ * Sweep every list with keyset cursor pages so profiles outside the first
+ * window still enter the queue. Each page performs one bounded index read,
+ * so a full sweep costs O(N) reads. Profiles in several lists merge once.
+ * Exported for tests.
+ */
+export async function loadFullRuntimeSnapshot(
+  automationId: string,
+  listIds: string[],
+  first: RuntimeSnapshot,
+): Promise<NonNullable<RuntimeSnapshot>> {
+  const base = first ?? { automation: {}, profiles: [] }
+  const seen = new Map<string, Record<string, any>>()
+  const warmups = new Map<string, { profileId: string; nextRunAt?: number }>()
+  const progress = new Map<string, { profileId: string; nextRunAt?: number }>()
+  for (const profile of base.profiles ?? []) seen.set(String((profile as AnyRecord).id), profile as Record<string, any>)
+  for (const row of base.warmups ?? []) warmups.set(String(row.profileId), row)
+  for (const row of base.progress ?? []) progress.set(String(row.profileId), row)
+  for (const listId of listIds.map(String)) {
+    let cursor: string | null | undefined = null
+    let guard = 0
+    while (guard++ < 500) {
+      const page = await automationsRuntimePage(automationId, listId, cursor ?? undefined)
+      if (!page) break
+      for (const profile of page.profiles ?? []) {
+        const id = String((profile as AnyRecord).id ?? (profile as AnyRecord)._id ?? '')
+        if (id && !seen.has(id)) seen.set(id, profile as Record<string, any>)
+      }
+      for (const row of page.warmups ?? []) {
+        const id = String(row.profileId)
+        if (id && !warmups.has(id)) warmups.set(id, row)
+      }
+      for (const row of page.progress ?? []) {
+        const id = String(row.profileId)
+        if (id && !progress.has(id)) progress.set(id, row)
+      }
+      if (page.isDone || !page.nextCursor) break
+      cursor = page.nextCursor
+    }
+  }
+  return {
+    automation: base.automation,
+    profiles: [...seen.values()],
+    warmups: [...warmups.values()],
+    progress: [...progress.values()],
+    truncated: false,
+  }
+}
+
+// Kept for the injected test runner. Production workers receive this state
+// through the reactive runtime subscription below.
 async function shouldKeepWatching(automationId: string): Promise<boolean> {
   try {
     const row = await automationsGetById(automationId)
@@ -72,6 +174,56 @@ async function shouldKeepWatching(automationId: string): Promise<boolean> {
     return !!row && (row.status === 'running' || row.status === 'pending') && row.isActive !== false
   } catch {
     return false
+  }
+}
+
+class UpdateSignal {
+  private pending = 0
+  private waiter: (() => void) | null = null
+
+  notify(): void {
+    this.pending++
+    const waiter = this.waiter
+    this.waiter = null
+    waiter?.()
+  }
+
+  wait(abortSignal: AbortSignal, timeoutMs?: number): Promise<boolean> {
+    if (this.pending > 0) {
+      this.pending--
+      return Promise.resolve(true)
+    }
+    if (abortSignal.aborted) return Promise.resolve(false)
+    return new Promise(resolve => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const cleanup = () => {
+        if (timer) clearTimeout(timer)
+        abortSignal.removeEventListener('abort', onAbort)
+      }
+      const onAbort = () => {
+        this.waiter = null
+        cleanup()
+        resolve(false)
+      }
+      const onWake = (value: boolean) => {
+        cleanup()
+        resolve(value)
+      }
+      this.waiter = () => {
+        this.pending = Math.max(0, this.pending - 1)
+        onWake(true)
+      }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+      if (Number.isFinite(timeoutMs) && (timeoutMs as number) >= 0) {
+        timer = setTimeout(() => {
+          if (this.waiter) {
+            this.waiter = null
+            onWake(true)
+          }
+        }, timeoutMs)
+        timer.unref?.()
+      }
+    })
   }
 }
 
@@ -196,15 +348,88 @@ export async function runAutomation(
     throw new Error(
       'Select at least one profile list before running the automation',
     )
-  const profiles = (await profilesList()).filter((profile) =>
-    profileEligible(
-      profile,
-      lists,
-      setupConfig.profileReopenCooldownEnabled
-        ? number(setupConfig.profileReopenCooldownMinutes, 30)
-        : 0,
-    ),
-  )
+  // Test runners inject a browser opener. Real workers use a single reactive
+  // snapshot instead of repeatedly fetching the same tables over HTTP.
+  const useRealtime = openSession === openBrowserSession
+  const updates = new UpdateSignal()
+  let runtimeHealthy = true
+  let runtimeError: Error | undefined
+  let latestRuntime: RuntimeSnapshot | null = null
+  let runtimeInitialized = false
+  let profileRevision = ''
+  let automationRevision = ''
+  let timingRevision = ''
+  let configChanged = false
+  const runtimeSubscription = useRealtime
+    ? watchRoutineRuntime(
+        automationId,
+        lists.map(String),
+        snapshot => {
+          const nextProfileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
+            id: profile.id,
+            name: profile.name,
+            status: profile.status,
+            using: profile.using,
+            igLoggedIn: profile.igLoggedIn,
+            outreachReady: profile.outreachReady,
+            listIds: profile.listIds,
+            lastOpenedAt: profile.lastOpenedAt,
+            renameFrom: profile.renameFrom,
+          })))
+          const nextTimingRevision = JSON.stringify({
+            warmups: snapshot?.warmups ?? [],
+            progress: snapshot?.progress ?? [],
+          })
+          const nextAutomationRevision = `${snapshot?.automation?.status ?? ''}:${snapshot?.automation?.isActive !== false}`
+          const nextConfigRevision = String(snapshot?.automation?.configRevision ?? '')
+          const changed = runtimeInitialized &&
+            (nextProfileRevision !== profileRevision || nextAutomationRevision !== automationRevision || nextTimingRevision !== timingRevision || nextConfigRevision !== String((latestRuntime?.automation as AnyRecord | undefined)?.configRevision ?? ''))
+          if (runtimeInitialized && nextConfigRevision !== String((latestRuntime?.automation as AnyRecord | undefined)?.configRevision ?? '')) {
+            configChanged = true
+            runtimeHealthy = false
+            runtimeError = new Error('Automation configuration changed; restarting worker')
+          }
+          latestRuntime = snapshot
+          profileRevision = nextProfileRevision
+          automationRevision = nextAutomationRevision
+          timingRevision = nextTimingRevision
+          if (changed || configChanged) updates.notify()
+          runtimeInitialized = true
+        },
+        error => {
+          runtimeHealthy = false
+          runtimeError = error
+          log(`runtime subscription failed: ${error.message}`, 'warn')
+          updates.notify()
+        },
+      )
+    : null
+  const runtime = runtimeSubscription
+    ? await runtimeSubscription.initial
+    : null
+  if (useRealtime && !runtime) throw new Error('Automation runtime not found')
+  latestRuntime = runtime
+  if (useRealtime && isTruncatedSnapshot(latestRuntime)) {
+    try {
+      const full = await loadFullRuntimeSnapshot(automationId, lists.map(String), latestRuntime)
+      latestRuntime = full
+      log(`runtime snapshot truncated; swept ${full.profiles.length} profiles across windows`, 'warn')
+    } catch (error) {
+      log(`full runtime sweep failed, using first window: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+    }
+  }
+  const profiles = (latestRuntime
+    ? latestRuntime.profiles as DbProfileRow[]
+    : await profilesList()
+  ).filter((profile) =>
+      profileEligible(
+        profile,
+        lists,
+        setupConfig.profileReopenCooldownEnabled
+          ? number(setupConfig.profileReopenCooldownMinutes, 30)
+          : 0,
+      ),
+    )
 
   await event('session_started', { automationId: automationId })
   if (!profiles.length)
@@ -223,14 +448,31 @@ export async function runAutomation(
     shutdownSignal.throwIfAborted()
     if (profileDone(profile.id)) return
     if (automation.routine) {
-      if (!await routineReady(automationId, profile.id)) return
+      let access = true
+      const accessSubscription = useRealtime
+        ? watchRoutineAccess(
+            automationId,
+            profile.id,
+            value => { access = value },
+            error => {
+              access = false
+              log(`routine access subscription failed: ${error.message}`, 'warn')
+            },
+          )
+        : null
       try {
+        if (accessSubscription) {
+          access = await accessSubscription.initial
+          if (!access || !await routineReady(automationId, profile.id, false)) return
+        } else if (!await routineReady(automationId, profile.id, false)) return
         await withProfile(profile, { headless: automation.routine.headless, openSession, automationId }, async session => {
-          await runRoutineSession(automation, profile.id, session.page, log, shouldStop)
+          await runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)
         })
       } catch (error) {
         if (shouldStop()) throw error
         await routineRecordSession(automationId, profile.id, false, error instanceof Error ? error.message : String(error))
+      } finally {
+        accessSubscription?.unsubscribe()
       }
       return
     }
@@ -404,29 +646,69 @@ export async function runAutomation(
   }
   await runQueue(profiles)
 
-  // Active automations keep watching their lists: profiles added after the
-  // start are picked up on each poll. Repeating warm-ups rejoin after their
-  // rest period while daily budget remains; Convex rolls the budget over daily.
+  // Active automations keep watching their lists. Real workers react to
+  // Convex updates; the polling branch remains only for isolated tests.
   const cooldownMinutes = setupConfig.profileReopenCooldownEnabled
     ? number(setupConfig.profileReopenCooldownMinutes, 30)
     : 0
-  while (await shouldKeepWatching(automationId)) {
-    await sleep(automation.routine ? Math.min(profilePollIntervalMs, 15_000) : profilePollIntervalMs).catch(() => undefined)
-    shutdownSignal.throwIfAborted()
-    // Status may have changed during the delay; never open profiles after stop.
-    if (!(await shouldKeepWatching(automationId))) break
-    try {
-      const fresh = (await profilesList()).filter(
-        (profile) =>
-          !profileDone(profile.id) &&
-          profileEligible(profile, lists, cooldownMinutes),
-      )
+  if (useRealtime) {
+    while (runtimeHealthy && latestRuntime?.automation &&
+      (latestRuntime.automation.status === 'running' || latestRuntime.automation.status === 'pending') &&
+      latestRuntime.automation.isActive !== false) {
+      // Sweep all windows when truncated so wakeups cover rest periods in
+      // later windows too; otherwise a profile outside the first prefix
+      // would never shorten the sleep.
+      let snapshot = latestRuntime
+      if (isTruncatedSnapshot(snapshot)) {
+        try {
+          snapshot = await loadFullRuntimeSnapshot(automationId, lists.map(String), snapshot)
+        } catch (error) {
+          log(`full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+          snapshot = latestRuntime
+        }
+      }
+      // Time-based readiness (warmup rest, cooldown, day rollover) produces
+      // no table write, so wake on a timeout as well as on subscription updates.
+      const sleepMs = nextWakeupDelayMs(snapshot, cooldownMinutes)
+      if (!await updates.wait(shutdownSignal, sleepMs)) break
+      if (!runtimeHealthy) break
+      let current = latestRuntime
+      if (isTruncatedSnapshot(current)) {
+        try {
+          current = await loadFullRuntimeSnapshot(automationId, lists.map(String), current)
+        } catch (error) {
+          log(`full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+          current = latestRuntime
+        }
+      }
+      const fresh = (current?.profiles ?? []).filter(
+        (profile: any) =>
+          !profileDone(String(profile.id)) &&
+          profileEligible(profile as DbProfileRow, lists, cooldownMinutes),
+      ) as DbProfileRow[]
       if (fresh.length) await runQueue(fresh)
-    } catch (error) {
-      // Best-effort watch: log and keep polling instead of killing the run.
-      log(`watch poll failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+    }
+  } else {
+    while (await shouldKeepWatching(automationId)) {
+      await sleep(profilePollIntervalMs).catch(() => undefined)
+      shutdownSignal.throwIfAborted()
+      if (!(await shouldKeepWatching(automationId))) break
+      try {
+        const fresh = (await profilesList()).filter(
+          (profile) =>
+            !profileDone(profile.id) &&
+            profileEligible(profile, lists, cooldownMinutes),
+        )
+        if (fresh.length) await runQueue(fresh)
+      } catch (error) {
+        log(`watch poll failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+      }
     }
   }
+
+  runtimeSubscription?.unsubscribe()
+  if (configChanged) throw runtimeError
+  if (runtimeError) throw runtimeError
 
   await event('session_ended', {
     automationId: automationId,
@@ -483,6 +765,7 @@ async function main(): Promise<void> {
     await runAutomation(input)
   } finally {
     releaseStdin()
+    await closeConvexRealtime()
   }
 }
 

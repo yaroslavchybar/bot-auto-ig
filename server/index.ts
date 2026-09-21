@@ -24,7 +24,7 @@ import { getActiveRuntimeProfileNames } from './shared/store.js'
 import { apiLimiter } from './security/rate-limit.js'
 import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
 import logger from './shared/logger.js'
-import { automationsReconcileInterrupted } from './shared/convexClient.js'
+import { automationsReconcileInterrupted, profilesRebuildListAssignments } from './shared/convexClient.js'
 import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
 import { AppError } from './shared/errors.js'
 import type { Request, Response, NextFunction } from 'express'
@@ -169,6 +169,7 @@ async function startServer(): Promise<void> {
     // Convex dev deploys alongside the server, so the reconcile endpoint
     // may 404 until the new functions are live. Retry instead of crashing.
     await retryStartup(() => automationsReconcileInterrupted(), 'automation reconcile')
+    await retryStartup(() => profilesRebuildListAssignments(), 'profile list assignment migration')
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())

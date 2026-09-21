@@ -24,7 +24,7 @@ const dependencies = {
   recordFollow: routineRecordFollow,
 };
 
-/** Check membership throughout long browsing sessions; a failed check stops activity. */
+/** Check membership at action boundaries; live subscriptions stop active work. */
 export async function runRoutineSession(
   automation: DbAutomationRow,
   profileId: string,
@@ -32,12 +32,18 @@ export async function runRoutineSession(
   log: ActionLogger,
   stopped: StopCheck,
   deps = dependencies,
+  liveAccess?: () => boolean,
 ) {
   let allowed = true,
     checking = false,
     activityCompleted = false;
-  const check = async () => {
+  const check = async (forceRemote = false) => {
     if (checking) return;
+    if (liveAccess && !liveAccess()) {
+      allowed = false;
+      return;
+    }
+    if (liveAccess && !forceRemote) return;
     checking = true;
     try {
       allowed = await deps.ready(automation._id, profileId, true);
@@ -47,10 +53,7 @@ export async function runRoutineSession(
       checking = false;
     }
   };
-  const timer = setInterval(() => {
-    void check();
-  }, 5_000);
-  const shouldStop = () => stopped() || !allowed;
+  const shouldStop = () => stopped() || !allowed || Boolean(liveAccess && !liveAccess());
   const followIfNeeded = async (leadId: string, date: string) => {
     const follow = followButton(page);
     if (!(await follow.isVisible().catch(() => false))) return false;
@@ -65,7 +68,7 @@ export async function runRoutineSession(
   };
   let issue: string | undefined;
   try {
-    await check();
+    await check(true);
     if (shouldStop()) return;
     if (/\/accounts\/login|\/challenge|\/checkpoint/.test(page.url()))
       throw new Error("Instagram login or challenge needs attention");
@@ -87,13 +90,13 @@ export async function runRoutineSession(
       shouldStop,
     );
     activityCompleted = warmup.minutes > 0 && warmup.reason === "finished";
-    await check();
+    await check(true);
     if (/\/accounts\/login|\/challenge|\/checkpoint/.test(page.url()))
       throw new Error("Instagram login or challenge needs attention");
     if (shouldStop() || !activityCompleted) return;
     const messages = 1 + Math.floor(Math.random() * 3);
     for (let i = 0; i < messages; i++) {
-      await check();
+      await check(true);
       if (shouldStop()) return;
       const attempt = await deps.reserve(
         automation._id,
@@ -116,7 +119,7 @@ export async function runRoutineSession(
         const composer = messageComposer(page);
         await composer.waitFor({ state: 'visible', timeout: 15_000 });
         await composer.fill(attempt.message, { timeout: 15_000 });
-        await check();
+        await check(true);
         if (shouldStop()) {
           await deps.finish(profileId, attempt.leadId, attempt.date, false);
           return;
@@ -155,7 +158,6 @@ export async function runRoutineSession(
     issue = error instanceof Error ? error.message : String(error);
     log(issue);
   } finally {
-    clearInterval(timer);
     await deps.record(automation._id, profileId, activityCompleted, issue);
   }
 }

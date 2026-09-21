@@ -14,6 +14,7 @@ const automationPaths = [
   '/api/automations/by-id',
   '/api/automations/start',
   '/api/automations/update-status',
+  '/api/automations/runtime-page',
 ];
 
 export function registerAutomationRoutes(http: HttpRouter): void {
@@ -80,6 +81,25 @@ export function registerAutomationRoutes(http: HttpRouter): void {
         error: body?.error,
       });
       return jsonResponse(row);
+    }),
+  });
+
+  http.route({
+    path: '/api/automations/runtime-page',
+    method: 'GET',
+    handler: withErrorHandling(async (ctx, request) => {
+      const url = new URL(request.url);
+      const automationId = url.searchParams.get('automationId') || '';
+      if (!automationId) throw new ValidationError('automationId is required');
+      const listId = url.searchParams.get('listId') || '';
+      if (!listId) throw new ValidationError('listId is required');
+      const cursor = url.searchParams.get('cursor') || undefined;
+      const page = await ctx.runQuery(internal.automations.queries.runtimeListPageInternal, {
+        id: automationId as any,
+        listId,
+        cursor,
+      });
+      return jsonResponse(page);
     }),
   });
 }
