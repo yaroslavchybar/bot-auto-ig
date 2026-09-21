@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation } from 'convex/react'
 import { toast } from 'sonner'
 import { FileUp, TriangleAlert } from 'lucide-react'
@@ -6,9 +6,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { normalizeUsername } from '../../../../../convex/leadImport'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { parseLeadImport } from '../import'
+import { parseLeadImport, parseCsvTable, findUsernameColumn } from '../import'
 
 export type LeadListOption = { _id: Id<'leadLists'>; name: string }
 
@@ -33,7 +31,29 @@ interface LeadImportDialogProps {
   onOpenChange: (open: boolean) => void
   lists: LeadListOption[] | undefined
   defaultListId: Id<'leadLists'> | undefined
-  onImported: () => void
+}
+
+/** Pick the column with the most valid-looking usernames in a sample. */
+function detectUsernameColumn(
+  headers: string[],
+  rows: string[][],
+  hasHeader: boolean,
+): number {
+  if (hasHeader) {
+    const named = findUsernameColumn(headers)
+    if (named >= 0) return named
+  }
+  let best = 0,
+    bestScore = -1
+  for (let c = 0; c < headers.length; c++) {
+    let score = 0
+    for (const r of rows.slice(0, 20)) if (normalizeUsername(r[c])) score++
+    if (score > bestScore) {
+      bestScore = score
+      best = c
+    }
+  }
+  return best
 }
 
 export function LeadImportDialog({
@@ -41,35 +61,22 @@ export function LeadImportDialog({
   onOpenChange,
   lists,
   defaultListId,
-  onImported,
 }: LeadImportDialogProps) {
   const importLeads = useMutation(api.leads.importLeads)
   const [targetListId, setTargetListId] = useState<string>('')
-  const [source, setSource] = useState('')
   const [text, setText] = useState('')
-  const [preview, setPreview] = useState<string[] | null>(null)
+  /** Explicit column pick; null means auto-detect. Reset on text change. */
+  const [usernameCol, setUsernameCol] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (open) {
       setTargetListId(defaultListId ?? '')
-      setSource('')
-      setText('')
-      setPreview(null)
+        setText('')
+      setUsernameCol(null)
       setBusy(false)
     }
   }, [open, defaultListId])
-
-  const handlePreview = () => {
-    try {
-      const values = parseLeadImport(text)
-      if (values.length > 500) throw new Error('Import up to 500 rows at once')
-      if (!values.length) throw new Error('Nothing to import')
-      setPreview(values)
-    } catch (e) {
-      toast.error(String(e))
-    }
-  }
 
   const handleFile = (file: File | undefined) => {
     if (!file) return
@@ -81,32 +88,59 @@ export function LeadImportDialog({
       .text()
       .then((t) => {
         setText(t)
-        setSource((s) => s || file.name)
-        setPreview(null)
+        setUsernameCol(null)
       })
       .catch((e) => toast.error(String(e)))
   }
 
-  const uniqueValid = preview
-    ? new Set(preview.map(normalizeUsername).filter(Boolean)).size
-    : 0
-  const invalidCount = preview
-    ? preview.filter((v) => !normalizeUsername(v)).length
+  const table = useMemo(() => {
+    if (!text.trim()) return null
+    try {
+      const parsed = parseCsvTable(text)
+      if (parsed.headers.length <= 1 || !parsed.rows.length) return null
+      return parsed
+    } catch {
+      return null
+    }
+  }, [text])
+
+  const effectiveCol = table
+    ? (usernameCol ?? detectUsernameColumn(table.headers, table.rows, table.hasHeader))
     : 0
 
+  const { values, parseError } = useMemo(() => {
+    if (!text.trim()) return { values: [] as string[], parseError: null as string | null }
+    try {
+      if (table)
+        return {
+          values: table.rows
+            .map((r) => r[effectiveCol]?.trim() ?? '')
+            .filter(Boolean),
+          parseError: null,
+        }
+      return { values: parseLeadImport(text), parseError: null }
+    } catch (e) {
+      return { values: [] as string[], parseError: String(e) }
+    }
+  }, [text, table, effectiveCol])
+
+  const uniqueValid = new Set(values.map(normalizeUsername).filter(Boolean)).size
+  const invalidCount = values.filter((v) => !normalizeUsername(v)).length
+  const tooMany = values.length > 500
+  const canImport =
+    !!targetListId && !busy && !parseError && !tooMany && uniqueValid > 0
+
   const handleImport = async () => {
-    if (!preview || !targetListId) return
+    if (!targetListId || !uniqueValid) return
     setBusy(true)
     try {
       const result = await importLeads({
         listId: targetListId as Id<'leadLists'>,
-        usernames: preview,
-        source,
+        usernames: values,
       })
       toast.success(
         `${result.added} added, ${result.duplicates} duplicates, ${result.invalid} invalid`,
       )
-      onImported()
       onOpenChange(false)
     } catch (e) {
       toast.error(String(e))
@@ -121,8 +155,8 @@ export function LeadImportDialog({
         <DialogHeader className="shrink-0">
           <DialogTitle className="page-title-gradient">Import leads</DialogTitle>
           <DialogDescription className="text-subtle-copy">
-            Paste usernames, profile URLs, or CSV with a username column.
-            Existing leads keep their status.
+            Drop a CSV or text file, pick which column holds the usernames.
+            Existing leads keep their DM and follow flags.
           </DialogDescription>
         </DialogHeader>
 
@@ -141,17 +175,6 @@ export function LeadImportDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="lead-import-source">Source / notes</Label>
-            <Input
-              id="lead-import-source"
-              placeholder="Where did these come from?"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-              className="bg-field border-line"
-            />
           </div>
 
           <div className="grid gap-2">
@@ -175,80 +198,88 @@ export function LeadImportDialog({
             />
           </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="lead-import-text">Usernames or CSV</Label>
-            <Textarea
-              id="lead-import-text"
-              rows={5}
-              placeholder="@username per line, profile URL, or pasted CSV"
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value)
-                setPreview(null)
-              }}
-              className="bg-field border-line font-mono text-xs"
-            />
-          </div>
-
-          {preview && (
+          {table && (
             <div className="border-line-soft bg-panel-subtle space-y-2 rounded-xl border p-3">
-              <p className="text-copy text-sm">
-                <span className="font-semibold">{uniqueValid}</span> unique valid
-                usernames
-                {invalidCount > 0 && (
-                  <span className="text-status-warning">
-                    {' '}· {invalidCount} invalid
-                  </span>
-                )}
+              <p className="text-copy text-sm font-medium">
+                Assign columns
+                <span className="text-muted-copy font-normal">
+                  {' '}· pick which column holds the usernames, the rest are
+                  ignored
+                </span>
               </p>
-              <div className="text-muted-copy max-h-36 space-y-0.5 overflow-auto font-mono text-xs">
-                {preview.slice(0, 30).map((v, i) =>
-                  normalizeUsername(v) ? (
-                    <div key={i}>@{normalizeUsername(v)}</div>
-                  ) : (
-                    <div key={i} className="text-status-warning flex items-center gap-1.5">
-                      <TriangleAlert className="h-3 w-3 shrink-0" /> Invalid: {v}
+              <div className="space-y-2">
+                {table.headers.map((h, i) => {
+                  const sample = table.rows
+                    .map((r) => r[i])
+                    .filter(Boolean)
+                    .slice(0, 3)
+                  return (
+                    <div
+                      key={i}
+                      className="flex flex-wrap items-center gap-2"
+                    >
+                      <Select
+                        value={i === effectiveCol ? 'username' : 'ignore'}
+                        onValueChange={(v) => {
+                          if (v === 'username') setUsernameCol(i)
+                        }}
+                      >
+                        <SelectTrigger className="bg-field border-line w-36">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="panel-dropdown">
+                          <SelectItem value="username">Username</SelectItem>
+                          <SelectItem value="ignore">Ignore</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-copy truncate text-sm font-medium">
+                          {h}
+                        </p>
+                        <p className="text-muted-copy truncate font-mono text-xs">
+                          {sample.length ? sample.join(' · ') : '—'}
+                        </p>
+                      </div>
                     </div>
-                  ),
-                )}
-                {preview.length > 30 && (
-                  <div className="text-subtle-copy">
-                    …and {preview.length - 30} more
-                  </div>
-                )}
+                  )
+                })}
               </div>
+            </div>
+          )}
+
+          {text.trim() !== '' && (
+            <div className="text-sm">
+              {parseError ? (
+                <p className="text-status-warning flex items-center gap-1.5">
+                  <TriangleAlert className="h-3.5 w-3.5 shrink-0" /> {parseError}
+                </p>
+              ) : tooMany ? (
+                <p className="text-status-warning">
+                  {values.length} rows — import up to 500 at once.
+                </p>
+              ) : (
+                <p className="text-copy">
+                  <span className="font-semibold">{uniqueValid}</span> unique valid
+                  usernames
+                  {invalidCount > 0 && (
+                    <span className="text-status-warning">
+                      {' '}· {invalidCount} invalid
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
           )}
         </div>
 
         <DialogFooter className="shrink-0 gap-2">
-          {!preview ? (
-            <Button
-              onClick={handlePreview}
-              disabled={!text.trim() || busy}
-              className="brand-button"
-            >
-              Preview import
-            </Button>
-          ) : (
-            <>
-              <Button
-                variant="ghost"
-                onClick={() => setPreview(null)}
-                disabled={busy}
-                className="button-ghost"
-              >
-                Back
-              </Button>
-              <Button
-                onClick={() => void handleImport()}
-                disabled={!targetListId || busy || uniqueValid === 0}
-                className="brand-button"
-              >
-                {busy ? 'Importing...' : `Import ${uniqueValid} leads`}
-              </Button>
-            </>
-          )}
+          <Button
+            onClick={() => void handleImport()}
+            disabled={!canImport}
+            className="brand-button"
+          >
+            {busy ? 'Importing...' : `Import ${uniqueValid} leads`}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

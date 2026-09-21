@@ -280,15 +280,7 @@ export const reconcileInterruptedInternal = internalMutation({
         activeRun: undefined,
       });
     }
-    const reserved = await ctx.db.query('leads').withIndex('by_delivery', q => q.eq('delivery.state', 'reserved')).take(batchSize);
-    const sending = await ctx.db.query('leads').withIndex('by_delivery', q => q.eq('delivery.state', 'sending')).take(batchSize);
-    for (const lead of [...reserved, ...sending]) {
-      await ctx.db.patch(lead._id, { status: 'uncertain', delivery: { ...lead.delivery!, state: 'uncertain' }, updatedAt: Date.now() });
-      if (!lead.senderId) continue;
-      const state = await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', lead.senderId!)).unique();
-      if (state) await ctx.db.patch(state._id, { issue: 'Interrupted delivery: review the recipient in Leads before resuming' });
-    }
-    const hasMore = [running, pending, activeWarmups, reserved, sending].some(rows => rows.length === batchSize);
+    const hasMore = [running, pending, activeWarmups].some(rows => rows.length === batchSize);
     return { reconciled: interrupted.length, ...(hasMore ? { hasMore: true } : {}) };
   },
 });

@@ -5,21 +5,12 @@ import { routineValidator } from './routinePolicy';
 export default defineSchema({
   leadLists: defineTable({ name: v.string(), createdAt: v.number() }),
   leads: defineTable({
-    username: v.string(), listIds: v.array(v.id('leadLists')), source: v.string(),
-    status: v.union(v.literal('new'), v.literal('ready'), v.literal('reserved'), v.literal('contacted'), v.literal('replied'), v.literal('uncertain'), v.literal('do_not_contact')),
-    senderId: v.optional(v.id('profiles')), createdAt: v.number(), updatedAt: v.number(),
-    dmSent: v.boolean(),
-    followed: v.boolean(), followDate: v.optional(v.number()), followedBy: v.optional(v.id('profiles')),
-    followPending: v.optional(v.boolean()),
-    delivery: v.optional(v.object({
-      requestId: v.string(), automationId: v.id('automations'), date: v.string(), message: v.string(),
-      state: v.union(v.literal('reserved'), v.literal('sending'), v.literal('uncertain'), v.literal('sent'), v.literal('cancelled')),
-    })),
-  }).index('by_username', ['username']).index('by_status', ['status'])
-    .index('by_request', ['delivery.requestId']).index('by_delivery', ['delivery.state'])
-    .index('by_sender_delivery', ['senderId', 'delivery.state'])
-    .index('by_follow_pending', ['followedBy', 'followPending'])
-    .index('by_follow_due', ['followedBy', 'followed', 'followDate']),
+    username: v.string(), listIds: v.array(v.id('leadLists')),
+    senderId: v.optional(v.id('profiles')), createdAt: v.number(),
+    dmSent: v.boolean(), followed: v.boolean(), followDate: v.optional(v.number()),
+  }).index('by_username', ['username'])
+    .index('by_available', ['senderId', 'dmSent', 'followed'])
+    .index('by_follow_due', ['senderId', 'followed', 'followDate']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     paused: v.boolean(), issue: v.optional(v.string()), activeDays: v.number(), outreachDays: v.number(),

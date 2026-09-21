@@ -265,7 +265,7 @@ export function RoutinePopup({
                         Enable outreach
                       </span>
                       <span className="text-subtle-copy mt-0.5 block text-xs">
-                        Send DMs to Ready leads within the daily allowance
+                        Send DMs to unused leads within the daily allowance
                       </span>
                     </span>
                     <Switch
@@ -342,8 +342,8 @@ export function RoutinePopup({
                     />
                   </div>
                   <p className="text-subtle-copy text-sm">
-                    Use {'{{username}}'} for the recipient. Only Ready leads are
-                    contacted. Messages are spread between browsing sessions,
+                    Use {'{{username}}'} for the recipient. Claimed, messaged, or
+                    followed leads are skipped. Messages follow browsing sessions,
                     within the daily allowance; unused allowance expires.
                   </p>
                 </>

@@ -1,26 +1,31 @@
 # Daily IG routines
 
-Manage a routine in the automation popup. Select sender profile lists, choose the daily browsing and session ranges, and optionally enable outreach with a recipient lead list and message.
+Manage a routine in the automation popup. Select sender profile lists, browsing/session ranges, and optionally enable outreach with a lead list and message. Saving does not enable the routine.
 
-In Profiles Manager:
+Logged in allows browsing. Ready for outreach allows messaging after the configured activity day. Login and account setup are manual.
 
-- **Logged in** allows warm-up sessions. Turning it off stops further activity at the next checkpoint.
-- **Ready for outreach** allows messaging once the automation's minimum activity day is reached. Browsing continues during outreach.
+Enabled routines run around the clock while the server is online, one profile at a time. Each profile gets 30–60 minutes of browsing daily, split into short sessions with rest periods. Resting profiles release the browser slot. When none are eligible, the worker checks every 15 seconds.
 
-Enabled routines run around the clock while the server is online. The worker runs one profile at a time, immediately continuing to the next eligible profile. Each profile receives a 30–60 minute daily browsing budget, split into shorter sessions with a separately selected rest period after each session. Resting profiles do not hold the browser slot. When no profiles are eligible, the worker checks again every 15 seconds.
+An activity day advances after completing the daily budget. Missed days do not advance progress. DM allowance grows after days with confirmed outreach, up to the cap. Sessions send up to three DMs after browsing. Daily counters reset at midnight UTC.
 
-An activity day advances once the assigned browsing budget is completed. Missed days do not advance progress. The daily DM allowance increases only after a day with confirmed outreach and is capped at the configured maximum. A session sends up to three messages after browsing, subject to the remaining allowance and available Ready leads. Daily counters reset at midnight UTC; there are no active-hour or timezone settings.
+Add/remove profiles through Lists Manager. Overlapping lists do not duplicate profiles. Each profile can belong to only one enabled automation. Removing/readding preserves progress.
 
-Add or remove profiles through Lists Manager. Multiple selected lists do not duplicate a profile. A profile may belong to only one enabled automation. Removing and readding a profile preserves progress and delivery history.
+## Leads
 
-The Leads tab accepts pasted usernames/profile URLs or CSV with a `username`, `profile_url`, `instagram`, or `url` column. Preview up to 500 rows per import. Imports normalize and deduplicate usernames globally and preserve existing contact status. Review imported leads and mark eligible recipients Ready. Each recipient is assigned to its sender on reservation and cannot be automatically requeued after contact.
+Import usernames, profile URLs, or CSV with a username/profile_url/instagram/url column, up to 500 rows per import. Imports deduplicate globally and preserve flags and sender assignments. Imported leads are immediately eligible; there is no Ready step.
 
-Delivery reservations and budgets are updated atomically. The worker obtains a one-time send authorization before pressing Enter; ambiguous results stop that account for review. Resolve the recipient as contacted, replied, or do not contact in Leads, then clear the account's issue in the popup. Server restart recovery preserves progress and marks interrupted deliveries uncertain.
+Leads store username, listIds, createdAt, senderId, dmSent, followed, and followDate. There is no separate attempts table or delivery history.
 
-Delivery tracking lives directly on each lead: `dmSent`, `senderId`, and the current delivery request/state. There is no separate attempts table or growing delivery history. The Leads view shows DM sent as Yes, No, or Needs review. Reimports and do-not-contact changes preserve confirmed sends. Startup recovery processes only reserved/sending leads in indexed batches.
+A new interaction requires dmSent=false, followed=false, and no senderId. The server atomically assigns senderId and charges the daily allowance before opening the recipient. Claims are never automatically released, even after failure, restart, list changes, or unfollow. Claim requests are not retried after HTTP failures. This may skip a recipient without sending, but prevents another session or sender from trying again.
 
-When a recipient has no Message button, the routine follows them first if their profile offers Follow, then waits for Message. Leads display `followed` and `followDate`. The sender that created the follow removes it in its first eligible session after seven full days, keeping the date for reference and setting followed to false. Existing follows are left alone. Pending requests are also cancelled after seven days. Cleanup requires the sender to remain logged in and eligible in an enabled routine; it runs before browsing and does not require outreach to remain enabled. Interrupted Follow actions are checked against Instagram before repeating any action. A private account may still require approval before messaging becomes available; missing messaging controls stop delivery for review.
+The current session can follow a claimed recipient and then send its DM. dmSent becomes true only after confirmation. If delivery cannot be confirmed, the profile stops with an issue; check Instagram before clearing it in the automation popup. The recipient remains claimed and skipped.
 
-Profile setup and login are manual. These changes do not upload profile pictures or log in automatically. Browser message selectors require validation against the logged-in Instagram UI before live outreach; automated tests use simulated browser interactions.
+## Follows
 
-Deploy the Convex schema/functions and the server/frontend together. Saving settings does not enable a routine. Existing graph automations can be replaced by saving their settings in the new popup while disabled.
+If Message is missing and Follow is available, the routine follows first, records followed=true and followDate after confirmation, then waits for Message. Existing follows are left alone. Private accounts may still require approval; unavailable messaging stops delivery for review.
+
+The same sender unfollows confirmed follows (or cancels confirmed requests) in its next eligible session after seven full days. Cleanup runs before browsing in bounded batches and requires an enabled routine and eligible sender. Outreach need not remain enabled. Unfollow sets followed=false, retaining followDate and senderId; it never requeues the lead.
+
+There is no pending-action recovery. If the process stops between an Instagram action and saving its result, the boolean may remain false. The sender claim prevents repeats. An unrecorded follow has no automatic cleanup date and must be checked manually.
+
+Deploy Convex, server, and frontend together. Browser controls have simulated tests and still require validation against the live Instagram UI before outreach.

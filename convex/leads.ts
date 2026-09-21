@@ -38,7 +38,6 @@ export const importLeads = mutation({
   args: {
     listId: v.id("leadLists"),
     usernames: v.array(v.string()),
-    source: v.string(),
   },
   handler: async (ctx, args) => {
     if (!(await ctx.db.get(args.listId)))
@@ -68,45 +67,13 @@ export const importLeads = mutation({
         await ctx.db.insert("leads", {
           username,
           listIds: [args.listId],
-          source: args.source.trim(),
-          status: "new",
           dmSent: false,
           followed: false,
           createdAt: Date.now(),
-          updatedAt: Date.now(),
         });
         added++;
       }
     }
     return { added, duplicates, invalid };
-  },
-});
-export const setStatus = mutation({
-  args: {
-    ids: v.array(v.id("leads")),
-    status: v.union(
-      v.literal("ready"),
-      v.literal("contacted"),
-      v.literal("replied"),
-      v.literal("do_not_contact"),
-    ),
-  },
-  handler: async (ctx, { ids, status }) => {
-    for (const id of ids) {
-      const lead = await ctx.db.get(id);
-      if (!lead) continue;
-      if (status === "ready" && !["new", "ready"].includes(lead.status))
-        throw new Error(
-          "Previously contacted or reserved leads cannot be queued again",
-        );
-      const confirmed = status === 'contacted' || status === 'replied';
-      await ctx.db.patch(id, {
-        status, updatedAt: Date.now(),
-        ...(confirmed ? { dmSent: true } : {}),
-        ...(lead.delivery && status !== 'ready' ? {
-          delivery: { ...lead.delivery, state: confirmed || lead.dmSent ? 'sent' as const : 'cancelled' as const },
-        } : {}),
-      });
-    }
   },
 });

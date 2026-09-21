@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type { Page } from "playwright-core";
 import {
   routineReady,
@@ -6,13 +5,12 @@ import {
   routineBeginSend,
   routineFinishSend,
   routineRecordSession,
-  routineBeginFollow,
   routineFollowTasks,
   routineRecordFollow,
   type DbAutomationRow,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
-import { profileControls, followButton, followingButton, hasMessageButton, isFollowing, unfollow } from './follow.js';
+import { profileControls, followButton, followingButton, hasMessageButton, unfollow } from './follow.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 
 const dependencies = {
@@ -22,7 +20,6 @@ const dependencies = {
   finish: routineFinishSend,
   record: routineRecordSession,
   warmup: runWarmup,
-  beginFollow: routineBeginFollow,
   followTasks: routineFollowTasks,
   recordFollow: routineRecordFollow,
 };
@@ -64,14 +61,10 @@ export async function runRoutineSession(
       await check();
       if (shouldStop()) return;
       await page.goto(`https://www.instagram.com/${task.username}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      if (task.recover) {
-        await deps.recordFollow(automation._id, profileId, task.leadId, await isFollowing(page));
-      } else {
-        const removed = await unfollow(page, async () => { await check(); return !shouldStop(); });
-        if (!removed) return;
-        await deps.recordFollow(automation._id, profileId, task.leadId, false);
-        log(`Unfollowed @${task.username} after seven days`);
-      }
+      const removed = await unfollow(page, async () => { await check(); return !shouldStop(); });
+      if (!removed) return;
+      await deps.recordFollow(profileId, task.leadId, false);
+      log(`Unfollowed @${task.username} after seven days`);
     }
     const warmup = await deps.warmup(
       profileId,
@@ -93,7 +86,6 @@ export async function runRoutineSession(
       const attempt = await deps.reserve(
         automation._id,
         profileId,
-        randomUUID(),
       );
       if (!attempt) return;
       // Navigation and composer preparation happen before permission to press Send.
@@ -107,11 +99,10 @@ export async function runRoutineSession(
           if (await followButton(page).isVisible()) {
             await check();
             if (shouldStop()) throw new Error('Session stopped before following');
-            const leadId = await deps.beginFollow(attempt.requestId);
-            if (!leadId) throw new Error('Follow was not authorized');
+            if (!await deps.begin(automation._id, profileId, attempt.leadId, attempt.date)) throw new Error('Follow was not authorized');
             await followButton(page).click({ timeout: 10_000 });
             await followingButton(page).waitFor({ state: 'visible', timeout: 15_000 });
-            await deps.recordFollow(automation._id, profileId, leadId, true);
+            await deps.recordFollow(profileId, attempt.leadId, true);
           }
         }
         await profileControls(page)
@@ -122,10 +113,10 @@ export async function runRoutineSession(
         await composer.fill(attempt.message, { timeout: 15_000 });
         await check();
         if (shouldStop()) {
-          await deps.finish(attempt.requestId, false);
+          await deps.finish(profileId, attempt.leadId, attempt.date, false);
           return;
         }
-        if (!(await deps.begin(attempt.requestId))) return;
+        if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return;
         let sent = false;
         try {
           await composer.press("Enter", { timeout: 10_000 });
@@ -136,11 +127,11 @@ export async function runRoutineSession(
             .waitFor({ state: "visible", timeout: 15_000 });
           sent = true;
         } finally {
-          await deps.finish(attempt.requestId, sent);
+          await deps.finish(profileId, attempt.leadId, attempt.date, sent);
         }
         log(`Message sent to @${attempt.username}`);
       } catch (error) {
-        await deps.finish(attempt.requestId, false);
+        await deps.finish(profileId, attempt.leadId, attempt.date, false);
         throw new Error(
           `Delivery needs review: ${error instanceof Error ? error.message : String(error)}`,
         );
