@@ -10,7 +10,7 @@ import {
   type DbAutomationRow,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
-import { profileControls, followButton, followingButton, hasMessageButton, messageButton, messageComposer, unfollow } from './follow.js';
+import { followButton, followingButton, hasMessageButton, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 
 const dependencies = {
@@ -51,6 +51,18 @@ export async function runRoutineSession(
     void check();
   }, 5_000);
   const shouldStop = () => stopped() || !allowed;
+  const followIfNeeded = async (leadId: string, date: string) => {
+    const follow = followButton(page);
+    if (!(await follow.isVisible().catch(() => false))) return false;
+    await check();
+    if (shouldStop()) throw new Error('Session stopped before following');
+    if (!await deps.begin(automation._id, profileId, leadId, date))
+      throw new Error('Follow was not authorized');
+    await follow.click({ timeout: 10_000 });
+    await followingButton(page).waitFor({ state: 'visible', timeout: 15_000 });
+    await deps.recordFollow(profileId, leadId, true);
+    return true;
+  };
   let issue: string | undefined;
   try {
     await check();
@@ -96,14 +108,7 @@ export async function runRoutineSession(
         });
         if (!await hasMessageButton(page)) {
           // Existing relationships are never claimed as automation-created follows.
-          if (await followButton(page).isVisible()) {
-            await check();
-            if (shouldStop()) throw new Error('Session stopped before following');
-            if (!await deps.begin(automation._id, profileId, attempt.leadId, attempt.date)) throw new Error('Follow was not authorized');
-            await followButton(page).click({ timeout: 10_000 });
-            await followingButton(page).waitFor({ state: 'visible', timeout: 15_000 });
-            await deps.recordFollow(profileId, attempt.leadId, true);
-          }
+          await followIfNeeded(attempt.leadId, attempt.date);
         }
         await messageButton(page).click({ timeout: 15_000 });
         // Current Instagram keeps the profile URL and opens the composer in
@@ -118,6 +123,7 @@ export async function runRoutineSession(
         }
         if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return;
         let sent = false;
+        let blocked = false;
         try {
           await composer.press("Enter", { timeout: 10_000 });
           // A cleared composer alone is insufficient: require the outgoing message in the thread.
@@ -125,11 +131,19 @@ export async function runRoutineSession(
             .getByText(attempt.message, { exact: true })
             .last()
             .waitFor({ state: "visible", timeout: 15_000 });
-          sent = true;
+          if (await messageWasBlocked(page)) {
+            await followIfNeeded(attempt.leadId, attempt.date);
+            await unsendMessage(page, attempt.message);
+            blocked = true;
+          } else {
+            sent = true;
+          }
         } finally {
-          await deps.finish(profileId, attempt.leadId, attempt.date, sent);
+          await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
         }
-        log(`Message sent to @${attempt.username}`);
+        log(blocked
+          ? `Message blocked for @${attempt.username}; followed and unsent`
+          : `Message sent to @${attempt.username}`);
       } catch (error) {
         await deps.finish(profileId, attempt.leadId, attempt.date, false);
         throw new Error(

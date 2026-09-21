@@ -43,6 +43,11 @@ function setup() {
     or() {
       return this;
     },
+    getByRole() {
+      return this;
+    },
+    hover: async () => {},
+    isVisible: async () => false,
     click: async () => {
       calls.push("message-button");
     },
@@ -53,6 +58,9 @@ function setup() {
       calls.push("send");
     },
     last() {
+      return this;
+    },
+    nth() {
       return this;
     },
     waitFor: async () => {
@@ -68,7 +76,11 @@ function setup() {
     goto: async () => {},
     waitForURL: async () => {},
     getByRole: () => locator,
-    getByText: () => locator,
+    getByText: (text: string | RegExp, options?: { exact?: boolean }) => {
+      if (options?.exact && String(text).startsWith("This account can't receive"))
+        return { ...locator, waitFor: async () => { throw new Error('missing'); } };
+      return locator;
+    },
   } as unknown as Page;
   const run = () =>
     runRoutineSession(
@@ -173,6 +185,28 @@ test('missing Message follows once and records the relationship before sending',
   await s.run();
   assert.deepEqual(events, ['follow', 'record-follow', 'message']);
   assert.equal(s.result().sent, true);
+});
+
+test('blocked message follows and unsends without marking delivery successful', async () => {
+  const s = setup();
+  const events: string[] = [];
+  s.page.getByText = ((text: string | RegExp, options?: { exact?: boolean }) => {
+    if (options?.exact && String(text).startsWith("This account can't receive"))
+      return s.locator;
+    return s.locator;
+  }) as unknown as Page['getByText'];
+  s.deps.recordFollow = async (_, __, followed) => {
+    assert.equal(followed, true);
+    events.push('follow');
+  };
+  s.deps.finish = async (_, __, ___, sent, blocked) => {
+    assert.equal(sent, false);
+    assert.equal(blocked, true);
+    events.push('blocked');
+  };
+  await s.run();
+  assert.deepEqual(events, ['follow', 'blocked']);
+  assert.deepEqual(s.result(), { sent: false, deliveryFailed: false });
 });
 
 test('existing Message does not authorize or record a follow', async () => {

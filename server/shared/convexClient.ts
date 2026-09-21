@@ -356,7 +356,7 @@ export const routineReserve = (automationId: string, profileId: string) => conve
 export const routineBeginSend = (automationId: string, profileId: string, leadId: string, date: string) => convexFetch<boolean>('/api/routines/begin-send', { method: 'POST', body: { automationId, profileId, leadId, date }, maxRetries: 0 })
 export const routineFollowTasks = (automationId: string, profileId: string) => convexFetch<Array<{ leadId: string; username: string }>>('/api/routines/follow-tasks', { method: 'POST', body: { automationId, profileId } })
 export const routineRecordFollow = (profileId: string, leadId: string, followed: boolean) => convexFetch('/api/routines/record-follow', { method: 'POST', body: { profileId, leadId, followed } })
-export const routineFinishSend = (profileId: string, leadId: string, date: string, sent: boolean) => convexFetch('/api/routines/finish-send', { method: 'POST', body: { profileId, leadId, date, sent } })
+export const routineFinishSend = (profileId: string, leadId: string, date: string, sent: boolean, blocked = false) => convexFetch('/api/routines/finish-send', { method: 'POST', body: { profileId, leadId, date, sent, blocked } })
 
 export function profilesBeginDelete(name: string): Promise<DbProfileRow | null> {
     return convexFetch('/api/profiles/begin-delete', { method: 'POST', body: { name } });

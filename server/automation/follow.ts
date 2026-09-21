@@ -15,6 +15,42 @@ export const messageComposer = (page: Page) =>
     .or(page.locator('[contenteditable="true"], textarea[placeholder*="message" i]').first())
     .first();
 
+const blockedMessageText = "This account can't receive your message because they don't allow new message requests from everyone.";
+
+export async function messageWasBlocked(page: Page) {
+  return page.getByText(blockedMessageText, { exact: true })
+    .waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
+}
+
+/** Remove the just-sent message from the current Instagram DM thread. */
+export async function unsendMessage(page: Page, message: string) {
+  const matchingMessages = page.getByRole('article', { name: message, exact: true });
+  await matchingMessages.last().waitFor({ state: 'visible', timeout: 15_000 });
+  const sentMessage = matchingMessages.nth((await matchingMessages.count()) - 1);
+  await sentMessage.hover({ timeout: 10_000 });
+
+  const actions = page
+    .getByRole('button', { name: /See more options for message from/i })
+    .last();
+  await actions.waitFor({ state: 'visible', timeout: 10_000 });
+  await actions.click({ timeout: 10_000 });
+
+  const unsend = page.getByRole('button', { name: /^Unsend(?: Unsend)?$/i }).last();
+  await unsend.waitFor({ state: 'visible', timeout: 10_000 });
+  await unsend.click({ timeout: 10_000 });
+
+  // Some layouts show a confirmation dialog; others remove the message
+  // immediately after the menu action.
+  const confirmation = page
+    .getByRole('dialog')
+    .getByRole('button', { name: /^Unsend(?: Unsend)?$/i })
+    .last();
+  if (await confirmation.isVisible().catch(() => false))
+    await confirmation.click({ timeout: 10_000 });
+
+  await sentMessage.waitFor({ state: 'detached', timeout: 15_000 });
+}
+
 export async function hasMessageButton(page: Page) {
   return messageButton(page)
     .waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);

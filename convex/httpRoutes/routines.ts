@@ -79,6 +79,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
         leadId: b.leadId as Id<"leads">,
         date: String(b.date),
         sent: b.sent === true,
+        blocked: b.blocked === true,
       });
       return jsonResponse({ ok: true });
     }),

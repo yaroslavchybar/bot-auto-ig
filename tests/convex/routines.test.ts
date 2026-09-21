@@ -135,6 +135,21 @@ test('a followed lead can finish its same-session DM and stays claimed after unf
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
 });
 
+test('a blocked DM stays unsent without stopping the sender account', async () => {
+  const { t, args, loggedIn, profile } = await setup(); await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.routines.finishSend, {
+    profileId: profile._id,
+    leadId: claim.leadId,
+    date: claim.date,
+    sent: false,
+    blocked: true,
+  });
+  const lead = (await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)!;
+  expect(lead).toMatchObject({ senderId: profile._id, dmSent: false, followed: false });
+  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]?.issue).toBeUndefined();
+});
+
 test('DM and follow flags independently exclude unassigned leads', async () => {
   const { t, args, loggedIn, leads } = await setup(); await loggedIn();
   await t.run(async ctx => { await ctx.db.patch(leads[0]._id, { dmSent: true }); await ctx.db.patch(leads[1]._id, { followed: true }); });

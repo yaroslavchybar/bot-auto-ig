@@ -243,17 +243,24 @@ export const beginSend = internalQuery({
 });
 
 export const finishSend = internalMutation({
-  args: { profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), sent: v.boolean() },
+  args: { profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), sent: v.boolean(), blocked: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.senderId !== args.profileId) throw new Error('Lead belongs to another sender');
     if (lead.dmSent) return;
     if (args.sent) await ctx.db.patch(lead._id, { dmSent: true });
     const state = await progress(ctx, args.profileId);
-    if (state) await ctx.db.patch(state._id, args.sent ? {
-      outreachDays: state.outreachDays + (state.lastOutreachDate !== args.date ? 1 : 0),
-      lastOutreachDate: args.date,
-    } : { issue: 'Delivery could not be confirmed. Check Instagram before clearing this issue; the claimed lead will not be retried.' });
+    if (!state) return;
+    if (args.sent) {
+      await ctx.db.patch(state._id, {
+        outreachDays: state.outreachDays + (state.lastOutreachDate !== args.date ? 1 : 0),
+        lastOutreachDate: args.date,
+      });
+    } else if (!args.blocked) {
+      await ctx.db.patch(state._id, {
+        issue: 'Delivery could not be confirmed. Check Instagram before clearing this issue; the claimed lead will not be retried.',
+      });
+    }
   },
 });
 
