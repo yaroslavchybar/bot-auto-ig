@@ -112,6 +112,29 @@ test('follows become due after seven days and unfollowing never requeues the lea
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
 });
 
+test('a followed lead can finish its same-session DM and stays claimed after unfollow', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
+  const { t, args, loggedIn, profile } = await setup(); await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const check = { ...args, leadId: claim.leadId, date: claim.date };
+
+  await t.mutation(internal.routines.recordFollow, {
+    profileId: profile._id, leadId: claim.leadId, followed: true,
+  });
+  expect(await t.query(internal.routines.beginSend, check)).toBe(true);
+  await t.mutation(internal.routines.finishSend, {
+    profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: true,
+  });
+
+  vi.setSystemTime(Date.now() + 7 * 86400000);
+  await t.mutation(internal.routines.recordFollow, {
+    profileId: profile._id, leadId: claim.leadId, followed: false,
+  });
+  const lead = (await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)!;
+  expect(lead).toMatchObject({ senderId: profile._id, dmSent: true, followed: false });
+  expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
+});
+
 test('DM and follow flags independently exclude unassigned leads', async () => {
   const { t, args, loggedIn, leads } = await setup(); await loggedIn();
   await t.run(async ctx => { await ctx.db.patch(leads[0]._id, { dmSent: true }); await ctx.db.patch(leads[1]._id, { followed: true }); });

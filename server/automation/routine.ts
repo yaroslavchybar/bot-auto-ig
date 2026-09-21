@@ -10,7 +10,7 @@ import {
   type DbAutomationRow,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
-import { profileControls, followButton, followingButton, hasMessageButton, unfollow } from './follow.js';
+import { profileControls, followButton, followingButton, hasMessageButton, messageButton, messageComposer, unfollow } from './follow.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 
 const dependencies = {
@@ -105,11 +105,11 @@ export async function runRoutineSession(
             await deps.recordFollow(profileId, attempt.leadId, true);
           }
         }
-        await profileControls(page)
-          .getByRole("button", { name: "Message", exact: true })
-          .click({ timeout: 15_000 });
-        await page.waitForURL(/\/direct\//, { timeout: 15_000 });
-        const composer = page.getByRole("textbox", { name: /message/i });
+        await messageButton(page).click({ timeout: 15_000 });
+        // Current Instagram keeps the profile URL and opens the composer in
+        // an overlay, so the composer is the navigation-complete signal.
+        const composer = messageComposer(page);
+        await composer.waitFor({ state: 'visible', timeout: 15_000 });
         await composer.fill(attempt.message, { timeout: 15_000 });
         await check();
         if (shouldStop()) {

@@ -4,9 +4,19 @@ import type { Page } from 'playwright-core';
 export const profileControls = (page: Page) => page.locator('main header');
 export const followButton = (page: Page) => profileControls(page).getByRole('button', { name: /^(Follow|Follow back)$/i });
 export const followingButton = (page: Page) => profileControls(page).getByRole('button', { name: /^(Following|Requested)$/i });
+export const messageButton = (page: Page) => profileControls(page).getByRole('button', { name: 'Message', exact: true });
+
+// Instagram currently opens the composer as an overlay on the profile URL.
+// Older layouts exposed a named textbox, while the current layout exposes an
+// unnamed contenteditable textbox next to the visible “Message...” label.
+export const messageComposer = (page: Page) =>
+  page
+    .getByRole('textbox', { name: /message/i })
+    .or(page.locator('[contenteditable="true"], textarea[placeholder*="message" i]').first())
+    .first();
 
 export async function hasMessageButton(page: Page) {
-  return profileControls(page).getByRole('button', { name: 'Message', exact: true })
+  return messageButton(page)
     .waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
 }
 

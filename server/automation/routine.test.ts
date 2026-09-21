@@ -36,6 +36,13 @@ function setup() {
     },
   };
   const locator = {
+    count: async () => 1,
+    first() {
+      return this;
+    },
+    or() {
+      return this;
+    },
     click: async () => {
       calls.push("message-button");
     },
@@ -53,7 +60,10 @@ function setup() {
     },
   };
   const page = {
-    locator: () => ({ getByRole: () => ({ ...locator, waitFor: async () => {}, isVisible: async () => true }) }),
+    locator: () => ({
+      first: () => locator,
+      getByRole: () => ({ ...locator, waitFor: async () => {}, isVisible: async () => true }),
+    }),
     url: () => "https://www.instagram.com/",
     goto: async () => {},
     waitForURL: async () => {},
@@ -92,6 +102,7 @@ test("a routine browses, reserves and authorizes before sending, then confirms d
     "browse",
     "reserve",
     "message-button",
+    "confirm",
     "compose",
     "authorize",
     "send",
@@ -115,8 +126,10 @@ test("a refused send authorization never presses Send", async () => {
 });
 test("a delivery timeout is recorded uncertain and never retried", async () => {
   const s = setup();
+  let waits = 0;
   s.locator.waitFor = async () => {
-    throw new Error("timeout");
+    waits++;
+    if (waits > 1) throw new Error("timeout");
   };
   await s.run();
   assert.equal(s.calls.filter((c) => c === "send").length, 1);
@@ -141,14 +154,17 @@ test('missing Message follows once and records the relationship before sending',
   const s = setup();
   const events: string[] = [];
   let following = false;
-  s.page.locator = (() => ({ getByRole: (_: string, options: { name: string | RegExp }) => {
+  s.page.locator = (() => ({
+    first: () => ({ ...s.locator, count: async () => 0 }),
+    getByRole: (_: string, options: { name: string | RegExp }) => {
     if (options.name === 'Message') return {
       waitFor: async () => { if (!following) throw new Error('missing'); },
       click: async () => { assert.equal(following, true); events.push('message'); },
     };
     if (String(options.name).includes('Following')) return { waitFor: async () => { assert.equal(following, true); } };
     return { isVisible: async () => true, click: async () => { following = true; events.push('follow'); } };
-  } })) as unknown as Page['locator'];
+    },
+  })) as unknown as Page['locator'];
   s.deps.begin = async () => true;
   s.deps.recordFollow = async (profileId, leadId, followed) => {
     assert.equal(profileId, 'profile'); assert.equal(leadId, 'lead'); assert.equal(followed, true);

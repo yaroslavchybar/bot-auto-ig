@@ -343,8 +343,8 @@ export function RoutinePopup({
                   </div>
                   <p className="text-subtle-copy text-sm">
                     Use {'{{username}}'} for the recipient. Claimed, messaged, or
-                    followed leads are skipped. Messages follow browsing sessions,
-                    within the daily allowance; unused allowance expires.
+                    followed leads are skipped for new sessions. A lead followed
+                    in the current session still receives its DM.
                   </p>
                 </>
               )}
