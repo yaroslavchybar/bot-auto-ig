@@ -191,10 +191,6 @@ export async function profilesList(): Promise<DbProfileRow[]> {
     return convexFetch<DbProfileRow[]>('/api/profiles');
 }
 
-export async function profilesRebuildListAssignments(): Promise<true> {
-    return convexFetch<{ ok: true }>('/api/profiles/rebuild-list-assignments', { method: 'POST' }).then(() => true);
-}
-
 export async function profilesGetById(profileId: string): Promise<DbProfileRow | null> {
     const cleaned = String(profileId || '').trim();
     if (!cleaned) throw new Error('id is required');

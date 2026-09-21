@@ -50,18 +50,6 @@ export async function syncProfileListAssignments(ctx: any, profileId: any, listI
 	}
 }
 
-/** One-time repair for profiles that predate the indexed membership table. */
-export async function rebuildProfileListAssignments(ctx: any) {
-	for (const row of await ctx.db.query("profileListAssignments").collect()) {
-		await ctx.db.delete(row._id);
-	}
-	for (const profile of await ctx.db.query("profiles").collect()) {
-		for (const listId of getProfileListIds(profile)) {
-			await ctx.db.insert("profileListAssignments", { profileId: profile._id, listId });
-		}
-	}
-}
-
 export function buildListPatch(listIds: any[]): { listIds: any[] } {
 	return {
 		listIds,

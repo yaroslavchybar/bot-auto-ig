@@ -31,7 +31,7 @@ export const finishRenameInternal = internalMutation({
 		await ctx.db.patch(profileId, { renameFrom: undefined });
 	},
 });
-import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow, rebuildProfileListAssignments } from "./helpers";
+import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
 
 const profileArgsShape = {
 	name: v.string(),
@@ -139,13 +139,5 @@ export const bulkRemoveFromListInternal = internalMutation({
 	args: { profileIds: v.array(v.id("profiles")), listId: v.id("lists") },
 	handler: async (ctx, args) => {
 		return await bulkRemoveProfilesFromListRow(ctx, args.profileIds, args.listId);
-	},
-});
-
-export const rebuildListAssignmentsInternal = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		await rebuildProfileListAssignments(ctx);
-		return true;
 	},
 });
