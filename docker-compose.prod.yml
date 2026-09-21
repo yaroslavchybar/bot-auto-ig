@@ -12,6 +12,8 @@ services:
     image: ghcr.io/yaroslavchybar/bot-auto-ig:server-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-server
     restart: unless-stopped
+    # Supervisor allows 60s for worker cleanup, then stops display services.
+    stop_grace_period: 90s
     # Written by CI from GitHub secrets on every deploy.
     env_file: .env
     environment:

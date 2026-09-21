@@ -24,6 +24,8 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
     restart: unless-stopped
+    # Match production: allow server cleanup before display services stop.
+    stop_grace_period: 90s
 
   frontend:
     build:

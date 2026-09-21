@@ -80,6 +80,13 @@ ESLint working directory. See the [TypeScript extension setup](https://marketpla
 
 ## Local Ports & Docker
 
+On container shutdown, Supervisor sends SIGTERM directly to the server and
+allows 60 seconds for in-flight operations and worker cleanup. The server asks
+workers to close browsers, waits up to 10 seconds, then force-stops stragglers
+(with up to 5 more seconds for SIGTERM on Linux). Display services stop after
+the server. Both Compose configurations allow 90 seconds before Docker forces
+the container to exit. These are maximum waits; clean shutdowns finish sooner.
+
 `frontend` 5173, `server` 3001, VNC 6080 + 6081–6130.
 Images: `oven/bun:1.4.2-*` for server/frontend. Production frontend builds require `VITE_API_URL`,
 `VITE_CONVEX_URL` as build args.
