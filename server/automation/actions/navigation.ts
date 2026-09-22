@@ -2,22 +2,34 @@ import type { Page } from 'playwright-core'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
 
-// Blocking Instagram overlays ("Turn on Notifications", "Save your login
-// info") render seconds after navigation, so wait for them instead of
-// peeking. Click "Not Now" only, never "Turn On".
-export async function dismissPopups(page: Page, session = new BrowseSession()): Promise<void> {
+// Clicks "Not Now" on Instagram popups. Returns true if dismissed.
+export async function dismissPopups(page: Page, session = new BrowseSession()): Promise<boolean> {
   session.check()
-  const notNow = page
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Not Now' })
-    .first()
-  const shown = await notNow
-    .waitFor({ state: 'visible', timeout: session.timeout(3_000) })
-    .then(() => true, () => false)
-  if (!shown) return
-  session.check()
-  await notNow.click({ timeout: session.timeout(3_000) }).catch(() => undefined)
-  await session.wait(random(300, 700))
+  const candidates = [
+    page.getByRole('button', { name: 'Not Now' }),
+    page.locator('div[role="dialog"] button:has-text("Not Now")'),
+    page.locator('button:has-text("Not Now")'),
+  ]
+  for (const loc of candidates) {
+    try {
+      const count = await loc.count().catch(() => 0)
+      for (let i = 0; i < Math.min(count, 3); i++) {
+        const btn = loc.nth(i)
+        if (await btn.isVisible().catch(() => false)) {
+          session.check()
+          try {
+            await btn.click({ timeout: session.timeout(2_000) })
+          } catch {
+            continue
+          }
+          await session.wait(random(300, 700)).catch(() => undefined)
+          return true
+        }
+      }
+    } catch {
+    }
+  }
+  return false
 }
 
 export async function closeDialog(page: Page, session = new BrowseSession()): Promise<void> {

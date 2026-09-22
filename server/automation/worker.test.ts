@@ -67,6 +67,8 @@ test('standalone stories use configured viewing times', async () => {
         goto: async () => {},
         keyboard: { press: async () => {} },
         getByRole: () => ({
+          count: async () => 0,
+          nth: () => ({ isVisible: async () => false, click: async () => {} }),
           getByRole: () => ({
             first: () => ({
               isVisible: async () => false,
@@ -79,6 +81,7 @@ test('standalone stories use configured viewing times', async () => {
         locator: () => ({
           first: () => ({ isVisible: async () => true, click: async () => {} }),
           count: async () => 0,
+          nth: () => ({ isVisible: async () => false, click: async () => {} }),
         }),
       },
       close: async () => {},

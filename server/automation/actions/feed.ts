@@ -157,6 +157,7 @@ async function browseFeedSession(
     .first()
     .waitFor({ state: 'visible', timeout: session.timeout(15_000) })
     .catch(() => undefined)
+  await dismissPopups(page, session)
   await driftMouse(page, undefined, undefined, session)
   await sleep(random(800, 2000))
 
@@ -186,22 +187,38 @@ async function browseFeedSession(
   log(`Starting feed session for ${minutes} minute(s)`)
   while (Date.now() < end && !shouldStop()) {
     session.check()
+    if (await dismissPopups(page, session)) {
+      stuckRounds = 0
+      lastPosition = ''
+      continue
+    }
     if (await isFeedEnd(page)) return 'finished'
     const position = await page.evaluate(() => `${window.scrollY}:${document.documentElement.scrollHeight}`).catch(() => '')
     stuckRounds = position && position === lastPosition ? stuckRounds + 1 : 0
     lastPosition = position
     if (stuckRounds >= 3) {
+      if (await dismissPopups(page, session)) {
+        stuckRounds = 0
+        lastPosition = ''
+        continue
+      }
       if (reloaded) {
         log('Feed stuck, ending early')
         return 'stalled'
       }
       reloaded = true
       stuckRounds = 0
+      lastPosition = ''
       log('Feed stalled, reloading once')
-      await dismissPopups(page, session)
       await page.reload({ waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
       session.check()
       await focusPageContent(page)
+      await dismissPopups(page, session)
+      await page
+        .locator('article')
+        .first()
+        .waitFor({ state: 'visible', timeout: session.timeout(15_000) })
+        .catch(() => undefined)
       await dismissPopups(page, session)
       continue
     }
@@ -361,6 +378,7 @@ async function browseFeedSession(
         .first()
         .waitFor({ state: 'visible', timeout: session.timeout(15_000) })
         .catch(() => undefined)
+      await dismissPopups(page, session)
       await driftMouse(page, undefined, undefined, session)
       await sleep(random(800, 2000))
       stuckRounds = 0
