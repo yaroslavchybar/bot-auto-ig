@@ -184,6 +184,7 @@ async function browseFeedSession(
   let nextDetourAt = start + detourSpacing
   // Permalink ids already dwelled on; never read the same post twice.
   const seen = new Set<string>()
+  let feedEnds = 0
   log(`Starting feed session for ${minutes} minute(s)`)
   while (Date.now() < end && !shouldStop()) {
     session.check()
@@ -192,7 +193,35 @@ async function browseFeedSession(
       lastPosition = ''
       continue
     }
-    if (await isFeedEnd(page)) return 'finished'
+    if (await isFeedEnd(page)) {
+      feedEnds++
+      log('Feed end reached, looking for more')
+      await smoothScroll(page, random(600, 1000), session)
+      await sleep(random(1500, 3000))
+      await page
+        .locator('article')
+        .first()
+        .waitFor({ state: 'visible', timeout: session.timeout(5_000) })
+        .catch(() => undefined)
+      await dismissPopups(page, session)
+      if (feedEnds >= 2 && end - Date.now() > 30_000 && !shouldStop()) {
+        const reels = Math.round(random(numeric(config.reels_min, 3), numeric(config.reels_max, 8)))
+        if (await openReels(page, log, session)) {
+          log('Watching reels')
+          await watchReels(page, reels, config, log, shouldStop, end, session)
+          await backToFeed(page, log, session)
+          session.check()
+          await focusPageContent(page)
+          await dismissPopups(page, session)
+        }
+        feedEnds = 0
+      }
+      stuckRounds = 0
+      lastPosition = ''
+      if (end - Date.now() < 10_000) break
+      continue
+    }
+    feedEnds = 0
     const position = await page.evaluate(() => `${window.scrollY}:${document.documentElement.scrollHeight}`).catch(() => '')
     stuckRounds = position && position === lastPosition ? stuckRounds + 1 : 0
     lastPosition = position
