@@ -2,15 +2,22 @@ import type { Page } from 'playwright-core'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
 
-// Instagram notification prompt ("Turn on Notifications") blocks the feed
-// until dismissed. Click "Not Now" — never "Turn On".
+// Blocking Instagram overlays ("Turn on Notifications", "Save your login
+// info") render seconds after navigation, so wait for them instead of
+// peeking. Click "Not Now" only, never "Turn On".
 export async function dismissPopups(page: Page, session = new BrowseSession()): Promise<void> {
   session.check()
-  const notNow = page.getByRole('button', { name: 'Not Now', exact: true }).first()
-  if (await notNow.isVisible().catch(() => false)) {
-    await notNow.click({ timeout: session.timeout(3_000) }).catch(() => undefined)
-    await session.wait(random(300, 700))
-  }
+  const notNow = page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Not Now' })
+    .first()
+  const shown = await notNow
+    .waitFor({ state: 'visible', timeout: session.timeout(3_000) })
+    .then(() => true, () => false)
+  if (!shown) return
+  session.check()
+  await notNow.click({ timeout: session.timeout(3_000) }).catch(() => undefined)
+  await session.wait(random(300, 700))
 }
 
 export async function closeDialog(page: Page, session = new BrowseSession()): Promise<void> {
@@ -27,7 +34,6 @@ export async function closeDialog(page: Page, session = new BrowseSession()): Pr
       return
     }
   } catch {
-    // Fall through to Escape.
   }
   session.check()
   await page.keyboard.press('Escape').catch(() => undefined)

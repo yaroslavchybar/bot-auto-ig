@@ -66,7 +66,16 @@ test('standalone stories use configured viewing times', async () => {
       page: {
         goto: async () => {},
         keyboard: { press: async () => {} },
-        getByRole: () => ({ first: () => ({ isVisible: async () => false, click: async () => {} }) }),
+        getByRole: () => ({
+          getByRole: () => ({
+            first: () => ({
+              isVisible: async () => false,
+              waitFor: async () => { throw new Error('missing') },
+              click: async () => {},
+            }),
+          }),
+          first: () => ({ isVisible: async () => false, click: async () => {} }),
+        }),
         locator: () => ({
           first: () => ({ isVisible: async () => true, click: async () => {} }),
           count: async () => 0,
