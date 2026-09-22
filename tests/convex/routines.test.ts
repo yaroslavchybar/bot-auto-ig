@@ -166,7 +166,7 @@ test('daily allowance grows only after confirmed outreach days', async () => {
   await t.mutation(internal.routines.reserve, args);
   expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]).toMatchObject({ used: 1, allowance: 3 });
 });
-test("overlapping enabled automations are rejected on activation and on list changes", async () => {
+test("overlapping enabled automations are rejected on activation; adding to another list moves the profile", async () => {
   const { t, list, profile } = await setup();
   const secondList = (await seedList(t, "Second"))!;
   const second = (await t.mutation(api.automations.mutations.create, {
@@ -190,12 +190,13 @@ test("overlapping enabled automations are rejected on activation and on list cha
     id: second._id,
     isActive: true,
   });
-  await expect(
-    t.mutation(api.profiles.mutations.bulkAddToList, {
-      profileIds: [profile._id],
-      listId: secondList._id,
-    }),
-  ).rejects.toThrow("multiple enabled");
+  // Single-list invariant: this moves the profile, it never copies.
+  await t.mutation(api.profiles.mutations.bulkAddToList, {
+    profileIds: [profile._id],
+    listId: secondList._id,
+  });
+  const moved = await t.run(async (ctx) => ctx.db.get(profile._id));
+  expect(moved?.listIds?.map(String)).toEqual([String(secondList._id)]);
 });
 
 test("completed daily browsing advances once; removing and readding profiles preserves progress", async () => {

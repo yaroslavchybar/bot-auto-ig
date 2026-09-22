@@ -338,14 +338,13 @@ export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listI
 
 export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], listId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+	// Single-list invariant: a profile lives in at most one list.
+	// Adding to a new list moves it (replaces), it never copies.
 	await Promise.all(
 		profileIds.map(async (id) => {
 			const row = await ctx.db.get(id);
 			if (!row) return;
-			const next = getProfileListIds(row);
-			if (!next.some((existingListId) => String(existingListId) === String(listId))) {
-				next.push(listId);
-			}
+			const next = [listId];
 			await ctx.db.patch(id, buildListPatch(next));
 			await syncProfileListAssignments(ctx, id, next);
 		}),

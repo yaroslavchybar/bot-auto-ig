@@ -66,7 +66,7 @@ function ListsDialogs({ state }: { state: ReturnType<typeof useListsPage> }) {
 
       <Dialog open={Boolean(state.editList)} onOpenChange={state.handleEditOpenChange}>
         <DialogContent hideClose
-          className="bg-panel border-line text-ink max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-[960px]">
+          className="bg-panel border-line text-ink max-h-[88vh] gap-0 overflow-hidden p-0 sm:max-w-[620px]">
           {state.editList ? (
             <ListsForm key={state.editList.id} mode="edit" initialData={state.editList}
               saving={state.saving}

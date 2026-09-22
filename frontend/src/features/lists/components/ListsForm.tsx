@@ -1,14 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from 'convex/react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { DialogClose, DialogTitle } from '@/components/ui/dialog'
+import { DialogClose } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '../../../../../convex/_generated/api'
 import { cn } from '@/lib/utils'
-import { RefreshCw, Search, Users, X } from 'lucide-react'
+import { Check, Plus, Search, X } from 'lucide-react'
 import type { List, ProfileRow } from '../types'
 
 interface ListsFormProps {
@@ -26,354 +24,242 @@ export function ListsForm(props: ListsFormProps) {
   return <ListsEditForm {...props} />
 }
 
-/* ── Create Form ── */
-
-function ListsCreateForm({
-  saving,
-  error: externalError,
-  onSave,
-  onCancel,
-  className,
-}: ListsFormProps) {
+function ListsCreateForm({ saving, error, onSave, onCancel, className }: ListsFormProps) {
   const [name, setName] = useState('')
-  const [localError, setLocalError] = useState<string | null>(null)
-  const error = externalError || localError
-
-  const handleSubmit = () => {
-    const trimmed = name.trim()
-    if (!trimmed) { setLocalError('Name is required'); return }
-    setLocalError(null)
-    onSave(trimmed, [], [])
-  }
+  const trimmed = name.trim()
 
   return (
-    <div className={cn('flex flex-col p-6', className)}>
-      <div className="grid gap-5 pb-6">
-        <div className="grid gap-1.5">
-          <Label htmlFor="name" className="text-muted-copy text-xs font-semibold tracking-wider uppercase">
-            List Name
-          </Label>
-          <Input id="name" value={name} onChange={(e) => setName(e.target.value)}
-            disabled={saving} placeholder="Enter list name..." autoFocus
-            className="brand-focus bg-field border-line h-10 font-medium text-ink" />
-        </div>
+    <div className={cn('flex flex-col gap-4 p-6', className)}>
+      <Input value={name} onChange={(e) => setName(e.target.value)}
+        disabled={saving} placeholder="List name" autoFocus
+        onKeyDown={(e) => { if (e.key === 'Enter' && trimmed) onSave(trimmed, [], []) }}
+        className="brand-focus bg-field border-line h-10 text-ink" />
+      {error && <p className="text-status-danger text-sm">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="lg" onClick={onCancel} disabled={saving}>Cancel</Button>
+        <Button size="lg" onClick={() => trimmed && onSave(trimmed, [], [])} disabled={saving || !trimmed}>
+          Create
+        </Button>
       </div>
-      <FormFooter error={error} saving={saving} onCancel={onCancel}
-        onSubmit={handleSubmit} label="Create List" />
     </div>
   )
 }
 
-/* ── Edit Form ── */
-
-/* ── Edit form state hook ── */
+type LiveProfile = { _id: unknown; name: unknown; listIds?: unknown[] }
+type EditableRow = ProfileRow & { elsewhere: boolean }
 
 function useListEditState(initialData: List | undefined, saving: boolean) {
-  const [name, setName] = useState(initialData?.name || '')
-  const [selectionOverrides, setSelectionOverrides] = useState<Record<string, boolean>>({})
-  const [localError, setLocalError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const liveProfiles = useQuery(api.profiles.queries.list, {})
-  const loadingProfiles = Boolean(initialData) && liveProfiles === undefined
-  const profiles = useProfileRows(initialData, liveProfiles, selectionOverrides)
+  const initialName = initialData?.name ?? ''
+  const [name, setName] = useState(initialName)
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
+  const [search, setSearch] = useState('')
+  const liveProfiles = useQuery(api.profiles.queries.list, {}) as LiveProfile[] | undefined
+  const loading = Boolean(initialData) && liveProfiles === undefined
 
-  const handleToggle = (profileId: string) => {
-    if (saving) return
-    const current = profiles.find((p) => p.id === profileId)
-    if (!current) return
-    setSelectionOverrides((prev) => ({ ...prev, [profileId]: !current.selected }))
-  }
-
-  const filteredProfiles = useMemo(
-    () => profiles.filter((p) => {
-      const q = searchQuery.trim().toLowerCase()
-      if (!q) return true
-      return p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)
-    }),
-    [profiles, searchQuery],
-  )
-
-  const selectedProfiles = useMemo(() => profiles.filter((p) => p.selected), [profiles])
-  const changedCount = useMemo(
-    () => profiles.filter((p) => p.selected !== p.initialSelected).length,
-    [profiles],
-  )
-
-  const setFilteredSelection = (nextSelected: boolean) => {
-    if (saving || loadingProfiles) return
-    const q = searchQuery.trim().toLowerCase()
-    setSelectionOverrides((prev) => {
-      const next = { ...prev }
-      profiles.forEach((p) => {
-        if (!q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q)) {
-          next[p.id] = nextSelected
-        }
-      })
-      return next
-    })
-  }
-
-  const filteredSelectionState = useMemo(() => {
-    if (filteredProfiles.length === 0) return false as const
-    const checked = filteredProfiles.filter((p) => p.selected).length
-    if (checked === 0) return false as const
-    if (checked === filteredProfiles.length) return true as const
-    return 'indeterminate' as const
-  }, [filteredProfiles])
-
-  return {
-    name, setName, localError, setLocalError,
-    searchQuery, setSearchQuery, loadingProfiles, profiles,
-    filteredProfiles, selectedProfiles, changedCount,
-    filteredSelectionState, handleToggle, setFilteredSelection,
-  }
-}
-
-function ListsEditForm({
-  initialData, saving, error: externalError, onSave, onCancel, className,
-}: ListsFormProps) {
-  const state = useListEditState(initialData, saving)
-  const error = externalError || state.localError
-
-  const handleSubmit = () => {
-    const trimmed = state.name.trim()
-    if (!trimmed) { state.setLocalError('Name is required'); return }
-    const addedIds = state.profiles.filter((p) => p.selected && !p.initialSelected).map((p) => p.id)
-    const removedIds = state.profiles.filter((p) => !p.selected && p.initialSelected).map((p) => p.id)
-    state.setLocalError(null)
-    onSave(trimmed, addedIds, removedIds)
-  }
-
-  return (
-    <div className={cn('flex h-[min(82vh,720px)] flex-col', className)}>
-      <EditFormHeader name={state.name} onNameChange={state.setName} saving={saving} changedCount={state.changedCount} />
-      <div className="flex-1 overflow-hidden px-6 pt-4 pb-4">
-        <div className="flex h-full flex-col gap-4">
-          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <ProfileSelectionList
-              profiles={state.profiles} filteredProfiles={state.filteredProfiles}
-              loadingProfiles={state.loadingProfiles} saving={saving}
-              searchQuery={state.searchQuery} filteredSelectionState={state.filteredSelectionState}
-              onSearchChange={state.setSearchQuery} onToggle={state.handleToggle}
-              onSetFilteredSelection={state.setFilteredSelection}
-            />
-            <SelectedProfilesSidebar
-              selectedProfiles={state.selectedProfiles} saving={saving} onToggle={state.handleToggle}
-            />
-          </div>
-        </div>
-      </div>
-      <div className="border-line-soft bg-panel border-t px-6 py-4">
-        <FormFooter error={error} saving={saving} onCancel={onCancel} onSubmit={handleSubmit} label="Save Changes" />
-      </div>
-    </div>
-  )
-}
-
-/* ── Hooks ── */
-
-function useProfileRows(
-  initialData: List | undefined,
-  liveProfiles: Array<{ _id: unknown; name: unknown; listIds?: unknown[] }> | undefined,
-  selectionOverrides: Record<string, boolean>,
-): ProfileRow[] {
-  return useMemo(() => {
+  const profiles = useMemo<EditableRow[]>(() => {
     if (!initialData || !liveProfiles) return []
     return liveProfiles
       .map((p) => {
         const id = String(p._id ?? '')
-        const listIds = Array.isArray(p.listIds)
-          ? p.listIds.map((lid) => String(lid || '')).filter(Boolean) : []
+        const listIds = Array.isArray(p.listIds) ? p.listIds.map(String) : []
         const selected = listIds.includes(initialData.id)
         return {
-          id: id,
+          id,
           name: String(p.name || ''),
-          selected: selectionOverrides[id] ?? selected,
+          selected: overrides[id] ?? selected,
           initialSelected: selected,
+          elsewhere: listIds.some((lid) => lid !== initialData.id) && !selected,
         }
       })
-      .filter((row) => Boolean(row.id))
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [initialData, liveProfiles, selectionOverrides])
+      .filter((r) => r.id)
+      // Hide profiles that live in another list.
+      .filter((r) => !r.elsewhere || r.selected)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+  }, [initialData, liveProfiles, overrides])
+
+  // Only disambiguate names that actually collide.
+  const duplicateNames = useMemo(() => {
+    const counts = new Map<string, number>()
+    profiles.forEach((p) => counts.set(p.name, (counts.get(p.name) ?? 0) + 1))
+    return counts
+  }, [profiles])
+
+  const toggle = (id: string) => {
+    if (saving) return
+    const row = profiles.find((p) => p.id === id)
+    if (!row) return
+    setOverrides((prev) => ({ ...prev, [id]: !row.selected }))
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return profiles
+    return profiles.filter((p) => p.name.toLowerCase().includes(q))
+  }, [profiles, search])
+
+  const selected = useMemo(() => profiles.filter((p) => p.selected), [profiles])
+  const added = profiles.filter((p) => p.selected && !p.initialSelected).length
+  const removed = profiles.filter((p) => !p.selected && p.initialSelected).length
+  const isDirty = name.trim() !== initialName.trim() || added + removed > 0
+
+  const addVisible = () => {
+    if (saving || loading) return
+    setOverrides((prev) => {
+      const out = { ...prev }
+      filtered.forEach((p) => { out[p.id] = true })
+      return out
+    })
+  }
+
+  const visibleUnselected = filtered.filter((p) => !p.selected).length
+
+  return {
+    name, setName, search, setSearch, loading,
+    profiles, filtered, selected, added, removed, isDirty,
+    duplicateNames, toggle, addVisible, visibleUnselected,
+    setOverrides,
+  }
 }
 
-/* ── Sub-components ── */
+function shortId(id: string) {
+  return id.slice(-4)
+}
 
-function EditFormHeader({ name, onNameChange, saving, changedCount }: {
-  name: string; onNameChange: (v: string) => void; saving: boolean; changedCount: number
-}) {
+function ListsEditForm({ initialData, saving, error, onSave, onCancel, className }: ListsFormProps) {
+  const s = useListEditState(initialData, saving)
+
+  const save = () => {
+    const name = s.name.trim()
+    if (!name || saving) return
+    onSave(
+      name,
+      s.profiles.filter((p) => p.selected && !p.initialSelected).map((p) => p.id),
+      s.profiles.filter((p) => !p.selected && p.initialSelected).map((p) => p.id),
+    )
+  }
+
+  const saveLabel = !s.isDirty
+    ? 'Save'
+    : s.added + s.removed > 0
+      ? `Save · +${s.added} −${s.removed}`
+      : 'Save'
+
+  const addFirstOnEnter = () => {
+    const first = s.filtered.find((p) => !p.selected)
+    if (first) s.toggle(first.id)
+  }
+
   return (
-    <div className="border-line-soft flex items-center justify-between gap-4 border-b px-6 py-3">
-      <div className="flex min-w-0 flex-1 items-center gap-6">
-        <DialogTitle className="text-ink shrink-0 text-xl font-semibold tracking-tight">
-          Edit List
-        </DialogTitle>
-        <div className="flex min-w-0 flex-1 items-center gap-3 sm:max-w-md">
-          <Input id="name" value={name} onChange={(e) => onNameChange(e.target.value)}
-            disabled={saving} placeholder="List name..." autoFocus
-            className="brand-focus border-line bg-panel-subtle text-ink h-9 w-full rounded-lg border px-3 text-sm font-medium" />
-          {changedCount > 0 && (
-            <span className="brand-surface brand-text-soft shrink-0 rounded-full border px-2.5 py-0.5 font-mono text-[10px] tracking-[0.14em] uppercase">
-              {changedCount} pending change{changedCount === 1 ? '' : 's'}
-            </span>
+    <div className={cn('flex h-[min(80vh,640px)] flex-col', className)}>
+      {/* Name doubles as the title — no separate heading needed. */}
+      <div className="flex items-center gap-2 px-5 pt-4 sm:px-6">
+        <Input value={s.name} onChange={(e) => s.setName(e.target.value)}
+          disabled={saving} placeholder="List name" aria-label="List name"
+          className="brand-focus border-transparent bg-transparent text-ink h-9 rounded-lg px-2 -ml-2 text-lg font-semibold hover:border-line focus:bg-field focus:border-line" />
+        <DialogClose asChild>
+          <button type="button" aria-label="Close"
+            className="button-ghost inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
+            <X className="h-4 w-4" />
+          </button>
+        </DialogClose>
+      </div>
+
+      {/* Selected pills — hidden when empty, compact when present. */}
+      {s.selected.length > 0 && (
+        <div className="px-5 pt-2 sm:px-6">
+          <div className="flex max-h-[92px] flex-wrap gap-1.5 overflow-y-auto">
+            {s.selected.map((p) => (
+              <button key={p.id} type="button" onClick={() => s.toggle(p.id)} disabled={saving}
+                title={p.name}
+                className="border-line bg-panel-strong text-ink hover:border-line-strong inline-flex max-w-full items-center gap-1.5 rounded-full border py-1 pr-1.5 pl-2.5 text-xs">
+                <span className="truncate">
+                  {p.name}
+                  {(s.duplicateNames.get(p.name) ?? 0) > 1 && (
+                    <span className="text-dim-copy font-mono"> ·{shortId(p.id)}</span>
+                  )}
+                </span>
+                <X className="text-muted-copy h-3 w-3 shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 px-5 pt-3 sm:px-6">
+        <div className="relative min-w-0 flex-1">
+          <Search className="text-muted-copy pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+          <Input value={s.search} onChange={(e) => s.setSearch(e.target.value)}
+            placeholder="Search or press Enter to add first match" disabled={s.loading || saving}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter') addFirstOnEnter() }}
+            className="bg-field border-line brand-focus h-9 rounded-lg pr-8 pl-9" />
+          {s.search && (
+            <button type="button" aria-label="Clear search" onClick={() => s.setSearch('')}
+              className="button-ghost absolute top-1/2 right-1.5 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md">
+              <X className="h-3.5 w-3.5" />
+            </button>
           )}
         </div>
+        {s.visibleUnselected > 0 && (
+          <button type="button" onClick={s.addVisible} disabled={saving}
+            className="button-ghost text-ink shrink-0 rounded-lg px-2 py-1.5 text-xs font-medium">
+            Add all{ s.search.trim() ? ` (${s.visibleUnselected})` : ''}
+          </button>
+        )}
       </div>
-      <DialogClose asChild>
-        <button type="button" aria-label="Close modal"
-          className="button-neutral inline-flex h-8 w-8 items-center justify-center rounded-full">
-          <X className="h-4 w-4" />
-        </button>
-      </DialogClose>
-    </div>
-  )
-}
 
-function ProfileSelectionList({ profiles, filteredProfiles, loadingProfiles, saving,
-  searchQuery, filteredSelectionState, onSearchChange, onToggle, onSetFilteredSelection,
-}: {
-  profiles: ProfileRow[]; filteredProfiles: ProfileRow[]
-  loadingProfiles: boolean; saving: boolean; searchQuery: string
-  filteredSelectionState: boolean | 'indeterminate'
-  onSearchChange: (v: string) => void; onToggle: (id: string) => void
-  onSetFilteredSelection: (v: boolean) => void
-}) {
-  return (
-    <section className="flex min-h-0 flex-col">
-      <div className="mb-3">
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
-          <Input placeholder="Search profiles..." value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
-            disabled={loadingProfiles || saving} />
-        </div>
-      </div>
-      <div className="border-line bg-panel-soft flex items-center rounded-t-[18px] border border-b-0 px-3.5 py-2.5">
-        <label className="flex cursor-pointer items-center gap-2.5 text-xs font-medium text-ink hover:text-ink/80 transition-colors">
-          <Checkbox checked={filteredSelectionState}
-            onCheckedChange={(checked) => onSetFilteredSelection(checked === true)}
-            disabled={loadingProfiles || saving || filteredProfiles.length === 0}
-            className="brand-checkbox border-line-strong bg-field-alt h-4.5 w-4.5" />
-          <span>{filteredSelectionState === true ? 'Deselect All' : 'Select All'}</span>
-        </label>
-      </div>
-      <ProfileListBody profiles={profiles} filteredProfiles={filteredProfiles}
-        loadingProfiles={loadingProfiles} onToggle={onToggle} />
-    </section>
-  )
-}
-
-function ProfileListBody({ profiles, filteredProfiles, loadingProfiles, onToggle }: {
-  profiles: ProfileRow[]; filteredProfiles: ProfileRow[]
-  loadingProfiles: boolean; onToggle: (id: string) => void
-}) {
-  if (loadingProfiles) {
-    return (
-      <div className="border-line bg-panel-subtle min-h-0 flex-1 overflow-hidden rounded-b-[18px] border">
-        <div className="text-subtle-copy flex h-full items-center justify-center text-xs">
-          <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" /> Loading profiles...
-        </div>
-      </div>
-    )
-  }
-  if (profiles.length === 0) {
-    return (
-      <div className="border-line bg-panel-subtle min-h-0 flex-1 overflow-hidden rounded-b-[18px] border">
-        <div className="text-subtle-copy flex h-full flex-col items-center justify-center px-6 text-center text-xs">
-          <Users className="text-dim-copy mb-2 h-5 w-5" /> No profiles available in registry.
-        </div>
-      </div>
-    )
-  }
-  if (filteredProfiles.length === 0) {
-    return (
-      <div className="border-line bg-panel-subtle min-h-0 flex-1 overflow-hidden rounded-b-[18px] border">
-        <div className="text-subtle-copy flex h-full items-center justify-center px-6 text-center text-xs">
-          No matching profiles found.
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div className="border-line bg-panel-subtle min-h-0 flex-1 overflow-hidden rounded-b-[18px] border">
-      <ScrollArea className="h-full">
-        <div className="flex flex-col">
-          {filteredProfiles.map((profile, index) => (
-            <button key={profile.id} type="button"
-              onClick={() => onToggle(profile.id)}
-              className={cn(
-                'button-panel flex w-full items-start gap-2.5 px-3.5 py-2.5 text-left',
-                index < filteredProfiles.length - 1 && 'border-line border-b',
-                profile.selected ? 'bg-panel-selected' : 'hover:bg-panel-subtle',
-              )}>
-              <Checkbox checked={profile.selected} onCheckedChange={() => undefined}
-                className="brand-checkbox border-line-strong bg-field-alt pointer-events-none mt-0.5 h-4.5 w-4.5" />
-              <div className="min-w-0 flex-1">
-                <p className="text-ink truncate text-xs font-medium">{profile.name}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </ScrollArea>
-    </div>
-  )
-}
-
-function SelectedProfilesSidebar({ selectedProfiles, saving, onToggle }: {
-  selectedProfiles: ProfileRow[]; saving: boolean; onToggle: (id: string) => void
-}) {
-  return (
-    <section className="flex min-h-0 flex-col">
-      <div className="border-line bg-panel-subtle min-h-0 flex-1 rounded-[18px] border p-1">
-        {selectedProfiles.length === 0 ? (
-          <div className="text-subtle-copy flex h-full min-h-[180px] flex-col items-center justify-center px-6 text-center text-sm">
-            <Users className="text-dim-copy mb-3 h-8 w-8" /> No profiles selected.
-            <p className="text-dim-copy mt-1 max-w-[200px] text-xs">
-              Select profiles from the list on the left to add them here.
-            </p>
-          </div>
+      <div className="min-h-0 flex-1 px-3 pt-2 pb-2 sm:px-4">
+        {s.loading ? (
+          <p className="text-subtle-copy p-8 text-center text-sm">Loading...</p>
+        ) : s.filtered.length === 0 ? (
+          <p className="text-subtle-copy p-8 text-center text-sm">No profiles found</p>
         ) : (
           <ScrollArea className="h-full">
-            <div className="space-y-2.5 p-2.5">
-              {selectedProfiles.map((profile) => (
-                <div key={profile.id}
-                  className="border-line bg-panel-muted flex items-center justify-between gap-2 rounded-xl border px-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-ink truncate text-[13px] font-medium leading-tight">{profile.name}</p>
-                  </div>
-                  <button type="button" onClick={() => onToggle(profile.id)} disabled={saving}
-                    className="button-ghost -mr-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-                    aria-label={`Remove ${profile.name}`}>
-                    <X className="h-3.5 w-3.5" />
+            <ul className="px-2 py-1">
+              {s.filtered.map((p) => (
+                <li key={p.id}>
+                  <button type="button" onClick={() => s.toggle(p.id)}
+                    aria-pressed={p.selected}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors',
+                      p.selected ? 'bg-panel-selected' : 'hover:bg-panel-hover',
+                    )}>
+                    <span className="min-w-0 flex-1 truncate text-[13px]">
+                      <span className={cn(p.selected ? 'text-ink font-medium' : 'text-copy')}>{p.name}</span>
+                      {(s.duplicateNames.get(p.name) ?? 0) > 1 && (
+                        <span className="text-dim-copy font-mono text-[11px]"> ·{shortId(p.id)}</span>
+                      )}
+                    </span>
+                    <span className={cn(
+                      'inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors',
+                      p.selected
+                        ? 'border-transparent bg-status-success-soft text-status-success'
+                        : 'border-line text-muted-copy',
+                    )}>
+                      {p.selected ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                    </span>
                   </button>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </ScrollArea>
         )}
       </div>
-    </section>
-  )
-}
 
-function FormFooter({ error, saving, onCancel, onSubmit, label }: {
-  error: string | null | undefined; saving: boolean
-  onCancel: () => void; onSubmit: () => void; label: string
-}) {
-  return (
-    <>
-      {error && (
-        <div className="text-status-danger bg-status-danger-soft border-status-danger-border mb-4 rounded-md border p-3 text-sm font-medium">
-          {error}
+      <div className="border-line-soft border-t px-5 py-3 sm:px-6">
+        {error && <p className="text-status-danger mb-2 text-sm">{error}</p>}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-subtle-copy text-xs tabular-nums">
+            {s.selected.length} selected
+          </span>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="lg" onClick={onCancel} disabled={saving}>Cancel</Button>
+            <Button size="lg" onClick={save} disabled={saving || !s.isDirty || !s.name.trim()} className="min-w-[110px]">
+              {saving ? 'Saving...' : saveLabel}
+            </Button>
+          </div>
         </div>
-      )}
-      <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={onCancel} disabled={saving}>Cancel</Button>
-        <Button onClick={onSubmit} disabled={saving} className="font-medium">
-          {saving ? 'Saving...' : label}
-        </Button>
       </div>
-    </>
+    </div>
   )
 }
