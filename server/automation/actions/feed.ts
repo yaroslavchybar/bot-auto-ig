@@ -23,7 +23,7 @@ import {
   smoothScroll,
   type CursorState,
 } from './scroll.js'
-import { backToFeed } from './navigation.js'
+import { backToFeed, dismissPopups } from './navigation.js'
 import {
   openAuthorProfile,
   openOwnProfile,
@@ -150,6 +150,7 @@ async function browseFeedSession(
   // navigation since goto can return focus to browser chrome.
   session.check()
   await focusPageContent(page)
+  await dismissPopups(page, session)
   // Let the feed render before touching anything; humans wait for content.
   await page
     .locator('article')
@@ -197,9 +198,11 @@ async function browseFeedSession(
       reloaded = true
       stuckRounds = 0
       log('Feed stalled, reloading once')
+      await dismissPopups(page, session)
       await page.reload({ waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
       session.check()
       await focusPageContent(page)
+      await dismissPopups(page, session)
       continue
     }
     const visible = await visibleFeedPost(page, seen)
@@ -352,6 +355,7 @@ async function browseFeedSession(
       await backToFeed(page, log, session)
       session.check()
       await focusPageContent(page)
+      await dismissPopups(page, session)
       await page
         .locator('article')
         .first()

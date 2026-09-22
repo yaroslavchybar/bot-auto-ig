@@ -2,6 +2,17 @@ import type { Page } from 'playwright-core'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
 
+// Instagram notification prompt ("Turn on Notifications") blocks the feed
+// until dismissed. Click "Not Now" — never "Turn On".
+export async function dismissPopups(page: Page, session = new BrowseSession()): Promise<void> {
+  session.check()
+  const notNow = page.getByRole('button', { name: 'Not Now', exact: true }).first()
+  if (await notNow.isVisible().catch(() => false)) {
+    await notNow.click({ timeout: session.timeout(3_000) }).catch(() => undefined)
+    await session.wait(random(300, 700))
+  }
+}
+
 export async function closeDialog(page: Page, session = new BrowseSession()): Promise<void> {
   const sleep = session.wait
   session.check()

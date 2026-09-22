@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core'
 import { focusPageContent } from '../../browser/focus.js'
 import { randomDelay, type ActionLogger, type StopCheck } from './shared.js'
 import { clickVisible } from './mouse.js'
+import { dismissPopups } from './navigation.js'
 
 export async function watchStories(
   page: Page,
@@ -15,6 +16,7 @@ export async function watchStories(
     timeout: 45_000,
   })
   await focusPageContent(page)
+  await dismissPopups(page)
   const story = page.locator('a[href*="/stories/"]').first()
   if (!(await story.isVisible().catch(() => false))) {
     log('Stories: no story tray found')
