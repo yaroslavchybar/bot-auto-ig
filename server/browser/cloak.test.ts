@@ -143,7 +143,7 @@ test(`browser cleanup: ${scenario}`, () => {
           closed = true
           context.emit('close')
           await session.closed
-          assert.deepEqual(events, ['display', 'slot'])
+          assert.deepEqual(events, ['read', 'saved', 'display', 'slot'])
         } else {
           process.emit('SIGTERM')
           assert.equal(session.close(), session.close())
@@ -154,8 +154,8 @@ test(`browser cleanup: ${scenario}`, () => {
             await Promise.all([session.close(), session.closed])
           }
           assert.deepEqual(events, scenario === 'save failure'
-            ? ['read', 'close', 'display', 'slot']
-            : ['read', 'saved', 'close', 'display', 'slot'])
+            ? ['read', 'read', 'close', 'display', 'slot']
+            : ['read', 'saved', 'read', 'saved', 'close', 'display', 'slot'])
         }
       }
       console.log('shutdown order verified')
