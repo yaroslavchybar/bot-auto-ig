@@ -1,11 +1,3 @@
-import { ListsPage } from '@/features/lists/ListsPage'
-import { ProfilesPage } from '@/features/profiles/ProfilesPage'
-import { ProxiesPage } from '@/features/proxies/ProxiesPage'
-import { VncPage } from '@/features/vnc/VncPage'
-import { VncSessionPage } from '@/features/vnc/VncSessionPage'
-import { ScraperPage } from '@/features/scraper/ScraperPage'
-import { AutomationsPage } from '@/features/automations/AutomationsPage'
-import { LoginPage } from '@/pages/LoginPage'
 import {
   createContext,
   useCallback,
@@ -16,31 +8,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react'
-import type { NavId } from '@/components/layout/app-sidebar'
+import type { RouteMeta } from '@/lib/routes'
 
 // Minimal client-side router built on the History API.
 // Replaces react-router: no SSR, no loaders, just pathname matching.
-
-export type RouteMeta = {
-  Page: React.ComponentType
-  breadcrumb: string
-  navId?: NavId
-  appChrome?: 'default' | 'immersive'
-}
-
-export const ROUTE_META: Record<string, RouteMeta> = {
-  '/profiles': { Page: ProfilesPage, breadcrumb: 'Profiles Manager', navId: 'profiles' },
-  '/automations': { Page: AutomationsPage, breadcrumb: 'Automations', navId: 'automations' },
-  '/scraper': { Page: ScraperPage, breadcrumb: 'Scraper', navId: 'scraper' },
-  '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
-  '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },
-  '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
-  '/vnc/session/:automationId/:profileName': { Page: VncSessionPage,
-    breadcrumb: 'Live Session',
-    navId: 'vnc',
-  },
-  '/login': { Page: LoginPage, breadcrumb: 'Sign In' },
-}
 
 type MatchedRoute = {
   pattern: string
@@ -72,19 +43,22 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
   return params
 }
 
-export function matchRoute(pathname: string): MatchedRoute | null {
+export function matchRoute(
+  pathname: string,
+  routes: Record<string, RouteMeta>,
+): MatchedRoute | null {
   // Treat "/profiles/" the same as "/profiles".
   const normalized =
     pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
 
   // Exact static routes first (cheapest + most common).
-  const exactMeta = ROUTE_META[normalized]
+  const exactMeta = routes[normalized]
   if (exactMeta) return { pattern: normalized, params: {}, meta: exactMeta }
 
-  for (const pattern of Object.keys(ROUTE_META)) {
+  for (const pattern of Object.keys(routes)) {
     if (!pattern.includes(':')) continue
     const params = matchPattern(pattern, normalized)
-    if (params) return { pattern, params, meta: ROUTE_META[pattern] }
+    if (params) return { pattern, params, meta: routes[pattern] }
   }
   return null
 }
@@ -136,7 +110,13 @@ const RouterContext = createContext<RouterContextValue>({
   navigate,
 })
 
-export function RouterProvider({ children }: { children: ReactNode }) {
+export function RouterProvider({
+  children,
+  routes,
+}: {
+  children: ReactNode
+  routes: Record<string, RouteMeta>
+}) {
   const [location, setLocation] = useState(readLocation)
 
   useEffect(() => {
@@ -150,7 +130,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<RouterContextValue>(() => {
-    const match = matchRoute(location.pathname)
+    const match = matchRoute(location.pathname, routes)
     return {
       pathname: location.pathname,
       search: location.search,
@@ -158,7 +138,7 @@ export function RouterProvider({ children }: { children: ReactNode }) {
       pattern: match?.pattern ?? null,
       navigate,
     }
-  }, [location])
+  }, [location, routes])
 
   return <RouterContext.Provider value={value}>{children}</RouterContext.Provider>
 }

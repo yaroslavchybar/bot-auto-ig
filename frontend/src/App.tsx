@@ -12,8 +12,8 @@ import {
   matchRoute,
   RouterProvider,
   useLocation,
-  type RouteMeta,
 } from '@/lib/router'
+import { ROUTE_META, type RouteMeta } from '@/lib/routes'
 
 function AppFrame({ children }: { children: ReactNode }) {
   const performanceMode = usePerformanceMode()
@@ -76,7 +76,7 @@ function Routes() {
 
   // Note: '/' is canonicalized to '/profiles' in readLocation, so no
   // redirect handling is needed here.
-  const match = matchRoute(pathname)
+  const match = matchRoute(pathname, ROUTE_META)
   if (!match?.meta) {
     return <NotFoundView />
   }
@@ -90,7 +90,7 @@ function Routes() {
 
 export default function App() {
   return (
-    <RouterProvider>
+    <RouterProvider routes={ROUTE_META}>
       <ThemeProvider>
         <AppErrorBoundary>
           <AppAuthProvider>

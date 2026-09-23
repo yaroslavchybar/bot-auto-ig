@@ -15,7 +15,7 @@ import {
   BreadcrumbPage,
 } from '@/components/ui/breadcrumb'
 import { parseSidebarOpen } from '@/lib/sidebar-state'
-import type { RouteMeta } from '@/lib/router'
+import type { RouteMeta } from '@/lib/routes'
 import { useLocation, useNavigate } from '@/lib/router'
 import { cn } from '@/lib/utils'
 import { SCRAPER_TABS, parseScraperTab, type ScraperTabId } from '@/features/scraper/scraperTabs'
