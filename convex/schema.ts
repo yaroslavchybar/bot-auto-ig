@@ -5,12 +5,24 @@ import { routineValidator } from './routinePolicy';
 export default defineSchema({
   leadLists: defineTable({ name: v.string(), createdAt: v.number() }),
   leads: defineTable({
-    username: v.string(), listIds: v.array(v.id('leadLists')),
+    igId: v.optional(v.string()), username: v.string(),
+    fullName: v.optional(v.string()),
+    profilePicUrl: v.optional(v.string()), profilePicDescription: v.optional(v.string()),
+    pictureBatchId: v.optional(v.string()),
+    classification: v.optional(v.union(v.literal('male'), v.literal('female'), v.literal('business'))),
+    enrichmentStatus: v.optional(v.union(v.literal('pending'), v.literal('describing'), v.literal('ready'), v.literal('error'))),
     senderId: v.optional(v.id('profiles')), createdAt: v.number(),
     dmSent: v.boolean(), followed: v.boolean(), followDate: v.optional(v.number()),
   }).index('by_username', ['username'])
-    .index('by_available', ['senderId', 'dmSent', 'followed'])
+    .index('by_ig_id', ['igId'])
+    .index('by_classification', ['classification'])
+    .index('by_enrichment', ['enrichmentStatus'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate']),
+  leadMemberships: defineTable({
+    leadId: v.id('leads'), listId: v.id('leadLists'), available: v.boolean(), leadCreatedAt: v.number(),
+  }).index('by_lead_list', ['leadId', 'listId'])
+    .index('by_list_created', ['listId', 'leadCreatedAt'])
+    .index('by_list_available', ['listId', 'available', 'leadCreatedAt']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     paused: v.boolean(), issue: v.optional(v.string()), activeDays: v.number(), outreachDays: v.number(),
@@ -46,11 +58,30 @@ export default defineSchema({
 		using: v.boolean(),
 		fingerprintOs: v.optional(v.string()),
 		cookiesJson: v.optional(v.string()),
+		sessionId: v.optional(v.string()),
+		scraperDailyLimit: v.optional(v.number()),
+		scraperUsageDate: v.optional(v.string()),
+		scraperUsageCount: v.optional(v.number()),
+		scraperRateLimitCount: v.optional(v.number()),
 		listIds: v.optional(v.array(v.id("lists"))),
 		lastOpenedAt: v.optional(v.number()),
+		scraperCooldownUntil: v.optional(v.number()),
 	})
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
+
+  scrapeJobs: defineTable({
+    username: v.string(), listId: v.id('leadLists'), sinceDate: v.number(),
+    postLimit: v.number(),
+    activeKey: v.optional(v.string()),
+    status: v.union(v.literal('queued'), v.literal('running'), v.literal('completed'), v.literal('failed'), v.literal('paused')),
+    profileId: v.optional(v.id('profiles')),
+    runId: v.optional(v.string()), leaseUntil: v.optional(v.number()),
+    postIndex: v.optional(v.number()),
+    posts: v.optional(v.array(v.object({ id: v.string(), code: v.string() }))),
+    discovered: v.number(),
+    error: v.optional(v.string()), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_status_lease', ['status', 'leaseUntil']).index('by_active_key', ['activeKey']),
 
 	// One row per profile/list membership so runtime workers can query only
 	// profiles assigned to their lists instead of scanning the whole table.

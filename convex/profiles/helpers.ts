@@ -60,6 +60,17 @@ export function normalizeProfileRow(profile: any) {
 	return profile ?? null;
 }
 
+/** The browser cookie jar is authoritative; a missing session clears stale auth. */
+function sessionIdFromCookies(raw: string): string | undefined {
+	try {
+		const cookies = JSON.parse(raw);
+		if (!Array.isArray(cookies)) return undefined;
+		const cookie = cookies.find((item: any) => item?.name === 'sessionid' &&
+			/(^|\.)instagram\.com$/i.test(String(item?.domain ?? '')));
+		return typeof cookie?.value === 'string' && cookie.value ? cookie.value : undefined;
+	} catch { return undefined; }
+}
+
 // Saved proxies stay in sync with profiles: whenever a profile is saved
 // with a proxy, keep a matching row in the proxies table (deduped by
 // proxy value so shared proxies only appear once). Runs inside the same
@@ -163,6 +174,8 @@ export async function createProfileRow(ctx: any, args: any) {
 		status: "idle",
 		mode: computeProfileMode(proxy),
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
+		sessionId: sessionIdFromCookies(cookiesJsonRaw),
+		scraperDailyLimit: 1000,
 		using: false,
 		fingerprintOs: args.fingerprintOs,
 		listIds: [],
@@ -203,6 +216,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
+		next.sessionId = sessionIdFromCookies(cleaned);
 	}
 	const effectiveProxyByName = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeByName = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;
@@ -246,6 +260,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
 		next.cookiesJson = cleaned ? cleaned : undefined;
+		next.sessionId = sessionIdFromCookies(cleaned);
 	}
 	const effectiveProxyById = typeof args.proxy === "string" ? args.proxy : existing.proxy;
 	const effectiveTypeById = typeof args.proxyType === "string" ? args.proxyType : existing.proxyType;

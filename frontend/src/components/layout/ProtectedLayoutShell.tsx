@@ -16,6 +16,9 @@ import {
 } from '@/components/ui/breadcrumb'
 import { parseSidebarOpen } from '@/lib/sidebar-state'
 import type { RouteMeta } from '@/lib/router'
+import { useLocation, useNavigate } from '@/lib/router'
+import { cn } from '@/lib/utils'
+import { SCRAPER_TABS, parseScraperTab, type ScraperTabId } from '@/features/scraper/scraperTabs'
 import { useVncSessions } from '@/features/vnc/hooks/useVncSessions'
 
 type ProtectedLayoutShellProps = {
@@ -38,6 +41,7 @@ export function ProtectedLayoutShell({
   const breadcrumb = routeMeta.breadcrumb ?? 'Profiles Manager'
   const appChrome = routeMeta.appChrome ?? 'default'
   const showVncCount = pathname === '/vnc'
+  const showScraperTabs = pathname === '/scraper'
 
   if (appChrome === 'immersive') {
     return (
@@ -73,6 +77,7 @@ export function ProtectedLayoutShell({
                   </BreadcrumbList>
                 </Breadcrumb>
               </div>
+              {showScraperTabs ? <ScraperHeaderTabs /> : null}
               <div className="ml-auto flex items-center gap-2 px-4">
                 <ThemeToggle />
                 <UserMenu />
@@ -86,6 +91,42 @@ export function ProtectedLayoutShell({
             </SidebarInset>
         </SidebarProvider>
     </ConvexClientProvider>
+  )
+}
+
+// Center tab switch for the Scraper page (Jobs / Scraping accounts / Saved accounts).
+// State lives in the URL (?tab=...) so the header and page stay in sync.
+function ScraperHeaderTabs() {
+  const { search } = useLocation()
+  const navigate = useNavigate()
+  const active = parseScraperTab(new URLSearchParams(search).get('tab'))
+
+  const select = (tab: ScraperTabId) => {
+    if (tab === active) return
+    navigate(`/scraper?tab=${tab}`)
+  }
+
+  return (
+    <nav aria-label="Scraper sections" className="hidden min-w-0 flex-1 items-center justify-center md:flex">
+      <div className="button-toolbar-group flex items-center gap-1 rounded-full p-1">
+        {SCRAPER_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => select(tab.id)}
+            aria-current={tab.id === active ? 'page' : undefined}
+            className={cn(
+              'h-7 rounded-full px-3 text-xs font-medium whitespace-nowrap transition-colors',
+              tab.id === active
+                ? 'bg-panel-muted text-ink shadow-xs'
+                : 'text-muted-copy hover:text-ink',
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+    </nav>
   )
 }
 

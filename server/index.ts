@@ -17,6 +17,7 @@ import logsRouter from './logs/routes.js'
 import { profilesRouter } from './profiles/index.js'
 import { automationsRouter } from './automations/index.js'
 import displaysRouter from './displays/routes.js'
+import leadListsRouter from './leads/routes.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { retryProfileMaintenance } from './profiles/maintenance.js'
@@ -27,6 +28,7 @@ import logger from './shared/logger.js'
 import { automationsReconcileInterrupted } from './shared/convexClient.js'
 import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
 import { AppError } from './shared/errors.js'
+import { startScraperWorker } from './scraper/worker.js'
 import type { Request, Response, NextFunction } from 'express'
 
 const app = express()
@@ -106,6 +108,7 @@ app.use('/api/logs', requireApiAuth, apiLimiter, logsRouter)
 app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/automations', requireApiAuthOrInternalKey, apiLimiter, automationsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
+app.use('/api/lead-lists', requireApiAuth, apiLimiter, leadListsRouter)
 
 // Sentry error handler must be registered after all routes
 Sentry.setupExpressErrorHandler(app)
@@ -184,6 +187,8 @@ async function startServer(): Promise<void> {
     server.listen(PORT, () => {
         const stopRoutineScheduler = startRoutineScheduler()
         server.once('close', stopRoutineScheduler)
+        const stopScraperWorker = startScraperWorker()
+        server.once('close', stopScraperWorker)
         logger.info({ port: PORT }, 'API server running')
         logger.info({ port: PORT }, 'WebSocket available')
         // Point the bot at our webhook so deep-link logins complete.

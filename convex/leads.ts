@@ -1,27 +1,58 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
-
-import { normalizeUsername } from "./leadImport";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { internal } from './_generated/api';
+import type { Doc } from './_generated/dataModel';
+import { paginationOptsValidator } from 'convex/server';
 
 export const lists = query({
   args: {},
   handler: (ctx) => ctx.db.query("leadLists").collect(),
 });
-export const list = query({
-  args: { listId: v.optional(v.id("leadLists")) },
-  handler: async (ctx, { listId }) => {
-    const rows = await ctx.db.query("leads").collect();
-    return Promise.all(
-      rows
-        .filter((r) => !listId || r.listIds.includes(listId))
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map(async (row) => ({
+export const listPage = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    listId: v.optional(v.id('leadLists')),
+    classification: v.optional(v.union(v.literal('male'), v.literal('female'), v.literal('business'))),
+    search: v.optional(v.string()),
+  },
+  handler: async (ctx, { paginationOpts, listId, classification, search }) => {
+    const queryText = search?.trim().toLowerCase() ?? '';
+    if (listId) {
+      const memberships = await ctx.db.query('leadMemberships')
+        .withIndex('by_list_created', q => q.eq('listId', listId)).order('desc')
+        .paginate({ ...paginationOpts, numItems: Math.min(500, Math.max(100, paginationOpts.numItems)) });
+      const rows = await Promise.all(memberships.page.map(membership => ctx.db.get(membership.leadId)));
+      const matches = rows.filter((lead): lead is Doc<'leads'> => !!lead &&
+        (!classification || lead.classification === classification) &&
+        (!queryText || [lead.username, lead.fullName, lead.profilePicDescription]
+          .some(value => value?.toLowerCase().includes(queryText))));
+      return {
+        isDone: memberships.isDone, continueCursor: memberships.continueCursor,
+        page: await Promise.all(matches.map(async row => ({
           ...row,
-          senderName: row.senderId
-            ? ((await ctx.db.get(row.senderId))?.name ?? "Deleted profile")
-            : undefined,
-        })),
-    );
+          senderName: row.senderId ? (await ctx.db.get(row.senderId))?.name ?? 'Deleted profile' : undefined,
+        }))),
+      };
+    }
+    const base = classification
+      ? ctx.db.query('leads').withIndex('by_classification', q => q.eq('classification', classification)).order('desc')
+      : ctx.db.query('leads').order('desc');
+    // Scan a bounded page even when list/search filters are sparse. The UI
+    // advances through empty pages until it finds a match or reaches the end.
+    const batch = await base.paginate({
+      ...paginationOpts,
+      numItems: queryText ? Math.min(500, Math.max(100, paginationOpts.numItems)) : paginationOpts.numItems,
+    });
+    const matches: Doc<'leads'>[] = batch.page.filter(lead =>
+        (!queryText || [lead.username, lead.fullName, lead.profilePicDescription]
+          .some(value => value?.toLowerCase().includes(queryText))));
+    return {
+      isDone: batch.isDone, continueCursor: batch.continueCursor,
+      page: await Promise.all(matches.map(async row => ({
+        ...row,
+        senderName: row.senderId ? (await ctx.db.get(row.senderId))?.name ?? 'Deleted profile' : undefined,
+      }))),
+    };
   },
 });
 export const createList = mutation({
@@ -34,46 +65,30 @@ export const createList = mutation({
     });
   },
 });
-export const importLeads = mutation({
-  args: {
-    listId: v.id("leadLists"),
-    usernames: v.array(v.string()),
+export const renameList = internalMutation({
+  args: { listId: v.id("leadLists"), name: v.string() },
+  handler: async (ctx, { listId, name }) => {
+    if (!name.trim()) throw new Error("List name is required");
+    if (!(await ctx.db.get(listId))) throw new Error("Lead list not found");
+    await ctx.db.patch(listId, { name: name.trim() });
   },
-  handler: async (ctx, args) => {
-    if (!(await ctx.db.get(args.listId)))
-      throw new Error("Lead list not found");
-    if (args.usernames.length > 500)
-      throw new Error("Import at most 500 leads at once");
-    let added = 0,
-      duplicates = 0,
-      invalid = 0;
-    for (const raw of args.usernames) {
-      const username = normalizeUsername(raw);
-      if (!username) {
-        invalid++;
-        continue;
-      }
-      const existing = await ctx.db
-        .query("leads")
-        .withIndex("by_username", (q) => q.eq("username", username))
-        .unique();
-      if (existing) {
-        duplicates++;
-        if (!existing.listIds.includes(args.listId))
-          await ctx.db.patch(existing._id, {
-            listIds: [...existing.listIds, args.listId],
-          });
-      } else {
-        await ctx.db.insert("leads", {
-          username,
-          listIds: [args.listId],
-          dmSent: false,
-          followed: false,
-          createdAt: Date.now(),
-        });
-        added++;
-      }
-    }
-    return { added, duplicates, invalid };
+});
+export const deleteList = internalMutation({
+  args: { listId: v.id("leadLists") },
+  handler: async (ctx, { listId }) => {
+    if (!(await ctx.db.get(listId))) return;
+    await ctx.db.delete(listId);
+    await ctx.scheduler.runAfter(0, internal.leads.cleanupDeletedList, { listId });
+  },
+});
+
+/** Delete only this list's memberships in bounded batches. */
+export const cleanupDeletedList = internalMutation({
+  args: { listId: v.id('leadLists') },
+  handler: async (ctx, { listId }) => {
+    const rows = await ctx.db.query('leadMemberships')
+      .withIndex('by_list_created', q => q.eq('listId', listId)).take(100);
+    await Promise.all(rows.map(row => ctx.db.delete(row._id)));
+    if (rows.length === 100) await ctx.scheduler.runAfter(0, internal.leads.cleanupDeletedList, { listId });
   },
 });

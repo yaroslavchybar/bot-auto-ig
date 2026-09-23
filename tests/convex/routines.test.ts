@@ -3,6 +3,10 @@ import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey } from '../../convex/routinePolicy';
 import { createConvexTest, seedList, seedProfile } from './helpers';
 afterEach(() => vi.useRealTimers());
+
+const readLeads = (t: ReturnType<typeof createConvexTest>) =>
+  t.run(ctx => ctx.db.query('leads').collect());
+
 async function setup() {
   const t = createConvexTest();
   const list = (await seedList(t))!,
@@ -34,11 +38,18 @@ async function setup() {
     isActive: true,
   });
   const args = { automationId: automation._id, profileId: profile._id };
-  await t.mutation(api.leads.importLeads, {
-    listId: leadListId,
-    usernames: ["alice", "bob", "carol", "dave"],
+  // These fixtures represent accounts already classified by the scraper.
+  await t.run(async ctx => {
+    for (const username of ['alice', 'bob', 'carol', 'dave']) {
+      const createdAt = Date.now();
+      const leadId = await ctx.db.insert('leads', {
+        username, classification: 'male', enrichmentStatus: 'ready',
+        dmSent: false, followed: false, createdAt,
+      });
+      await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, available: true, leadCreatedAt: createdAt });
+    }
   });
-  const leads = await t.query(api.leads.list, {});
+  const leads = await readLeads(t);
   const loggedIn = () =>
     t.mutation(api.profiles.mutations.setIgState, {
       profileId: profile._id,
@@ -49,7 +60,7 @@ async function setup() {
 }
 
 
-test('imported leads are immediately eligible and claimed exactly once', async () => {
+test('classified male leads are claimed exactly once', async () => {
   const { t, args, loggedIn, leadListId } = await setup();
   expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
   await loggedIn();
@@ -57,9 +68,11 @@ test('imported leads are immediately eligible and claimed exactly once', async (
   expect(claims[0]).not.toBeNull(); expect(claims[1]).not.toBeNull();
   expect(claims[0]!.leadId).not.toBe(claims[1]!.leadId);
   expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
-  await t.mutation(api.leads.importLeads, { listId: leadListId, usernames: [claims[0]!.username] });
-  const lead = (await t.query(api.leads.list, {})).find(l => l._id === claims[0]!.leadId)!;
+  const lead = (await readLeads(t)).find(l => l._id === claims[0]!.leadId)!;
   expect(lead).toMatchObject({ senderId: args.profileId, dmSent: false, followed: false });
+  const membership = await t.run(ctx => ctx.db.query('leadMemberships')
+    .withIndex('by_lead_list', q => q.eq('leadId', lead._id).eq('listId', leadListId)).first());
+  expect(membership?.available).toBe(false);
   for (const removed of ['source', 'status', 'delivery', 'followPending', 'updatedAt']) expect(lead).not.toHaveProperty(removed);
 });
 
@@ -72,7 +85,7 @@ test('interrupted claims remain skipped after restart and issue clearing', async
   await t.mutation(api.routines.setAccount, { profileId: profile._id, clearIssue: true });
   const next = (await t.mutation(internal.routines.reserve, args))!;
   expect(next.leadId).not.toBe(claim.leadId);
-  expect((await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)).toMatchObject({ dmSent: false, senderId: profile._id });
+  expect((await readLeads(t)).find(l => l._id === claim.leadId)).toMatchObject({ dmSent: false, senderId: profile._id });
 });
 
 test('sender, membership and date checks gate interaction; confirmed sends are idempotent', async () => {
@@ -89,7 +102,7 @@ test('sender, membership and date checks gate interaction; confirmed sends are i
   await t.mutation(internal.routines.finishSend, result);
   await t.mutation(internal.routines.finishSend, result);
   await t.mutation(internal.routines.finishSend, { ...result, sent: false });
-  expect((await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)?.dmSent).toBe(true);
+  expect((await readLeads(t)).find(l => l._id === claim.leadId)?.dmSent).toBe(true);
   expect(await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0].outreachDays)).toBe(1);
 });
 
@@ -108,7 +121,7 @@ test('follows become due after seven days and unfollowing never requeues the lea
   expect(await t.query(internal.routines.followTasks, args)).toEqual([{ leadId: claim.leadId, username: claim.username }]);
   await t.mutation(internal.routines.recordFollow, { ...follow, followed: false });
   expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
-  expect((await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)).toMatchObject({ followed: false, followDate, senderId: profile._id });
+  expect((await readLeads(t)).find(l => l._id === claim.leadId)).toMatchObject({ followed: false, followDate, senderId: profile._id });
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
 });
 
@@ -130,7 +143,7 @@ test('a followed lead can finish its same-session DM and stays claimed after unf
   await t.mutation(internal.routines.recordFollow, {
     profileId: profile._id, leadId: claim.leadId, followed: false,
   });
-  const lead = (await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)!;
+  const lead = (await readLeads(t)).find(l => l._id === claim.leadId)!;
   expect(lead).toMatchObject({ senderId: profile._id, dmSent: true, followed: false });
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
 });
@@ -145,7 +158,7 @@ test('a blocked DM stays unsent without stopping the sender account', async () =
     sent: false,
     blocked: true,
   });
-  const lead = (await t.query(api.leads.list, {})).find(l => l._id === claim.leadId)!;
+  const lead = (await readLeads(t)).find(l => l._id === claim.leadId)!;
   expect(lead).toMatchObject({ senderId: profile._id, dmSent: false, followed: false });
   expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]?.issue).toBeUndefined();
 });

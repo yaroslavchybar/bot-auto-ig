@@ -181,6 +181,16 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
     throw lastError
 }
 
+/** Authenticated calls from the scraper worker to Convex internal functions. */
+export function scraperRequest<T>(operation: string, body: Record<string, unknown> = {}): Promise<T> {
+    if (!/^[a-z-]+$/.test(operation)) throw new Error('Invalid scraper operation');
+    return convexFetch<T>(`/api/scraper/${operation}`, { method: 'POST', body });
+}
+
+export function leadListRequest(operation: 'rename' | 'delete', body: Record<string, unknown>): Promise<{ ok: true }> {
+    return convexFetch(`/api/lead-lists/${operation}`, { method: 'POST', body });
+}
+
 // ==================== LISTS ====================
 
 export async function listsList(): Promise<DbListRow[]> {

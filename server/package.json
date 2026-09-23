@@ -10,12 +10,15 @@
         "typecheck": "tsc -p tsconfig.json --noEmit"
     },
     "dependencies": {
+        "@openrouter/sdk": "^1.3.17",
         "@sentry/node": "^10.43.0",
         "cloakbrowser": "^0.5.10",
         "convex": "^1.46.0",
         "dotenv": "^17.2.3",
         "express": "^4.21.0",
         "express-rate-limit": "^8.2.1",
+        "https-proxy-agent": "^9.1.0",
+        "lossless-json": "^4.3.1",
         "mmdb-lib": "^3.0.2",
         "pino": "^10.3.1",
         "playwright-core": "1.60.0",

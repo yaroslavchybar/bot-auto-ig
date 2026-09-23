@@ -8,7 +8,7 @@
 #
 # Required GitHub secrets: CONVEX_DEPLOY_KEY, VPS_SSH_KEY, VPS_KNOWN_HOSTS,
 # CONVEX_URL, INTERNAL_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME,
-# TELEGRAM_ADMIN_ID, CLOAKBROWSER_LICENSE_KEY.
+# TELEGRAM_ADMIN_ID, CLOAKBROWSER_LICENSE_KEY, OPENROUTER_API_KEY, APIFY_API_KEY.
 # Required GitHub vars: VPS_HOST, VPS_USER, APP_PUBLIC_URL, VITE_API_URL,
 # VITE_CONVEX_URL.
 name: deploy
@@ -199,6 +199,8 @@ jobs:
           PUBLIC_BASE_URL=${{ vars.APP_PUBLIC_URL }}
           CONVEX_URL=${{ secrets.CONVEX_URL }}
           INTERNAL_API_KEY=${{ secrets.INTERNAL_API_KEY }}
+          OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          APIFY_API_KEY=${{ secrets.APIFY_API_KEY }}
           # CloakBrowser Pro key: server passes it to every launch, and the
           # Pro binary reads it from its own env at startup.
           CLOAKBROWSER_LICENSE_KEY=${{ secrets.CLOAKBROWSER_LICENSE_KEY }}

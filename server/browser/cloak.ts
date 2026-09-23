@@ -340,6 +340,17 @@ export async function openBrowserSession(
     // New windows open with the address bar focused. Blurs it into the page
     // and parks the cursor over content so wheel/keys hit the feed, not chrome.
     await focusPageContent(page)
+    // Capture refreshed HTTP-only sessionid on every open, not only shutdown.
+    // Best effort: close persists cookies again, so a refresh failure here
+    // must not abort the session launch.
+    try {
+      await profilesUpdateByName(profile.name, {
+        name: profile.name,
+        cookiesJson: JSON.stringify(await context.cookies()),
+      })
+    } catch {
+      process.stderr.write('Could not refresh session cookies at open; close will retry\n')
+    }
     checkStartup()
     ready = true
     return { context, page, profile, display, close, closed }

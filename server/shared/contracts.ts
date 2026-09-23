@@ -11,6 +11,10 @@ export type ProfileRecord = {
   using: boolean
   fingerprintOs?: string
   cookiesJson?: string
+  sessionId?: string
+  scraperDailyLimit?: number
+  scraperUsageDate?: string
+  scraperUsageCount?: number
   listIds?: string[]
   lastOpenedAt?: number
 }

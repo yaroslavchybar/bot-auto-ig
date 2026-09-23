@@ -12,9 +12,9 @@ Add/remove profiles through Lists Manager. Overlapping lists do not duplicate pr
 
 ## Leads
 
-Import usernames, profile URLs, or CSV with a username/profile_url/instagram/url column, up to 500 rows per import. Imports deduplicate globally and preserve flags and sender assignments. Imported leads are immediately eligible; there is no Ready step.
+Add source Instagram profiles in Scraper. The scraper collects recent post likers, deduplicates them by Instagram ID, and saves them to the selected lead list. Only public accounts classified as male and ready for outreach are eligible for DMs.
 
-Leads store username, listIds, createdAt, senderId, dmSent, followed, and followDate. There is no separate attempts table or delivery history.
+Leads store their Instagram ID, username, classification, sender assignment, DM and follow state. Lead list membership and outreach availability are indexed separately. There is no separate attempts table or delivery history.
 
 A new interaction requires dmSent=false, followed=false, and no senderId. The server atomically assigns senderId and charges the daily allowance before opening the recipient. Claims are never automatically released, even after failure, restart, list changes, or unfollow. Claim requests are not retried after HTTP failures. This may skip a recipient without sending, but prevents another session or sender from trying again.
 

@@ -1,3 +1,4 @@
+/** Accept an Instagram profile link, @handle, or username. */
 export function normalizeUsername(input: string): string | null {
   let value = input.trim().toLowerCase();
   if (/^(https?:\/\/)?(www\.)?instagram\.com\//.test(value)) {

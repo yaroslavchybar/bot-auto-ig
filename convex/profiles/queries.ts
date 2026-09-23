@@ -28,7 +28,7 @@ export const getByIdInternal = internalQuery({
 export const list = query({
 	args: {},
 	handler: async (ctx) => {
-		return await listProfileRows(ctx);
+		return (await listProfileRows(ctx)).map(({ sessionId: _sessionId, ...row }: any) => row);
 	},
 });
 
@@ -42,7 +42,10 @@ export const getByNameInternal = internalQuery({
 export const getById = query({
 	args: { profileId: v.id("profiles") },
 	handler: async (ctx, args) => {
-		return normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null);
+		const row = normalizeProfileRow((await ctx.db.get(args.profileId)) ?? null);
+		if (!row) return null;
+		const { sessionId: _sessionId, ...publicRow } = row;
+		return publicRow;
 	},
 });
 

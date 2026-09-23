@@ -116,9 +116,9 @@ export function mapProfileToApi(
   optionsOrIndex?: { includeCookies?: boolean } | number,
 ) {
   if (!profile) return null;
-  const { _id, _creationTime, cookiesJson, ...fields } = profile;
+  const { _id, _creationTime, cookiesJson, sessionId, ...fields } = profile;
   const includeCookies = typeof optionsOrIndex === 'object' && optionsOrIndex.includeCookies;
-  return { ...fields, id: _id, ...(includeCookies ? { cookiesJson } : {}) };
+  return { ...fields, id: _id, ...(includeCookies ? { cookiesJson, sessionId } : {}) };
 }
 
 export function mapListToApi(list: any): any {

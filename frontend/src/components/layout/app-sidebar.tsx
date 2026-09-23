@@ -25,7 +25,7 @@ import {
 export const NAV_IDS = [
   'profiles',
   'automations',
-  'leads',
+  'scraper',
   'lists',
   'proxies',
   'vnc',
@@ -55,7 +55,7 @@ export const NAV_ITEMS = [
     icon: List,
     breadcrumb: 'Lists Manager',
   },
-  { title: 'Leads', id: 'leads', to: '/leads', icon: Users, breadcrumb: 'Leads' },
+  { title: 'Scraper', id: 'scraper', to: '/scraper', icon: Users, breadcrumb: 'Scraper' },
   {
     title: 'Proxies',
     id: 'proxies',

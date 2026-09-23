@@ -10,6 +10,7 @@ import {
 import type { Doc, Id } from "./_generated/dataModel";
 import { dmAllowance, dayKey, routineLists } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
+import { leadAvailable, setLeadAvailability } from './leadMemberships';
 
 const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
   ctx.db
@@ -235,6 +236,7 @@ export const reserve = internalMutation({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled || !e.policy.leadListId) return null;
+    if (!await ctx.db.get(e.policy.leadListId)) return null;
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
     const used = state.date === date ? state.used : 0;
@@ -243,11 +245,15 @@ export const reserve = internalMutation({
     const allowance = Math.min(e.policy.maxDms, state.date === date ? state.allowance : dmAllowance(e.policy, activeBeforeToday, outreachBeforeToday));
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
-    for await (const candidate of ctx.db.query('leads').withIndex('by_available', q => q.eq('senderId', undefined).eq('dmSent', false).eq('followed', false))) {
-      if (candidate.listIds.includes(e.policy.leadListId)) { lead = candidate; break; }
+    for await (const membership of ctx.db.query('leadMemberships')
+      .withIndex('by_list_available', q => q.eq('listId', e.policy.leadListId!).eq('available', true))) {
+      const candidate = await ctx.db.get(membership.leadId);
+      if (candidate && leadAvailable(candidate)) { lead = candidate; break; }
+      await ctx.db.patch(membership._id, { available: false });
     }
     if (!lead) return null;
     await ctx.db.patch(lead._id, { senderId: args.profileId });
+    await setLeadAvailability(ctx, lead._id, false);
     await ctx.db.patch(state._id, { date, used: used + 1, allowance, updatedAt: Date.now() });
     return { leadId: lead._id, username: lead.username, message: e.policy.message.replaceAll('{{username}}', lead.username), date };
   },
@@ -269,7 +275,10 @@ export const finishSend = internalMutation({
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.senderId !== args.profileId) throw new Error('Lead belongs to another sender');
     if (lead.dmSent) return;
-    if (args.sent) await ctx.db.patch(lead._id, { dmSent: true });
+    if (args.sent) {
+      await ctx.db.patch(lead._id, { dmSent: true });
+      await setLeadAvailability(ctx, lead._id, false);
+    }
     const state = await progress(ctx, args.profileId);
     if (!state) return;
     if (args.sent) {
@@ -303,5 +312,6 @@ export const recordFollow = internalMutation({
     if (args.followed === lead.followed) return;
     if (!args.followed && (lead.followDate ?? Infinity) > Date.now() - followDelay) throw new Error('Follow is not due for removal');
     await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? { followDate: Date.now() } : {}) });
+    if (args.followed) await setLeadAvailability(ctx, lead._id, false);
   },
 });
