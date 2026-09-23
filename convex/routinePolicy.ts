@@ -34,19 +34,16 @@ export function validateRoutine(p: RoutinePolicy) {
   }
   const minMinutes = Number(p.activity.warmup_min_minutes ?? 30),
     maxMinutes = Number(p.activity.warmup_max_minutes ?? 60);
-  if (minMinutes < 30 || maxMinutes < minMinutes || maxMinutes > 60)
-    throw new Error("Daily browsing budget must be between 30 and 60 minutes");
-  for (const [minKey, maxKey, minDefault, maxDefault] of [
-    ["session_min_minutes", "session_max_minutes", 5, 10],
-    ["rest_min_minutes", "rest_max_minutes", 60, 120],
-  ] as const) {
-    const min = Number(p.activity[minKey] ?? minDefault),
-      max = Number(p.activity[maxKey] ?? maxDefault);
-    if (min < 1 || max < min || (minKey === "session_min_minutes" && max > 15))
-      throw new Error(
-        "Sessions must be 1–15 minutes, with a positive rest period and valid min/max values",
-      );
-  }
+  if (minMinutes < 1 || maxMinutes < minMinutes || maxMinutes > 100)
+    throw new Error("Daily browsing budget must be between 1 and 100 minutes");
+  const sessionMin = Number(p.activity.session_min_minutes ?? 5),
+    sessionMax = Number(p.activity.session_max_minutes ?? 10);
+  if (sessionMin < 1 || sessionMax < sessionMin || sessionMax > 60)
+    throw new Error("Sessions must be 1–60 minutes, with min no greater than max");
+  const restMin = Number(p.activity.rest_min_minutes ?? 60),
+    restMax = Number(p.activity.rest_max_minutes ?? 120);
+  if (restMin < 1 || restMax < restMin)
+    throw new Error("Rest between sessions must be positive, with min no greater than max");
   for (const [name, value, min, max] of [
     ["Outreach start day", p.outreachStartDay, 1, 365],
     ["Initial DMs", p.initialDms, 1, 35],

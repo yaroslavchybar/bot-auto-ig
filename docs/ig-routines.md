@@ -4,7 +4,7 @@ Manage a routine in the automation popup. Select sender profile lists, browsing/
 
 Logged in allows browsing. Ready for outreach allows messaging after the configured activity day. Login and account setup are manual.
 
-Enabled routines run around the clock while the server is online, one profile at a time. Each profile gets 30–60 minutes of browsing daily, split into short sessions with rest periods. Resting profiles release the browser slot. When none are eligible, the worker checks every 15 seconds.
+Enabled routines run around the clock while the server is online, one profile at a time. Each profile gets a configurable 1–100 minutes of browsing daily (30–60 by default), split into 1–60 minute sessions with rest periods. Resting profiles release the browser slot. When none are eligible, the worker checks every 15 seconds.
 
 An activity day advances after completing the daily budget. Missed days do not advance progress. DM allowance grows after days with confirmed outreach, up to the cap. Sessions send up to three DMs after browsing. Daily counters reset at midnight UTC.
 

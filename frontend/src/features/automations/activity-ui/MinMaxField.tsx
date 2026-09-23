@@ -13,11 +13,6 @@ interface MinMaxFieldProps {
   onChange: (name: string, value: unknown) => void
 }
 
-function toNumber(value: unknown, fallback: number): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : fallback
-}
-
 /**
  * Renders a min/max number pair as one row: [Min] – [Max],
  * with a human summary ("15–30 min · avg ~22") and validation.
@@ -32,15 +27,24 @@ export function MinMaxField({
   onChange,
 }: MinMaxFieldProps) {
   const resolvedUnit = unit ?? minInput.unit ?? maxInput.unit ?? ''
-  const min = toNumber(
-    minValue ?? minInput.default ?? minInput.min ?? 0,
-    minInput.min ?? 0,
-  )
-  const max = toNumber(
-    maxValue ?? maxInput.default ?? maxInput.min ?? 0,
-    maxInput.min ?? 0,
-  )
-  const invalid = min > max
+  const displayedMin = minValue ?? minInput.default ?? ''
+  const displayedMax = maxValue ?? maxInput.default ?? ''
+  const min = Number(displayedMin)
+  const max = Number(displayedMax)
+  const missing = !Number.isFinite(min) || !Number.isFinite(max)
+  const outOfRange =
+    (minInput.min !== undefined && min < minInput.min) ||
+    (minInput.max !== undefined && min > minInput.max) ||
+    (maxInput.min !== undefined && max < maxInput.min) ||
+    (maxInput.max !== undefined && max > maxInput.max)
+  const invalid = missing || outOfRange || min > max
+  const error = missing
+    ? 'Enter both values.'
+    : outOfRange
+      ? `Values must be between ${minInput.min ?? maxInput.min} and ${maxInput.max ?? minInput.max}.`
+      : min > max
+        ? "Min can't be more than max."
+        : null
   const avg = (min + max) / 2
   const avgLabel =
     Math.abs(avg * 10 - Math.round(avg * 10)) < 1e-9
@@ -61,10 +65,10 @@ export function MinMaxField({
               min={minInput.min}
               max={minInput.max}
               step={minInput.step}
-              value={(minValue ?? minInput.default ?? '') as number}
+              value={Number.isNaN(displayedMin) ? '' : (displayedMin as number)}
               onChange={(e) => {
                 const next = e.target.value
-                onChange(minInput.name, next === '' ? '' : Number(next))
+                onChange(minInput.name, next === '' ? Number.NaN : Number(next))
               }}
               className={cn(
                 'border-line-soft bg-field-alt h-8 rounded-lg pr-8 text-[13px] tabular-nums',
@@ -92,10 +96,10 @@ export function MinMaxField({
               min={maxInput.min}
               max={maxInput.max}
               step={maxInput.step}
-              value={(maxValue ?? maxInput.default ?? '') as number}
+              value={Number.isNaN(displayedMax) ? '' : (displayedMax as number)}
               onChange={(e) => {
                 const next = e.target.value
-                onChange(maxInput.name, next === '' ? '' : Number(next))
+                onChange(maxInput.name, next === '' ? Number.NaN : Number(next))
               }}
               className={cn(
                 'border-line-soft bg-field-alt h-8 rounded-lg pr-8 text-[13px] tabular-nums',
@@ -111,10 +115,8 @@ export function MinMaxField({
         </div>
       </div>
 
-      {invalid ? (
-        <p className="text-status-danger text-[11px]">
-          Min can&apos;t be more than max.
-        </p>
+      {error ? (
+        <p className="text-status-danger text-[11px]">{error}</p>
       ) : (
         <p className="text-subtle-copy font-mono text-[11px] tabular-nums">
           {min}–{max}

@@ -76,10 +76,12 @@ export function RoutinePopup({
       <Input
         id={`routine-${key}`}
         type="number"
-        value={policy[key]}
+        value={Number.isNaN(policy[key]) ? '' : policy[key]}
         min={min}
         max={max}
-        onChange={(e) => change(key, Number(e.target.value))}
+        onChange={(e) =>
+          change(key, e.target.value === '' ? Number.NaN : Number(e.target.value))
+        }
         className="bg-field border-line"
       />
     </div>

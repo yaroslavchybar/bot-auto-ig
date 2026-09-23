@@ -33,10 +33,10 @@ export function NumberInput({
           min={input.min}
           max={input.max}
           step={input.step}
-          value={displayValue as number}
+          value={Number.isNaN(displayValue) ? '' : (displayValue as number)}
           onChange={(e) => {
             const next = e.target.value
-            onChange(next === '' ? '' : Number(next))
+            onChange(next === '' ? Number.NaN : Number(next))
           }}
           placeholder={input.placeholder}
           className="border-line-soft bg-field-alt h-8 rounded-lg pr-9 text-[13px] tabular-nums transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-offset-0"
