@@ -3,6 +3,8 @@ export type ProfileRecord = {
   renameFrom?: string
   id: string
   name: string
+  igLoggedIn?: boolean
+  unreadDms?: number
   createdAt?: number
   proxy?: string
   proxyType?: string

@@ -1,5 +1,6 @@
 export type Profile = {
   igLoggedIn?: boolean
+  unreadDms?: number
   outreachReady?: boolean
   renameFrom?: string
   id: string

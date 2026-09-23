@@ -10,12 +10,14 @@ import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
 import {
   profilesGetByName,
+  profilesSetUnreadDms,
   profilesUpdateByName,
   type DbProfileRow,
 } from '../shared/convexClient.js'
 import { startFilePicker, pickerSocket } from './filePicker.js'
 import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
 import { lockProfile, profileDirectory } from '../profiles/paths.js'
+import { readUnreadDms } from './unreadDms.js'
 
 export type BrowserSession = {
   context: BrowserContext
@@ -220,12 +222,20 @@ export async function openBrowserSession(
   const profileDir = profileDirectory(profileName)
   const releaseLock = lockProfile(profileName)
   let profile: DbProfileRow | undefined
+  let unreadResetSucceeded = false
   try {
     // Check under the deletion lock, before creating any directories.
     profile = await profilesGetByName(profileName) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
     if (profile.status === 'deleting' || profile.renameFrom)
       throw new Error('Profile maintenance is in progress')
+    if (profile.igLoggedIn) {
+      // A failed launch must not leave the previous launch's count looking current.
+      try {
+        await profilesSetUnreadDms(profile.name, null)
+        unreadResetSucceeded = true
+      } catch { /* The browser must still launch when this optional write fails. */ }
+    }
     fs.mkdirSync(profileDir, { recursive: true })
     migrateFirefoxProfile(profileDir)
     clearSavedWindowPlacement(profileDir)
@@ -331,11 +341,30 @@ export async function openBrowserSession(
     await context.clearCookies()
     if (cookies.length) await context.addCookies(cookies)
     const page = context.pages()[0] || (await context.newPage())
+    let canReadUnreadDms = true
     if (page.url() === 'about:blank') {
       await page.goto('https://www.instagram.com/', {
         waitUntil: 'domcontentloaded',
         timeout: 45_000,
       })
+    } else if (profile.igLoggedIn && !/^https:\/\/(?:www\.)?instagram\.com\//.test(page.url())) {
+      try {
+        await page.goto('https://www.instagram.com/', {
+          waitUntil: 'domcontentloaded',
+          timeout: 10_000,
+        })
+      } catch (error) {
+        canReadUnreadDms = false
+        process.stderr.write(`Could not open Instagram for unread DMs: ${error instanceof Error ? error.message : String(error)}\n`)
+      }
+    }
+    if (profile.igLoggedIn && unreadResetSucceeded && canReadUnreadDms) {
+      try {
+        const count = await readUnreadDms(page)
+        if (count !== null) await profilesSetUnreadDms(profile.name, count)
+      } catch (error) {
+        process.stderr.write(`Could not read unread DMs for ${profile.name}: ${error instanceof Error ? error.message : String(error)}\n`)
+      }
     }
     // New windows open with the address bar focused. Blurs it into the page
     // and parks the cursor over content so wheel/keys hit the feed, not chrome.

@@ -134,7 +134,7 @@ export class ConvexHttpError extends Error {
 }
 
 // HTTP client for Convex with exponential backoff retry
-async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any; maxRetries?: number } = {}): Promise<T> {
+async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any; maxRetries?: number; timeoutMs?: number } = {}): Promise<T> {
     const url = `${convexUrl}${endpoint}`;
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -150,7 +150,7 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
         let resp: Response
         try {
             resp = await fetch(url, {
-                signal: AbortSignal.timeout(30_000),
+                signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
                 method: options.method || 'GET',
                 headers,
                 body: options.body ? JSON.stringify(options.body) : undefined,
@@ -259,6 +259,12 @@ export async function profilesSyncStatus(name: string, status: string, using: bo
     if (!cleanedName || !cleanedStatus) throw new Error('name and status are required');
     await convexFetch<any>('/api/profiles/sync-status', { method: 'POST', body: { name: cleanedName, status: cleanedStatus, using } });
     return true;
+}
+
+export async function profilesSetUnreadDms(name: string, count: number | null): Promise<void> {
+    await convexFetch('/api/profiles/unread-dms', {
+        method: 'POST', body: { name, count }, timeoutMs: 3_000, maxRetries: 0,
+    });
 }
 
 // ==================== AUTOMATIONS ====================

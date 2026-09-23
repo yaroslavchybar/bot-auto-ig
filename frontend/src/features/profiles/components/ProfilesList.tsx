@@ -195,6 +195,12 @@ function ProfileMobileCard({
 
       <MobileCardTags profile={profile} osLabel={osLabel} />
 
+      {profile.igLoggedIn && (
+        <div className="text-copy mt-3 text-xs tabular-nums">
+          Unread DMs: {profile.unreadDms ?? '—'}
+        </div>
+      )}
+
       <MobileCardFooter
         profile={profile}
         statusMeta={statusMeta}
@@ -324,6 +330,9 @@ function ProfileDesktopRow({
       </TableCell>
       <TableCell>
         <DesktopProxyCell profile={profile} />
+      </TableCell>
+      <TableCell className="text-copy text-sm tabular-nums">
+        {profile.igLoggedIn ? (profile.unreadDms ?? '—') : null}
       </TableCell>
       <TableCell className="pr-4 text-right">
         <div className="flex items-center justify-end gap-2">
@@ -472,6 +481,7 @@ export function ProfilesList({
             <TableHead className="text-muted-copy h-12 w-[120px] font-medium">Status</TableHead>
             <TableHead className="text-muted-copy h-12 w-[180px] font-medium">Config</TableHead>
             <TableHead className="text-muted-copy h-12 font-medium">Proxy</TableHead>
+            <TableHead className="text-muted-copy h-12 w-[120px] font-medium">Unread DMs</TableHead>
             <TableHead className="text-muted-copy h-12 w-[140px] pr-4 text-right font-medium">Actions</TableHead>
           </TableRow>
         </TableHeader>

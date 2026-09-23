@@ -5,6 +5,7 @@ import {
   mapProfileToApi,
   parseBody,
   registerPreflight,
+  ValidationError,
   withErrorHandling,
 } from './shared';
 
@@ -20,6 +21,7 @@ const profilePaths = [
   '/api/profiles/finish-delete',
   '/api/profiles/finish-rename',
   '/api/profiles/sync-status',
+  '/api/profiles/unread-dms',
 ];
 
 export function registerProfileRoutes(http: HttpRouter): void {
@@ -155,6 +157,20 @@ function registerProfileDeleteRoutes(http: HttpRouter): void {
 /* ── Status mutation routes ── */
 
 function registerProfileStatusRoutes(http: HttpRouter): void {
+
+  http.route({
+    path: '/api/profiles/unread-dms',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request)
+      const name = String(body?.name ?? '').trim()
+      const count = body?.count
+      if (!name || (count !== null && (!Number.isSafeInteger(count) || count < 0)))
+        throw new ValidationError('Invalid unread DM count')
+      await ctx.runMutation(internal.profiles.mutations.setUnreadDmsInternal, { name, count })
+      return jsonResponse({ ok: true })
+    }),
+  });
 
   http.route({
     path: '/api/profiles/sync-status',
