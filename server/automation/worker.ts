@@ -27,22 +27,16 @@ import { routineReady, routineRecordSession } from '../shared/convexClient.js'
 import { runPool } from './pool.js'
 import { orderProfileQueue, profileProxyKey } from './profile-queue.js'
 import {
-  advanceLoop,
-  nextNode,
-  nodeActivity,
   selectedLists,
   startConfig,
   profileEligible,
   type AutomationNode,
   type AutomationEdge,
 } from './graph.js'
-import { watchStories } from './actions.js'
+import { executeGraphProfile } from './graph-runner.js'
 
 type AnyRecord = Record<string, any>
 type LogLevel = 'info' | 'warn' | 'error' | 'success'
-
-const random = (min: number, max: number) =>
-  min + Math.random() * Math.max(0, max - min)
 
 function log(message: string, level: LogLevel = 'info'): void {
   process.stdout.write(
@@ -165,6 +159,20 @@ export async function loadFullRuntimeSnapshot(
   }
 }
 
+async function expandedRuntimeSnapshot(
+  automationId: string,
+  lists: string[],
+  snapshot: RuntimeSnapshot,
+): Promise<RuntimeSnapshot> {
+  if (!isTruncatedSnapshot(snapshot)) return snapshot
+  try {
+    return await loadFullRuntimeSnapshot(automationId, lists, snapshot)
+  } catch (error) {
+    log(`full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+    return snapshot
+  }
+}
+
 // Kept for the injected test runner. Production workers receive this state
 // through the reactive runtime subscription below.
 async function shouldKeepWatching(automationId: string): Promise<boolean> {
@@ -225,6 +233,73 @@ class UpdateSignal {
       }
     })
   }
+}
+
+/** Owns the live runtime subscription and its wakeup signal. */
+class RuntimeMonitor {
+  private readonly updates = new UpdateSignal()
+  private readonly subscription: ReturnType<typeof watchRoutineRuntime>
+  private initialized = false
+  private profileRevision = ''
+  private automationRevision = ''
+  private timingRevision = ''
+  snapshot: RuntimeSnapshot | null = null
+  error?: Error
+
+  constructor(automationId: string, lists: string[]) {
+    this.subscription = watchRoutineRuntime(
+      automationId, lists,
+      snapshot => this.onSnapshot(snapshot),
+      error => {
+        this.error = error
+        log(`runtime subscription failed: ${error.message}`, 'warn')
+        this.updates.notify()
+      },
+    )
+  }
+
+  get initial() { return this.subscription.initial }
+
+  private onSnapshot(snapshot: RuntimeSnapshot): void {
+    const profileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
+      id: profile.id, name: profile.name, status: profile.status,
+      using: profile.using, igLoggedIn: profile.igLoggedIn,
+      outreachReady: profile.outreachReady, listIds: profile.listIds,
+      lastOpenedAt: profile.lastOpenedAt, renameFrom: profile.renameFrom,
+    })))
+    const timingRevision = JSON.stringify({
+      warmups: snapshot?.warmups ?? [], progress: snapshot?.progress ?? [],
+    })
+    const automationRevision = `${snapshot?.automation?.status ?? ''}:${snapshot?.automation?.isActive !== false}`
+    const configRevision = String(snapshot?.automation?.configRevision ?? '')
+    const previousConfigRevision = String((this.snapshot?.automation as AnyRecord | undefined)?.configRevision ?? '')
+    const configChanged = this.initialized && configRevision !== previousConfigRevision
+    const changed = this.initialized && (
+      profileRevision !== this.profileRevision ||
+      timingRevision !== this.timingRevision ||
+      automationRevision !== this.automationRevision || configChanged
+    )
+    if (configChanged) this.error = new Error('Automation configuration changed; restarting worker')
+    this.snapshot = snapshot
+    this.profileRevision = profileRevision
+    this.timingRevision = timingRevision
+    this.automationRevision = automationRevision
+    if (changed) this.updates.notify()
+    this.initialized = true
+  }
+
+  isActive(): boolean {
+    const automation = this.snapshot?.automation
+    return !this.error && !!automation &&
+      (automation.status === 'running' || automation.status === 'pending') &&
+      automation.isActive !== false
+  }
+
+  wait(timeoutMs: number): Promise<boolean> {
+    return this.updates.wait(shutdownSignal, timeoutMs)
+  }
+
+  stop(): void { this.subscription.unsubscribe() }
 }
 
 async function withProfile(
@@ -291,39 +366,40 @@ async function withProfile(
   }
 }
 
-function nodeConfig(node: AutomationNode): AnyRecord {
-  return node.data?.config || {}
-}
-
-function chooseCondition(config: AnyRecord): 'true' | 'false' {
-  if (config.check === 'time') {
-    const hour = new Date().getHours()
-    const [min, max] = String(config.value || '0-24')
-      .split('-')
-      .map(Number)
-    return hour >= (min || 0) && hour <= (max || 24) ? 'true' : 'false'
+async function runRoutineProfile(options: {
+  profile: DbProfileRow
+  automation: DbAutomationRow
+  routine: NonNullable<DbAutomationRow['routine']>
+  automationId: string
+  openSession: typeof openBrowserSession
+  useRealtime: boolean
+}): Promise<void> {
+  const { profile, automation, routine, automationId, openSession, useRealtime } = options
+  let access = true
+  const accessSubscription = useRealtime
+    ? watchRoutineAccess(
+        automationId, profile.id,
+        value => { access = value },
+        error => {
+          access = false
+          log(`routine access subscription failed: ${error.message}`, 'warn')
+        },
+      )
+    : null
+  try {
+    if (accessSubscription) {
+      access = await accessSubscription.initial
+      if (!access || !await routineReady(automationId, profile.id, false)) return
+    } else if (!await routineReady(automationId, profile.id, false)) return
+    await withProfile(profile, { headless: routine.headless, openSession, automationId }, async session => {
+      await runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)
+    })
+  } catch (error) {
+    if (shouldStop()) throw error
+    await routineRecordSession(automationId, profile.id, false, error instanceof Error ? error.message : String(error))
+  } finally {
+    accessSubscription?.unsubscribe()
   }
-  if (config.check === 'day') {
-    const days = String(config.value || '')
-      .split(',')
-      .map((value) => Number(value.trim()))
-    return days.includes(new Date().getDay()) ? 'true' : 'false'
-  }
-  return Math.random() * 100 < number(config.value, 50) ? 'true' : 'false'
-}
-
-function chooseBranch(config: AnyRecord): string {
-  const weights = String(config.weights || '50,50')
-    .split(',')
-    .map((value) => Math.max(0, Number(value) || 0))
-  const pick =
-    Math.random() * (weights.reduce((sum, value) => sum + value, 0) || 1)
-  let cursor = 0
-  for (let index = 0; index < weights.length; index++) {
-    cursor += weights[index]
-    if (pick <= cursor) return ['path_a', 'path_b', 'path_c'][index] || 'path_a'
-  }
-  return 'path_a'
 }
 
 export async function runAutomation(
@@ -351,370 +427,132 @@ export async function runAutomation(
   // Test runners inject a browser opener. Real workers use a single reactive
   // snapshot instead of repeatedly fetching the same tables over HTTP.
   const useRealtime = openSession === openBrowserSession
-  const updates = new UpdateSignal()
-  let runtimeHealthy = true
-  let runtimeError: Error | undefined
-  let latestRuntime: RuntimeSnapshot | null = null
-  let runtimeInitialized = false
-  let profileRevision = ''
-  let automationRevision = ''
-  let timingRevision = ''
-  let configChanged = false
-  const runtimeSubscription = useRealtime
-    ? watchRoutineRuntime(
-        automationId,
-        lists.map(String),
-        snapshot => {
-          const nextProfileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
-            id: profile.id,
-            name: profile.name,
-            status: profile.status,
-            using: profile.using,
-            igLoggedIn: profile.igLoggedIn,
-            outreachReady: profile.outreachReady,
-            listIds: profile.listIds,
-            lastOpenedAt: profile.lastOpenedAt,
-            renameFrom: profile.renameFrom,
-          })))
-          const nextTimingRevision = JSON.stringify({
-            warmups: snapshot?.warmups ?? [],
-            progress: snapshot?.progress ?? [],
-          })
-          const nextAutomationRevision = `${snapshot?.automation?.status ?? ''}:${snapshot?.automation?.isActive !== false}`
-          const nextConfigRevision = String(snapshot?.automation?.configRevision ?? '')
-          const changed = runtimeInitialized &&
-            (nextProfileRevision !== profileRevision || nextAutomationRevision !== automationRevision || nextTimingRevision !== timingRevision || nextConfigRevision !== String((latestRuntime?.automation as AnyRecord | undefined)?.configRevision ?? ''))
-          if (runtimeInitialized && nextConfigRevision !== String((latestRuntime?.automation as AnyRecord | undefined)?.configRevision ?? '')) {
-            configChanged = true
-            runtimeHealthy = false
-            runtimeError = new Error('Automation configuration changed; restarting worker')
-          }
-          latestRuntime = snapshot
-          profileRevision = nextProfileRevision
-          automationRevision = nextAutomationRevision
-          timingRevision = nextTimingRevision
-          if (changed || configChanged) updates.notify()
-          runtimeInitialized = true
+  const monitor = useRealtime ? new RuntimeMonitor(automationId, lists.map(String)) : null
+  try {
+    const runtime = monitor ? await monitor.initial : null
+    if (useRealtime && !runtime) throw new Error('Automation runtime not found')
+    let latestRuntime = runtime
+    if (useRealtime && isTruncatedSnapshot(latestRuntime)) {
+      latestRuntime = await expandedRuntimeSnapshot(automationId, lists, latestRuntime)
+      if (latestRuntime && !isTruncatedSnapshot(latestRuntime)) {
+        log(`runtime snapshot truncated; swept ${latestRuntime.profiles.length} profiles across windows`, 'warn')
+      }
+    }
+    const profiles = (latestRuntime
+      ? latestRuntime.profiles as DbProfileRow[]
+      : await profilesList()
+    ).filter((profile) =>
+        profileEligible(
+          profile,
+          lists,
+          setupConfig.profileReopenCooldownEnabled
+            ? number(setupConfig.profileReopenCooldownMinutes, 30)
+            : 0,
+        ),
+      )
+
+    await event('session_started', { automationId: automationId })
+    if (!profiles.length)
+      log('No available profiles in the selected lists; waiting for profiles')
+
+    // Free Cloak tier allows one browser at a time.
+    const parallel = 1
+    let previousProxy: string | undefined
+    const hasWarmup = nodes.some(node => node.data?.activityId === 'browse_feed')
+    const repeat = !!automation.routine || setupConfig.repeatWhileActive === true && hasWarmup
+    const profileDone = (profileId: string) => {
+      const run = aggregateStates.__profileRuns?.[profileId]
+      return !!run?.completed && !repeat
+    }
+    const runProfile = async (profile: DbProfileRow) => {
+      shutdownSignal.throwIfAborted()
+      if (profileDone(profile.id)) return
+      if (automation.routine) {
+        await runRoutineProfile({
+          profile, automation, routine: automation.routine,
+          automationId, openSession, useRealtime,
+        })
+        return
+      }
+      if (hasWarmup && !warmupReady(await warmupGetByProfile(profile.id))) return
+      await withProfile(
+        profile,
+        {
+          headless: setupConfig.headlessMode ?? false,
+          openSession,
+          automationId,
         },
-        error => {
-          runtimeHealthy = false
-          runtimeError = error
-          log(`runtime subscription failed: ${error.message}`, 'warn')
-          updates.notify()
+        async (session, controls) => {
+          previousProxy = profileProxyKey(profile)
+          await executeGraphProfile({
+            automationId, profile, session, controls, nodes, edges,
+            aggregateStates, repeat, emit: event, log,
+          })
         },
       )
-    : null
-  const runtime = runtimeSubscription
-    ? await runtimeSubscription.initial
-    : null
-  if (useRealtime && !runtime) throw new Error('Automation runtime not found')
-  latestRuntime = runtime
-  if (useRealtime && isTruncatedSnapshot(latestRuntime)) {
-    try {
-      const full = await loadFullRuntimeSnapshot(automationId, lists.map(String), latestRuntime)
-      latestRuntime = full
-      log(`runtime snapshot truncated; swept ${full.profiles.length} profiles across windows`, 'warn')
-    } catch (error) {
-      log(`full runtime sweep failed, using first window: ${error instanceof Error ? error.message : String(error)}`, 'warn')
     }
-  }
-  const profiles = (latestRuntime
-    ? latestRuntime.profiles as DbProfileRow[]
-    : await profilesList()
-  ).filter((profile) =>
-      profileEligible(
-        profile,
-        lists,
-        setupConfig.profileReopenCooldownEnabled
-          ? number(setupConfig.profileReopenCooldownMinutes, 30)
-          : 0,
-      ),
-    )
-
-  await event('session_started', { automationId: automationId })
-  if (!profiles.length)
-    log('No available profiles in the selected lists; waiting for profiles')
-
-  // Free Cloak tier allows one browser at a time.
-  const parallel = 1
-  let previousProxy: string | undefined
-  const hasWarmup = nodes.some(node => node.data?.activityId === 'browse_feed')
-  const repeat = !!automation.routine || setupConfig.repeatWhileActive === true && hasWarmup
-  const profileDone = (profileId: string) => {
-    const run = aggregateStates.__profileRuns?.[profileId]
-    return !!run?.completed && !repeat
-  }
-  const runProfile = async (profile: DbProfileRow) => {
-    shutdownSignal.throwIfAborted()
-    if (profileDone(profile.id)) return
-    if (automation.routine) {
-      let access = true
-      const accessSubscription = useRealtime
-        ? watchRoutineAccess(
-            automationId,
-            profile.id,
-            value => { access = value },
-            error => {
-              access = false
-              log(`routine access subscription failed: ${error.message}`, 'warn')
-            },
-          )
-        : null
-      try {
-        if (accessSubscription) {
-          access = await accessSubscription.initial
-          if (!access || !await routineReady(automationId, profile.id, false)) return
-        } else if (!await routineReady(automationId, profile.id, false)) return
-        await withProfile(profile, { headless: automation.routine.headless, openSession, automationId }, async session => {
-          await runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)
-        })
-      } catch (error) {
-        if (shouldStop()) throw error
-        await routineRecordSession(automationId, profile.id, false, error instanceof Error ? error.message : String(error))
-      } finally {
-        accessSubscription?.unsubscribe()
-      }
-      return
+    const runQueue = async (profiles: DbProfileRow[]) => {
+      const pending = profiles.filter(profile => !profileDone(profile.id))
+      // Resting profiles must not affect proxy alternation among runnable profiles.
+      const ready = hasWarmup
+        ? await Promise.all(pending.map(async profile => warmupReady(await warmupGetByProfile(profile.id))))
+        : pending.map(() => true)
+      await runPool(orderProfileQueue(pending.filter((_, index) => ready[index]), previousProxy), parallel, runProfile)
     }
-    if (hasWarmup && !warmupReady(await warmupGetByProfile(profile.id))) return
-    await withProfile(
-      profile,
-      {
-        headless: setupConfig.headlessMode ?? false,
-        openSession,
-        automationId,
-      },
-      async (session, controls) => {
-        previousProxy = profileProxyKey(profile)
-        const runs = (aggregateStates.__profileRuns ??= {})
-        const date = new Date().toISOString().slice(0, 10)
-        if (repeat && (runs[profile.id]?.completed || runs[profile.id]?.date !== date)) delete runs[profile.id]
-        const run = (runs[profile.id] ??= {
-          date,
-          states: {},
-          currentNodeId: null,
-          completed: false,
-        })
-        if (run.completed) return
-        const nodeStates = run.states as AnyRecord
-        const report = async (type: WorkerEvent['type'], data: AnyRecord) => {
-          Object.assign(aggregateStates, nodeStates)
-          await event(type, {
-            ...data,
-            profileName: profile.name,
-          })
-          await event('checkpoint', {
-            automationId: automationId,
-            nodeId: run.currentNodeId,
-            nodeStates: aggregateStates,
-          })
-        }
-        let current =
-          nodes.find((node) => node.id === run.currentNodeId) ||
-          nodes.find((node) => node.type === 'start') ||
-          nodes.find((node) => !edges.some((edge) => edge.target === node.id))
-        if (!current) throw new Error('Automation has no start node')
-        let iterations = 0
+    await runQueue(profiles)
 
-        while (current && iterations++ < 500) {
-          shutdownSignal.throwIfAborted()
-          const activity = nodeActivity(current)
-          const config = nodeConfig(current)
-          run.currentNodeId = current.id
-          nodeStates[current.id] = {
-            ...nodeStates[current.id],
-            status: 'running',
-            startedAt: Date.now(),
-            completedAt: undefined,
-            error: undefined,
-          }
-          await report('task_started', {
-            automationId: automationId,
-            nodeId: current.id,
-            task: activity,
-          })
-
-          let handle = ['start', 'delay'].includes(activity)
-            ? 'next'
-            : 'success'
-          try {
-            if (activity === 'delay') {
-              await sleep(
-                random(
-                  number(config.minSeconds, 1),
-                  number(config.maxSeconds, 1),
-                ) * 1000,
-              )
-            } else if (activity === 'condition') {
-              handle = chooseCondition(config)
-            } else if (activity === 'random_branch') {
-              handle = chooseBranch(config)
-            } else if (activity === 'loop') {
-              handle = advanceLoop(
-                nodeStates[current.id],
-                number(config.iterations, 3),
-              )
-            } else if (activity === 'browse_feed') {
-              await runWarmup(profile.id, automationId, config, session.page, log, shouldStop)
-            } else if (activity === 'watch_stories') {
-              await watchStories(
-                session.page,
-                number(config.stories_max, 3),
-                log,
-                shouldStop,
-                {
-                  minSeconds: number(config.stories_min_view_seconds, 2),
-                  maxSeconds: number(config.stories_max_view_seconds, 5),
-                },
-              )
-            } else if (activity === 'close_browser') {
-              await controls.close()
-            } else if (activity === 'start') {
-              // The automation already owns its browser session. Start only configures it.
-            } else {
-              throw new Error(`Unsupported automation activity: ${activity}`)
-            }
-          } catch (error) {
-            nodeStates[current.id] = {
-              ...nodeStates[current.id],
-              status: 'failed',
-              error: String(error),
-            }
-            await report('task_progress', {
-              automationId: automationId,
-              nodeId: current.id,
-            })
-            if (
-              !edges.some(
-                (edge) =>
-                  edge.source === current!.id &&
-                  edge.sourceHandle === 'failure',
-              )
-            )
-              throw error
-            current = nextNode(nodes, edges, current, 'failure')
-            run.currentNodeId = current?.id ?? null
-            run.completed = !current
-            await report('task_progress', {
-              automationId: automationId,
-              nodeId: current?.id,
-            })
-            continue
-          }
-
-          nodeStates[current.id] = {
-            ...nodeStates[current.id],
-            status: 'completed',
-            completedAt: Date.now(),
-          }
-          if (activity === 'close_browser') {
-            // Terminal: the browser session is gone, so nothing downstream can run.
-            run.currentNodeId = null
-            run.completed = true
-            await report('task_completed', {
-              automationId: automationId,
-              nodeId: current.id,
-              task: activity,
-            })
-            current = undefined
-            continue
-          }
-          const next = nextNode(nodes, edges, current, handle)
-          run.currentNodeId = next?.id ?? null
-          run.completed = !next
-          await report('task_completed', {
-            automationId: automationId,
-            nodeId: current.id,
-            task: activity,
-          })
-          current = next
-        }
-        if (current)
-          throw new Error('Automation exceeded the 500-node execution limit')
-        run.completed = true
-        run.currentNodeId = null
-      },
-    )
-  }
-  const runQueue = async (profiles: DbProfileRow[]) => {
-    const pending = profiles.filter(profile => !profileDone(profile.id))
-    // Resting profiles must not affect proxy alternation among runnable profiles.
-    const ready = hasWarmup
-      ? await Promise.all(pending.map(async profile => warmupReady(await warmupGetByProfile(profile.id))))
-      : pending.map(() => true)
-    await runPool(orderProfileQueue(pending.filter((_, index) => ready[index]), previousProxy), parallel, runProfile)
-  }
-  await runQueue(profiles)
-
-  // Active automations keep watching their lists. Real workers react to
-  // Convex updates; the polling branch remains only for isolated tests.
-  const cooldownMinutes = setupConfig.profileReopenCooldownEnabled
-    ? number(setupConfig.profileReopenCooldownMinutes, 30)
-    : 0
-  if (useRealtime) {
-    while (runtimeHealthy && latestRuntime?.automation &&
-      (latestRuntime.automation.status === 'running' || latestRuntime.automation.status === 'pending') &&
-      latestRuntime.automation.isActive !== false) {
-      // Sweep all windows when truncated so wakeups cover rest periods in
-      // later windows too; otherwise a profile outside the first prefix
-      // would never shorten the sleep.
-      let snapshot = latestRuntime
-      if (isTruncatedSnapshot(snapshot)) {
-        try {
-          snapshot = await loadFullRuntimeSnapshot(automationId, lists.map(String), snapshot)
-        } catch (error) {
-          log(`full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
-          snapshot = latestRuntime
-        }
-      }
-      // Time-based readiness (warmup rest, cooldown, day rollover) produces
-      // no table write, so wake on a timeout as well as on subscription updates.
-      const sleepMs = nextWakeupDelayMs(snapshot, cooldownMinutes)
-      if (!await updates.wait(shutdownSignal, sleepMs)) break
-      if (!runtimeHealthy) break
-      let current = latestRuntime
-      if (isTruncatedSnapshot(current)) {
-        try {
-          current = await loadFullRuntimeSnapshot(automationId, lists.map(String), current)
-        } catch (error) {
-          log(`full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
-          current = latestRuntime
-        }
-      }
-      const fresh = (current?.profiles ?? []).filter(
-        (profile: any) =>
-          !profileDone(String(profile.id)) &&
-          profileEligible(profile as DbProfileRow, lists, cooldownMinutes),
-      ) as DbProfileRow[]
-      if (fresh.length) await runQueue(fresh)
-    }
-  } else {
-    while (await shouldKeepWatching(automationId)) {
-      await sleep(profilePollIntervalMs).catch(() => undefined)
-      shutdownSignal.throwIfAborted()
-      if (!(await shouldKeepWatching(automationId))) break
-      try {
-        const fresh = (await profilesList()).filter(
-          (profile) =>
-            !profileDone(profile.id) &&
-            profileEligible(profile, lists, cooldownMinutes),
-        )
+    // Active automations keep watching their lists. Real workers react to
+    // Convex updates; the polling branch remains only for isolated tests.
+    const cooldownMinutes = setupConfig.profileReopenCooldownEnabled
+      ? number(setupConfig.profileReopenCooldownMinutes, 30)
+      : 0
+    if (useRealtime) {
+      while (monitor?.isActive()) {
+        // Sweep all windows when truncated so wakeups cover rest periods in
+        // later windows too; otherwise a profile outside the first prefix
+        // would never shorten the sleep.
+        const snapshot = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
+        // Time-based readiness (warmup rest, cooldown, day rollover) produces
+        // no table write, so wake on a timeout as well as on subscription updates.
+        const sleepMs = nextWakeupDelayMs(snapshot, cooldownMinutes)
+        if (!await monitor.wait(sleepMs)) break
+        if (monitor.error) break
+        const current = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
+        const fresh = (current?.profiles ?? []).filter(
+          (profile: any) =>
+            !profileDone(String(profile.id)) &&
+            profileEligible(profile as DbProfileRow, lists, cooldownMinutes),
+        ) as DbProfileRow[]
         if (fresh.length) await runQueue(fresh)
-      } catch (error) {
-        log(`watch poll failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+      }
+    } else {
+      while (await shouldKeepWatching(automationId)) {
+        await sleep(profilePollIntervalMs).catch(() => undefined)
+        shutdownSignal.throwIfAborted()
+        if (!(await shouldKeepWatching(automationId))) break
+        try {
+          const fresh = (await profilesList()).filter(
+            (profile) =>
+              !profileDone(profile.id) &&
+              profileEligible(profile, lists, cooldownMinutes),
+          )
+          if (fresh.length) await runQueue(fresh)
+        } catch (error) {
+          log(`watch poll failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+        }
       }
     }
+
+    if (monitor?.error) throw monitor.error
+
+    await event('session_ended', {
+      automationId: automationId,
+      status: 'completed',
+      nodeStates: nodeStates,
+    })
+  } finally {
+    monitor?.stop()
   }
-
-  runtimeSubscription?.unsubscribe()
-  if (configChanged) throw runtimeError
-  if (runtimeError) throw runtimeError
-
-  await event('session_ended', {
-    automationId: automationId,
-    status: 'completed',
-    nodeStates: nodeStates,
-  })
 }
 
 /**

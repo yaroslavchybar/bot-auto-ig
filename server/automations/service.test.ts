@@ -2,19 +2,18 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from '../shared/ProcessService.js'
-import { runAutomation, wireProcessLifecycle, automationWorkers } from './service.js'
+import { runAutomation, wireProcessLifecycle, waitForStatusUpdates, automationWorkers } from './service.js'
 import { clients } from '../shared/store.js'
 import { WebSocket } from 'ws'
 import { assertValidStatusTransition, type AutomationStatus } from '../../convex/automations/helpers.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 
-test('cooperative stop stays cancelled through the terminal event and process close', async () => {
+test('cancelled terminal event stays cancelled through process close', async () => {
   const originalFetch = globalThis.fetch
   const stdout = new EventEmitter()
   const proc = Object.assign(new EventEmitter(), {
     stdout,
-    __stopRequested: true,
     stdin: { write: (_value: string, callback?: () => void) => callback?.(), on: () => ({}) },
   }) as unknown as ChildProcess
   const writes: AutomationStatus[] = []
@@ -31,10 +30,10 @@ test('cooperative stop stays cancelled through the terminal event and process cl
   try {
     await runAutomation({ automationId: 'stop-test' }, () => proc)
     stdout.emit('data', Buffer.from('__EVENT__{"type":"session_ended","status":"stopped"}__EVENT__\n'))
-    await (proc as any).__statusUpdates
+    await waitForStatusUpdates(proc)
     proc.emit('close', 0)
     await tick()
-    assert.deepEqual(writes, ['cancelled', 'cancelled'])
+    assert.deepEqual(writes, ['cancelled'])
     assert.equal(automationWorkers.has('stop-test'), false)
   } finally {
     globalThis.fetch = originalFetch
@@ -69,11 +68,14 @@ test('checkpoint bursts coalesce, stay off websocket, and survive a state-less t
     for (let index = 0; index < 100; index++) emit({ type: 'checkpoint', nodeStates: { index }, nodeId: 'node' })
     emit({ type: 'session_ended', status: 'failed', error: 'boom' })
     release()
-    await (proc as any).__statusUpdates
+    await waitForStatusUpdates(proc)
     assert.equal(writes.length, 2)
     assert.deepEqual(writes[1].nodeStates, { index: 99 })
     assert.equal(writes[1].status, 'failed')
     assert.equal(messages.some(message => message.type === 'checkpoint' || message.nodeStates), false)
+    proc.emit('close', 0)
+    await tick()
+    assert.equal(writes.length, 2)
   } finally {
     release()
     clients.delete(client)

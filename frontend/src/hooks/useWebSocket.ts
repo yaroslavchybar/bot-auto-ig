@@ -131,15 +131,18 @@ function useVisibility() {
 
 function processSocketMessage(
   rawMessage: string,
-  automationId: string | null | undefined,
-  maxBuffer: number,
-  eventsOnly: boolean,
-  onEvent: ((message: WebSocketMessage) => void) | undefined,
-  currentProfileRef: React.MutableRefObject<string | null>,
-  setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>,
-  setStatus: React.Dispatch<React.SetStateAction<'idle' | 'running' | 'stopping'>>,
-  setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>,
+  options: {
+    automationId?: string | null
+    maxBuffer: number
+    eventsOnly: boolean
+    onEvent?: (message: WebSocketMessage) => void
+    currentProfileRef: React.MutableRefObject<string | null>
+    setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>
+    setStatus: React.Dispatch<React.SetStateAction<'idle' | 'running' | 'stopping'>>
+    setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>
+  },
 ) {
+  const { automationId, maxBuffer, eventsOnly, onEvent, currentProfileRef, setLogs, setStatus, setProgress } = options
   try {
     const data: WebSocketMessage = JSON.parse(rawMessage)
     try { onEvent?.(data) } catch { /* ignore */ }
@@ -179,41 +182,50 @@ function safeCloseSocket(ws: WebSocket | null) {
 
 /* ── Connect a WebSocket and wire event handlers ── */
 
-async function connectWebSocket(
-  wsUrl: string,
-  getToken: () => Promise<string | null>,
-  handleSocketMessage: (rawMessage: string) => void,
-  setConnected: (v: boolean) => void,
-  wsRef: React.MutableRefObject<WebSocket | null>,
-  connectingRef: React.MutableRefObject<boolean>,
-  cancelled: { current: boolean },
-) {
-  connectingRef.current = true
+type SocketConnection = {
+  ws: WebSocket | null
+  connecting: boolean
+  intentionalDisconnect: boolean
+  reconnectTimer: ReturnType<typeof setTimeout> | null
+  reconnectAttempt: number
+  cancelled: { current: boolean }
+}
+
+async function connectWebSocket(options: {
+  wsUrl: string
+  getToken: () => Promise<string | null>
+  onMessage: (rawMessage: string) => void
+  onConnected: (connected: boolean) => void
+  connection: SocketConnection
+  cancelled: { current: boolean }
+}) {
+  const { wsUrl, getToken, onMessage, onConnected, connection, cancelled } = options
+  connection.connecting = true
   const connectionUrl = new URL(wsUrl)
   try {
     const token = await getToken()
     if (token) connectionUrl.searchParams.set('token', token)
   } catch { /* continue */ }
-  if (cancelled.current) { connectingRef.current = false; return }
+  if (cancelled.current) { connection.connecting = false; return }
 
   // Close any lingering socket before creating a new one
-  safeCloseSocket(wsRef.current)
-  wsRef.current = null
+  safeCloseSocket(connection.ws)
+  connection.ws = null
 
   const ws = new WebSocket(connectionUrl.toString())
-  wsRef.current = ws
+  connection.ws = ws
 
   ws.onopen = () => {
-    connectingRef.current = false
+    connection.connecting = false
     if (cancelled.current) { ws.close(); return }
-    setConnected(true)
+    onConnected(true)
     addWebSocketBreadcrumb('open', wsUrl)
   }
   ws.onmessage = (event) => {
-    if (!cancelled.current) handleSocketMessage(event.data)
+    if (!cancelled.current) onMessage(event.data)
   }
   ws.onerror = () => {
-    connectingRef.current = false
+    connection.connecting = false
     addWebSocketBreadcrumb('error', wsUrl)
     ws.close()
   }
@@ -222,42 +234,35 @@ async function connectWebSocket(
 
 /* ── Schedule reconnection with backoff ── */
 
-function scheduleReconnect(
-  autoConnect: boolean,
-  enabled: boolean,
-  pauseWhenHidden: boolean,
-  isVisible: boolean,
-  cancelled: { current: boolean },
-  reconnectAttemptRef: React.MutableRefObject<number>,
-  reconnectTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
-  setReconnectCounter: React.Dispatch<React.SetStateAction<number>>,
-) {
-  if (autoConnect && enabled && (!pauseWhenHidden || isVisible) && !cancelled.current) {
-    const delay = getReconnectDelay(reconnectAttemptRef.current++)
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (!cancelled.current) setReconnectCounter((c) => c + 1)
+function scheduleReconnect(options: {
+  autoConnect: boolean
+  enabled: boolean
+  isVisible: boolean
+  connection: SocketConnection
+  cancelled: { current: boolean }
+  retry: () => void
+}) {
+  const { autoConnect, enabled, isVisible, connection, cancelled, retry } = options
+  if (autoConnect && enabled && isVisible && !cancelled.current) {
+    const delay = getReconnectDelay(connection.reconnectAttempt++)
+    connection.reconnectTimer = setTimeout(() => {
+      if (!cancelled.current) retry()
     }, delay)
   }
 }
 
 /* ── Connection effect cleanup helper ── */
 
-function cleanupConnection(
-  cancelled: { current: boolean },
-  reconnectTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
-  wsRef: React.MutableRefObject<WebSocket | null>,
-  connectingRef: React.MutableRefObject<boolean>,
-  setConnected?: (v: boolean) => void,
-) {
+function cleanupConnection(connection: SocketConnection, cancelled: { current: boolean }, setConnected: (v: boolean) => void) {
   cancelled.current = true
-  if (reconnectTimeoutRef.current) {
-    clearTimeout(reconnectTimeoutRef.current)
-    reconnectTimeoutRef.current = null
+  if (connection.reconnectTimer) {
+    clearTimeout(connection.reconnectTimer)
+    connection.reconnectTimer = null
   }
-  safeCloseSocket(wsRef.current)
-  wsRef.current = null
-  connectingRef.current = false
-  setConnected?.(false)
+  safeCloseSocket(connection.ws)
+  connection.ws = null
+  connection.connecting = false
+  setConnected(false)
 }
 
 /* ── Main hook ── */
@@ -284,20 +289,21 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     { totalAccounts: 0, currentProfile: null, currentTask: null })
   const documentVisible = useVisibility()
   const isVisible = !pauseWhenHidden || documentVisible
-  const wsRef = useRef<WebSocket | null>(null)
-  const connectingRef = useRef(false)
-  const intentionalDisconnectRef = useRef(false)
+  const connectionRef = useRef<SocketConnection>({
+    ws: null,
+    connecting: false,
+    intentionalDisconnect: false,
+    reconnectTimer: null,
+    reconnectAttempt: 0,
+    cancelled: { current: false },
+  })
   const currentProfileRef = useRef<string | null>(null)
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const reconnectAttemptRef = useRef(0)
-  // Holds a reference to the effect-scoped cancelled flag so disconnect() can reach it
-  const cancelledRef = useRef<{ current: boolean }>({ current: false })
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
-    processSocketMessage(
-      rawMessage, automationId, maxBuffer, eventsOnly, onEvent,
+    processSocketMessage(rawMessage, {
+      automationId, maxBuffer, eventsOnly, onEvent,
       currentProfileRef, setLogs, setStatus, setProgress,
-    )
+    })
   })
 
   const clearLogs = useCallback(() => { setLogs([]) }, [])
@@ -307,49 +313,49 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   useEffect(() => {
     if (!enabled || (pauseWhenHidden && !isVisible)) return
     if (!autoConnect && reconnectCounter === 0) return
-    const rs = wsRef.current?.readyState
+    const connection = connectionRef.current
+    const rs = connection.ws?.readyState
     if (rs === WebSocket.OPEN || rs === WebSocket.CONNECTING) return
-    if (connectingRef.current) return
+    if (connection.connecting) return
 
-    intentionalDisconnectRef.current = false
+    connection.intentionalDisconnect = false
     const cancelled = { current: false }
-    cancelledRef.current = cancelled
-    const reconnectArgs = { autoConnect, enabled, pauseWhenHidden, isVisible }
-
-    void connectWebSocket(
-      wsUrl, getToken, handleSocketMessage,
-      (v) => { setConnected(v); if (v) reconnectAttemptRef.current = 0 },
-      wsRef, connectingRef, cancelled,
-    ).then((ws) => {
-      if (!ws) return
-      ws.onclose = () => {
-        connectingRef.current = false
-        if (cancelled.current) return
-        setConnected(false); wsRef.current = null
-        addWebSocketBreadcrumb('close', wsUrl)
-        if (!intentionalDisconnectRef.current) {
-          scheduleReconnect(reconnectArgs.autoConnect, reconnectArgs.enabled,
-            reconnectArgs.pauseWhenHidden, reconnectArgs.isVisible, cancelled,
-            reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
-        }
-      }
-    }).catch(() => {
-      connectingRef.current = false
-      if (!intentionalDisconnectRef.current) {
-        scheduleReconnect(reconnectArgs.autoConnect, reconnectArgs.enabled,
-          reconnectArgs.pauseWhenHidden, reconnectArgs.isVisible, cancelled,
-          reconnectAttemptRef, reconnectTimeoutRef, setReconnectCounter)
-      }
+    connection.cancelled = cancelled
+    const reconnect = () => scheduleReconnect({
+      autoConnect, enabled, isVisible, connection, cancelled,
+      retry: () => setReconnectCounter((count) => count + 1),
     })
 
-    return () => cleanupConnection(cancelled, reconnectTimeoutRef, wsRef, connectingRef, setConnected)
-  }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible,
-    wsRef, reconnectAttemptRef, reconnectTimeoutRef])
+    void connectWebSocket({
+      wsUrl, getToken, onMessage: handleSocketMessage,
+      onConnected: (connected) => {
+        setConnected(connected)
+        if (connected) connection.reconnectAttempt = 0
+      },
+      connection, cancelled,
+    }).then((ws) => {
+      if (!ws) return
+      ws.onclose = () => {
+        connection.connecting = false
+        if (cancelled.current) return
+        setConnected(false)
+        connection.ws = null
+        addWebSocketBreadcrumb('close', wsUrl)
+        if (!connection.intentionalDisconnect) reconnect()
+      }
+    }).catch(() => {
+      connection.connecting = false
+      if (!connection.intentionalDisconnect) reconnect()
+    })
+
+    return () => cleanupConnection(connection, cancelled, setConnected)
+  }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible])
 
   const connect = useCallback(() => { setReconnectCounter((c) => c + 1) }, [])
   const disconnect = useCallback(() => {
-    intentionalDisconnectRef.current = true
-    cleanupConnection(cancelledRef.current, reconnectTimeoutRef, wsRef, connectingRef, setConnected)
+    const connection = connectionRef.current
+    connection.intentionalDisconnect = true
+    cleanupConnection(connection, connection.cancelled, setConnected)
   }, [])
 
   return { logs, status, progress, connected, clearLogs, connect, disconnect }

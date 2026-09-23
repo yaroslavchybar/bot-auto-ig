@@ -13,6 +13,7 @@ import {
   automationsGetById,
   automationsStart,
   automationsUpdateStatus,
+  type DbAutomationRow,
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
 import { latestQueue } from '../shared/latest-queue.js'
@@ -23,6 +24,7 @@ import {
   guardChildStdin,
   getPid,
   waitForExit,
+  type ChildProcess,
 } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
@@ -40,6 +42,29 @@ export { getPid, waitForExit }
 
 /** Alias for ProcessService.killProcess — used by stopAutomations. */
 const stopProcess = killProcess
+
+type TerminalStatus = 'completed' | 'failed' | 'cancelled'
+type WorkerLifecycle = {
+  stopRequested: boolean
+  statusUpdates?: Promise<void>
+  terminalStatus?: TerminalStatus
+}
+
+const workerLifecycles = new WeakMap<ChildProcess, WorkerLifecycle>()
+
+function lifecycleFor(proc: ChildProcess): WorkerLifecycle {
+  let lifecycle = workerLifecycles.get(proc)
+  if (!lifecycle) {
+    lifecycle = { stopRequested: false }
+    workerLifecycles.set(proc, lifecycle)
+  }
+  return lifecycle
+}
+
+/** Wait for queued checkpoints before inspecting a worker's final state. */
+export async function waitForStatusUpdates(proc: ChildProcess): Promise<void> {
+  await lifecycleFor(proc).statusUpdates
+}
 
 export function isStopNoiseLog(message: string): boolean {
   const m = String(message || '')
@@ -110,7 +135,7 @@ export function getAutomationStatus(automationId?: string) {
 // Spawn and wire up the Bun automation subprocess
 // ---------------------------------------------------------------------------
 
-function buildPayload(automationId: string, automation: any, parallelProfiles?: number) {
+function buildPayload(automationId: string, automation: DbAutomationRow, parallelProfiles?: number) {
   return JSON.stringify({
     automationId,
     automation: {
@@ -130,25 +155,27 @@ function buildPayload(automationId: string, automation: any, parallelProfiles?: 
 async function handleStatusEvent(
   automationId: string,
   log: ReturnType<typeof parseLogOutput>[number],
-): Promise<void> {
+): Promise<TerminalStatus | undefined> {
   const meta = log.metadata || {}
   const eventType = log.eventType
   const nextNodeStates = meta.nodeStates
   const nextCurrentNodeId = meta.nodeId
   const terminal = eventType === 'session_ended'
   if (terminal) clearAutomationProfileActive(automationId)
+  const status = terminal ? normalizeAutomationTerminalStatus(meta.status) : 'running'
   await automationsUpdateStatus({
     automationId,
-    status: terminal ? normalizeAutomationTerminalStatus(meta.status) : 'running',
+    status,
     error: terminal && typeof meta.error === 'string' ? meta.error : undefined,
     currentNodeId: nextCurrentNodeId ? String(nextCurrentNodeId) : undefined,
     nodeStates: nextNodeStates,
   })
+  return terminal ? status as TerminalStatus : undefined
 }
 
-function handleDisplayEvent(automationId: string, log: any): void {
-  const meta = (log?.metadata as any) || {}
-  const eventType = String(log?.eventType || '')
+function handleDisplayEvent(automationId: string, log: ParsedLog): void {
+  const meta = log.metadata || {}
+  const eventType = log.eventType || ''
   const profileName = String(meta.profileName ?? '').trim()
   const key = profileName ? displayKey(automationId, profileName) : null
 
@@ -171,67 +198,68 @@ function handleDisplayEvent(automationId: string, log: any): void {
   }
 }
 
-function wireStdout(
-  proc: any,
-  automationId: string,
-  currentProfile: { value: string | null },
-): void {
-  const parser = createLogStreamParser()
+/** Route parsed worker events to status, display, and UI state. */
+function createWorkerEventRouter(automationId: string, lifecycle: WorkerLifecycle) {
+  let currentProfile: string | null = null
   let lastCheckpoint: Record<string, unknown> | undefined
-  const updates = latestQueue<ReturnType<typeof parseLogOutput>[number]>(async log => {
-    try { await handleStatusEvent(automationId, log) }
-    catch (error) { logger.error({ err: error, automationId }, 'Automation status update failed') }
-  })
-  const consume = (parsed: ReturnType<typeof parseLogOutput>) => {
-    for (const log of parsed) {
-      const stopRequested = Boolean((proc as any).__stopRequested)
-      if (stopRequested && isStopNoiseLog(log?.message)) continue
-      if (log.eventType === 'profile_started' || log.eventType === 'profile_completed') {
-        const name = String(log.metadata?.profileName || '')
-        if (log.eventType === 'profile_started') {
-          currentProfile.value = name
-          if (name) markAutomationProfileActive(automationId, name)
-        } else {
-          currentProfile.value = null
-          if (name) clearAutomationProfileActive(automationId, name)
-        }
-      }
-      if (['checkpoint', 'session_started', 'session_ended'].includes(log.eventType || '')) {
-        if (log.eventType === 'checkpoint') lastCheckpoint = log.metadata
-        if (
-          log.eventType === 'session_ended' &&
-          log.metadata?.nodeStates == null &&
-          lastCheckpoint
-        ) {
-          log.metadata = { ...lastCheckpoint, ...log.metadata }
-        }
-        proc.__statusUpdates = updates.push(log)
-      }
-      if (log.eventType === 'checkpoint') continue
-      handleDisplayEvent(automationId, log)
-      const { nodeStates, ...uiMetadata } = log.metadata || {}
-      broadcast({
-        automationId,
-        type: log.eventType ? log.eventType : 'log',
-        message: log.message,
-        level: log.level,
-        source: 'typescript',
-        profileName: currentProfile.value,
-        ...uiMetadata,
-      })
+  const updates = latestQueue<ParsedLog>(async log => {
+    try {
+      const terminalStatus = await handleStatusEvent(automationId, log)
+      if (terminalStatus) lifecycle.terminalStatus = terminalStatus
+    } catch (error) {
+      logger.error({ err: error, automationId }, 'Automation status update failed')
     }
+  })
+  return (log: ParsedLog): void => {
+    if (lifecycle.stopRequested && isStopNoiseLog(log.message)) return
+    if (log.eventType === 'profile_started' || log.eventType === 'profile_completed') {
+      const name = String(log.metadata?.profileName || '')
+      if (log.eventType === 'profile_started') {
+        currentProfile = name
+        if (name) markAutomationProfileActive(automationId, name)
+      } else {
+        currentProfile = null
+        if (name) clearAutomationProfileActive(automationId, name)
+      }
+    }
+    if (['checkpoint', 'session_started', 'session_ended'].includes(log.eventType || '')) {
+      if (log.eventType === 'checkpoint') lastCheckpoint = log.metadata
+      if (log.eventType === 'session_ended' && log.metadata?.nodeStates == null && lastCheckpoint) {
+        log.metadata = { ...lastCheckpoint, ...log.metadata }
+      }
+      lifecycle.statusUpdates = updates.push(log)
+    }
+    if (log.eventType === 'checkpoint') return
+    handleDisplayEvent(automationId, log)
+    const { nodeStates, ...uiMetadata } = log.metadata || {}
+    broadcast({
+      automationId,
+      type: log.eventType || 'log',
+      message: log.message,
+      level: log.level,
+      source: 'typescript',
+      profileName: currentProfile,
+      ...uiMetadata,
+    })
   }
+}
+
+function wireStdout(proc: ChildProcess, automationId: string): void {
+  const parser = createLogStreamParser()
+  const route = createWorkerEventRouter(automationId, lifecycleFor(proc))
+  const consume = (parsed: ParsedLog[]) => parsed.forEach(route)
   proc.stdout?.on('data', (data: Buffer) => consume(parser.write(data)))
   proc.stdout?.on('end', () => consume(parser.end()))
 }
 
-function wireStderr(proc: any, automationId: string): void {
+function wireStderr(proc: ChildProcess, automationId: string): void {
+  const lifecycle = lifecycleFor(proc)
   // Buffered like stdout: a banner line split across chunks would classify
   // as error in halves. Flush leftovers when the stream (or child) ends.
   const parser = createLogStreamParser()
   const consume = (logs: ParsedLog[]) => {
     for (const log of logs) {
-      const stopRequested = Boolean((proc as any).__stopRequested)
+      const stopRequested = lifecycle.stopRequested
       if (stopRequested && isStopNoiseLog(log?.message)) continue
       broadcast({
         type: 'log',
@@ -247,10 +275,11 @@ function wireStderr(proc: any, automationId: string): void {
   proc.on('close', () => consume(parser.end()))
 }
 
-export function wireProcessLifecycle(proc: any, automationId: string): void {
+export function wireProcessLifecycle(proc: ChildProcess, automationId: string): void {
+  const lifecycle = lifecycleFor(proc)
   let spawnError: Error | undefined
   proc.on('close', async (code: number | null) => {
-    await proc.__statusUpdates
+    await waitForStatusUpdates(proc)
     if (automationWorkers.get(automationId)?.process !== proc) return
     broadcast({
       type: 'log',
@@ -261,9 +290,13 @@ export function wireProcessLifecycle(proc: any, automationId: string): void {
     })
 
     try {
-      const stopRequested = Boolean((proc as any).__stopRequested)
-      const finalStatus = stopRequested ? 'cancelled' : !spawnError && code === 0 ? 'completed' : 'failed'
-      await automationsUpdateStatus({ automationId, status: finalStatus, error: spawnError?.message })
+      const finalStatus = lifecycle.stopRequested ? 'cancelled'
+        : lifecycle.terminalStatus === 'failed' || lifecycle.terminalStatus === 'cancelled'
+          ? lifecycle.terminalStatus
+          : !spawnError && code === 0 ? 'completed' : 'failed'
+      if (finalStatus !== lifecycle.terminalStatus) {
+        await automationsUpdateStatus({ automationId, status: finalStatus, error: spawnError?.message })
+      }
     } catch { /* noop */ }
     if (automationWorkers.get(automationId)?.process !== proc) return
     automationWorkers.delete(automationId)
@@ -323,8 +356,7 @@ export async function runAutomation(input: RunAutomationInput, spawn = spawnBun)
   guardChildStdin(proc)
   automationWorkers.set(automationId, { process: proc, status: 'running', startedAt: Date.now() })
 
-  const currentProfile = { value: null as string | null }
-  wireStdout(proc, automationId, currentProfile)
+  wireStdout(proc, automationId)
   wireStderr(proc, automationId)
   wireProcessLifecycle(proc, automationId)
 
@@ -359,7 +391,7 @@ export async function stopAutomations(automationId?: string): Promise<string[]> 
     const worker = automationWorkers.get(id)
     if (!worker) continue
     automationWorkers.set(id, { ...worker, status: 'stopping' })
-    ;(worker.process as any).__stopRequested = true
+    lifecycleFor(worker.process).stopRequested = true
     broadcast({ type: 'automation_status', automationId: id, status: 'stopping' })
     broadcast({
       type: 'log',
