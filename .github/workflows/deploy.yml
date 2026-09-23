@@ -1,10 +1,9 @@
 # Sole deploy path: push to main. Nothing is deployed by hand —
 # not Convex (`convex deploy`), not the VPS. PRs only run checks.
 #
-# Order per push to main: checks -> Convex prod (functions, skipped when the
-# commit touches nothing under convex/) -> images (built here, pushed to
-# GHCR) -> VPS (pull + up + Caddy reload). Each step runs only if the
-# previous one succeeded.
+# Order per push to main: checks -> Convex prod -> images (built here,
+# pushed to GHCR) -> VPS (pull + up + Caddy reload). Each step runs only
+# if the previous one succeeded.
 #
 # Required GitHub secrets: CONVEX_DEPLOY_KEY, VPS_SSH_KEY, VPS_KNOWN_HOSTS,
 # CONVEX_URL, INTERNAL_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME,
@@ -20,6 +19,12 @@ on:
 
 env:
   IMAGE_NAME: ghcr.io/yaroslavchybar/bot-auto-ig
+
+# Serialize complete main deployments. Job-level concurrency makes the
+# server and frontend matrix builds compete with each other.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -38,22 +43,9 @@ jobs:
       - run: bun run build
       - run: bun run typecheck
 
-  changes:
-    runs-on: ubuntu-24.04
-    outputs:
-      convex: ${{ steps.filter.outputs.convex }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dorny/paths-filter@v4
-        id: filter
-        with:
-          filters: |
-            convex:
-              - 'convex/**'
-
   deploy-convex:
-    needs: [verify, changes]
-    if: github.event_name == 'push' && needs.changes.outputs.convex == 'true'
+    needs: verify
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -66,19 +58,8 @@ jobs:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 
   build-images:
-    needs: [verify, changes, deploy-convex]
-    # Serialize image pushes + VPS deploys: concurrent pushes to main
-    # otherwise race (one run's `rm -rf ~/ig-bot/app` deletes the cwd of
-    # another run's deploy shell, which fails with
-    # `getwd: no such file or directory`). Images are tagged immutably
-    # per commit below, so a queued run can never deploy another run's
-    # images.
-    concurrency:
-      group: prod-deploy
-      cancel-in-progress: false
-    # Runs when Convex deployed OR was skipped (no convex/ changes).
-    # `always()` is needed so a skipped deploy-convex doesn't skip this.
-    if: ${{ always() && github.event_name == 'push' && needs.verify.result == 'success' && needs.changes.result == 'success' && (needs.deploy-convex.result == 'success' || needs.deploy-convex.result == 'skipped') }}
+    needs: [verify, deploy-convex]
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -146,13 +127,8 @@ jobs:
             VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
 
   deploy-vps:
-    needs: [verify, changes, deploy-convex, build-images]
-    # Same group as build-images: only one prod deploy touches the VPS
-    # at a time.
-    concurrency:
-      group: prod-deploy
-      cancel-in-progress: false
-    if: ${{ always() && github.event_name == 'push' && needs.verify.result == 'success' && needs.changes.result == 'success' && (needs.deploy-convex.result == 'success' || needs.deploy-convex.result == 'skipped') && needs.build-images.result == 'success' }}
+    needs: [verify, deploy-convex, build-images]
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
