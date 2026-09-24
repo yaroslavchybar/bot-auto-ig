@@ -408,7 +408,7 @@ export async function warmupBeginRun(input: {
     sessionMaxMinutes: number
     restMinMinutes: number
     restMaxMinutes: number
-}): Promise<{ date: string; minutes: number }> {
+}): Promise<{ date: string; minutes: number; remainingMinutes?: number }> {
     return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
 }
 
@@ -449,6 +449,7 @@ export async function automationsRuntimePage(
 
 export const automationsList = () => convexFetch<DbAutomationRow[]>('/api/automations')
 export const routineReady = (automationId: string, profileId: string, checkpoint = false) => convexFetch<boolean>('/api/routines/ready', { method: 'POST', body: { automationId, profileId, checkpoint } })
+export const routineTarget = (automationId: string, profileId: string) => convexFetch<{ target: number; remaining: number; sent: number }>('/api/routines/target', { method: 'POST', body: { automationId, profileId } })
 export const routineRecordSession = (automationId: string, profileId: string, activityCompleted: boolean, issue?: string) => convexFetch('/api/routines/session', { method: 'POST', body: { automationId, profileId, activityCompleted, issue } })
 export const routineReserve = (automationId: string, profileId: string) => convexFetch<{ leadId: string; username: string; message: string; date: string } | null>('/api/routines/reserve', { method: 'POST', body: { automationId, profileId }, maxRetries: 0 })
 // Never retry authorization to send: a lost response must not cause a duplicate delivery.

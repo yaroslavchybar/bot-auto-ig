@@ -20,6 +20,7 @@ export default defineSchema({
     enrichmentStatus: v.optional(v.union(v.literal('pending'), v.literal('describing'), v.literal('ready'), v.literal('error'))),
     senderId: v.optional(v.id('profiles')), createdAt: v.number(),
     dmSent: v.boolean(), followed: v.boolean(), followDate: v.optional(v.number()),
+    dmBlocked: v.optional(v.boolean()),
   }).index('by_username', ['username'])
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
@@ -33,6 +34,8 @@ export default defineSchema({
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     paused: v.boolean(), issue: v.optional(v.string()), activeDays: v.number(), outreachDays: v.number(),
+    dmIncrease: v.optional(v.number()),
+    sentToday: v.optional(v.number()),
     lastActivityDate: v.optional(v.string()), lastOutreachDate: v.optional(v.string()),
     date: v.string(), used: v.number(), allowance: v.number(), nextRunAt: v.number(),
     startedAt: v.number(), updatedAt: v.number(),

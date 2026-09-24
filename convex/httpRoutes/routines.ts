@@ -4,6 +4,12 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
+  http.route({ path: '/api/routines/target', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    return jsonResponse(await ctx.runQuery(internal.routines.target, {
+      automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
+    }));
+  }) });
   http.route({ path: '/api/routines/follow-tasks', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
     return jsonResponse(await ctx.runQuery(internal.routines.followTasks, {

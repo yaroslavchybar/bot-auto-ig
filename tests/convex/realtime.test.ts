@@ -57,7 +57,6 @@ test('runtimeSnapshot returns timing fields and requires the bridge token', asyn
     routine: {
       outreachStartDay: 7,
       initialDms: 3,
-      dailyIncrease: 2,
       maxDms: 30,
       outreachEnabled: false,
       message: '',
@@ -139,7 +138,6 @@ test('runtimeSnapshot stays bounded and list pages sweep every assignment', asyn
     routine: {
       outreachStartDay: 7,
       initialDms: 3,
-      dailyIncrease: 2,
       maxDms: 30,
       outreachEnabled: false,
       message: '',

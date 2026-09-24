@@ -41,7 +41,8 @@ export const beginRunInternal = internalMutation({
     }
     if (state.recentRunIds?.includes(args.runId)) return { date, minutes: 0 }
     if (state.activeRun) {
-      return { date, minutes: state.activeRun.id === args.runId ? state.activeRun.minutes : 0 }
+      return { date, minutes: state.activeRun.id === args.runId ? state.activeRun.minutes : 0,
+        remainingMinutes: Math.max(0, state.todayMinutes - (state.minutesUsedToday ?? 0)) }
     }
     if ((state.nextRunAt ?? 0) > now) return { date, minutes: 0 }
     const minutes = Math.min(
@@ -53,7 +54,7 @@ export const beginRunInternal = internalMutation({
         restMinutes: randomMinutes({ minMinutes: args.restMinMinutes, maxMinutes: args.restMaxMinutes }) },
       lastAutomationId: args.automationId, updatedAt: now,
     })
-    return { date, minutes }
+    return { date, minutes, remainingMinutes: Math.max(0, state.todayMinutes - (state.minutesUsedToday ?? 0)) }
   },
 })
 

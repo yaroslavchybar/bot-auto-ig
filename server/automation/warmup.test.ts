@@ -32,6 +32,25 @@ test('records elapsed time when browsing fails and propagates the failure', asyn
   assert.deepEqual(recorded, [1])
 })
 
+test('mixed activity shares one reservation and counts DM time up to midnight', async () => {
+  let now = Date.parse('2026-09-19T23:59:00Z');
+  const s = setup();
+  s.deps.now = () => now;
+  s.deps.begin = async () => ({ date: '2026-09-19', minutes: 5, remainingMinutes: 10 });
+  s.deps.feed = async (_page, minutes) => { now += minutes * 60_000; return 'finished'; };
+  const result = await runWarmup('profile', 'automation', {}, {} as Page, () => {}, () => false, s.deps,
+    async session => {
+      assert.equal(session.remainingMinutes, 1);
+      assert.equal(session.deadline, Date.parse('2026-09-20T00:00:00Z'));
+      await session.browse(0.25);
+      now += 30_000; // DM preparation, pause and sending are inside the same reservation.
+      await session.browse(5);
+      return 'finished';
+    });
+  assert.deepEqual(result, { minutes: 1, reason: 'finished' });
+  assert.deepEqual(s.recorded, [1]);
+});
+
 test('exhausted budget performs no browsing or recording', async () => {
   const { run, calls, recorded } = setup(0)
   await run({ watch_stories: true })

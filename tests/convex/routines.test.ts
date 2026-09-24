@@ -2,10 +2,87 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey } from '../../convex/routinePolicy';
 import { createConvexTest, seedList, seedProfile } from './helpers';
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+test.each([0, 0.999])('daily growth is saved once and applies next day (random=%s)', async random => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
+  const { t, args, loggedIn, profile, automation } = await setup();
+  await loggedIn();
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, maxDms: 35 } }));
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const rng = vi.spyOn(Math, 'random').mockReturnValue(random);
+  const finish = { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: true };
+  await t.mutation(internal.routines.finishSend, finish);
+  rng.mockRestore();
+  const increase = random === 0 ? 1 : 4;
+  const read = () => t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
+  expect(await read()).toMatchObject({ allowance: 2, dmIncrease: increase, outreachDays: 1 });
+  await t.mutation(internal.routines.finishSend, finish);
+  const second = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.routines.finishSend, { ...finish, leadId: second.leadId });
+  expect(await read()).toMatchObject({ allowance: 2, dmIncrease: increase, outreachDays: 1 });
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  vi.setSystemTime(new Date('2026-09-22T10:00:00Z'));
+  expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(2 + increase);
+  await t.mutation(internal.routines.reserve, args);
+  expect(await read()).toMatchObject({ allowance: 2 + increase, used: 1 });
+  // An unsuccessful day does not increase the limit, even across missed days.
+  vi.setSystemTime(new Date('2026-09-25T10:00:00Z'));
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, maxDms: 3 } }));
+  await t.mutation(internal.routines.reserve, args);
+  expect(await read()).toMatchObject({ allowance: 3, dmIncrease: increase, outreachDays: 1 });
+});
 
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
   t.run(ctx => ctx.db.query('leads').collect());
+
+test('confirmed blocked messages release one target slot without permitting a retry', async () => {
+  const { t, args, loggedIn, profile } = await setup(); await loggedIn();
+  const first = (await t.mutation(internal.routines.reserve, args))!;
+  const blocked = { profileId: profile._id, leadId: first.leadId, date: first.date, sent: false, blocked: true };
+  await t.mutation(internal.routines.finishSend, blocked);
+  await t.mutation(internal.routines.finishSend, blocked);
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 2, sent: 0 });
+  expect(await t.query(internal.routines.beginSend, { ...args, leadId: first.leadId, date: first.date })).toBe(false);
+  for (let i = 0; i < 2; i++) {
+    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    expect(claim.leadId).not.toBe(first.leadId);
+    const finish = { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: true };
+    await t.mutation(internal.routines.finishSend, finish);
+    await t.mutation(internal.routines.finishSend, finish);
+  }
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 0, sent: 2 });
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+});
+
+test('uncertain sends remain reserved and show as an incomplete target when time is exhausted', async () => {
+  const { t, args, loggedIn, profile } = await setup(); await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
+  await t.run(ctx => ctx.db.insert('warmupStates', {
+    profileId: profile._id, date: dayKey(), day: 1, runsToday: 1, todayMinutes: 5, minutesUsedToday: 5, updatedAt: Date.now(),
+  }));
+  const row = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
+  expect(row).toMatchObject({ used: 1, sent: 0, allowance: 2, budgetExhausted: true });
+  expect(row.issue).toContain('could not be confirmed');
+  expect(await t.query(internal.routines.ready, args)).toBe(false);
+});
+
+test('saved routines with a fixed daily increase still load and use random growth', async () => {
+  const { t, args, loggedIn, profile, automation } = await setup();
+  await loggedIn();
+  await t.run(ctx => ctx.db.patch(automation._id, {
+    routine: { ...automation.routine!, dailyIncrease: 35 },
+  }));
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.routines.finishSend, {
+    profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: true,
+  });
+  const state = await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
+  expect(state.allowance).toBe(2);
+  expect(state.dmIncrease).toBeGreaterThanOrEqual(1);
+  expect(state.dmIncrease).toBeLessThanOrEqual(4);
+});
 
 async function setup() {
   const t = createConvexTest();

@@ -41,11 +41,16 @@ export function warmupReady(state: Pick<DbWarmupState, 'date' | 'nextRunAt' | 'r
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, feed: browseFeed, stories: watchStories, now: Date.now }
 export type WarmupResult = { minutes: number; reason: 'finished' | 'stopped' | 'stalled' | 'skipped' }
+export type SessionActivity = (session: {
+  deadline: number; remainingMinutes: number;
+  browse: (minutes: number) => Promise<WarmupResult['reason']>;
+}) => Promise<WarmupResult['reason']>;
 
 /** Reserve once, run within the deadline, and account for elapsed time even on failure. */
 export async function runWarmup(
   profileId: string, automationId: string, input: Record<string, unknown>, page: Page,
   log: ActionLogger, shouldStop: StopCheck, deps = dependencies,
+  activity?: SessionActivity,
 ): Promise<WarmupResult> {
   const config = warmupConfig(input)
   const runId = randomUUID()
@@ -63,13 +68,33 @@ export async function runWarmup(
   let reason: WarmupResult['reason'] = 'stopped'
   let elapsed = 0
   try {
-    if (config.watch_stories && !stopped())
-      await deps.stories(page, config.stories_max, log, stopped, {
-        minSeconds: config.stories_min_view_seconds, maxSeconds: config.stories_max_view_seconds,
-        deadline,
+    if (activity) {
+      let storiesWatched = false
+      reason = await activity({ deadline, remainingMinutes: Math.min(plan.remainingMinutes ?? plan.minutes,
+        Math.max(0, Date.parse(`${plan.date}T00:00:00Z`) + 86_400_000 - startedAt) / 60_000),
+        browse: async minutes => {
+          const browseDeadline = Math.min(deadline, deps.now() + minutes * 60_000)
+          const browseStopped = () => stopped() || deps.now() >= browseDeadline
+          if (config.watch_stories && !storiesWatched && !browseStopped()) {
+            storiesWatched = true
+            await deps.stories(page, config.stories_max, log, browseStopped, {
+              minSeconds: config.stories_min_view_seconds, maxSeconds: config.stories_max_view_seconds,
+              deadline: browseDeadline,
+            })
+          }
+          return browseStopped() ? 'finished' : deps.feed(page,
+            Math.max(0, browseDeadline - deps.now()) / 60_000, config, log, browseStopped)
+        },
       })
-    if (!stopped()) {
-      reason = await deps.feed(page, Math.max(0, deadline - deps.now()) / 60_000, config, log, stopped)
+    } else {
+      if (config.watch_stories && !stopped())
+        await deps.stories(page, config.stories_max, log, stopped, {
+          minSeconds: config.stories_min_view_seconds, maxSeconds: config.stories_max_view_seconds,
+          deadline,
+        })
+      if (!stopped()) {
+        reason = await deps.feed(page, Math.max(0, deadline - deps.now()) / 60_000, config, log, stopped)
+      }
     }
     if (!shouldStop() && deps.now() >= deadline) reason = 'finished'
   } finally {

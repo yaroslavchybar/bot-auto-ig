@@ -53,7 +53,7 @@ test('rolls over on demand and ignores late finishes from yesterday', async () =
   await finish(yesterday.date, 5)
   vi.setSystemTime(new Date('2026-09-20T00:01:00Z'))
   const today = await begin('two')
-  expect(today).toEqual({ date: '2026-09-20', minutes: 40 })
+  expect(today).toEqual({ date: '2026-09-20', minutes: 40, remainingMinutes: 40 })
   await finish(yesterday.date, 40)
   expect(await state()).toMatchObject({ day: 2, date: today.date, runsToday: 0, minutesUsedToday: 0 })
 })

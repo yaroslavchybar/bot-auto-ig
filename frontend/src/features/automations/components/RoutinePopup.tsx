@@ -65,7 +65,7 @@ export function RoutinePopup({
     value: RoutinePolicy[K],
   ) => setPolicy((p) => ({ ...p, [key]: value }))
   const numberField = (
-    key: 'outreachStartDay' | 'initialDms' | 'dailyIncrease' | 'maxDms',
+    key: 'outreachStartDay' | 'initialDms' | 'maxDms',
     label: string,
     min: number,
     max: number,
@@ -266,7 +266,7 @@ export function RoutinePopup({
                         Enable outreach
                       </span>
                       <span className="text-subtle-copy mt-0.5 block text-xs">
-                        Send DMs to unused leads within the daily allowance
+                        Work toward the daily DM target within the daily time budget
                       </span>
                     </span>
                     <Switch
@@ -286,18 +286,18 @@ export function RoutinePopup({
                     )}
                     {numberField(
                       'initialDms',
-                      'Initial daily allowance',
+                      'Initial daily target',
                       1,
-                      35,
-                    )}
-                    {numberField(
-                      'dailyIncrease',
-                      'Increase per completed outreach day',
-                      0,
                       35,
                     )}
                     {numberField('maxDms', 'Maximum DMs per day', 1, 35)}
                   </div>
+                  <p className="text-subtle-copy text-xs">
+                    The daily target increases by a random 1–4 after each day with a confirmed DM,
+                    up to the maximum. Sessions alternate browsing and batches of 1–5 DMs.
+                    Browsing, sending, and 30–90 second DM pauses share the daily time budget.
+                    Delivery problems or insufficient time can leave the target incomplete.
+                  </p>
                   <div className="grid gap-1.5">
                     <Label htmlFor="routine-lead-list">Recipient lead list</Label>
                     <Select
@@ -423,7 +423,8 @@ function RoutineProfiles({
                 : row.stage}
           </Badge>
           <span className="text-muted-copy text-xs">
-            {row.activeDays} active days · DMs {row.used}/{row.allowance}
+            {row.activeDays} active days · DMs {row.sent}/{row.allowance}
+            {row.budgetExhausted && row.sent < row.allowance ? ' · Target incomplete: time budget used' : ''}
           </span>
           <Button
             size="sm"

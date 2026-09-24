@@ -3,7 +3,8 @@ import { v } from "convex/values";
 export const routineValidator = v.object({
   outreachStartDay: v.number(),
   initialDms: v.number(),
-  dailyIncrease: v.number(),
+  // Accept saved routines from before random growth; this value is no longer used.
+  dailyIncrease: v.optional(v.number()),
   maxDms: v.number(),
   outreachEnabled: v.boolean(),
   leadListId: v.optional(v.id("leadLists")),
@@ -16,7 +17,6 @@ export type RoutinePolicy = typeof routineValidator.type;
 export const defaultRoutine: RoutinePolicy = {
   outreachStartDay: 7,
   initialDms: 3,
-  dailyIncrease: 2,
   maxDms: 30,
   outreachEnabled: false,
   message: "",
@@ -47,7 +47,6 @@ export function validateRoutine(p: RoutinePolicy) {
   for (const [name, value, min, max] of [
     ["Outreach start day", p.outreachStartDay, 1, 365],
     ["Initial DMs", p.initialDms, 1, 35],
-    ["Daily increase", p.dailyIncrease, 0, 35],
     ["Maximum DMs", p.maxDms, 1, 35],
   ] as const) {
     if (!Number.isInteger(value) || value < min || value > max)
@@ -67,10 +66,10 @@ export const dayKey = (now = Date.now()) =>
 export function dmAllowance(
   p: RoutinePolicy,
   activeDays: number,
-  outreachDays: number,
+  accumulatedIncrease: number,
 ) {
   return p.outreachEnabled && activeDays + 1 >= p.outreachStartDay
-    ? Math.min(p.maxDms, p.initialDms + outreachDays * p.dailyIncrease)
+    ? Math.min(p.maxDms, p.initialDms + accumulatedIncrease)
     : 0;
 }
 

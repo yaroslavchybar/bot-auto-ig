@@ -5,15 +5,22 @@ import { runRoutineSession } from "./routine.js";
 
 function setup() {
   const calls: string[] = [];
+  let now = 0;
   let sent = false,
     deliveryFailed = false;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    now: () => now,
+    target: async () => ({ target: 1, remaining: sent ? 0 : 1, sent: sent ? 1 : 0 }),
+    sleep: async ms => { now += ms; },
+    random: (min) => min,
     followTasks: async () => [],
     recordFollow: async () => undefined,
     ready: async () => true,
-    warmup: async () => {
-      calls.push("browse");
-      return { minutes: 5, reason: "finished" };
+    warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity) => {
+      await activity!({ deadline: now + 600_000, remainingMinutes: 10, browse: async minutes => {
+        calls.push('browse'); now += minutes * 60_000; return 'finished';
+      } });
+      return { minutes: 10, reason: stopped() ? 'stopped' : 'finished' };
     },
     reserve: async () =>
       calls.includes("reserve")
@@ -51,10 +58,10 @@ function setup() {
     click: async () => {
       calls.push("message-button");
     },
-    fill: async () => {
+    fill: async (_value: string, _options?: { timeout?: number }) => {
       calls.push("compose");
     },
-    press: async () => {
+    press: async (_key: string, _options?: { timeout?: number }) => {
       calls.push("send");
     },
     last() {
@@ -63,7 +70,7 @@ function setup() {
     nth() {
       return this;
     },
-    waitFor: async () => {
+    waitFor: async (_options?: { state?: string; timeout?: number }) => {
       calls.push("confirm");
     },
   };
@@ -120,6 +127,7 @@ test("a routine browses, reserves and authorizes before sending, then confirms d
     "send",
     "confirm",
     "sent",
+    "browse",
     "record-completed",
   ]);
   assert.deepEqual(s.result(), { sent: true, deliveryFailed: false });
@@ -130,11 +138,136 @@ test("removed membership prevents browsing and outreach", async () => {
   await s.run();
   assert.deepEqual(s.calls, ["record-incomplete"]);
 });
+
+test("DM attempts wait a random 30–90 seconds before claiming the next lead", async () => {
+  for (const seconds of [30, 90]) {
+    const s = setup();
+    s.deps.target = async () => ({ target: 2, remaining: 2, sent: 0 });
+    s.deps.random = (min) => min === 1 ? 2 : min === 30 ? seconds : min;
+    const sleep = s.deps.sleep;
+    s.deps.sleep = async ms => { assert.equal(ms, 1000); s.calls.push('wait'); await sleep(ms); };
+    let claims = 0;
+    s.deps.reserve = async () => {
+      s.calls.push('claim');
+      return { leadId: `lead-${++claims}`, date: '2026-09-21', username: 'alice', message: 'Hello alice' };
+    };
+    await s.run();
+    assert.equal(s.calls.filter(c => c === 'wait').length, seconds);
+    assert.equal(s.calls.filter(c => c === 'send').length, 2);
+    const firstSent = s.calls.indexOf('sent');
+    assert.deepEqual(s.calls.slice(firstSent + 1, firstSent + 1 + seconds), Array(seconds).fill('wait'));
+    assert.equal(s.calls[firstSent + 1 + seconds], 'claim');
+  }
+});
+
+test("stopping during a DM pause prevents another claim", async () => {
+  const s = setup();
+  s.deps.target = async () => ({ target: 3, remaining: 3, sent: 0 });
+  s.deps.random = min => min === 1 ? 3 : 30;
+  let stopped = false;
+  let waits = 0;
+  let claims = 0;
+  s.deps.reserve = async () => {
+    claims++;
+    s.calls.push('reserve');
+    return { leadId: `lead-${claims}`, date: '2026-09-21', username: 'alice', message: 'Hello alice' };
+  };
+  s.deps.sleep = async () => { waits++; stopped = true; };
+  await runRoutineSession(
+    { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} } },
+    'profile', s.page, () => {}, () => stopped, s.deps,
+  );
+  assert.equal(waits, 1);
+  assert.equal(claims, 1);
+  assert.equal(s.calls.filter(c => c === 'send').length, 1);
+  assert.equal(s.result().deliveryFailed, false);
+});
 test("a refused send authorization never presses Send", async () => {
   const s = setup();
   s.deps.begin = async () => false;
   await s.run();
   assert.equal(s.calls.includes("send"), false);
+});
+
+test("a failed final target log does not flag a completed session", async () => {
+  const s = setup();
+  s.deps.target = async () => {
+    if (s.calls.includes('sent')) throw new Error('temporary query failure');
+    return { target: 1, remaining: 1, sent: 0 };
+  };
+  await s.run();
+  assert.equal(s.result().sent, true);
+  assert.equal(s.result().deliveryFailed, false);
+  assert.equal(s.calls.at(-1), 'record-completed');
+});
+
+test("a deadline reached during navigation skips the send without a review issue", async () => {
+  const s = setup();
+  s.page.goto = (async (_url, options) => {
+    assert.equal(options?.timeout, 30_000);
+    await s.deps.sleep(600_000);
+    throw new Error('navigation timeout');
+  }) as Page['goto'];
+  await s.run();
+  assert.equal(s.calls.includes('authorize'), false);
+  assert.equal(s.calls.includes('send'), false);
+  assert.equal(s.calls.includes('uncertain'), false);
+  assert.equal(s.result().deliveryFailed, false);
+});
+
+test("a deadline reached during follow cleanup ends the session without an issue", async () => {
+  const s = setup();
+  s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
+  s.page.goto = (async () => {
+    await s.deps.sleep(600_000);
+    throw new Error('navigation timeout');
+  }) as Page['goto'];
+  await s.run();
+  assert.equal(s.calls.includes('reserve'), false);
+  assert.equal(s.result().deliveryFailed, false);
+});
+
+test("a deadline reached after composing skips the send without a review issue", async () => {
+  const s = setup();
+  s.locator.fill = async () => { s.calls.push('compose'); await s.deps.sleep(600_000); };
+  await s.run();
+  assert.equal(s.calls.includes('authorize'), false);
+  assert.equal(s.calls.includes('send'), false);
+  assert.equal(s.calls.includes('uncertain'), false);
+  assert.equal(s.result().deliveryFailed, false);
+});
+
+test("a deadline reached during authorization never presses Send or flags delivery", async () => {
+  const s = setup();
+  s.deps.begin = async () => {
+    s.calls.push('authorize');
+    await s.deps.sleep(600_000);
+    return true;
+  };
+  await s.run();
+  assert.equal(s.calls.includes('authorize'), true);
+  assert.equal(s.calls.includes('send'), false);
+  assert.equal(s.calls.includes('uncertain'), false);
+  assert.equal(s.result().deliveryFailed, false);
+});
+
+test("a send started near the deadline keeps fixed press and confirmation timeouts", async () => {
+  const s = setup();
+  let waits = 0;
+  s.locator.press = async (_, options) => {
+    assert.equal(options?.timeout, 10_000);
+    s.calls.push('send');
+    await s.deps.sleep(600_000);
+  };
+  s.locator.waitFor = async options => {
+    waits++;
+    if (waits === 2) assert.equal(options?.timeout, 15_000);
+    s.calls.push('confirm');
+  };
+  await s.run();
+  assert.equal(waits, 2);
+  assert.equal(s.result().sent, true);
+  assert.equal(s.result().deliveryFailed, false);
 });
 test("a delivery timeout is recorded uncertain and never retried", async () => {
   const s = setup();
@@ -216,7 +349,7 @@ test('existing Message does not authorize or record a follow', async () => {
   assert.equal(s.result().sent, true);
 });
 
-test('due unfollows run before browsing even with no remaining browsing budget', async () => {
+test('an exhausted daily budget also prevents follow cleanup', async () => {
   const s = setup();
   let following = true;
   const events: string[] = [];
@@ -232,5 +365,5 @@ test('due unfollows run before browsing even with no remaining browsing budget',
   s.deps.recordFollow = async (_, __, followed) => { assert.equal(followed, false); events.push('record'); };
   s.deps.warmup = async () => { events.push('browse'); return { minutes: 0, reason: 'skipped' }; };
   await s.run();
-  assert.deepEqual(events, ['open-following', 'unfollow', 'record', 'browse']);
+  assert.deepEqual(events, ['browse']);
 });

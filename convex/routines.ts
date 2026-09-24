@@ -137,6 +137,7 @@ export const accounts = query({
       profiles.map(async (p) => {
         const state = await progress(ctx, p._id);
         const date = dayKey();
+        const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', p._id)).unique();
         return {
           profileId: p._id,
           name: p.name,
@@ -151,6 +152,8 @@ export const accounts = query({
               : "Outreach",
           activeDays: state?.activeDays ?? 0,
           used: state?.date === date ? state.used : 0,
+          sent: state?.date === date ? state.sentToday ?? 0 : 0,
+          budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
           allowance:
             a.routine && p.outreachReady
               ? state?.date === date
@@ -158,13 +161,28 @@ export const accounts = query({
                 : dmAllowance(
                     a.routine,
                     state?.activeDays ?? 0,
-                    state?.outreachDays ?? 0,
+                    state?.dmIncrease ?? 0,
                   )
               : 0,
           nextRunAt: state?.nextRunAt,
         };
       }),
     );
+  },
+});
+
+/** Remaining target includes in-flight claims so concurrent workers cannot oversend. */
+export const target = internalQuery({
+  args: { automationId: v.id('automations'), profileId: v.id('profiles') },
+  handler: async (ctx, args) => {
+    const e = await eligibility(ctx, args.automationId, args.profileId);
+    if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled) return { target: 0, remaining: 0, sent: 0 };
+    const today = dayKey();
+    const s = e.state;
+    const allowance = Math.min(e.policy.maxDms, s?.date === today ? s.allowance
+      : dmAllowance(e.policy, (s?.activeDays ?? 0) - (s?.lastActivityDate === today ? 1 : 0), s?.dmIncrease ?? 0));
+    return { target: allowance, remaining: Math.max(0, allowance - (s?.date === today ? s.used : 0)),
+      sent: s?.date === today ? s.sentToday ?? 0 : 0 };
   },
 });
 
@@ -241,8 +259,7 @@ export const reserve = internalMutation({
     const state = await ensureProgress(ctx, args.profileId);
     const used = state.date === date ? state.used : 0;
     const activeBeforeToday = state.activeDays - (state.lastActivityDate === date ? 1 : 0);
-    const outreachBeforeToday = state.outreachDays - (state.lastOutreachDate === date ? 1 : 0);
-    const allowance = Math.min(e.policy.maxDms, state.date === date ? state.allowance : dmAllowance(e.policy, activeBeforeToday, outreachBeforeToday));
+    const allowance = Math.min(e.policy.maxDms, state.date === date ? state.allowance : dmAllowance(e.policy, activeBeforeToday, state.dmIncrease ?? 0));
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
     for await (const membership of ctx.db.query('leadMemberships')
@@ -254,7 +271,8 @@ export const reserve = internalMutation({
     if (!lead) return null;
     await ctx.db.patch(lead._id, { senderId: args.profileId });
     await setLeadAvailability(ctx, lead._id, false);
-    await ctx.db.patch(state._id, { date, used: used + 1, allowance, updatedAt: Date.now() });
+    await ctx.db.patch(state._id, { date, used: used + 1, allowance,
+      sentToday: state.date === date ? state.sentToday ?? 0 : 0, updatedAt: Date.now() });
     return { leadId: lead._id, username: lead.username, message: e.policy.message.replaceAll('{{username}}', lead.username), date };
   },
 });
@@ -265,7 +283,7 @@ export const beginSend = internalQuery({
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
     const today = dayKey(args.now ?? Date.now());
-    return !!(lead && lead.senderId === args.profileId && !lead.dmSent && e && e.profile.outreachReady && e.policy.outreachEnabled && today === args.date);
+    return !!(lead && lead.senderId === args.profileId && !lead.dmSent && !lead.dmBlocked && e && e.profile.outreachReady && e.policy.outreachEnabled && today === args.date);
   },
 });
 
@@ -274,7 +292,7 @@ export const finishSend = internalMutation({
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.senderId !== args.profileId) throw new Error('Lead belongs to another sender');
-    if (lead.dmSent) return;
+    if (lead.dmSent || lead.dmBlocked) return;
     if (args.sent) {
       await ctx.db.patch(lead._id, { dmSent: true });
       await setLeadAvailability(ctx, lead._id, false);
@@ -282,11 +300,19 @@ export const finishSend = internalMutation({
     const state = await progress(ctx, args.profileId);
     if (!state) return;
     if (args.sent) {
+      // Draw once per successful outreach day; today's stored allowance stays fixed.
+      const firstSendToday = state.lastOutreachDate !== args.date;
       await ctx.db.patch(state._id, {
-        outreachDays: state.outreachDays + (state.lastOutreachDate !== args.date ? 1 : 0),
+        outreachDays: state.outreachDays + (firstSendToday ? 1 : 0),
+        dmIncrease: (state.dmIncrease ?? 0) + (firstSendToday ? 1 + Math.floor(Math.random() * 4) : 0),
         lastOutreachDate: args.date,
+        ...(state.date === args.date ? { sentToday: (state.sentToday ?? 0) + 1 } : {}),
       });
-    } else if (!args.blocked) {
+    } else if (args.blocked) {
+      // A confirmed blocked/unsent message can be replaced, but never retried.
+      await ctx.db.patch(lead._id, { dmBlocked: true });
+      if (state.date === args.date) await ctx.db.patch(state._id, { used: Math.max(0, state.used - 1) });
+    } else {
       await ctx.db.patch(state._id, {
         issue: 'Delivery could not be confirmed. Check Instagram before clearing this issue; the claimed lead will not be retried.',
       });
