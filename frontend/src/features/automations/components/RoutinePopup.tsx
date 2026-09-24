@@ -12,7 +12,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -116,14 +115,14 @@ export function RoutinePopup({
         if (!open && !saving) onClose()
       }}
     >
-      <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-4xl">
+      <DialogContent
+        aria-describedby={undefined}
+        className="bg-panel border-line text-ink flex h-[90vh] flex-col sm:max-w-4xl"
+      >
         <DialogHeader className="shrink-0">
           <DialogTitle className="page-title-gradient">
             {automation ? automation.name : 'New automation'}
           </DialogTitle>
-          <DialogDescription className="text-subtle-copy">
-            One daily IG routine for every profile in the selected lists.
-          </DialogDescription>
         </DialogHeader>
 
         <div
@@ -399,68 +398,64 @@ function RoutineProfiles({
       </p>
     )
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {rows.map((row) => (
         <div
           key={row.profileId}
-          className="bg-panel-subtle/40 border-line-soft space-y-3 rounded-xl border p-4"
+          className="bg-panel-subtle/40 border-line-soft flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-ink text-sm font-semibold">{row.name}</span>
-            <Badge
-              variant="outline"
-              className={cn(
-                'border text-[10px] tracking-[0.18em] uppercase',
-                row.paused
-                  ? 'border-line bg-panel-muted text-copy'
-                  : row.issue
-                    ? 'border-status-danger-border bg-status-danger-soft text-status-danger'
-                    : 'border-status-success-border bg-status-success-soft text-status-success',
-              )}
-            >
-              {row.paused
-                ? 'Paused'
+          <span className="text-ink text-sm font-semibold">{row.name}</span>
+          <Badge
+            variant="outline"
+            className={cn(
+              'border text-[10px] tracking-[0.18em] uppercase',
+              row.paused
+                ? 'border-line bg-panel-muted text-copy'
                 : row.issue
-                  ? 'Needs attention'
-                  : row.stage}
-            </Badge>
-          </div>
-          <p className="text-muted-copy text-xs">
+                  ? 'border-status-danger-border bg-status-danger-soft text-status-danger'
+                  : 'border-status-success-border bg-status-success-soft text-status-success',
+            )}
+          >
+            {row.paused
+              ? 'Paused'
+              : row.issue
+                ? 'Needs attention'
+                : row.stage}
+          </Badge>
+          <span className="text-muted-copy text-xs">
             {row.activeDays} active days · DMs {row.used}/{row.allowance}
-          </p>
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() =>
+              void mutate({ profileId: row.profileId, paused: !row.paused })
+            }
+          >
+            {row.paused ? 'Resume' : 'Pause'}
+          </Button>
           {row.issue && (
-            <p className="text-status-danger text-sm">{row.issue}</p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="outline"
               className="h-8"
               onClick={() =>
-                void mutate({ profileId: row.profileId, paused: !row.paused })
+                void mutate({ profileId: row.profileId, clearIssue: true })
               }
             >
-              {row.paused ? 'Resume' : 'Pause'}
+              Issue resolved
             </Button>
-            {row.issue && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8"
-                onClick={() =>
-                  void mutate({ profileId: row.profileId, clearIssue: true })
-                }
-              >
-                Issue resolved
-              </Button>
-            )}
-            <span className="text-subtle-copy ml-auto text-xs">
-              Next session:{' '}
-              {row.nextRunAt
-                ? new Date(row.nextRunAt).toLocaleString()
-                : 'When logged in and its rest period ends'}
-            </span>
-          </div>
+          )}
+          <span className="text-subtle-copy ml-auto text-xs">
+            Next session:{' '}
+            {row.nextRunAt
+              ? new Date(row.nextRunAt).toLocaleString()
+              : 'When logged in and its rest period ends'}
+          </span>
+          {row.issue && (
+            <p className="text-status-danger basis-full text-xs">{row.issue}</p>
+          )}
         </div>
       ))}
     </div>

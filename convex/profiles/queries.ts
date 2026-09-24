@@ -49,6 +49,12 @@ export const getById = query({
 	},
 });
 
+export const getChatSessionInternal = internalQuery({
+	args: { profileId: v.id('profiles') },
+	handler: async (ctx, { profileId }) => ctx.db.query('chatSessions')
+		.withIndex('by_profile', q => q.eq('profileId', profileId)).first(),
+});
+
 export const getAvailableForListsInternal = internalQuery({
 	args: {
 		listIds: v.array(v.string()),

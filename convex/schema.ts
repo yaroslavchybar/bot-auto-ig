@@ -70,6 +70,32 @@ export default defineSchema({
 	})
 		.index("by_name", ["name"])
 		.index("by_status", ["status"]),
+	chatSessions: defineTable({
+		profileId: v.id('profiles'),
+		storageId: v.id('_storage'),
+		token: v.string(),
+		viewerId: v.optional(v.string()),
+		inboxSyncedAt: v.optional(v.number()),
+		inboxThreadIds: v.optional(v.array(v.string())),
+		unreadCount: v.optional(v.number()),
+	}).index('by_profile', ['profileId']),
+	chatThreads: defineTable({
+		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),
+		title: v.string(), users: v.array(v.object({ id: v.string(), username: v.string() })),
+		preview: v.optional(v.object({ id: v.string(), senderId: v.string(), text: v.string(),
+			timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()) })),
+		lastSeenAt: v.array(v.object({ userId: v.string(), timestamp: v.number() })),
+		threadSyncedAt: v.optional(v.number()),
+		unread: v.optional(v.boolean()),
+		lastIncomingAt: v.optional(v.number()),
+		repliedThroughAt: v.optional(v.number()),
+	}).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId']),
+	// Bounded recent history, read only when a conversation is opened.
+	chatHistories: defineTable({
+		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),
+		messages: v.array(v.object({ id: v.string(), senderId: v.string(), text: v.string(),
+			timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()) })),
+	}).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId']),
 
   scrapeJobs: defineTable({
     username: v.string(), listId: v.id('leadLists'), sinceDate: v.number(),

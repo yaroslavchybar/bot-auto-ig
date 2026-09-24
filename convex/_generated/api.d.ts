@@ -11,10 +11,12 @@
 import type * as automations_helpers from "../automations/helpers.js";
 import type * as automations_mutations from "../automations/mutations.js";
 import type * as automations_queries from "../automations/queries.js";
+import type * as chatCache from "../chatCache.js";
 import type * as crons from "../crons.js";
 import type * as errors from "../errors.js";
 import type * as http from "../http.js";
 import type * as httpRoutes_automations from "../httpRoutes/automations.js";
+import type * as httpRoutes_chat from "../httpRoutes/chat.js";
 import type * as httpRoutes_leadLists from "../httpRoutes/leadLists.js";
 import type * as httpRoutes_lists from "../httpRoutes/lists.js";
 import type * as httpRoutes_messageTemplates from "../httpRoutes/messageTemplates.js";
@@ -51,10 +53,12 @@ declare const fullApi: ApiFromModules<{
   "automations/helpers": typeof automations_helpers;
   "automations/mutations": typeof automations_mutations;
   "automations/queries": typeof automations_queries;
+  chatCache: typeof chatCache;
   crons: typeof crons;
   errors: typeof errors;
   http: typeof http;
   "httpRoutes/automations": typeof httpRoutes_automations;
+  "httpRoutes/chat": typeof httpRoutes_chat;
   "httpRoutes/leadLists": typeof httpRoutes_leadLists;
   "httpRoutes/lists": typeof httpRoutes_lists;
   "httpRoutes/messageTemplates": typeof httpRoutes_messageTemplates;

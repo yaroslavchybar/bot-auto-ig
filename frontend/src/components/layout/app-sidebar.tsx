@@ -1,4 +1,6 @@
 import * as React from 'react'
+import { useQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { Link, useLocation } from '@/lib/router'
 import {
   Users,
@@ -6,6 +8,7 @@ import {
   GitBranch,
   Monitor,
   Globe,
+  MessageSquare,
 } from 'lucide-react'
 
 import {
@@ -29,6 +32,7 @@ export const NAV_IDS = [
   'lists',
   'proxies',
   'vnc',
+  'chat',
 ] as const
 
 export type NavId = (typeof NAV_IDS)[number]
@@ -56,6 +60,7 @@ export const NAV_ITEMS = [
     breadcrumb: 'Lists Manager',
   },
   { title: 'Scraper', id: 'scraper', to: '/scraper', icon: Users, breadcrumb: 'Scraper' },
+  { title: 'Chat', id: 'chat', to: '/chat', icon: MessageSquare, breadcrumb: 'Chat' },
   {
     title: 'Proxies',
     id: 'proxies',
@@ -82,6 +87,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar>
 
 export function AppSidebar(props: AppSidebarProps) {
   const { pathname } = useLocation()
+  const unreadChats = useQuery(api.chatCache.unreadCount, {}) ?? 0
   const navMain = [
     {
       title: 'Platform',
@@ -120,6 +126,12 @@ export function AppSidebar(props: AppSidebarProps) {
                       <Link to={item.to}>
                         {item.icon && <item.icon />}
                         <span>{item.title}</span>
+                        {item.id === 'chat' && unreadChats > 0 && (
+                          <span className="ml-auto rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground"
+                            aria-label={`${unreadChats} conversations awaiting reply`}>
+                            {unreadChats}
+                          </span>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

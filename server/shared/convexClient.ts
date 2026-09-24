@@ -1,4 +1,5 @@
 import type { ProfileRecord } from './contracts.js';
+import type { ChatThread } from '../chat/instagram.js';
 /**
  * Convex client for TypeScript using HTTP API.
  */
@@ -259,6 +260,55 @@ export async function profilesSyncStatus(name: string, status: string, using: bo
     if (!cleanedName || !cleanedStatus) throw new Error('name and status are required');
     await convexFetch<any>('/api/profiles/sync-status', { method: 'POST', body: { name: cleanedName, status: cleanedStatus, using } });
     return true;
+}
+
+export type ChatSessionFile = { connected: false } | { connected: true; state: string; token: string };
+
+export function chatSessionGet(profileId: string): Promise<ChatSessionFile> {
+    return convexFetch(`/api/chat/session?profileId=${encodeURIComponent(profileId)}`, { maxRetries: 1 });
+}
+
+export function chatSessionHas(profileId: string): Promise<{ connected: boolean }> {
+    return convexFetch(`/api/chat/session?profileId=${encodeURIComponent(profileId)}&status=1`, { maxRetries: 1 });
+}
+
+export function chatSessionSave(profileId: string, state: string, token: string, expectedToken?: string): Promise<{ connected: true }> {
+    return convexFetch('/api/chat/session', {
+        method: 'POST', body: { profileId, state, token, expectedToken }, maxRetries: 0,
+    });
+}
+
+export function chatSessionDelete(profileId: string): Promise<{ connected: false }> {
+    return convexFetch(`/api/chat/session?profileId=${encodeURIComponent(profileId)}`, {
+        method: 'DELETE', maxRetries: 0,
+    });
+}
+
+export type CachedChatInbox = { connected: boolean; viewerId: string; threads: ChatThread[]; syncedAt: number };
+export type CachedChatThread = ChatThread & { syncedAt: number };
+
+export function chatCacheInbox(profileId: string): Promise<CachedChatInbox> {
+    return convexFetch(`/api/chat/cache?profileId=${encodeURIComponent(profileId)}`, { maxRetries: 1 });
+}
+
+export function chatCacheThread(profileId: string, threadId: string): Promise<CachedChatThread | null> {
+    return convexFetch(`/api/chat/cache?profileId=${encodeURIComponent(profileId)}&threadId=${encodeURIComponent(threadId)}`, { maxRetries: 1 });
+}
+
+export function chatCacheSaveInbox(profileId: string, token: string, inbox: { viewerId: string; threads: ChatThread[] },
+    mode: 'full' | 'unread' = 'full'): Promise<CachedChatInbox> {
+    return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 0,
+        body: { scope: 'inbox', profileId, token, mode, ...inbox } });
+}
+
+export function chatMarkReplied(profileId: string, token: string, threadId: string, throughAt: number): Promise<void> {
+    return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 1,
+        body: { scope: 'replied', profileId, token, threadId, throughAt } }).then(() => {});
+}
+
+export function chatCacheSaveThread(profileId: string, token: string, thread: ChatThread): Promise<CachedChatThread> {
+    return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 0,
+        body: { scope: 'thread', profileId, token, thread } });
 }
 
 export async function profilesSetUnreadDms(name: string, count: number | null): Promise<void> {

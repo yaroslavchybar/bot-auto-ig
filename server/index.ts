@@ -18,6 +18,8 @@ import { profilesRouter } from './profiles/index.js'
 import { automationsRouter } from './automations/index.js'
 import displaysRouter from './displays/routes.js'
 import leadListsRouter from './leads/routes.js'
+import chatRouter from './chat/routes.js'
+import { startChatWorker } from './chat/worker.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
 import { retryProfileMaintenance } from './profiles/maintenance.js'
@@ -109,6 +111,7 @@ app.use('/api/profiles', requireApiAuth, apiLimiter, profilesRouter)
 app.use('/api/automations', requireApiAuthOrInternalKey, apiLimiter, automationsRouter)
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 app.use('/api/lead-lists', requireApiAuth, apiLimiter, leadListsRouter)
+app.use('/api/chat', requireApiAuth, apiLimiter, chatRouter)
 
 // Sentry error handler must be registered after all routes
 Sentry.setupExpressErrorHandler(app)
@@ -189,6 +192,7 @@ async function startServer(): Promise<void> {
         server.once('close', stopRoutineScheduler)
         const stopScraperWorker = startScraperWorker()
         server.once('close', stopScraperWorker)
+        server.once('close', startChatWorker())
         logger.info({ port: PORT }, 'API server running')
         logger.info({ port: PORT }, 'WebSocket available')
         // Point the bot at our webhook so deep-link logins complete.

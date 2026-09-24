@@ -4,6 +4,7 @@ export type ProfileRecord = {
   id: string
   name: string
   igLoggedIn?: boolean
+  outreachReady?: boolean
   unreadDms?: number
   createdAt?: number
   proxy?: string

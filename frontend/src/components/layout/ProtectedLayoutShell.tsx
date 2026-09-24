@@ -42,6 +42,7 @@ export function ProtectedLayoutShell({
   const appChrome = routeMeta.appChrome ?? 'default'
   const showVncCount = pathname === '/vnc'
   const showScraperTabs = pathname === '/scraper'
+  const showChatSlot = pathname === '/chat'
 
   if (appChrome === 'immersive') {
     return (
@@ -77,6 +78,7 @@ export function ProtectedLayoutShell({
                   </BreadcrumbList>
                 </Breadcrumb>
               </div>
+              {showChatSlot ? <div id="chat-header-slot" className="hidden min-w-0 flex-1 items-center md:flex" /> : null}
               {showScraperTabs ? <ScraperHeaderTabs /> : null}
               <div className="ml-auto flex items-center gap-2 px-4">
                 <ThemeToggle />

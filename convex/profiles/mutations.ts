@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
+import { clearProfileChatCache } from '../chatCache';
 
 export const setIgState = mutation({
   args: { profileId: v.id('profiles'), igLoggedIn: v.optional(v.boolean()), outreachReady: v.optional(v.boolean()) },
@@ -12,6 +13,37 @@ export const setIgState = mutation({
       ...state,
       ...(state.igLoggedIn === false ? { unreadDms: undefined } : {}),
     })
+  },
+})
+
+export const saveChatSessionInternal = internalMutation({
+  args: { profileId: v.id('profiles'), storageId: v.id('_storage'), token: v.string(),
+    expectedToken: v.optional(v.string()) },
+  handler: async (ctx, { profileId, storageId, token, expectedToken }) => {
+    const profile = await ctx.db.get(profileId)
+    if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
+    const existing = await ctx.db.query('chatSessions')
+      .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
+    if (expectedToken !== undefined && existing?.token !== expectedToken) throw new Error('Chat session changed')
+    if (existing && existing.token !== token) await clearProfileChatCache(ctx, profileId)
+    if (existing) {
+      await ctx.db.patch(existing._id, { storageId, token,
+        ...(existing.token !== token ? { viewerId: undefined, inboxSyncedAt: undefined,
+          inboxThreadIds: undefined, unreadCount: undefined } : {}) })
+      if (existing.storageId !== storageId) await ctx.storage.delete(existing.storageId)
+    } else await ctx.db.insert('chatSessions', { profileId, storageId, token })
+  },
+})
+
+export const deleteChatSessionInternal = internalMutation({
+  args: { profileId: v.id('profiles') },
+  handler: async (ctx, { profileId }) => {
+    await clearProfileChatCache(ctx, profileId)
+    const existing = await ctx.db.query('chatSessions')
+      .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
+    if (!existing) return
+    await ctx.storage.delete(existing.storageId)
+    await ctx.db.delete(existing._id)
   },
 })
 

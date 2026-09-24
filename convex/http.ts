@@ -8,6 +8,7 @@ import { registerWarmupRoutes } from './httpRoutes/warmup';
 import { registerRoutineRoutes } from './httpRoutes/routines';
 import { registerScraperRoutes } from './httpRoutes/scraper';
 import { registerLeadListRoutes } from './httpRoutes/leadLists';
+import { registerChatRoutes } from './httpRoutes/chat';
 
 const http = httpRouter();
 
@@ -20,5 +21,6 @@ registerWarmupRoutes(http);
 registerRoutineRoutes(http);
 registerScraperRoutes(http);
 registerLeadListRoutes(http);
+registerChatRoutes(http);
 
 export default http;

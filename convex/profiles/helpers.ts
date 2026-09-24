@@ -1,4 +1,5 @@
 import { DomainError } from '../errors';
+import { clearProfileChatCache } from '../chatCache';
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 
 function assertProfileEditable(profile: any) {
@@ -290,6 +291,9 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
 	for (const assignment of await ctx.db.query("profileListAssignments").withIndex("by_profile", (q: any) => q.eq("profileId", existing._id)).collect())
 		await ctx.db.delete(assignment._id);
+	await clearProfileChatCache(ctx, existing._id);
+	const chat = await ctx.db.query('chatSessions').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).first();
+	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -300,6 +304,9 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
 	for (const assignment of await ctx.db.query("profileListAssignments").withIndex("by_profile", (q: any) => q.eq("profileId", profileId)).collect())
 		await ctx.db.delete(assignment._id);
+	await clearProfileChatCache(ctx, profileId);
+	const chat = await ctx.db.query('chatSessions').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
+	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
 	await ctx.db.delete(profileId);
 	return true;
 }
