@@ -111,8 +111,7 @@ async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
 		const batch = await Promise.all(profileIds.slice(i, i + 50).map((id) => ctx.db.get(id as any)));
 		for (const row of batch) if (row) profiles.push(row);
 	}
-	// Read timing tables so the subscription fires when a rest period ends.
-	// Without this a resting profile would sleep until some other write happens.
+	// Subscribe to timing changes; client timers handle expiry without database polling.
 	const warmups: any[] = [];
 	const progresses: any[] = [];
 	for (let i = 0; i < profiles.length; i += 50) {
@@ -141,10 +140,18 @@ async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
 		warmups: profiles.map((profile: any, index: number) => ({
 			profileId: profile._id,
 			nextRunAt: warmups[index]?.nextRunAt ?? 0,
+      ...(warmups[index] ? {
+        date: warmups[index].date,
+        todayMinutes: warmups[index].todayMinutes,
+        minutesUsedToday: warmups[index].minutesUsedToday ?? 0,
+        activeRun: Boolean(warmups[index].activeRun),
+      } : {}),
 		})),
 		progress: profiles.map((profile: any, index: number) => ({
 			profileId: profile._id,
 			nextRunAt: progresses[index]?.nextRunAt ?? 0,
+      ...(progresses[index]?.paused ? { paused: true } : {}),
+      ...(progresses[index]?.issue ? { issue: progresses[index].issue } : {}),
 		})),
 	};
 }

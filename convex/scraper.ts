@@ -4,6 +4,35 @@ import type { Doc, Id } from './_generated/dataModel';
 import { normalizeUsername } from './instagramUsername';
 import { addMembership, leadAvailable, setLeadAvailability } from './leadMemberships';
 import { jobKey, lookbackMs } from './scraperKeys';
+import { requireServerBridgeAuth } from './serverBridgeAuth';
+
+/** No clock reads: clients wake at these timestamps, and writes wake subscriptions. */
+export const work = query({
+  args: { bridgeToken: v.string() },
+  handler: async (ctx, { bridgeToken }) => {
+    requireServerBridgeAuth(bridgeToken);
+    const [queued, paused, running, describing, pending] = await Promise.all([
+      ctx.db.query('scrapeJobs').withIndex('by_status_lease', q => q.eq('status', 'queued')).first(),
+      ctx.db.query('scrapeJobs').withIndex('by_status_lease', q => q.eq('status', 'paused')).first(),
+      ctx.db.query('scrapeJobs').withIndex('by_status_lease', q => q.eq('status', 'running')).first(),
+      ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'describing')).first(),
+      ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'pending')).first(),
+    ]);
+    let jobAt: number | null = null;
+    const job = queued ?? paused ?? running;
+    if (job) {
+      const profiles = await ctx.db.query('profiles').collect();
+      const times = profiles.filter(p => p.sessionId && p.status !== 'deleting' && !p.renameFrom).map(p => {
+        const reset = (p.scraperUsageCount ?? 0) >= limitFor(p) && p.scraperUsageDate
+          ? Date.parse(`${p.scraperUsageDate}T00:00:00Z`) + 86_400_000 : 0;
+        return Math.max(p.scraperCooldownUntil ?? 0, reset);
+      });
+      if (times.length) jobAt = Math.max(Math.min(...times), queued || paused ? 0 : (running?.leaseUntil ?? 0) + 1);
+    }
+    return { jobAt, jobKey: job ? `${job._id}:${job.status}:${job.leaseUntil ?? 0}` : null,
+      enrichmentKey: (describing ?? pending)?._id ?? null };
+  },
+});
 
 const day = () => new Date().toISOString().slice(0, 10);
 const limitFor = (profile: Doc<'profiles'>) => profile.scraperDailyLimit ?? 1000;

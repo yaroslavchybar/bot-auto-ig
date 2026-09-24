@@ -1,11 +1,32 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import type { RuntimeSnapshot } from '../shared/convexRealtime.js'
 import {
   MAX_REALTIME_SLEEP_MS,
   loadFullRuntimeSnapshot,
   msUntilMidnightUtc,
   nextWakeupDelayMs,
+  routineMayRun,
 } from './worker.js'
+
+test('routine prefilter skips rest and spent budgets, then allows the next UTC day', () => {
+  const now = Date.parse('2026-09-24T12:00:00Z')
+  const snapshot: RuntimeSnapshot = { automation: {}, profiles: [],
+    warmups: [{ profileId: 'p', date: '2026-09-24', todayMinutes: 30, minutesUsedToday: 30 }], progress: [] }
+  assert.equal(routineMayRun(snapshot, 'p', now), false)
+  assert.equal(routineMayRun(snapshot, 'p', now + 86_400_000), true)
+  snapshot.warmups![0]!.minutesUsedToday = 10
+  snapshot.warmups![0]!.activeRun = true
+  assert.equal(routineMayRun(snapshot, 'p', now), false)
+  snapshot.warmups![0]!.activeRun = false
+  snapshot.progress = [{ profileId: 'p', nextRunAt: now + 60_000 }]
+  assert.equal(routineMayRun(snapshot, 'p', now), false)
+  assert.equal(routineMayRun(snapshot, 'p', now + 60_000), true)
+  snapshot.progress = [{ profileId: 'p', paused: true }]
+  assert.equal(routineMayRun(snapshot, 'p', now), false)
+  snapshot.progress = [{ profileId: 'p', issue: 'review' }]
+  assert.equal(routineMayRun(snapshot, 'p', now), false)
+})
 
 test('midnight is always a wakeup candidate', () => {
   const now = Date.UTC(2026, 8, 21, 12, 0, 0)

@@ -4,6 +4,8 @@ import { InstagramHttp, InstagramRateLimitedError, type InstagramPost } from './
 import { classifyAccount, openRouterClient } from './classify.js';
 import { describePicture, validPictureUrl } from './picture.js';
 import { recentPosts } from './apify.js';
+import { watchScraperWork, type ScraperWork } from '../shared/convexRealtime.js';
+import { reactiveWork } from '../shared/reactiveWork.js';
 
 const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 type Job = { _id: string; username: string; profileId: string; runId: string;
@@ -119,9 +121,20 @@ export function startScraperWorker(): () => void {
     catch (error) { logger.warn({ err: error }, 'Scraper enrichment tick failed'); }
     finally { enrichmentBusy = false; }
   };
-  void jobTick();
-  void enrichmentTick();
-  const timer = setInterval(() => { void jobTick(); void enrichmentTick(); }, 10_000);
-  timer.unref();
-  return () => { stopped = true; clearInterval(timer); };
+  const jobs = reactiveWork<ScraperWork>({
+    dueAt: state => state.jobAt, run: jobTick,
+    onError: err => logger.warn({ err }, 'Scraper job failed'),
+  });
+  const enrichment = reactiveWork<ScraperWork>({
+    dueAt: state => process.env.OPENROUTER_API_KEY && state.enrichmentKey ? 0 : null,
+    run: enrichmentTick, onError: err => logger.warn({ err }, 'Scraper enrichment failed'),
+  });
+  const subscription = watchScraperWork(state => { jobs.update(state); enrichment.update(state); },
+    err => {
+      const idle = { jobAt: null, jobKey: null, enrichmentKey: null };
+      jobs.update(idle); enrichment.update(idle);
+      logger.error({ err }, 'Scraper subscription failed');
+    });
+  void subscription.initial.catch(() => undefined);
+  return () => { stopped = true; jobs.stop(); enrichment.stop(); subscription.unsubscribe(); };
 }

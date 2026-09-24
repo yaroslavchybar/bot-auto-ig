@@ -29,6 +29,9 @@ export const saveChatSessionInternal = internalMutation({
           inboxThreadIds: undefined, unreadCount: undefined } : {}) })
       if (existing.storageId !== storageId) await ctx.storage.delete(existing.storageId)
     } else await ctx.db.insert('chatSessions', { profileId, storageId, token })
+    const membership = await ctx.db.query('chatMemberships')
+      .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
+    if (!membership) await ctx.db.insert('chatMemberships', { profileId })
   },
 })
 
@@ -38,9 +41,13 @@ export const deleteChatSessionInternal = internalMutation({
     await clearProfileChatCache(ctx, profileId)
     const existing = await ctx.db.query('chatSessions')
       .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
-    if (!existing) return
-    await ctx.storage.delete(existing.storageId)
-    await ctx.db.delete(existing._id)
+    if (existing) {
+      await ctx.storage.delete(existing.storageId)
+      await ctx.db.delete(existing._id)
+    }
+    for (const row of await ctx.db.query('chatMemberships')
+      .withIndex('by_profile', q => q.eq('profileId', profileId)).collect())
+      await ctx.db.delete(row._id)
   },
 })
 

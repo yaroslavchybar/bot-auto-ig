@@ -20,6 +20,8 @@ import {
   watchRoutineAccess,
   watchRoutineRuntime,
   type RuntimeSnapshot,
+  type RuntimeWarmup,
+  type RuntimeProgress,
 } from '../shared/convexRealtime.js'
 import { runWarmup, warmupReady } from './warmup.js'
 import { runRoutineSession } from './routine.js'
@@ -110,6 +112,17 @@ function isTruncatedSnapshot(snapshot: RuntimeSnapshot): boolean {
   return !!snapshot && !!snapshot.truncated
 }
 
+/** Local prefilter; the server still authorizes each session and DM. */
+export function routineMayRun(snapshot: RuntimeSnapshot, profileId: string, now = Date.now()): boolean {
+  const state = snapshot?.progress?.find(row => row.profileId === profileId)
+  const warmup = snapshot?.warmups?.find(row => row.profileId === profileId)
+  if (state?.paused || state?.issue || (state?.nextRunAt ?? 0) > now || (warmup?.nextRunAt ?? 0) > now) return false
+  if (warmup?.date === new Date(now).toISOString().slice(0, 10)) {
+    if (warmup.activeRun || (warmup.minutesUsedToday ?? 0) >= (warmup.todayMinutes ?? Infinity)) return false
+  }
+  return true
+}
+
 /**
  * Sweep every list with keyset cursor pages so profiles outside the first
  * window still enter the queue. Each page performs one bounded index read,
@@ -123,8 +136,8 @@ export async function loadFullRuntimeSnapshot(
 ): Promise<NonNullable<RuntimeSnapshot>> {
   const base = first ?? { automation: {}, profiles: [] }
   const seen = new Map<string, Record<string, any>>()
-  const warmups = new Map<string, { profileId: string; nextRunAt?: number }>()
-  const progress = new Map<string, { profileId: string; nextRunAt?: number }>()
+  const warmups = new Map<string, RuntimeWarmup>()
+  const progress = new Map<string, RuntimeProgress>()
   for (const profile of base.profiles ?? []) seen.set(String((profile as AnyRecord).id), profile as Record<string, any>)
   for (const row of base.warmups ?? []) warmups.set(String(row.profileId), row)
   for (const row of base.progress ?? []) progress.set(String(row.profileId), row)
@@ -190,7 +203,7 @@ class UpdateSignal {
   private waiter: (() => void) | null = null
 
   notify(): void {
-    this.pending++
+    this.pending = 1
     const waiter = this.waiter
     this.waiter = null
     waiter?.()
@@ -491,15 +504,16 @@ export async function runAutomation(
         },
       )
     }
-    const runQueue = async (profiles: DbProfileRow[]) => {
-      const pending = profiles.filter(profile => !profileDone(profile.id))
+    const runQueue = async (profiles: DbProfileRow[], snapshot: RuntimeSnapshot = null) => {
+      const pending = profiles.filter(profile => !profileDone(profile.id) &&
+        (!automation.routine || !snapshot || routineMayRun(snapshot, profile.id)))
       // Resting profiles must not affect proxy alternation among runnable profiles.
       const ready = hasWarmup
         ? await Promise.all(pending.map(async profile => warmupReady(await warmupGetByProfile(profile.id))))
         : pending.map(() => true)
       await runPool(orderProfileQueue(pending.filter((_, index) => ready[index]), previousProxy), parallel, runProfile)
     }
-    await runQueue(profiles)
+    await runQueue(profiles, latestRuntime)
 
     // Active automations keep watching their lists. Real workers react to
     // Convex updates; the polling branch remains only for isolated tests.
@@ -523,7 +537,7 @@ export async function runAutomation(
             !profileDone(String(profile.id)) &&
             profileEligible(profile as DbProfileRow, lists, cooldownMinutes),
         ) as DbProfileRow[]
-        if (fresh.length) await runQueue(fresh)
+        if (fresh.length) await runQueue(fresh, current)
       }
     } else {
       while (await shouldKeepWatching(automationId)) {

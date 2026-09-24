@@ -201,7 +201,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	if (!name) throw new DomainError('VALIDATION', "name is required");
 
 	const next: Record<string, unknown> = { name };
-	await assertProfileNameAvailable(ctx, name, existing._id);
+	if (name !== existing.name) await assertProfileNameAvailable(ctx, name, existing._id);
 	if (name !== existing.name) next.renameFrom = existing.name;
 
 	if (typeof args.proxy === "string") {
@@ -224,9 +224,8 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	if (proxyKey(effectiveProxyByName, effectiveTypeByName) !== proxyKey(existing.proxy, existing.proxyType)) {
 		await assertProxyLimit(ctx, effectiveProxyByName, effectiveTypeByName, existing._id);
 	}
-	await ctx.db.patch(existing._id, {
-		...(next as any),
-	});
+	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
+    await ctx.db.patch(existing._id, next as any);
 	await ensureProxySaved(
 		ctx,
 		typeof args.proxy === "string" ? args.proxy : existing.proxy,
@@ -245,7 +244,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	args = { ...args, ...cleanProxyFields(args.proxy ?? existing.proxy, args.proxyType ?? existing.proxyType) };
 
 	const next: Record<string, unknown> = { name };
-	await assertProfileNameAvailable(ctx, name, existing._id);
+	if (name !== existing.name) await assertProfileNameAvailable(ctx, name, existing._id);
 	if (name !== existing.name) next.renameFrom = existing.name;
 
 	if (typeof args.proxy === "string") {
@@ -268,9 +267,8 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	if (proxyKey(effectiveProxyById, effectiveTypeById) !== proxyKey(existing.proxy, existing.proxyType)) {
 		await assertProxyLimit(ctx, effectiveProxyById, effectiveTypeById, args.profileId);
 	}
-	await ctx.db.patch(args.profileId, {
-		...(next as any),
-	});
+	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
+    await ctx.db.patch(args.profileId, next as any);
 	await ensureProxySaved(
 		ctx,
 		typeof args.proxy === "string" ? args.proxy : existing.proxy,
@@ -294,6 +292,8 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 	await clearProfileChatCache(ctx, existing._id);
 	const chat = await ctx.db.query('chatSessions').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).first();
 	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
+	for (const membership of await ctx.db.query('chatMemberships').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).collect())
+		await ctx.db.delete(membership._id);
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -307,6 +307,8 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	await clearProfileChatCache(ctx, profileId);
 	const chat = await ctx.db.query('chatSessions').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
 	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
+	for (const membership of await ctx.db.query('chatMemberships').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).collect())
+		await ctx.db.delete(membership._id);
 	await ctx.db.delete(profileId);
 	return true;
 }
@@ -322,6 +324,7 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 	if (!existing) return true;
 	if (existing.status === 'deleting') return true;
 	const next: Record<string, unknown> = { status: cleanedStatus, using: Boolean(using) };
+  if (existing.status === cleanedStatus && existing.using === Boolean(using)) return true;
 	if (cleanedStatus.toLowerCase() === "running") {
 		next.lastOpenedAt = Date.now();
 	}

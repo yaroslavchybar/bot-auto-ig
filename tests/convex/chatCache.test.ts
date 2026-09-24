@@ -215,10 +215,8 @@ test('Conversation sync returns the same bounded history as subsequent cache rea
   const t = createConvexTest()
   const profile = (await seedProfile(t))!
   const profileId = profile._id
-  await t.run(async ctx => {
-    const storageId = await ctx.storage.store(new Blob(['{}']))
-    await ctx.db.insert('chatSessions', { profileId, token, storageId })
-  })
+  const storageId = await t.run(ctx => ctx.storage.store(new Blob(['{}'])))
+  await t.mutation(internal.profiles.mutations.saveChatSessionInternal, { profileId, token, storageId })
   const shell = { id: '123', title: 'Friend', users: [], lastSeenAt: [] }
   const messages = Array.from({ length: 100 }, (_, i) => ({ id: String(i), senderId: 'friend',
     text: String(i), timestamp: 100 - i, kind: 'text' }))

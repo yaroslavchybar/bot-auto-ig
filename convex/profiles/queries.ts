@@ -1,6 +1,29 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
 import { query } from "../_generated/server";
+import { requireServerBridgeAuth } from '../serverBridgeAuth';
+
+export const maintenanceWork = query({
+  args: { bridgeToken: v.string() },
+  handler: async (ctx, { bridgeToken }) => {
+    requireServerBridgeAuth(bridgeToken);
+    const [deleting, renaming] = await Promise.all([
+      ctx.db.query('profiles').withIndex('by_status', q => q.eq('status', 'deleting')).take(100),
+      ctx.db.query('profiles').withIndex('by_rename', q => q.gt('renameFrom', undefined)).take(100),
+    ]);
+    return [...new Set([...deleting, ...renaming].map(p => p._id))];
+  },
+});
+
+/** Only connected Chat accounts need periodic Instagram inbox refreshes. */
+export const chatWorkerProfiles = query({
+  args: { bridgeToken: v.string() },
+  handler: async (ctx, { bridgeToken }) => {
+    requireServerBridgeAuth(bridgeToken);
+    const memberships = await ctx.db.query('chatMemberships').collect();
+    return memberships.map(membership => membership.profileId).sort();
+  },
+});
 import {
 	listProfileRows,
 	getProfileByNameRow,

@@ -78,7 +78,8 @@ export default defineSchema({
 		scraperCooldownUntil: v.optional(v.number()),
 	})
 		.index("by_name", ["name"])
-		.index("by_status", ["status"]),
+		.index("by_status", ["status"])
+    .index('by_rename', ['renameFrom']),
 	chatSessions: defineTable({
 		profileId: v.id('profiles'),
 		storageId: v.id('_storage'),
@@ -87,6 +88,9 @@ export default defineSchema({
 		inboxSyncedAt: v.optional(v.number()),
 		inboxThreadIds: v.optional(v.array(v.string())),
 		unreadCount: v.optional(v.number()),
+	}).index('by_profile', ['profileId']),
+	chatMemberships: defineTable({
+		profileId: v.id('profiles'),
 	}).index('by_profile', ['profileId']),
 	chatThreads: defineTable({
 		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),

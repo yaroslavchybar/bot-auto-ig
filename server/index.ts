@@ -22,7 +22,7 @@ import chatRouter from './chat/routes.js'
 import { startChatWorker } from './chat/worker.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
-import { retryProfileMaintenance } from './profiles/maintenance.js'
+import { retryProfileMaintenance, startProfileMaintenance } from './profiles/maintenance.js'
 import { getActiveRuntimeProfileNames } from './shared/store.js'
 import { apiLimiter } from './security/rate-limit.js'
 import { getPublicBaseUrl, registerLoginWebhook } from './auth/telegram.js'
@@ -168,9 +168,7 @@ async function startServer(): Promise<void> {
     // children survive restarts, so reconcile them before touching flags.
     await cleanupOrphanedProcesses()
     await retryProfileMaintenance()
-    const maintenanceTimer = setInterval(() => { void retryProfileMaintenance() }, 30_000)
-    maintenanceTimer.unref()
-    server.once('close', () => clearInterval(maintenanceTimer))
+    server.once('close', startProfileMaintenance())
 
     // Convex dev deploys alongside the server, so the reconcile endpoint
     // may 404 until the new functions are live. Retry instead of crashing.

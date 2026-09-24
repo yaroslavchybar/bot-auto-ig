@@ -7,6 +7,22 @@ import { stopProfileBrowserLocked } from './service.js'
 import { stopAutomations } from '../automations/service.js'
 import { AppError } from '../shared/errors.js'
 import logger from '../shared/logger.js'
+import { watchProfileMaintenance } from '../shared/convexRealtime.js'
+import { reactiveWork } from '../shared/reactiveWork.js'
+
+export function startProfileMaintenance(): () => void {
+  const work = reactiveWork<string[]>({
+    dueAt: ids => ids.length ? 0 : null,
+    run: retryProfileMaintenance,
+    onError: err => logger.warn({ err }, 'Profile maintenance failed'),
+  })
+  const subscription = watchProfileMaintenance(work.update, err => {
+    work.update([])
+    logger.error({ err }, 'Profile maintenance subscription failed')
+  })
+  void subscription.initial.catch(() => undefined)
+  return () => { work.stop(); subscription.unsubscribe() }
+}
 
 async function stopOwners(names: string[]): Promise<void> {
   for (const name of names) {

@@ -83,11 +83,14 @@ async function saveSession(
   let stage = 'read cookies from browser'
   try {
     const cookies = await context.cookies()
+    const cookiesJson = JSON.stringify(cookies)
+    if (profile.cookiesJson === cookiesJson) return
     stage = 'write cookies to database'
     await profilesUpdateByName(profile.name, {
       name: profile.name,
-      cookiesJson: JSON.stringify(cookies),
+      cookiesJson,
     })
+    profile.cookiesJson = cookiesJson
   } catch (error) {
     // Browser shutdown must not hide the original action error, but a lost
     // cookie save must not report success either: the DB would keep stale auth.
@@ -344,10 +347,7 @@ export async function openBrowserSession(
     // Best effort: close persists cookies again, so a refresh failure here
     // must not abort the session launch.
     try {
-      await profilesUpdateByName(profile.name, {
-        name: profile.name,
-        cookiesJson: JSON.stringify(await context.cookies()),
-      })
+      await saveSession(profile, context)
     } catch {
       process.stderr.write('Could not refresh session cookies at open; close will retry\n')
     }

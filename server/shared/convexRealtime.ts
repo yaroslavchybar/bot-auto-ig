@@ -11,15 +11,31 @@ type Unsubscribe = (() => void) & {
   unsubscribe?: () => void
 }
 
+export type RuntimeWarmup = { profileId: string; nextRunAt?: number; date?: string; todayMinutes?: number; minutesUsedToday?: number; activeRun?: boolean }
+export type RuntimeProgress = { profileId: string; nextRunAt?: number; paused?: boolean; issue?: string }
 export type RuntimeSnapshot = {
   automation: Record<string, any>
   profiles: Array<Record<string, any>>
-  warmups?: Array<{ profileId: string; nextRunAt?: number }>
-  progress?: Array<{ profileId: string; nextRunAt?: number }>
+  warmups?: RuntimeWarmup[]
+  progress?: RuntimeProgress[]
   truncated?: boolean
 } | null
 
 let client: ConvexClient | undefined
+
+export type ScraperWork = { jobAt: number | null; jobKey: string | null; enrichmentKey: string | null }
+
+export function watchScraperWork(onUpdate: (value: ScraperWork) => void, onError: (error: Error) => void) {
+  return subscribeToConvexQuery<ScraperWork>(anyApi.scraper.work, { bridgeToken }, onUpdate, onError)
+}
+
+export function watchProfileMaintenance(onUpdate: (value: string[]) => void, onError: (error: Error) => void) {
+  return subscribeToConvexQuery<string[]>(anyApi.profiles.queries.maintenanceWork, { bridgeToken }, onUpdate, onError)
+}
+
+export function watchChatProfiles(onUpdate: (value: string[]) => void, onError: (error: Error) => void) {
+  return subscribeToConvexQuery<string[]>(anyApi.profiles.queries.chatWorkerProfiles, { bridgeToken }, onUpdate, onError)
+}
 
 function getClient(): ConvexClient {
   if (!convexUrl) throw new Error('Convex config missing. Set CONVEX_URL.')

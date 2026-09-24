@@ -1,4 +1,5 @@
-import { profilesList } from '../shared/convexClient.js';
+import { profilesGetById } from '../shared/convexClient.js';
+import { watchChatProfiles } from '../shared/convexRealtime.js';
 import logger from '../shared/logger.js';
 import { cachedInbox } from './sync.js';
 
@@ -8,16 +9,19 @@ export const CHAT_SYNC_INTERVAL_MS = 15 * 60_000;
 export function startChatWorker(): () => void {
   let stopped = false;
   let busy = false;
+  let profileIds: string[] = [];
   const tick = async () => {
     if (stopped || busy) return;
     busy = true;
     try {
-      const profiles = (await profilesList()).filter(profile =>
-        profile.igLoggedIn && profile.status !== 'deleting');
-      for (let index = 0; index < profiles.length && !stopped; index += 4) {
-        await Promise.all(profiles.slice(index, index + 4).map(async profile => {
-          try { await cachedInbox(profile); }
-          catch { logger.warn({ profileId: profile.id }, 'Background Chat inbox sync failed'); }
+      const ids = [...profileIds];
+      for (let index = 0; index < ids.length && !stopped; index += 4) {
+        await Promise.all(ids.slice(index, index + 4).map(async profileId => {
+          try {
+            const profile = await profilesGetById(profileId);
+            if (profile?.igLoggedIn && profile.status !== 'deleting') await cachedInbox(profile);
+          }
+          catch { logger.warn({ profileId }, 'Background Chat inbox sync failed'); }
         }));
       }
     } catch {
@@ -26,6 +30,8 @@ export function startChatWorker(): () => void {
   };
   const timer = setInterval(() => { void tick(); }, CHAT_SYNC_INTERVAL_MS);
   timer.unref();
-  void tick();
-  return () => { stopped = true; clearInterval(timer); };
+  const subscription = watchChatProfiles(ids => { profileIds = ids; void tick(); },
+    err => { profileIds = []; logger.warn({ err }, 'Chat profile subscription failed'); });
+  void subscription.initial.catch(() => undefined);
+  return () => { stopped = true; clearInterval(timer); subscription.unsubscribe(); };
 }

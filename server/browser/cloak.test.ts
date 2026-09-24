@@ -153,9 +153,9 @@ test(`browser cleanup: ${scenario}`, () => {
           } else {
             await Promise.all([session.close(), session.closed])
           }
-          assert.deepEqual(events, scenario === 'save failure'
+          assert.deepEqual(events, scenario === 'save failure' || scenario === 'replace cookies'
             ? ['read', 'read', 'close', 'display', 'slot']
-            : ['read', 'saved', 'read', 'saved', 'close', 'display', 'slot'])
+            : ['read', 'saved', 'read', 'close', 'display', 'slot'])
         }
       }
       console.log('shutdown order verified')
