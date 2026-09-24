@@ -3,14 +3,19 @@ import { internal } from './_generated/api';
 import { internalMutation, internalQuery, query, type MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 
+const reaction = v.object({ senderId: v.string(), emoji: v.string() });
 const message = v.object({ id: v.string(), senderId: v.string(), text: v.string(),
-  timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()) });
+  timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()),
+  mediaType: v.optional(v.union(v.literal('photo'), v.literal('video'), v.literal('voice'))),
+  mediaUrl: v.optional(v.string()), reactions: v.optional(v.array(reaction)) });
 const user = v.object({ id: v.string(), username: v.string() });
 const seen = v.object({ userId: v.string(), timestamp: v.number() });
 const thread = v.object({ id: v.string(), title: v.string(), users: v.array(user),
   messages: v.array(message), lastSeenAt: v.array(seen) });
 
-type ChatMessage = { id: string; senderId: string; text: string; timestamp: number; kind: string; clientContext?: string };
+type ChatMessage = { id: string; senderId: string; text: string; timestamp: number; kind: string;
+  clientContext?: string; mediaType?: 'photo' | 'video' | 'voice'; mediaUrl?: string;
+  reactions?: { senderId: string; emoji: string }[] };
 
 // Read receipts never clear our reply queue. Outgoing messages advance its watermark.
 function unreadFields(existing: Doc<'chatThreads'> | null, messages: ChatMessage[], viewerId: string) {
@@ -51,6 +56,25 @@ export const markReplied = internalMutation({
     if (unread !== (row.unread ?? false)) await ctx.db.patch(session._id, {
       unreadCount: Math.max(0, (session.unreadCount ?? 0) + Number(unread) - Number(row.unread ?? false)),
     });
+  },
+});
+
+export const markUnsent = internalMutation({
+  args: { profileId: v.id('profiles'), token: v.string(), threadId: v.string(), messageId: v.string() },
+  handler: async (ctx, { profileId, token, threadId, messageId }) => {
+    const session = await ctx.db.query('chatSessions').withIndex('by_profile', q => q.eq('profileId', profileId)).unique();
+    if (!session || session.token !== token) throw new Error('Chat session changed');
+    const row = await ctx.db.query('chatThreads').withIndex('by_profile_session_thread', q =>
+      q.eq('profileId', profileId).eq('sessionToken', token).eq('threadId', threadId)).unique();
+    const history = await ctx.db.query('chatHistories').withIndex('by_profile_session_thread', q =>
+      q.eq('profileId', profileId).eq('sessionToken', token).eq('threadId', threadId)).unique();
+    const messages = history?.messages.filter(item => item.id !== messageId) ?? [];
+    if (history && messages.length !== history.messages.length) await ctx.db.patch(history._id, { messages });
+    const unsentMessageIds = [...new Set([...(row?.unsentMessageIds ?? []), messageId])].slice(-100);
+    if (row) await ctx.db.patch(row._id, { unsentMessageIds,
+      preview: row.preview?.id === messageId ? messages[0] : row.preview });
+    else await ctx.db.insert('chatThreads', { profileId, sessionToken: token, threadId,
+      title: 'Conversation', users: [], lastSeenAt: [], unsentMessageIds });
   },
 });
 
@@ -146,17 +170,20 @@ export const saveInbox = internalMutation({
       const existing = await ctx.db.query('chatThreads')
         .withIndex('by_profile_session_thread', q => q.eq('profileId', profileId)
           .eq('sessionToken', token).eq('threadId', item.id)).unique();
+      const unsent = new Set(existing?.unsentMessageIds ?? []);
+      const preview = item.messages[0] && !unsent.has(item.messages[0].id)
+        ? item.messages[0] : item.messages.length ? existing?.preview : undefined;
       const lastSeenAt = mergeSeen(existing?.sessionToken === token ? existing.lastSeenAt : [], item.lastSeenAt);
-      const unread = unreadFields(existing, item.messages, viewerId);
+      const unread = unreadFields(existing, preview ? [preview] : [], viewerId);
       unreadCount += Number(unread.unread) - Number(existing?.unread ?? false);
-      savedThreads.push({ ...item, lastSeenAt, unread: unread.unread });
+      savedThreads.push({ ...item, messages: preview ? [preview] : [], lastSeenAt, unread: unread.unread });
       const fields = { sessionToken: token, title: item.title, users: item.users,
         ...unread,
-        lastSeenAt, preview: item.messages[0],
+        lastSeenAt, preview,
         ...(existing?.sessionToken !== token ? { threadSyncedAt: undefined } : {}) };
       if (existing && existing.unread === unread.unread && existing.lastIncomingAt === unread.lastIncomingAt &&
         existing.repliedThroughAt === unread.repliedThroughAt && existing.title === item.title &&
-        JSON.stringify(existing.preview) === JSON.stringify(item.messages[0]) &&
+        JSON.stringify(existing.preview) === JSON.stringify(preview) &&
         JSON.stringify(existing.users) === JSON.stringify(item.users) &&
         JSON.stringify(existing.lastSeenAt) === JSON.stringify(lastSeenAt)) continue;
       if (existing) await ctx.db.patch(existing._id, fields);
@@ -195,7 +222,11 @@ export const saveConversation = internalMutation({
         .eq('sessionToken', token).eq('threadId', item.id)).unique();
     const history = await ctx.db.query('chatHistories').withIndex('by_profile_session_thread', q =>
       q.eq('profileId', profileId).eq('sessionToken', token).eq('threadId', item.id)).unique();
-    const fetchedMessages = reconcileMessages(history?.messages ?? [], item.messages);
+    const unsent = new Set(existing?.unsentMessageIds ?? []);
+    const incoming = item.messages.filter(message => !unsent.has(message.id));
+    const fetchedMessages = incoming.length || item.messages.length === 0
+      ? reconcileMessages(history?.messages ?? [], incoming)
+      : history?.messages.filter(message => !unsent.has(message.id)) ?? [];
     // An inbox sync may have saved a newer DM while this thread request was in flight.
     const newerPreview = existing?.preview &&
       existing.preview.timestamp > (fetchedMessages[0]?.timestamp ?? -Infinity) ? existing.preview : undefined;

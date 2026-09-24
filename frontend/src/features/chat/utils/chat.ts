@@ -20,8 +20,7 @@ export function errorText(error: unknown): string {
 // Non-text items (media, likes, reactions) carry no text — show a readable label.
 export function messageText(message: ChatMessage): string {
   if (message.text) return message.text
-  const kind = message.kind || 'message'
-  return `[${kind}]`
+  return `[${attachmentLabel(message.mediaType ?? message.kind) ?? 'Message'}]`
 }
 
 export function attachmentLabel(kind: string): string | null {
@@ -30,8 +29,10 @@ export function attachmentLabel(kind: string): string | null {
   const labels: Record<string, string> = {
     media: 'Photo',
     image: 'Photo',
+    photo: 'Photo',
     video: 'Video',
     voice_media: 'Voice message',
+    voice: 'Voice message',
     audio: 'Voice message',
     like: 'Like',
     reaction: 'Reaction',

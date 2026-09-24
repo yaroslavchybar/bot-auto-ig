@@ -15,6 +15,13 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
     let failMark = true
     let failRefresh = false
     let lastContext
+    let attachmentKind
+    let attachmentBytes
+    let reactedEmoji
+    const reactedContexts = []
+    const reactionRemovals = []
+    let unsentItem
+    let unsentCacheItem
     let releaseRefresh
     const refreshGate = new Promise(resolve => { releaseRefresh = resolve })
     const profile = { id: 'profile-1', name: 'Profile', igLoggedIn: true }
@@ -25,6 +32,10 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
       chatMarkReplied: async () => {
         marks++
         if (failMark) throw new Error('Convex unavailable')
+      },
+      chatMarkUnsent: async (_profileId, _token, _threadId, itemId) => {
+        unsentCacheItem = itemId
+        throw new Error('Convex unavailable')
       },
     }))
     mock.module('./server/chat/sync.ts', () => ({
@@ -49,6 +60,20 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
           lastContext = clientContext
           if (failSend) throw new Error('Instagram send failed')
           return { id: String(sends), senderId: 'viewer', text: 'Hello', timestamp: Date.now(), kind: 'text' }
+        }
+        async sendAttachment(_threadId, kind, bytes) {
+          attachmentKind = kind
+          attachmentBytes = bytes.length
+          return { id: 'media-1', senderId: 'viewer', text: '', timestamp: Date.now(), kind, mediaType: kind }
+        }
+        async react(_threadId, item, emoji, remove) {
+          assert.equal(item.id, '12345')
+          reactedEmoji = emoji
+          reactedContexts.push(item.clientContext)
+          reactionRemovals.push(remove)
+        }
+        async unsend(_threadId, itemId) {
+          unsentItem = itemId
         }
       },
     }))
@@ -89,6 +114,43 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
       assert.equal(third.status, 503)
       assert.equal(marks, 2)
       assert.equal(refreshes, 2)
+
+      const attachment = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/attachment?kind=photo', {
+        method: 'POST', headers: { 'content-type': 'application/octet-stream' },
+        body: Buffer.from([255, 216, 255]),
+      })
+      assert.equal(attachment.status, 200)
+      assert.equal((await attachment.json()).message.id, 'media-1')
+      assert.equal(attachmentKind, 'photo')
+      assert.equal(attachmentBytes, 3)
+
+      const reaction = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/reaction', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: '12345', kind: 'text', emoji: '❤️', remove: false }),
+      })
+      assert.equal(reaction.status, 200)
+      assert.equal(reactedEmoji, '❤️')
+      const reactWithContext = clientContext => fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/reaction', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: '12345', kind: 'text', emoji: '❤️', remove: false, clientContext }),
+      })
+      assert.equal((await reactWithContext('')).status, 200)
+      assert.equal((await reactWithContext('17803451234567890')).status, 200)
+      assert.deepEqual(reactedContexts, [undefined, undefined, '17803451234567890'])
+      const unreact = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/reaction', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: '12345', kind: 'text', emoji: '❤️', remove: true }),
+      })
+      assert.equal(unreact.status, 200)
+      assert.deepEqual(reactionRemovals, [false, false, false, true])
+
+      const unsend = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/unsend', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: '12345' }),
+      })
+      assert.equal(unsend.status, 200)
+      assert.equal(unsentItem, '12345')
+      assert.equal(unsentCacheItem, '12345')
     } finally {
       server.close()
     }

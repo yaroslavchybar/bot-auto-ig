@@ -5,6 +5,9 @@ export type ChatMessage = {
   timestamp: number
   kind: string
   clientContext?: string
+  mediaType?: 'photo' | 'video' | 'voice'
+  mediaUrl?: string
+  reactions?: { senderId: string; emoji: string }[]
   delivery?: 'sending' | 'sent' | 'unconfirmed'
 }
 

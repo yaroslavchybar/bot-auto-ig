@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import {
   ArrowDown,
   ArrowLeft,
@@ -13,11 +13,14 @@ import {
   Mic,
   Paperclip,
   Send,
+  SmilePlus,
+  Trash2,
   Video,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { ChatMessage, ChatThread } from '../types'
 import {
@@ -40,6 +43,12 @@ type ConversationViewProps = {
   onDraftChange: (value: string) => void
   sending: boolean
   onSend: (event: FormEvent) => void
+  onSendAttachment: (file: Blob, kind: 'photo' | 'video' | 'voice') => void
+  onReact: (message: ChatMessage, emoji: string) => void
+  reactingMessageId: string | null
+  onUnsend: (message: ChatMessage) => void
+  unsendingMessageId: string | null
+  onError: (message: string) => void
   replyMaxLength: number
   onBack: () => void
 }
@@ -55,6 +64,12 @@ export function ConversationView({
   onDraftChange,
   sending,
   onSend,
+  onSendAttachment,
+  onReact,
+  reactingMessageId,
+  onUnsend,
+  unsendingMessageId,
+  onError,
   replyMaxLength,
   onBack,
 }: ConversationViewProps) {
@@ -66,22 +81,49 @@ export function ConversationView({
       ? otherUsers[0].username
       : ''
   const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const stickToBottomRef = useRef(true)
+  const lastScrollHeightRef = useRef(0)
   const composerRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const [stickToBottom, setStickToBottom] = useState(true)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
-  const threadKey = conversation?.id ?? selectedThreadId
+  const threadKey = selectedThreadId
   const messageCount = conversation?.messages.length ?? 0
+  const latestMessageId = conversation?.messages[0]?.id
 
-  // Jump to latest when a thread loads or new messages arrive (unless scrolled up).
-  useEffect(() => {
+  function scrollToLatest() {
+    const node = scrollRef.current
+    if (!node) return
+    node.scrollTop = node.scrollHeight
+    lastScrollHeightRef.current = node.scrollHeight
+  }
+
+  // Open each thread at its latest message.
+  useLayoutEffect(() => {
+    stickToBottomRef.current = true
     setStickToBottom(true)
+    scrollToLatest()
   }, [threadKey])
 
+  useLayoutEffect(() => {
+    if (stickToBottomRef.current) scrollToLatest()
+  }, [messageCount, latestMessageId, threadKey])
+
+  // Media can change the thread height after the messages first render.
   useEffect(() => {
-    if (stickToBottom)
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [messageCount, threadKey, stickToBottom])
+    const content = contentRef.current
+    if (!content) return
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      if (!stickToBottomRef.current) return
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(scrollToLatest)
+    })
+    observer.observe(content)
+    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+  }, [threadKey])
 
   // Auto-grow composer up to ~160px.
   useEffect(() => {
@@ -91,12 +133,26 @@ export function ConversationView({
     field.style.height = `${Math.min(field.scrollHeight, 160)}px`
   }, [draft])
 
+  function selectFile(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const name = file.name.toLowerCase()
+    const kind = file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name) ? 'photo' :
+      file.type.startsWith('video/') || name.endsWith('.mp4') ? 'video' :
+        file.type.startsWith('audio/') || /\.(m4a|mp3|wav|webm)$/.test(name) ? 'voice' : null
+    if (!kind) { onError('Choose a photo, MP4 video, or audio file'); return }
+    onSendAttachment(file, kind)
+  }
+
   function handleScroll() {
     const node = scrollRef.current
     if (!node) return
-    setStickToBottom(
-      node.scrollHeight - node.scrollTop - node.clientHeight < 80,
-    )
+    // Content growth is not the user scrolling up; the resize observer will follow it.
+    if (node.scrollHeight !== lastScrollHeightRef.current && stickToBottomRef.current) return
+    const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
+    stickToBottomRef.current = atBottom
+    setStickToBottom(atBottom)
   }
 
   async function copyMessage(message: ChatMessage) {
@@ -130,7 +186,7 @@ export function ConversationView({
         <MessageSquare className="text-subtle-copy size-8" />
         <p className="text-sm font-medium">Select a conversation</p>
         <p className="text-muted-copy max-w-xs text-xs">
-          Choose a thread from the list to read messages and send text replies.
+          Choose a thread from the list to read messages and reply.
         </p>
       </div>
     )
@@ -186,9 +242,10 @@ export function ConversationView({
           onScroll={handleScroll}
           className="h-full overflow-y-auto px-4 py-4 md:px-6"
         >
+          <div ref={contentRef} className="flex min-h-full flex-col">
           {loading && !conversation && <MessageSkeletons />}
           {!loading && conversation && groups.length === 0 && (
-            <div className="text-muted-copy flex h-full items-center justify-center text-sm">
+            <div className="text-muted-copy flex flex-1 items-center justify-center text-sm">
               No messages in this thread yet.
             </div>
           )}
@@ -230,8 +287,38 @@ export function ConversationView({
                           )}
                         >
                           <AttachmentBadge message={message} own={own} />
+                          {message.mediaUrl && message.mediaType === 'photo' && (
+                            <img src={message.mediaUrl} alt="Chat photo" loading="lazy"
+                              className="max-h-80 max-w-full rounded-lg object-contain" />
+                          )}
+                          {message.mediaUrl && message.mediaType === 'video' && (
+                            <video src={message.mediaUrl} controls preload="metadata"
+                              className="max-h-80 max-w-full rounded-lg" />
+                          )}
+                          {message.mediaUrl && message.mediaType === 'voice' && (
+                            <audio src={message.mediaUrl} controls preload="none" className="max-w-full" />
+                          )}
                           {message.text && <span>{message.text}</span>}
                         </div>
+                        {Boolean(message.reactions?.length) && (
+                          <div className="mt-1 flex flex-wrap gap-1 px-1 text-xs">
+                            {message.reactions?.map((reaction) =>
+                              reaction.senderId === viewerId && /^\d{1,40}$/.test(message.id) ? (
+                                <button key={`${reaction.senderId}:${reaction.emoji}`} type="button"
+                                  disabled={reactingMessageId === message.id}
+                                  onClick={() => onReact(message, reaction.emoji)}
+                                  aria-label={`Remove your ${reaction.emoji} reaction`}
+                                  title="Remove your reaction"
+                                  className="rounded px-1 hover:bg-panel-muted focus-visible:outline">
+                                  {reaction.emoji}
+                                </button>
+                              ) : (
+                                <span key={`${reaction.senderId}:${reaction.emoji}`} title="Reaction">
+                                  {reaction.emoji}
+                                </span>
+                              ))}
+                          </div>
+                        )}
                         <div className="text-subtle-copy mt-0.5 flex items-center gap-1 px-1 text-[11px]">
                           <span>{formatClock(message.timestamp)}</span>
                           {own && (
@@ -248,6 +335,20 @@ export function ConversationView({
                                     ? '· Seen'
                                     : '· Sent'}
                             </span>
+                          )}
+                          {/^[0-9]{1,40}$/.test(message.id) && (
+                            <ReactionPicker message={message} onReact={onReact}
+                              disabled={reactingMessageId === message.id} />
+                          )}
+                          {own && /^\d{1,40}$/.test(message.id) && (
+                            <button type="button" disabled={unsendingMessageId === message.id}
+                              onClick={() => {
+                                if (window.confirm('Unsend this message for everyone?')) onUnsend(message)
+                              }}
+                              aria-label="Unsend message" title="Unsend message"
+                              className="text-status-danger rounded p-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
+                              <Trash2 className="size-3" />
+                            </button>
                           )}
                           <button
                             type="button"
@@ -271,16 +372,15 @@ export function ConversationView({
               {groupIndex < groups.length - 1 && <div className="h-2" />}
             </div>
           ))}
+          </div>
         </div>
         {!stickToBottom && (
           <button
             type="button"
             onClick={() => {
+              stickToBottomRef.current = true
               setStickToBottom(true)
-              scrollRef.current?.scrollTo({
-                top: scrollRef.current.scrollHeight,
-                behavior: 'smooth',
-              })
+              scrollToLatest()
             }}
             className="bg-panel-strong border-line text-copy absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg"
           >
@@ -292,6 +392,14 @@ export function ConversationView({
       {selectedThreadId && connected && (
         <form onSubmit={onSend} className="border-line-soft border-t p-3">
           <div className="flex items-end gap-2">
+            <input ref={fileRef} type="file" className="hidden"
+              accept="image/jpeg,image/png,image/webp,video/mp4,audio/*,.mp3"
+              onChange={selectFile} aria-label="Choose chat attachment" />
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              disabled={sending} onClick={() => fileRef.current?.click()}
+              aria-label="Attach photo, video, or MP3 voice note" title="Attach photo, video, or MP3 voice note">
+              <Paperclip />
+            </Button>
             <Textarea
               ref={composerRef}
               value={draft}
@@ -345,9 +453,9 @@ function AttachmentBadge({
   message: ChatMessage
   own: boolean
 }) {
-  const label = attachmentLabel(message.kind)
+  const label = attachmentLabel(message.mediaType ?? message.kind)
   if (!label || message.text) return null
-  const Icon = kindIcon(message.kind)
+  const Icon = kindIcon(message.mediaType ?? message.kind)
   return (
     <span
       className={cn(
@@ -357,6 +465,33 @@ function AttachmentBadge({
     >
       <Icon className="size-3.5" /> {label}
     </span>
+  )
+}
+
+function ReactionPicker({ message, onReact, disabled }: {
+  message: ChatMessage
+  onReact: (message: ChatMessage, emoji: string) => void
+  disabled: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" disabled={disabled} aria-label="React to message" title="React to message"
+          className="rounded p-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
+          <SmilePlus className="size-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="flex w-auto gap-1 p-1">
+        {['❤️', '😂', '🔥', '😍', '👍', '😮'].map((emoji) => (
+          <button key={emoji} type="button" aria-label={`React ${emoji}`}
+            onClick={() => { setOpen(false); onReact(message, emoji) }}
+            className="rounded px-1.5 py-1 text-lg hover:bg-panel-subtle">
+            {emoji}
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
   )
 }
 

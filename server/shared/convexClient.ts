@@ -306,6 +306,11 @@ export function chatMarkReplied(profileId: string, token: string, threadId: stri
         body: { scope: 'replied', profileId, token, threadId, throughAt } }).then(() => {});
 }
 
+export function chatMarkUnsent(profileId: string, token: string, threadId: string, messageId: string): Promise<void> {
+    return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 1,
+        body: { scope: 'unsent', profileId, token, threadId, messageId } }).then(() => {});
+}
+
 export function chatCacheSaveThread(profileId: string, token: string, thread: ChatThread): Promise<CachedChatThread> {
     return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 0,
         body: { scope: 'thread', profileId, token, thread } });

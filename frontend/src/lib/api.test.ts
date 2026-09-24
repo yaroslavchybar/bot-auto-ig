@@ -4,7 +4,14 @@ import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 process.env.VITE_CONVEX_URL ??= 'https://example.invalid'
-const { apiFetch, apiFetchBlob, setTokenGetter } = await import('./api')
+const { apiFetch, apiFetchBlob, setTokenGetter, withRetry } = await import('./api')
+
+test('zero configured retries still makes the first request', async () => {
+  let attempts = 0
+  const result = await withRetry(async () => { attempts++; return 'sent' }, { maxRetries: 0 })
+  assert.equal(result, 'sent')
+  assert.equal(attempts, 1)
+})
 
 test('upload blobs preserve binary bytes and use the normal authentication', async () => {
   const bytes = Buffer.from([0, 255, 128, 1])

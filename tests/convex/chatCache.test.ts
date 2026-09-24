@@ -168,14 +168,47 @@ test('A stale thread response keeps a newer inbox message visible', async () => 
   const message = (id: string, timestamp: number) =>
     ({ id, senderId: 'friend', text: id, timestamp, kind: 'text' })
   const shell = { id: '123', title: 'Friend', users: [], lastSeenAt: [] }
+  const newMessage = { ...message('new', 300), text: '', kind: 'photo_attachment',
+    mediaType: 'photo' as const, mediaUrl: 'https://cdn.example/photo.jpg',
+    reactions: [{ senderId: 'viewer', emoji: '❤️' }] }
   await t.mutation(internal.chatCache.saveInbox, { profileId, token, viewerId: 'viewer',
-    threads: [{ ...shell, messages: [message('new', 300)] }] })
+    threads: [{ ...shell, messages: [newMessage] }] })
   const saved = await t.mutation(internal.chatCache.saveConversation, { profileId, token,
     thread: { ...shell, messages: [message('old', 100), message('middle', 200)] } })
   expect(saved.messages.map(item => item.id)).toEqual(['new', 'middle', 'old'])
   expect((await t.query(internal.chatCache.inbox, { profileId })).threads[0].messages[0].id).toBe('new')
   expect((await t.query(internal.chatCache.conversation, { profileId, threadId: shell.id }))?.messages
     .map(item => item.id)).toEqual(['new', 'middle', 'old'])
+  expect((await t.query(internal.chatCache.conversation, { profileId, threadId: shell.id }))?.messages[0])
+    .toMatchObject({ mediaUrl: newMessage.mediaUrl, reactions: newMessage.reactions })
+})
+
+test('Unsent messages leave the cache and stale syncs cannot restore them', async () => {
+  const t = createConvexTest()
+  const profileId = (await seedProfile(t))!._id
+  const storageId = await t.run(ctx => ctx.storage.store(new Blob(['{}'])))
+  await t.mutation(internal.profiles.mutations.saveChatSessionInternal, { profileId, token, storageId })
+  const message = (id: string, timestamp: number) =>
+    ({ id, senderId: 'viewer', text: id, timestamp, kind: 'text' })
+  const old = message('101', 100)
+  const unsent = message('102', 200)
+  const thread = { id: '123', title: 'Friend', users: [], lastSeenAt: [], messages: [unsent, old] }
+  await t.mutation(internal.chatCache.saveInbox, { profileId, token, viewerId: 'viewer',
+    threads: [{ ...thread, messages: [unsent] }] })
+  await t.mutation(internal.chatCache.saveConversation, { profileId, token, thread })
+  vi.stubEnv('INTERNAL_API_KEY', 'test-key')
+  const response = await t.fetch('/api/chat/cache', { method: 'POST', headers,
+    body: JSON.stringify({ scope: 'unsent', profileId, token, threadId: thread.id, messageId: unsent.id }) })
+  expect(response.status).toBe(200)
+  expect((await t.query(internal.chatCache.conversation, { profileId, threadId: thread.id }))?.messages
+    .map(item => item.id)).toEqual(['101'])
+  expect((await t.query(internal.chatCache.inbox, { profileId })).threads[0].messages[0].id).toBe('101')
+  await t.mutation(internal.chatCache.saveInbox, { profileId, token, viewerId: 'viewer',
+    threads: [{ ...thread, messages: [unsent] }] })
+  await t.mutation(internal.chatCache.saveConversation, { profileId, token, thread })
+  expect((await t.query(internal.chatCache.conversation, { profileId, threadId: thread.id }))?.messages
+    .map(item => item.id)).toEqual(['101'])
+  expect((await t.query(internal.chatCache.inbox, { profileId })).threads[0].messages[0].id).toBe('101')
 })
 
 test('Conversation sync returns the same bounded history as subsequent cache reads', async () => {

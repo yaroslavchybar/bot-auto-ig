@@ -108,6 +108,12 @@ export function ChatPage() {
                   onDraftChange={chat.setDraft}
                   sending={chat.sending}
                   onSend={chat.sendReply}
+                  onSendAttachment={chat.sendAttachment}
+                  onReact={chat.reactToMessage}
+                  reactingMessageId={chat.reactingMessageId}
+                  onUnsend={chat.unsendMessage}
+                  unsendingMessageId={chat.unsendingMessageId}
+                  onError={chat.setError}
                   replyMaxLength={chat.replyMaxLength}
                   onBack={() => chat.selectThread('')}
                 />

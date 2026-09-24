@@ -2,6 +2,13 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { routineValidator } from './routinePolicy';
 
+const chatMessage = v.object({ id: v.string(), senderId: v.string(), text: v.string(),
+  timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()),
+  mediaType: v.optional(v.union(v.literal('photo'), v.literal('video'), v.literal('voice'))),
+  mediaUrl: v.optional(v.string()), reactions: v.optional(v.array(v.object({
+    senderId: v.string(), emoji: v.string(),
+  }))) });
+
 export default defineSchema({
   leadLists: defineTable({ name: v.string(), createdAt: v.number() }),
   leads: defineTable({
@@ -82,8 +89,8 @@ export default defineSchema({
 	chatThreads: defineTable({
 		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),
 		title: v.string(), users: v.array(v.object({ id: v.string(), username: v.string() })),
-		preview: v.optional(v.object({ id: v.string(), senderId: v.string(), text: v.string(),
-			timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()) })),
+		preview: v.optional(chatMessage),
+		unsentMessageIds: v.optional(v.array(v.string())),
 		lastSeenAt: v.array(v.object({ userId: v.string(), timestamp: v.number() })),
 		threadSyncedAt: v.optional(v.number()),
 		unread: v.optional(v.boolean()),
@@ -93,8 +100,7 @@ export default defineSchema({
 	// Bounded recent history, read only when a conversation is opened.
 	chatHistories: defineTable({
 		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),
-		messages: v.array(v.object({ id: v.string(), senderId: v.string(), text: v.string(),
-			timestamp: v.number(), kind: v.string(), clientContext: v.optional(v.string()) })),
+		messages: v.array(chatMessage),
 	}).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId']),
 
   scrapeJobs: defineTable({

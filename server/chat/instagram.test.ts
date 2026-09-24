@@ -14,6 +14,26 @@ test('DM thread keeps Instagram read receipts in message timestamp units', () =>
   expect(thread.lastSeenAt).toEqual([{ userId: 'friend', timestamp: 1700000000000 }]);
 });
 
+test('DM thread exposes media URLs and emoji reactions', () => {
+  const thread = parseChatThread({ thread_id: '123', items: [
+    { item_id: 'photo', user_id: 'friend', timestamp: '1700000000000000', item_type: 'photo_attachment',
+      media: { image_versions2: { candidates: [{ url: 'https://cdn.example/photo.jpg' }] } },
+      reactions: { emojis: [{ sender_id: 'viewer', emoji: '❤️' }] } },
+    { item_id: 'voice', user_id: 'friend', timestamp: '1700000001000000', item_type: 'voice_media',
+      voice_media: { media: { audio: { audio_src: 'https://cdn.example/voice.m4a' } } } },
+    { item_id: 'video', user_id: 'friend', timestamp: '1700000002000000', item_type: 'raven_media',
+      visual_media: { media: { media_type: 2,
+        video_versions: [{ url: 'https://cdn.example/video.mp4' }] } } },
+  ] });
+  expect(thread.messages.map(item => [item.mediaType, item.mediaUrl])).toEqual([
+    ['photo', 'https://cdn.example/photo.jpg'],
+    ['voice', 'https://cdn.example/voice.m4a'],
+    ['video', 'https://cdn.example/video.mp4'],
+  ]);
+  expect(thread.messages[0].reactions).toEqual([{ senderId: 'viewer', emoji: '❤️' }]);
+  expect(thread.messages[0].clientContext).toBeUndefined();
+});
+
 test('DM inbox keeps only the latest preview when Instagram returns extra items', () => {
   const raw = { thread_id: '123', items: [
     { item_id: 'old', user_id: 'friend', text: 'Old', timestamp: '1700000000000000' },

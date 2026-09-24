@@ -9,6 +9,7 @@ import logger from '../shared/logger.js';
 import { completeCaaTwoFactor, loginWithCaa, mobileRequest, useCurrentAppProfile, useCurrentAppVersion } from './caa.js';
 import { chatDeviceForProfile } from './devices.js';
 import { chatProxy } from './proxy.js';
+import { uploadChatAttachment, type AttachmentKind, type VideoMetadata } from './attachments.js';
 
 type Json = Record<string, unknown>;
 const record = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
@@ -60,6 +61,9 @@ export type ChatMessage = {
   timestamp: number;
   kind: string;
   clientContext?: string;
+  mediaType?: AttachmentKind;
+  mediaUrl?: string;
+  reactions?: { senderId: string; emoji: string }[];
 };
 
 export type ChatThread = {
@@ -73,13 +77,33 @@ export type ChatThread = {
 
 function message(raw: unknown): ChatMessage {
   const item = record(raw);
+  const kind = string(item.item_type ?? 'text');
+  const media = record(kind.includes('voice')
+    ? record(item.voice_media).media ?? item.media
+    : kind === 'raven_media'
+      ? record(item.visual_media).media ?? item.media
+      : item.media ?? record(item.visual_media).media);
+  const audioUrl = string(record(media.audio).audio_src);
+  const videoUrl = string(record(list(media.video_versions)[0]).url);
+  const imageUrl = string(record(list(record(media.image_versions2).candidates)[0]).url);
+  const mediaType: AttachmentKind | undefined = kind.includes('voice') ? 'voice' :
+    kind.includes('video') || Number(media.media_type) === 2 ? 'video' :
+      kind.includes('photo') || imageUrl ? 'photo' : undefined;
+  const mediaUrl = mediaType === 'voice' ? audioUrl : mediaType === 'video' ? videoUrl : imageUrl;
+  const reactions = list(record(item.reactions).emojis).map(rawReaction => {
+    const reaction = record(rawReaction);
+    return { senderId: string(reaction.sender_id), emoji: string(reaction.emoji) };
+  }).filter(reaction => reaction.senderId && reaction.emoji);
   return {
     id: string(item.item_id ?? item.id),
     senderId: string(item.user_id ?? item.sender_id),
     text: string(item.text),
     timestamp: Number(item.timestamp ?? 0) / 1000,
-    kind: string(item.item_type ?? 'text'),
-    clientContext: string(item.client_context),
+    kind,
+    ...(item.client_context ? { clientContext: string(item.client_context) } : {}),
+    ...(mediaType ? { mediaType } : {}),
+    ...(mediaUrl.startsWith('https://') ? { mediaUrl } : {}),
+    ...(reactions.length ? { reactions } : {}),
   };
 }
 
@@ -246,7 +270,7 @@ export class InstagramChat {
     return parseChatThread(data.thread);
   }
 
-  async reply(threadId: string, text: string, clientContext = randomUUID()): Promise<ChatMessage> {
+  async reply(threadId: string, text: string, clientContext: string = randomUUID()): Promise<ChatMessage> {
     const token = clientContext;
     const links = text.match(/https?:\/\/[^\s]+/g);
     const fields: Record<string, string> = {
@@ -266,5 +290,88 @@ export class InstagramChat {
     void saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration)
       .catch(err => logger.warn({ err, profileId: this.profile.id }, 'Could not persist Chat session after sent DM'));
     return { ...sent, text, timestamp: sent.timestamp || Date.now(), clientContext: token };
+  }
+
+  async sendAttachment(threadId: string, kind: AttachmentKind, bytes: Buffer,
+    clientContext: string = randomUUID(), video?: VideoMetadata): Promise<ChatMessage> {
+    const uploaded = await uploadChatAttachment(this.ig, kind, bytes, video);
+    const token = clientContext;
+    const base = { thread_ids: `[${threadId}]`, client_context: token,
+      attachment_fbid: uploaded.mediaId, device_id: this.ig.state.deviceId,
+      mutation_token: token, _uuid: this.ig.state.uuid, offline_threading_id: token };
+    let endpoint: string;
+    let fields: Record<string, string>;
+    if (kind === 'photo') {
+      endpoint = 'direct_v2/threads/broadcast/photo_attachment/';
+      fields = { action: 'send_item', is_x_transport_forward: 'false', is_shh_mode: '0',
+        send_attribution: 'inbox', allow_full_aspect_ratio: 'true', btt_dual_send: 'false',
+        is_ae_dual_send: 'false', ...base };
+    } else if (kind === 'voice') {
+      endpoint = 'direct_v2/threads/broadcast/voice_attachment/';
+      fields = { action: 'send_item', send_attribution: 'inbox', ...base,
+        waveform: JSON.stringify(Array.from({ length: 70 }, () =>
+          Math.round((0.2 + Math.random() * 0.75) * 1000) / 1000)),
+        waveform_sampling_frequency_hz: '10', upload_id: uploaded.uploadId ?? '' };
+    } else {
+      endpoint = 'direct_v2/threads/broadcast/raven_attachment/?video=1';
+      const metadata = uploaded.video!;
+      const seconds = String(Math.floor(Date.now() / 1000));
+      const device = this.ig.state.deviceString.split(';').map(part => part.trim());
+      const [androidVersion, androidRelease] = (device[0] ?? '30/11').split('/');
+      const payload = { recipient_users: '[]', view_mode: 'permanent', has_camera_metadata: '1',
+        camera_entry_point: '3', thread_ids: `[${threadId}]`, reshare_mode: 'allow_reshare',
+        original_media_type: '2', send_attribution: 'direct_composer', client_context: token,
+        camera_session_id: randomUUID(), attachment_fbid: uploaded.mediaId,
+        include_e2ee_mentioned_user_list: '1', hide_from_profile_grid: 'false',
+        timezone_offset: '0', client_shared_at: seconds, configure_mode: '2', source_type: '3',
+        camera_position: 'back', video_result: uploaded.mediaId,
+        _uid: this.ig.state.extractUserId(), device_id: this.ig.state.deviceId,
+        composition_id: randomUUID(), mutation_token: token, _uuid: this.ig.state.uuid,
+        creation_surface: 'camera', has_ig_camera_edits: 'false', capture_type: 'normal',
+        audience: 'default', upload_id: uploaded.uploadId, client_timestamp: seconds,
+        media_transformation_info: JSON.stringify({ width: String(metadata.width),
+          height: String(metadata.height), x_transform: '0', y_transform: '0', zoom: '1.0',
+          rotation: '0.0', background_coverage: '0.0' }),
+        clips: [{ length: metadata.duration, source_type: '3', camera_position: 'back' }],
+        poster_frame_index: 0, length: metadata.duration, audio_muted: false,
+        edits: { filter_type: 0, filter_strength: 1.0 },
+        extra: { source_width: metadata.width, source_height: metadata.height },
+        device: { manufacturer: (device[3] ?? 'Google/google').split('/')[0],
+          model: device[4] ?? 'Pixel', android_version: Number(androidVersion),
+          android_release: androidRelease ?? '11' } };
+      fields = { ...this.ig.request.sign(payload) };
+    }
+    const result = await mobileRequest(this.ig, 'POST', endpoint, fields);
+    const sent = message(result.payload);
+    if (!sent.id) throw new Error('Instagram did not confirm the DM attachment');
+    void saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration)
+      .catch(err => logger.warn({ err, profileId: this.profile.id }, 'Could not persist Chat session after sent attachment'));
+    return { ...sent, kind: sent.kind === 'text' ? kind : sent.kind,
+      mediaType: kind, timestamp: sent.timestamp || Date.now(), clientContext: token };
+  }
+
+  async react(threadId: string, item: Pick<ChatMessage, 'id' | 'kind' | 'clientContext'>,
+    emoji: string, remove = false): Promise<void> {
+    const token = randomUUID();
+    const result = await mobileRequest(this.ig, 'POST', 'direct_v2/threads/broadcast/reaction/', {
+      action: 'send_item', is_x_transport_forward: 'false', send_silently: 'false',
+      is_shh_mode: '0', send_attribution: 'message_reaction', client_context: token,
+      device_id: this.ig.state.deviceId, mutation_token: token, btt_dual_send: 'false',
+      nav_chain: '1qT:feed_timeline:1,1qT:feed_timeline:2,1qT:feed_timeline:3,7Az:direct_inbox:4,7Az:direct_inbox:5,5rG:direct_thread:7',
+      is_ae_dual_send: 'false', offline_threading_id: token, thread_ids: `[${threadId}]`,
+      item_type: 'reaction', reaction_type: 'like', reaction_status: remove ? 'deleted' : 'created',
+      node_type: 'item', item_id: item.id, emoji, reaction_action_source: 'reaction_sheet',
+      ...(item.clientContext ? { original_message_client_context: item.clientContext } : {}),
+      ...(item.kind ? { target_item_type: item.kind } : {}),
+    });
+    if (result.status !== 'ok') throw new Error('Instagram did not confirm the reaction');
+  }
+
+  async unsend(threadId: string, itemId: string): Promise<void> {
+    const result = await mobileRequest(this.ig, 'POST',
+      `direct_v2/threads/${threadId}/items/${itemId}/delete/`, { _uuid: this.ig.state.uuid });
+    if (result.status !== 'ok') throw new Error('Instagram did not confirm the unsend');
+    void saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration)
+      .catch(err => logger.warn({ err, profileId: this.profile.id }, 'Could not persist Chat session after unsend'));
   }
 }

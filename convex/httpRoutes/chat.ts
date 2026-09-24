@@ -38,6 +38,14 @@ export function registerChatRoutes(http: HttpRouter): void {
       await ctx.runMutation(internal.chatCache.markReplied, {
         profileId, token: body.token, threadId: body.threadId, throughAt: body.throughAt,
       });
+    } else if (body.scope === 'unsent') {
+      if (typeof body.threadId !== 'string' || !/^\d{1,40}$/.test(body.threadId) ||
+        typeof body.messageId !== 'string' || !/^\d{1,40}$/.test(body.messageId)) {
+        throw new ValidationError('Invalid Chat message ID');
+      }
+      await ctx.runMutation(internal.chatCache.markUnsent, {
+        profileId, token: body.token, threadId: body.threadId, messageId: body.messageId,
+      });
     } else throw new ValidationError('Invalid Chat cache scope');
     return jsonResponse({ saved: true });
   }) });

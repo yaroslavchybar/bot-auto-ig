@@ -180,7 +180,7 @@ export async function withRetry<T>(
   fn: () => Promise<T>,
   opts: RetryOptions = {},
 ): Promise<T> {
-  const maxRetries = opts.maxRetries ?? 3
+  const maxRetries = Math.max(1, opts.maxRetries ?? 3)
   let lastError: Error | undefined
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {

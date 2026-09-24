@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
+import { useLocation, useNavigate } from '@/lib/router'
 import { useProfiles } from '@/features/profiles/hooks/useProfiles'
 import type { Profile } from '@/features/profiles/types'
 import { errorText, filterThreads, sortThreadsByLatest } from '../utils/chat'
+import { preparePhoto, videoMetadata } from '../utils/media'
 import type {
   AllChatInbox,
   ChatInbox,
@@ -15,6 +17,14 @@ const REPLY_MAX_LENGTH = 1000
 type OutgoingReply = { threadKey: string; message: ChatMessage }
 
 export function useChatPage() {
+  const { search } = useLocation()
+  const navigate = useNavigate()
+  const selection = new URLSearchParams(search)
+  const profileId = selection.get('profile') || 'all'
+  const rawThreadId = selection.get('thread') || ''
+  const selectedThreadId = (profileId === 'all'
+    ? /^[a-z0-9_-]{1,80}:\d{1,40}$/i
+    : /^\d{1,40}$/).test(rawThreadId) ? rawThreadId : ''
   const { profiles, loading: profilesLoading } = useProfiles()
   const eligibleProfiles = useMemo(
     () =>
@@ -24,9 +34,9 @@ export function useChatPage() {
       ),
     [profiles],
   )
-  const [profileId, setProfileId] = useState('all')
   const activeProfileId =
     profileId === 'all' ||
+    profilesLoading ||
     eligibleProfiles.some((profile: Profile) => profile.id === profileId)
       ? profileId
       : 'all'
@@ -36,7 +46,6 @@ export function useChatPage() {
 
   const [inbox, setInbox] = useState<ChatInbox | null>(null)
   const [inboxErrors, setInboxErrors] = useState<string[]>([])
-  const [selectedThreadId, setSelectedThreadId] = useState('')
   const [conversation, setConversation] = useState<ChatThread | null>(null)
   const [outgoingReplies, setOutgoingReplies] = useState<OutgoingReply[]>([])
   const [draft, setDraft] = useState('')
@@ -48,6 +57,8 @@ export function useChatPage() {
   const [loadingInbox, setLoadingInbox] = useState(false)
   const [loadingThread, setLoadingThread] = useState(false)
   const [sending, setSending] = useState(false)
+  const [reactingMessageId, setReactingMessageId] = useState<string | null>(null)
+  const [unsendingMessageId, setUnsendingMessageId] = useState<string | null>(null)
   const sendingRef = useRef(false)
   const [connected, setConnected] = useState<boolean | null>(null)
   const [connectOpen, setConnectOpen] = useState(false)
@@ -57,6 +68,18 @@ export function useChatPage() {
   const [error, setError] = useState('')
   // Ticking clock so relative timestamps ("5m ago") stay fresh.
   const [now, setNow] = useState(() => Date.now())
+
+  function updateSelection(nextProfileId: string, nextThreadId = '') {
+    const next = new URLSearchParams()
+    if (nextProfileId !== 'all') next.set('profile', nextProfileId)
+    if (nextThreadId) next.set('thread', nextThreadId)
+    const query = next.toString()
+    navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
+  }
+
+  useEffect(() => {
+    if (!profilesLoading && profileId !== activeProfileId) navigate('/chat', { replace: true })
+  }, [profilesLoading, profileId, activeProfileId, navigate])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000)
@@ -92,9 +115,11 @@ export function useChatPage() {
   }, [connected, selectedThreadId])
 
   useEffect(() => {
+    if (profilesLoading) return
     setConnected(null)
     setConnectOpen(false)
     setCredentials('')
+    if (profileId !== activeProfileId) return
     if (activeProfileId === 'all') {
       setConnected(true)
       return
@@ -114,7 +139,7 @@ export function useChatPage() {
         if (!controller.signal.aborted) setError(errorText(error))
       })
     return () => controller.abort()
-  }, [activeProfileId])
+  }, [activeProfileId, profileId, profilesLoading])
 
   useEffect(() => {
     setInbox(null)
@@ -127,7 +152,7 @@ export function useChatPage() {
   }, [activeProfileId, selectedThreadId])
 
   useEffect(() => {
-    if (!activeProfileId || !connected) return
+    if (profilesLoading || profileId !== activeProfileId || !activeProfileId || !connected) return
     const controller = new AbortController()
     inboxPending.current = true
     setLoadingInbox(true)
@@ -150,19 +175,6 @@ export function useChatPage() {
         setInboxErrors([])
         if ('errors' in data)
           setInboxErrors(data.errors.map((item) => item.profileName))
-        if (!('errors' in data) || data.errors.length === 0) {
-          setSelectedThreadId((current) =>
-            current &&
-            !data.threads.some(
-              (thread) =>
-                (thread.profileId
-                  ? `${thread.profileId}:${thread.id}`
-                  : thread.id) === current,
-            )
-              ? ''
-              : current,
-          )
-        }
       })
       .catch((error) => {
         if (!controller.signal.aborted) setError(errorText(error))
@@ -177,7 +189,7 @@ export function useChatPage() {
       controller.abort()
       inboxPending.current = false
     }
-  }, [activeProfileId, connected, inboxRefresh, eligibleProfiles.length])
+  }, [activeProfileId, profileId, connected, inboxRefresh, eligibleProfiles.length, profilesLoading])
 
   useEffect(() => {
     const targetProfileId =
@@ -188,7 +200,7 @@ export function useChatPage() {
       activeProfileId === 'all'
         ? selectedThreadId.split(':')[1]
         : selectedThreadId
-    if (!targetProfileId || !connected || !targetThreadId) return
+    if (profilesLoading || profileId !== activeProfileId || !targetProfileId || !connected || !targetThreadId) return
     const controller = new AbortController()
     threadPending.current = true
     setLoadingThread(true)
@@ -213,7 +225,7 @@ export function useChatPage() {
       controller.abort()
       threadPending.current = false
     }
-  }, [activeProfileId, connected, selectedThreadId, threadRefresh])
+  }, [activeProfileId, profileId, connected, selectedThreadId, threadRefresh, profilesLoading])
 
   const threads = useMemo(
     () =>
@@ -323,8 +335,7 @@ export function useChatPage() {
   }, [inbox, activeProfileId])
 
   function selectProfile(id: string) {
-    setProfileId(id)
-    setSelectedThreadId('')
+    updateSelection(id)
     setDraft('')
     setSearchQuery('')
     setCredentials('')
@@ -333,7 +344,9 @@ export function useChatPage() {
 
   function selectThread(id: string) {
     setError('')
-    setSelectedThreadId(id)
+    if (id === selectedThreadId) return
+    setConversation(null)
+    updateSelection(activeProfileId, id)
   }
 
   async function connect(event: FormEvent) {
@@ -373,7 +386,7 @@ export function useChatPage() {
       setConnectOpen(false)
       setInbox(null)
       setConversation(null)
-      setSelectedThreadId('')
+      updateSelection(activeProfileId)
       setDraft('')
       setCredentials('')
     } catch (error) {
@@ -470,6 +483,112 @@ export function useChatPage() {
     }
   }
 
+  async function sendAttachment(file: Blob, kind: 'photo' | 'video' | 'voice') {
+    if (!selectedThreadId || sendingRef.current || loggingOut) return
+    const targetProfileId = activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    if (!targetProfileId || !targetThreadId) return
+    sendingRef.current = true
+    setSending(true)
+    setError('')
+    let localId = ''
+    try {
+      if (file.size === 0 || file.size > 25_000_000) throw new Error('Choose a file under 25 MB')
+      if (kind === 'video' && file instanceof File &&
+        file.type !== 'video/mp4' && !file.name.toLowerCase().endsWith('.mp4')) {
+        throw new Error('Choose an H.264 MP4 video')
+      }
+      const prepared = kind === 'photo' ? await preparePhoto(file) : file
+      const metadata = kind === 'video' ? await videoMetadata(prepared) : undefined
+      const sizeLimit = kind === 'video' ? 25_000_000 : 10_000_000
+      if (prepared.size > sizeLimit) throw new Error(`File is too large for ${kind}`)
+      const clientContext = crypto.randomUUID()
+      localId = `local:${clientContext}`
+      const viewerId = selectedThread?.viewerId ?? inbox?.viewerId ?? ''
+      const replyKey = `${targetProfileId}:${targetThreadId}`
+      const localMessage: ChatMessage = { id: localId, senderId: viewerId, text: '',
+        timestamp: Math.max(Date.now(), (conversation?.messages[0]?.timestamp ?? 0) + 1),
+        kind, mediaType: kind, clientContext, delivery: 'sending' }
+      setOutgoingReplies((current) => [...current, { threadKey: replyKey, message: localMessage }])
+      const query = new URLSearchParams({ kind, clientContext })
+      if (metadata) for (const [key, value] of Object.entries(metadata)) query.set(key, String(value))
+      const result = await apiFetch<{ success: true; message: ChatMessage }>(
+        `/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/attachment?${query}`,
+        { method: 'POST', body: prepared, maxRetries: 1, timeout: 300_000 },
+      )
+      setOutgoingReplies((current) => current.map((reply) => reply.message.id === localId
+        ? { ...reply, message: { ...result.message, senderId: result.message.senderId || viewerId,
+          timestamp: result.message.timestamp || localMessage.timestamp,
+          mediaType: kind, clientContext, delivery: 'sent' } }
+        : reply))
+      setThreadRefresh((value) => value + 1)
+      setInboxRefresh((value) => value + 1)
+    } catch (error) {
+      if (localId) setOutgoingReplies((current) => current.map((reply) => reply.message.id === localId
+        ? { ...reply, message: { ...reply.message, delivery: 'unconfirmed' } } : reply))
+      setError(localId
+        ? `${errorText(error)}. Check the conversation before trying again; it may have been sent.`
+        : errorText(error))
+      if (localId) setThreadRefresh((value) => value + 1)
+    } finally {
+      sendingRef.current = false
+      setSending(false)
+    }
+  }
+
+  async function reactToMessage(message: ChatMessage, emoji: string) {
+    if (!selectedThreadId || reactingMessageId || !/^\d{1,40}$/.test(message.id)) return
+    const targetProfileId = activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    if (!targetProfileId || !targetThreadId) return
+    const viewerId = selectedThread?.viewerId ?? inbox?.viewerId ?? ''
+    const previous = message.reactions ?? []
+    const remove = previous.some((reaction) => reaction.senderId === viewerId && reaction.emoji === emoji)
+    const next = previous.filter((reaction) => reaction.senderId !== viewerId)
+    if (!remove && viewerId) next.push({ senderId: viewerId, emoji })
+    setConversation((current) => current && ({ ...current, messages: current.messages.map((item) =>
+      item.id === message.id ? { ...item, reactions: next } : item) }))
+    setReactingMessageId(message.id)
+    setError('')
+    try {
+      await apiFetch(`/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/reaction`,
+        { method: 'POST', body: { messageId: message.id, kind: message.kind,
+          clientContext: message.clientContext, emoji, remove }, maxRetries: 1, timeout: 60_000 })
+    } catch (error) {
+      setConversation((current) => current && ({ ...current, messages: current.messages.map((item) =>
+        item.id === message.id ? { ...item, reactions: previous } : item) }))
+      setError(`${errorText(error)}. Refresh the conversation to check the reaction.`)
+    } finally { setReactingMessageId(null) }
+  }
+
+  async function unsendMessage(message: ChatMessage) {
+    if (!selectedThreadId || unsendingMessageId || !/^\d{1,40}$/.test(message.id)) return
+    const targetProfileId = activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    const viewerId = selectedThread?.viewerId ?? inbox?.viewerId ?? ''
+    if (!targetProfileId || !targetThreadId || !viewerId || message.senderId !== viewerId) return
+    setUnsendingMessageId(message.id)
+    setError('')
+    try {
+      await apiFetch(`/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/unsend`,
+        { method: 'POST', body: { messageId: message.id }, maxRetries: 1, timeout: 60_000 })
+      const fallback = conversation?.messages.filter((item) => item.id !== message.id)
+        .sort((a, b) => b.timestamp - a.timestamp)[0]
+      setConversation((current) => current?.id === targetThreadId
+        ? { ...current, messages: current.messages.filter((item) => item.id !== message.id) } : current)
+      setOutgoingReplies((current) => current.filter((reply) =>
+        reply.threadKey !== `${targetProfileId}:${targetThreadId}` || reply.message.id !== message.id))
+      setInbox((current) => current && ({ ...current, threads: current.threads.map((thread) =>
+        thread.id === targetThreadId && (thread.profileId ?? activeProfileId) === targetProfileId &&
+        thread.messages[0]?.id === message.id
+          ? { ...thread, messages: fallback ? [fallback] : [] } : thread) }))
+      setThreadRefresh((value) => value + 1)
+      setInboxRefresh((value) => value + 1)
+    } catch (error) {
+      setError(`${errorText(error)}. Refresh the conversation to check whether the message was unsent.`)
+    } finally { setUnsendingMessageId(null) }
+  }
+
   return {
     profiles: eligibleProfiles,
     profilesLoading,
@@ -488,6 +607,8 @@ export function useChatPage() {
     loadingInbox,
     loadingThread,
     sending,
+    reactingMessageId,
+    unsendingMessageId,
     connected,
     connectOpen,
     setConnectOpen,
@@ -504,6 +625,9 @@ export function useChatPage() {
     connect,
     logout,
     sendReply,
+    sendAttachment,
+    reactToMessage,
+    unsendMessage,
     replyMaxLength: REPLY_MAX_LENGTH,
   }
 }
