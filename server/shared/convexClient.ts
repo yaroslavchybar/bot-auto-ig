@@ -135,7 +135,7 @@ export class ConvexHttpError extends Error {
 }
 
 // HTTP client for Convex with exponential backoff retry
-async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any; maxRetries?: number; timeoutMs?: number } = {}): Promise<T> {
+async function convexFetch<T>(endpoint: string, options: { method?: string; body?: any; maxRetries?: number } = {}): Promise<T> {
     const url = `${convexUrl}${endpoint}`;
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -151,7 +151,7 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
         let resp: Response
         try {
             resp = await fetch(url, {
-                signal: AbortSignal.timeout(options.timeoutMs ?? 30_000),
+                signal: AbortSignal.timeout(30_000),
                 method: options.method || 'GET',
                 headers,
                 body: options.body ? JSON.stringify(options.body) : undefined,
@@ -314,12 +314,6 @@ export function chatMarkUnsent(profileId: string, token: string, threadId: strin
 export function chatCacheSaveThread(profileId: string, token: string, thread: ChatThread): Promise<CachedChatThread> {
     return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 0,
         body: { scope: 'thread', profileId, token, thread } });
-}
-
-export async function profilesSetUnreadDms(name: string, count: number | null): Promise<void> {
-    await convexFetch('/api/profiles/unread-dms', {
-        method: 'POST', body: { name, count }, timeoutMs: 3_000, maxRetries: 0,
-    });
 }
 
 // ==================== AUTOMATIONS ====================

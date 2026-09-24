@@ -9,10 +9,7 @@ export const setIgState = mutation({
   handler: async (ctx, { profileId, ...state }) => {
     const profile = await ctx.db.get(profileId)
     if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
-    await ctx.db.patch(profileId, {
-      ...state,
-      ...(state.igLoggedIn === false ? { unreadDms: undefined } : {}),
-    })
+    await ctx.db.patch(profileId, state)
   },
 })
 
@@ -44,15 +41,6 @@ export const deleteChatSessionInternal = internalMutation({
     if (!existing) return
     await ctx.storage.delete(existing.storageId)
     await ctx.db.delete(existing._id)
-  },
-})
-
-export const setUnreadDmsInternal = internalMutation({
-  args: { name: v.string(), count: v.union(v.number(), v.null()) },
-  handler: async (ctx, { name, count }) => {
-    const profile = await ctx.db.query('profiles').withIndex('by_name', q => q.eq('name', name)).first()
-    if (!profile || profile.status === 'deleting' || (count !== null && !profile.igLoggedIn)) return
-    await ctx.db.patch(profile._id, { unreadDms: count === null ? undefined : count })
   },
 })
 

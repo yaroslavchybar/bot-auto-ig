@@ -54,7 +54,6 @@ export default defineSchema({
 
 	profiles: defineTable({
         igLoggedIn: v.optional(v.boolean()),
-        unreadDms: v.optional(v.number()),
         outreachReady: v.optional(v.boolean()),
 		renameFrom: v.optional(v.string()),
 		createdAt: v.number(),

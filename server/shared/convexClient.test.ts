@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it, beforeEach, afterEach } from 'node:test'
 
-import { ConvexHttpError, profilesSetUnreadDms, setRetryConfig } from './convexClient.js'
+import { ConvexHttpError, setRetryConfig } from './convexClient.js'
 
 // ---------------------------------------------------------------------------
 // Unit tests for the retry helpers exported from convexClient.
@@ -181,22 +181,5 @@ describe('retry behaviour via convexFetch integration', () => {
       return true
     })
     assert.equal(fetchCalls.length, 1, 'Should not retry when maxRetries=0')
-  })
-
-  it('bounds unread DM writes and never retries them', async () => {
-    stubFetch([{ status: 503, body: 'Unavailable' }])
-    const originalTimeout = AbortSignal.timeout
-    const deadlines: number[] = []
-    AbortSignal.timeout = (ms) => {
-      deadlines.push(ms)
-      return originalTimeout(ms)
-    }
-    try {
-      await assert.rejects(profilesSetUnreadDms('profile', null), ConvexHttpError)
-      assert.equal(fetchCalls.length, 1)
-      assert.deepEqual(deadlines, [3_000])
-    } finally {
-      AbortSignal.timeout = originalTimeout
-    }
   })
 })

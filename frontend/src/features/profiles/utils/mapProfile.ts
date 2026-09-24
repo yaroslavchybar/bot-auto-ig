@@ -13,8 +13,7 @@ export function mapProfileRecord(
     proxyType: record.proxyType, fingerprintOs: record.fingerprintOs,
     status: record.status, using: record.using,
     renameFrom: record.renameFrom,
-    igLoggedIn: record.igLoggedIn, unreadDms: record.unreadDms,
-    outreachReady: record.outreachReady,
+    igLoggedIn: record.igLoggedIn, outreachReady: record.outreachReady,
     ...(options?.includeCookies ? { cookiesJson: record.cookiesJson } : {}),
   }
 }

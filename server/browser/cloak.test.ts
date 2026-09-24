@@ -15,7 +15,6 @@ test('missing and pending profiles cannot recreate folders and always release th
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => row,
       profilesUpdateByName: async () => undefined,
-      profilesSetUnreadDms: async () => undefined,
     }))
     mock.module('cloakbrowser', () => ({
       binaryInfo: () => ({}),
@@ -37,7 +36,7 @@ test('missing and pending profiles cannot recreate folders and always release th
   `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
 })
 
-for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'dm navigation failure', 'dm reset failure', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies']) {
+for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies']) {
 test(`browser cleanup: ${scenario}`, () => {
   // Isolate module mocks and process signal handlers from other tests.
   const output = execFileSync('bun', ['--eval', `
@@ -64,8 +63,7 @@ test(`browser cleanup: ${scenario}`, () => {
     let closed = false
     let launchOptions
     context.pages = () => [{
-      url: () => ['startup failure', 'stop during navigation'].includes(scenario) ? 'about:blank'
-        : scenario === 'dm navigation failure' ? 'https://example.com/' : 'https://www.instagram.com/',
+      url: () => ['startup failure', 'stop during navigation'].includes(scenario) ? 'about:blank' : 'https://www.instagram.com/',
       goto: async () => {
         if (scenario === 'stop during navigation') {
           await new Promise(resolve => {
@@ -102,10 +100,7 @@ test(`browser cleanup: ${scenario}`, () => {
     } }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
-      profilesGetByName: async () => ({ name: 'test', igLoggedIn: scenario.startsWith('dm '), cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
-      profilesSetUnreadDms: async () => {
-        if (scenario === 'dm reset failure') throw new Error('Unavailable')
-      },
+      profilesGetByName: async () => ({ name: 'test', cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
       profilesUpdateByName: async (name, update) => {
         if (scenario === 'save failure') throw new Error('Database unavailable')
         await new Promise(resolve => setTimeout(resolve, 10))
@@ -188,7 +183,6 @@ test('cloak seed is stable per profile and platform', () => {
       mock.module('./server/shared/convexClient.ts', () => ({
         profilesGetByName: async () => undefined,
         profilesUpdateByName: async () => undefined,
-        profilesSetUnreadDms: async () => undefined,
       }))
       const { cloakSeed, cloakPlatform, migrateFirefoxProfile } = await import('./server/browser/cloak.ts')
       assert.equal(cloakPlatform('mac'), 'macos')
