@@ -88,6 +88,7 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         proxy: body?.proxy ?? undefined,
         proxyType: body?.proxyType ?? undefined,
         fingerprintOs: body?.fingerprintOs ?? undefined,
+        fingerprintSeed: body?.fingerprintSeed ?? undefined,
         cookiesJson: body?.cookiesJson ?? undefined,
       });
       return jsonResponse(mapProfileToApi(created, { includeCookies: true }));
@@ -105,6 +106,7 @@ function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
         proxy: body?.proxy ?? undefined,
         proxyType: body?.proxyType ?? undefined,
         fingerprintOs: body?.fingerprintOs ?? undefined,
+        fingerprintSeed: body?.fingerprintSeed ?? undefined,
         cookiesJson: body?.cookiesJson ?? undefined,
       } as any);
       return jsonResponse(mapProfileToApi(updated, { includeCookies: true }));

@@ -77,6 +77,7 @@ const profileArgsShape = {
 	proxy: v.optional(v.string()),
 	proxyType: v.optional(v.string()),
 	fingerprintOs: v.optional(v.string()),
+	fingerprintSeed: v.optional(v.number()),
 	cookiesJson: v.optional(v.string()),
 };
 

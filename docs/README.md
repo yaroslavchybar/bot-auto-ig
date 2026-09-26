@@ -30,12 +30,40 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
 - `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
 
+## Browser profile data
+
 Browser profiles use a 128 MiB Chromium disk-cache budget (a hint, not a hard
 quota for the whole profile). Before each launch, while holding the profile
 lock, disposable HTTP, code, GPU, media, and shader caches are pruned. Cookies,
 local storage, IndexedDB, service workers, preferences, and fingerprint seeds
-are preserved. Existing profiles are cleaned when next opened; running browsers
-are never pruned. Cleanup errors are logged and do not prevent launch.
+are preserved.
+
+Convex stores each profile's cookies and fingerprint seed. On open, a seed in
+Convex wins; otherwise the app uses a matching local `cloak-seed.json` seed, or
+creates one if neither exists. It saves the chosen seed to both places. On each
+open, the app replaces disk cookies with the Convex copy and saves refreshed
+cookies on open and close. The disk cookie jar is not a fallback when Convex is
+unavailable. Cloak Chromium 151+ writes these cookies in a portable format
+because `--fingerprint-portable-cookies` is enabled.
+
+`server/browser/seedBackfill.ts` handles profiles created before seeds were
+stored in Convex. At startup it copies seeds from local files even if those
+profiles are never opened. Failed writes are retried; if they still fail, the
+server does not start. New profiles save their seeds when first opened.
+
+On a future VPS using the same Convex deployment, cookies and seeds can be
+restored. Keep the same proxy and Cloak binary version where possible: a changed
+IP can trigger an Instagram login challenge, and a newer Cloak binary may
+produce a different fingerprint from the same seed. Close browser sessions
+cleanly before a move so their latest cookies reach Convex.
+
+A paid Pro plan can pin the old binary on the new VPS with
+`CLOAKBROWSER_VERSION`. Changing a profile's fingerprint OS clears its saved seed.
+At startup, complete older Cloak Pro binaries are pruned only after Cloak has
+recorded a usable version in its cache marker. The newest usable binary, marked
+versions, and configured or pinned binaries are retained. Existing profiles are
+cleaned when next opened; running browsers are never pruned. Cleanup errors are
+logged and do not prevent launch.
 
 Profile deletion first persists `status: deleting`, then stops manual browsers
 and any automation using the profile (stopping its whole worker). Browser

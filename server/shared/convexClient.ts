@@ -30,6 +30,7 @@ export type ProfileInput = {
     proxy?: string;
     proxyType?: string;
     fingerprintOs?: string;
+    fingerprintSeed?: number;
     cookiesJson?: string;
 };
 
@@ -224,6 +225,7 @@ export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRo
             proxy: profile.proxy,
             proxyType: profile.proxyType,
             fingerprintOs: profile.fingerprintOs,
+            fingerprintSeed: profile.fingerprintSeed,
             cookiesJson: profile.cookiesJson,
         },
     });
@@ -242,6 +244,7 @@ export async function profilesUpdateByName(oldName: string, profile: ProfileInpu
             proxy: profile.proxy,
             proxyType: profile.proxyType,
             fingerprintOs: profile.fingerprintOs,
+            fingerprintSeed: profile.fingerprintSeed,
             cookiesJson: profile.cookiesJson,
         },
     });

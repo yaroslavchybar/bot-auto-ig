@@ -36,7 +36,7 @@ test('missing and pending profiles cannot recreate folders and always release th
   `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
 })
 
-for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies']) {
+for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies', 'seed persistence retry', 'seed persistence failure']) {
 test(`browser cleanup: ${scenario}`, () => {
   // Isolate module mocks and process signal handlers from other tests.
   const output = execFileSync('bun', ['--eval', `
@@ -50,6 +50,13 @@ test(`browser cleanup: ${scenario}`, () => {
     const scenario = ${JSON.stringify(scenario)}
     mock.module('./server/browser/filePicker.ts', () => ({ pickerSocket: () => 'test', startFilePicker: async () => () => {} }))
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-shutdown-'))
+    const seedWrites = []
+    let seedWriteDone = false
+    if (scenario === 'seed persistence retry') {
+      const profileDir = path.join(root, 'data/profiles/test')
+      fs.mkdirSync(profileDir, { recursive: true })
+      fs.writeFileSync(path.join(profileDir, 'cloak-seed.json'), JSON.stringify({ platform: 'windows', seed: 43210 }))
+    }
     const cache = path.join(root, 'data/profiles/test/Default/Cache')
     fs.mkdirSync(cache, { recursive: true })
     fs.writeFileSync(path.join(cache, 'old-cache'), 'cached video')
@@ -86,6 +93,7 @@ test(`browser cleanup: ${scenario}`, () => {
       context.emit('close')
     }
     mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async options => {      launchOptions = options
+      if (scenario === 'seed persistence retry') assert.equal(seedWriteDone, true, 'launch waits for seed persistence')
       assert.equal(fs.existsSync(cache), false, 'cache is pruned before launch')
       assert.ok(options.args.includes('--disk-cache-size=134217728'))
       assert.throws(() => lockProfile('test'), /already open/)
@@ -102,6 +110,13 @@ test(`browser cleanup: ${scenario}`, () => {
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => ({ name: 'test', cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
       profilesUpdateByName: async (name, update) => {
+        if (typeof update.fingerprintSeed === 'number') {
+          seedWrites.push(update.fingerprintSeed)
+          if (scenario === 'seed persistence failure') throw new Error('Database unavailable')
+          if (scenario === 'seed persistence retry') await new Promise(resolve => setTimeout(resolve, 20))
+          seedWriteDone = true
+          return undefined
+        }
         if (scenario === 'save failure') throw new Error('Database unavailable')
         await new Promise(resolve => setTimeout(resolve, 10))
         assert.equal(closed, false, 'browser must stay open until persistence completes')
@@ -126,19 +141,25 @@ test(`browser cleanup: ${scenario}`, () => {
     const { lockProfile } = await import('./server/profiles/paths.ts')
     try {
       const { openBrowserSession } = await import('./server/browser/cloak.ts')
-      if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch'].includes(scenario)) {
-        const expected = ['startup failure', 'stop during navigation'].includes(scenario) ? /Navigation failed/
+      if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'seed persistence failure'].includes(scenario)) {
+        const expected = scenario === 'seed persistence failure' ? /Database unavailable/
+          : ['startup failure', 'stop during navigation'].includes(scenario) ? /Navigation failed/
           : scenario === 'stop during launch' ? /Browser worker stopped/ : /budget disconnected/
         await assert.rejects(openBrowserSession('test'), expected)
-        assert.deepEqual(events, ['close', 'display', 'slot'])
+        assert.deepEqual(events, scenario === 'seed persistence failure' ? ['display', 'slot'] : ['close', 'display', 'slot'])
       } else {
         const session = await openBrowserSession('test')
+        if (scenario === 'seed persistence retry') {
+          assert.deepEqual(seedWrites, [43210], 'a local seed missing from Convex must be persisted again')
+          assert.ok(launchOptions.args.includes('--fingerprint=43210'))
+        }
         if (scenario === 'clear cookies') assert.deepEqual(jar, [], 'cleared cookies must not survive on disk')
         if (scenario === 'replace cookies') assert.deepEqual(jar, cookies, 'imports must replace rather than merge old cookies')
         // Cloak stealth wiring: persistent profile, human behavior, seed identity.
         assert.ok(String(launchOptions.userDataDir).endsWith('test'))
         assert.equal(launchOptions.humanize, true)
         assert.ok(launchOptions.args.some(arg => String(arg).startsWith('--fingerprint=')))
+        assert.ok(launchOptions.args.includes('--fingerprint-portable-cookies'))
         if (scenario === 'crash') {
           closed = true
           context.emit('close')
@@ -191,8 +212,21 @@ test('cloak seed is stable per profile and platform', () => {
       const dir = path.join(root, 'data', 'profiles', 'test')
       fs.mkdirSync(dir, { recursive: true })
       const first = cloakSeed(dir, 'windows')
-      assert.equal(cloakSeed(dir, 'windows'), first)
-      assert.notEqual(cloakSeed(dir, 'macos'), first)
+      assert.equal(first.isNew, true)
+      assert.equal(cloakSeed(dir, 'windows').seed, first.seed)
+      assert.equal(cloakSeed(dir, 'windows').isNew, false)
+      assert.notEqual(cloakSeed(dir, 'macos').seed, first.seed)
+      const changed = cloakSeed(dir, 'windows', 54321)
+      assert.equal(changed.seed, 54321, 'an explicitly saved Convex seed replaces the disk seed')
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, 'cloak-seed.json'), 'utf8')), {
+        platform: 'windows', seed: 54321,
+      })
+      const moved = path.join(root, 'data', 'profiles', 'moved')
+      fs.mkdirSync(moved, { recursive: true })
+      const restored = cloakSeed(moved, 'windows', first.seed)
+      assert.equal(restored.seed, first.seed)
+      assert.equal(restored.isNew, false)
+      assert.equal(cloakSeed(moved, 'windows').seed, first.seed)
       const mig = path.join(root, 'data', 'profiles', 'mig')
       fs.mkdirSync(path.join(mig, 'cache2'), { recursive: true })
       fs.writeFileSync(path.join(mig, 'fingerprint.json'), '{}')

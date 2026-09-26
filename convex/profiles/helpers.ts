@@ -7,6 +7,11 @@ function assertProfileEditable(profile: any) {
 		throw new DomainError('CONFLICT', 'Profile maintenance is in progress');
 }
 
+function fingerprintPlatform(value: unknown): 'windows' | 'macos' {
+	const os = String(value || '').trim().toLowerCase();
+	return os === 'mac' || os === 'macos' ? 'macos' : 'windows';
+}
+
 async function assertProfileNameAvailable(ctx: any, name: string, exceptId?: string) {
 	if (!name || name === '.' || name === '..' || /[\\/\x00<>:"|?*]/.test(name) || /[. ]$/.test(name) ||
 		/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name))
@@ -179,6 +184,7 @@ export async function createProfileRow(ctx: any, args: any) {
 		scraperDailyLimit: 1000,
 		using: false,
 		fingerprintOs: args.fingerprintOs,
+		fingerprintSeed: args.fingerprintSeed,
 		listIds: [],
 		lastOpenedAt: undefined,
 	});
@@ -213,6 +219,11 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	}
 	if (typeof args.fingerprintOs === "string") {
 		next.fingerprintOs = args.fingerprintOs;
+	}
+	if (typeof args.fingerprintOs === "string" && fingerprintPlatform(args.fingerprintOs) !== fingerprintPlatform(existing.fingerprintOs)) {
+		next.fingerprintSeed = undefined;
+	} else if (typeof args.fingerprintSeed === "number" && Number.isSafeInteger(args.fingerprintSeed)) {
+		next.fingerprintSeed = args.fingerprintSeed;
 	}
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();
@@ -256,6 +267,11 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	}
 	if (typeof args.fingerprintOs === "string") {
 		next.fingerprintOs = args.fingerprintOs;
+	}
+	if (typeof args.fingerprintOs === "string" && fingerprintPlatform(args.fingerprintOs) !== fingerprintPlatform(existing.fingerprintOs)) {
+		next.fingerprintSeed = undefined;
+	} else if (typeof args.fingerprintSeed === "number" && Number.isSafeInteger(args.fingerprintSeed)) {
+		next.fingerprintSeed = args.fingerprintSeed;
 	}
 	if (typeof args.cookiesJson === "string") {
 		const cleaned = args.cookiesJson.trim();

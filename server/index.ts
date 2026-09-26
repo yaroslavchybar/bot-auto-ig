@@ -22,6 +22,8 @@ import chatRouter from './chat/routes.js'
 import { startChatWorker } from './chat/worker.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
+import { pruneOldCloakBrowsers } from './browser/cloakCache.js'
+import { backfillLocalCloakSeeds } from './browser/seedBackfill.js'
 import { retryProfileMaintenance, startProfileMaintenance } from './profiles/maintenance.js'
 import { getActiveRuntimeProfileNames } from './shared/store.js'
 import { apiLimiter } from './security/rate-limit.js'
@@ -167,12 +169,19 @@ async function startServer(): Promise<void> {
     // Kill stale automation processes left behind by a crash. Detached
     // children survive restarts, so reconcile them before touching flags.
     await cleanupOrphanedProcesses()
+    const prunedBinaries = pruneOldCloakBrowsers()
+    if (prunedBinaries.length > 0) {
+        logger.info({ pruned: prunedBinaries }, 'Pruned superseded Cloak browser binaries')
+    }
     await retryProfileMaintenance()
     server.once('close', startProfileMaintenance())
 
     // Convex dev deploys alongside the server, so the reconcile endpoint
     // may 404 until the new functions are live. Retry instead of crashing.
     await retryStartup(() => automationsReconcileInterrupted(), 'automation reconcile')
+
+    await retryStartup(backfillLocalCloakSeeds, 'Cloak fingerprint seed backfill')
+    logger.info('Cloak fingerprint seed backfill complete')
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
     const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())

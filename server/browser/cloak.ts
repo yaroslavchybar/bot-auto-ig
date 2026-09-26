@@ -111,26 +111,47 @@ export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
  * Deterministic fingerprint seed per profile + platform. Same seed returns
  * as a returning visitor; a random seed every launch looks like a new device.
  */
-export function cloakSeed(profileDir: string, platform: string): number {
+export function cloakSeed(profileDir: string, platform: string, persistedSeed?: unknown): { seed: number; isNew: boolean } {
   const seedPath = path.join(profileDir, 'cloak-seed.json')
+  let cachedSeed: number | undefined
+  let cachedPlatform: unknown
   try {
     const cached = JSON.parse(fs.readFileSync(seedPath, 'utf8'))
-    if (cached.platform === platform && Number.isSafeInteger(cached.seed))
-      return cached.seed
+    if (Number.isSafeInteger(cached.seed)) {
+      cachedSeed = cached.seed
+      cachedPlatform = cached.platform
+    }
   } catch (error) {
     // A missing or corrupt seed file regenerates below. Anything with a
     // filesystem error code other than ENOENT (EACCES, EPERM, ...) is real
     // and propagates.
     if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
+  if (Number.isSafeInteger(persistedSeed)) {
+    const seed = persistedSeed as number
+    if (cachedPlatform !== platform || cachedSeed !== seed)
+      fs.writeFileSync(seedPath, JSON.stringify({ platform, seed }))
+    return { seed, isNew: false }
+  }
+  if (cachedPlatform === platform && cachedSeed !== undefined)
+    return { seed: cachedSeed, isNew: false }
   const seed = crypto.randomInt(10000, 100000)
   fs.writeFileSync(seedPath, JSON.stringify({ platform, seed }))
-  return seed
+  return { seed, isNew: true }
 }
 
-function browserOptions(profile: DbProfileRow, profileDir: string, options: SessionOptions) {
+async function persistSeed(profile: DbProfileRow, seed: number): Promise<void> {
+  const updated = await profilesUpdateByName(profile.name, { name: profile.name, fingerprintSeed: seed })
+  if (updated === null) throw new Error('Profile was not found while saving fingerprint seed')
+  profile.fingerprintSeed = seed
+}
+
+async function browserOptions(profile: DbProfileRow, profileDir: string, options: SessionOptions) {
   const platform = cloakPlatform(profile.fingerprintOs)
-  const seed = cloakSeed(profileDir, platform)
+  const { seed } = cloakSeed(profileDir, platform, profile.fingerprintSeed)
+  // Retry a previous failed Convex write whenever disk has the seed but the
+  // profile row does not. Wait for persistence before making the session usable.
+  if (profile.fingerprintSeed !== seed) await persistSeed(profile, seed)
   const proxy = parseProxy(profile.proxy, profile.proxyType)
   return {
     userDataDir: profileDir,
@@ -142,6 +163,7 @@ function browserOptions(profile: DbProfileRow, profileDir: string, options: Sess
       `--disk-cache-size=${DISK_CACHE_BYTES}`,
       `--fingerprint=${seed}`,
       `--fingerprint-platform=${platform}`,
+      '--fingerprint-portable-cookies',
       `--fingerprint-screen-width=${BROWSER_WINDOW_WIDTH}`,
       `--fingerprint-screen-height=${BROWSER_WINDOW_HEIGHT}`,
     ],
@@ -296,7 +318,7 @@ export async function openBrowserSession(
     checkStartup()
     display = options.headless ? undefined : await allocateDisplay()
     checkStartup()
-    const launchOptions = browserOptions(profile, profileDir, {
+    const launchOptions = await browserOptions(profile, profileDir, {
       ...options, display: display?.display ?? options.display,
     })
     checkStartup()

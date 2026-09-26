@@ -67,6 +67,7 @@ export default defineSchema({
 		mode: v.optional(v.string()),
 		using: v.boolean(),
 		fingerprintOs: v.optional(v.string()),
+		fingerprintSeed: v.optional(v.number()),
 		cookiesJson: v.optional(v.string()),
 		sessionId: v.optional(v.string()),
 		scraperDailyLimit: v.optional(v.number()),
