@@ -96,7 +96,7 @@ function instagramError(error: unknown): never {
   if (error instanceof Error && error.message === 'Instagram requested email verification; this test supports authenticator codes only') {
     throw new ValidationError(error.message);
   }
-  if (error instanceof Error && error.message === 'Instagram Chat could not connect through the profile proxy') {
+  if (error instanceof Error && error.message.startsWith('Instagram Chat could not connect through the profile proxy')) {
     throw new ExternalServiceError(error.message);
   }
   if (error instanceof Error && error.message === 'ffmpeg is required to send voice messages') {

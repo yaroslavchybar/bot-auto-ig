@@ -8,7 +8,7 @@ import { resolveProjectRoot } from '../shared/utils.js';
 import logger from '../shared/logger.js';
 import { completeCaaTwoFactor, loginWithCaa, mobileRequest, useCurrentAppProfile, useCurrentAppVersion } from './caa.js';
 import { chatDeviceForProfile } from './devices.js';
-import { chatProxy } from './proxy.js';
+import { chatProxy, configureMobileProxyTransport } from './proxy.js';
 import { uploadChatAttachment, type AttachmentKind, type VideoMetadata } from './attachments.js';
 
 type Json = Record<string, unknown>;
@@ -209,6 +209,7 @@ export class InstagramChat {
         const saved = await chatSessionGet(profile.id);
         if (!saved.connected) throw new Error('Connect this profile to Instagram Chat first');
         const ig = new IgApiClient();
+        configureMobileProxyTransport(ig);
         await ig.state.deserialize(saved.state);
         if (generation(profile.id) !== currentGeneration) throw new Error('Chat session was logged out');
         savedStates.set(profile.id, { token: saved.token,
@@ -231,6 +232,7 @@ export class InstagramChat {
     const currentGeneration = generation(profile.id);
     const token = randomUUID();
     const ig = new IgApiClient();
+    configureMobileProxyTransport(ig);
     ig.state.generateDevice(`${username}:${profile.id}`);
     ig.state.proxyUrl = chatProxy(profile) || '';
     useCurrentAppProfile(ig, chatDeviceForProfile(profile.id));
