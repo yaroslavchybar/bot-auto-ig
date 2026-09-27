@@ -256,17 +256,30 @@ export class InstagramChat {
     } finally { loggingOut.delete(profileId); }
   }
 
-  /** Profile warmup uses the same authenticated mobile device and saved proxy as Chat. */
-  async updateProfile(username: string, fullName: string): Promise<void> {
+  /** Profile setup preserves the other identity field on each separate update. */
+  private async editProfile(identity: { username?: string; fullName?: string }): Promise<void> {
     const current = await this.ig.account.currentUser();
+    if (!current.username || typeof current.full_name !== 'string')
+      throw new Error('Instagram did not return the current profile identity');
+    const username = identity.username ?? current.username;
+    const fullName = identity.fullName ?? current.full_name;
     const updated = await this.ig.account.editProfile({
       username, first_name: fullName,
       external_url: current.external_url ?? '', gender: String(current.gender ?? ''),
       phone_number: current.phone_number ?? '', biography: current.biography ?? '',
       email: current.email ?? '',
     });
-    if (updated.username !== username) throw new Error('Instagram did not confirm the username change');
+    if (updated.username !== username || updated.full_name !== fullName)
+      throw new Error('Instagram did not confirm the profile change');
     await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
+  }
+
+  async updateUsername(username: string): Promise<void> {
+    await this.editProfile({ username });
+  }
+
+  async updateFullName(fullName: string): Promise<void> {
+    await this.editProfile({ fullName });
   }
 
   async changeProfilePicture(image: Buffer): Promise<void> {

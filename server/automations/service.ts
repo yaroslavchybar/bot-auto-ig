@@ -16,6 +16,7 @@ import {
   type DbAutomationRow,
 } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
+import { advanceModelWarmup } from '../ig-accounts/warmup.js'
 import { latestQueue } from '../shared/latest-queue.js'
 import {
   spawnBun,
@@ -212,6 +213,12 @@ function createWorkerEventRouter(automationId: string, lifecycle: WorkerLifecycl
   })
   return (log: ParsedLog): void => {
     if (lifecycle.stopRequested && isStopNoiseLog(log.message)) return
+    if (log.eventType === 'model_setup_after_session') {
+      const profileId = String(log.metadata?.profileId ?? '')
+      if (profileId) void advanceModelWarmup(profileId, automationId).catch(error =>
+        logger.warn({ error, profileId, automationId }, 'Model setup after browser session failed'))
+      return
+    }
     if (log.eventType === 'profile_started' || log.eventType === 'profile_completed') {
       const name = String(log.metadata?.profileName || '')
       if (log.eventType === 'profile_started') {

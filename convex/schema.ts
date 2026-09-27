@@ -82,11 +82,14 @@ export default defineSchema({
   modelSetupStates: defineTable({
     profileId: v.id('profiles'), modelId: v.id('lists'), startedAt: v.number(),
     targetUsername: v.optional(v.string()), fullName: v.optional(v.string()),
-    nameDone: v.optional(v.boolean()), avatarSourceId: v.optional(v.string()),
+    // nameDone is the username checkpoint for existing setup rows.
+    nameDone: v.optional(v.boolean()), fullNameDone: v.optional(v.boolean()),
+    avatarSourceId: v.optional(v.string()),
     avatarDone: v.optional(v.boolean()), postSourceIds: v.array(v.string()),
     postDates: v.array(v.string()), outreachReadyMarked: v.optional(v.boolean()),
-    pending: v.optional(v.object({ kind: v.union(v.literal('name'), v.literal('avatar'),
-      v.literal('post')), sourceId: v.optional(v.string()), date: v.string() })),
+    pending: v.optional(v.object({ kind: v.union(v.literal('name'), v.literal('username'),
+      v.literal('fullName'), v.literal('avatar'), v.literal('post')),
+      sourceId: v.optional(v.string()), date: v.string() })),
     error: v.optional(v.string()),
   }).index('by_profile', ['profileId']).index('by_model', ['modelId']),
   modelSetupGroupNames: defineTable({

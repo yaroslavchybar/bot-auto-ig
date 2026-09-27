@@ -43,7 +43,8 @@ export async function runRoutineSession(
 ) {
   let allowed = true,
     checking = false,
-    activityCompleted = false;
+    activityCompleted = false,
+    hadActivity = false;
   const check = async (forceRemote = false) => {
     if (checking) return;
     if (liveAccess && !liveAccess()) {
@@ -183,7 +184,8 @@ export async function runRoutineSession(
         });
       },
     );
-    activityCompleted = warmup.minutes > 0 && warmup.reason === 'finished';
+    hadActivity = warmup.minutes > 0;
+    activityCompleted = hadActivity && warmup.reason === 'finished';
     const target = await deps.target(automation._id, profileId).catch(() => null);
     if (target && target.target > 0) log(`Daily DM target: ${target.sent}/${target.target} confirmed`);
   } catch (error) {
@@ -192,4 +194,5 @@ export async function runRoutineSession(
   } finally {
     await deps.record(automation._id, profileId, activityCompleted, issue);
   }
+  return hadActivity && !issue;
 }

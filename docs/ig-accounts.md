@@ -38,10 +38,11 @@ Proxies page shows when a Login proxy is available.
 Browser login runs headless. Its success time is stored in Convex and starts
 the model setup calendar. On the next Europe/Kyiv calendar day, the automation
 starts feed browsing through the saved Work proxy, using its daily time budget.
-On day 3, the mobile Chat session logs in through
-the profile's saved Work proxy, then the same model setup run changes the
-username and full name. Profiles already marked Logged in skip browser login
-and connect the mobile session through their Work proxy immediately.
+On day 3, after a browser warmup session closes, the mobile Chat session logs in
+through the profile's saved Work proxy. Username and full name are separate
+updates; the full-name update waits until the model has a full name configured.
+Profiles already marked Logged in skip browser login and connect the mobile
+session through their Work proxy after warmup.
 
 Required production secrets:
 
@@ -53,11 +54,15 @@ Create one automation per model and enable it after profiles are browser logged 
 The automation starts model setup from the browser login date; browsing starts
 on day 2, followed later by outreach. Its Profiles tab
 shows setup progress and errors. Disabling the automation pauses model setup.
-Day 1 is the browser login date in the Europe/Kyiv calendar. On day 3, the
-TypeScript mobile API logs in and changes the username and full name. One full-name variation
-is shared by four accounts. On day 4, it changes the avatar and starts nine
-daily posts without captions. Each post uses a different uploaded image; if
-the bank is empty, posting waits for the next upload. A failed or uncertain mobile API
+Day 1 is the browser login date in the Europe/Kyiv calendar. After a browser
+warmup session on day 3, the TypeScript mobile API logs in. It changes the
+username and full name in separate steps. A full name added later is still
+applied, even when the profile is past day 3 or already posting. Posting can
+continue while no full name is configured. One full-name variation is shared by four accounts.
+From day 4, after a browser warmup session, it changes the avatar and starts nine
+daily posts without captions. Mobile setup starts in the background while the
+browser worker can move to its next profile. Each post uses a different uploaded
+image; if the bank is empty, posting waits for the next upload. A failed or uncertain mobile API
 action is shown for review rather than retried blindly. In the automation's
 Profiles tab, check Instagram and mark the action as successful, or confirm
 it failed to let the worker retry. Model moves reset outreach readiness.

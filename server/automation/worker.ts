@@ -404,9 +404,13 @@ async function runRoutineProfile(options: {
       access = await accessSubscription.initial
       if (!access || !await routineReady(automationId, profile.id, false)) return
     } else if (!await routineReady(automationId, profile.id, false)) return
+    let hadActivity = false
     await withProfile(profile, { headless: routine.headless, openSession, automationId }, async session => {
-      await runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access)
+      hadActivity = await runRoutineSession(automation, profile.id, session.page, log, shouldStop, undefined, () => access) === true
     })
+    if (useRealtime && hadActivity && !shouldStop() && access) {
+      await event('model_setup_after_session', { profileId: profile.id })
+    }
   } catch (error) {
     if (shouldStop()) throw error
     await routineRecordSession(automationId, profile.id, false, error instanceof Error ? error.message : String(error))

@@ -68,7 +68,7 @@ export const modelSetupEnrollInternal = internalMutation({
   },
 })
 
-const modelSetupPatchKeys = new Set(['targetUsername', 'fullName', 'nameDone', 'avatarSourceId',
+const modelSetupPatchKeys = new Set(['targetUsername', 'fullName', 'nameDone', 'fullNameDone', 'avatarSourceId',
   'avatarDone', 'postSourceIds', 'postDates', 'outreachReadyMarked', 'pending', 'error'])
 
 function nineRecordedPosts(sourceIds: string[], dates: string[]): boolean {
@@ -117,9 +117,12 @@ export const modelSetupReconcileInternal = internalMutation({
     const action = state.pending
     if (resolution === 'failed') {
       await ctx.db.patch(state._id, { pending: undefined, error: undefined })
-    } else if (action.kind === 'name') {
+    } else if (action.kind === 'username' || action.kind === 'name') {
       if (!state.targetUsername) throw new DomainError('VALIDATION', 'Target username is missing')
       await ctx.db.patch(state._id, { nameDone: true, pending: undefined, error: undefined })
+    } else if (action.kind === 'fullName') {
+      if (!state.fullName) throw new DomainError('VALIDATION', 'Target full name is missing')
+      await ctx.db.patch(state._id, { fullNameDone: true, pending: undefined, error: undefined })
     } else if (action.kind === 'avatar') {
       await ctx.db.patch(state._id, { avatarDone: true, pending: undefined, error: undefined })
     } else {

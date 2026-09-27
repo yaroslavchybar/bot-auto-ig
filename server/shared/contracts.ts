@@ -40,6 +40,7 @@ export type WebSocketEventType =
   | 'task_completed'
   | 'checkpoint'
   | 'profile_completed'
+  | 'model_setup_after_session'
   | 'session_ended'
   | 'display_allocated'
   | 'display_released'

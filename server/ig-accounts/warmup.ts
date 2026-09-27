@@ -1,4 +1,4 @@
-import { automationsList, igAccountRequest, listsList, profilesList, routineReady } from '../shared/convexClient.js'
+import { automationsGetById, automationsList, igAccountRequest, listsList, profilesList, routineReady } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
 import { accountForProfile, setAccountUsername } from './store.js'
 import { allocateContent } from './content.js'
@@ -7,9 +7,10 @@ import { fullNameForGroup, usernameCandidates } from './usernames.js'
 import { syncConnectedProfileName } from './profileName.js'
 import { connectScheduledMobile } from './login.js'
 
-type PendingAction = { kind: 'name' | 'avatar' | 'post'; sourceId?: string; date: string }
+type PendingAction = { kind: 'name' | 'username' | 'fullName' | 'avatar' | 'post'; sourceId?: string; date: string }
 type Progress = { profileId: string; modelId: string; startedAt: number; targetUsername?: string;
-  fullName?: string; nameDone?: boolean; avatarSourceId?: string; avatarDone?: boolean;
+  fullName?: string; nameDone?: boolean; fullNameDone?: boolean;
+  avatarSourceId?: string; avatarDone?: boolean;
   postSourceIds: string[]; postDates: string[]; outreachReadyMarked?: boolean;
   pending?: PendingAction; error?: string }
 let running = false
@@ -28,7 +29,7 @@ export async function reconcileModelWarmup(profileId: string, resolution: 'compl
   if (activeActions.has(profileId)) throw new Error('Wait for the current Instagram request to finish')
   const state = (await read()).profiles.find(row => row.profileId === profileId)
   if (!state?.pending) throw new Error('No model setup action needs review')
-  if (resolution === 'completed' && state.pending.kind === 'name') {
+  if (resolution === 'completed' && (state.pending.kind === 'username' || state.pending.kind === 'name')) {
     if (!state.targetUsername) throw new Error('The target username is missing')
     const account = await accountForProfile(profileId)
     if (!account) throw new Error('The IG account is missing')
@@ -68,26 +69,24 @@ async function groupName(modelId: string, group: number, model: Awaited<ReturnTy
   return igAccountRequest<string>('modelSetupSaveGroupName', { modelId, group, name: generated })
 }
 
-async function applyName(state: Progress, model: Awaited<ReturnType<typeof listsList>>[number],
+async function applyUsername(state: Progress, model: Awaited<ReturnType<typeof listsList>>[number],
   index: number, profileName: string, reservedNames: Set<string>): Promise<void> {
   const account = await accountForProfile(state.profileId)
   if (!account) return
-  const group = Math.floor(index / 4)
-  const fullName = state.fullName ?? await groupName(state.modelId, group, model)
   const used = [...reservedNames].filter(name => name !== profileName.toLowerCase() &&
     name !== state.targetUsername?.toLowerCase())
   const candidates = state.targetUsername ? [state.targetUsername] : await usernameCandidates(model, index, used)
   for (let attempt = 0; attempt < Math.min(8, candidates.length); attempt++) {
     const candidate = candidates[attempt]
     reservedNames.add(candidate.toLowerCase())
-    await patch(state.profileId, { pending: { kind: 'name', date: dateKey(Date.now()) },
-      targetUsername: candidate, fullName })
+    await patch(state.profileId, { pending: { kind: 'username', date: dateKey(Date.now()) },
+      targetUsername: candidate })
     const result = await runMobileAction(state.profileId,
-      { action: 'name', targetUsername: candidate, fullName })
+      { action: 'username', targetUsername: candidate })
     if (result.ok) {
       await setAccountUsername(account.id, candidate)
       await patch(state.profileId, { nameDone: true, pending: undefined, error: undefined,
-        targetUsername: candidate, fullName })
+        targetUsername: candidate })
       await syncConnectedProfileName(state.profileId, account.id, candidate)
       return
     }
@@ -96,10 +95,20 @@ async function applyName(state: Progress, model: Awaited<ReturnType<typeof lists
       if (candidates.length === 1) candidates.push(...await usernameCandidates(model, index, [...used, candidate]))
       continue
     }
-    await patch(state.profileId, { error: `Name update needs review (${result.errorType})` })
+    await patch(state.profileId, { error: `Username update needs review (${result.errorType})` })
     return
   }
   await patch(state.profileId, { pending: undefined, error: 'No available username was accepted' })
+}
+
+async function applyFullName(state: Progress, model: Awaited<ReturnType<typeof listsList>>[number],
+  index: number): Promise<void> {
+  const fullName = state.fullName ?? await groupName(state.modelId, Math.floor(index / 4), model)
+  await patch(state.profileId, { pending: { kind: 'fullName', date: dateKey(Date.now()) }, fullName })
+  const result = await runMobileAction(state.profileId, { action: 'fullName', fullName })
+  if (result.ok) {
+    await patch(state.profileId, { fullNameDone: true, pending: undefined, error: undefined })
+  } else await patch(state.profileId, { error: `Full-name update needs review (${result.errorType})` })
 }
 
 async function applyAvatar(state: Progress): Promise<boolean> {
@@ -128,7 +137,8 @@ async function applyPost(state: Progress, today: string): Promise<void> {
   if (result.ok) {
     const postSourceIds = [...state.postSourceIds, content.sourceId]
     await patch(state.profileId, { pending: undefined, error: undefined,
-      postSourceIds, postDates: [...state.postDates, today] })
+      postSourceIds, postDates: [...state.postDates, today],
+      ...(postSourceIds.length >= 9 ? { outreachReadyMarked: true } : {}) })
   }
   else await patch(state.profileId, { error: `Post result needs review (${result.errorType})` })
 }
@@ -145,9 +155,8 @@ export async function sweepModelWarmup(): Promise<void> {
       if (modelId) owners.set(modelId, automation._id)
     }
     if (!owners.size) return
-    const [models, profiles, existing] = await Promise.all([listsList(), profilesList(), read()])
+    const [profiles, existing] = await Promise.all([profilesList(), read()])
     const enrolled = new Map(existing.profiles.map(state => [state.profileId, state.modelId]))
-    let enrolledAny = false
     for (const profile of profiles) {
       try {
         if (!profile.igLoggedIn || profile.status === 'deleting') continue
@@ -156,63 +165,78 @@ export async function sweepModelWarmup(): Promise<void> {
         const account = await accountForProfile(profile.id)
         if (account?.browserLoggedInAt || account?.status === 'connected') {
           await startModelWarmup(profile.id, modelId, account.browserLoggedInAt ?? Date.now())
-          enrolledAny = true
         }
       } catch {
         logger.warn({ profileId: profile.id }, 'Could not enroll profile in model automation')
       }
     }
-    const snapshot = enrolledAny ? await read() : existing
-    const reservedNames = new Set([
-      ...profiles.map(row => row.name.toLowerCase()),
-      ...snapshot.profiles.flatMap(row => row.targetUsername ? [row.targetUsername.toLowerCase()] : []),
-    ])
-    const now = Date.now()
-    const today = dateKey(now)
-    for (const state of snapshot.profiles) {
-      try {
-        if (state.pending) continue
-        const automationId = owners.get(state.modelId)
-        if (!automationId) continue
-        const day = dayNumber(state.startedAt, now)
-        if (day < 3) continue
-        const model = models.find(row => row.id === state.modelId)
-        const profile = profiles.find(row => row.id === state.profileId)
-        if (!model || !profile || !profile.listIds?.includes(model.id) ||
-          !profile.igLoggedIn || !profile.proxy || profile.using) continue
-        const account = await accountForProfile(state.profileId)
-        if (!account) continue
-        if (account.status !== 'connected') {
-          if (!account.browserLoggedInAt || (account.retryAfter ?? 0) > now) continue
-          await connectScheduledMobile(state.profileId)
-          if ((await accountForProfile(state.profileId))?.status !== 'connected') continue
-        }
-        if (!await routineReady(automationId, state.profileId, true)) continue
-        if (state.postSourceIds.length >= 9) {
-          if (!state.outreachReadyMarked) {
-            await patch(state.profileId, { outreachReadyMarked: true, error: undefined })
-          }
-          continue
-        }
-        const warmupIds = new Set(snapshot.profiles.filter(row => row.modelId === model.id).map(row => row.profileId))
-        const modelProfiles = profiles.filter(row => warmupIds.has(row.id) && row.listIds?.includes(model.id))
-          .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-        const index = modelProfiles.findIndex(row => row.id === state.profileId)
-        if (index < 0) continue
-        if (!state.nameDone) {
-          await trackedAction(state.profileId, () => applyName(state, model, index, profile.name, reservedNames))
-          continue
-        }
-        if (day < 4) continue
-        if (!state.avatarDone && !await trackedAction(state.profileId, () => applyAvatar(state))) continue
-        if (!state.postDates.includes(today)) await trackedAction(state.profileId, () => applyPost(state, today))
-      } catch (error) {
-        logger.warn({ profileId: state.profileId }, 'Model warmup step failed')
-        try { await patch(state.profileId, { error: error instanceof Error ? error.message : 'Warmup step failed' }) }
-        catch { logger.warn({ profileId: state.profileId }, 'Could not save model warmup error') }
-      }
-    }
   } finally { running = false }
+}
+
+/** Continue this account's model setup only after its browser session has closed. */
+export async function advanceModelWarmup(profileId: string, automationId: string): Promise<void> {
+  if (activeActions.has(profileId)) return
+  activeActions.add(profileId)
+  try {
+    const [automation, profiles, snapshot, models] = await Promise.all([
+      automationsGetById(automationId), profilesList(), read(), listsList(),
+    ])
+    const modelId = automation?.isActive && automation.routine && automation.listIds?.length === 1
+      ? automation.listIds[0] : undefined
+    const profile = profiles.find(row => row.id === profileId)
+    if (!modelId || !profile || !profile.listIds?.includes(modelId) ||
+      !profile.igLoggedIn || !profile.proxy || profile.using || profile.status === 'deleting') return
+    const model = models.find(row => row.id === modelId)
+    const account = await accountForProfile(profileId)
+    if (!model || !account || (!account.browserLoggedInAt && account.status !== 'connected')) return
+    let state = snapshot.profiles.find(row => row.profileId === profileId && row.modelId === modelId)
+    if (!state) {
+      await startModelWarmup(profileId, modelId, account.browserLoggedInAt ?? Date.now())
+      state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
+    }
+    if (!state || state.pending) return
+    const now = Date.now()
+    const day = dayNumber(state.startedAt, now)
+    if (day < 3) return
+    if (account.status !== 'connected') {
+      if (!account.browserLoggedInAt || (account.retryAfter ?? 0) > now) return
+      await connectScheduledMobile(profileId)
+      if ((await accountForProfile(profileId))?.status !== 'connected') return
+    }
+    if (!await routineReady(automationId, profileId, true)) return
+    const enrolledIds = new Set(snapshot.profiles.filter(row => row.modelId === modelId).map(row => row.profileId))
+    enrolledIds.add(profileId)
+    const index = profiles.filter(row => enrolledIds.has(row.id) && row.listIds?.includes(modelId))
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      .findIndex(row => row.id === profileId)
+    if (index < 0) return
+    if (!state.nameDone) {
+      const reservedNames = new Set([
+        ...profiles.map(row => row.name.toLowerCase()),
+        ...snapshot.profiles.flatMap(row => row.targetUsername ? [row.targetUsername.toLowerCase()] : []),
+      ])
+      await applyUsername(state, model, index, profile.name, reservedNames)
+      return
+    }
+    if (!state.fullNameDone && (state.fullName || model.fullName?.trim() ||
+      model.fullNames?.some(name => name.trim()))) {
+      await applyFullName(state, model, index)
+      return
+    }
+    if (state.postSourceIds.length >= 9) {
+      if (!state.outreachReadyMarked)
+        await patch(profileId, { outreachReadyMarked: true, error: undefined })
+      return
+    }
+    if (day < 4) return
+    if (!state.avatarDone && !await applyAvatar(state)) return
+    if (!state.postDates.includes(dateKey(now))) await applyPost(state, dateKey(now))
+  } catch (error) {
+    logger.warn({ profileId, error }, 'Model warmup step failed')
+    try { await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup step failed' }) }
+    catch { logger.warn({ profileId }, 'Could not save model warmup error') }
+    throw error
+  } finally { activeActions.delete(profileId) }
 }
 
 export function startModelWarmupWorker(): void {
@@ -221,9 +245,3 @@ export function startModelWarmupWorker(): void {
 }
 
 export async function listModelWarmup(): Promise<Progress[]> { return (await read()).profiles }
-
-async function trackedAction<T>(profileId: string, action: () => Promise<T>): Promise<T> {
-  activeActions.add(profileId)
-  try { return await action() }
-  finally { activeActions.delete(profileId) }
-}

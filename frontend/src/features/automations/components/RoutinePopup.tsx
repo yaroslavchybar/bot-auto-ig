@@ -41,6 +41,7 @@ type ModelWarmup = {
   modelId: string
   startedAt: number
   nameDone?: boolean
+  fullNameDone?: boolean
   avatarDone?: boolean
   postSourceIds: string[]
   pending?: { kind: string }
@@ -244,8 +245,9 @@ export function RoutinePopup({
                   <p className="text-subtle-copy text-sm">
                     Browser login starts model setup. Daily feed browsing starts
                     the next day with its time budget. On day 3, the mobile session
-                    connects through the Work proxy and the name changes. Day 4
-                    adds the avatar and starts nine daily posts. After
+                    connects through the Work proxy. Username and full name change
+                    separately; the full name waits for a model name. From day 4,
+                    setup can add the avatar and start nine daily posts. After
                     the ninth post, the profile becomes ready for outreach.
                     Activity continues during outreach with breaks between sessions.
                   </p>
@@ -509,7 +511,7 @@ function ModelSetupStatus({ progress, reviewing, onReview }: { progress?: ModelW
   return (
     <div className="text-subtle-copy basis-full text-xs">
       Setup: {progress
-        ? `Name ${progress.nameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/9${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
+        ? `Username ${progress.nameDone ? 'done' : 'waiting'} · Full name ${progress.fullNameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/9${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
         : 'Starts after IG connects and this automation is enabled'}
       {progress?.error && <span className="text-status-danger mt-1 block">{progress.error}</span>}
       {progress?.pending && <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -94,6 +94,29 @@ test('model setup in Convex resets outreach on moves and opens it after nine pos
   expect(state).toMatchObject({ modelId: second._id, postSourceIds: [], startedAt: 2 })
   expect((await t.query(internal.profiles.queries.getByIdInternal,
     { profileId: profile._id }))?.outreachReady).toBe(false)
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id,
+    patch: { targetUsername: 'legacy_name', pending: { kind: 'name', date: '2026-09-27' } },
+    clear: [] })
+  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+    { profileId: profile._id, resolution: 'completed' })
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
+    .toMatchObject({ nameDone: true, targetUsername: 'legacy_name', postSourceIds: [] })
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id,
+    patch: { targetUsername: 'new_name', pending: { kind: 'username', date: '2026-09-27' } },
+    clear: [] })
+  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+    { profileId: profile._id, resolution: 'completed' })
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
+    .toMatchObject({ nameDone: true, targetUsername: 'new_name' })
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.fullNameDone)
+    .toBeUndefined()
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id,
+    patch: { fullName: 'New Name', pending: { kind: 'fullName', date: '2026-09-27' } }, clear: [] })
+  await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
+    { profileId: profile._id, resolution: 'completed' })
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0])
+    .toMatchObject({ nameDone: true, fullNameDone: true, fullName: 'New Name' })
   await t.mutation(internal.igAccounts.modelSetupPatchInternal,
     { profileId: profile._id, patch: { pending: { kind: 'avatar', date: '2026-09-27' } }, clear: [] })
   await t.mutation(internal.igAccounts.modelSetupReconcileInternal,
