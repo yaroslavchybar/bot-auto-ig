@@ -20,6 +20,8 @@ const profilePaths = [
   '/api/profiles/finish-delete',
   '/api/profiles/finish-rename',
   '/api/profiles/sync-status',
+  '/api/profiles/create-for-model',
+  '/api/profiles/ig-state',
 ];
 
 export function registerProfileRoutes(http: HttpRouter): void {
@@ -78,6 +80,15 @@ function registerProfileCrudRoutes(http: HttpRouter): void {
 }
 
 function registerProfileCreateUpdateRoutes(http: HttpRouter): void {
+  http.route({
+    path: '/api/profiles/create-for-model', method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      return jsonResponse(await ctx.runMutation(internal.profiles.mutations.createForModelInternal, {
+        modelId: body.modelId, accounts: body.accounts,
+      }));
+    }),
+  });
   http.route({
     path: '/api/profiles',
     method: 'POST',
@@ -157,6 +168,17 @@ function registerProfileDeleteRoutes(http: HttpRouter): void {
 /* ── Status mutation routes ── */
 
 function registerProfileStatusRoutes(http: HttpRouter): void {
+
+  http.route({
+    path: '/api/profiles/ig-state', method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      await ctx.runMutation(internal.profiles.mutations.setIgStateInternal, {
+        profileId: body.profileId, igLoggedIn: body.igLoggedIn, outreachReady: body.outreachReady,
+      });
+      return jsonResponse({ ok: true });
+    }),
+  });
 
   http.route({
     path: '/api/profiles/sync-status',

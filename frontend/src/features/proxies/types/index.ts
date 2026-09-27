@@ -3,12 +3,17 @@ export type ProxyItem = {
   name: string
   proxy: string
   proxyType: string
+  purpose: 'work' | 'login'
+  country?: string
   maxProfiles: number
+  loginCooldownUntil?: number
 }
 
 export type ProxyFormValues = {
   name: string
   proxy: string
   proxyType: string
+  purpose: 'work' | 'login'
+  country?: string
   maxProfiles: number
 }

@@ -2,6 +2,7 @@
 export type ProfileRecord = {
   renameFrom?: string
   id: string
+  igAccountId?: string
   name: string
   igLoggedIn?: boolean
   outreachReady?: boolean

@@ -37,6 +37,12 @@ export function watchChatProfiles(onUpdate: (value: string[]) => void, onError: 
   return subscribeToConvexQuery<string[]>(anyApi.profiles.queries.chatWorkerProfiles, { bridgeToken }, onUpdate, onError)
 }
 
+export type IgLoginWork = Array<{ profileId: string; retryAfter: number }>
+
+export function watchIgLoginWork(onUpdate: (value: IgLoginWork) => void, onError: (error: Error) => void) {
+  return subscribeToConvexQuery<IgLoginWork>(anyApi.igAccounts.loginWork, { bridgeToken }, onUpdate, onError)
+}
+
 function getClient(): ConvexClient {
   if (!convexUrl) throw new Error('Convex config missing. Set CONVEX_URL.')
   if (!bridgeToken) throw new Error('Convex config missing. Set INTERNAL_API_KEY.')

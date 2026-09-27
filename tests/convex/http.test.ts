@@ -47,7 +47,7 @@ test('maps list responses for authorized requests', async () => {
   const body = await response.json()
 
   expect(response.status).toBe(200)
-  expect(body).toEqual([{ id: list!._id, name: 'Leads' }])
+  expect(body).toEqual([{ id: list!._id, name: 'Leads', fullNames: [], usernames: [] }])
 })
 
 test('uses camelCase profile fields across the HTTP boundary', async () => {

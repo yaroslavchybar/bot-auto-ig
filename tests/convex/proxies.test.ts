@@ -1,7 +1,35 @@
 import { expect, test } from 'vitest'
 
-import { api } from '../../convex/_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedProfile } from './helpers'
+
+test('TXT import normalizes proxies, skips duplicates, and defaults to three profiles', async () => {
+  const t = createConvexTest()
+  const result = await t.mutation(api.proxies.importMany, {
+    text: '203.0.113.10:5432:demo:example\n203.0.113.10:5432:demo:example',
+    proxyType: 'http', purpose: 'work', country: 'us',
+  })
+  expect(result).toEqual({ imported: 1, skipped: 1 })
+  const rows = await t.query(api.proxies.list, {})
+  expect(rows[0]).toMatchObject({ maxProfiles: 3, purpose: 'work', country: 'us',
+    proxy: 'http://demo:example@203.0.113.10:5432' })
+})
+
+test('manual login proxy import keeps type and country and excludes work profiles', async () => {
+  const t = createConvexTest()
+  await t.mutation(api.proxies.importMany, {
+    text: 'gate.example.com:1080:login:secret', proxyType: 'socks5',
+    purpose: 'login', country: 'ro',
+  })
+  const [login] = await t.query(api.proxies.list, {})
+  expect(login).toMatchObject({ purpose: 'login', country: 'ro', proxyType: 'socks5',
+    proxy: 'socks5://login:secret@gate.example.com:1080' })
+  expect(await t.query(internal.proxies.loginInternal, {})).toMatchObject([{
+    _id: login._id, country: 'ro', purpose: 'login',
+  }])
+  await expect(seedProfile(t, { name: 'Cannot use login proxy', proxy: login.proxy,
+    proxyType: login.proxyType })).rejects.toThrow(/Login proxies cannot be assigned/)
+})
 
 test('saving a profile auto-saves its proxy once', async () => {
   const t = createConvexTest()

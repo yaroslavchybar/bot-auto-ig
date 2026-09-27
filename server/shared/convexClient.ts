@@ -21,7 +21,7 @@ if (!convexApiKey) {
 // Convert the URL if needed
 const convexUrl = convexCloudUrl.replace('.convex.cloud', '.convex.site');
 // Database types
-export type DbListRow = { id: string; name: string };
+export type DbListRow = { id: string; name: string; fullName?: string; fullNames?: string[]; usernames?: string[] };
 
 export type DbProfileRow = ProfileRecord;
 
@@ -193,6 +193,19 @@ export function leadListRequest(operation: 'rename' | 'delete', body: Record<str
     return convexFetch(`/api/lead-lists/${operation}`, { method: 'POST', body });
 }
 
+export function igAccountRequest<T>(operation: 'list' | 'byId' | 'byUsernameHash' | 'byProfile' |
+    'available' | 'connectedNames' | 'loginProxies' | 'claimLoginProxy' | 'releaseLoginProxy' |
+    'import' | 'assign' | 'recordBrowserLogin' | 'setState' | 'setUsername' |
+    'modelSetupList' | 'modelSetupEnroll' | 'modelSetupPatch' | 'modelSetupReconcile' |
+    'modelSetupGroupName' | 'modelSetupSaveGroupName',
+    body: Record<string, unknown> = {}): Promise<T> {
+    const mutation = ['import', 'assign', 'claimLoginProxy', 'releaseLoginProxy',
+        'recordBrowserLogin', 'setState', 'setUsername',
+        'modelSetupEnroll', 'modelSetupPatch', 'modelSetupReconcile', 'modelSetupSaveGroupName'].includes(operation);
+    return convexFetch('/api/ig-accounts-store', { method: 'POST', body: { operation, ...body },
+        maxRetries: mutation ? 0 : undefined });
+}
+
 // ==================== LISTS ====================
 
 export async function listsList(): Promise<DbListRow[]> {
@@ -263,6 +276,18 @@ export async function profilesSyncStatus(name: string, status: string, using: bo
     if (!cleanedName || !cleanedStatus) throw new Error('name and status are required');
     await convexFetch<any>('/api/profiles/sync-status', { method: 'POST', body: { name: cleanedName, status: cleanedStatus, using } });
     return true;
+}
+
+export function profilesCreateForModel(modelId: string, accounts: Array<{ id: string; username: string }>): Promise<Array<{ profileId: string; username: string }>> {
+    return convexFetch('/api/profiles/create-for-model', { method: 'POST', body: { modelId, accounts }, maxRetries: 0 });
+}
+
+export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): Promise<void> {
+    return convexFetch('/api/profiles/ig-state', { method: 'POST', body: { profileId, igLoggedIn }, maxRetries: 0 });
+}
+
+export function profilesSetOutreachReady(profileId: string): Promise<void> {
+    return convexFetch('/api/profiles/ig-state', { method: 'POST', body: { profileId, outreachReady: true }, maxRetries: 0 });
 }
 
 export type ChatSessionFile = { connected: false } | { connected: true; state: string; token: string };

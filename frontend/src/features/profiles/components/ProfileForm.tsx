@@ -202,9 +202,10 @@ function SavedProxyPicker({
   currentProxy?: string
   currentProxyType?: string
 }) {
-  const saved = useQuery(api.proxies.list, {})
+  const allSaved = useQuery(api.proxies.list, {})
   const profiles = useQuery(api.profiles.queries.list, {})
-  if (saved === undefined) return null
+  if (allSaved === undefined) return null
+  const saved = allSaved.filter(p => p.purpose === 'work')
   if (saved.length === 0) return null
 
   const usage = buildProxyUsage(

@@ -40,6 +40,14 @@ test('a session alternates browsing with multiple DM batches', async () => {
   assert.deepEqual(s.events.slice(0, 9), ['browse', 'send', 'send', 'browse', 'send', 'send', 'browse', 'send', 'send']);
 });
 
+test('a browser-only warmup spends its session browsing when outreach is unavailable', async () => {
+  const s = setup(0);
+  const session = s.session(10, 10);
+  await scheduleRoutine(session, s.controls);
+  assert.deepEqual(s.events, ['browse']);
+  assert.equal(s.controls.now(), session.deadline);
+});
+
 test('blocked recipients are replaced without increasing the delivered count', async () => {
   const s = setup(2, 2);
   const send = s.controls.send;

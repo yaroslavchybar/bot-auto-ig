@@ -146,7 +146,7 @@ function AutomationMobileCard({
             </Badge>
           </div>
           <p className="text-subtle-copy mt-2 text-xs">
-            {automation.listIds?.length ?? 0} profile lists
+            {automation.listIds?.length ? `${automation.listIds.length} model${automation.listIds.length === 1 ? '' : 's'}` : 'No model selected'}
           </p>
           {automation.error && (
             <p className="text-status-danger mt-1 line-clamp-2 text-xs">
@@ -223,7 +223,7 @@ function AutomationDesktopRow({
         <div className="flex flex-col gap-0.5">
           <span className="text-ink truncate">{automation.name}</span>
           <span className="text-subtle-copy text-xs">
-            {automation.listIds?.length ?? 0} profile lists
+            {automation.listIds?.length ? `${automation.listIds.length} model${automation.listIds.length === 1 ? '' : 's'}` : 'No model selected'}
           </span>
           {automation.error && (
             <span className="text-status-danger max-w-[280px] truncate text-xs">
@@ -283,7 +283,7 @@ export function AutomationsList({
         <Bot className="text-subtle-copy mb-4 h-10 w-10" />
         <h3 className="text-ink text-lg font-medium">No automations</h3>
         <p className="text-subtle-copy mt-1 max-w-sm text-sm">
-          Create an automation and select the profile lists it should manage.
+          Create one automation for each model you want to manage.
         </p>
       </div>
     )

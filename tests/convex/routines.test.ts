@@ -136,6 +136,63 @@ async function setup() {
   return { t, list, profile, automation, args, leads, loggedIn, leadListId };
 }
 
+test('model browsing starts the next Kyiv day while outreach waits for mobile login', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-26T20:30:00Z'));
+  const { t, profile, args } = await setup();
+  const accountId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert('igAccounts', {
+      ciphertext: 'encrypted', usernameHash: 'account-for-routine', status: 'assigned',
+      profileId: profile._id, createdAt: Date.now(),
+    });
+    await ctx.db.patch(profile._id, { igAccountId: id, igLoggedIn: true,
+      outreachReady: true });
+    return id;
+  });
+  expect(await t.query(internal.routines.ready, { ...args, checkpoint: true })).toBe(false);
+  await t.run((ctx) => ctx.db.patch(accountId, { browserLoggedInAt: Date.now() }));
+  expect(await t.query(internal.routines.ready, args)).toBe(false);
+  expect(await t.query(internal.routines.ready, { ...args, checkpoint: true })).toBe(false);
+  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]?.stage)
+    .toBe('Browser logged in');
+
+  vi.setSystemTime(new Date('2026-09-26T21:30:00Z'));
+  expect(await t.query(internal.routines.ready, args)).toBe(true);
+  expect(await t.query(internal.routines.ready, { ...args, checkpoint: true })).toBe(true);
+  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0])
+    .toMatchObject({ stage: 'Warm-up', allowance: 0 });
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+
+  const session = await t.mutation(internal.warmup.mutations.beginRunInternal, {
+    profileId: profile._id, automationId: String(args.automationId), runId: 'day-two',
+    minMinutes: 30, maxMinutes: 60, sessionMinMinutes: 5, sessionMaxMinutes: 10,
+    restMinMinutes: 60, restMaxMinutes: 120,
+  });
+  expect(session.minutes).toBeGreaterThanOrEqual(5);
+  expect(session.minutes).toBeLessThanOrEqual(10);
+  expect(session.remainingMinutes).toBeGreaterThanOrEqual(30);
+  await t.run((ctx) => ctx.db.patch(accountId, { status: 'connected' }));
+  expect(await t.query(internal.routines.ready, { ...args, checkpoint: true })).toBe(true);
+  expect((await t.query(internal.routines.target, args)).target).toBeGreaterThan(0);
+});
+
+test('a copied model automation needs a different model before enabling', async () => {
+  const { t, automation, list } = await setup();
+  const copy = await t.mutation(api.automations.mutations.duplicate, { id: automation._id });
+  expect(copy?.listIds).toEqual([]);
+  await expect(t.mutation(api.automations.mutations.setActive, {
+    id: copy!._id, isActive: true,
+  })).rejects.toThrow('Select exactly one model');
+  const other = (await seedList(t, 'Other model'))!;
+  await expect(t.mutation(api.automations.mutations.update, {
+    id: copy!._id, listIds: [list._id, other._id],
+  })).rejects.toThrow('Select exactly one model');
+  await t.mutation(api.automations.mutations.update, { id: copy!._id, listIds: [other._id] });
+  expect((await t.mutation(api.automations.mutations.setActive, {
+    id: copy!._id, isActive: true,
+  }))?.isActive).toBe(true);
+});
+
 
 test('classified male leads are claimed exactly once', async () => {
   const { t, args, loggedIn, leadListId } = await setup();
@@ -256,26 +313,22 @@ test('daily allowance grows only after confirmed outreach days', async () => {
   await t.mutation(internal.routines.reserve, args);
   expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]).toMatchObject({ used: 1, allowance: 3 });
 });
-test("overlapping enabled automations are rejected on activation; adding to another list moves the profile", async () => {
+test("one automation owns each model; moving a profile changes its automation", async () => {
   const { t, list, profile } = await setup();
   const secondList = (await seedList(t, "Second"))!;
+  await expect(t.mutation(api.automations.mutations.create, {
+    name: "Duplicate model", nodes: [], edges: [], listIds: [list._id], routine: defaultRoutine,
+  })).rejects.toThrow('already has an automation');
   const second = (await t.mutation(api.automations.mutations.create, {
     name: "Second",
     nodes: [],
     edges: [],
-    listIds: [list._id],
+    listIds: [secondList._id],
     routine: defaultRoutine,
   }))!;
-  await expect(
-    t.mutation(api.automations.mutations.setActive, {
-      id: second._id,
-      isActive: true,
-    }),
-  ).rejects.toThrow("multiple enabled");
-  await t.mutation(api.automations.mutations.update, {
-    id: second._id,
-    listIds: [secondList._id],
-  });
+  await expect(t.mutation(api.automations.mutations.update, {
+    id: second._id, listIds: [list._id],
+  })).rejects.toThrow('already has an automation');
   await t.mutation(api.automations.mutations.setActive, {
     id: second._id,
     isActive: true,

@@ -19,6 +19,9 @@ import { automationsRouter } from './automations/index.js'
 import displaysRouter from './displays/routes.js'
 import leadListsRouter from './leads/routes.js'
 import chatRouter from './chat/routes.js'
+import igAccountsRouter from './ig-accounts/routes.js'
+import { startIgAccountWorker } from './ig-accounts/login.js'
+import { startModelWarmupWorker } from './ig-accounts/warmup.js'
 import { startChatWorker } from './chat/worker.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
 import { profileManager } from './profiles/index.js'
@@ -73,7 +76,7 @@ app.use((req, res, next) => {
     next()
 })
 
-const jsonParser = express.json()
+const jsonParser = express.json({ limit: '1mb' })
 app.use((req, _res, next) => {
     // File bytes are streamed to the browser worker without JSON parsing.
     if (req.method === 'POST' && /^\/api\/displays\/\d+\/file-picker$/.test(req.path)) return next()
@@ -114,6 +117,10 @@ app.use('/api/automations', requireApiAuthOrInternalKey, apiLimiter, automations
 app.use('/api/displays', requireApiAuth, apiLimiter, displaysRouter)
 app.use('/api/lead-lists', requireApiAuth, apiLimiter, leadListsRouter)
 app.use('/api/chat', requireApiAuth, apiLimiter, chatRouter)
+app.use('/api/ig-accounts', requireApiAuth, apiLimiter, igAccountsRouter)
+
+startIgAccountWorker()
+startModelWarmupWorker()
 
 // Sentry error handler must be registered after all routes
 Sentry.setupExpressErrorHandler(app)

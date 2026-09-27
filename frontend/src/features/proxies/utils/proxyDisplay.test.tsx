@@ -17,7 +17,7 @@ test('list and detail markup, including tooltips, never contains proxy credentia
   ]) {
     const profile = { id: 'p', name: 'Profile', proxy, proxyType: 'socks5' }
     const views = [
-      <ProxiesList proxies={[{ ...profile, maxProfiles: 3 }]} usage={{}} loading={false} onEdit={noop} onDelete={noop} />,
+      <ProxiesList proxies={[{ ...profile, purpose: 'work', maxProfiles: 3 }]} usage={{}} loading={false} onEdit={noop} onDelete={noop} />,
       <ProfilesList profiles={[profile]} loading={false} onDetails={noop} onEdit={noop} onDelete={noop} onLogs={noop} onToggleStatus={noop} />,
       <ProfileDetails profile={profile} />,
     ]

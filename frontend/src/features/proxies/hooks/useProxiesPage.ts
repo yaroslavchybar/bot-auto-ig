@@ -37,7 +37,7 @@ export function useProxiesPage() {
     const q = searchQuery.trim().toLowerCase()
     if (!q) return proxies
     return proxies.filter((p) =>
-      [p.name, p.proxy, p.proxyType].some((f) =>
+      [p.name, p.proxy, p.proxyType, p.purpose, p.country].some((f) =>
         String(f ?? '').toLowerCase().includes(q),
       ),
     )
@@ -62,7 +62,8 @@ export function useProxiesPage() {
       try {
         const { proxy, proxyType } = normalizeProxy(rawProxy, values.proxyType)
         if (isCreateOpen) {
-          await createProxy({ name, proxy, proxyType, maxProfiles })
+          await createProxy({ name, proxy, proxyType, purpose: values.purpose,
+            country: values.country, maxProfiles })
           setIsCreateOpen(false)
         } else if (editProxy) {
           await updateProxy({
@@ -70,6 +71,8 @@ export function useProxiesPage() {
             name,
             proxy,
             proxyType,
+            purpose: values.purpose,
+            country: values.country,
             maxProfiles,
           })
           setEditProxyId(null)

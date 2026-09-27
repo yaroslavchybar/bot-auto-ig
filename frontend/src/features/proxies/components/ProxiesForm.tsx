@@ -14,6 +14,7 @@ import type { ProxyFormValues, ProxyItem } from '../types'
 import { normalizeProxy } from '../../../../../server/shared/proxy'
 import { stripScheme } from '../utils/maskProxy'
 import { formatProxyForInput } from '../utils/formatProxyForInput'
+import { CountrySelect } from './CountrySelect'
 
 interface ProxiesFormProps {
   mode: 'create' | 'edit'
@@ -36,6 +37,8 @@ export function ProxiesForm({
 }: ProxiesFormProps) {
   const [name, setName] = useState(initialData?.name ?? '')
   const [proxyType, setProxyType] = useState(initialData?.proxyType ?? 'http')
+  const [purpose, setPurpose] = useState<'work' | 'login'>(initialData?.purpose ?? 'work')
+  const [country, setCountry] = useState(initialData?.country ?? '')
   const [proxy, setProxy] = useState(() => formatProxyForInput(initialData?.proxy, initialData?.proxyType))
   const [maxProfiles, setMaxProfiles] = useState(
     initialData && initialData.maxProfiles >= 1 ? String(initialData.maxProfiles) : '3',
@@ -53,8 +56,12 @@ export function ProxiesForm({
       setLocalError('Proxy is required')
       return
     }
-    const limit = Math.floor(Number(maxProfiles))
-    if (!Number.isFinite(limit) || limit < 1) {
+    if (purpose === 'login' && !country) {
+      setLocalError('Choose the login proxy country')
+      return
+    }
+    const limit = purpose === 'login' ? 3 : Math.floor(Number(maxProfiles))
+    if (purpose === 'work' && (!Number.isFinite(limit) || limit < 1)) {
       setLocalError('Limit must be at least 1')
       return
     }
@@ -67,7 +74,7 @@ export function ProxiesForm({
       const normalized = normalizeProxy(trimmedProxy, proxyType)
       if (!normalized.proxy) { setLocalError('Proxy is required'); return }
       setLocalError(null)
-      onSave({ name: trimmedName, ...normalized, maxProfiles: limit })
+      onSave({ name: trimmedName, ...normalized, purpose, country, maxProfiles: limit })
     } catch {
       setLocalError('Invalid proxy URL or protocol')
     }
@@ -96,6 +103,23 @@ export function ProxiesForm({
             className="brand-focus bg-field border-line h-10 font-medium text-ink"
           />
         </div>
+
+        <div className="grid gap-1.5">
+          <Label htmlFor="proxy-purpose" className="text-muted-copy text-xs font-semibold tracking-wider uppercase">
+            Use for
+          </Label>
+          <Select value={purpose} onValueChange={(value: 'work' | 'login') => setPurpose(value)} disabled={saving}>
+            <SelectTrigger id="proxy-purpose" className="brand-focus bg-field border-line h-10 text-ink">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="panel-dropdown">
+              <SelectItem value="work">Work</SelectItem>
+              <SelectItem value="login">Login</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <CountrySelect value={country} onChange={setCountry} disabled={saving} />
 
         <div className="grid gap-1.5">
           <Label
@@ -154,7 +178,7 @@ export function ProxiesForm({
           </p>
         </div>
 
-        <div className="grid gap-1.5">
+        {purpose === 'work' && <div className="grid gap-1.5">
           <Label
             htmlFor="proxy-limit"
             className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
@@ -177,7 +201,7 @@ export function ProxiesForm({
           <p className="text-subtle-copy ml-1 text-[10px]">
             How many profiles can use this proxy.
           </p>
-        </div>
+        </div>}
       </div>
 
       {localError && (

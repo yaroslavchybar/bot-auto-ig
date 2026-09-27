@@ -8,6 +8,21 @@
 # which CI wipes on every deploy). Only the frontend port is published, on
 # localhost: public traffic enters through Caddy (HTTPS).
 services:
+  spoofer:
+    image: ghcr.io/yaroslavchybar/bot-auto-ig:spoofer-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
+    container_name: ig-bot-spoofer
+    restart: unless-stopped
+    cpus: 0.45
+    mem_limit: 768m
+    pids_limit: 64
+    volumes:
+      - /home/alwyzon/ig-bot/data:/app/data
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   server:
     image: ghcr.io/yaroslavchybar/bot-auto-ig:server-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-server
@@ -19,6 +34,7 @@ services:
     environment:
       NODE_ENV: production
       SERVER_PORT: 3001
+      SPOOFER_URL: http://spoofer:3002/variants
       DISPLAY: :99
       # Cloak cache (Pro binary, GeoIP db) lives on the persisted data
       # volume: without this the container re-downloads ~70MB+ on every
@@ -26,6 +42,8 @@ services:
       CLOAKBROWSER_CACHE_DIR: /app/data/.cloakbrowser
     volumes:
       - /home/alwyzon/ig-bot/data:/app/data
+    depends_on:
+      - spoofer
     logging:
       driver: json-file
       options:

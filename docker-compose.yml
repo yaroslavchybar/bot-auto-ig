@@ -1,4 +1,17 @@
 services:
+  spoofer:
+    build:
+      context: ./tools/spoofer
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+    cpus: 0.45
+    mem_limit: 768m
+    pids_limit: 64
+    ports:
+      - "127.0.0.1:3002:3002"
+    restart: unless-stopped
+
   server:
     build:
       context: ./server
@@ -16,6 +29,7 @@ services:
       - .env.local
     environment:
       - SERVER_PORT=3001
+      - SPOOFER_URL=http://spoofer:3002/variants
       - DISPLAY=:99
       # Same persisted-cache reasoning as prod: the 70MB GeoIP db and the
       # browser binary survive container recreates.
@@ -24,6 +38,8 @@ services:
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
       - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
     restart: unless-stopped
+    depends_on:
+      - spoofer
     # Match production: allow server cleanup before display services stop.
     stop_grace_period: 90s
 

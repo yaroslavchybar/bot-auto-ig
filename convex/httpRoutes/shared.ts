@@ -126,6 +126,9 @@ export function mapListToApi(list: any): any {
   return {
     id: list._id,
     name: list.name,
+    fullName: list.fullName,
+    fullNames: list.fullNames,
+    usernames: list.usernames,
   };
 }
 

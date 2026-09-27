@@ -80,7 +80,15 @@ function ProxyTypeBadge({ proxyType }: { proxyType: string }) {
   )
 }
 
+function ProxyPurposeBadge({ purpose }: { purpose: ProxyItem['purpose'] }) {
+  return <Badge variant="outline" className="text-[11px] capitalize">{purpose}</Badge>
+}
+
 function ProxyUsageCell({ proxy, usage }: { proxy: ProxyItem; usage: ProxyUsage }) {
+  if (proxy.purpose === 'login') return <span className="text-subtle-copy text-xs">
+    {proxy.loginCooldownUntil && proxy.loginCooldownUntil > Date.now()
+      ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}` : 'Ready for login'}
+  </span>
   const over = usage.count > proxy.maxProfiles
   return (
     <div className="flex flex-col gap-0.5">
@@ -127,11 +135,17 @@ function ProxyMobileCard({
           <div className="flex items-center gap-2">
             <h3 className="text-ink truncate text-base font-semibold">{proxy.name}</h3>
             <ProxyTypeBadge proxyType={proxy.proxyType} />
+            <ProxyPurposeBadge purpose={proxy.purpose} />
           </div>
           <p className="text-subtle-copy mt-2 truncate font-mono text-xs">
             {maskProxyForDisplay(proxy.proxy)}
           </p>
-          <p className="text-subtle-copy mt-1 text-xs">
+          {proxy.country && <p className="text-subtle-copy mt-1 text-xs">{proxy.country.toUpperCase()}</p>}
+          {proxy.purpose === 'login' && <p className="text-subtle-copy mt-1 text-xs">
+            {proxy.loginCooldownUntil && proxy.loginCooldownUntil > Date.now()
+              ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}` : 'Ready for login'}
+          </p>}
+          {proxy.purpose === 'work' && <p className="text-subtle-copy mt-1 text-xs">
             Usage:{' '}
             <span className={cn('font-mono font-medium', usage.count > proxy.maxProfiles ? 'text-status-danger' : 'text-ink')}>
               {usage.count}/{proxy.maxProfiles}
@@ -139,7 +153,7 @@ function ProxyMobileCard({
             {usage.profileNames.length > 0 && (
               <span className="ml-1">{usage.profileNames.join(', ')}</span>
             )}
-          </p>
+          </p>}
         </div>
         <div onClick={(event) => event.stopPropagation()}>
           <ProxyActionsMenu proxy={proxy} onEdit={onEdit} onDelete={onDelete} />
@@ -184,9 +198,11 @@ function ProxyDesktopRow({
       </TableCell>
       <TableCell className="font-medium">
         <span className="text-ink">{proxy.name}</span>
+        {proxy.country && <span className="text-subtle-copy ml-2 text-xs">{proxy.country.toUpperCase()}</span>}
       </TableCell>
       <TableCell>
-        <ProxyTypeBadge proxyType={proxy.proxyType} />
+        <div className="flex gap-1"><ProxyTypeBadge proxyType={proxy.proxyType} />
+          <ProxyPurposeBadge purpose={proxy.purpose} /></div>
       </TableCell>
       <TableCell>
         <span className="text-subtle-copy font-mono text-xs">

@@ -9,6 +9,7 @@ import { registerRoutineRoutes } from './httpRoutes/routines';
 import { registerScraperRoutes } from './httpRoutes/scraper';
 import { registerLeadListRoutes } from './httpRoutes/leadLists';
 import { registerChatRoutes } from './httpRoutes/chat';
+import { registerIgAccountRoutes } from './httpRoutes/igAccounts';
 
 const http = httpRouter();
 
@@ -22,5 +23,6 @@ registerRoutineRoutes(http);
 registerScraperRoutes(http);
 registerLeadListRoutes(http);
 registerChatRoutes(http);
+registerIgAccountRoutes(http);
 
 export default http;

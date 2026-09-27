@@ -41,7 +41,10 @@ export function AutomationsPage() {
     )
 
   const handleDuplicate = (automation: Automation) =>
-    void act(() => duplicate({ id: automation._id }))
+    void act(async () => {
+      const copy = await duplicate({ id: automation._id })
+      if (copy) setEditing(copy._id)
+    })
 
   const handleDeleteConfirm = () => {
     if (!deleteTarget) return

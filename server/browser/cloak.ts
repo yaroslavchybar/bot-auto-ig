@@ -99,7 +99,7 @@ async function saveSession(
   }
 }
 
-type SessionOptions = { headless?: boolean; display?: string }
+type SessionOptions = { headless?: boolean; display?: string; proxyOverride?: string }
 
 /** Cloak platform persona. mac stays mac, everything else runs as Windows. */
 export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
@@ -152,7 +152,7 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
   // Retry a previous failed Convex write whenever disk has the seed but the
   // profile row does not. Wait for persistence before making the session usable.
   if (profile.fingerprintSeed !== seed) await persistSeed(profile, seed)
-  const proxy = parseProxy(profile.proxy, profile.proxyType)
+  const proxy = parseProxy(options.proxyOverride ?? profile.proxy, options.proxyOverride ? undefined : profile.proxyType)
   return {
     userDataDir: profileDir,
     headless: options.headless ?? false,

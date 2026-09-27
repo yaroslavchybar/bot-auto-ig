@@ -254,6 +254,31 @@ export class InstagramChat {
     } finally { loggingOut.delete(profileId); }
   }
 
+  /** Profile warmup uses the same authenticated mobile device and saved proxy as Chat. */
+  async updateProfile(username: string, fullName: string): Promise<void> {
+    const current = await this.ig.account.currentUser();
+    const updated = await this.ig.account.editProfile({
+      username, first_name: fullName,
+      external_url: current.external_url ?? '', gender: String(current.gender ?? ''),
+      phone_number: current.phone_number ?? '', biography: current.biography ?? '',
+      email: current.email ?? '',
+    });
+    if (updated.username !== username) throw new Error('Instagram did not confirm the username change');
+    await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
+  }
+
+  async changeProfilePicture(image: Buffer): Promise<void> {
+    const result = await this.ig.account.changeProfilePicture(image);
+    if (result.status !== 'ok') throw new Error('Instagram did not confirm the profile picture change');
+    await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
+  }
+
+  async postPhoto(image: Buffer): Promise<void> {
+    const result = await this.ig.publish.photo({ file: image, caption: '' });
+    if (result.status !== 'ok' || !result.media?.id) throw new Error('Instagram did not confirm the photo post');
+    await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
+  }
+
   async inbox(onlyUnread = false): Promise<{ viewerId: string; threads: ChatThread[] }> {
     const threads = await fetchChatInboxPages(query =>
       mobileRequest(this.ig, 'GET', 'direct_v2/inbox/', undefined, query), onlyUnread);

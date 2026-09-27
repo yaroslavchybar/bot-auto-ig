@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
 import { CircleAlert } from 'lucide-react'
 import { api } from '../../../../../convex/_generated/api'
+import { apiFetch } from '@/lib/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
   defaultRoutine,
@@ -18,7 +19,6 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
@@ -35,6 +35,17 @@ import { browseFeed } from '../activities/browsing/browse-feed'
 import { cn } from '@/lib/utils'
 
 const tabs = ['General', 'Warm-up & activity', 'Outreach', 'Profiles'] as const
+
+type ModelWarmup = {
+  profileId: string
+  modelId: string
+  startedAt: number
+  nameDone?: boolean
+  avatarDone?: boolean
+  postSourceIds: string[]
+  pending?: { kind: string }
+  error?: string
+}
 
 export function RoutinePopup({
   automation,
@@ -53,6 +64,7 @@ export function RoutinePopup({
   )
   const [saving, setSaving] = useState(false)
   const lists = useQuery(api.lists.list, {})
+  const automations = useQuery(api.automations.queries.list, {})
   const leadLists = useQuery(api.leads.lists, {})
   const create = useMutation(api.automations.mutations.create)
   const update = useMutation(api.automations.mutations.update)
@@ -89,8 +101,8 @@ export function RoutinePopup({
     setSaving(true)
     try {
       validateRoutine(policy)
-      if (!name.trim() || !listIds.length)
-        throw new Error('Enter a name and select profile lists')
+      if (!name.trim() || listIds.length !== 1)
+        throw new Error('Enter a name and select one model')
       const data = {
         name: name.trim(),
         listIds,
@@ -153,14 +165,14 @@ export function RoutinePopup({
           <div className="bg-status-info-soft border-status-info-border text-status-info flex shrink-0 items-start gap-2 rounded-xl border px-4 py-2.5 text-xs">
             <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             Disable and wait for the current session to stop before editing
-            settings. Profiles and list membership can still be managed.
+            settings. Profiles and model membership can still be managed.
           </div>
         )}
 
         <div className="min-h-0 flex-1 overflow-auto py-2">
           {tab === 'Profiles' ? (
             automation ? (
-              <RoutineProfiles automationId={automation._id} />
+              <RoutineProfiles automationId={automation._id} modelId={automation.listIds?.[0]} />
             ) : (
               <p className="text-subtle-copy text-sm">
                 Save the automation to manage profile setup and progress.
@@ -184,38 +196,28 @@ export function RoutinePopup({
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Sender profile lists</Label>
+                    <Label>Model</Label>
                     {lists === undefined ? (
-                      <p className="text-subtle-copy text-sm">Loading lists…</p>
+                      <p className="text-subtle-copy text-sm">Loading models…</p>
                     ) : lists.length === 0 ? (
                       <p className="text-subtle-copy text-sm">
-                        Create a profile list in Lists Manager first.
+                        Create a model first.
                       </p>
                     ) : (
-                      <div className="border-line-soft overflow-hidden rounded-xl border">
-                        {lists.map((list, i) => (
-                          <label
-                            key={list._id}
-                            className={cn(
-                              'bg-panel-subtle/40 flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-panel-subtle',
-                              i > 0 && 'border-line-soft border-t',
-                            )}
-                          >
-                            <Checkbox
-                              checked={listIds.includes(list._id)}
-                              onCheckedChange={(checked) =>
-                                setListIds((ids) =>
-                                  checked
-                                    ? [...ids, list._id]
-                                    : ids.filter((id) => id !== list._id),
-                                )
-                              }
-                              className="brand-checkbox"
-                            />
-                            <span className="text-copy">{list.name}</span>
-                          </label>
-                        ))}
-                      </div>
+                      <Select value={listIds[0] ?? ''} onValueChange={(id) => setListIds([id as Id<'lists'>])}>
+                        <SelectTrigger className="bg-field border-line"><SelectValue placeholder="Choose a model" /></SelectTrigger>
+                        <SelectContent className="panel-dropdown">
+                          {lists.map((list) => {
+                            const assigned = automations?.some((row) =>
+                              row._id !== automation?._id && row.routine && row.listIds?.includes(list._id))
+                            return (
+                              <SelectItem key={list._id} value={list._id} disabled={assigned}>
+                                {list.name}{assigned ? ' · already has an automation' : ''}
+                              </SelectItem>
+                            )
+                          })}
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
                   <label className="bg-panel-subtle/40 border-line-soft flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3">
@@ -240,10 +242,12 @@ export function RoutinePopup({
               {tab === 'Warm-up & activity' && (
                 <>
                   <p className="text-subtle-copy text-sm">
-                    Mark profiles Logged in to start warm-up. Mark Ready for
-                    outreach when their IG account is set up. Activity continues
-                    during outreach. Sessions run around the clock with breaks
-                    for each profile.
+                    Browser login starts model setup. Daily feed browsing starts
+                    the next day with its time budget. On day 3, the mobile session
+                    connects through the Work proxy and the name changes. Day 4
+                    adds the avatar and starts nine daily posts. After
+                    the ninth post, the profile becomes ready for outreach.
+                    Activity continues during outreach with breaks between sessions.
                   </p>
                   <GroupedInputs
                     inputs={browseFeed.inputs}
@@ -377,11 +381,31 @@ export function RoutinePopup({
 
 function RoutineProfiles({
   automationId,
+  modelId,
 }: {
   automationId: Id<'automations'>
+  modelId?: Id<'lists'>
 }) {
   const rows = useQuery(api.routines.accounts, { automationId })
   const setAccount = useMutation(api.routines.setAccount)
+  const [warmups, setWarmups] = useState<ModelWarmup[]>([])
+  const [warmupError, setWarmupError] = useState('')
+  const [reviewing, setReviewing] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!modelId) return
+    let active = true
+    const refresh = () => {
+      void apiFetch<ModelWarmup[]>('/api/ig-accounts/warmup')
+        .then((result) => {
+          if (active) { setWarmups(result.filter((item) => item.modelId === modelId)); setWarmupError('') }
+        })
+        .catch((error) => { if (active) setWarmupError(error instanceof Error ? error.message : String(error)) })
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 30_000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [modelId])
   const mutate = async (args: Parameters<typeof setAccount>[0]) => {
     try {
       await setAccount(args)
@@ -389,16 +413,30 @@ function RoutineProfiles({
       toast.error(String(e))
     }
   }
+  const reconcile = async (profileId: string, resolution: 'completed' | 'failed') => {
+    if (resolution === 'failed' && !window.confirm('Confirm this action did not succeed in Instagram. Retrying a successful post would publish it twice.')) return
+    setReviewing(profileId)
+    try {
+      await apiFetch(`/api/ig-accounts/warmup/${profileId}/reconcile`, {
+        method: 'POST', body: { resolution },
+      })
+      const result = await apiFetch<ModelWarmup[]>('/api/ig-accounts/warmup')
+      setWarmups(result.filter((item) => item.modelId === modelId))
+      toast.success(resolution === 'completed' ? 'Action marked complete' : 'Action ready to retry')
+    } catch (error) { toast.error(error instanceof Error ? error.message : String(error)) }
+    finally { setReviewing(null) }
+  }
   if (!rows)
     return <p className="text-subtle-copy text-sm">Loading profiles…</p>
   if (!rows.length)
     return (
       <p className="text-subtle-copy text-sm">
-        Add profiles to the selected lists to start.
+        Add profiles to this model to start.
       </p>
     )
   return (
     <div className="space-y-2">
+      {warmupError && <p role="alert" className="text-status-danger text-xs">Warm-up progress: {warmupError}</p>}
       {rows.map((row) => (
         <div
           key={row.profileId}
@@ -426,6 +464,9 @@ function RoutineProfiles({
             {row.activeDays} active days · DMs {row.sent}/{row.allowance}
             {row.budgetExhausted && row.sent < row.allowance ? ' · Target incomplete: time budget used' : ''}
           </span>
+          <ModelSetupStatus progress={warmups.find((item) => item.profileId === row.profileId)}
+            reviewing={reviewing === row.profileId}
+            onReview={(resolution) => void reconcile(String(row.profileId), resolution)} />
           <Button
             size="sm"
             variant="outline"
@@ -452,13 +493,30 @@ function RoutineProfiles({
             Next session:{' '}
             {row.nextRunAt
               ? new Date(row.nextRunAt).toLocaleString()
-              : 'When logged in and its rest period ends'}
+              : 'When eligible and its rest period ends'}
           </span>
           {row.issue && (
             <p className="text-status-danger basis-full text-xs">{row.issue}</p>
           )}
         </div>
       ))}
+    </div>
+  )
+}
+
+function ModelSetupStatus({ progress, reviewing, onReview }: { progress?: ModelWarmup;
+  reviewing: boolean; onReview: (resolution: 'completed' | 'failed') => void }) {
+  return (
+    <div className="text-subtle-copy basis-full text-xs">
+      Setup: {progress
+        ? `Name ${progress.nameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/9${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
+        : 'Starts after IG connects and this automation is enabled'}
+      {progress?.error && <span className="text-status-danger mt-1 block">{progress.error}</span>}
+      {progress?.pending && <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span>Check Instagram before resolving this {progress.pending.kind} action.</span>
+        <Button size="sm" variant="outline" disabled={reviewing} onClick={() => onReview('completed')}>It succeeded</Button>
+        <Button size="sm" variant="outline" disabled={reviewing} onClick={() => onReview('failed')}>It failed, retry</Button>
+      </div>}
     </div>
   )
 }

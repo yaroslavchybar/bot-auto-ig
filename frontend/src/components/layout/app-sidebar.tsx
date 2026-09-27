@@ -9,6 +9,7 @@ import {
   Monitor,
   Globe,
   MessageSquare,
+  KeyRound,
 } from 'lucide-react'
 
 import {
@@ -33,6 +34,7 @@ export const NAV_IDS = [
   'proxies',
   'vnc',
   'chat',
+  'ig_accounts',
 ] as const
 
 export type NavId = (typeof NAV_IDS)[number]
@@ -53,14 +55,15 @@ export const NAV_ITEMS = [
     breadcrumb: 'Automations',
   },
   {
-    title: 'Lists Manager',
+    title: 'Models',
     id: 'lists',
     to: '/lists',
     icon: List,
-    breadcrumb: 'Lists Manager',
+    breadcrumb: 'Models',
   },
   { title: 'Scraper', id: 'scraper', to: '/scraper', icon: Users, breadcrumb: 'Scraper' },
   { title: 'Chat', id: 'chat', to: '/chat', icon: MessageSquare, breadcrumb: 'Chat' },
+  { title: 'IG Accounts', id: 'ig_accounts', to: '/ig-accounts', icon: KeyRound, breadcrumb: 'IG Accounts' },
   {
     title: 'Proxies',
     id: 'proxies',

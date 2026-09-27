@@ -18,6 +18,13 @@ const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
     .withIndex("by_profile", (q) => q.eq("profileId", profileId))
     .unique();
 
+function kyivDateKey(timestamp: number): string {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kyiv',
+    year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(timestamp);
+  const get = (kind: string) => parts.find(part => part.type === kind)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 export async function assertAssignments(
   ctx: QueryCtx,
   candidate?: Doc<"automations">,
@@ -74,6 +81,10 @@ async function eligibility(
     p.renameFrom
   )
     return null;
+  const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
+  if (p.igAccountId && igAccount?.status !== 'connected' &&
+    !(igAccount?.status === 'assigned' && igAccount.browserLoggedInAt))
+    return null;
   if (!routineLists(a).some((id) => p.listIds?.includes(id as Id<"lists">)))
     return null;
   const matches = (await ctx.db.query("automations").collect()).filter(
@@ -88,6 +99,7 @@ async function eligibility(
     policy: a.routine,
     state,
     profile: p,
+    igAccount,
   };
 }
 
@@ -136,6 +148,7 @@ export const accounts = query({
     return Promise.all(
       profiles.map(async (p) => {
         const state = await progress(ctx, p._id);
+        const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
         const date = dayKey();
         const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', p._id)).unique();
         return {
@@ -145,6 +158,11 @@ export const accounts = query({
           issue: state?.issue,
           stage: !p.igLoggedIn
             ? "Not logged in"
+            : p.igAccountId && igAccount?.status !== 'connected'
+            ? igAccount?.browserLoggedInAt
+              ? kyivDateKey(Date.now()) <= kyivDateKey(igAccount.browserLoggedInAt)
+                ? "Browser logged in" : "Warm-up"
+              : "Connecting"
             : !p.outreachReady ||
                 (state?.activeDays ?? 0) + 1 <
                   (a.routine?.outreachStartDay ?? 7)
@@ -155,7 +173,7 @@ export const accounts = query({
           sent: state?.date === date ? state.sentToday ?? 0 : 0,
           budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
           allowance:
-            a.routine && p.outreachReady
+            a.routine && p.outreachReady && (!p.igAccountId || igAccount?.status === 'connected')
               ? state?.date === date
                 ? state.allowance
                 : dmAllowance(
@@ -176,7 +194,8 @@ export const target = internalQuery({
   args: { automationId: v.id('automations'), profileId: v.id('profiles') },
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled) return { target: 0, remaining: 0, sent: 0 };
+    if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
+      !e.profile.outreachReady || !e.policy.outreachEnabled) return { target: 0, remaining: 0, sent: 0 };
     const today = dayKey();
     const s = e.state;
     const allowance = Math.min(e.policy.maxDms, s?.date === today ? s.allowance
@@ -196,8 +215,10 @@ export const ready = internalQuery({
   handler: async (ctx, args) => {
     const result = await eligibility(ctx, args.automationId, args.profileId);
     if (!result) return false;
-    if (args.checkpoint) return true;
     const now = args.now ?? Date.now();
+    if (result.igAccount?.status === 'assigned' && result.igAccount.browserLoggedInAt &&
+      kyivDateKey(now) <= kyivDateKey(result.igAccount.browserLoggedInAt)) return false;
+    if (args.checkpoint) return true;
     const date = dayKey(now);
     const warmup = await ctx.db
       .query("warmupStates")
@@ -253,7 +274,8 @@ export const reserve = internalMutation({
   args: { automationId: v.id('automations'), profileId: v.id('profiles') },
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!e || !e.profile.outreachReady || !e.policy.outreachEnabled || !e.policy.leadListId) return null;
+    if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
+      !e.profile.outreachReady || !e.policy.outreachEnabled || !e.policy.leadListId) return null;
     if (!await ctx.db.get(e.policy.leadListId)) return null;
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
@@ -283,7 +305,9 @@ export const beginSend = internalQuery({
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
     const today = dayKey(args.now ?? Date.now());
-    return !!(lead && lead.senderId === args.profileId && !lead.dmSent && !lead.dmBlocked && e && e.profile.outreachReady && e.policy.outreachEnabled && today === args.date);
+    return !!(lead && lead.senderId === args.profileId && !lead.dmSent && !lead.dmBlocked &&
+      e && (!e.profile.igAccountId || e.igAccount?.status === 'connected') &&
+      e.profile.outreachReady && e.policy.outreachEnabled && today === args.date);
   },
 });
 
@@ -324,7 +348,8 @@ const followDelay = 7 * 24 * 60 * 60_000;
 export const followTasks = internalQuery({
   args: { automationId: v.id('automations'), profileId: v.id('profiles'), now: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    if (!await eligibility(ctx, args.automationId, args.profileId)) return [];
+    const e = await eligibility(ctx, args.automationId, args.profileId);
+    if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected')) return [];
     const due = await ctx.db.query('leads').withIndex('by_follow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', (args.now ?? Date.now()) - followDelay)).take(5);
     return due.map(lead => ({ leadId: lead._id, username: lead.username }));
   },

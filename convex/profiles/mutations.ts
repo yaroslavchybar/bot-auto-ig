@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
+import { proxyKey, proxyPurpose, resolveMaxProfiles } from '../proxies';
 import { clearProfileChatCache } from '../chatCache';
 
 export const setIgState = mutation({
@@ -9,9 +10,26 @@ export const setIgState = mutation({
   handler: async (ctx, { profileId, ...state }) => {
     const profile = await ctx.db.get(profileId)
     if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
-    await ctx.db.patch(profileId, state)
+    if (Object.entries(state).some(([key, value]) =>
+      value !== undefined && profile[key as keyof typeof profile] !== value))
+      await ctx.db.patch(profileId, state)
   },
 })
+
+export const setIgStateInternal = internalMutation({
+  args: { profileId: v.id('profiles'), igLoggedIn: v.optional(v.boolean()), outreachReady: v.optional(v.boolean()) },
+  handler: async (ctx, { profileId, igLoggedIn, outreachReady }) => {
+    const profile = await ctx.db.get(profileId);
+    if (!profile || profile.status === 'deleting') throw new DomainError('NOT_FOUND', 'Profile unavailable');
+    if (igLoggedIn === undefined && outreachReady === undefined) throw new DomainError('VALIDATION', 'No IG state provided');
+    const patch = {
+      ...(igLoggedIn !== undefined ? { igLoggedIn } : {}),
+      ...(outreachReady !== undefined ? { outreachReady } : {}),
+    };
+    if (Object.entries(patch).some(([key, value]) => profile[key as keyof typeof profile] !== value))
+      await ctx.db.patch(profileId, patch);
+  },
+});
 
 export const saveChatSessionInternal = internalMutation({
   args: { profileId: v.id('profiles'), storageId: v.id('_storage'), token: v.string(),
@@ -70,7 +88,68 @@ export const finishRenameInternal = internalMutation({
 		await ctx.db.patch(profileId, { renameFrom: undefined });
 	},
 });
-import { createProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
+import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";
+import { routineLists } from '../routinePolicy';
+
+/** Create a batch and reserve permanent proxies in one Convex transaction. */
+export const createForModelInternal = internalMutation({
+  args: { modelId: v.id('lists'), accounts: v.array(v.object({ id: v.id('igAccounts'), username: v.string() })) },
+  handler: async (ctx, { modelId, accounts }) => {
+    const usernames = accounts.map(account => account.username);
+    if (!await ctx.db.get(modelId)) throw new DomainError('NOT_FOUND', 'Model not found');
+    if (!usernames.length || usernames.length > 100) throw new DomainError('VALIDATION', 'Create 1–100 profiles');
+    if (new Set(accounts.map(account => account.id)).size !== accounts.length)
+      throw new DomainError('VALIDATION', 'Duplicate credentials');
+    for (const account of accounts) {
+      const stored = await ctx.db.get(account.id);
+      if (!stored || stored.status !== 'available') throw new DomainError('CONFLICT', 'Credential is not available');
+    }
+    if (new Set(usernames).size !== usernames.length || usernames.some(name => !/^[a-zA-Z0-9._]{1,30}$/.test(name)))
+      throw new DomainError('VALIDATION', 'Invalid or duplicate account usernames');
+    const profiles = await ctx.db.query('profiles').collect();
+    const names = new Set(profiles.flatMap(profile => [profile.name, profile.renameFrom]
+      .filter((name): name is string => Boolean(name)).map(name => name.toLowerCase())));
+    if (new Set(usernames.map(name => name.toLowerCase())).size !== usernames.length ||
+      usernames.some(name => name === '.' || name === '..' || names.has(name.toLowerCase())))
+      throw new DomainError('CONFLICT', 'An account username already has a profile');
+    const owners = (await ctx.db.query('automations').collect())
+      .filter(automation => automation.isActive !== false &&
+        routineLists(automation).some(id => id === modelId));
+    if (owners.length > 1)
+      throw new DomainError('CONFLICT', 'Model belongs to multiple enabled automations');
+    const proxies = await ctx.db.query('proxies').collect();
+    const counts = new Map<string, number>();
+    for (const profile of profiles) {
+      const key = proxyKey(profile.proxy, profile.proxyType);
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const selected: typeof proxies = [];
+    for (const _ of usernames) {
+      const free = proxies.find(proxy => {
+        const key = proxyKey(proxy.proxy, proxy.proxyType);
+        return proxyPurpose(proxy) === 'work' && key !== null &&
+          (counts.get(key) ?? 0) < resolveMaxProfiles(proxy);
+      });
+      if (!free) throw new DomainError('VALIDATION', 'Not enough proxy capacity for this batch');
+      selected.push(free);
+      const key = proxyKey(free.proxy, free.proxyType);
+      if (!key) throw new DomainError('VALIDATION', 'Saved proxy is invalid');
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const ids = [];
+    for (let i = 0; i < usernames.length; i++) {
+      const proxy = selected[i];
+      const id = await insertProfileRow(ctx, { name: usernames[i], proxy: proxy.proxy,
+        proxyType: proxy.proxyType, fingerprintOs: 'windows', listIds: [modelId],
+        igAccountId: accounts[i].id });
+      await ctx.db.insert('profileListAssignments', { profileId: id, listId: modelId });
+      await ctx.db.patch(accounts[i].id, { status: 'assigned', profileId: id,
+        error: undefined, retryAfter: undefined, browserLoggedInAt: undefined });
+      ids.push(id);
+    }
+    return ids.map((id, index) => ({ profileId: id, username: usernames[index] }));
+  },
+});
 
 const profileArgsShape = {
 	name: v.string(),

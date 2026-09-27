@@ -4,6 +4,8 @@ import { assertAssignments } from '../routines';
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import {
 	statusValidator,
 	normalizeListIds,
@@ -12,6 +14,15 @@ import {
 	assertValidStatusTransition,
 	type AutomationStatus,
 } from "./helpers";
+
+async function assertModelAvailable(ctx: MutationCtx, modelIds: Id<'lists'>[], exceptId?: Id<'automations'>) {
+  if (modelIds.length !== 1) throw new DomainError('VALIDATION', 'Select exactly one model');
+  const modelId = modelIds[0];
+  if (!modelId || !await ctx.db.get(modelId)) throw new DomainError('VALIDATION', 'Model not found');
+  const other = (await ctx.db.query('automations').collect()).find(row =>
+    row._id !== exceptId && row.routine && row.listIds?.includes(modelId));
+  if (other) throw new DomainError('CONFLICT', 'This model already has an automation');
+}
 
 export const create = mutation({
 	args: {
@@ -28,13 +39,15 @@ export const create = mutation({
 
 		const now = Date.now();
 		if (args.routine) validateRoutine(args.routine);
+		const listIds = normalizeListIds(args.listIds);
+		if (args.routine) await assertModelAvailable(ctx, listIds);
 		const id = await ctx.db.insert("automations", {
 			name: cleaned,
 			routine: args.routine,
 			description: args.description,
 			nodes: args.nodes || [],
 			edges: args.edges || [],
-			listIds: normalizeListIds(args.listIds),
+			listIds,
 			// New automations start disabled; enabling is an explicit action.
 			isActive: false,
 			status: "idle",
@@ -64,6 +77,9 @@ export const update = mutation({
 		// Can only update idle/pending automations (not running)
 		if (existing.status === "running" || (existing.routine && (existing.isActive || existing.status === 'pending'))) {
 			throw new DomainError('CONFLICT', "Disable the automation and wait for the current session to stop before editing");
+		}
+		if (updates.routine || existing.routine) {
+			await assertModelAvailable(ctx, normalizeListIds(updates.listIds ?? existing.listIds), id);
 		}
 
 		const patch: Record<string, any> = { updatedAt: Date.now() };
@@ -122,7 +138,7 @@ export const duplicate = mutation({
 			description: existing.description,
 			nodes: existing.nodes,
 			edges: existing.edges,
-			listIds: getAutomationListIds(existing),
+			listIds: existing.routine ? [] : getAutomationListIds(existing),
 			isActive: false,
             routine: existing.routine,
 			status: "idle",
@@ -150,9 +166,7 @@ export const setActive = mutation({
           await assertAssignments(ctx, { ...automation, isActive: true });
           if (automation.routine) {
             validateRoutine(automation.routine);
-            if (!automation.listIds?.length) {
-              throw new DomainError('VALIDATION', 'Select at least one profile list');
-            }
+            await assertModelAvailable(ctx, normalizeListIds(automation.listIds), args.id);
           }
         }
 		await ctx.db.patch(args.id, {

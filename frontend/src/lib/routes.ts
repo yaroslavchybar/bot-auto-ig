@@ -7,6 +7,7 @@ import { ScraperPage } from '@/features/scraper/ScraperPage'
 import { AutomationsPage } from '@/features/automations/AutomationsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { ChatPage } from '@/features/chat/ChatPage'
+import { IgAccountsPage } from '@/features/ig-accounts/IgAccountsPage'
 import type { NavId } from '@/components/layout/app-sidebar'
 
 // Keep page imports outside the router: pages also import its hooks.
@@ -22,7 +23,8 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   '/automations': { Page: AutomationsPage, breadcrumb: 'Automations', navId: 'automations' },
   '/scraper': { Page: ScraperPage, breadcrumb: 'Scraper', navId: 'scraper' },
   '/chat': { Page: ChatPage, breadcrumb: 'Chat', navId: 'chat' },
-  '/lists': { Page: ListsPage, breadcrumb: 'Lists Manager', navId: 'lists' },
+  '/ig-accounts': { Page: IgAccountsPage, breadcrumb: 'IG Accounts', navId: 'ig_accounts' },
+  '/lists': { Page: ListsPage, breadcrumb: 'Models', navId: 'lists' },
   '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
   '/vnc/session/:automationId/:profileName': { Page: VncSessionPage,

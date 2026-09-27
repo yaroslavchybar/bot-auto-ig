@@ -1,10 +1,16 @@
 import { DomainError } from './errors';
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalQuery, mutation, query } from "./_generated/server";
 import { normalizeProxy, proxyKey } from '../server/shared/proxy';
 export { proxyKey } from '../server/shared/proxy';
 
 export const DEFAULT_MAX_PROFILES = 3;
+const purposeValidator = v.union(v.literal('work'), v.literal('login'));
+export type ProxyPurpose = 'work' | 'login';
+
+export function proxyPurpose(row: { purpose?: ProxyPurpose }): ProxyPurpose {
+	return row.purpose ?? 'work';
+}
 
 export function cleanProxyFields(proxy: unknown, proxyType: unknown) {
 	try { return normalizeProxy(proxy, proxyType); }
@@ -31,22 +37,72 @@ function cleanMaxProfiles(maxProfiles: unknown): number {
 	return n;
 }
 
+function cleanCountry(country: unknown, purpose: ProxyPurpose): string | undefined {
+	const value = typeof country === 'string' ? country.trim().toLowerCase() : '';
+	if (!value && purpose === 'work') return undefined;
+	if (!/^[a-z]{2}$/.test(value)) throw new DomainError('VALIDATION', 'Choose a two-letter proxy country');
+	return value;
+}
+
 export const list = query({
 	args: {},
 	handler: async (ctx) => {
 		const rows = await ctx.db.query("proxies").collect();
 		rows.sort((a, b) => a.createdAt - b.createdAt);
-		return rows.map((row) => ({ ...row, maxProfiles: resolveMaxProfiles(row) }));
+		return rows.map((row) => ({ ...row, purpose: proxyPurpose(row), maxProfiles: resolveMaxProfiles(row) }));
 	},
 });
 
+export const loginInternal = internalQuery({ args: {}, handler: async ctx =>
+	ctx.db.query('proxies').withIndex('by_purpose', q => q.eq('purpose', 'login')).collect() });
+
+export const importMany = mutation({
+  args: { text: v.string(), proxyType: v.union(v.literal('http'), v.literal('socks5')),
+    purpose: purposeValidator, country: v.string() },
+  handler: async (ctx, { text, proxyType, purpose, country }) => {
+    const normalizedCountry = cleanCountry(country, purpose);
+    if (!normalizedCountry) throw new DomainError('VALIDATION', 'Choose an import country');
+    const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (lines.length > 500) throw new DomainError('VALIDATION', 'Import at most 500 proxies at a time');
+    const existing = await ctx.db.query('proxies').collect();
+    const seen = new Set(existing.map(row => proxyKey(row.proxy, row.proxyType)));
+    const names = new Set(existing.map(row => row.name));
+    let imported = 0;
+    for (const [index, line] of lines.entries()) {
+      let fields: ReturnType<typeof cleanProxyFields>;
+      try { fields = cleanProxyFields(line, proxyType); }
+      catch { throw new DomainError('VALIDATION', `Invalid proxy on line ${index + 1}`); }
+      if (!fields.proxy) throw new DomainError('VALIDATION', `Invalid proxy on line ${index + 1}`);
+      if (fields.proxyType !== proxyType)
+        throw new DomainError('VALIDATION', `Proxy type on line ${index + 1} does not match the selected type`);
+      const key = proxyKey(fields.proxy, fields.proxyType);
+      if (!key) throw new DomainError('VALIDATION', `Invalid proxy on line ${index + 1}`);
+      if (seen.has(key)) continue;
+      const host = new URL(fields.proxy).hostname.replaceAll(/[^a-zA-Z0-9.-]/g, '_');
+      let name = host;
+      let suffix = 2;
+      while (names.has(name)) name = `${host}-${suffix++}`;
+      await ctx.db.insert('proxies', { name, ...fields, purpose, country: normalizedCountry,
+        maxProfiles: DEFAULT_MAX_PROFILES, createdAt: Date.now() });
+      names.add(name);
+      seen.add(key);
+      imported++;
+    }
+    return { imported, skipped: lines.length - imported };
+  },
+});
+
 export const create = mutation({
-	args: { name: v.string(), proxy: v.string(), proxyType: v.string(), maxProfiles: v.optional(v.number()) },
+	args: { name: v.string(), proxy: v.string(), proxyType: v.string(),
+		purpose: v.optional(purposeValidator), country: v.optional(v.string()),
+		maxProfiles: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const name = cleanName(args.name);
 		const { proxy, proxyType } = cleanProxyFields(args.proxy, args.proxyType);
 		if (!proxy) throw new DomainError('VALIDATION', 'proxy is required');
 		const maxProfiles = cleanMaxProfiles(args.maxProfiles);
+		const purpose = args.purpose ?? 'work';
+		const country = cleanCountry(args.country, purpose);
 		const existing = await ctx.db
 			.query("proxies")
 			.withIndex("by_name", (q) => q.eq("name", name))
@@ -55,13 +111,16 @@ export const create = mutation({
 		const rows = await ctx.db.query('proxies').collect();
 		if (rows.some(row => proxyKey(row.proxy, row.proxyType) === proxy))
 			throw new DomainError('VALIDATION', 'Proxy already exists');
-		const id = await ctx.db.insert("proxies", { name, proxy, proxyType, maxProfiles, createdAt: Date.now() });
+		const id = await ctx.db.insert("proxies", { name, proxy, proxyType,
+			purpose, country, maxProfiles, createdAt: Date.now() });
 		return await ctx.db.get(id);
 	},
 });
 
 export const update = mutation({
-	args: { id: v.id("proxies"), name: v.string(), proxy: v.string(), proxyType: v.string(), maxProfiles: v.optional(v.number()) },
+	args: { id: v.id("proxies"), name: v.string(), proxy: v.string(), proxyType: v.string(),
+		purpose: v.optional(purposeValidator), country: v.optional(v.string()),
+		maxProfiles: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const name = cleanName(args.name);
 		const { proxy, proxyType } = cleanProxyFields(args.proxy, args.proxyType);
@@ -82,6 +141,10 @@ export const update = mutation({
 		const oldKey = proxyKey(existing.proxy, existing.proxyType);
 		const profiles = await ctx.db.query('profiles').collect();
 		const assigned = oldKey ? profiles.filter(profile => proxyKey(profile.proxy, profile.proxyType) === oldKey) : [];
+		const purpose = args.purpose ?? proxyPurpose(existing);
+		const country = cleanCountry(args.country ?? existing.country, purpose);
+		if (purpose === 'login' && assigned.length)
+			throw new DomainError('CONFLICT', 'Reassign profiles before marking this proxy for login');
 		if (oldKey === proxy && assigned.length > maxProfiles)
 			throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles');
 		if (oldKey && oldKey !== proxy) {
@@ -92,7 +155,7 @@ export const update = mutation({
 				throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles');
 			for (const profile of assigned) await ctx.db.patch(profile._id, { proxy, proxyType, mode: 'proxy' });
 		}
-		await ctx.db.patch(args.id, { name, proxy, proxyType, maxProfiles });
+		await ctx.db.patch(args.id, { name, proxy, proxyType, purpose, country, maxProfiles });
 		return await ctx.db.get(args.id);
 	},
 });
@@ -132,7 +195,8 @@ export const importFromProfiles = mutation({
 			while (taken.has(name)) {
 				name = `${base} ${n++}`;
 			}
-			await ctx.db.insert("proxies", { name, proxy: key, proxyType, maxProfiles: DEFAULT_MAX_PROFILES, createdAt: Date.now() });
+			await ctx.db.insert("proxies", { name, proxy: key, proxyType, purpose: 'work',
+				maxProfiles: DEFAULT_MAX_PROFILES, createdAt: Date.now() });
 			seen.add(key);
 			taken.add(name);
 			imported += 1;

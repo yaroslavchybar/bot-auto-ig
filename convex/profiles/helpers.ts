@@ -48,6 +48,9 @@ export async function syncProfileListAssignments(ctx: any, profileId: any, listI
 		.withIndex("by_profile", (q: any) => q.eq("profileId", profileId))
 		.collect();
 	const current = new Set(existing.map((row: any) => String(row.listId)));
+	if (current.size !== desired.size || [...desired.keys()].some(key => !current.has(key))) {
+		await ctx.db.patch(profileId, { outreachReady: false });
+	}
 	for (const row of existing) {
 		if (!desired.has(String(row.listId))) await ctx.db.delete(row._id);
 	}
@@ -107,6 +110,7 @@ async function assertProxyLimit(ctx: any, proxyRaw: unknown, proxyTypeRaw: unkno
 		ctx.db.query("profiles").collect(),
 	]);
 	const row = proxies.find((p: any) => proxyKey(p.proxy, p.proxyType) === key);
+	if (row?.purpose === 'login') throw new DomainError('VALIDATION', 'Login proxies cannot be assigned to profiles');
 	const limit = row ? resolveMaxProfiles(row) : DEFAULT_MAX_PROFILES;
 	const used = profiles.filter((p: any) =>
 		String(p._id) !== String(excludeProfileId) && proxyKey(p.proxy, p.proxyType) === key,
@@ -172,24 +176,31 @@ export async function createProfileRow(ctx: any, args: any) {
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
 
 	await assertProxyLimit(ctx, proxy, args.proxyType, null);
-	const id = await ctx.db.insert("profiles", {
+	const id = await insertProfileRow(ctx, { ...args, name, proxy, cookiesJson: cookiesJsonRaw });
+	await ensureProxySaved(ctx, proxy, args.proxyType, name);
+	return await ctx.db.get(id);
+}
+
+/** Insert a profile after its name and proxy capacity have been checked. */
+export async function insertProfileRow(ctx: any, args: any) {
+	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
+	return ctx.db.insert("profiles", {
 		createdAt: Date.now(),
-		name,
-		proxy,
+		name: args.name,
+		igAccountId: args.igAccountId,
+		proxy: args.proxy,
 		proxyType: args.proxyType,
 		status: "idle",
-		mode: computeProfileMode(proxy),
+		mode: computeProfileMode(args.proxy),
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
 		sessionId: sessionIdFromCookies(cookiesJsonRaw),
 		scraperDailyLimit: 1000,
 		using: false,
 		fingerprintOs: args.fingerprintOs,
 		fingerprintSeed: args.fingerprintSeed,
-		listIds: [],
+		listIds: args.listIds ?? [],
 		lastOpenedAt: undefined,
 	});
-	await ensureProxySaved(ctx, proxy, args.proxyType, name);
-	return await ctx.db.get(id);
 }
 
 export async function updateProfileByNameRow(ctx: any, args: any) {
@@ -294,6 +305,18 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	return await ctx.db.get(args.profileId);
 }
 
+async function releaseIgAccount(ctx: any, profileId: any) {
+  const account = await ctx.db.query('igAccounts')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
+  if (account) await ctx.db.patch(account._id, {
+    profileId: undefined,
+    status: account.status === 'invalid' ? 'invalid' : 'available',
+    error: account.status === 'invalid' ? account.error : undefined,
+    retryAfter: undefined,
+    browserLoggedInAt: undefined,
+  });
+}
+
 export async function removeProfileByNameRow(ctx: any, name: string) {
 	const cleaned = String(name || "").trim();
 	if (!cleaned) throw new DomainError('VALIDATION', "name is required");
@@ -310,6 +333,9 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
 	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
 	for (const membership of await ctx.db.query('chatMemberships').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).collect())
 		await ctx.db.delete(membership._id);
+	await releaseIgAccount(ctx, existing._id);
+	const setup = await ctx.db.query('modelSetupStates').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).first();
+	if (setup) await ctx.db.delete(setup._id);
 	await ctx.db.delete(existing._id);
 	return true;
 }
@@ -325,6 +351,9 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
 	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
 	for (const membership of await ctx.db.query('chatMemberships').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).collect())
 		await ctx.db.delete(membership._id);
+	await releaseIgAccount(ctx, profileId);
+	const setup = await ctx.db.query('modelSetupStates').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
+	if (setup) await ctx.db.delete(setup._id);
 	await ctx.db.delete(profileId);
 	return true;
 }

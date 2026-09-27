@@ -1,11 +1,15 @@
 export type List = {
   id: string
   name: string
+  fullName?: string
+  fullNames?: string[]
+  usernames?: string[]
 }
 
-export type ProfileRow = {
+export type ModelContentItem = {
   id: string
+  kind: 'posts' | 'avatars'
   name: string
-  selected: boolean
-  initialSelected: boolean
+  variantCount: number
+  usedCount: number
 }

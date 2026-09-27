@@ -95,3 +95,45 @@ test('editing other fields preserves cookies saved during browser shutdown', asy
   })
   expect(updated?.cookiesJson).toBe('fresh')
 })
+
+test('model batch creation assigns distinct proxy slots and is atomic when capacity is short', async () => {
+  const t = createConvexTest()
+  const model = await seedList(t, 'Model A')
+  await t.run(ctx => ctx.db.insert('proxies', { name: 'Malformed', proxy: 'http://bad/path',
+    proxyType: 'http', purpose: 'work', createdAt: 1 }))
+  await t.mutation(api.proxies.create, { name: 'P1', proxy: '1.2.3.4:8080:user:pass', proxyType: 'http' })
+  await t.mutation(internal.igAccounts.importEncryptedInternal, { rows:
+    ['one', 'two', 'three', 'four'].map((_, index) => ({
+      usernameHash: String(index + 1).repeat(64), ciphertext: `v1.encrypted-${index}`,
+    })) })
+  const accounts = (await t.query(internal.igAccounts.availableInternal, { count: 4 })).page
+  const created = await t.mutation(internal.profiles.mutations.createForModelInternal,
+    { modelId: model!._id, accounts: accounts.slice(0, 3).map((account, index) =>
+      ({ id: account._id, username: ['one', 'two', 'three'][index] })) })
+  expect(created).toHaveLength(3)
+  const rows = await t.query(api.profiles.queries.list, {})
+  expect(rows).toHaveLength(3)
+  expect(rows.every(row => row.listIds?.includes(model!._id))).toBe(true)
+  expect(rows.map(row => row.igAccountId)).toEqual(accounts.slice(0, 3).map(account => account._id))
+  expect(await t.query(internal.profiles.queries.listAssignedInternal, { listId: model!._id }))
+    .toHaveLength(3)
+  expect((await t.query(internal.igAccounts.availableInternal, { count: 4 })).page).toHaveLength(1)
+  await expect(t.mutation(internal.profiles.mutations.createForModelInternal,
+    { modelId: model!._id, accounts: [{ id: accounts[3]._id, username: 'four' }] })).rejects.toThrow(/capacity/)
+  expect(await t.query(api.profiles.queries.list, {})).toHaveLength(3)
+  expect((await t.query(internal.igAccounts.availableInternal, { count: 4 })).page).toHaveLength(1)
+})
+
+test('model batch creation ignores login proxies', async () => {
+  const t = createConvexTest()
+  const model = await seedList(t, 'Model B')
+  await t.mutation(api.proxies.create, { name: 'Login only', proxy: 'login:8080',
+    proxyType: 'http', purpose: 'login', country: 'us' })
+  await t.mutation(internal.igAccounts.importEncryptedInternal, { rows: [
+    { usernameHash: 'f'.repeat(64), ciphertext: 'v1.encrypted' },
+  ] })
+  const [account] = (await t.query(internal.igAccounts.availableInternal, { count: 1 })).page
+  await expect(t.mutation(internal.profiles.mutations.createForModelInternal, {
+    modelId: model!._id, accounts: [{ id: account._id, username: 'model_account' }],
+  })).rejects.toThrow(/capacity/)
+})

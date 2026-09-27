@@ -42,6 +42,9 @@ export default defineSchema({
   }).index('by_profile', ['profileId']),
 	lists: defineTable({
 		name: v.string(),
+		fullName: v.optional(v.string()),
+		fullNames: v.optional(v.array(v.string())),
+		usernames: v.optional(v.array(v.string())),
 		createdAt: v.number(),
 	}),
 
@@ -49,13 +52,49 @@ export default defineSchema({
 		name: v.string(),
 		proxy: v.string(),
 		proxyType: v.string(),
+		purpose: v.optional(v.union(v.literal('work'), v.literal('login'))),
 		// Max profiles allowed to use this proxy. Optional so rows written
 		// before the limit existed still read; code treats missing as 3.
 		maxProfiles: v.optional(v.number()),
+		country: v.optional(v.string()),
+		loginCooldownUntil: v.optional(v.number()),
+		loginCooldownAccountId: v.optional(v.id('igAccounts')),
+		loginClaim: v.optional(v.object({ accountId: v.id('igAccounts'),
+			token: v.string(), expiresAt: v.number() })),
 		createdAt: v.number(),
-	}).index("by_name", ["name"]),
+	}).index("by_name", ["name"]).index('by_purpose', ['purpose']),
+
+  igAccounts: defineTable({
+    ciphertext: v.string(),
+    usernameHash: v.string(),
+    status: v.union(v.literal('available'), v.literal('assigned'),
+      v.literal('connected'), v.literal('invalid')),
+    profileId: v.optional(v.id('profiles')),
+    error: v.optional(v.string()),
+    retryAfter: v.optional(v.number()),
+      browserLoggedInAt: v.optional(v.number()),
+      createdAt: v.number(),
+  }).index('by_username_hash', ['usernameHash'])
+    .index('by_status', ['status'])
+    .index('by_status_browser_login', ['status', 'browserLoggedInAt', 'retryAfter'])
+    .index('by_profile', ['profileId']),
+
+  modelSetupStates: defineTable({
+    profileId: v.id('profiles'), modelId: v.id('lists'), startedAt: v.number(),
+    targetUsername: v.optional(v.string()), fullName: v.optional(v.string()),
+    nameDone: v.optional(v.boolean()), avatarSourceId: v.optional(v.string()),
+    avatarDone: v.optional(v.boolean()), postSourceIds: v.array(v.string()),
+    postDates: v.array(v.string()), outreachReadyMarked: v.optional(v.boolean()),
+    pending: v.optional(v.object({ kind: v.union(v.literal('name'), v.literal('avatar'),
+      v.literal('post')), sourceId: v.optional(v.string()), date: v.string() })),
+    error: v.optional(v.string()),
+  }).index('by_profile', ['profileId']).index('by_model', ['modelId']),
+  modelSetupGroupNames: defineTable({
+    modelId: v.id('lists'), group: v.number(), name: v.string(),
+  }).index('by_model_group', ['modelId', 'group']),
 
 	profiles: defineTable({
+        igAccountId: v.optional(v.id('igAccounts')),
         igLoggedIn: v.optional(v.boolean()),
         outreachReady: v.optional(v.boolean()),
 		renameFrom: v.optional(v.string()),

@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
+import { useNavigate } from '@/lib/router'
 import { IgStateToggles } from './IgStateToggles'
 
 interface ProfilesListProps {
@@ -92,6 +93,7 @@ function ProfileActionsMenu({
   onDelete,
   onToggleStatus,
 }: ProfileActionsMenuProps) {
+  const navigate = useNavigate()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -131,6 +133,11 @@ function ProfileActionsMenu({
         >
           <Pencil className="mr-2 h-4 w-4" /> Edit Configuration
         </DropdownMenuItem>
+        {profile.igLoggedIn && <DropdownMenuItem
+          onClick={() => navigate(`/ig-accounts?profileId=${encodeURIComponent(profile.id)}`)}
+          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer">
+          Connect IG credential
+        </DropdownMenuItem>}
         <DropdownMenuItem
           onClick={() => onLogs(profile)}
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"

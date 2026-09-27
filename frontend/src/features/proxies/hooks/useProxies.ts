@@ -14,6 +14,9 @@ export function useProxies() {
             name: row.name,
             proxy: row.proxy,
             proxyType: row.proxyType,
+            purpose: row.purpose,
+            country: row.country,
+            loginCooldownUntil: row.loginCooldownUntil,
             maxProfiles:
               typeof row.maxProfiles === 'number' && row.maxProfiles >= 1
                 ? Math.floor(row.maxProfiles)

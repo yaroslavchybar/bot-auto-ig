@@ -3,6 +3,7 @@ import type { LogEntry } from '@/lib/logs'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileDetails } from './components/ProfileDetails'
 import { ProfileForm } from './components/ProfileForm'
+import { BatchCreateForm } from './components/BatchCreateForm'
 import { ProfileLogs } from './components/ProfileLogs'
 import { ProfilesList } from './components/ProfilesList'
 import type { Profile } from './types'
@@ -32,6 +33,7 @@ export function ProfilesPage() {
       <ProfilesContent s={s} />
       <ProfileFormDialogs profiles={s.profiles} isCreateOpen={s.isCreateOpen}
         editProfile={s.editProfile} saving={s.saving}
+        refreshProfiles={s.refreshProfiles}
         onCreateOpenChange={(open) => { s.setIsCreateOpen(open); if (!open) s.handleCloseCreate() }}
         onCloseEdit={s.handleCloseEdit} onSaveProfile={s.handleSaveProfile}
         onCloseCreate={s.handleCloseCreate} />
@@ -113,6 +115,7 @@ function ProfileFormDialogs({
   isCreateOpen,
   editProfile,
   saving,
+  refreshProfiles,
   onCreateOpenChange,
   onCloseEdit,
   onSaveProfile,
@@ -122,6 +125,7 @@ function ProfileFormDialogs({
   isCreateOpen: boolean
   editProfile: Profile | null
   saving: boolean
+  refreshProfiles: () => Promise<void>
   onCreateOpenChange: (open: boolean) => void
   onCloseEdit: () => void
   onSaveProfile: (data: Partial<Profile>) => void
@@ -136,14 +140,9 @@ function ProfileFormDialogs({
               Create Profile
             </DialogTitle>
           </DialogHeader>
-          <ProfileForm
-            key={isCreateOpen ? 'profile-create-open' : 'profile-create-closed'}
-            mode="create"
-            existingNames={profiles.map((p) => p.name)}
-            saving={saving}
-            onSave={onSaveProfile}
-            onCancel={onCloseCreate}
-          />
+          <BatchCreateForm key={isCreateOpen ? 'profile-create-open' : 'profile-create-closed'}
+            onCreated={async () => { await refreshProfiles(); onCloseCreate() }}
+            onCancel={onCloseCreate} />
         </DialogContent>
       </Dialog>
 

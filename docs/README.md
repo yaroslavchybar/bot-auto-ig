@@ -1,5 +1,7 @@
 # Repository Documentation (System of Record)
 
+Account onboarding, model content, and warmup: [ig-accounts.md](ig-accounts.md).
+
 Consolidated from the former per-area guides. `docs/` remains canonical;
 `AGENTS.md` is the short navigation map; module READMEs are pointer stubs.
 Conflict order: `docs/` → `AGENTS.md` → README stubs.
@@ -19,7 +21,8 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
   + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
   subprocess orchestration. Admin session middleware globally;
   `/api/automations` also accepts `INTERNAL_API_KEY`. Rate limits:
-  general 100/min, automation 10/min, writes 30/min. Resolves repo-root paths
+  general 100/min, automation 10/min, writes 30/min. Authenticated model images
+  use a separate 600/min limit and a one-hour private browser cache.
 - `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
 - `server/automation/`: Bun workers and TypeScript Instagram actions
