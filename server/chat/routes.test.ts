@@ -22,6 +22,7 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
     const reactionRemovals = []
     let unsentItem
     let unsentCacheItem
+    const olderQueries = []
     let releaseRefresh
     const refreshGate = new Promise(resolve => { releaseRefresh = resolve })
     const profile = { id: 'profile-1', name: 'Profile', igLoggedIn: true }
@@ -42,6 +43,7 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
       cachedInbox: async () => ({ connected: true, threads: [] }),
       cachedThread: async () => null,
       clearSyncFailures: () => {},
+      invalidateChatSnapshots: () => {},
       threadSyncs: new Map(),
       syncThread: async () => {
         refreshes++
@@ -75,6 +77,13 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
         async unsend(_threadId, itemId) {
           unsentItem = itemId
         }
+        async conversationPage(_threadId, cursor) {
+          olderQueries.push(cursor)
+          const start = cursor === 'p2' ? 20 : cursor === 'p3' ? 10 : 30
+          return { thread: { messages: Array.from({ length: 10 }, (_, i) => ({
+            id: String(start - i), senderId: 'friend', text: '', timestamp: start - i, kind: 'text',
+          })) }, nextCursor: cursor === '' ? 'p2' : cursor === 'p2' ? 'p3' : '', hasOlder: cursor !== 'p3' }
+        }
       },
     }))
     mock.module('./server/shared/logger.ts', () => ({ default: { warn: () => { warnings++ } } }))
@@ -87,6 +96,21 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
     const server = app.listen(0)
     try {
       const port = server.address().port
+      const older = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/older?before=16')
+      assert.equal(older.status, 200)
+      const firstPage = await older.json()
+      assert.deepEqual(firstPage.messages.map(message => message.id),
+        Array.from({ length: 10 }, (_, i) => String(15 - i)))
+      assert.equal(firstPage.nextCursor, 'p3')
+      assert.equal(firstPage.hasOlder, true)
+      assert.deepEqual(olderQueries, ['', 'p2', 'p3'])
+      const finalPage = await fetch('http://127.0.0.1:' + port +
+        '/api/chat/profile-1/threads/123/older?before=6&beforeId=6&cursor=p3')
+      assert.equal(finalPage.status, 200)
+      const lastPage = await finalPage.json()
+      assert.deepEqual(lastPage.messages.map(message => message.id), ['5', '4', '3', '2', '1'])
+      assert.equal(lastPage.hasOlder, false)
+      assert.equal((await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/older?before=nope')).status, 400)
       const send = () => fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/reply', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Hello', clientContext: '11111111-1111-4111-8111-111111111111' }),

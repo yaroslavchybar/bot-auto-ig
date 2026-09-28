@@ -81,7 +81,7 @@ export const markUnsent = internalMutation({
 function mergeMessages(previous: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {
   const byId = new Map(previous.map(item => [item.id, item]));
   for (const item of incoming) byId.set(item.id, item);
-  return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 20);
+  return [...byId.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 30);
 }
 
 function reconcileMessages(previous: ChatMessage[], incoming: ChatMessage[]): ChatMessage[] {

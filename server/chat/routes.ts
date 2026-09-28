@@ -1,7 +1,7 @@
 import { Router, raw } from 'express';
 import { IgResponseError } from 'instagram-private-api';
 import { chatMarkReplied, chatMarkUnsent, profilesGetById, profilesList } from '../shared/convexClient.js';
-import { cachedInbox, cachedThread, clearSyncFailures, syncThread, threadSyncs } from './sync.js';
+import { cachedInbox, cachedThread, clearSyncFailures, invalidateChatSnapshots, syncThread, threadSyncs } from './sync.js';
 import { asyncHandler } from '../shared/asyncHandler.js';
 import { ExternalServiceError, NotFoundError, ValidationError } from '../shared/errors.js';
 import logger from '../shared/logger.js';
@@ -156,6 +156,48 @@ router.get('/:profileId/threads/:threadId', asyncHandler(async (req, res) => {
   try { res.json(await cachedThread(profile, id, req.query.refresh === '1')); } catch (error) { instagramError(error); }
 }));
 
+router.get('/:profileId/threads/:threadId/older', asyncHandler(async (req, res) => {
+  const id = threadId(req.params.threadId);
+  const before = Number(req.query.before);
+  const beforeId = req.query.beforeId;
+  const cursor = req.query.cursor;
+  if (!Number.isFinite(before) || before <= 0 ||
+    (beforeId !== undefined && (typeof beforeId !== 'string' || beforeId.length > 100)) ||
+    (cursor !== undefined && (typeof cursor !== 'string' || cursor.length > 2000))) {
+    throw new ValidationError('Invalid Chat history cursor');
+  }
+  const chat = await client(req.params.profileId);
+  const messages = new Map<string, ChatThread['messages'][number]>();
+  let nextCursor = cursor ?? '';
+  let hasOlder = true;
+  const seenCursors = new Set([nextCursor]);
+  // A browser may have 30 cached messages. Skip those pages without storing old history in Convex.
+  for (let pageCount = 0; pageCount < 6 && hasOlder && messages.size < 10; pageCount++) {
+    const pageCursor = nextCursor;
+    const page = await chat.conversationPage(id, pageCursor).catch(instagramError);
+    const ordered = [...page.thread.messages].sort((a, b) => b.timestamp - a.timestamp);
+    const boundaryIndex = ordered.findIndex(message => message.id === beforeId);
+    const candidates = (boundaryIndex >= 0 ? ordered.slice(boundaryIndex + 1) : ordered)
+      .filter(message => (boundaryIndex >= 0 || message.timestamp < before) && !messages.has(message.id));
+    const remaining = 10 - messages.size;
+    for (const message of candidates.slice(0, remaining)) messages.set(message.id, message);
+    if (candidates.length > remaining) {
+      // Revisit this page with the new message boundary so no items are skipped.
+      nextCursor = pageCursor;
+      hasOlder = true;
+      break;
+    }
+    hasOlder = page.hasOlder;
+    nextCursor = page.nextCursor;
+    if (hasOlder) {
+      if (seenCursors.has(nextCursor)) throw new ExternalServiceError('Instagram DM thread cursor repeated');
+      seenCursors.add(nextCursor);
+    }
+  }
+  res.json({ messages: [...messages.values()].sort((a, b) => b.timestamp - a.timestamp).slice(0, 10),
+    nextCursor, hasOlder });
+}));
+
 router.post('/:profileId/threads/:threadId/reply', asyncHandler(async (req, res) => {
   const id = threadId(req.params.threadId);
   const text = req.body?.text;
@@ -176,6 +218,7 @@ function refreshAfterSend(profileId: string, id: string, chat: InstagramChat, st
   void (async () => {
     try {
       await chatMarkReplied(profileId, chat.cacheToken, id, startedAt);
+      invalidateChatSnapshots(profileId, id);
     } catch (err) {
       logger.warn({ err, profileId, threadId: id }, 'Could not mark sent DM in Chat cache');
     }
@@ -244,6 +287,7 @@ router.post('/:profileId/threads/:threadId/unsend', asyncHandler(async (req, res
   // Instagram already removed the message. A cache failure must not report that unsend failed.
   await chatMarkUnsent(profileId, chat.cacheToken, id, itemId)
     .catch(err => logger.warn({ err, profileId, threadId: id, itemId }, 'Could not mark unsent Chat message'));
+  invalidateChatSnapshots(profileId, id);
   res.json({ success: true });
   void (async () => {
     try {

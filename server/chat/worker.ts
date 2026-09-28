@@ -19,7 +19,7 @@ export function startChatWorker(): () => void {
         await Promise.all(ids.slice(index, index + 4).map(async profileId => {
           try {
             const profile = await profilesGetById(profileId);
-            if (profile?.igLoggedIn && profile.status !== 'deleting') await cachedInbox(profile);
+            if (profile?.igLoggedIn && profile.status !== 'deleting') await cachedInbox(profile, true, true);
           }
           catch { logger.warn({ profileId }, 'Background Chat inbox sync failed'); }
         }));

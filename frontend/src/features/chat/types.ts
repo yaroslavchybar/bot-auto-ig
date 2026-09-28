@@ -36,3 +36,9 @@ export type ChatInbox = {
 export type ChatSession = {
   connected: boolean
 }
+
+export type OlderChatPage = {
+  messages: ChatMessage[]
+  nextCursor: string
+  hasOlder: boolean
+}

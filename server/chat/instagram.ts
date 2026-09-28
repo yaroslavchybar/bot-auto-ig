@@ -75,6 +75,18 @@ export type ChatThread = {
   lastSeenAt: { userId: string; timestamp: number }[];
 };
 
+export type ChatMessagePage = { thread: ChatThread; nextCursor: string; hasOlder: boolean };
+
+export function parseChatMessagePage(raw: unknown): ChatMessagePage {
+  const page = record(raw);
+  const thread = record(page.thread);
+  if (!page.thread) throw new Error('Instagram returned no DM thread');
+  const hasOlder = thread.has_older === true;
+  const nextCursor = hasOlder ? string(thread.oldest_cursor) : '';
+  if (hasOlder && !nextCursor) throw new Error('Instagram DM thread cursor is missing');
+  return { thread: parseChatThread(thread), nextCursor, hasOlder };
+}
+
 function message(raw: unknown): ChatMessage {
   const item = record(raw);
   const kind = string(item.item_type ?? 'text');
@@ -302,12 +314,16 @@ export class InstagramChat {
   }
 
   async conversation(threadId: string): Promise<ChatThread> {
+    return (await this.conversationPage(threadId)).thread;
+  }
+
+  async conversationPage(threadId: string, cursor = ''): Promise<ChatMessagePage> {
     const data = await mobileRequest(this.ig, 'GET', `direct_v2/threads/${threadId}/`, undefined, {
-      visual_message_return_type: 'unseen', direction: 'older', seq_id: '40065', limit: '8',
+      visual_message_return_type: 'unseen', direction: 'older', seq_id: '40065', limit: '10',
+      ...(cursor ? { cursor } : {}),
     });
     await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
-    if (!data.thread) throw new Error('Instagram returned no DM thread');
-    return parseChatThread(data.thread);
+    return parseChatMessagePage(data);
   }
 
   async reply(threadId: string, text: string, clientContext: string = randomUUID()): Promise<ChatMessage> {

@@ -42,6 +42,18 @@ test('saves a model name pool for warmup', async () => {
   expect(updated?.usernames).toEqual(['anna.kowalska'])
 })
 
+test('saves emoji in full-name variations', async () => {
+  const t = createConvexTest()
+  const model = await t.mutation(api.lists.create, { name: 'Nastya' })
+  const fullNames = ['Nastya✨', 'Nastya ❤️', 'Nastya👩🏽‍💻', 'Nastya🇺🇦']
+
+  const updated = await t.mutation(api.lists.update, {
+    id: model!._id, name: 'Nastya', fullNames,
+  })
+
+  expect(updated?.fullNames).toEqual(fullNames)
+})
+
 test('removing one model deletes only its setup progress and shared names', async () => {
   const t = createConvexTest()
   const first = (await seedList(t, 'First'))!

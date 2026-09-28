@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { fetchChatInboxPages, parseChatInboxThread, parseChatThread } from './instagram.js';
+import { fetchChatInboxPages, parseChatInboxThread, parseChatMessagePage, parseChatThread } from './instagram.js';
 
 test('DM thread keeps Instagram read receipts in message timestamp units', () => {
   const thread = parseChatThread({
@@ -41,6 +41,14 @@ test('DM inbox keeps only the latest preview when Instagram returns extra items'
   ] };
   expect(parseChatInboxThread(raw).messages.map(item => item.id)).toEqual(['new']);
   expect(parseChatThread(raw).messages.map(item => item.id)).toEqual(['old', 'new']);
+});
+
+test('DM thread page exposes the older cursor and rejects a missing continuation', () => {
+  const page = parseChatMessagePage({ thread: { thread_id: '123', items: [],
+    has_older: true, oldest_cursor: 'older-10' } });
+  expect(page).toMatchObject({ nextCursor: 'older-10', hasOlder: true, thread: { id: '123' } });
+  expect(() => parseChatMessagePage({ thread: { thread_id: '123', items: [], has_older: true } }))
+    .toThrow('cursor is missing');
 });
 
 test('First DM inbox fetch takes the 30 most recent chats across pages', async () => {

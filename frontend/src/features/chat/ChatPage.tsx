@@ -103,6 +103,9 @@ export function ChatPage() {
                     chat.selectedThread?.viewerId ?? chat.inbox?.viewerId ?? ''
                   }
                   loading={chat.loadingThread}
+                  hasOlder={chat.hasOlder}
+                  loadingOlder={chat.loadingOlder}
+                  onLoadOlder={chat.loadOlder}
                   connected={Boolean(chat.connected)}
                   draft={chat.draft}
                   onDraftChange={chat.setDraft}

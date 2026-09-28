@@ -39,8 +39,8 @@ function cleanUsernames(input: string[] | undefined): string[] {
 
 function cleanFullNames(input: string[] | undefined): string[] {
   const names = (input ?? []).map(name => name.trim()).filter(Boolean);
-  if (names.some(name => !/^[\p{L} .'-]{3,80}$/u.test(name)))
-    throw new DomainError('VALIDATION', 'Full names must be 3–80 letters or name punctuation');
+  if (names.some(name => !/^[\p{L}\p{M}\p{Extended_Pictographic}\p{Emoji_Component} .'-]{3,80}$/u.test(name)))
+    throw new DomainError('VALIDATION', 'Full names must be 3–80 letters, emoji, or name punctuation');
   return [...new Set(names)];
 }
 

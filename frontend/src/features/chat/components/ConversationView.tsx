@@ -38,6 +38,9 @@ type ConversationViewProps = {
   selectedThreadId: string
   viewerId: string
   loading: boolean
+  hasOlder: boolean
+  loadingOlder: boolean
+  onLoadOlder: () => Promise<boolean>
   connected: boolean
   draft: string
   onDraftChange: (value: string) => void
@@ -59,6 +62,9 @@ export function ConversationView({
   selectedThreadId,
   viewerId,
   loading,
+  hasOlder,
+  loadingOlder,
+  onLoadOlder,
   connected,
   draft,
   onDraftChange,
@@ -84,6 +90,8 @@ export function ConversationView({
   const contentRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
   const lastScrollHeightRef = useRef(0)
+  const prependRef = useRef<{ height: number; top: number; oldestId: string | undefined } | null>(null)
+  const loadingMoreRef = useRef(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [stickToBottom, setStickToBottom] = useState(true)
@@ -92,6 +100,7 @@ export function ConversationView({
   const threadKey = selectedThreadId
   const messageCount = conversation?.messages.length ?? 0
   const latestMessageId = conversation?.messages[0]?.id
+  const oldestMessageId = conversation?.messages.at(-1)?.id
 
   function scrollToLatest() {
     const node = scrollRef.current
@@ -104,8 +113,20 @@ export function ConversationView({
   useLayoutEffect(() => {
     stickToBottomRef.current = true
     setStickToBottom(true)
+    prependRef.current = null
+    loadingMoreRef.current = false
     scrollToLatest()
   }, [threadKey])
+
+  useLayoutEffect(() => {
+    const pending = prependRef.current
+    const node = scrollRef.current
+    if (!pending || !node || pending.oldestId === oldestMessageId) return
+    node.scrollTop = pending.top + node.scrollHeight - pending.height
+    lastScrollHeightRef.current = node.scrollHeight
+    prependRef.current = null
+    requestAnimationFrame(() => { loadingMoreRef.current = false })
+  }, [oldestMessageId, threadKey])
 
   useLayoutEffect(() => {
     if (stickToBottomRef.current) scrollToLatest()
@@ -149,10 +170,37 @@ export function ConversationView({
     const node = scrollRef.current
     if (!node) return
     // Content growth is not the user scrolling up; the resize observer will follow it.
-    if (node.scrollHeight !== lastScrollHeightRef.current && stickToBottomRef.current) return
+    if (node.scrollHeight !== lastScrollHeightRef.current && stickToBottomRef.current &&
+      node.scrollHeight - node.scrollTop - node.clientHeight < 80) return
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
     stickToBottomRef.current = atBottom
     setStickToBottom(atBottom)
+    if (!atBottom && node.scrollTop < 80 && node.scrollHeight > node.clientHeight && hasOlder) requestOlder()
+  }
+
+  function requestOlder() {
+    const node = scrollRef.current
+    if (!node || !hasOlder || loadingOlder || loadingMoreRef.current || !oldestMessageId) return
+    loadingMoreRef.current = true
+    stickToBottomRef.current = false
+    setStickToBottom(false)
+    prependRef.current = { height: node.scrollHeight, top: node.scrollTop, oldestId: oldestMessageId }
+    void onLoadOlder().then((added) => {
+      if (!added) {
+        prependRef.current = null
+        loadingMoreRef.current = false
+      } else {
+        requestAnimationFrame(() => {
+          if (prependRef.current?.oldestId === oldestMessageId) {
+            prependRef.current = null
+            loadingMoreRef.current = false
+          }
+        })
+      }
+    }).catch(() => {
+      prependRef.current = null
+      loadingMoreRef.current = false
+    })
   }
 
   async function copyMessage(message: ChatMessage) {
@@ -243,6 +291,14 @@ export function ConversationView({
           className="h-full overflow-y-auto px-4 py-4 md:px-6"
         >
           <div ref={contentRef} className="flex min-h-full flex-col">
+          {hasOlder && conversation && groups.length > 0 && (
+            <div className="mb-2 flex justify-center">
+              <button type="button" disabled={loadingOlder} onClick={requestOlder}
+                className="text-muted-copy rounded px-3 py-1 text-xs hover:bg-panel-muted disabled:opacity-50">
+                {loadingOlder ? 'Loading older messages…' : 'Load older messages'}
+              </button>
+            </div>
+          )}
           {loading && !conversation && <MessageSkeletons />}
           {!loading && conversation && groups.length === 0 && (
             <div className="text-muted-copy flex flex-1 items-center justify-center text-sm">

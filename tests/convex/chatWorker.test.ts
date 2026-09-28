@@ -32,7 +32,7 @@ test('Background Chat sync runs without a page, repeats every 15 minutes and sto
   const stop = startChatWorker()
   try {
     await vi.advanceTimersByTimeAsync(0)
-    expect(mocks.cachedInbox.mock.calls).toEqual([[active]])
+    expect(mocks.cachedInbox.mock.calls).toEqual([[active, true, true]])
     await vi.advanceTimersByTimeAsync(CHAT_SYNC_INTERVAL_MS - 1)
     expect(mocks.cachedInbox).toHaveBeenCalledTimes(1)
     await vi.advanceTimersByTimeAsync(1)

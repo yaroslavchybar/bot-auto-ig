@@ -241,10 +241,10 @@ test('Conversation sync returns the same bounded history as subsequent cache rea
     thread: { ...shell, messages: [{ ...messages[0], id: 'latest', timestamp: 101 }, ...messages.slice(0, 7)] } })
   const cached = await t.query(internal.chatCache.conversation, { profileId, threadId: shell.id })
   expect(fresh).toEqual(cached)
-  expect(fresh.messages).toHaveLength(20)
+  expect(fresh.messages).toHaveLength(30)
   expect(fresh.messages[0].id).toBe('latest')
-  expect(fresh.messages.at(-1)?.id).toBe('18')
-  expect((await t.run(ctx => ctx.db.query('chatHistories').unique()))?.messages).toHaveLength(20)
+  expect(fresh.messages.at(-1)?.id).toBe('28')
+  expect((await t.run(ctx => ctx.db.query('chatHistories').unique()))?.messages).toHaveLength(30)
   await expect(t.mutation(internal.chatCache.saveInbox, { profileId, token, viewerId: 'viewer',
     threads: [{ ...shell, messages }] })).rejects.toThrow('one preview')
 })

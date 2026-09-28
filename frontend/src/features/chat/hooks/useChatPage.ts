@@ -1,22 +1,42 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { apiFetch } from '@/lib/api'
+import { useAppUser } from '@/lib/auth'
 import { useLocation, useNavigate } from '@/lib/router'
 import { useProfiles } from '@/features/profiles/hooks/useProfiles'
 import type { Profile } from '@/features/profiles/types'
 import { errorText, filterThreads, sortThreadsByLatest } from '../utils/chat'
 import { preparePhoto, videoMetadata } from '../utils/media'
+import {
+  clearProfileChatCache,
+  readInboxCache,
+  readThreadCache,
+  saveInboxCache,
+  saveThreadCache,
+} from '../cache'
 import type {
   AllChatInbox,
   ChatInbox,
   ChatMessage,
   ChatSession,
   ChatThread,
+  OlderChatPage,
 } from '../types'
 
 const REPLY_MAX_LENGTH = 1000
 type OutgoingReply = { threadKey: string; message: ChatMessage }
 
+function mergeConversation(current: ChatThread | null, incoming: ChatThread): ChatThread {
+  if (!current || current.id !== incoming.id || current.profileId !== incoming.profileId ||
+    incoming.messages.length === 0) return incoming
+  const oldestFetched = Math.min(...incoming.messages.map((message) => message.timestamp))
+  const messages = new Map(current.messages.filter((message) => message.timestamp < oldestFetched)
+    .map((message) => [message.id, message]))
+  for (const message of incoming.messages) messages.set(message.id, message)
+  return { ...incoming, messages: [...messages.values()].sort((a, b) => b.timestamp - a.timestamp) }
+}
+
 export function useChatPage() {
+  const userId = useAppUser()?.id ?? ''
   const { search } = useLocation()
   const navigate = useNavigate()
   const selection = new URLSearchParams(search)
@@ -47,6 +67,15 @@ export function useChatPage() {
   const [inbox, setInbox] = useState<ChatInbox | null>(null)
   const [inboxErrors, setInboxErrors] = useState<string[]>([])
   const [conversation, setConversation] = useState<ChatThread | null>(null)
+  const [visibleCount, setVisibleCount] = useState(10)
+  const [olderMessages, setOlderMessages] = useState<ChatMessage[]>([])
+  const [olderCursor, setOlderCursor] = useState('')
+  const [hasOlder, setHasOlder] = useState(true)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const olderPending = useRef(false)
+  const olderRequest = useRef<AbortController | null>(null)
+  const activeThreadKey = useRef('')
+  const previousNewest = useRef<{ key: string; id: string } | null>(null)
   const [outgoingReplies, setOutgoingReplies] = useState<OutgoingReply[]>([])
   const [draft, setDraft] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -54,6 +83,8 @@ export function useChatPage() {
   const [threadRefresh, setThreadRefresh] = useState(0)
   const inboxPending = useRef(false)
   const threadPending = useRef(false)
+  const inboxNetworkKey = useRef('')
+  const threadNetworkKey = useRef('')
   const [loadingInbox, setLoadingInbox] = useState(false)
   const [loadingThread, setLoadingThread] = useState(false)
   const [sending, setSending] = useState(false)
@@ -61,6 +92,7 @@ export function useChatPage() {
   const [unsendingMessageId, setUnsendingMessageId] = useState<string | null>(null)
   const sendingRef = useRef(false)
   const [connected, setConnected] = useState<boolean | null>(null)
+  const [connectedProfileId, setConnectedProfileId] = useState('')
   const [connectOpen, setConnectOpen] = useState(false)
   const [credentials, setCredentials] = useState('')
   const [connecting, setConnecting] = useState(false)
@@ -117,11 +149,13 @@ export function useChatPage() {
   useEffect(() => {
     if (profilesLoading) return
     setConnected(null)
+    setConnectedProfileId('')
     setConnectOpen(false)
     setCredentials('')
     if (profileId !== activeProfileId) return
     if (activeProfileId === 'all') {
       setConnected(true)
+      setConnectedProfileId('all')
       return
     }
     const controller = new AbortController()
@@ -133,26 +167,65 @@ export function useChatPage() {
       },
     )
       .then((data) => {
-        if (!controller.signal.aborted) setConnected(data.connected)
+        if (!controller.signal.aborted) {
+          setConnected(data.connected)
+          setConnectedProfileId(activeProfileId)
+        }
       })
       .catch((error) => {
         if (!controller.signal.aborted) setError(errorText(error))
       })
     return () => controller.abort()
-  }, [activeProfileId, profileId, profilesLoading])
+  }, [activeProfileId, profileId, profilesLoading, userId])
 
   useEffect(() => {
     setInbox(null)
     setConversation(null)
     setInboxErrors([])
-  }, [activeProfileId])
+    inboxNetworkKey.current = ''
+  }, [activeProfileId, userId])
 
   useEffect(() => {
     setConversation(null)
-  }, [activeProfileId, selectedThreadId])
+    threadNetworkKey.current = ''
+    setVisibleCount(10)
+    setOlderMessages([])
+    setOlderCursor('')
+    setHasOlder(true)
+    setLoadingOlder(false)
+    olderPending.current = false
+    olderRequest.current?.abort()
+    olderRequest.current = null
+    previousNewest.current = null
+  }, [activeProfileId, selectedThreadId, userId])
 
   useEffect(() => {
-    if (profilesLoading || profileId !== activeProfileId || !activeProfileId || !connected) return
+    if (!userId || !connected || connectedProfileId !== activeProfileId) return
+    let active = true
+    const key = `${userId}:${activeProfileId}`
+    void readInboxCache(userId, activeProfileId).then((cached) => {
+      if (active && cached && inboxNetworkKey.current !== key) setInbox(cached)
+    })
+    return () => { active = false }
+  }, [userId, activeProfileId, connected, connectedProfileId])
+
+  useEffect(() => {
+    if (!userId || !connected || connectedProfileId !== activeProfileId || !selectedThreadId) return
+    const targetProfileId = activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    if (!targetProfileId || !targetThreadId) return
+    let active = true
+    const key = `${userId}:${targetProfileId}:${targetThreadId}`
+    void readThreadCache(userId, targetProfileId, targetThreadId).then((cached) => {
+      if (active && cached && threadNetworkKey.current !== key)
+        setConversation({ ...cached, profileId: targetProfileId })
+    })
+    return () => { active = false }
+  }, [userId, activeProfileId, selectedThreadId, connected, connectedProfileId])
+
+  useEffect(() => {
+    if (profilesLoading || profileId !== activeProfileId || !activeProfileId || !connected ||
+      connectedProfileId !== activeProfileId) return
     const controller = new AbortController()
     inboxPending.current = true
     setLoadingInbox(true)
@@ -169,9 +242,10 @@ export function useChatPage() {
     )
       .then((data) => {
         if (controller.signal.aborted) return
-        setInbox(
-          'viewerId' in data ? data : { viewerId: '', threads: data.threads },
-        )
+        const nextInbox = 'viewerId' in data ? data : { viewerId: '', threads: data.threads }
+        inboxNetworkKey.current = `${userId}:${activeProfileId}`
+        setInbox(nextInbox)
+        if (userId) void saveInboxCache(userId, activeProfileId, nextInbox)
         setInboxErrors([])
         if ('errors' in data)
           setInboxErrors(data.errors.map((item) => item.profileName))
@@ -189,7 +263,7 @@ export function useChatPage() {
       controller.abort()
       inboxPending.current = false
     }
-  }, [activeProfileId, profileId, connected, inboxRefresh, eligibleProfiles.length, profilesLoading])
+  }, [activeProfileId, profileId, connected, connectedProfileId, inboxRefresh, eligibleProfiles.length, profilesLoading, userId])
 
   useEffect(() => {
     const targetProfileId =
@@ -200,7 +274,8 @@ export function useChatPage() {
       activeProfileId === 'all'
         ? selectedThreadId.split(':')[1]
         : selectedThreadId
-    if (profilesLoading || profileId !== activeProfileId || !targetProfileId || !connected || !targetThreadId) return
+    if (profilesLoading || profileId !== activeProfileId || !targetProfileId || !connected ||
+      connectedProfileId !== activeProfileId || !targetThreadId) return
     const controller = new AbortController()
     threadPending.current = true
     setLoadingThread(true)
@@ -210,7 +285,10 @@ export function useChatPage() {
     )
       .then((data) => {
         if (controller.signal.aborted) return
-        setConversation(data)
+        threadNetworkKey.current = `${userId}:${targetProfileId}:${targetThreadId}`
+        const scoped = { ...data, profileId: targetProfileId }
+        setConversation((current) => mergeConversation(current, scoped))
+        if (userId && data) void saveThreadCache(userId, targetProfileId, targetThreadId, scoped)
       })
       .catch((error) => {
         if (!controller.signal.aborted) setError(errorText(error))
@@ -225,7 +303,19 @@ export function useChatPage() {
       controller.abort()
       threadPending.current = false
     }
-  }, [activeProfileId, profileId, connected, selectedThreadId, threadRefresh, profilesLoading])
+  }, [activeProfileId, profileId, connected, connectedProfileId, selectedThreadId, threadRefresh, profilesLoading, userId])
+
+  useEffect(() => {
+    const newest = conversation?.messages[0]?.id
+    if (!newest) return
+    const key = `${activeProfileId}:${selectedThreadId}`
+    const previous = previousNewest.current
+    if (olderMessages.length === 0 && previous?.key === key && previous.id !== newest) {
+      const added = conversation.messages.findIndex((message) => message.id === previous.id)
+      if (added > 0) setVisibleCount((count) => count + added)
+    }
+    previousNewest.current = { key, id: newest }
+  }, [conversation, activeProfileId, selectedThreadId, olderMessages.length])
 
   const threads = useMemo(
     () =>
@@ -264,21 +354,23 @@ export function useChatPage() {
       ? selectedThreadId
       : `${activeProfileId}:${selectedThreadId}`
     : ''
+  activeThreadKey.current = selectedReplyKey
   const displayedConversation = useMemo(() => {
     const local = outgoingReplies.filter(
       (reply) => reply.threadKey === selectedReplyKey,
     )
-    if (local.length === 0) return conversation
     const base =
       conversation ??
       (selectedThread ? { ...selectedThread, messages: [] } : null)
     if (!base) return null
-    const ids = new Set(base.messages.map((message) => message.id))
+    const visible = olderMessages.length ? base.messages : base.messages.slice(0, visibleCount)
+    const ids = new Set([...base.messages, ...olderMessages].map((message) => message.id))
     const contexts = new Set(
       base.messages.map((message) => message.clientContext).filter(Boolean),
     )
     const messages = [
-      ...base.messages,
+      ...visible,
+      ...olderMessages.filter((message) => !visible.some((item) => item.id === message.id)),
       ...local
         .map((reply) => reply.message)
         .filter(
@@ -287,9 +379,50 @@ export function useChatPage() {
         ),
     ]
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 20)
     return { ...base, messages }
-  }, [conversation, outgoingReplies, selectedReplyKey, selectedThread])
+  }, [conversation, visibleCount, olderMessages, outgoingReplies, selectedReplyKey, selectedThread])
+
+  async function loadOlder(): Promise<boolean> {
+    if (olderPending.current || !conversation || !selectedThreadId) return false
+    if (olderMessages.length === 0 && visibleCount < conversation.messages.length) {
+      setVisibleCount((count) => Math.min(count + 10, conversation.messages.length))
+      return true
+    }
+    if (!hasOlder) return false
+    const oldest = olderMessages.at(-1) ?? conversation.messages.at(-1)
+    if (!oldest?.timestamp) return false
+    const targetProfileId = activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    if (!targetProfileId || !targetThreadId) return false
+    olderPending.current = true
+    setLoadingOlder(true)
+    const controller = new AbortController()
+    olderRequest.current = controller
+    try {
+      const params = new URLSearchParams({ before: String(oldest.timestamp), beforeId: oldest.id,
+        cursor: olderCursor })
+      const page = await apiFetch<OlderChatPage>(
+        `/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/older?${params}`,
+        { maxRetries: 1, timeout: 60_000, signal: controller.signal },
+      )
+      if (controller.signal.aborted || activeThreadKey.current !== `${targetProfileId}:${targetThreadId}`) return false
+      setOlderCursor(page.nextCursor)
+      setHasOlder(page.hasOlder)
+      const known = new Set([...conversation.messages, ...olderMessages].map((message) => message.id))
+      const added = page.messages.filter((message) => !known.has(message.id))
+      if (added.length) setOlderMessages((current) => [...current, ...added].sort((a, b) => b.timestamp - a.timestamp))
+      return added.length > 0
+    } catch (error) {
+      if (!controller.signal.aborted) setError(errorText(error))
+      return false
+    } finally {
+      if (olderRequest.current === controller) {
+        olderRequest.current = null
+        olderPending.current = false
+        setLoadingOlder(false)
+      }
+    }
+  }
 
   useEffect(() => {
     if (!conversation || !selectedReplyKey) return
@@ -360,8 +493,10 @@ export function useChatPage() {
         { method: 'POST', body: { credentials }, timeout: 60_000 },
       )
       if (!result.connected) throw new Error('Instagram Chat did not connect')
+      if (userId) await clearProfileChatCache(userId, activeProfileId)
       setConnectOpen(false)
       setConnected(true)
+      setConnectedProfileId(activeProfileId)
       setInboxRefresh((value) => value + 1)
     } catch (error) {
       setError(errorText(error))
@@ -383,6 +518,8 @@ export function useChatPage() {
         },
       )
       setConnected(false)
+      setConnectedProfileId(activeProfileId)
+      if (userId) await clearProfileChatCache(userId, activeProfileId)
       setConnectOpen(false)
       setInbox(null)
       setConversation(null)
@@ -548,6 +685,8 @@ export function useChatPage() {
     if (!remove && viewerId) next.push({ senderId: viewerId, emoji })
     setConversation((current) => current && ({ ...current, messages: current.messages.map((item) =>
       item.id === message.id ? { ...item, reactions: next } : item) }))
+    setOlderMessages((current) => current.map((item) =>
+      item.id === message.id ? { ...item, reactions: next } : item))
     setReactingMessageId(message.id)
     setError('')
     try {
@@ -557,6 +696,8 @@ export function useChatPage() {
     } catch (error) {
       setConversation((current) => current && ({ ...current, messages: current.messages.map((item) =>
         item.id === message.id ? { ...item, reactions: previous } : item) }))
+      setOlderMessages((current) => current.map((item) =>
+        item.id === message.id ? { ...item, reactions: previous } : item))
       setError(`${errorText(error)}. Refresh the conversation to check the reaction.`)
     } finally { setReactingMessageId(null) }
   }
@@ -576,6 +717,7 @@ export function useChatPage() {
         .sort((a, b) => b.timestamp - a.timestamp)[0]
       setConversation((current) => current?.id === targetThreadId
         ? { ...current, messages: current.messages.filter((item) => item.id !== message.id) } : current)
+      setOlderMessages((current) => current.filter((item) => item.id !== message.id))
       setOutgoingReplies((current) => current.filter((reply) =>
         reply.threadKey !== `${targetProfileId}:${targetThreadId}` || reply.message.id !== message.id))
       setInbox((current) => current && ({ ...current, threads: current.threads.map((thread) =>
@@ -600,6 +742,9 @@ export function useChatPage() {
     visibleThreads,
     selectedThread,
     conversation: displayedConversation,
+    hasOlder: (olderMessages.length === 0 && visibleCount < (conversation?.messages.length ?? 0)) || hasOlder,
+    loadingOlder,
+    loadOlder,
     draft,
     setDraft,
     searchQuery,
@@ -609,7 +754,7 @@ export function useChatPage() {
     sending,
     reactingMessageId,
     unsendingMessageId,
-    connected,
+    connected: connectedProfileId === activeProfileId ? connected : null,
     connectOpen,
     setConnectOpen,
     credentials,
