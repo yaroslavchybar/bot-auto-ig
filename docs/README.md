@@ -41,6 +41,25 @@ lock, disposable HTTP, code, GPU, media, and shader caches are pruned. Cookies,
 local storage, IndexedDB, service workers, preferences, and fingerprint seeds
 are preserved.
 
+Each manually opened browser also writes `data/profiles/<name>/dom-inspector.json` with a
+temporary DOM inspection port. The read-only server binds to `127.0.0.1` inside
+the server container and is removed when the browser closes. From the VPS,
+read the port file with `docker exec ig-bot-server cat
+/app/data/profiles/<name>/dom-inspector.json`, then query `/pages` for tab
+indexes, `/aria?index=0` for accessible controls, or `/dom?index=0` for the
+raw HTML on that port. The DOM can contain private account data; keep captures
+out of logs and source control.
+
+For full browser DevTools access, the manual session also starts Chromium's CDP
+server on a random `127.0.0.1` port inside the container. While the profile is
+open, the first line of `data/profiles/<name>/DevToolsActivePort` is its port;
+`http://127.0.0.1:<port>/json/list` lists inspectable tabs. This exposes the
+console, network, storage, and JavaScript debugging as well as the DOM. The
+port is not published outside the container. In the VNC browser window, F12
+opens the graphical DevTools. CDP has full control of the logged-in browser, so
+keep it on loopback and remove access when the session closes.
+Automation and account-login sessions do not start either inspection port.
+
 Convex stores each profile's cookies and fingerprint seed. On open, a seed in
 Convex wins; otherwise the app uses a matching local `cloak-seed.json` seed, or
 creates one if neither exists. It saves the chosen seed to both places. On each

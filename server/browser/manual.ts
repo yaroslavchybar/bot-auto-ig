@@ -35,6 +35,7 @@ async function main(): Promise<void> {
   const session = await openBrowserSession(profileName, {
     headless: process.argv.includes('--headless'),
     display: process.env.DISPLAY,
+    inspect: true,
   })
 
   if (session.display)

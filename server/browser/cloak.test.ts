@@ -36,7 +36,7 @@ test('missing and pending profiles cannot recreate folders and always release th
   `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
 })
 
-for (const scenario of ['stop', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies', 'seed persistence retry', 'seed persistence failure']) {
+for (const scenario of ['stop', 'manual inspection', 'stop during inspector startup', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies', 'seed persistence retry', 'seed persistence failure']) {
 test(`browser cleanup: ${scenario}`, () => {
   // Isolate module mocks and process signal handlers from other tests.
   const output = execFileSync('bun', ['--eval', `
@@ -48,6 +48,7 @@ test(`browser cleanup: ${scenario}`, () => {
     import { EventEmitter } from 'node:events'
 
     const scenario = ${JSON.stringify(scenario)}
+    const inspect = ['manual inspection', 'stop during inspector startup'].includes(scenario)
     mock.module('./server/browser/filePicker.ts', () => ({ pickerSocket: () => 'test', startFilePicker: async () => () => {} }))
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-shutdown-'))
     const seedWrites = []
@@ -58,9 +59,13 @@ test(`browser cleanup: ${scenario}`, () => {
       fs.writeFileSync(path.join(profileDir, 'cloak-seed.json'), JSON.stringify({ platform: 'windows', seed: 43210 }))
     }
     const cache = path.join(root, 'data/profiles/test/Default/Cache')
+    const inspectorPath = path.join(root, 'data/profiles/test/dom-inspector.json')
+    const devToolsPortFile = path.join(root, 'data/profiles/test/DevToolsActivePort')
     fs.mkdirSync(cache, { recursive: true })
     fs.writeFileSync(path.join(cache, 'old-cache'), 'cached video')
+    fs.writeFileSync(devToolsPortFile, 'stale port')
     const events = []
+    let inspectorClosed = false
     const cookies = [{ name: 'sessionid', value: 'test-session', domain: '.instagram.com', path: '/' }]
     const context = new EventEmitter()
     let jar = [{ name: 'old-session', value: 'stale', domain: '.instagram.com', path: '/' }]
@@ -92,10 +97,25 @@ test(`browser cleanup: ${scenario}`, () => {
       events.push('close')
       context.emit('close')
     }
+    if (scenario === 'stop during inspector startup') {
+      mock.module('./server/browser/domInspector.ts', () => ({ startDomInspector: async () => {
+        fs.writeFileSync(inspectorPath, 'listening')
+        process.emit('SIGTERM')
+        await new Promise(resolve => context.once('close', resolve))
+        return { close: async () => {
+          inspectorClosed = true
+          fs.rmSync(inspectorPath, { force: true })
+        } }
+      } }))
+    }
     mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async options => {      launchOptions = options
       if (scenario === 'seed persistence retry') assert.equal(seedWriteDone, true, 'launch waits for seed persistence')
       assert.equal(fs.existsSync(cache), false, 'cache is pruned before launch')
       assert.ok(options.args.includes('--disk-cache-size=134217728'))
+      assert.equal(options.args.includes('--remote-debugging-port=0'), inspect)
+      assert.equal(options.args.includes('--remote-debugging-address=127.0.0.1'), inspect)
+      assert.equal(fs.existsSync(devToolsPortFile), false, 'stale DevTools port is cleared before launch')
+      if (inspect) fs.writeFileSync(devToolsPortFile, '45678')
       assert.throws(() => lockProfile('test'), /already open/)
       if (scenario === 'stop during launch') process.emit('SIGTERM')
       if (scenario === 'budget lost during launch') loseBudget()
@@ -141,14 +161,21 @@ test(`browser cleanup: ${scenario}`, () => {
     const { lockProfile } = await import('./server/profiles/paths.ts')
     try {
       const { openBrowserSession } = await import('./server/browser/cloak.ts')
-      if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'seed persistence failure'].includes(scenario)) {
+      if (scenario === 'stop during inspector startup') {
+        await assert.rejects(openBrowserSession('test', { inspect }), /Browser worker stopped/)
+        assert.equal(inspectorClosed, true, 'late inspector is closed after shutdown')
+        assert.equal(fs.existsSync(inspectorPath), false)
+        assert.equal(fs.existsSync(devToolsPortFile), false)
+      } else if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'seed persistence failure'].includes(scenario)) {
         const expected = scenario === 'seed persistence failure' ? /Database unavailable/
           : ['startup failure', 'stop during navigation'].includes(scenario) ? /Navigation failed/
           : scenario === 'stop during launch' ? /Browser worker stopped/ : /budget disconnected/
         await assert.rejects(openBrowserSession('test'), expected)
         assert.deepEqual(events, scenario === 'seed persistence failure' ? ['display', 'slot'] : ['close', 'display', 'slot'])
       } else {
-        const session = await openBrowserSession('test')
+        const session = await openBrowserSession('test', { inspect })
+        assert.equal(fs.existsSync(inspectorPath), inspect, 'only manual sessions expose a DOM port')
+        assert.equal(fs.existsSync(devToolsPortFile), inspect, 'only manual sessions expose a DevTools port')
         if (scenario === 'seed persistence retry') {
           assert.deepEqual(seedWrites, [43210], 'a local seed missing from Convex must be persisted again')
           assert.ok(launchOptions.args.includes('--fingerprint=43210'))
@@ -178,6 +205,8 @@ test(`browser cleanup: ${scenario}`, () => {
             ? ['read', 'read', 'close', 'display', 'slot']
             : ['read', 'saved', 'read', 'close', 'display', 'slot'])
         }
+        assert.equal(fs.existsSync(inspectorPath), false, 'closing removes the DOM port file')
+        assert.equal(fs.existsSync(devToolsPortFile), false, 'closing removes the DevTools port file')
       }
       console.log('shutdown order verified')
     } finally {

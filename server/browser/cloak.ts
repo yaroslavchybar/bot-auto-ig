@@ -15,6 +15,7 @@ import {
 } from '../shared/convexClient.js'
 import { startFilePicker, pickerSocket } from './filePicker.js'
 import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
+import { startDomInspector } from './domInspector.js'
 import { lockProfile, profileDirectory } from '../profiles/paths.js'
 
 export type BrowserSession = {
@@ -99,7 +100,7 @@ async function saveSession(
   }
 }
 
-type SessionOptions = { headless?: boolean; display?: string; proxyOverride?: string }
+type SessionOptions = { headless?: boolean; display?: string; proxyOverride?: string; inspect?: boolean }
 
 /** Cloak platform persona. mac stays mac, everything else runs as Windows. */
 export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
@@ -166,6 +167,11 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
       '--fingerprint-portable-cookies',
       `--fingerprint-screen-width=${BROWSER_WINDOW_WIDTH}`,
       `--fingerprint-screen-height=${BROWSER_WINDOW_HEIGHT}`,
+      // Manual sessions can expose DevTools without changing automation launches.
+      ...(options.inspect ? [
+        '--remote-debugging-port=0',
+        '--remote-debugging-address=127.0.0.1',
+      ] : []),
     ],
     proxy,
     geoip: Boolean(proxy),
@@ -243,6 +249,7 @@ export async function openBrowserSession(
 ): Promise<BrowserSession> {
   shutdownSignal.throwIfAborted()
   const profileDir = profileDirectory(profileName)
+  const devToolsPortFile = path.join(profileDir, 'DevToolsActivePort')
   const releaseLock = lockProfile(profileName)
   let profile: DbProfileRow | undefined
   try {
@@ -253,6 +260,7 @@ export async function openBrowserSession(
       throw new Error('Profile maintenance is in progress')
     fs.mkdirSync(profileDir, { recursive: true })
     migrateFirefoxProfile(profileDir)
+    fs.rmSync(devToolsPortFile, { force: true })
     clearSavedWindowPlacement(profileDir)
     await pruneProfileCache(profileDir)
   } catch (error) {
@@ -264,6 +272,7 @@ export async function openBrowserSession(
   let display: Display | undefined
   let context: BrowserContext | undefined
   let stopFilePicker: (() => void) | undefined
+  let stopDomInspector: (() => Promise<void>) | undefined
   let ready = false
   let browserClosed = false
   let budgetLost = false
@@ -283,9 +292,11 @@ export async function openBrowserSession(
       shutdownSignal.removeEventListener('abort', requestClose)
       const errors: unknown[] = []
       const steps = [
+        () => stopDomInspector?.(),
         () => stopFilePicker?.(),
         () => ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
         () => !browserClosed ? context?.close() : undefined,
+        () => fs.rmSync(devToolsPortFile, { force: true }),
         () => display?.close(),
         releaseLock,
         () => releaseSlot?.(),
@@ -372,6 +383,15 @@ export async function openBrowserSession(
       await saveSession(profile, context)
     } catch {
       process.stderr.write('Could not refresh session cookies at open; close will retry\n')
+    }
+    if (options.inspect) {
+      try {
+        const inspector = await startDomInspector(context, profileDir)
+        if (closing) await inspector.close()
+        else stopDomInspector = inspector.close
+      } catch {
+        process.stderr.write('Could not start local DOM inspector\n')
+      }
     }
     checkStartup()
     ready = true
