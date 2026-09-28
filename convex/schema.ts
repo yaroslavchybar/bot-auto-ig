@@ -139,17 +139,20 @@ export default defineSchema({
 		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),
 		title: v.string(), users: v.array(v.object({ id: v.string(), username: v.string() })),
 		preview: v.optional(chatMessage),
+		previewUpdatedAt: v.optional(v.number()),
 		unsentMessageIds: v.optional(v.array(v.string())),
 		lastSeenAt: v.array(v.object({ userId: v.string(), timestamp: v.number() })),
 		threadSyncedAt: v.optional(v.number()),
 		unread: v.optional(v.boolean()),
 		lastIncomingAt: v.optional(v.number()),
 		repliedThroughAt: v.optional(v.number()),
-	}).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId']),
+	}).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId'])
+      .index('by_thread', ['threadId']),
 	// Bounded recent history, read only when a conversation is opened.
 	chatHistories: defineTable({
 		profileId: v.id('profiles'), threadId: v.string(), sessionToken: v.string(),
 		messages: v.array(chatMessage),
+		confirmedMessageIds: v.optional(v.array(v.string())),
 	}).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId']),
 
   scrapeJobs: defineTable({

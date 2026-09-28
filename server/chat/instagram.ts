@@ -69,6 +69,7 @@ export type ChatMessage = {
 export type ChatThread = {
   id: string;
   unread?: boolean;
+  confirmedMessageIds?: string[];
   title: string;
   users: { id: string; username: string }[];
   messages: ChatMessage[];

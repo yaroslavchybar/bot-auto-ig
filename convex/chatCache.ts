@@ -64,17 +64,48 @@ export const markUnsent = internalMutation({
   handler: async (ctx, { profileId, token, threadId, messageId }) => {
     const session = await ctx.db.query('chatSessions').withIndex('by_profile', q => q.eq('profileId', profileId)).unique();
     if (!session || session.token !== token) throw new Error('Chat session changed');
-    const row = await ctx.db.query('chatThreads').withIndex('by_profile_session_thread', q =>
-      q.eq('profileId', profileId).eq('sessionToken', token).eq('threadId', threadId)).unique();
-    const history = await ctx.db.query('chatHistories').withIndex('by_profile_session_thread', q =>
-      q.eq('profileId', profileId).eq('sessionToken', token).eq('threadId', threadId)).unique();
-    const messages = history?.messages.filter(item => item.id !== messageId) ?? [];
-    if (history && messages.length !== history.messages.length) await ctx.db.patch(history._id, { messages });
-    const unsentMessageIds = [...new Set([...(row?.unsentMessageIds ?? []), messageId])].slice(-100);
-    if (row) await ctx.db.patch(row._id, { unsentMessageIds,
-      preview: row.preview?.id === messageId ? messages[0] : row.preview });
-    else await ctx.db.insert('chatThreads', { profileId, sessionToken: token, threadId,
-      title: 'Conversation', users: [], lastSeenAt: [], unsentMessageIds });
+    const rows = await ctx.db.query('chatThreads').withIndex('by_thread', q => q.eq('threadId', threadId)).collect();
+    const affected: Id<'profiles'>[] = [];
+    for (const row of rows) {
+      const owner = row.profileId === profileId ? session : await ctx.db.query('chatSessions')
+        .withIndex('by_profile', q => q.eq('profileId', row.profileId)).unique();
+      if (!owner || owner.token !== row.sessionToken) continue;
+      const history = await ctx.db.query('chatHistories').withIndex('by_profile_session_thread', q =>
+        q.eq('profileId', row.profileId).eq('sessionToken', row.sessionToken).eq('threadId', threadId)).unique();
+      const messages = history?.messages.filter(item => item.id !== messageId) ?? [];
+      const removed = history?.messages.find(item => item.id === messageId) ??
+        (row.preview?.id === messageId ? row.preview : undefined);
+      const remaining = row.preview && row.preview.id !== messageId &&
+        !messages.some(item => item.id === row.preview?.id) ? [...messages, row.preview] : messages;
+      const viewerId = owner.viewerId ?? '';
+      const lastIncomingAt = removed && viewerId && removed.senderId !== viewerId &&
+        removed.timestamp === row.lastIncomingAt
+        ? Math.max(0, ...remaining.filter(item => item.senderId && item.senderId !== viewerId)
+          .map(item => item.timestamp)) : row.lastIncomingAt ?? 0;
+      const repliedThroughAt = removed && viewerId && removed.senderId === viewerId &&
+        removed.timestamp === row.repliedThroughAt
+        ? Math.max(0, ...remaining.filter(item => item.senderId === viewerId)
+          .map(item => item.timestamp)) : row.repliedThroughAt ?? 0;
+      const unread = lastIncomingAt > repliedThroughAt;
+      const confirmedMessageIds = history?.confirmedMessageIds?.filter(id => id !== messageId);
+      if (history && (messages.length !== history.messages.length ||
+        confirmedMessageIds?.length !== history.confirmedMessageIds?.length))
+        await ctx.db.patch(history._id, { messages, confirmedMessageIds });
+      const unsentMessageIds = [...new Set([...(row.unsentMessageIds ?? []), messageId])].slice(-100);
+      await ctx.db.patch(row._id, { unsentMessageIds, lastIncomingAt, repliedThroughAt, unread,
+        preview: row.preview?.id === messageId ? messages[0] : row.preview,
+        previewUpdatedAt: row.preview?.id === messageId ? Date.now() : row.previewUpdatedAt });
+      if (unread !== (row.unread ?? false)) await ctx.db.patch(owner._id, {
+        unreadCount: Math.max(0, (owner.unreadCount ?? 0) + Number(unread) - Number(row.unread ?? false)),
+      });
+      affected.push(row.profileId);
+    }
+    if (!affected.includes(profileId)) {
+      await ctx.db.insert('chatThreads', { profileId, sessionToken: token, threadId,
+        title: 'Conversation', users: [], lastSeenAt: [], unsentMessageIds: [messageId] });
+      affected.push(profileId);
+    }
+    return affected;
   },
 });
 
@@ -152,6 +183,7 @@ export const conversation = internalQuery({
       q.eq('profileId', profileId).eq('sessionToken', session.token).eq('threadId', threadId)).unique();
     return { id: row.threadId, title: row.title, users: row.users,
       messages: mergeMessages(history?.messages ?? [], row.preview ? [row.preview] : []),
+      confirmedMessageIds: history?.confirmedMessageIds,
       lastSeenAt: row.lastSeenAt, syncedAt: row.threadSyncedAt ?? 0, unread: row.unread ?? false };
   },
 });
@@ -177,9 +209,11 @@ export const saveInbox = internalMutation({
       const unread = unreadFields(existing, preview ? [preview] : [], viewerId);
       unreadCount += Number(unread.unread) - Number(existing?.unread ?? false);
       savedThreads.push({ ...item, messages: preview ? [preview] : [], lastSeenAt, unread: unread.unread });
+      const previewUpdatedAt = JSON.stringify(existing?.preview) === JSON.stringify(preview)
+        ? existing?.previewUpdatedAt : Date.now();
       const fields = { sessionToken: token, title: item.title, users: item.users,
         ...unread,
-        lastSeenAt, preview,
+        lastSeenAt, preview, previewUpdatedAt,
         ...(existing?.sessionToken !== token ? { threadSyncedAt: undefined } : {}) };
       if (existing && existing.unread === unread.unread && existing.lastIncomingAt === unread.lastIncomingAt &&
         existing.repliedThroughAt === unread.repliedThroughAt && existing.title === item.title &&
@@ -211,8 +245,8 @@ export const saveInbox = internalMutation({
 });
 
 export const saveConversation = internalMutation({
-  args: { profileId: v.id('profiles'), token: v.string(), thread },
-  handler: async (ctx, { profileId, token, thread: item }) => {
+  args: { profileId: v.id('profiles'), token: v.string(), thread, fetchedAt: v.optional(v.number()) },
+  handler: async (ctx, { profileId, token, thread: item, fetchedAt = 0 }) => {
     if (item.messages.length > 100) throw new Error('Too many Chat messages');
     const session = await ctx.db.query('chatSessions')
       .withIndex('by_profile', q => q.eq('profileId', profileId)).first();
@@ -224,21 +258,29 @@ export const saveConversation = internalMutation({
       q.eq('profileId', profileId).eq('sessionToken', token).eq('threadId', item.id)).unique();
     const unsent = new Set(existing?.unsentMessageIds ?? []);
     const incoming = item.messages.filter(message => !unsent.has(message.id));
+    const confirmedMessageIds = incoming.map(message => message.id).sort();
     const fetchedMessages = incoming.length || item.messages.length === 0
       ? reconcileMessages(history?.messages ?? [], incoming)
       : history?.messages.filter(message => !unsent.has(message.id)) ?? [];
     // An inbox sync may have saved a newer DM while this thread request was in flight.
-    const newerPreview = existing?.preview &&
-      existing.preview.timestamp > (fetchedMessages[0]?.timestamp ?? -Infinity) ? existing.preview : undefined;
+    const fetchedLatest = fetchedMessages[0];
+    const newerPreview = existing?.preview && (existing.previewUpdatedAt ?? 0) > fetchedAt &&
+      (existing.preview.timestamp > (fetchedLatest?.timestamp ?? -Infinity) ||
+        (existing.preview.id === fetchedLatest?.id && existing.preview.timestamp === fetchedLatest.timestamp))
+      ? existing.preview : undefined;
     const messages = newerPreview ? mergeMessages(fetchedMessages, [newerPreview]) : fetchedMessages;
     const unread = unreadFields(existing, messages, session.viewerId ?? '');
-    const historyChanged = !history || JSON.stringify(history.messages) !== JSON.stringify(messages);
-    if (!history) await ctx.db.insert('chatHistories', { profileId, threadId: item.id, sessionToken: token, messages });
-    else if (historyChanged) await ctx.db.patch(history._id, { messages });
+    const historyChanged = !history || JSON.stringify(history.messages) !== JSON.stringify(messages) ||
+      JSON.stringify(history.confirmedMessageIds) !== JSON.stringify(confirmedMessageIds);
+    if (!history) await ctx.db.insert('chatHistories', {
+      profileId, threadId: item.id, sessionToken: token, messages, confirmedMessageIds });
+    else if (historyChanged) await ctx.db.patch(history._id, { messages, confirmedMessageIds });
     const lastSeenAt = mergeSeen(existing?.sessionToken === token ? existing.lastSeenAt : [], item.lastSeenAt);
     const fields = { sessionToken: token, title: item.title, users: item.users,
       ...unread,
       preview: messages[0],
+      previewUpdatedAt: JSON.stringify(existing?.preview) === JSON.stringify(messages[0])
+        ? existing?.previewUpdatedAt : Date.now(),
       lastSeenAt,
       threadSyncedAt: Date.now() };
     const threadChanged = !existing || historyChanged || existing.title !== item.title ||
@@ -252,7 +294,8 @@ export const saveConversation = internalMutation({
     if (unread.unread !== (existing?.unread ?? false)) await ctx.db.patch(session._id, {
       unreadCount: (session.unreadCount ?? 0) + Number(unread.unread) - Number(existing?.unread ?? false),
     });
-    return { ...item, messages, lastSeenAt, syncedAt: threadChanged ? fields.threadSyncedAt : existing?.threadSyncedAt ?? 0,
+    return { ...item, messages, confirmedMessageIds, lastSeenAt,
+      syncedAt: threadChanged ? fields.threadSyncedAt : existing?.threadSyncedAt ?? 0,
       unread: unread.unread };
   },
 });

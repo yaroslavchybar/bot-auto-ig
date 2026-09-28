@@ -7,10 +7,15 @@ import type { Profile } from '@/features/profiles/types'
 import { errorText, filterThreads, sortThreadsByLatest } from '../utils/chat'
 import { preparePhoto, videoMetadata } from '../utils/media'
 import {
+  clearPendingChatMessage,
   clearProfileChatCache,
+  clearThreadChatCache,
   readInboxCache,
+  readPendingChatMessages,
   readThreadCache,
+  replacePendingChatMessage,
   saveInboxCache,
+  savePendingChatMessage,
   saveThreadCache,
 } from '../cache'
 import type {
@@ -181,12 +186,14 @@ export function useChatPage() {
   useEffect(() => {
     setInbox(null)
     setConversation(null)
+    setOutgoingReplies([])
     setInboxErrors([])
     inboxNetworkKey.current = ''
   }, [activeProfileId, userId])
 
   useEffect(() => {
     setConversation(null)
+    setDraft('')
     threadNetworkKey.current = ''
     setVisibleCount(10)
     setOlderMessages([])
@@ -222,6 +229,24 @@ export function useChatPage() {
     })
     return () => { active = false }
   }, [userId, activeProfileId, selectedThreadId, connected, connectedProfileId])
+
+  useEffect(() => {
+    if (!userId || !selectedThreadId) return
+    const targetProfileId = activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    if (!targetProfileId || !targetThreadId) return
+    const threadKey = `${targetProfileId}:${targetThreadId}`
+    let active = true
+    void readPendingChatMessages(userId, targetProfileId, targetThreadId).then((messages) => {
+      if (!active || !messages.length) return
+      setOutgoingReplies((current) => {
+        const known = new Set(current.map((reply) => reply.message.id))
+        return [...current, ...messages.filter((message) => !known.has(message.id))
+          .map((message) => ({ threadKey, message }))]
+      })
+    })
+    return () => { active = false }
+  }, [userId, activeProfileId, selectedThreadId])
 
   useEffect(() => {
     if (profilesLoading || profileId !== activeProfileId || !activeProfileId || !connected ||
@@ -364,12 +389,21 @@ export function useChatPage() {
       (selectedThread ? { ...selectedThread, messages: [] } : null)
     if (!base) return null
     const visible = olderMessages.length ? base.messages : base.messages.slice(0, visibleCount)
+    const confirmedIds = new Set(conversation?.confirmedMessageIds ?? [])
+    const pendingById = new Map(local.map((reply) => [reply.message.id, reply.message]))
+    const pendingByContext = new Map(local.filter((reply) => reply.message.clientContext)
+      .map((reply) => [reply.message.clientContext, reply.message]))
+    const showPending = (message: ChatMessage): ChatMessage => {
+      const pending = pendingById.get(message.id) || pendingByContext.get(message.clientContext)
+      return pending && !confirmedIds.has(message.id)
+        ? { ...message, delivery: pending.delivery ?? 'unconfirmed' } : message
+    }
     const ids = new Set([...base.messages, ...olderMessages].map((message) => message.id))
     const contexts = new Set(
       base.messages.map((message) => message.clientContext).filter(Boolean),
     )
     const messages = [
-      ...visible,
+      ...visible.map(showPending),
       ...olderMessages.filter((message) => !visible.some((item) => item.id === message.id)),
       ...local
         .map((reply) => reply.message)
@@ -426,46 +460,23 @@ export function useChatPage() {
 
   useEffect(() => {
     if (!conversation || !selectedReplyKey) return
-    const ids = new Set(conversation.messages.map((message) => message.id))
+    const ids = new Set(conversation.confirmedMessageIds ?? [])
     const contexts = new Set(
       conversation.messages
+        .filter((message) => ids.has(message.id))
         .map((message) => message.clientContext)
         .filter(Boolean),
     )
-    setOutgoingReplies((current) => {
-      const next = current.filter(
-        (reply) =>
-          reply.threadKey !== selectedReplyKey ||
-          (!ids.has(reply.message.id) &&
-            !contexts.has(reply.message.clientContext)),
-      )
-      return next.length === current.length ? current : next
-    })
-  }, [conversation, selectedReplyKey, outgoingReplies])
-
-  useEffect(() => {
-    if (!inbox) return
-    setOutgoingReplies((current) => {
-      const next = current.filter(
-        (reply) =>
-          !inbox.threads.some((thread) => {
-            const key = `${thread.profileId ?? activeProfileId}:${thread.id}`
-            return (
-              key === reply.threadKey &&
-              thread.messages.some(
-                (message) =>
-                  message.id === reply.message.id ||
-                  Boolean(
-                    reply.message.clientContext &&
-                    message.clientContext === reply.message.clientContext,
-                  ),
-              )
-            )
-          }),
-      )
-      return next.length === current.length ? current : next
-    })
-  }, [inbox, activeProfileId])
+    const confirmed = outgoingReplies.filter((reply) => reply.threadKey === selectedReplyKey &&
+      (ids.has(reply.message.id) || contexts.has(reply.message.clientContext)))
+    if (!confirmed.length) return
+    setOutgoingReplies((current) => current.filter((reply) => !confirmed.includes(reply)))
+    if (userId) {
+      const [profileId, threadId] = selectedReplyKey.split(':')
+      for (const reply of confirmed)
+        void clearPendingChatMessage(userId, profileId, threadId, reply.message.id)
+    }
+  }, [conversation, selectedReplyKey, outgoingReplies, userId])
 
   function selectProfile(id: string) {
     updateSelection(id)
@@ -478,6 +489,7 @@ export function useChatPage() {
   function selectThread(id: string) {
     setError('')
     if (id === selectedThreadId) return
+    setDraft('')
     setConversation(null)
     updateSelection(activeProfileId, id)
   }
@@ -571,6 +583,8 @@ export function useChatPage() {
     setSending(true)
     setError('')
     try {
+      if (userId) await savePendingChatMessage(userId, targetProfileId, targetThreadId,
+        { ...localMessage, delivery: 'unconfirmed' })
       const result = await apiFetch<{ success: true; message: ChatMessage }>(
         `/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/reply`,
         {
@@ -580,26 +594,28 @@ export function useChatPage() {
           timeout: 60_000,
         },
       )
+      const pendingMessage: ChatMessage = {
+        ...result.message,
+        text,
+        senderId: result.message.senderId || viewerId,
+        timestamp: result.message.timestamp || localMessage.timestamp,
+        clientContext,
+        delivery: 'unconfirmed',
+      }
+      if (userId) await replacePendingChatMessage(userId, targetProfileId, targetThreadId,
+        localId, pendingMessage)
       setOutgoingReplies((current) =>
         current.map((reply) =>
           reply.message.id === localId
-            ? {
-                ...reply,
-                message: {
-                  ...result.message,
-                  text,
-                  senderId: result.message.senderId || viewerId,
-                  timestamp: result.message.timestamp || localMessage.timestamp,
-                  clientContext,
-                  delivery: 'sent',
-                },
-              }
+            ? { ...reply, message: pendingMessage }
             : reply,
         ),
       )
       setThreadRefresh((value) => value + 1)
       setInboxRefresh((value) => value + 1)
     } catch (error) {
+      if (userId) await savePendingChatMessage(userId, targetProfileId, targetThreadId,
+        { ...localMessage, delivery: 'unconfirmed' })
       setOutgoingReplies((current) =>
         current.map((reply) =>
           reply.message.id === localId
@@ -629,6 +645,7 @@ export function useChatPage() {
     setSending(true)
     setError('')
     let localId = ''
+    let pendingMessage: ChatMessage | null = null
     try {
       if (file.size === 0 || file.size > 25_000_000) throw new Error('Choose a file under 25 MB')
       if (kind === 'video' && file instanceof File &&
@@ -646,21 +663,30 @@ export function useChatPage() {
       const localMessage: ChatMessage = { id: localId, senderId: viewerId, text: '',
         timestamp: Math.max(Date.now(), (conversation?.messages[0]?.timestamp ?? 0) + 1),
         kind, mediaType: kind, clientContext, delivery: 'sending' }
+      pendingMessage = localMessage
       setOutgoingReplies((current) => [...current, { threadKey: replyKey, message: localMessage }])
+      if (userId) await savePendingChatMessage(userId, targetProfileId, targetThreadId,
+        { ...localMessage, delivery: 'unconfirmed' })
       const query = new URLSearchParams({ kind, clientContext })
       if (metadata) for (const [key, value] of Object.entries(metadata)) query.set(key, String(value))
       const result = await apiFetch<{ success: true; message: ChatMessage }>(
         `/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/attachment?${query}`,
         { method: 'POST', body: prepared, maxRetries: 1, timeout: 300_000 },
       )
+      const sentMessage: ChatMessage = { ...result.message, senderId: result.message.senderId || viewerId,
+        timestamp: result.message.timestamp || localMessage.timestamp,
+        mediaType: kind, clientContext, delivery: 'unconfirmed' }
+      pendingMessage = sentMessage
+      if (userId) await replacePendingChatMessage(userId, targetProfileId, targetThreadId,
+        localId, sentMessage)
       setOutgoingReplies((current) => current.map((reply) => reply.message.id === localId
-        ? { ...reply, message: { ...result.message, senderId: result.message.senderId || viewerId,
-          timestamp: result.message.timestamp || localMessage.timestamp,
-          mediaType: kind, clientContext, delivery: 'sent' } }
+        ? { ...reply, message: sentMessage }
         : reply))
       setThreadRefresh((value) => value + 1)
       setInboxRefresh((value) => value + 1)
     } catch (error) {
+      if (userId && pendingMessage) await savePendingChatMessage(userId, targetProfileId, targetThreadId,
+        { ...pendingMessage, delivery: 'unconfirmed' })
       if (localId) setOutgoingReplies((current) => current.map((reply) => reply.message.id === localId
         ? { ...reply, message: { ...reply.message, delivery: 'unconfirmed' } } : reply))
       setError(localId
@@ -713,6 +739,10 @@ export function useChatPage() {
     try {
       await apiFetch(`/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}/unsend`,
         { method: 'POST', body: { messageId: message.id }, maxRetries: 1, timeout: 60_000 })
+      if (userId) await Promise.all([
+        clearPendingChatMessage(userId, targetProfileId, targetThreadId, message.id),
+        clearThreadChatCache(userId, targetThreadId),
+      ])
       const fallback = conversation?.messages.filter((item) => item.id !== message.id)
         .sort((a, b) => b.timestamp - a.timestamp)[0]
       setConversation((current) => current?.id === targetThreadId
@@ -721,8 +751,7 @@ export function useChatPage() {
       setOutgoingReplies((current) => current.filter((reply) =>
         reply.threadKey !== `${targetProfileId}:${targetThreadId}` || reply.message.id !== message.id))
       setInbox((current) => current && ({ ...current, threads: current.threads.map((thread) =>
-        thread.id === targetThreadId && (thread.profileId ?? activeProfileId) === targetProfileId &&
-        thread.messages[0]?.id === message.id
+        thread.id === targetThreadId && thread.messages[0]?.id === message.id
           ? { ...thread, messages: fallback ? [fallback] : [] } : thread) }))
       setThreadRefresh((value) => value + 1)
       setInboxRefresh((value) => value + 1)

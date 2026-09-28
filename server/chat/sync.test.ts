@@ -14,6 +14,7 @@ test('Chat polling reuses Convex reads and saves only changed data while backgro
     let inboxWrites = 0
     let threadWrites = 0
     let inboxFetches = 0
+    const inboxModes = []
     let threadFetches = 0
     let messageText = 'hello'
     let cachedThread = { id: '123', title: 'Friend', users: [], messages: [], lastSeenAt: [], syncedAt: 1 }
@@ -30,7 +31,7 @@ test('Chat polling reuses Convex reads and saves only changed data while backgro
       chatCacheThread: async () => { threadReads++; return cachedThread },
       chatCacheSaveThread: async (_profileId, _token, value) => {
         threadWrites++
-        cachedThread = { ...value, syncedAt: now }
+        cachedThread = { ...value, confirmedMessageIds: value.messages.map(message => message.id).sort(), syncedAt: now }
         return cachedThread
       },
     }))
@@ -38,7 +39,7 @@ test('Chat polling reuses Convex reads and saves only changed data while backgro
       InstagramChat: class {
         static load = async () => new this()
         cacheToken = 'session-token'
-        async inbox() { inboxFetches++; return { viewerId: 'viewer', threads: [thread()] } }
+        async inbox(unreadOnly) { inboxFetches++; inboxModes.push(unreadOnly); return { viewerId: 'viewer', threads: [thread()] } }
         async conversation() { threadFetches++; return thread() }
       },
     }))
@@ -75,6 +76,7 @@ test('Chat polling reuses Convex reads and saves only changed data while backgro
     await readInbox(profile)
     assert.equal(inboxFetches, 3)
     assert.equal(inboxWrites, 1)
+    assert.deepEqual(inboxModes, [false, true, true])
 
     messageText = 'new inbox message'
     now += 61_000
@@ -85,6 +87,10 @@ test('Chat polling reuses Convex reads and saves only changed data while backgro
     await readInbox(profile, true, true)
     assert.equal(inboxWrites, 3) // The 15-minute worker persists directly.
     assert.equal(inboxReads, 2)
+    assert.equal(inboxModes.at(-1), true)
+    await readInbox(profile, true)
+    assert.equal(inboxModes.at(-1), true)
+    assert.equal(inboxWrites, 3)
 
     invalidateChatSnapshots(profile.id)
     await readInbox(profile)

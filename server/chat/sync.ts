@@ -142,6 +142,7 @@ export async function syncThread(profile: DbProfileRow, id: string): Promise<Cha
     try {
       const version = cacheVersion(profile.id);
       const chat = await InstagramChat.load(profile);
+      const fetchedAt = Date.now();
       const thread = await chat.conversation(id);
       if (version !== cacheVersion(profile.id)) {
         const latest = await chatCacheThread(profile.id, id);
@@ -151,13 +152,14 @@ export async function syncThread(profile: DbProfileRow, id: string): Promise<Cha
       const fingerprint = JSON.stringify([chat.cacheToken, thread]);
       const snapshot = threadSnapshots.get(key);
       if (version === cacheVersion(profile.id) && snapshot &&
-        (threadFingerprints.get(key) === fingerprint || sameThread(snapshot.value, thread))) {
+        (threadFingerprints.get(key) === fingerprint || sameThread(snapshot.value, thread)) &&
+        snapshot.value.confirmedMessageIds !== undefined) {
         threadFingerprints.set(key, fingerprint);
         rememberThread(key, snapshot.value, Date.now());
         syncFailures.delete(`thread:${key}`);
         return snapshot.value;
       }
-      const saved = await chatCacheSaveThread(profile.id, chat.cacheToken, thread);
+      const saved = await chatCacheSaveThread(profile.id, chat.cacheToken, thread, fetchedAt);
       if (version !== cacheVersion(profile.id)) {
         const latest = await chatCacheThread(profile.id, id);
         if (!latest) throw new Error('Chat conversation is missing');

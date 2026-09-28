@@ -1,8 +1,9 @@
-import type { ChatInbox, ChatThread } from './types'
+import type { ChatInbox, ChatMessage, ChatThread } from './types'
 
 const DB_NAME = 'ig-bot-chat-cache'
 const STORE = 'snapshots'
 const MAX_AGE_MS = 30 * 24 * 60 * 60_000
+const PENDING_AGE_MS = 24 * 60 * 60_000
 const MAX_THREADS_PER_USER = 100
 const CLEANUP_INTERVAL_MS = 60 * 60_000
 let dbPromise: Promise<IDBDatabase | null> | undefined
@@ -78,15 +79,16 @@ async function write(
   userId: string,
   key: string,
   value: unknown,
+  replaceKey?: string,
 ): Promise<void> {
   try {
     const db = await openDb()
     if (!db) return
     await new Promise<void>((resolve) => {
       const transaction = db.transaction(STORE, 'readwrite')
-      transaction
-        .objectStore(STORE)
-        .put({ value, updatedAt: Date.now() } satisfies Snapshot<unknown>, key)
+      const store = transaction.objectStore(STORE)
+      if (replaceKey && replaceKey !== key) store.delete(replaceKey)
+      store.put({ value, updatedAt: Date.now() } satisfies Snapshot<unknown>, key)
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => resolve()
       transaction.onabort = () => resolve()
@@ -101,6 +103,10 @@ const inboxKey = (userId: string, profileId: string) =>
   `${userId}:inbox:${profileId}`
 const threadKey = (userId: string, profileId: string, threadId: string) =>
   `${userId}:thread:${profileId}:${threadId}`
+const pendingPrefix = (userId: string, profileId: string, threadId: string) =>
+  `${userId}:pending:${profileId}:${threadId}:`
+const pendingKey = (userId: string, profileId: string, threadId: string, messageId: string) =>
+  `${pendingPrefix(userId, profileId, threadId)}${messageId}`
 
 export async function readInboxCache(
   userId: string,
@@ -140,6 +146,49 @@ export const saveThreadCache = (
     messages: thread.messages.slice(0, 30),
   })
 
+export const savePendingChatMessage = (
+  userId: string, profileId: string, threadId: string, message: ChatMessage,
+) => write(userId, pendingKey(userId, profileId, threadId, message.id), message)
+
+export const replacePendingChatMessage = (
+  userId: string, profileId: string, threadId: string, oldId: string, message: ChatMessage,
+) => write(userId, pendingKey(userId, profileId, threadId, message.id), message,
+  pendingKey(userId, profileId, threadId, oldId))
+
+export async function readPendingChatMessages(
+  userId: string, profileId: string, threadId: string,
+): Promise<ChatMessage[]> {
+  try {
+    const db = await openDb()
+    if (!db) return []
+    const prefix = pendingPrefix(userId, profileId, threadId)
+    return await new Promise<ChatMessage[]>((resolve) => {
+      const messages: ChatMessage[] = []
+      const request = db.transaction(STORE, 'readonly').objectStore(STORE)
+        .openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`))
+      request.onsuccess = () => {
+        const cursor = request.result
+        if (!cursor) { resolve(messages); scheduleCleanup(userId); return }
+        const snapshot = cursor.value as Snapshot<ChatMessage>
+        if (Date.now() - snapshot.updatedAt < PENDING_AGE_MS && snapshot.value?.id)
+          messages.push(snapshot.value)
+        cursor.continue()
+      }
+      request.onerror = () => resolve(messages)
+    })
+  } catch {
+    return []
+  }
+}
+
+export const clearPendingChatMessage = (
+  userId: string, profileId: string, threadId: string, messageId: string,
+) => removeMatching((key) => key === pendingKey(userId, profileId, threadId, messageId))
+
+export const clearThreadChatCache = (userId: string, threadId: string) =>
+  removeMatching((key) => key.startsWith(`${userId}:inbox:`) ||
+    (key.startsWith(`${userId}:thread:`) && key.endsWith(`:${threadId}`)))
+
 async function cleanupUser(userId: string): Promise<void> {
   try {
     const db = await openDb()
@@ -162,10 +211,8 @@ async function cleanupUser(userId: string): Promise<void> {
           cursor.key.startsWith(`${userId}:`)
         ) {
           const updatedAt = (cursor.value as Snapshot<unknown>).updatedAt
-          if (
-            !Number.isFinite(updatedAt) ||
-            Date.now() - updatedAt >= MAX_AGE_MS
-          )
+          const maxAge = cursor.key.startsWith(`${userId}:pending:`) ? PENDING_AGE_MS : MAX_AGE_MS
+          if (!Number.isFinite(updatedAt) || Date.now() - updatedAt >= maxAge)
             cursor.delete()
           else if (cursor.key.startsWith(`${userId}:thread:`))
             threads.push({ key: cursor.key, updatedAt })
@@ -212,7 +259,8 @@ export const clearProfileChatCache = (userId: string, profileId: string) =>
     (key) =>
       key === inboxKey(userId, 'all') ||
       key === inboxKey(userId, profileId) ||
-      key.startsWith(`${userId}:thread:${profileId}:`),
+      key.startsWith(`${userId}:thread:${profileId}:`) ||
+      key.startsWith(`${userId}:pending:${profileId}:`),
   )
 
 export const clearUserChatCache = (userId: string) =>

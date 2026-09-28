@@ -334,14 +334,14 @@ export function chatMarkReplied(profileId: string, token: string, threadId: stri
         body: { scope: 'replied', profileId, token, threadId, throughAt } }).then(() => {});
 }
 
-export function chatMarkUnsent(profileId: string, token: string, threadId: string, messageId: string): Promise<void> {
+export function chatMarkUnsent(profileId: string, token: string, threadId: string, messageId: string): Promise<{ profileIds: string[] }> {
     return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 1,
-        body: { scope: 'unsent', profileId, token, threadId, messageId } }).then(() => {});
+        body: { scope: 'unsent', profileId, token, threadId, messageId } });
 }
 
-export function chatCacheSaveThread(profileId: string, token: string, thread: ChatThread): Promise<CachedChatThread> {
+export function chatCacheSaveThread(profileId: string, token: string, thread: ChatThread, fetchedAt: number): Promise<CachedChatThread> {
     return convexFetch('/api/chat/cache', { method: 'POST', maxRetries: 0,
-        body: { scope: 'thread', profileId, token, thread } });
+        body: { scope: 'thread', profileId, token, thread, fetchedAt } });
 }
 
 // ==================== AUTOMATIONS ====================

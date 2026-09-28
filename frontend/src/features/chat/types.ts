@@ -14,6 +14,7 @@ export type ChatMessage = {
 export type ChatThread = {
   id: string
   unread?: boolean
+  confirmedMessageIds?: string[]
   profileId?: string
   profileName?: string
   viewerId?: string

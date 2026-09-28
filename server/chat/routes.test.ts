@@ -1,19 +1,18 @@
 import { test } from 'node:test';
 import { execFileSync } from 'node:child_process';
 
-test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
+test('a sent DM stays successful when Chat refresh fails', () => {
   execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
     import express from 'express'
 
     let sends = 0
-    let marks = 0
     let refreshes = 0
     let warnings = 0
     let failSend = false
-    let failMark = true
     let failRefresh = false
+    let failUnsentMark = true
     let lastContext
     let attachmentKind
     let attachmentBytes
@@ -22,6 +21,7 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
     const reactionRemovals = []
     let unsentItem
     let unsentCacheItem
+    const invalidations = []
     const olderQueries = []
     let releaseRefresh
     const refreshGate = new Promise(resolve => { releaseRefresh = resolve })
@@ -30,20 +30,17 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetById: async () => profile,
       profilesList: async () => [profile],
-      chatMarkReplied: async () => {
-        marks++
-        if (failMark) throw new Error('Convex unavailable')
-      },
       chatMarkUnsent: async (_profileId, _token, _threadId, itemId) => {
         unsentCacheItem = itemId
-        throw new Error('Convex unavailable')
+        if (failUnsentMark) throw new Error('Convex unavailable')
+        return { profileIds: ['profile-1', 'profile-2'] }
       },
     }))
     mock.module('./server/chat/sync.ts', () => ({
       cachedInbox: async () => ({ connected: true, threads: [] }),
       cachedThread: async () => null,
       clearSyncFailures: () => {},
-      invalidateChatSnapshots: () => {},
+      invalidateChatSnapshots: (profileId, threadId) => { invalidations.push([profileId, threadId]) },
       threadSyncs: new Map(),
       syncThread: async () => {
         refreshes++
@@ -120,23 +117,21 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
       assert.equal((await first.json()).message.id, '1')
       assert.equal(sends, 1)
       assert.equal(lastContext, '11111111-1111-4111-8111-111111111111')
-      assert.equal(marks, 1)
       assert.equal(refreshes, 1)
-      assert.equal(warnings, 1)
+      assert.equal(warnings, 0)
       releaseRefresh()
       await new Promise(resolve => setTimeout(resolve, 0))
 
-      failMark = false
       failRefresh = true
       const second = await send()
       assert.equal(second.status, 200)
       assert.equal(sends, 2)
-      assert.equal(warnings, 2)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      assert.equal(warnings, 1)
 
       failSend = true
       const third = await send()
       assert.equal(third.status, 503)
-      assert.equal(marks, 2)
       assert.equal(refreshes, 2)
 
       const attachment = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/attachment?kind=photo', {
@@ -175,6 +170,13 @@ test('a sent DM stays successful when Chat cache bookkeeping fails', () => {
       assert.equal(unsend.status, 200)
       assert.equal(unsentItem, '12345')
       assert.equal(unsentCacheItem, '12345')
+      failUnsentMark = false
+      const before = invalidations.length
+      assert.equal((await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/unsend', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId: '12345' }),
+      })).status, 200)
+      assert.deepEqual(invalidations.slice(before), [['profile-1', '123'], ['profile-2', '123']])
     } finally {
       server.close()
     }

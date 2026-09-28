@@ -32,7 +32,7 @@ export function registerChatRoutes(http: HttpRouter): void {
       }));
     } else if (body.scope === 'thread') {
       return jsonResponse(await ctx.runMutation(internal.chatCache.saveConversation, {
-        profileId, token: body.token, thread: body.thread,
+        profileId, token: body.token, thread: body.thread, fetchedAt: body.fetchedAt,
       }));
     } else if (body.scope === 'replied') {
       await ctx.runMutation(internal.chatCache.markReplied, {
@@ -43,9 +43,10 @@ export function registerChatRoutes(http: HttpRouter): void {
         typeof body.messageId !== 'string' || !/^\d{1,40}$/.test(body.messageId)) {
         throw new ValidationError('Invalid Chat message ID');
       }
-      await ctx.runMutation(internal.chatCache.markUnsent, {
+      const profileIds = await ctx.runMutation(internal.chatCache.markUnsent, {
         profileId, token: body.token, threadId: body.threadId, messageId: body.messageId,
       });
+      return jsonResponse({ profileIds });
     } else throw new ValidationError('Invalid Chat cache scope');
     return jsonResponse({ saved: true });
   }) });

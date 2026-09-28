@@ -1,6 +1,6 @@
 import { Router, raw } from 'express';
 import { IgResponseError } from 'instagram-private-api';
-import { chatMarkReplied, chatMarkUnsent, profilesGetById, profilesList } from '../shared/convexClient.js';
+import { chatMarkUnsent, profilesGetById, profilesList } from '../shared/convexClient.js';
 import { cachedInbox, cachedThread, clearSyncFailures, invalidateChatSnapshots, syncThread, threadSyncs } from './sync.js';
 import { asyncHandler } from '../shared/asyncHandler.js';
 import { ExternalServiceError, NotFoundError, ValidationError } from '../shared/errors.js';
@@ -206,24 +206,18 @@ router.post('/:profileId/threads/:threadId/reply', asyncHandler(async (req, res)
   }
   const clientContext = messageContext(req.body?.clientContext);
   const chat = await client(req.params.profileId);
-  const replyStartedAt = Date.now();
   let message: ChatThread['messages'][number];
   try { message = await chat.reply(id, text.trim(), clientContext); } catch (error) { instagramError(error); }
   res.json({ success: true, message });
-  refreshAfterSend(String(req.params.profileId), id, chat, replyStartedAt);
+  refreshAfterSend(String(req.params.profileId), id);
 }));
 
-function refreshAfterSend(profileId: string, id: string, chat: InstagramChat, startedAt: number): void {
+function refreshAfterSend(profileId: string, id: string): void {
   // Instagram accepted the DM. Cache work must not delay or fail the send response.
   void (async () => {
+    invalidateChatSnapshots(profileId, id);
     try {
-      await chatMarkReplied(profileId, chat.cacheToken, id, startedAt);
-      invalidateChatSnapshots(profileId, id);
-    } catch (err) {
-      logger.warn({ err, profileId, threadId: id }, 'Could not mark sent DM in Chat cache');
-    }
-    try {
-      // An existing read may have started before the send. Wait, then fetch the reply.
+      // Only a thread fetch can confirm a reply; the broadcast response may be transient.
       await threadSyncs.get(`${profileId}:${id}`)?.catch(() => {});
       await syncThread(await selectedProfile(profileId), id);
     } catch (err) {
@@ -245,12 +239,11 @@ router.post('/:profileId/threads/:threadId/attachment', raw({ type: 'application
     const clientContext = messageContext(req.query.clientContext);
     const video = kind === 'video' ? videoMetadata(req.query) : undefined;
     const chat = await client(req.params.profileId);
-    const startedAt = Date.now();
     let message: ChatThread['messages'][number];
     try { message = await chat.sendAttachment(id, kind as AttachmentKind, req.body, clientContext, video); }
     catch (error) { if (error instanceof ValidationError) throw error; instagramError(error); }
     res.json({ success: true, message });
-    refreshAfterSend(String(req.params.profileId), id, chat, startedAt);
+    refreshAfterSend(String(req.params.profileId), id);
   }));
 
 router.post('/:profileId/threads/:threadId/reaction', asyncHandler(async (req, res) => {
@@ -285,9 +278,12 @@ router.post('/:profileId/threads/:threadId/unsend', asyncHandler(async (req, res
   const chat = await client(profileId);
   try { await chat.unsend(id, itemId); } catch (error) { instagramError(error); }
   // Instagram already removed the message. A cache failure must not report that unsend failed.
-  await chatMarkUnsent(profileId, chat.cacheToken, id, itemId)
-    .catch(err => logger.warn({ err, profileId, threadId: id, itemId }, 'Could not mark unsent Chat message'));
-  invalidateChatSnapshots(profileId, id);
+  const affected = await chatMarkUnsent(profileId, chat.cacheToken, id, itemId)
+    .catch(err => {
+      logger.warn({ err, profileId, threadId: id, itemId }, 'Could not mark unsent Chat message');
+      return { profileIds: [profileId] };
+    });
+  for (const affectedProfileId of affected.profileIds) invalidateChatSnapshots(affectedProfileId, id);
   res.json({ success: true });
   void (async () => {
     try {
