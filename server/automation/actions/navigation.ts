@@ -1,4 +1,5 @@
-import type { Page } from 'playwright-core'
+import type { Locator, Page } from 'playwright-core'
+import { StealthDomError } from 'cloakbrowser/human'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
 
@@ -11,6 +12,17 @@ function isInstagramConsentPage(page: Page): boolean {
   }
 }
 
+function consentControl(page: Page, label: string): Locator {
+  const text = JSON.stringify(label)
+  return page.locator([
+    `button:has-text(${text})`,
+    `[role="button"]:has-text(${text})`,
+    `[role="radio"]:has-text(${text})`,
+    `label:has-text(${text})`,
+    `a:has-text(${text})`,
+  ].join(', '))
+}
+
 // Instagram can redirect Home to a multi-page consent flow. Choose the
 // free, less-personalized path and only click controls on that flow.
 async function dismissConsent(page: Page, session: BrowseSession): Promise<boolean> {
@@ -18,17 +30,18 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
   const clicked = new Set<string>()
   while (isInstagramConsentPage(page)) {
     session.check()
+    // Cloak's humanized click supports CSS selectors, but not getByRole.
     const steps = [
-      ['cookies', page.getByRole('button', { name: 'Decline optional cookies', exact: true })],
-      ['intro', page.getByRole('button', { name: 'Get started', exact: true })],
-      ['free', page.getByText('Use free of charge with ads', { exact: true })],
-      ['continue', page.getByRole('button', { name: 'Continue', exact: true })],
-      ['agree', page.getByRole('button', { name: 'Agree', exact: true })],
-      ['less', page.getByText('Switch to less-personalized ads', { exact: true })],
-      ['ok', page.getByRole('button', { name: 'OK', exact: true })],
+      ['cookies', 'Decline optional cookies'],
+      ['intro', 'Get started'],
+      ['free', 'Use free of charge with ads'],
+      ['continue', 'Continue'],
+      ['agree', 'Agree'],
+      ['less', 'Switch to less-personalized ads'],
+      ['ok', 'OK'],
     ] as const
     let advanced = false
-    for (const [name, button] of steps) {
+    for (const [name, label] of steps) {
       if (clicked.has(name) ||
         (name === 'continue' && !clicked.has('free')) ||
         (name === 'ok' && !clicked.has('less'))) continue
@@ -36,18 +49,30 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
       // the agreement screen, where this call did not click Continue.
       if (name === 'agree' && !await page.getByText(/To use our products free of charge with ads, agree to/i)
         .first().isVisible().catch(() => false)) continue
-      if (!await button.isVisible().catch(() => false) || !await button.isEnabled().catch(() => false)) continue
-      session.check()
-      try {
-        await button.click({ timeout: session.timeout(2_000) })
-      } catch {
-        continue
+      const controls = consentControl(page, label)
+      const count = await controls.count().catch(() => 0)
+      for (let i = 0; i < count; i++) {
+        const button = controls.nth(i)
+        if (!await button.isVisible().catch(() => false) || !await button.isEnabled().catch(() => false)) continue
+        // Choice cards include descriptions; the other controls must match in full.
+        const text = (await button.innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+        const choiceLabel = (name === 'free' || name === 'less') &&
+          await button.getByText(label, { exact: true }).count().catch(() => 0) > 0
+        if (text !== label && !choiceLabel) continue
+        session.check()
+        try {
+          await button.click({ timeout: session.timeout(2_000) })
+        } catch (error) {
+          if (error instanceof StealthDomError) throw error
+          continue
+        }
+        clicked.add(name)
+        advanced = true
+        if (!isInstagramConsentPage(page)) return true
+        await session.wait(random(400, 700))
+        break
       }
-      clicked.add(name)
-      advanced = true
-      if (!isInstagramConsentPage(page)) return true
-      await session.wait(random(400, 700))
-      break
+      if (advanced) break
     }
     if (!advanced) await session.wait(500)
   }
@@ -59,28 +84,30 @@ export async function dismissPopups(page: Page, session = new BrowseSession(Date
   session.check()
   const consentClicked = await dismissConsent(page, session)
   if (consentClicked && isInstagramConsentPage(page)) return false
-  const candidates = [
-    page.getByRole('button', { name: 'Not Now' }),
-    page.locator('div[role="dialog"] button:has-text("Not Now")'),
-    page.locator('button:has-text("Not Now")'),
-  ]
-  for (const loc of candidates) {
+  const buttons = page.locator('[role="dialog"] button:has-text("Not Now"), [role="dialog"] [role="button"]:has-text("Not Now")')
+  const count = await buttons.count().catch(() => 0)
+  let visible = 0
+  for (let i = 0; i < count && visible < 3; i++) {
+    const button = buttons.nth(i)
+    if (!await button.isVisible().catch(() => false)) continue
+    visible++
+    session.check()
+    // Keep the clicked dialog's handle; another Not Now button may shift into this index.
+    const popup = await button.locator('xpath=ancestor::*[@role="dialog"][1]')
+      .elementHandle({ timeout: session.timeout(1_000) }).catch(() => null)
+    if (!popup) continue
     try {
-      const count = await loc.count().catch(() => 0)
-      for (let i = 0; i < Math.min(count, 3); i++) {
-        const btn = loc.nth(i)
-        if (await btn.isVisible().catch(() => false)) {
-          session.check()
-          try {
-            await btn.click({ timeout: session.timeout(2_000) })
-          } catch {
-            continue
-          }
-          await session.wait(random(300, 700)).catch(() => undefined)
-          return true
-        }
+      try {
+        await button.click({ timeout: session.timeout(2_000) })
+      } catch {
+        continue
       }
-    } catch {
+      await session.wait(random(300, 700)).catch(() => undefined)
+      const dismissed = await popup.waitForElementState('hidden', { timeout: session.timeout(1_500) })
+        .then(() => true, () => false)
+      if (dismissed) return true
+    } finally {
+      await popup.dispose().catch(() => undefined)
     }
   }
   return consentClicked
