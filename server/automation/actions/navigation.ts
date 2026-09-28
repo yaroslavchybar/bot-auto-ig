@@ -39,6 +39,7 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
       ['agree', 'Agree'],
       ['less', 'Switch to less-personalized ads'],
       ['ok', 'OK'],
+      ['confirm', 'Confirm'],
     ] as const
     let advanced = false
     for (const [name, label] of steps) {
@@ -48,6 +49,8 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
       // This heading also identifies a resumed flow that opened directly on
       // the agreement screen, where this call did not click Continue.
       if (name === 'agree' && !await page.getByText(/To use our products free of charge with ads, agree to/i)
+        .first().isVisible().catch(() => false)) continue
+      if (name === 'confirm' && !await page.getByText("Here's what to expect with less-personalized ads", { exact: true })
         .first().isVisible().catch(() => false)) continue
       const controls = consentControl(page, label)
       const count = await controls.count().catch(() => 0)

@@ -7,7 +7,7 @@ import { BrowseSession, SessionEnded } from './session.js'
 
 const consentLabels = [
   'Decline optional cookies', 'Get started', 'Use free of charge with ads',
-  'Continue', 'Agree', 'Switch to less-personalized ads', 'OK',
+  'Continue', 'Agree', 'Switch to less-personalized ads', 'OK', 'Confirm',
 ]
 
 function mockConsentLocator<T extends object>(selector: string, control: (label: string) => T) {
@@ -33,6 +33,7 @@ test('feed popup handling completes Instagram consent with fewer optional choice
     choice: ['Use free of charge with ads', 'Continue'],
     agreement: ['Agree', 'free-agreement'],
     experience: ['Switch to less-personalized ads', 'OK'],
+    confirmation: ["Here's what to expect with less-personalized ads", 'Confirm'],
     home: [],
   })[screen]?.includes(label) ?? false
   const control = (label: string) => ({
@@ -51,7 +52,8 @@ test('feed popup handling completes Instagram consent with fewer optional choice
       else if (label === 'Continue') screen = 'agreement'
       else if (label === 'Agree') screen = 'experience'
       else if (label === 'Switch to less-personalized ads') lessSelected = true
-      else if (label === 'OK') screen = 'home'
+      else if (label === 'OK') screen = 'confirmation'
+      else if (label === 'Confirm') screen = 'home'
     },
   })
   const page = {
@@ -66,7 +68,7 @@ test('feed popup handling completes Instagram consent with fewer optional choice
   assert.equal(await dismissPopups(page, session), true)
   assert.deepEqual(clicks, [
     'Decline optional cookies', 'Get started', 'Use free of charge with ads',
-    'Continue', 'Agree', 'Switch to less-personalized ads', 'OK',
+    'Continue', 'Agree', 'Switch to less-personalized ads', 'OK', 'Confirm',
   ])
 })
 
