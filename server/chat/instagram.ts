@@ -10,11 +10,18 @@ import { completeCaaTwoFactor, loginWithCaa, mobileRequest, useCurrentAppProfile
 import { chatDeviceForProfile } from './devices.js';
 import { chatProxy, configureMobileProxyTransport } from './proxy.js';
 import { uploadChatAttachment, type AttachmentKind, type VideoMetadata } from './attachments.js';
+import { prepareFeedPhoto } from './photo.js';
 
 type Json = Record<string, unknown>;
 const record = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
 const string = (value: unknown): string => value == null ? '' : String(value);
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
+function logPhotoFailure(profileId: string, stage: 'upload' | 'configure', error: unknown): void {
+  const response = record(record(error).response);
+  const body = record(response.body);
+  logger.warn({ profileId, stage, httpStatus: response.statusCode,
+    errorType: string(body.error_type).slice(0, 80) }, 'Instagram photo post failed');
+}
 const sessions = new Map<string, Promise<InstagramChat>>();
 const generations = new Map<string, number>();
 const writes = new Map<string, Promise<void>>();
@@ -301,8 +308,31 @@ export class InstagramChat {
     await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
   }
 
-  async postPhoto(image: Buffer): Promise<void> {
-    const result = await this.ig.publish.photo({ file: image, caption: '' });
+  async postPhoto(imagePath: string): Promise<void> {
+    const photo = await prepareFeedPhoto(imagePath);
+    let uploadId: string;
+    try {
+      const uploaded = await this.ig.upload.photo({ file: photo.file });
+      uploadId = uploaded.upload_id;
+    } catch (cause) {
+      logPhotoFailure(this.profile.id, 'upload', cause);
+      const error = new Error('Instagram rejected the photo upload', { cause });
+      error.name = 'PhotoUploadError';
+      throw error;
+    }
+    // The upload can take a moment to become available to the configure endpoint.
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    let result;
+    try {
+      result = await this.ig.media.configure({
+        upload_id: uploadId, width: photo.width, height: photo.height, caption: '',
+      });
+    } catch (cause) {
+      logPhotoFailure(this.profile.id, 'configure', cause);
+      const error = new Error('Instagram rejected the photo configuration', { cause });
+      error.name = 'PhotoConfigureError';
+      throw error;
+    }
     if (result.status !== 'ok' || !result.media?.id) throw new Error('Instagram did not confirm the photo post');
     await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
   }

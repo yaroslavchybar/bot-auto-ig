@@ -15,10 +15,10 @@ export async function runMobileAction(profileId: string, action: MobileAction):
     const chat = await InstagramChat.load(profile)
     if (action.action === 'username') await chat.updateUsername(action.targetUsername)
     else if (action.action === 'fullName') await chat.updateFullName(action.fullName)
+    else if (action.action === 'post') await chat.postPhoto(action.imagePath)
     else {
       const image = await fs.readFile(action.imagePath)
-      if (action.action === 'avatar') await chat.changeProfilePicture(image)
-      else await chat.postPhoto(image)
+      await chat.changeProfilePicture(image)
     }
     return { ok: true }
   } catch (error) {
