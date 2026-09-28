@@ -24,10 +24,10 @@ import {
   Terminal,
   Pencil,
   Trash2,
-  Info,
   Monitor,
   Cpu,
   Globe,
+  Link,
 } from 'lucide-react'
 import type { Profile } from '../types'
 import { cn } from '@/lib/utils'
@@ -37,7 +37,6 @@ import { IgStateToggles } from './IgStateToggles'
 interface ProfilesListProps {
   profiles: Profile[]
   loading: boolean
-  onDetails: (profile: Profile) => void
   onEdit: (profile: Profile) => void
   onDelete: (profile: Profile) => void
   onLogs: (profile: Profile) => void
@@ -48,7 +47,6 @@ interface ProfilesListProps {
 
 interface ProfileActionsMenuProps {
   profile: Profile
-  onDetails: (profile: Profile) => void
   onEdit: (profile: Profile) => void
   onLogs: (profile: Profile) => void
   onDelete: (profile: Profile) => void
@@ -87,7 +85,6 @@ function getStatusMeta(profile: Profile) {
 
 function ProfileActionsMenu({
   profile,
-  onDetails,
   onEdit,
   onLogs,
   onDelete,
@@ -121,23 +118,17 @@ function ProfileActionsMenu({
           )}
         </DropdownMenuItem>
         <DropdownMenuItem
-          onClick={() => onDetails(profile)}
-          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
-        >
-          <Info className="mr-2 h-4 w-4" /> View Details
-        </DropdownMenuItem>
-        <DropdownMenuItem
           onClick={() => onEdit(profile)}
           disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
         >
           <Pencil className="mr-2 h-4 w-4" /> Edit Configuration
         </DropdownMenuItem>
-        {profile.igLoggedIn && <DropdownMenuItem
+        <DropdownMenuItem
           onClick={() => navigate(`/ig-accounts?profileId=${encodeURIComponent(profile.id)}`)}
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer">
-          Connect IG credential
-        </DropdownMenuItem>}
+          <Link className="mr-2 h-4 w-4" /> Connect IG credential
+        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onLogs(profile)}
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
@@ -160,7 +151,6 @@ function ProfileActionsMenu({
 
 function ProfileMobileCard({
   profile,
-  onDetails,
   onEdit,
   onDelete,
   onLogs,
@@ -191,7 +181,6 @@ function ProfileMobileCard({
           <IgStateToggles profile={profile} />
           <ProfileActionsMenu
             profile={profile}
-            onDetails={onDetails}
             onEdit={onEdit}
             onLogs={onLogs}
             onDelete={onDelete}
@@ -205,7 +194,6 @@ function ProfileMobileCard({
       <MobileCardFooter
         profile={profile}
         statusMeta={statusMeta}
-        onDetails={onDetails}
         onToggleStatus={onToggleStatus}
       />
     </div>
@@ -245,12 +233,10 @@ function MobileCardTags({
 function MobileCardFooter({
   profile,
   statusMeta,
-  onDetails,
   onToggleStatus,
 }: {
   profile: Profile
   statusMeta: { label: string; className: string }
-  onDetails: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
 }) {
   return (
@@ -268,15 +254,6 @@ function MobileCardFooter({
         className="flex items-center gap-2"
         onClick={(event) => event.stopPropagation()}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          className="border-line text-ink hover:bg-panel-muted h-9 rounded-full border px-3"
-          onClick={() => onDetails(profile)}
-        >
-          <Info className="h-4 w-4" />
-          Details
-        </Button>
         <Button
           size="sm"
           className={cn(
@@ -304,7 +281,6 @@ function MobileCardFooter({
 
 function ProfileDesktopRow({
   profile,
-  onDetails,
   onEdit,
   onDelete,
   onLogs,
@@ -350,19 +326,9 @@ function ProfileDesktopRow({
               <Play className="h-4 w-4 fill-current" />
             )}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
-            onClick={(e) => { e.stopPropagation(); onDetails(profile) }}
-            title="Details"
-          >
-            <Info className="h-4 w-4" />
-          </Button>
           <div onClick={(e) => e.stopPropagation()}>
             <ProfileActionsMenu
               profile={profile}
-              onDetails={onDetails}
               onEdit={onEdit}
               onLogs={onLogs}
               onDelete={onDelete}
@@ -430,7 +396,6 @@ function DesktopProxyCell({ profile }: { profile: Profile }) {
 export function ProfilesList({
   profiles,
   loading,
-  onDetails,
   onEdit,
   onDelete,
   onLogs,
@@ -458,7 +423,7 @@ export function ProfilesList({
     )
   }
 
-  const actionProps = { onDetails, onEdit, onDelete, onLogs, onToggleStatus }
+  const actionProps = { onEdit, onDelete, onLogs, onToggleStatus }
 
   if (isMobile) {
     return (

@@ -242,7 +242,6 @@ export function IgAccountsPage() {
 
           <AccountsTable
             accounts={filteredAccounts}
-            total={accounts.length}
             searchActive={Boolean(search.trim())}
             loading={loading}
           />
@@ -415,12 +414,10 @@ export function IgAccountsPage() {
 
 function AccountsTable({
   accounts,
-  total,
   searchActive,
   loading,
 }: {
   accounts: Account[]
-  total: number
   searchActive: boolean
   loading: boolean
 }) {
@@ -483,15 +480,7 @@ function AccountsTable({
 
   return (
     <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
-      <div className="flex items-center gap-2 px-4 pt-4">
-        <Users className="text-copy h-4 w-4" />
-        <h2 className="text-ink text-base font-semibold">Imported accounts</h2>
-        <span className="text-subtle-copy text-sm tabular-nums">
-          {accounts.length}
-          {searchActive ? ` of ${total}` : ''}
-        </span>
-      </div>
-      <div className="p-4 pt-2 sm:p-5 sm:pt-2">
+      <div className="p-4 sm:p-5">
         <Table>
           <TableHeader>
             <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">

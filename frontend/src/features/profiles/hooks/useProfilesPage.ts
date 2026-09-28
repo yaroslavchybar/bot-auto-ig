@@ -14,15 +14,10 @@ import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 function useProfileDialogState(profiles: Profile[]) {
   const [editProfile, setEditProfile] = useState<Profile | null>(null)
-  const [detailsProfileId, setDetailsProfileId] = useState<string | null>(null)
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
   const [logsProfileId, setLogsProfileId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
-  const detailsProfile = useMemo(
-    () => (detailsProfileId ? profiles.find((p) => p.id === detailsProfileId) ?? null : null),
-    [detailsProfileId, profiles],
-  )
   const deleteProfile = useMemo(
     () => (deleteProfileId ? profiles.find((p) => p.id === deleteProfileId) ?? null : null),
     [deleteProfileId, profiles],
@@ -33,11 +28,10 @@ function useProfileDialogState(profiles: Profile[]) {
   )
   return {
     editProfile, setEditProfile,
-    detailsProfileId, setDetailsProfileId,
     deleteProfileId, setDeleteProfileId,
     logsProfileId, setLogsProfileId,
     isCreateOpen, setIsCreateOpen,
-    detailsProfile, deleteProfile, logsProfile,
+    deleteProfile, logsProfile,
   }
 }
 
@@ -208,7 +202,6 @@ function useProfilePageActions(
   }, [dialogState])
 
   const handleEdit = useCallback(async (profile: Profile) => {
-    dialogState.setDetailsProfileId(null)
     setSaving(true)
     try {
       const fullProfile = await convex.query(api.profiles.queries.getById, {
@@ -224,16 +217,10 @@ function useProfilePageActions(
 
   const handleDeleteClick = useCallback((profile: Profile) => {
     dialogState.setDeleteProfileId(profile.id)
-    dialogState.setDetailsProfileId(null)
   }, [dialogState])
 
   const handleLogs = useCallback((profile: Profile) => {
     dialogState.setLogsProfileId(profile.id)
-    dialogState.setDetailsProfileId(null)
-  }, [dialogState])
-
-  const handleDetails = useCallback((profile: Profile) => {
-    dialogState.setDetailsProfileId(profile.id)
   }, [dialogState])
 
   const handleCloseCreate = useCallback(() => {
@@ -246,7 +233,7 @@ function useProfilePageActions(
 
   return {
     handleCreate, handleEdit, handleDeleteClick,
-    handleLogs, handleDetails, handleCloseCreate, handleCloseEdit,
+    handleLogs, handleCloseCreate, handleCloseEdit,
   }
 }
 
@@ -303,18 +290,15 @@ export function useProfilesPage() {
     isCreateOpen: dialogState.isCreateOpen,
     logs, logsLoading, searchQuery,
     editProfile: dialogState.editProfile,
-    detailsProfile: dialogState.detailsProfile,
     deleteProfile: dialogState.deleteProfile,
     logsProfile: dialogState.logsProfile,
-    detailsProfileId: dialogState.detailsProfileId,
     logsProfileId: dialogState.logsProfileId,
     setSearchQuery, setIsCreateOpen: dialogState.setIsCreateOpen,
-    setDetailsProfileId: dialogState.setDetailsProfileId,
     setDeleteProfileId: dialogState.setDeleteProfileId,
     setLogsProfileId: dialogState.setLogsProfileId,
     handleCreate: actions.handleCreate, handleEdit: actions.handleEdit,
     handleDeleteClick: actions.handleDeleteClick,
-    handleLogs: actions.handleLogs, handleDetails: actions.handleDetails,
+    handleLogs: actions.handleLogs,
     handleCloseCreate: actions.handleCloseCreate,
     handleCloseEdit: actions.handleCloseEdit,
     handleSaveProfile: save.handleSaveProfile,

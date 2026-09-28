@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ProxiesList } from '../components/ProxiesList'
 import { ProfilesList } from '../../profiles/components/ProfilesList'
-import { ProfileDetails } from '../../profiles/components/ProfileDetails'
 
 const noop = () => {}
 
@@ -18,8 +17,7 @@ test('list and detail markup, including tooltips, never contains proxy credentia
     const profile = { id: 'p', name: 'Profile', proxy, proxyType: 'socks5' }
     const views = [
       <ProxiesList proxies={[{ ...profile, purpose: 'work', maxProfiles: 3 }]} usage={{}} loading={false} onEdit={noop} onDelete={noop} />,
-      <ProfilesList profiles={[profile]} loading={false} onDetails={noop} onEdit={noop} onDelete={noop} onLogs={noop} onToggleStatus={noop} />,
-      <ProfileDetails profile={profile} />,
+      <ProfilesList profiles={[profile]} loading={false} onEdit={noop} onDelete={noop} onLogs={noop} onToggleStatus={noop} />,
     ]
     for (const view of views) {
       const markup = renderToStaticMarkup(view)
