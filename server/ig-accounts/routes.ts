@@ -33,6 +33,19 @@ router.post('/warmup/:profileId/reconcile', asyncHandler(async (req, res) => {
   res.json({ ok: true })
 }))
 
+router.get('/credentials/:id', asyncHandler(async (req, res) => {
+  try {
+    const account = await accountById(req.params.id)
+    if (!account) throw new ValidationError('Credential not found')
+    res.json({ id: account.id, username: account.username, password: account.password,
+      authenticatorKey: account.authenticatorKey, status: account.status,
+      profileId: account.profileId, error: account.error, createdAt: account.createdAt,
+      retryAfter: account.retryAfter, browserLoggedInAt: account.browserLoggedInAt })
+  } catch (error) {
+    throw new ValidationError(error instanceof Error ? error.message : 'Credential not found')
+  }
+}))
+
 router.get('/models/:modelId/content', asyncHandler(async (req, res) => {
   if (!(await listsList()).some(row => row.id === req.params.modelId)) throw new ValidationError('Model not found')
   res.json(await listContent(req.params.modelId))

@@ -3,13 +3,10 @@ import {
   CheckCircle2,
   CircleAlert,
   Plus,
-  RefreshCw,
   Search,
   Upload,
-  Users,
 } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,76 +23,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { useNavigate, useSearchParams } from '@/lib/router'
-
-type AccountStatus = 'available' | 'assigned' | 'connected' | 'invalid'
-type Account = {
-  id: string
-  username: string
-  status: AccountStatus
-  profileId?: string
-  error?: string
-  browserLoggedInAt?: number
-}
-
-function statusBadge(account: Account) {
-  const { status } = account
-  switch (status) {
-    case 'available':
-      return (
-        <Badge
-          variant="outline"
-          className="border-status-success-border bg-status-success-soft text-status-success text-[10px] tracking-[0.14em] uppercase"
-        >
-          Available
-        </Badge>
-      )
-    case 'assigned':
-      return (
-        <Badge
-          variant="outline"
-          className="border-status-info-border bg-status-info-soft text-status-info text-[10px] tracking-[0.14em] uppercase"
-        >
-          {account.browserLoggedInAt ? 'Browser logged in' : 'Assigned'}
-        </Badge>
-      )
-    case 'connected':
-      return (
-        <Badge
-          variant="outline"
-          className="border-status-success-border bg-status-success-soft text-status-success text-[10px] tracking-[0.14em] uppercase"
-        >
-          Connected
-        </Badge>
-      )
-    case 'invalid':
-      return (
-        <Badge
-          variant="outline"
-          className="border-status-danger-border bg-status-danger-soft text-status-danger text-[10px] tracking-[0.14em] uppercase"
-        >
-          Invalid
-        </Badge>
-      )
-  }
-}
-
-function accountDetail(account: Account): string | undefined {
-  if (account.error) return account.error
-  if (account.status === 'assigned' && account.browserLoggedInAt)
-    return 'Feed warmup starts the next day. Mobile login and name change run on day 3 through the Work proxy'
-  return undefined
-}
+import { AccountsList, type Account } from './components/AccountsList'
+import { AccountDetailsDialog } from './components/AccountDetailsDialog'
 
 export function IgAccountsPage() {
   const navigate = useNavigate()
@@ -106,6 +37,7 @@ export function IgAccountsPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const [detailsAccount, setDetailsAccount] = useState<Account | null>(null)
 
   const [text, setText] = useState('')
   const [selected, setSelected] = useState('')
@@ -240,10 +172,16 @@ export function IgAccountsPage() {
             </div>
           )}
 
-          <AccountsTable
+          <AccountsList
             accounts={filteredAccounts}
-            searchActive={Boolean(search.trim())}
             loading={loading}
+            onSelect={setDetailsAccount}
+            emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
+            emptyDescription={
+              search.trim()
+                ? 'Try a different search term or clear the filter.'
+                : 'Import credentials to get started.'
+            }
           />
 
         </div>
@@ -406,130 +344,11 @@ export function IgAccountsPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </div>
-  )
-}
 
-/* ── Accounts table (like ProxiesList / ProfilesList) ── */
-
-function AccountsTable({
-  accounts,
-  searchActive,
-  loading,
-}: {
-  accounts: Account[]
-  searchActive: boolean
-  loading: boolean
-}) {
-  const isMobile = useIsMobile()
-
-  if (loading && accounts.length === 0) {
-    return (
-      <div className="text-muted-foreground flex animate-pulse items-center justify-center gap-2 p-12 text-center text-sm">
-        <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> Loading
-        accounts...
-      </div>
-    )
-  }
-
-  if (accounts.length === 0) {
-    return (
-      <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-        <Users className="text-subtle-copy mb-4 h-10 w-10" />
-        <h3 className="text-ink text-lg font-medium">
-          {searchActive ? 'No matching accounts' : 'No accounts'}
-        </h3>
-        <p className="text-subtle-copy mt-1 text-sm">
-          {searchActive
-            ? 'Try a different search term or clear the filter.'
-            : 'Import credentials to get started.'}
-        </p>
-      </div>
-    )
-  }
-
-  if (isMobile) {
-    return (
-      <div className="space-y-3">
-        {accounts.map((account, idx) => (
-          <div
-            key={account.id}
-            className="bg-panel-strong border-line hover:border-line-strong rounded-2xl border p-4 shadow-xs transition-colors"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-subtle-copy text-[11px] tracking-[0.18em] uppercase">
-                  Account #{idx + 1}
-                </div>
-                <h3 className="text-ink mt-1 truncate text-base font-semibold">
-                  {account.username ? `@${account.username}` : 'Unreadable credential'}
-                </h3>
-              </div>
-              {statusBadge(account)}
-            </div>
-            {accountDetail(account) && (
-              <p className={`${account.error ? 'text-status-danger' : 'text-subtle-copy'} border-line mt-3 truncate border-t pt-3 text-xs`}>
-                {accountDetail(account)}
-              </p>
-            )}
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
-      <div className="p-4 sm:p-5">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-              <TableHead className="text-muted-copy h-12 w-[80px] pl-4 font-medium">
-                No.
-              </TableHead>
-              <TableHead className="text-muted-copy h-12 w-full font-medium">
-                Account
-              </TableHead>
-              <TableHead className="text-muted-copy h-12 w-[160px] font-medium">
-                Status
-              </TableHead>
-              <TableHead className="text-muted-copy h-12 w-[280px] pr-4 font-medium">
-                Detail
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {accounts.map((account, idx) => (
-              <TableRow
-                key={account.id}
-                className="border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle"
-              >
-                <TableCell className="pl-4">
-                  <span className="text-subtle-copy font-mono text-sm">
-                    {idx + 1}
-                  </span>
-                </TableCell>
-                <TableCell className="font-medium">
-                  <span className="text-ink">{account.username ? `@${account.username}` : 'Unreadable credential'}</span>
-                </TableCell>
-                <TableCell>{statusBadge(account)}</TableCell>
-                <TableCell className="pr-4">
-                  {accountDetail(account) ? (
-                    <span
-                      className={`${account.error ? 'text-status-danger' : 'text-subtle-copy'} block max-w-[280px] truncate text-xs`}
-                      title={accountDetail(account)}
-                    >
-                      {accountDetail(account)}
-                    </span>
-                  ) : (
-                    <span className="text-subtle-copy/50 text-xs">-</span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <AccountDetailsDialog
+        account={detailsAccount}
+        onClose={() => setDetailsAccount(null)}
+      />
     </div>
   )
 }
