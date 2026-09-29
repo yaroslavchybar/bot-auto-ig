@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom'
 import { KeyRound, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { ChatHeaderControls } from './components/ChatHeaderControls'
+import { ChatHeaderControls, ChatProfileSelect, ChatStatusActions } from './components/ChatHeaderControls'
 import { ConnectDialog } from './components/ConnectDialog'
 import { ConversationView } from './components/ConversationView'
 import { ThreadList } from './components/ThreadList'
@@ -14,20 +14,31 @@ export function ChatPage() {
   const hasThread = chat.selectedThreadId !== ''
   const disconnected =
     chat.activeProfileId !== 'all' && chat.connected === false
-  // Desktop: controls live in the app header. Mobile: inline below it.
+  // Desktop: full controls live in the app header. Mobile: only the profile
+  // switch moves to the header; status and actions stay inline when a
+  // profile is set, so "All profiles" needs no extra row.
   const headerSlot = useHeaderSlot('chat-header-slot')
 
   return (
     <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
       {headerSlot
         ? createPortal(
-            <ChatHeaderControls chat={chat} className="w-full flex-nowrap" />,
+            <>
+              <div className="hidden w-full flex-nowrap md:block">
+                <ChatHeaderControls chat={chat} className="w-full flex-nowrap" />
+              </div>
+              <div className="md:hidden">
+                <ChatProfileSelect chat={chat} />
+              </div>
+            </>,
             headerSlot,
           )
         : null}
-      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:hidden md:px-6 md:pt-3 md:pb-3">
-        <ChatHeaderControls chat={chat} />
-      </div>
+      {chat.activeProfileId !== 'all' && (
+        <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:hidden md:px-6 md:pt-3 md:pb-3">
+          <ChatStatusActions chat={chat} />
+        </div>
+      )}
 
       {chat.error && (
         <div className="flex-none px-4 md:px-6">

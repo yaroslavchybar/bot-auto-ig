@@ -178,15 +178,18 @@ export function Link({
   replace,
   children,
   className,
+  onClick,
 }: {
   to: string
   replace?: boolean
   children: ReactNode
   className?: string
+  onClick?: () => void
 }) {
   const navigateFn = useNavigate()
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    onClick?.()
     if (
       event.defaultPrevented ||
       event.button !== 0 ||

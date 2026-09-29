@@ -80,7 +80,7 @@ export function ProtectedLayoutShell({
                   </BreadcrumbList>
                 </Breadcrumb>
               </div>
-              {showChatSlot ? <div id="chat-header-slot" className="hidden min-w-0 flex-1 items-center md:flex" /> : null}
+              {showChatSlot ? <div id="chat-header-slot" className="flex min-w-0 flex-1 items-center justify-center md:justify-start" /> : null}
               {showScraperTabs ? <ScraperHeaderTabs /> : null}
               {showProxyTabs ? <ProxyHeaderTabs /> : null}
               <div className="ml-auto flex items-center gap-2 px-4">

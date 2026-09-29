@@ -24,6 +24,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
   SidebarTrigger,
+  useSidebar,
 } from '@/components/ui/sidebar'
 
 export const NAV_IDS = [
@@ -90,6 +91,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar>
 
 export function AppSidebar(props: AppSidebarProps) {
   const { pathname } = useLocation()
+  const { setOpenMobile } = useSidebar()
   const unreadChats = useQuery(api.chatCache.unreadCount, {}) ?? 0
   const navMain = [
     {
@@ -126,7 +128,7 @@ export function AppSidebar(props: AppSidebarProps) {
                       }
                       className="text-muted-copy hover:text-ink hover:bg-panel-subtle data-[active=true]:bg-panel-selected transition-colors data-[active=true]:text-ink"
                     >
-                      <Link to={item.to}>
+                      <Link to={item.to} onClick={() => setOpenMobile(false)}>
                         {item.icon && <item.icon />}
                         <span>{item.title}</span>
                         {item.id === 'chat' && unreadChats > 0 && (

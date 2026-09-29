@@ -19,8 +19,9 @@ import type { Profile } from '@/features/profiles/types'
 import type { useChatPage } from '../hooks/useChatPage'
 
 // Profile switch + connection status + actions. Rendered in the app header
-// (via portal) on desktop and inline in the page on mobile.
-export function ChatHeaderControls({
+// (via portal) on desktop. On mobile only the profile switch moves to the
+// header; status and actions render inline in the page when a profile is set.
+export function ChatProfileSelect({
   chat,
   className,
 }: {
@@ -29,28 +30,41 @@ export function ChatHeaderControls({
 }) {
   const busy = chat.sending || chat.connecting || chat.loggingOut
   return (
-    <div className={cn('flex flex-wrap items-center gap-2', className)}>
-      <Select
-        value={chat.activeProfileId || undefined}
-        onValueChange={chat.selectProfile}
-        disabled={chat.profilesLoading || busy}
+    <Select
+      value={chat.activeProfileId || undefined}
+      onValueChange={chat.selectProfile}
+      disabled={chat.profilesLoading || busy}
+    >
+      <SelectTrigger
+        aria-label="Instagram profile"
+        className={cn(
+          'bg-field brand-focus h-8 w-32 min-w-0 max-w-full shadow-xs min-[400px]:w-36 sm:w-44 lg:w-52',
+          className,
+        )}
       >
-        <SelectTrigger
-          aria-label="Instagram profile"
-          className="bg-field brand-focus h-8 w-36 shadow-xs sm:w-44 lg:w-52"
-        >
-          <SelectValue placeholder="Select a profile" />
-        </SelectTrigger>
-        <SelectContent className="panel-dropdown">
-          <SelectItem value="all">All profiles</SelectItem>
-          {chat.profiles.map((profile: Profile) => (
-            <SelectItem key={profile.id} value={profile.id}>
-              {profile.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        <SelectValue placeholder="Select a profile" />
+      </SelectTrigger>
+      <SelectContent className="panel-dropdown">
+        <SelectItem value="all">All profiles</SelectItem>
+        {chat.profiles.map((profile: Profile) => (
+          <SelectItem key={profile.id} value={profile.id}>
+            {profile.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
+export function ChatStatusActions({
+  chat,
+  className,
+}: {
+  chat: ReturnType<typeof useChatPage>
+  className?: string
+}) {
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
       {chat.activeProfileId !== 'all' && (
         <ConnectionBadge connected={chat.connected} />
       )}
@@ -92,6 +106,21 @@ export function ChatHeaderControls({
           </DropdownMenu>
         )}
       </div>
+    </div>
+  )
+}
+
+export function ChatHeaderControls({
+  chat,
+  className,
+}: {
+  chat: ReturnType<typeof useChatPage>
+  className?: string
+}) {
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+      <ChatProfileSelect chat={chat} />
+      <ChatStatusActions chat={chat} className="contents" />
     </div>
   )
 }
