@@ -24,6 +24,9 @@ COPY --from=repo_root tsconfig.json ./tsconfig.json
 COPY --from=repo_root server/shared/contracts.ts ./server/shared/contracts.ts
 # Runtime parser shared by the frontend, Convex functions, and browser startup.
 COPY --from=repo_root server/shared/proxy.ts ./server/shared/proxy.ts
+# Convex HTTP routes use the portable logger; frontend typechecking follows it.
+COPY --from=repo_root server/shared/httpLogging.ts \
+  server/shared/loggingSanitize.ts server/shared/loggingTypes.ts ./server/shared/
 
 ARG VITE_CONVEX_URL
 ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
