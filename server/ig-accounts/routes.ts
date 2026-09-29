@@ -6,7 +6,7 @@ import { parseChatCredentials } from '../chat/totp.js'
 import { accountById, accountByUsername, assignAccount, availableAccounts, importAccounts, listAccounts } from './store.js'
 import { listBlacklistedProxies } from './blacklist.js'
 import { queueProfileLogin } from './login.js'
-import { addContent, contentImage, listContent, type ContentKind } from './content.js'
+import { addContent, contentImage, copyImage, generateCopies, listContent, listCopies, removeContent, type ContentKind } from './content.js'
 import { listModelWarmup, reconcileModelWarmup } from './warmup.js'
 import { modelImageLimiter } from '../security/rate-limit.js'
 
@@ -57,6 +57,46 @@ router.post('/models/:modelId/content/:kind', raw({ type: 'application/octet-str
     try { res.json(await addContent(req.params.modelId, kind as ContentKind, name, req.body as Buffer)) }
     catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Could not process image') }
   }))
+
+function contentKind(kind: unknown): ContentKind {
+  if (kind !== 'posts' && kind !== 'avatars') throw new ValidationError('Choose posts or avatars')
+  return kind
+}
+
+async function contentModel(modelId: string): Promise<void> {
+  if (!(await listsList()).some(row => row.id === modelId)) throw new ValidationError('Model not found')
+}
+
+router.post('/models/:modelId/content/:kind/:contentId/copies', asyncHandler(async (req, res) => {
+  await contentModel(req.params.modelId)
+  const kind = contentKind(req.params.kind)
+  try { res.json(await generateCopies(req.params.modelId, kind, req.params.contentId)) }
+  catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Could not generate copies') }
+}))
+
+router.get('/models/:modelId/content/:kind/:contentId/copies', asyncHandler(async (req, res) => {
+  await contentModel(req.params.modelId)
+  const kind = contentKind(req.params.kind)
+  try { res.json(await listCopies(req.params.modelId, kind, req.params.contentId)) }
+  catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Image not found') }
+}))
+
+router.get('/models/:modelId/content/:kind/:contentId/copies/:variant/image', modelImageLimiter,
+  asyncHandler(async (req, res) => {
+    await contentModel(req.params.modelId)
+    const kind = contentKind(req.params.kind)
+    const image = await copyImage(req.params.modelId, kind, req.params.contentId, req.params.variant)
+    if (!image) throw new ValidationError('Image not found')
+    res.vary('Authorization').set('Cache-Control', 'private, max-age=3600')
+      .type(image.type).send(image.bytes)
+  }))
+
+router.delete('/models/:modelId/content/:kind/:contentId', asyncHandler(async (req, res) => {
+  await contentModel(req.params.modelId)
+  const kind = contentKind(req.params.kind)
+  try { res.json(await removeContent(req.params.modelId, kind, req.params.contentId)) }
+  catch (error) { throw new ValidationError(error instanceof Error ? error.message : 'Could not remove image') }
+}))
 
 router.post('/import', asyncHandler(async (req, res) => {
   if (typeof req.body?.text !== 'string') throw new ValidationError('Choose a TXT file')

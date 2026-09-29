@@ -66,7 +66,7 @@ export async function contentImage(modelId: string, kind: ContentKind, contentId
   return { bytes: await fs.readFile(file), type: extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg' }
 }
 
-/** Uploaded originals produce 50 unique variants before entering the content bank. */
+/** Uploaded originals enter the bank immediately; copies are generated on demand. */
 export async function addContent(modelId: string, kind: ContentKind, name: string, bytes: Buffer) {
   if (!['posts', 'avatars'].includes(kind)) throw new Error('Invalid content type')
   if (!bytes.length || bytes.length > 15 * 1024 * 1024) throw new Error('Image must be 1–15 MB')
@@ -75,23 +75,88 @@ export async function addContent(modelId: string, kind: ContentKind, name: strin
   const id = randomUUID()
   const dir = path.join(modelDir(modelId), kind, id)
   await fs.mkdir(dir, { recursive: true })
-  const source = path.join(dir, `source${extension}`)
-  await fs.writeFile(source, bytes, { mode: 0o600 })
+  await fs.writeFile(path.join(dir, `source${extension}`), bytes, { mode: 0o600 })
   try {
-    const result = await runSpoofer(source)
-    const variants = (result.outputs ?? []).map(item => item.name ?? '')
-      .filter(item => /^[^/\\]+\.jpg$/i.test(item))
-    if (variants.length !== 50 || result.failures?.length) throw new Error(`Spoofer produced ${variants.length}/50 variants`)
     await locked(modelId, async () => {
       const rows = await read(modelId)
-      rows.push({ id, kind, name: path.basename(name), variants, assigned: {}, createdAt: Date.now() })
+      rows.push({ id, kind, name: path.basename(name), variants: [], assigned: {}, createdAt: Date.now() })
       await write(modelId, rows)
     })
-    return { id, variantCount: variants.length }
   } catch (error) {
     await fs.rm(dir, { recursive: true, force: true })
     throw error
   }
+  return { id, variantCount: 0 }
+}
+
+/** Content IDs with a spoofer run in flight. The lock only serializes manifest access. */
+const generating = new Set<string>()
+
+/** Generate the 50 unique variants for a stored original. Kind must match. */
+export async function generateCopies(modelId: string, kind: ContentKind, contentId: string) {
+  const key = `${modelId}:${contentId}`
+  if (generating.has(key)) throw new Error('Copy generation already running')
+  generating.add(key)
+  try {
+    const source = await locked(modelId, async () => {
+      const row = (await read(modelId)).find(item => item.id === contentId && item.kind === kind)
+      if (!row) throw new Error('Image not found')
+      if (row.variants.length) throw new Error('Copies already exist')
+      const extension = path.extname(row.name).toLowerCase()
+      return { file: path.join(modelDir(modelId), row.kind, row.id, `source${extension}`),
+        kind: row.kind, id: row.id }
+    })
+    const variantsDir = path.join(modelDir(modelId), source.kind, source.id, 'variants')
+    try {
+      const result = await runSpoofer(source.file)
+      const variants = [...new Set((result.outputs ?? []).map(item => item.name ?? '')
+        .filter(item => /^[^/\\]+\.jpg$/i.test(item)))]
+      if (variants.length !== 50 || result.failures?.length)
+        throw new Error(`Spoofer produced ${variants.length}/50 variants`)
+      return await locked(modelId, async () => {
+        const rows = await read(modelId)
+        const row = rows.find(item => item.id === contentId)
+        if (!row) throw new Error('Image not found')
+        if (row.variants.length) throw new Error('Copies already exist')
+        row.variants = variants
+        await write(modelId, rows)
+        return { id: contentId, variantCount: variants.length }
+      })
+    } catch (error) {
+      // Every failure after the spoofer starts must not leave partial output behind.
+      await fs.rm(variantsDir, { recursive: true, force: true })
+      throw error
+    }
+  } finally {
+    generating.delete(key)
+  }
+}
+
+/** Remove an original and all its copies from the bank. Kind must match. */
+export async function removeContent(modelId: string, kind: ContentKind, contentId: string) {
+  return locked(modelId, async () => {
+    const rows = await read(modelId)
+    const row = rows.find(item => item.id === contentId && item.kind === kind)
+    if (!row) throw new Error('Image not found')
+    await write(modelId, rows.filter(item => item.id !== contentId))
+    await fs.rm(path.join(modelDir(modelId), row.kind, row.id), { recursive: true, force: true })
+    return { removed: true }
+  })
+}
+
+/** Copy names for the viewer. Only rows with generated variants are served. */
+export async function listCopies(modelId: string, kind: ContentKind, contentId: string) {
+  const row = (await read(modelId)).find(item => item.id === contentId && item.kind === kind)
+  if (!row) throw new Error('Image not found')
+  return row.variants.filter(item => /^[^/\\]+\.jpg$/i.test(item))
+}
+
+/** Serve a single generated copy. The name must belong to this image's manifest row. */
+export async function copyImage(modelId: string, kind: ContentKind, contentId: string, variant: string) {
+  const row = (await read(modelId)).find(item => item.id === contentId && item.kind === kind)
+  if (!row || !row.variants.includes(variant) || !/^[^/\\]+\.jpg$/i.test(variant)) return null
+  const bytes = await fs.readFile(path.join(modelDir(modelId), kind, row.id, 'variants', variant))
+  return { bytes, type: 'image/jpeg' }
 }
 
 /** A variant may be used by one account only, and an account gets one copy per source. */

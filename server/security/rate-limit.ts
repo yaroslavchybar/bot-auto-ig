@@ -5,7 +5,7 @@
 import rateLimit from 'express-rate-limit'
 import type { Request } from 'express'
 
-const modelImagePath = /^\/api\/ig-accounts\/models\/[^/]+\/content\/(?:posts|avatars)\/[^/]+\/image$/
+const modelImagePath = /^\/api\/ig-accounts\/models\/[^/]+\/content\/(?:posts|avatars)\/[^/]+\/(?:image|copies\/[^/]+\/image)$/
 
 function isModelImageRead(req: Request): boolean {
     return req.method === 'GET' && modelImagePath.test(req.originalUrl.split('?')[0])
