@@ -164,6 +164,7 @@ export default defineSchema({
     runId: v.optional(v.string()), leaseUntil: v.optional(v.number()),
     postIndex: v.optional(v.number()),
     posts: v.optional(v.array(v.object({ id: v.string(), code: v.string() }))),
+    postsFromApify: v.optional(v.boolean()),
     discovered: v.number(),
     error: v.optional(v.string()), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_status_lease', ['status', 'leaseUntil']).index('by_active_key', ['activeKey']),

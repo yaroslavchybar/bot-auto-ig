@@ -23,7 +23,8 @@ export const work = query({
     if (job) {
       const profiles = await ctx.db.query('profiles').collect();
       const times = profiles.filter(p => p.sessionId && p.status !== 'deleting' && !p.renameFrom).map(p => {
-        const reset = (p.scraperUsageCount ?? 0) >= limitFor(p) && p.scraperUsageDate
+        const limit = limitFor(p);
+        const reset = limit !== undefined && (p.scraperUsageCount ?? 0) >= limit && p.scraperUsageDate
           ? Date.parse(`${p.scraperUsageDate}T00:00:00Z`) + 86_400_000 : 0;
         return Math.max(p.scraperCooldownUntil ?? 0, reset);
       });
@@ -35,7 +36,7 @@ export const work = query({
 });
 
 const day = () => new Date().toISOString().slice(0, 10);
-const limitFor = (profile: Doc<'profiles'>) => profile.scraperDailyLimit ?? 1000;
+const limitFor = (profile: Doc<'profiles'>) => profile.scraperDailyLimit;
 const usedToday = (profile: Doc<'profiles'>) => profile.scraperUsageDate === day() ? (profile.scraperUsageCount ?? 0) : 0;
 
 export const jobs = query({
@@ -47,7 +48,7 @@ export const accounts = query({
   args: {},
   handler: async (ctx) => (await ctx.db.query('profiles').collect()).map(p => ({
     id: p._id, name: p.name, ready: !!p.sessionId,
-    dailyLimit: limitFor(p), used: usedToday(p), cooldownUntil: p.scraperCooldownUntil,
+    dailyLimit: p.scraperDailyLimit, used: usedToday(p), cooldownUntil: p.scraperCooldownUntil,
   })),
 });
 
@@ -67,9 +68,10 @@ export const cooldownAccount = internalMutation({
 });
 
 export const setDailyLimit = mutation({
-  args: { profileId: v.id('profiles'), limit: v.number() },
+  args: { profileId: v.id('profiles'), limit: v.optional(v.number()) },
   handler: async (ctx, { profileId, limit }) => {
-    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100000) throw new Error('Limit must be from 1 to 100000');
+    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100000))
+      throw new Error('Limit must be from 1 to 100000');
     if (!await ctx.db.get(profileId)) throw new Error('Profile not found');
     await ctx.db.patch(profileId, { scraperDailyLimit: limit });
   },
@@ -138,8 +140,11 @@ export const claimNext = internalMutation({
       return null;
     }
     const profiles = (await ctx.db.query('profiles').collect())
-      .filter(p => p.sessionId && p.status !== 'deleting' && !p.renameFrom &&
-        (p.scraperCooldownUntil ?? 0) <= now && usedToday(p) < limitFor(p))
+      .filter(p => {
+        if (!p.sessionId || p.status === 'deleting' || p.renameFrom || (p.scraperCooldownUntil ?? 0) > now) return false;
+        const limit = limitFor(p);
+        return limit === undefined || usedToday(p) < limit;
+      })
       .sort((a, b) => usedToday(a) - usedToday(b));
     if (!profiles.length) return null;
     const profile = profiles[0]!;
@@ -157,22 +162,38 @@ export const checkpoint = internalMutation({
   args: {
     jobId: v.id('scrapeJobs'), runId: v.string(),
     posts: v.optional(v.array(v.object({ id: v.string(), code: v.string() }))),
+    postsFromApify: v.optional(v.boolean()),
     postIndex: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job || job.status !== 'running' || job.runId !== args.runId) throw new Error('Job run is no longer active');
+    if (args.postIndex !== undefined && (!Number.isSafeInteger(args.postIndex) ||
+      args.postIndex < (job.postIndex ?? 0) || args.postIndex > (args.posts ?? job.posts ?? []).length))
+      throw new Error('Invalid post checkpoint');
     await ctx.db.patch(job._id, {
       ...(args.posts ? { posts: args.posts } : {}),
+      ...(args.postsFromApify !== undefined ? { postsFromApify: args.postsFromApify } : {}),
       ...(args.postIndex !== undefined ? { postIndex: args.postIndex } : {}),
       leaseUntil: Date.now() + 10 * 60_000, updatedAt: Date.now(),
     });
     if (args.postIndex !== undefined && job.profileId) {
       const profile = await ctx.db.get(job.profileId);
-      if (profile?.scraperRateLimitCount) await ctx.db.patch(profile._id, {
-        scraperRateLimitCount: 0, scraperCooldownUntil: undefined,
-      });
+      if (profile) {
+        const limit = limitFor(profile);
+        const charge = (args.postsFromApify ?? job.postsFromApify) === false && args.postIndex > (job.postIndex ?? 0) ? 1 : 0;
+        const usage = usedToday(profile);
+        const count = usage + (limit === undefined ? charge : Math.min(charge, Math.max(0, limit - usage)));
+        await ctx.db.patch(profile._id, {
+          ...(charge ? { scraperUsageDate: day(), scraperUsageCount: count } : {}),
+          ...(args.postIndex > (job.postIndex ?? 0) && profile.scraperRateLimitCount
+            ? { scraperRateLimitCount: 0, scraperCooldownUntil: undefined }
+            : {}),
+        });
+        return { limitExhausted: limit !== undefined && count >= limit };
+      }
     }
+    return { limitExhausted: false };
   },
 });
 
@@ -192,7 +213,8 @@ export const saveBatch = internalMutation({
     if (!await ctx.db.get(job.listId)) throw new Error('Lead list was deleted');
     const profile = await ctx.db.get(job.profileId);
     if (!profile) throw new Error('Scraper profile was deleted');
-    const remaining = Math.max(0, limitFor(profile) - usedToday(profile));
+    const limit = limitFor(profile);
+    const remaining = limit === undefined ? args.likers.length : Math.max(0, limit - usedToday(profile));
     const seen = new Set<string>();
     const incoming = args.likers.flatMap(p => {
       const username = normalizeUsername(p.username);
@@ -245,7 +267,7 @@ export const saveBatch = internalMutation({
       leaseUntil: Date.now() + 10 * 60_000, updatedAt: Date.now(),
     });
     return { added, processed: incoming.length,
-      limitExhausted: usedToday(profile) + incoming.length >= limitFor(profile) };
+      limitExhausted: limit !== undefined && usedToday(profile) + incoming.length >= limit };
   },
 });
 

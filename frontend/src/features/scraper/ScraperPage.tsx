@@ -1,7 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { Inbox, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck } from 'lucide-react'
+import { Inbox, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck, X } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
@@ -48,7 +48,7 @@ type Account = {
   id: Id<'profiles'>
   name: string
   ready: boolean
-  dailyLimit: number
+  dailyLimit?: number
   used: number
   cooldownUntil?: number
 }
@@ -621,16 +621,16 @@ function accountStatus(account: Account) {
   return { label: 'Ready', className: 'bg-status-success-soft text-status-success border-status-success-border', dot: 'status-dot-success-tight' }
 }
 
-function UsageBar({ used, limit }: { used: number; limit: number }) {
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
+function UsageBar({ used, limit }: { used: number; limit?: number }) {
+  const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0
   const fill = pct >= 90 ? 'bg-status-danger' : pct >= 70 ? 'bg-status-warning' : 'bg-status-success'
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2 text-xs">
         <span className="text-copy font-medium tabular-nums">
-          {used} / {limit}
+          {limit ? `${used} / ${limit}` : `${used} · no limit`}
         </span>
-        <span className="text-subtle-copy tabular-nums">{pct}%</span>
+        <span className="text-subtle-copy tabular-nums">{limit ? `${pct}%` : ''}</span>
       </div>
       <div className="bg-panel-muted mt-1.5 h-1.5 overflow-hidden rounded-full">
         <div className={cn('h-full rounded-full transition-[width]', fill)} style={{ width: `${pct}%` }} />
@@ -640,25 +640,42 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
 }
 
 function DailyLimitEditor({ account, compact }: { account: Account; compact?: boolean }) {
-  const [limit, setLimit] = useState(String(account.dailyLimit))
-  const [busy, setBusy] = useState(false)
+  const [draft, setDraft] = useState<{ value: string } | null>(null)
+  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const save = useMutation(api.scraper.setDailyLimit)
+  const pendingSave = useRef<Promise<unknown>>(Promise.resolve())
+  const limit = draft?.value ?? account.dailyLimit?.toString() ?? ''
+
+  const empty = limit.trim() === ''
+  const parsed = Number(limit)
+  const valid = !empty && Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 100000
 
   useEffect(() => {
-    setLimit(String(account.dailyLimit))
-  }, [account.dailyLimit])
+    if (!draft || (!empty && !valid)) return
+    let active = true
+    const timer = setTimeout(() => {
+      // Keep edits ordered, including reverting while an earlier save is in flight.
+      const operation = pendingSave.current.catch(() => {}).then(() =>
+        save({ profileId: account.id, limit: empty ? undefined : parsed }))
+      pendingSave.current = operation
+      void operation.then(() => {
+        if (active) {
+          setDraft(null)
+          setStatus('saved')
+        }
+      }).catch((error) => {
+        if (active) {
+          setStatus('error')
+          toast.error(String(error))
+        }
+      })
+    }, 700)
+    return () => { active = false; clearTimeout(timer) }
+  }, [draft, empty, valid, parsed, account.id, save])
 
-  const dirty = Number(limit) !== account.dailyLimit
-  const submit = async () => {
-    setBusy(true)
-    try {
-      await save({ profileId: account.id, limit: Number(limit) })
-      toast.success('Daily limit saved')
-    } catch (error) {
-      toast.error(String(error))
-    } finally {
-      setBusy(false)
-    }
+  const edit = (value: string) => {
+    setDraft({ value })
+    setStatus('saving')
   }
 
   return (
@@ -668,13 +685,30 @@ function DailyLimitEditor({ account, compact }: { account: Account; compact?: bo
         type="number"
         min={1}
         max={100000}
+        aria-invalid={!empty && !valid}
+        placeholder="No limit"
         value={limit}
-        onChange={(e) => setLimit(e.target.value)}
+        onChange={(e) => edit(e.target.value)}
         className="bg-field border-line brand-focus h-8 w-24 shadow-sm"
       />
-      <Button size="sm" variant="outline" onClick={() => void submit()} disabled={busy || !dirty} className="h-8">
-        Save
-      </Button>
+      {!empty && (
+        <Button
+          size="icon"
+          variant="ghost"
+          title="Clear limit"
+          aria-label={`Clear ${account.name} daily limit`}
+          onClick={() => edit('')}
+          className="text-muted-copy hover:bg-panel-muted h-8 w-8 shrink-0 hover:text-ink"
+        >
+          <X className="h-3.5 w-3.5" />
+        </Button>
+      )}
+      {status === 'error' && (
+        <Button size="sm" variant="ghost" onClick={() => edit(limit)} className="h-8">Retry</Button>
+      )}
+      <span aria-live="polite" className="text-subtle-copy min-w-12 text-xs whitespace-nowrap">
+        {!empty && !valid ? '1–100000' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : status === 'error' ? 'Failed' : ''}
+      </span>
     </div>
   )
 }

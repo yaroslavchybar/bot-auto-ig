@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { IgApiClient } from 'instagram-private-api';
+import { IgApiClient, type UserFeed } from 'instagram-private-api';
 import type { ProfileRecord } from '../shared/contracts.js';
 import { chatSessionDelete, chatSessionGet, chatSessionHas, chatSessionSave } from '../shared/convexClient.js';
 import { resolveProjectRoot } from '../shared/utils.js';
@@ -199,6 +199,46 @@ async function saveSession(profileId: string, ig: IgApiClient, token: string,
   finally { if (writes.get(profileId) === operation) writes.delete(profileId); }
 }
 
+/** Pinned posts are out of date order; only ordinary posts can end the date window. */
+export async function fetchRecentProfilePosts(
+  feed: Pick<UserFeed, 'items' | 'isMoreAvailable' | 'toPlain'>, sinceDate: number, postLimit: number,
+  onPage?: () => Promise<void>,
+): Promise<{ id: string; code: string }[]> {
+  const posts: { id: string; code: string }[] = [];
+  const seen = new Set<string>();
+  const cursors = new Set<string>();
+  let exhausted = false;
+  while (posts.length < postLimit && !exhausted) {
+    await onPage?.();
+    const items = await feed.items();
+    if (!Array.isArray(items)) throw new Error('Instagram returned no profile posts');
+    if (!items.length) {
+      if (feed.isMoreAvailable()) throw new Error('Instagram returned an incomplete profile feed');
+      break;
+    }
+    for (const item of items) {
+      const timestamp = Number(item.taken_at) * 1000;
+      if (!Number.isFinite(timestamp) || timestamp <= 0) throw new Error('Instagram returned a post without a date');
+      if (timestamp < sinceDate) {
+        if (!list(record(item).timeline_pinned_user_ids).length) exhausted = true;
+        continue;
+      }
+      const id = String(item.pk ?? '').split('_')[0]!;
+      const code = String(item.code ?? '');
+      if (!/^\d+$/.test(id) || !/^[\w-]+$/.test(code)) throw new Error('Instagram returned a post without an ID or shortcode');
+      if (seen.has(id)) continue;
+      seen.add(id);
+      posts.push({ id, code });
+      if (posts.length >= postLimit) break;
+    }
+    if (posts.length >= postLimit || exhausted || !feed.isMoreAvailable()) break;
+    const cursor = string(feed.toPlain().nextMaxId);
+    if (!cursor || cursors.has(cursor)) throw new Error('Instagram profile feed cursor is missing or repeated');
+    cursors.add(cursor);
+  }
+  return posts;
+}
+
 // Separate mobile session; browser cookies cannot establish it.
 export class InstagramChat {
   private constructor(private profile: ProfileRecord, private readonly ig: IgApiClient,
@@ -306,6 +346,16 @@ export class InstagramChat {
       mobileRequest(this.ig, 'GET', 'direct_v2/inbox/', undefined, query), onlyUnread);
     await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
     return { viewerId: this.ig.state.extractUserId(), threads };
+  }
+
+  /** Recent post IDs and shortcodes from the profile grid; same shape the scraper checkpoints. */
+  async recentProfilePosts(username: string, sinceDate: number, postLimit: number, onPage?: () => Promise<void>):
+    Promise<{ id: string; code: string }[]> {
+    const user = await this.ig.user.searchExact(username);
+    if (!user.pk) throw new Error(`Instagram could not find @${username}`);
+    const posts = await fetchRecentProfilePosts(this.ig.feed.user(user.pk), sinceDate, postLimit, onPage);
+    await saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration);
+    return posts;
   }
 
   async conversation(threadId: string): Promise<ChatThread> {

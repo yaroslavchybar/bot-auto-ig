@@ -1,6 +1,8 @@
 import { profilesGetById, scraperRequest } from '../shared/convexClient.js';
 import logger from '../shared/logger.js';
-import { InstagramHttp, InstagramRateLimitedError, type InstagramPost } from './instagram.js';
+import { IgResponseError } from 'instagram-private-api';
+import { InstagramChat } from '../chat/instagram.js';
+import { InstagramHttp, InstagramRateLimitedError, retryAfterMs, type InstagramPost } from './instagram.js';
 import { classifyAccount, openRouterClient } from './classify.js';
 import { describePicture, validPictureUrl } from './picture.js';
 import { recentPosts } from './apify.js';
@@ -44,8 +46,22 @@ async function runJob(job: Job): Promise<void> {
   const instagram = new InstagramHttp(profile);
   let posts = job.posts;
   if (!posts) {
-    posts = await recentPosts(job.username, job.sinceDate, job.postLimit);
-    await scraperRequest('checkpoint', { jobId: job._id, runId: job.runId, posts });
+    let postsFromApify = false;
+    try {
+      const chat = await InstagramChat.load(profile);
+      posts = await chat.recentProfilePosts(job.username, job.sinceDate, job.postLimit, async () => {
+        await scraperRequest('checkpoint', { jobId: job._id, runId: job.runId });
+      });
+    } catch (error) {
+      if (error instanceof IgResponseError && error.response.statusCode === 429)
+        throw new InstagramRateLimitedError('profile posts', retryAfterMs(error.response.headers['retry-after']));
+      // SDK response errors include request headers and session cookies.
+      logger.warn({ error: error instanceof Error ? error.name : 'Unknown error', username: job.username },
+        'Mobile post scrape failed; falling back to Apify');
+      postsFromApify = true;
+      posts = await recentPosts(job.username, job.sinceDate, job.postLimit);
+    }
+    await scraperRequest('checkpoint', { jobId: job._id, runId: job.runId, posts, postsFromApify });
   }
   const seen = new Set<string>();
   for (let index = job.postIndex ?? 0; index < posts.length; index++) {
@@ -69,7 +85,9 @@ async function runJob(job: Job): Promise<void> {
         return;
       }
     }
-    await scraperRequest('checkpoint', { jobId: job._id, runId: job.runId, postIndex: index + 1 });
+    const state = await scraperRequest<{ limitExhausted: boolean }>('checkpoint', {
+      jobId: job._id, runId: job.runId, postIndex: index + 1 });
+    if (state.limitExhausted && index < posts.length - 1) throw new DailyLimitReached();
     if (index < posts.length - 1) await delay(10_000 + Math.floor(Math.random() * 10_000));
   }
 }

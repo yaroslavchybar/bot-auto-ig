@@ -161,7 +161,8 @@ dev-login button (`POST /api/auth/dev-login`, non-production only) or
 Secrets live in `.env.local`, never committed. Key vars: `VITE_CONVEX_URL`
 (convex dev manages it; server also accepts `CONVEX_URL`), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls).
-The scraper uses `APIFY_API_KEY` to get recent public posts by profile and date.
+The scraper uses an existing Instagram Chat mobile session to get recent posts.
+`APIFY_API_KEY` enables fallback when mobile post discovery is unavailable.
 The UI accepts a number of days and a maximum post count per profile; each source
 job stores the post limit and fixes the date cutoff when queued.
 Active jobs use an indexed key to prevent duplicate queued work. Leads are stored
@@ -173,8 +174,10 @@ Liker collection makes one request for up to 100 accounts per post, saves them
 in Convex batches of 25, and waits 10–20 seconds between posts.
 Profile pictures are described through regular OpenRouter GPT-6 Luna calls
 with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies leads,
-so a classification retry does not repeat the picture call. The daily liker
-quota is separate from Instagram's
+so a classification retry does not repeat the picture call. Clearing a profile's
+daily limit removes its cap. Saved likers and completed mobile-discovered posts
+share that quota; repeated post checkpoints do not add usage. The quota is
+separate from Instagram's
 request limits. A 429 cools down that account for at least 30 minutes, with
 longer waits after repeated 429s or when Instagram sends `Retry-After`.
 `OPENROUTER_API_KEY` powers both AI steps.

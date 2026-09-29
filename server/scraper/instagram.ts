@@ -15,7 +15,7 @@ export class InstagramRateLimitedError extends Error {
   }
 }
 
-function retryAfterMs(value: string | string[] | undefined): number | undefined {
+export function retryAfterMs(value: string | string[] | undefined): number | undefined {
   const header = Array.isArray(value) ? value[0] : value;
   if (!header) return undefined;
   const seconds = Number(header);

@@ -12,11 +12,10 @@ export function registerScraperRoutes(http: HttpRouter): void {
     jsonResponse(await ctx.runMutation(internal.scraper.claimNext, {}))) });
   http.route({ path: '/api/scraper/checkpoint', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
-    await ctx.runMutation(internal.scraper.checkpoint, {
+    return jsonResponse(await ctx.runMutation(internal.scraper.checkpoint, {
       jobId: b.jobId as Id<'scrapeJobs'>, runId: b.runId,
-      posts: b.posts, postIndex: b.postIndex,
-    });
-    return jsonResponse({ ok: true });
+      posts: b.posts, postsFromApify: b.postsFromApify, postIndex: b.postIndex,
+    }));
   }) });
   http.route({ path: '/api/scraper/batch', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);

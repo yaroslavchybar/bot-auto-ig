@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
-import { fetchChatInboxPages, parseChatInboxThread, parseChatMessagePage, parseChatThread } from './instagram.js';
+import { fetchChatInboxPages, fetchRecentProfilePosts, parseChatInboxThread, parseChatMessagePage, parseChatThread } from './instagram.js';
+import type { UserFeedResponseItemsItem } from 'instagram-private-api';
 
 test('DM thread keeps Instagram read receipts in message timestamp units', () => {
   const thread = parseChatThread({
@@ -90,4 +91,45 @@ test('Unread DM inbox fetch follows every page', async () => {
 test('DM inbox rejects an incomplete paginated snapshot', async () => {
   await expect(fetchChatInboxPages(async () => ({ inbox: { threads: [], has_older: true } })))
     .rejects.toThrow('cursor is missing');
+});
+
+const post = (id: number, date: number, pinned = false) => ({
+  pk: String(id), code: `post_${id}`, taken_at: date,
+  ...(pinned ? { timeline_pinned_user_ids: ['user'] } : {}),
+}) as UserFeedResponseItemsItem;
+
+function profileFeed(pages: UserFeedResponseItemsItem[][], cursor?: string) {
+  let page = -1;
+  return {
+    items: async () => pages[++page]!,
+    isMoreAvailable: () => page < pages.length - 1,
+    toPlain: () => ({ nextMaxId: cursor ?? String(page) }),
+  };
+}
+
+test('old pinned posts do not hide recent posts or stop pagination', async () => {
+  let heartbeats = 0;
+  const result = await fetchRecentProfilePosts(profileFeed([
+    [post(1, 10, true), post(2, 300)],
+    [post(2, 300), post(3, 200), post(4, 10)],
+    [post(5, 5)],
+  ]), 100_000, 10, async () => { heartbeats++; });
+  expect(result).toEqual([{ id: '2', code: 'post_2' }, { id: '3', code: 'post_3' }]);
+  expect(heartbeats).toBe(2);
+});
+
+test('native post limit stops further page requests', async () => {
+  let heartbeats = 0;
+  expect(await fetchRecentProfilePosts(profileFeed([
+    [post(1, 300), post(2, 200)], [post(3, 100)],
+  ]), 100_000, 1, async () => { heartbeats++; })).toEqual([{ id: '1', code: 'post_1' }]);
+  expect(heartbeats).toBe(1);
+});
+
+test('native posts reject malformed data and repeated pagination cursors', async () => {
+  await expect(fetchRecentProfilePosts(profileFeed([[post(1, NaN)]]), 0, 10)).rejects.toThrow('without a date');
+  await expect(fetchRecentProfilePosts(profileFeed([[], [post(1, 100)]]), 0, 10)).rejects.toThrow('incomplete');
+  await expect(fetchRecentProfilePosts(profileFeed([
+    [post(1, 300)], [post(1, 300)], [post(2, 200)],
+  ], 'same'), 0, 10)).rejects.toThrow('cursor is missing or repeated');
 });
