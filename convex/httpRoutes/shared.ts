@@ -1,5 +1,6 @@
 import type { HttpRouter } from 'convex/server';
 import { httpAction, type ActionCtx } from '../_generated/server';
+import { startRequestLog, addRequestContext } from '../../server/shared/httpLogging';
 
 // ═══════════════════════════════════════════════════════════════════
 // HTTP Error Classes
@@ -52,13 +53,20 @@ type HandlerFn = (ctx: ActionCtx, request: Request) => Promise<Response>;
  */
 export function withErrorHandling(handler: HandlerFn) {
   return httpAction(async (ctx, request) => {
-    const authError = await requireAuth(request);
-    if (authError) return authError;
+    const log = startRequestLog(request);
+    let response: Response | undefined;
+    let error: unknown;
     try {
-      return await handler(ctx, request);
+      response = await requireAuth(request) ?? await handler(ctx, request);
+      return response;
     } catch (err: unknown) {
+      error = err;
       const { message, status } = categorizeError(err);
-      return jsonResponse({ error: message }, status);
+      response = jsonResponse({ error: message }, status);
+      return response;
+    } finally {
+      response?.headers.set('X-Request-Id', log.requestId);
+      log.finish(response?.status ?? 500, error);
     }
   });
 }
@@ -70,7 +78,8 @@ export function withErrorHandling(handler: HandlerFn) {
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Request-Id',
+  'Access-Control-Expose-Headers': 'X-Request-Id',
 };
 
 export function jsonResponse(body: unknown, status: number = 200): Response {
@@ -105,6 +114,7 @@ export async function parseBody(request: Request): Promise<Record<string, any>> 
   try {
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ValidationError('JSON object is required');
+    addRequestContext(request, body);
     return body as Record<string, any>;
   } catch {
     throw new ValidationError('Invalid JSON object');

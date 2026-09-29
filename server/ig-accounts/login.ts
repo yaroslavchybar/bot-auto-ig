@@ -5,7 +5,7 @@ import { InstagramChat } from '../chat/instagram.js'
 import { profilesGetById } from '../shared/convexClient.js'
 import { watchIgLoginWork, type IgLoginWork } from '../shared/convexRealtime.js'
 import { reactiveWork } from '../shared/reactiveWork.js'
-import logger from '../shared/logger.js'
+import logger, { logOperation, addLogContext, redactLogValues } from '../shared/logger.js'
 import { blacklistProxy, listBlacklistedProxies } from './blacklist.js'
 import { listLoginProxies, proxyExit, savedProxyExit } from './proxies.js'
 import { accountForProfile, claimLoginProxy, connectedNames,
@@ -42,7 +42,7 @@ async function* loginCandidates(country: string, accountId: string) {
       activeProxyIds.delete(row._id)
       activeExitIps.delete(exit.ip)
       try { await releaseLoginProxy(accountId, row._id, claimToken) }
-      catch { logger.warn({ proxyId: row._id }, 'Could not release Login proxy claim; it will expire') }
+      catch { logger.error({ event: 'ig-accounts.login.release_login_proxy_claim_it', proxyId: row._id, message: 'Could not release Login proxy claim; it will expire', outcome: 'error' }) }
     }
   }
 }
@@ -77,66 +77,76 @@ async function browserLogin(page: Page, account: StoredAccount): Promise<void> {
 }
 
 async function loginProfile(profileId: string, connectMobile = false): Promise<void> {
-  const account = await accountForProfile(profileId)
-  if (!account || account.status !== 'assigned') return
-  const profile = await profilesGetById(profileId)
-  if (!profile || profile.status === 'deleting') return
-  if (account.browserLoggedInAt && !connectMobile) return
-  if (connectMobile && profile.using) return
-  try {
-    if (!profile.igLoggedIn) {
-      if (!profile.proxy) throw new Error('Profile has no permanent proxy')
-      const country = (await savedProxyExit(profile.proxy)).country
-      let rejected = 0
-      let loginSucceeded = false
-      for await (const candidate of loginCandidates(country, account.id)) {
-        const session = await openBrowserSession(profile.name,
-          { headless: true, proxyOverride: candidate.proxy })
-        let browserSucceeded = false
-        try {
-          await browserLogin(session.page, account)
-          browserSucceeded = true
-        } catch (error) {
-          if (error instanceof LoginRejected) {
-            rejected++
-            await blacklistProxy({ ip: candidate.exit.ip, country, proxyName: candidate.name,
-              reason: 'Instagram rejected login', createdAt: Date.now() })
-          } else throw error
-        } finally { await session.close() }
-        if (browserSucceeded) {
-          const result = await recordBrowserLogin(account.id, Date.now(),
-            candidate.id, candidate.claimToken, loginProxyCooldownMs())
-          if (!result.cooldownRecorded)
-            logger.warn({ proxyId: candidate.id }, 'Browser login succeeded after its proxy claim expired')
-          loginSucceeded = true
+  return logOperation('instagram.login', { profileId, connectMobile }, async () => {
+    addLogContext({ outcome: 'skipped' })
+    const account = await accountForProfile(profileId)
+    if (account) redactLogValues(account.password, account.authenticatorKey)
+    if (!account || account.status !== 'assigned') return
+    const profile = await profilesGetById(profileId)
+    if (!profile || profile.status === 'deleting') return
+    if (account.browserLoggedInAt && !connectMobile) return
+    if (connectMobile && profile.using) return
+    addLogContext({ accountId: account.id, profileName: profile.name, outcome: 'success' })
+    try {
+      if (!profile.igLoggedIn) {
+        if (!profile.proxy) throw new Error('Profile has no permanent proxy')
+        const country = (await savedProxyExit(profile.proxy)).country
+        addLogContext({ country })
+        let rejected = 0
+        let loginSucceeded = false
+        for await (const candidate of loginCandidates(country, account.id)) {
+          addLogContext({ loginProxyId: candidate.id })
+          const session = await openBrowserSession(profile.name,
+            { headless: true, proxyOverride: candidate.proxy })
+          let browserSucceeded = false
+          try {
+            await browserLogin(session.page, account)
+            browserSucceeded = true
+          } catch (error) {
+            if (error instanceof LoginRejected) {
+              rejected++
+              addLogContext({ rejectedAttempts: rejected })
+              await blacklistProxy({ ip: candidate.exit.ip, country, proxyName: candidate.name,
+                reason: 'Instagram rejected login', createdAt: Date.now() })
+            } else throw error
+          } finally { await session.close() }
+          if (browserSucceeded) {
+            const result = await recordBrowserLogin(account.id, Date.now(),
+              candidate.id, candidate.claimToken, loginProxyCooldownMs())
+            if (!result.cooldownRecorded)
+              logger.error({ event: 'ig-accounts.login.browser_login_succeeded_after_its', proxyId: candidate.id, message: 'Browser login succeeded after its proxy claim expired', outcome: 'error' })
+            loginSucceeded = true
+          }
+          if (loginSucceeded) break
+          if (rejected >= 2) break
         }
-        if (loginSucceeded) break
-        if (rejected >= 2) break
-      }
-      if (!loginSucceeded) {
-        if (rejected >= 2) {
-          await setAccountState(account.id, 'invalid', 'Instagram rejected login on two different proxy IPs')
-          return
+        if (!loginSucceeded) {
+          if (rejected >= 2) {
+            addLogContext({ outcome: 'rejected', reason: 'login_rejected' })
+            await setAccountState(account.id, 'invalid', 'Instagram rejected login on two different proxy IPs')
+            return
+          }
+          throw new Error(`No working Login proxy found in ${country.toUpperCase()}`)
         }
-        throw new Error(`No working Login proxy found in ${country.toUpperCase()}`)
+        return
       }
-      return
+      if (!profile.proxy) throw new Error('Profile has no permanent Work proxy')
+      // The mobile session uses the profile's permanent Work proxy.
+      await InstagramChat.login(profile, account.username, account.password, account.authenticatorKey)
+      await syncConnectedProfileName(profileId, account.id, account.username)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed'
+      addLogContext({ outcome: 'paused', error: message.replace(/https?:\/\/\S+/g, '[proxy]'), retryAfterMs: 60 * 60_000 })
+      await setAccountState(account.id, 'assigned', message.replace(/https?:\/\/\S+/g, '[proxy]'), Date.now() + 60 * 60_000)
     }
-    if (!profile.proxy) throw new Error('Profile has no permanent Work proxy')
-    // The mobile session uses the profile's permanent Work proxy.
-    await InstagramChat.login(profile, account.username, account.password, account.authenticatorKey)
-    await syncConnectedProfileName(profileId, account.id, account.username)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Login failed'
-    logger.warn({ profileId, error: message.replace(/https?:\/\/\S+/g, '[proxy]') }, 'IG account login paused')
-    await setAccountState(account.id, 'assigned', message.replace(/https?:\/\/\S+/g, '[proxy]'), Date.now() + 60 * 60_000)
-  }
+
+  })
 }
 
 export function queueProfileLogin(profileId: string): void {
   if (active.has(profileId)) return
   active.add(profileId)
-  void loginProfile(profileId).catch(() => logger.warn({ profileId }, 'IG login worker failed'))
+  void loginProfile(profileId).catch(() => logger.error({ event: 'ig-accounts.login.ig_login_worker_failed', profileId, message: 'IG login worker failed', outcome: 'error' }))
     .finally(() => active.delete(profileId))
 }
 
@@ -156,13 +166,13 @@ export function startIgAccountWorker(): void {
         if (row.retryAfter <= Date.now()) queueProfileLogin(row.profileId)
       }
     },
-    onError: err => logger.warn({ err }, 'IG login worker failed'),
+    onError: err => logger.error({ event: 'ig-accounts.login.ig_login_worker_failed', error: err, message: 'IG login worker failed', outcome: 'error' }),
   })
   let pending: IgLoginWork = []
   const subscription = watchIgLoginWork(rows => { pending = rows; work.update(rows) }, err => {
     pending = []
     work.update([])
-    logger.error({ err }, 'IG login subscription failed')
+    logger.error({ event: 'ig-accounts.login.ig_login_subscription_failed', error: err, message: 'IG login subscription failed', outcome: 'error' })
   })
   void subscription.initial.catch(() => undefined)
 
@@ -174,10 +184,10 @@ export function startIgAccountWorker(): void {
             (profileName !== account.username || profileNameSyncPending(account.error)))
             await syncConnectedProfileName(account.profileId, account.id, account.username)
         } catch {
-          logger.warn({ profileId: account.profileId }, 'Could not sync connected IG account name')
+          logger.error({ event: 'ig-accounts.login.sync_connected_ig_account_name', profileId: account.profileId, message: 'Could not sync connected IG account name', outcome: 'error' })
         }
       }
-    } catch { logger.warn('Could not scan connected IG accounts') }
+    } catch { logger.error({ event: 'ig-accounts.login.scan_connected_ig_accounts', message: 'Could not scan connected IG accounts', outcome: 'error' }) }
   }
   void syncNames()
   setInterval(() => void syncNames(), 15 * 60_000).unref()

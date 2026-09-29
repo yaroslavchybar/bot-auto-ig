@@ -66,7 +66,7 @@ export class ProfileManager {
       const data = await profilesList()
       return (data || []).map(mapDbRowToProfile)
     } catch (e) {
-      logger.error({ err: e }, 'Error fetching profiles')
+      logger.error({ event: 'profiles.data.fetching_profiles', error: e, message: 'Error fetching profiles', outcome: 'error' })
       return []
     }
   }
@@ -76,7 +76,7 @@ export class ProfileManager {
       const row = await profilesGetById(profileId)
       return mapDbRowToProfileWithCookies(row)
     } catch (e) {
-      logger.error({ err: e }, 'Error fetching profile by id')
+      logger.error({ event: 'profiles.data.fetching_profile_by_id', error: e, message: 'Error fetching profile by id', outcome: 'error' })
       return null
     }
   }
@@ -91,7 +91,7 @@ export class ProfileManager {
         cookiesJson: profile.cookiesJson,
       })
     } catch (e) {
-      logger.error({ err: e }, 'Error creating profile in DB')
+      logger.error({ event: 'profiles.data.creating_profile_in_db', error: e, message: 'Error creating profile in DB', outcome: 'error' })
       return false
     }
 
@@ -112,7 +112,7 @@ export class ProfileManager {
         cookiesJson: profile.cookiesJson,
       })
     } catch (e) {
-      logger.error({ err: e }, 'Error updating profile in DB')
+      logger.error({ event: 'profiles.data.updating_profile_in_db', error: e, message: 'Error updating profile in DB', outcome: 'error' })
       return false
     }
 
@@ -154,7 +154,7 @@ export class ProfileManager {
       await profilesSyncStatus(name, status, using)
       return true
     } catch (e) {
-      logger.error({ err: e }, 'Error syncing profile status')
+      logger.error({ event: 'profiles.data.syncing_profile_status', error: e, message: 'Error syncing profile status', outcome: 'error' })
       return false
     }
   }
@@ -192,7 +192,7 @@ export class ProfileManager {
       profiles = await this.getProfiles()
     } catch (e: any) {
       const msg = `Failed to load profiles for runtime reconciliation: ${e?.message || e}`
-      logger.error({ err: e }, msg)
+      logger.error({ event: 'profiles.data.detail', error: e, message: msg, outcome: 'error' })
       return { cleared: 0, errors: [msg] }
     }
 
@@ -215,7 +215,7 @@ export class ProfileManager {
         cleared++
       } catch (e: any) {
         const msg = `Failed to clear stale status for profile "${profile.name}": ${e?.message || e}`
-        logger.error({ err: e, profile: profile.name }, msg)
+        logger.error({ event: 'profiles.data.detail', error: e, profileName: profile.name, message: msg, outcome: 'error' })
         errors.push(msg)
       }
     }

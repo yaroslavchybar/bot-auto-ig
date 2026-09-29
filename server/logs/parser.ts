@@ -1,188 +1,81 @@
-/**
- * Log Parser - Parse and format TypeScript automation log output.
- * Handles structured events, debug messages, and plain log lines.
- */
-
 import { StringDecoder } from 'node:string_decoder'
+import { isLogEntry, type LogEntry } from '../shared/loggingTypes.js'
 
-export interface ParsedLog {    message: string
-    level: 'info' | 'warn' | 'error' | 'success' | 'debug'
-    source: 'typescript' | 'server'
-    eventType?: string
-    metadata?: Record<string, unknown>
-    explicitLevel?: boolean
+export interface ParsedLog {
+  message: string
+  level: 'info' | 'error'
+  eventType?: string
+  metadata?: Record<string, unknown>
+  logEntry?: LogEntry
 }
 
-/** Pipe chunks can split both event JSON and UTF-8 characters. Parse complete lines only. */
-export function createLogStreamParser() {
-    const decoder = new StringDecoder('utf8')
-    let pending = ''
-    const consume = (text: string, flush: boolean): ParsedLog[] => {
-        pending += text
-        const lines = pending.split('\n')
-        pending = flush ? '' : lines.pop() || ''
-        return lines.flatMap((line) => {
-            const parsed = parseLogLine(line)
-            return parsed ? [parsed] : []
-        })
-    }
-    return {
-        write: (chunk: Buffer) => consume(decoder.write(chunk), false),
-        end: () => consume(decoder.end(), true),
-    }
-}
-
-const EVENT_PREFIX = '__EVENT__'
-
-// Timestamp pattern at start of lines: [2026-01-08T09:47:29+00:00]
-const TIMESTAMP_PATTERN = /^\[?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^\]]*\]?\s*/
-
-// Debug prefix pattern
-const DEBUG_PATTERN = /^DEBUG:\s*/i
-const STREAM_PREFIX_PATTERN = /^-\s*\[pid=\d+\]\[(out|err)\]\s*/i
-const EXPLICIT_LEVEL_PATTERN = /^(INFO|WARNING|WARN|ERROR|CRITICAL|SUCCESS)\s*:\s*/i
-
-/**
- * Human-readable event type mapping
- */
-const EVENT_LABELS: Record<string, string> = {
-    session_started: '🚀 Session started',
-    session_ended: '🏁 Session ended',
-    profile_started: '👤 Profile started',
-    profile_completed: '✅ Profile completed',
-    profile_skipped: '⏭️ Profile skipped',
-    task_started: '📋 Task started',
-    task_completed: '✓ Task completed',
-    task_progress: '↻ Task progress',
-    action_performed: '⚡ Action performed',
-    error: '❌ Error',
-}
-
-function isPlainEventPayload(parsed: unknown): parsed is Record<string, unknown> {
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-}
-
-function parseStructuredEvent(line: string): Record<string, unknown> | null {
-    if (!line.startsWith(EVENT_PREFIX)) return null
-
-    const payload = line.endsWith(EVENT_PREFIX)
-        ? line.slice(EVENT_PREFIX.length, -EVENT_PREFIX.length)
-        : line.slice(EVENT_PREFIX.length)
-
-    try {
-        const parsed = JSON.parse(payload)
-        return isPlainEventPayload(parsed) ? parsed : null
-    } catch {
-        return null
-    }
-}
-
-function stripLogPrefixes(line: string): string {
-    let cleaned = line
-
-    while (true) {
-        const next = cleaned
-            .replace(STREAM_PREFIX_PATTERN, '')
-            .replace(TIMESTAMP_PATTERN, '')
-
-        if (next === cleaned) return cleaned
-        cleaned = next
-    }
-}
-
-/**
- * Parse a single log line from the Bun worker.
- */
+/** Logs and the worker control protocol share a pipe, but have separate consumers. */
 export function parseLogLine(raw: string): ParsedLog | null {
-    const line = raw.trim()
-    if (!line) return null
-
-    const normalized = stripLogPrefixes(line)
-    const eventData = parseStructuredEvent(normalized)
-    if (eventData) {
-        const eventType = String(eventData.type || 'unknown')
-        const label = EVENT_LABELS[eventType] || eventType
-
-        // Build human-readable message
-        let message = label
-        if (eventData.profileName) message += `: ${eventData.profileName}`
-        if (eventData.task) message += ` - ${eventData.task}`
-        if (eventData.totalAccounts) message += ` (${eventData.totalAccounts} accounts)`
-
-        return {
-            message,
-            level: eventType === 'error' ? 'error' : 'info',
-            source: 'typescript',
-            eventType,
-            metadata: eventData,
-        }
-    }
-
-    // Remove timestamps from messages (frontend adds its own)
-    let cleaned = normalized
-
-    // Check for DEBUG messages - filter or demote
-    if (DEBUG_PATTERN.test(cleaned)) {
-        // Skip debug messages entirely for cleaner output
-        return null
-    }
-
-    // Determine level from content
-    let level: ParsedLog['level'] = 'info'
-    let explicitLevel = false
-
-    const explicitMatch = cleaned.match(EXPLICIT_LEVEL_PATTERN)
-    if (explicitMatch) {
-        explicitLevel = true
-        const token = String(explicitMatch[1] || '').toLowerCase()
-        if (token === 'warning' || token === 'warn') {
-            level = 'warn'
-        } else if (token === 'error' || token === 'critical') {
-            level = 'error'
-        } else if (token === 'success') {
-            level = 'success'
-        } else {
-            level = 'info'
-        }
-        cleaned = cleaned.replace(EXPLICIT_LEVEL_PATTERN, '')
-    }
-
-    if (cleaned.startsWith('[!]')) {
-        level = 'warn'
-        explicitLevel = true
-        cleaned = cleaned.replace(/^\[!\]\s*/, '')
-    } else if (cleaned.startsWith('[*]')) {
-        level = 'info'
-        explicitLevel = true
-        cleaned = cleaned.replace(/^\[\*\]\s*/, '')
-    } else if (cleaned.startsWith('[✓]') || cleaned.includes('successfully') || cleaned.includes('finished')) {
-        level = 'success'
-        cleaned = cleaned.replace(/^\[✓\]\s*/, '')
-    } else if (/\b(error|failed|exception)\b/i.test(cleaned)) {
-        level = 'error'
-    }
-
-    // Skip empty or very short messages
-    if (cleaned.length < 3) return null
-
-    return {
-        message: cleaned,
-        level,
-        source: 'typescript',
-        explicitLevel,
-    }
+  const line = raw.trim()
+  if (!line) return null
+  if (line.startsWith('__EVENT__') && line.endsWith('__EVENT__')) {
+    try {
+      const metadata = JSON.parse(line.slice(9, -9))
+      if (metadata && typeof metadata === 'object' && !Array.isArray(metadata) && typeof metadata.type === 'string')
+        return { message: metadata.type, level: metadata.type === 'error' ? 'error' : 'info', eventType: metadata.type, metadata }
+    } catch { /* Malformed control messages remain diagnostic output. */ }
+  }
+  try {
+    const entry: unknown = JSON.parse(line)
+    if (isLogEntry(entry)) return { message: entry.message, level: entry.level, logEntry: entry }
+  } catch { /* Libraries may write plain text. The parent wraps it as JSON. */ }
+  return { message: line.slice(0, 4000), level: 'info' }
 }
 
-/**
- * CloakBrowser prints its startup banner and routine notices (GeoIP, font
- * check) to the child's stderr, where our handlers would paint them red.
- * These exact lines carry no failure signal — real errors
- * (CloakBrowserLicenseError, launch failures) never match these patterns.
- */
+/** Buffer incomplete UTF-8 lines. Discard oversized lines without interpreting fragments as control messages. */
+export function createLogStreamParser() {
+  const decoder = new StringDecoder('utf8')
+  let pending = ''
+  let discarding = false
+  const limit = 256 * 1024
+  const consume = (text: string, flush: boolean): ParsedLog[] => {
+    const results: ParsedLog[] = []
+    for (const part of text.split(/(?<=\n)/)) {
+      const complete = part.endsWith('\n')
+      if (!discarding) {
+        pending += part
+        if (pending.length > limit) {
+          results.push({ message: 'Worker output line exceeded size limit', level: 'error' })
+          pending = ''
+          discarding = true
+        } else if (complete) {
+          const parsed = parseLogLine(pending)
+          if (parsed) results.push(parsed)
+          pending = ''
+        }
+      }
+      if (complete) discarding = false
+    }
+    if (flush) {
+      if (!discarding) {
+        const parsed = parseLogLine(pending)
+        if (parsed) results.push(parsed)
+      }
+      pending = ''
+      discarding = false
+    }
+    return results
+  }
+  return {
+    write: (chunk: Buffer) => consume(decoder.write(chunk), false),
+    end: () => consume(decoder.end(), true),
+  }
+}
+
 const BENIGN_BROWSER_STDERR = [
   /^CloakBrowser - stealth Chromium for automation$/,
   /^https:\/\/github\.com\/CloakHQ\/CloakBrowser$/,
   /^CloakBrowser (free|pro) \(v[^)]*\):/i,
+  /^CloakBrowser Pro active \(v[^)]*\)/i,
+  /^Pro support -> support@cloakbrowser\.dev$/,
+  /^Running the free binary \(v[^)]*\)/i,
+  /^Get your key: run\s+cloakbrowser login/i,
+  /^\[cloakbrowser\] Preview channel requested, but no preview build is available/i,
   /^For more than one concurrent session/i,
   /^Star us if CloakBrowser helps your project!$/,
   /Incomplete Windows font set/i,
@@ -195,18 +88,6 @@ export function isBenignBrowserStderr(message: string): boolean {
   return BENIGN_BROWSER_STDERR.some((pattern) => pattern.test(line))
 }
 
-/**
- * Parse multiple log lines from a worker stream.
- */
-export function parseLogOutput(raw: string): ParsedLog[] {    const lines = raw.split('\n')
-    const results: ParsedLog[] = []
-
-    for (const line of lines) {
-        const parsed = parseLogLine(line)
-        if (parsed) {
-            results.push(parsed)
-        }
-    }
-
-    return results
+export function parseLogOutput(raw: string): ParsedLog[] {
+  return raw.split('\n').flatMap(line => { const parsed = parseLogLine(line); return parsed ? [parsed] : [] })
 }

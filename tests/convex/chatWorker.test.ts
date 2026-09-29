@@ -4,7 +4,10 @@ const mocks = vi.hoisted(() => ({ profilesGetById: vi.fn(), cachedInbox: vi.fn()
 vi.mock('../../server/shared/convexClient.js', () => ({ profilesGetById: mocks.profilesGetById }))
 vi.mock('../../server/shared/convexRealtime.js', () => ({ watchChatProfiles: mocks.watch }))
 vi.mock('../../server/chat/sync.js', () => ({ cachedInbox: mocks.cachedInbox }))
-vi.mock('../../server/shared/logger.js', () => ({ default: { warn: mocks.warn } }))
+vi.mock('../../server/shared/logger.js', () => ({
+  default: { error: mocks.warn }, addLogContext: vi.fn(),
+  logOperation: async (_event: string, _fields: unknown, action: () => Promise<unknown>) => action(),
+}))
 
 import { CHAT_SYNC_INTERVAL_MS, startChatWorker } from '../../server/chat/worker'
 
@@ -22,7 +25,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   mocks.profilesGetById.mockReset()
   mocks.watch.mockImplementation(onUpdate => { onUpdate(['active', 'offline', 'deleting']); return { initial: Promise.resolve([]), unsubscribe: mocks.unsubscribe } })
-  mocks.cachedInbox.mockReset().mockResolvedValue({})
+  mocks.cachedInbox.mockReset().mockResolvedValue({ threads: [] })
 })
 
 test('Background Chat sync runs without a page, repeats every 15 minutes and stops cleanly', async () => {
@@ -47,7 +50,7 @@ test('Background sync limits concurrency, skips overlapping rounds, and survives
   mocks.watch.mockImplementation(onUpdate => { onUpdate(['0','1','2','3','4','5']); return { initial: Promise.resolve([]), unsubscribe: mocks.unsubscribe } })
   mocks.profilesGetById.mockImplementation(async id => ({ id, igLoggedIn: true }))
   let release!: () => void
-  const pending = new Promise<void>(resolve => { release = resolve })
+  const pending = new Promise<{ threads: never[] }>(resolve => { release = () => resolve({ threads: [] }) })
   mocks.cachedInbox.mockImplementation(() => pending)
   const stop = startChatWorker()
   try {
@@ -55,7 +58,7 @@ test('Background sync limits concurrency, skips overlapping rounds, and survives
     expect(mocks.cachedInbox).toHaveBeenCalledTimes(4)
     await vi.advanceTimersByTimeAsync(CHAT_SYNC_INTERVAL_MS)
     expect(mocks.profilesGetById).toHaveBeenCalledTimes(4)
-    mocks.cachedInbox.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({})
+    mocks.cachedInbox.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ threads: [] })
     release()
     await vi.advanceTimersByTimeAsync(0)
     expect(mocks.cachedInbox).toHaveBeenCalledTimes(6)

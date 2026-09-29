@@ -9,7 +9,8 @@
 import { spawn as nodeSpawn, execFile, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
-import logger from './logger.js'
+import logger, { currentRequestId, currentLogScope } from './logger.js'
+import { randomUUID } from 'node:crypto'
 import { browserBudgetEndpoint } from '../browser/budget.js'
 import { resolveProjectRoot } from './utils.js'
 
@@ -141,7 +142,7 @@ function writeRegistry(entries: RegistryEntry[]): void {
     }
     fs.writeFileSync(PID_REGISTRY_FILE, JSON.stringify(entries), 'utf-8')
   } catch (err) {
-    logger.error({ err }, 'Failed to persist process registry')
+    logger.error({ event: 'shared.ProcessService.persist_process_registry', error: err, message: 'Failed to persist process registry', outcome: 'error' })
   }
 }
 
@@ -195,7 +196,7 @@ export function clearRegistry(): void {
       fs.unlinkSync(PID_REGISTRY_FILE)
     }
   } catch (err) {
-    logger.error({ err }, 'Failed to clear process registry')
+    logger.error({ event: 'shared.ProcessService.clear_process_registry', error: err, message: 'Failed to clear process registry', outcome: 'error' })
   }
 }
 
@@ -215,7 +216,7 @@ export async function cleanupOrphanedProcesses(): Promise<void> {
   const entries = readRegistry().filter((entry) => entry.pid !== process.pid)
 
   if (entries.length === 0) {
-    logger.info('No orphaned processes to clean up')
+    logger.info({ event: 'shared.ProcessService.orphaned_processes_to_clean_up', message: 'No orphaned processes to clean up' })
     return
   }
 
@@ -224,18 +225,18 @@ export async function cleanupOrphanedProcesses(): Promise<void> {
     if (!isProcessRunning(entry.pid)) continue
     const live = await getLiveProcIdentity(entry.pid)
     if (!live) {
-      logger.warn({ pid: entry.pid }, 'Skipping orphan cleanup: identity unavailable, will retry on next startup')
+      logger.error({ event: 'shared.ProcessService.skipping_orphan_cleanup_identity_unavailable', pid: entry.pid, message: 'Skipping orphan cleanup: identity unavailable, will retry on next startup', outcome: 'error' })
       unresolved.push(entry)
       continue
     }
     if (!registryEntryMatches(entry, live)) {
-      logger.warn({ pid: entry.pid }, 'Skipping orphan cleanup: process identity does not match registry')
+      logger.error({ event: 'shared.ProcessService.skipping_orphan_cleanup_process_identity', pid: entry.pid, message: 'Skipping orphan cleanup: process identity does not match registry', outcome: 'error' })
       continue
     }
-    logger.info({ pid: entry.pid, script: entry.script }, 'Found orphaned process from previous run')
+    logger.info({ event: 'shared.ProcessService.found_orphaned_process_from_previous', pid: entry.pid, script: entry.script, message: 'Found orphaned process from previous run' })
     await killOrphanTree(entry)
     if (isProcessRunning(entry.pid)) {
-      logger.warn({ pid: entry.pid }, 'Orphan cleanup did not terminate the process, will retry on next startup')
+      logger.error({ event: 'shared.ProcessService.orphan_cleanup_did_not_terminate', pid: entry.pid, message: 'Orphan cleanup did not terminate the process, will retry on next startup', outcome: 'error' })
       unresolved.push(entry)
     }
   }
@@ -416,6 +417,9 @@ export function spawnBun(options: SpawnBunOptions): ChildProcess {
 
   const env: Record<string, string | undefined> = {
     ...process.env,
+    LOG_SERVICE: `${path.basename(options.args[0] || 'worker', path.extname(options.args[0] || ''))}-worker`,
+    LOG_REQUEST_ID: currentRequestId() || randomUUID(),
+    LOG_AUTOMATION_ID: String(currentLogScope()?.fields.automationId || ''),
     ...options.extraEnv,
     BROWSER_BUDGET_ENDPOINT: browserBudgetEndpoint(),
   }
@@ -437,10 +441,7 @@ export function spawnBun(options: SpawnBunOptions): ChildProcess {
   })
 
   if (child.pid) {
-    logger.info(
-      { pid: child.pid, script: options.args[0] },
-      'Spawned Bun process',
-    )
+    logger.info({ event: 'shared.ProcessService.spawned_bun_process', pid: child.pid, script: options.args[0], message: 'Spawned Bun process' })
   }
 
   return child
@@ -563,24 +564,24 @@ export async function killProcess(proc: ChildProcess): Promise<void> {
  */
 export async function killOrphanPid(pid: number): Promise<boolean> {
   try {
-    logger.info({ pid }, 'Attempting to kill orphaned process')
+    logger.info({ event: 'shared.ProcessService.attempting_to_kill_orphaned_process', pid, message: 'Attempting to kill orphaned process' })
     process.kill(pid, 'SIGTERM')
 
     await new Promise((r) => setTimeout(r, DEFAULT_SIGTERM_WAIT_MS))
 
     if (isProcessRunning(pid)) {
       process.kill(pid, 'SIGKILL')
-      logger.info({ pid }, 'Force killed orphaned process')
+      logger.info({ event: 'shared.ProcessService.force_killed_orphaned_process', pid, message: 'Force killed orphaned process' })
     } else {
-      logger.info({ pid }, 'Process terminated gracefully')
+      logger.info({ event: 'shared.ProcessService.process_terminated_gracefully', pid, message: 'Process terminated gracefully' })
     }
     return true
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ESRCH') {
-      logger.info({ pid }, 'Process already dead')
+      logger.info({ event: 'shared.ProcessService.process_already_dead', pid, message: 'Process already dead' })
       return true
     }
-    logger.error({ err, pid }, 'Failed to kill process')
+    logger.error({ event: 'shared.ProcessService.kill_process', error: err, pid, message: 'Failed to kill process', outcome: 'error' })
     return false
   }
 }

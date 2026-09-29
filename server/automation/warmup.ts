@@ -59,7 +59,7 @@ export async function runWarmup(
     sessionMinMinutes: config.session_min_minutes, sessionMaxMinutes: config.session_max_minutes,
     restMinMinutes: config.rest_min_minutes, restMaxMinutes: config.rest_max_minutes })
   if (plan.minutes <= 0) {
-    log('Warm-up skipped: resting, or daily budget is used or reserved')
+    log({ event: 'automation.warmup.warm_up_skipped_resting_or', message: 'Warm-up skipped: resting, or daily budget is used or reserved' })
     return { minutes: 0, reason: 'skipped' }
   }
   const startedAt = deps.now()
@@ -101,6 +101,6 @@ export async function runWarmup(
     elapsed = Math.min(plan.minutes, Math.max(0, deps.now() - startedAt) / 60_000)
     await deps.finish({ profileId, runId, date: plan.date, minutes: elapsed })
   }
-  log(`Warm-up ended: ${reason} (${elapsed.toFixed(1)} minutes)`)
+  log({ event: 'automation.warmup.warm_up_ended', message: `Warm-up ended: ${reason} (${elapsed.toFixed(1)} minutes)` })
   return { minutes: elapsed, reason }
 }

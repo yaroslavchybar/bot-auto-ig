@@ -1,3 +1,4 @@
+import logger, { addLogContext } from '../shared/logger.js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -95,7 +96,7 @@ async function saveSession(
   } catch (error) {
     // Browser shutdown must not hide the original action error, but a lost
     // cookie save must not report success either: the DB would keep stale auth.
-    process.stderr.write(`Could not save browser session cookies: failed to ${stage}\n`)
+    logger.error({ event: 'browser.cookies_save', profileId: profile.id, profileName: profile.name, stage, error })
     throw error
   }
 }
@@ -267,7 +268,7 @@ export async function openBrowserSession(
     releaseLock()
     throw error
   }
-  process.stdout.write(`${cloakBinaryNote()}\n`)
+  addLogContext({ browserRuntime: cloakBinaryNote() })
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
   let context: BrowserContext | undefined
@@ -347,7 +348,7 @@ export async function openBrowserSession(
         launchError = error
         const message = error instanceof Error ? error.message : String(error)
         if (!/session limit|concurrent session/i.test(message) || attempt === 3) break
-        process.stderr.write(`Cloak session seat busy, retrying (${attempt + 1}/3)...\n`)
+        logger.info({ event: 'browser.seat_retry', attempt: attempt + 1, maxAttempts: 3 })
         await sleep(10_000)
       }
     }
@@ -382,7 +383,7 @@ export async function openBrowserSession(
     try {
       await saveSession(profile, context)
     } catch {
-      process.stderr.write('Could not refresh session cookies at open; close will retry\n')
+      logger.info({ event: 'browser.cookies_refresh', outcome: 'skipped', retryAtClose: true })
     }
     if (options.inspect) {
       try {
@@ -390,7 +391,7 @@ export async function openBrowserSession(
         if (closing) await inspector.close()
         else stopDomInspector = inspector.close
       } catch {
-        process.stderr.write('Could not start local DOM inspector\n')
+        logger.error({ event: 'browser.inspector_start', outcome: 'error' })
       }
     }
     checkStartup()

@@ -1,9 +1,7 @@
-import { Plus, Search, Terminal } from 'lucide-react'
-import type { LogEntry } from '@/lib/logs'
+import { Plus, Search } from 'lucide-react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileForm } from './components/ProfileForm'
 import { BatchCreateForm } from './components/BatchCreateForm'
-import { ProfileLogs } from './components/ProfileLogs'
 import { ProfilesList } from './components/ProfilesList'
 import type { Profile } from './types'
 import { Button } from '@/components/ui/button'
@@ -30,10 +28,7 @@ export function ProfilesPage() {
         onCreateOpenChange={(open) => { s.setIsCreateOpen(open); if (!open) s.handleCloseCreate() }}
         onCloseEdit={s.handleCloseEdit} onSaveProfile={s.handleSaveProfile}
         onCloseCreate={s.handleCloseCreate} />
-      <ProfileViewDialogs logsProfile={s.logsProfile}
-        deleteProfile={s.deleteProfile} saving={s.saving}
-        logs={s.logs} logsLoading={s.logsLoading}
-        onSetLogsProfileId={s.setLogsProfileId}
+      <ProfileViewDialogs deleteProfile={s.deleteProfile} saving={s.saving}
         onSetDeleteProfileId={s.setDeleteProfileId}
         onDeleteConfirm={s.handleDeleteConfirm} />
     </div>
@@ -46,7 +41,7 @@ function ProfilesContent({ s }: { s: ReturnType<typeof useProfilesPage> }) {
       <div className="mx-auto max-w-[2000px] space-y-4">
         <ProfilesList profiles={s.filteredProfiles} loading={s.loading}
           onEdit={s.handleEdit} onDelete={s.handleDeleteClick}
-          onLogs={s.handleLogs} onToggleStatus={(p) => s.toggleUsing(p)}
+          onToggleStatus={(p) => s.toggleUsing(p)}
           emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
           emptyDescription={s.searchQuery.trim()
             ? 'Try a different search term or clear the filter.'
@@ -166,53 +161,16 @@ function ProfileFormDialogs({
   )
 }
 
-/* ── Logs Dialog ── */
-
-function ProfileLogsDialog({
-  logsProfile, logs, logsLoading, onClose,
-}: {
-  logsProfile: Profile | null; logs: LogEntry[]; logsLoading: boolean
-  onClose: () => void
-}) {
-  return (
-    <Dialog open={Boolean(logsProfile)} onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="bg-panel border-line text-ink flex h-[80vh] max-w-4xl flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-line-soft border-b p-6 pb-2">
-          <DialogTitle className="page-title-gradient flex items-center gap-2">
-            <Terminal className="text-copy h-5 w-5" />
-            Logs: <span className="text-muted-copy font-mono">{logsProfile?.name}</span>
-          </DialogTitle>
-        </DialogHeader>
-        {logsProfile && (
-          <ProfileLogs logs={logs} loading={logsLoading} />
-        )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 /* ── View Dialogs (composed) ── */
 
 interface ProfileViewDialogsProps {
-  logsProfile: Profile | null
   deleteProfile: Profile | null
   saving: boolean
-  logs: LogEntry[]; logsLoading: boolean
-  onSetLogsProfileId: (id: string | null) => void
   onSetDeleteProfileId: (id: string | null) => void
   onDeleteConfirm: () => void
 }
 
-function ProfileViewDialogsInner(p: ProfileViewDialogsProps) {
-  return (
-    <>
-      <ProfileLogsDialog logsProfile={p.logsProfile} logs={p.logs} logsLoading={p.logsLoading}
-        onClose={() => p.onSetLogsProfileId(null)} />
-    </>
-  )
-}
-
-function ProfileViewDeleteAndLogin(p: ProfileViewDialogsProps) {
+function ProfileViewDialogs(p: ProfileViewDialogsProps) {
   return (
     <>
       {p.deleteProfile ? (
@@ -221,15 +179,6 @@ function ProfileViewDeleteAndLogin(p: ProfileViewDialogsProps) {
           saving={p.saving} error={null} onConfirm={p.onDeleteConfirm}
           onCancel={() => p.onSetDeleteProfileId(null)} />
       ) : null}
-    </>
-  )
-}
-
-function ProfileViewDialogs(p: ProfileViewDialogsProps) {
-  return (
-    <>
-      <ProfileViewDialogsInner {...p} />
-      <ProfileViewDeleteAndLogin {...p} />
     </>
   )
 }

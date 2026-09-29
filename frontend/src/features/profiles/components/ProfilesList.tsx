@@ -21,7 +21,6 @@ import {
   MoreHorizontal,
   Play,
   Square,
-  Terminal,
   Pencil,
   Trash2,
   Monitor,
@@ -39,7 +38,6 @@ interface ProfilesListProps {
   loading: boolean
   onEdit: (profile: Profile) => void
   onDelete: (profile: Profile) => void
-  onLogs: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
   emptyTitle?: string
   emptyDescription?: string
@@ -48,7 +46,6 @@ interface ProfilesListProps {
 interface ProfileActionsMenuProps {
   profile: Profile
   onEdit: (profile: Profile) => void
-  onLogs: (profile: Profile) => void
   onDelete: (profile: Profile) => void
   onToggleStatus: (profile: Profile) => void
 }
@@ -86,7 +83,6 @@ function getStatusMeta(profile: Profile) {
 function ProfileActionsMenu({
   profile,
   onEdit,
-  onLogs,
   onDelete,
   onToggleStatus,
 }: ProfileActionsMenuProps) {
@@ -129,12 +125,6 @@ function ProfileActionsMenu({
           className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer">
           <Link className="mr-2 h-4 w-4" /> Connect IG credential
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => onLogs(profile)}
-          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
-        >
-          <Terminal className="mr-2 h-4 w-4" /> View Logs
-        </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-panel-muted" />
         <DropdownMenuItem
           onClick={() => onDelete(profile)}
@@ -153,7 +143,6 @@ function ProfileMobileCard({
   profile,
   onEdit,
   onDelete,
-  onLogs,
   onToggleStatus,
 }: {
   profile: Profile
@@ -182,7 +171,7 @@ function ProfileMobileCard({
           <ProfileActionsMenu
             profile={profile}
             onEdit={onEdit}
-            onLogs={onLogs}
+
             onDelete={onDelete}
             onToggleStatus={onToggleStatus}
           />
@@ -283,7 +272,6 @@ function ProfileDesktopRow({
   profile,
   onEdit,
   onDelete,
-  onLogs,
   onToggleStatus,
 }: {
   profile: Profile
@@ -330,7 +318,7 @@ function ProfileDesktopRow({
             <ProfileActionsMenu
               profile={profile}
               onEdit={onEdit}
-              onLogs={onLogs}
+
               onDelete={onDelete}
               onToggleStatus={onToggleStatus}
             />
@@ -398,7 +386,6 @@ export function ProfilesList({
   loading,
   onEdit,
   onDelete,
-  onLogs,
   onToggleStatus,
   emptyTitle = 'No profiles',
   emptyDescription = 'Create a new profile to get started.',
@@ -423,7 +410,7 @@ export function ProfilesList({
     )
   }
 
-  const actionProps = { onEdit, onDelete, onLogs, onToggleStatus }
+  const actionProps = { onEdit, onDelete, onToggleStatus }
 
   if (isMobile) {
     return (

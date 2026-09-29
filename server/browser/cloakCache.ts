@@ -1,3 +1,4 @@
+import logger from '../shared/logger.js'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -125,7 +126,7 @@ export function pruneOldCloakBrowsers(cacheDir: string = cloakCacheDir(), keep =
       fs.rmSync(path.join(cacheDir, name), { recursive: true, force: true })
       pruned.push(name)
     } catch (error) {
-      process.stderr.write(`Could not prune old Cloak binary ${name}: ${(error as NodeJS.ErrnoException).code ?? 'unknown error'}\n`)
+      logger.error({ event: 'browser.binary_prune', binary: name, error })
     }
   })
   return pruned

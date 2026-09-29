@@ -55,14 +55,11 @@ export function startRoutineScheduler() {
         try {
           await runAutomation({ automationId: row._id });
         } catch (err) {
-          logger.warn(
-            { err, automationId: row._id },
-            "Could not start routine",
-          );
+          logger.error({ event: 'automations.scheduler.start_routine', error: err, automationId: row._id, message: "Could not start routine", outcome: 'error' });
         }
       }
     } catch (err) {
-      logger.warn({ err }, "Routine scheduler could not refresh");
+      logger.error({ event: 'automations.scheduler.routine_scheduler_refresh', error: err, message: "Routine scheduler could not refresh", outcome: 'error' });
     } finally {
       release();
       busy = false;
@@ -80,10 +77,10 @@ export function startRoutineScheduler() {
       rows = nextRows as SchedulerRoutine[];
       void tick();
     },
-    err => logger.warn({ err }, "Routine scheduler subscription failed"),
+    err => logger.error({ event: 'automations.scheduler.routine_scheduler_subscription_failed', error: err, message: "Routine scheduler subscription failed", outcome: 'error' }),
   );
   void subscription.initial.catch(err =>
-    logger.warn({ err }, "Routine scheduler could not load"),
+    logger.error({ event: 'automations.scheduler.routine_scheduler_load', error: err, message: "Routine scheduler could not load", outcome: 'error' }),
   );
 
   return () => {

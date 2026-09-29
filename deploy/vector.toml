@@ -1,0 +1,118 @@
+# Latest stable release is pinned in docker-compose.prod.yml.
+data_dir = "/var/lib/vector"
+
+[secret.axiom]
+type = "directory"
+path = "/run/secrets"
+remove_trailing_whitespace = true
+
+[sources.application]
+type = "docker_logs"
+docker_host = "unix:///var/run/docker.sock"
+include_containers = ["ig-bot-server", "ig-bot-spoofer"]
+auto_partial_merge = true
+
+[transforms.application_events]
+type = "remap"
+inputs = ["application"]
+file = "/etc/vector/application-logs.vrl"
+drop_on_error = true
+drop_on_abort = true
+
+[sinks.axiom]
+type = "axiom"
+inputs = ["application_events"]
+dataset = "ig-bot-prod"
+region = "us-east-1.aws.edge.axiom.co"
+token = "SECRET[axiom.axiom_token]"
+compression = "zstd"
+
+[sinks.axiom.batch]
+max_bytes = 1048576
+timeout_secs = 2
+
+[sinks.axiom.buffer]
+type = "disk"
+max_size = 536870912
+when_full = "block"
+
+
+[[tests]]
+name = "Preserves errors, nested context, IDs, and original event time"
+[[tests.inputs]]
+insert_at = "application_events"
+type = "log"
+[tests.inputs.log_fields]
+message = '''{"id":"setup-event-id","ts":1790716800123,"event":"http.request","message":"Request completed","level":"error","source":"http","requestId":"correlation-id","outcome":"error","durationMs":123,"environment":{"service":"api","commitHash":"test"},"context":{"statusCode":500,"stepCounts":{"retry":2}},"error":{"type":"Error","message":"Unexpected failure"}}'''
+container_name = "ig-bot-server"
+container_id = "container-id"
+stream = "stderr"
+[[tests.outputs]]
+extract_from = "application_events"
+[[tests.outputs.conditions]]
+type = "vrl"
+source = '''.id == "setup-event-id" && .requestId == "correlation-id" && .error.type == "Error" && .context.stepCounts.retry == 2 && to_unix_timestamp!(._time, unit: "milliseconds") == 1790716800123 && .container.name == "ig-bot-server"'''
+
+[[tests]]
+name = "Expected pauses remain informational"
+[[tests.inputs]]
+insert_at = "application_events"
+type = "log"
+[tests.inputs.log_fields]
+message = '''{"id":"setup-event-id","ts":1790716800123,"event":"scraper.job","message":"Request completed","level":"info","source":"http","requestId":"correlation-id","outcome":"paused","durationMs":123,"environment":{"service":"api","commitHash":"test"},"context":{"saved":10}}'''
+container_name = "ig-bot-server"
+container_id = "container-id"
+stream = "stderr"
+[[tests.outputs]]
+extract_from = "application_events"
+[[tests.outputs.conditions]]
+type = "vrl"
+source = '''.level == "info" && .outcome == "paused" && .context.saved == 10'''
+
+[[tests]]
+name = "Drops IPC"
+no_outputs_from = ["application_events"]
+[[tests.inputs]]
+insert_at = "application_events"
+type = "log"
+[tests.inputs.log_fields]
+message = '''__EVENT__{"type":"checkpoint"}'''
+container_name = "ig-bot-server"
+container_id = "container-id"
+stream = "stderr"
+
+[[tests]]
+name = "Drops supervisor output"
+no_outputs_from = ["application_events"]
+[[tests.inputs]]
+insert_at = "application_events"
+type = "log"
+[tests.inputs.log_fields]
+message = '''INFO spawned worker'''
+container_name = "ig-bot-server"
+container_id = "container-id"
+stream = "stderr"
+
+[[tests]]
+name = "Drops unrelated JSON"
+no_outputs_from = ["application_events"]
+[[tests.inputs]]
+insert_at = "application_events"
+type = "log"
+[tests.inputs.log_fields]
+message = '''{"level":"info","message":"raw library output"}'''
+container_name = "ig-bot-server"
+container_id = "container-id"
+stream = "stderr"
+
+[[tests]]
+name = "Drops invalid timestamps"
+no_outputs_from = ["application_events"]
+[[tests.inputs]]
+insert_at = "application_events"
+type = "log"
+[tests.inputs.log_fields]
+message = '''{"id":"setup-event-id","ts":"not-a-time","event":"http.request","message":"Request completed","level":"error","source":"http","requestId":"correlation-id","outcome":"error","durationMs":123,"environment":{"service":"api","commitHash":"test"},"context":{"statusCode":500,"stepCounts":{"retry":2}},"error":{"type":"Error","message":"Unexpected failure"}}'''
+container_name = "ig-bot-server"
+container_id = "container-id"
+stream = "stderr"

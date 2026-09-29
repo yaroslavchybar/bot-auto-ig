@@ -1,5 +1,7 @@
+import logger, { logOperation, addLogContext } from '../shared/logger.js'
 import { openBrowserSession } from './cloak.js'
-import { requestStop, releaseStdin } from './lifecycle.js'
+import { requestStop, releaseStdin, shouldStop } from './lifecycle.js'
+import { captureConsole } from '../logs/console.js'
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(name)
   return index >= 0 ? process.argv[index + 1] : undefined
@@ -28,45 +30,49 @@ function watchStdinForStop(): void {
 }
 
 async function main(): Promise<void> {
-  watchStdinForStop()
-  const profileName = String(arg('--name') || '').trim()
-  if (!profileName) throw new Error('--name is required')
-  const automationId = arg('--automation-id') || 'manual'
-  const session = await openBrowserSession(profileName, {
-    headless: process.argv.includes('--headless'),
-    display: process.env.DISPLAY,
-    inspect: true,
-  })
-
-  if (session.display)
-    process.stdout.write(
-      `__EVENT__${JSON.stringify({
-        type: 'display_allocated',
-        automationId: automationId,
-        profileName,
-        displayNum: session.display.displayNum,
-        vncPort: session.display.vncPort,
-      })}__EVENT__\n`,
-    )
-  process.stdout.write('Browser is running...\n')
-
-  const watchPage = (page: typeof session.page) => {
-    page.once('close', () => {
-      if (session.context.pages().length === 0)
-        void session.close().catch(() => undefined)
+  captureConsole()
+  return logOperation('browser.session', { profileName: arg('--name'), automationId: arg('--automation-id') || 'manual' }, async () => {
+    watchStdinForStop()
+    const profileName = String(arg('--name') || '').trim()
+    if (!profileName) throw new Error('--name is required')
+    const automationId = arg('--automation-id') || 'manual'
+    const session = await openBrowserSession(profileName, {
+      headless: process.argv.includes('--headless'),
+      display: process.env.DISPLAY,
+      inspect: true,
     })
-  }
-  session.context.on('page', watchPage)
-  session.context.pages().forEach(watchPage)
-  if (session.context.pages().length === 0) void session.close().catch(() => undefined)
-  await session.closed
-  releaseStdin()
+
+    if (session.display)
+      process.stdout.write(
+        `__EVENT__${JSON.stringify({
+          type: 'display_allocated',
+          automationId: automationId,
+          profileName,
+          displayNum: session.display.displayNum,
+          vncPort: session.display.vncPort,
+        })}__EVENT__\n`,
+      )
+    addLogContext({ profileId: session.profile.id, headless: process.argv.includes('--headless'),
+      displayNum: session.display?.displayNum, vncPort: session.display?.vncPort })
+
+    const watchPage = (page: typeof session.page) => {
+      page.once('close', () => {
+        if (session.context.pages().length === 0)
+          void session.close().catch(() => undefined)
+      })
+    }
+    session.context.on('page', watchPage)
+    session.context.pages().forEach(watchPage)
+    if (session.context.pages().length === 0) void session.close().catch(() => undefined)
+    await session.closed
+    if (shouldStop()) addLogContext({ outcome: 'cancelled' })
+    releaseStdin()
+
+  })
 }
 
-main().catch((error) => {
+main().catch(() => {
   releaseStdin()
-  process.stderr.write(
-    `${error instanceof Error ? error.stack || error.message : String(error)}\n`,
-  )
+  // The session scope already emitted its failure.
   process.exitCode = 1
 })

@@ -1,3 +1,4 @@
+import logger, { LogScope, ingestLogEntry } from '../shared/logger.js'
 import fs from 'fs'
 import path from 'path'
 import { profileManager } from './data.js'
@@ -6,13 +7,16 @@ import {
 } from '../shared/convexClient.js'
 import { activeDisplays, profileProcesses } from '../shared/store.js'
 import { broadcast } from '../websocket.js'
-import { parseLogOutput, isBenignBrowserStderr, createLogStreamParser, type ParsedLog } from '../logs/parser.js'
+import { isBenignBrowserStderr, createLogStreamParser, type ParsedLog } from '../logs/parser.js'
 import { normalizeProfileCookiesJson } from './cookies.js'
 import { spawnBun, killProcess, requestChildStop, guardChildStdin } from '../shared/ProcessService.js'
 import { NotFoundError, ValidationError } from '../shared/errors.js'
 import { resolveProjectRoot } from '../shared/utils.js'
 import { automationMutex } from '../shared/mutex.js'
 import type { ChildProcess } from '../shared/ProcessService.js'
+
+const processScopes = new WeakMap<ChildProcess, LogScope>()
+const stoppedProcesses = new WeakSet<ChildProcess>()
 
 const profileCleanup = new Map<ChildProcess, Promise<void>>()
 
@@ -52,50 +56,26 @@ function clearManualDisplay(profileName: string): boolean {
   return activeDisplays.delete(manualDisplayKey(profileName))
 }
 
-function handleChildStdout(name: string, data: Buffer) {
-  const raw = data.toString()
-  const parsed = parseLogOutput(raw)
-  for (const log of parsed) {
-    const meta = (log.metadata as any) || {}
-    const eventType = log.eventType || 'log'
-    if (eventType === 'display_allocated') {
+function handleChildOutput(name: string, logs: ParsedLog[], scope: LogScope, stream: 'stdout' | 'stderr') {
+  for (const log of logs) {
+    if (log.logEntry) { ingestLogEntry(log.logEntry); continue }
+    if (!log.eventType) {
+      scope.note(stream === 'stderr' && !isBenignBrowserStderr(log.message) ? 'error' : log.level,
+        { event: 'worker.output', message: log.message, stream })
+      continue
+    }
+    const meta = log.metadata || {}
+    if (log.eventType === 'display_allocated') {
       const vncPort = Number(meta.vncPort)
       const displayNum = Number(meta.displayNum)
-      const automationId = String(meta.automationId ?? 'manual')
-      if (Number.isFinite(vncPort) && Number.isFinite(displayNum)) {
-        setManualDisplay(name, vncPort, displayNum, automationId)
-      }
-    } else if (eventType === 'display_released') {
-      clearManualDisplay(name)
-    }
-    broadcast({
-      type: eventType,
-      automationId: String(meta.automationId ?? 'manual'),
-      message: log.message,
-      level: log.level,
-      source: 'typescript',
-      profileName: name,
-      ...meta,
-    })
+      if (Number.isFinite(vncPort) && Number.isFinite(displayNum))
+        setManualDisplay(name, vncPort, displayNum, String(meta.automationId ?? 'manual'))
+    } else if (log.eventType === 'display_released') clearManualDisplay(name)
+    broadcast({ ...meta, type: log.eventType, profileName: name })
   }
 }
 
-function handleChildStderr(name: string, logs: ParsedLog[]) {
-  for (const log of logs) {
-    const meta = (log.metadata as any) || {}
-    broadcast({
-      type: log.eventType ? log.eventType : 'log',
-      automationId: String(meta.automationId ?? 'manual'),
-      message: log.message,
-      level: log.explicitLevel ? log.level : (isBenignBrowserStderr(log.message) ? 'info' : 'error'),
-      source: 'typescript',
-      profileName: name,
-      ...meta,
-    })
-  }
-}
-
-function handleChildExit(name: string, code: number | null) {
+function handleChildExit(name: string) {
   const hadDisplay = clearManualDisplay(name)
   if (hadDisplay) {
     broadcast({
@@ -106,16 +86,10 @@ function handleChildExit(name: string, code: number | null) {
       source: 'server',
     })
   }
-  broadcast({
-    type: 'log',
-    message: `Browser closed for profile: ${name} (code: ${code})`,
-    level: 'info',
-    source: 'server',
-    profileName: name,
-  })
+
 }
 
-function handleChildError(name: string, err: Error) {
+function handleChildError(name: string) {
   const hadDisplay = clearManualDisplay(name)
   if (hadDisplay) {
     broadcast({
@@ -126,13 +100,7 @@ function handleChildError(name: string, err: Error) {
       source: 'server',
     })
   }
-  broadcast({
-    type: 'log',
-    message: `Browser error for profile ${name}: ${err.message}`,
-    level: 'error',
-    source: 'server',
-    profileName: name,
-  })
+
 }
 
 /** Start a profile browser process and register it. */
@@ -158,16 +126,12 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
 
   const args = [LAUNCHER_SCRIPT, '--name', name, '--automation-id', 'manual']
 
-  broadcast({
-    type: 'log',
-    message: `Starting browser for profile: ${name}`,
-    level: 'info',
-    source: 'server',
-    profileName: name,
-  })
+  logger.info({ event: 'profiles.service.starting_browser_for_profile', message: `Starting browser for profile: ${name}`, profileName: name })
 
+  const scope = new LogScope('browser.process', { profileName: name, profileId: profile.id })
   const child = spawn({
     args,
+    extraEnv: { LOG_SERVICE: 'manual-worker', LOG_REQUEST_ID: scope.requestId },
     // stdin stays piped: UI stop sends `stop` for a clean shutdown
     // (Windows cannot signal detached children, so this replaces SIGBREAK).
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -175,33 +139,42 @@ async function launchProfileBrowser(name: string, spawn: typeof spawnBun): Promi
   // Injected spawn doubles in tests skip spawnBun's own guard.
   guardChildStdin(child)
 
-  child.stdout?.on('data', (data) => handleChildStdout(name, data))
-  // Buffered: pipe chunks can split a banner line, and classifying halves
-  // would paint both red. Flush leftovers when the stream (or child) ends.
-  const stderrParser = createLogStreamParser()
-  child.stderr?.on('data', (data) => handleChildStderr(name, stderrParser.write(data)))
-  child.stderr?.on('end', () => handleChildStderr(name, stderrParser.end()))
-  child.once('close', () => handleChildStderr(name, stderrParser.end()))
+  scope.add({ pid: child.pid })
+  processScopes.set(child, scope)
+  for (const stream of ['stdout', 'stderr'] as const) {
+    const parser = createLogStreamParser()
+    const consume = (logs: ParsedLog[]) => handleChildOutput(name, logs, scope, stream)
+    child[stream]?.on('data', (data: Buffer) => consume(parser.write(data)))
+    child[stream]?.on('end', () => consume(parser.end()))
+    child.once('close', () => consume(parser.end()))
+  }
   profileProcesses.set(name, child)
   const running = profilesSyncStatus(name, 'running', true)
   let cleanup: Promise<void> | undefined
   const finish = () => (cleanup ??= (async () => {
     await running.catch(() => undefined)
-    if (profileProcesses.get(name) !== child) return
+    if (profileProcesses.get(name) !== child) {
+      scope.add({ exitCode: child.exitCode })
+      scope.finish(stoppedProcesses.has(child) ? 'cancelled' : child.exitCode === 0 ? 'success' : 'error')
+      profileCleanup.delete(child)
+      return
+    }
     try {
       await profilesSyncStatus(name, 'idle', false)
-    } catch { /* Keep cleanup working when the database is unavailable. */ }
+    } catch (error) { scope.note('error', { event: 'browser.status_save', error }) }
     if (profileProcesses.get(name) === child) {
       profileProcesses.delete(name)
-      handleChildExit(name, child.exitCode)
+      handleChildExit(name)
     }
+    scope.add({ exitCode: child.exitCode })
+    scope.finish(stoppedProcesses.has(child) ? 'cancelled' : child.exitCode === 0 ? 'success' : 'error')
     profileCleanup.delete(child)
   })())
   const cleaned = new Promise<void>(resolve => {
     child.once('close', () => { void finish().then(resolve) })
   })
   profileCleanup.set(child, cleaned)
-  child.on('error', (err) => handleChildError(name, err))
+  child.on('error', err => { scope.add({ error: err, outcome: 'error' }); handleChildError(name) })
   try {
     await running
   } catch (error) {
@@ -227,13 +200,8 @@ export async function stopProfileBrowserLocked(name: string): Promise<void> {
     throw new ValidationError('No browser running for this profile')
   }
 
-  broadcast({
-    type: 'log',
-    message: `Stopping browser for profile: ${name}`,
-    level: 'warn',
-    source: 'server',
-    profileName: name,
-  })
+  stoppedProcesses.add(proc)
+  processScopes.get(proc)?.add({ outcome: 'cancelled' })
 
   // Cooperative stop first: the child saves cookies and closes Chromium,
   // which frees the Cloak license seat. A force-kill leaves the seat held

@@ -1,5 +1,5 @@
 import { automationsGetById, automationsList, igAccountRequest, listsList, profilesList, routineReady } from '../shared/convexClient.js'
-import logger from '../shared/logger.js'
+import logger, { logOperation, addLogContext } from '../shared/logger.js'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type { Page } from 'playwright-core'
@@ -135,149 +135,167 @@ async function applyAvatar(state: Progress): Promise<boolean> {
 /** Post today's photo on the live routine page, right after feed and DMs. True when shared. */
 export async function postModelUpdateInSession(profileId: string, modelId: string,
   page: Page, log: ActionLogger, shouldStop: StopCheck = () => false): Promise<boolean> {
-  if (activeActions.has(profileId)) return false
-  activeActions.add(profileId)
-  let posted: { sourceId: string; date: string } | undefined
-  try {
-    const state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
-    if (!state || state.pending || state.postSourceIds.length >= 9) return false
-    if (dayNumber(state.startedAt, Date.now()) < 4 || !state.avatarDone) return false
-    const today = dateKey(Date.now())
-    if (state.postDates.includes(today)) return false
-    const content = await allocateContent(modelId, 'posts', profileId, state.postSourceIds)
-    if (!content) return false
-    const buffer = await fs.readFile(content.path)
-    await patch(profileId, { pending: { kind: 'post', sourceId: content.sourceId, date: today } })
-    const steps: string[] = []
-    const extension = path.extname(content.path).toLowerCase()
-    const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg'
-    const shared = await publishFeedPost(page,
-      { name: path.basename(content.path), mimeType, buffer },
-      message => { steps.push(message); log(message) }, shouldStop)
-    if (!shared) {
-      const error = `Post result needs review (${steps.at(-1) ?? 'BrowserPostFailed'})`
-      // Share clicked but unconfirmed may still have posted: keep pending for review.
-      // Anything earlier never touched the account, so release the profile.
-      if (steps.some(step => step.includes('share did not confirm'))) await patch(profileId, { error })
-      else await patch(profileId, { pending: undefined, error })
-      return false
-    }
-    const postSourceIds = [...state.postSourceIds, content.sourceId]
-    posted = { sourceId: content.sourceId, date: today }
-    await patch(profileId, { pending: undefined, error: undefined,
-      postSourceIds, postDates: [...state.postDates, today],
-      ...(postSourceIds.length >= 9 ? { outreachReadyMarked: true } : {}) })
-    return true
-  } catch (error) {
-    logger.warn({ profileId, error }, 'Model warmup post failed')
+  return logOperation('model.post', { profileId, modelId }, async () => {
+    addLogContext({ outcome: 'skipped' })
+    if (activeActions.has(profileId)) return false
+    activeActions.add(profileId)
+    let posted: { sourceId: string; date: string } | undefined
     try {
-      if (posted) await patch(profileId, { pending: { kind: 'post', ...posted },
-        error: 'Post shared but save failed — review before retrying (duplicate risk)' })
-      else await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup post failed' })
-    }
-    catch { logger.warn({ profileId }, 'Could not save model warmup error') }
-    return false
-  } finally { activeActions.delete(profileId) }
+      const state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
+      if (!state || state.pending || state.postSourceIds.length >= 9) return false
+      if (dayNumber(state.startedAt, Date.now()) < 4 || !state.avatarDone) return false
+      const today = dateKey(Date.now())
+      if (state.postDates.includes(today)) return false
+      const content = await allocateContent(modelId, 'posts', profileId, state.postSourceIds)
+      if (!content) return false
+      const buffer = await fs.readFile(content.path)
+      await patch(profileId, { pending: { kind: 'post', sourceId: content.sourceId, date: today } })
+      addLogContext({ outcome: 'success', sourceId: content.sourceId, postDate: today })
+      const steps: string[] = []
+      const extension = path.extname(content.path).toLowerCase()
+      const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg'
+      const shared = await publishFeedPost(page,
+        { name: path.basename(content.path), mimeType, buffer },
+        fields => { if (fields.message) steps.push(fields.message); log(fields) }, shouldStop)
+      if (!shared) {
+        addLogContext({ outcome: 'paused', reason: 'post_needs_review' })
+        const error = `Post result needs review (${steps.at(-1) ?? 'BrowserPostFailed'})`
+        // Share clicked but unconfirmed may still have posted: keep pending for review.
+        // Anything earlier never touched the account, so release the profile.
+        if (steps.some(step => step.includes('share did not confirm'))) await patch(profileId, { error })
+        else await patch(profileId, { pending: undefined, error })
+        return false
+      }
+      const postSourceIds = [...state.postSourceIds, content.sourceId]
+      addLogContext({ confirmedPostCount: postSourceIds.length })
+      posted = { sourceId: content.sourceId, date: today }
+      await patch(profileId, { pending: undefined, error: undefined,
+        postSourceIds, postDates: [...state.postDates, today],
+        ...(postSourceIds.length >= 9 ? { outreachReadyMarked: true } : {}) })
+      return true
+    } catch (error) {
+      addLogContext({ outcome: 'error', error })
+      logger.error({ event: 'ig-accounts.warmup.model_warmup_post_failed', profileId, error, message: 'Model warmup post failed', outcome: 'error' })
+      try {
+        if (posted) await patch(profileId, { pending: { kind: 'post', ...posted },
+          error: 'Post shared but save failed — review before retrying (duplicate risk)' })
+        else await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup post failed' })
+      }
+      catch { logger.error({ event: 'ig-accounts.warmup.save_model_warmup_error', profileId, message: 'Could not save model warmup error', outcome: 'error' }) }
+      return false
+    } finally { activeActions.delete(profileId) }
+
+  })
 }
 
 export async function sweepModelWarmup(): Promise<void> {
-  if (running) return
-  running = true
-  try {
-    const automations = await automationsList()
-    const owners = new Map<string, string>()
-    for (const automation of automations) {
-      if (!automation.isActive || !automation.routine || automation.listIds?.length !== 1) continue
-      const modelId = automation.listIds[0]
-      if (modelId) owners.set(modelId, automation._id)
-    }
-    if (!owners.size) return
-    const [profiles, existing] = await Promise.all([profilesList(), read()])
-    const enrolled = new Map(existing.profiles.map(state => [state.profileId, state.modelId]))
-    for (const profile of profiles) {
-      try {
-        if (!profile.igLoggedIn || profile.status === 'deleting') continue
-        const modelId = profile.listIds?.find(id => owners.has(id))
-        if (!modelId || enrolled.get(profile.id) === modelId) continue
-        const account = await accountForProfile(profile.id)
-        if (account?.browserLoggedInAt || account?.status === 'connected') {
-          await startModelWarmup(profile.id, modelId, account.browserLoggedInAt ?? Date.now())
-        }
-      } catch {
-        logger.warn({ profileId: profile.id }, 'Could not enroll profile in model automation')
+  return logOperation('model.enrollment', {}, async () => {
+    if (running) return
+    running = true
+    try {
+      const automations = await automationsList()
+      const owners = new Map<string, string>()
+      for (const automation of automations) {
+        if (!automation.isActive || !automation.routine || automation.listIds?.length !== 1) continue
+        const modelId = automation.listIds[0]
+        if (modelId) owners.set(modelId, automation._id)
       }
-    }
-  } finally { running = false }
+      if (!owners.size) return
+      const [profiles, existing] = await Promise.all([profilesList(), read()])
+      const enrolled = new Map(existing.profiles.map(state => [state.profileId, state.modelId]))
+      for (const profile of profiles) {
+        try {
+          if (!profile.igLoggedIn || profile.status === 'deleting') continue
+          const modelId = profile.listIds?.find(id => owners.has(id))
+          if (!modelId || enrolled.get(profile.id) === modelId) continue
+          const account = await accountForProfile(profile.id)
+          if (account?.browserLoggedInAt || account?.status === 'connected') {
+            await startModelWarmup(profile.id, modelId, account.browserLoggedInAt ?? Date.now())
+          }
+        } catch {
+          logger.error({ event: 'ig-accounts.warmup.enroll_profile_in_model_automation', profileId: profile.id, message: 'Could not enroll profile in model automation', outcome: 'error' })
+        }
+      }
+    } finally { running = false }
+
+  })
 }
 
 /** Continue this account's model setup only after its browser session has closed. */
 export async function advanceModelWarmup(profileId: string, automationId: string): Promise<void> {
-  if (activeActions.has(profileId)) return
-  activeActions.add(profileId)
-  try {
-    const [automation, profiles, snapshot, models] = await Promise.all([
-      automationsGetById(automationId), profilesList(), read(), listsList(),
-    ])
-    const modelId = automation?.isActive && automation.routine && automation.listIds?.length === 1
-      ? automation.listIds[0] : undefined
-    const profile = profiles.find(row => row.id === profileId)
-    if (!modelId || !profile || !profile.listIds?.includes(modelId) ||
-      !profile.igLoggedIn || !profile.proxy || profile.using || profile.status === 'deleting') return
-    const model = models.find(row => row.id === modelId)
-    const account = await accountForProfile(profileId)
-    if (!model || !account || (!account.browserLoggedInAt && account.status !== 'connected')) return
-    let state = snapshot.profiles.find(row => row.profileId === profileId && row.modelId === modelId)
-    if (!state) {
-      await startModelWarmup(profileId, modelId, account.browserLoggedInAt ?? Date.now())
-      state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
-    }
-    if (!state || state.pending) return
-    const now = Date.now()
-    const day = dayNumber(state.startedAt, now)
-    if (day < 3) return
-    if (account.status !== 'connected') {
-      if (!account.browserLoggedInAt || (account.retryAfter ?? 0) > now) return
-      await connectScheduledMobile(profileId)
-      if ((await accountForProfile(profileId))?.status !== 'connected') return
-    }
-    if (!await routineReady(automationId, profileId, true)) return
-    const enrolledIds = new Set(snapshot.profiles.filter(row => row.modelId === modelId).map(row => row.profileId))
-    enrolledIds.add(profileId)
-    const index = profiles.filter(row => enrolledIds.has(row.id) && row.listIds?.includes(modelId))
-      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-      .findIndex(row => row.id === profileId)
-    if (index < 0) return
-    if (!state.nameDone) {
-      const reservedNames = new Set([
-        ...profiles.map(row => row.name.toLowerCase()),
-        ...snapshot.profiles.flatMap(row => row.targetUsername ? [row.targetUsername.toLowerCase()] : []),
+  return logOperation('model.setup', { profileId, automationId }, async () => {
+    addLogContext({ outcome: 'skipped' })
+    if (activeActions.has(profileId)) return
+    activeActions.add(profileId)
+    try {
+      const [automation, profiles, snapshot, models] = await Promise.all([
+        automationsGetById(automationId), profilesList(), read(), listsList(),
       ])
-      await applyUsername(state, model, index, profile.name, reservedNames)
-      return
-    }
-    if (!state.fullNameDone && (state.fullName || model.fullName?.trim() ||
-      model.fullNames?.some(name => name.trim()))) {
-      await applyFullName(state, model, index)
-      return
-    }
-    if (state.postSourceIds.length >= 9) {
-      if (!state.outreachReadyMarked)
-        await patch(profileId, { outreachReadyMarked: true, error: undefined })
-      return
-    }
-    if (day < 4) return
-    if (!state.avatarDone && !await applyAvatar(state)) return
-  } catch (error) {
-    logger.warn({ profileId, error }, 'Model warmup step failed')
-    try { await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup step failed' }) }
-    catch { logger.warn({ profileId }, 'Could not save model warmup error') }
-    throw error
-  } finally { activeActions.delete(profileId) }
+      const modelId = automation?.isActive && automation.routine && automation.listIds?.length === 1
+        ? automation.listIds[0] : undefined
+      const profile = profiles.find(row => row.id === profileId)
+      if (!modelId || !profile || !profile.listIds?.includes(modelId) ||
+        !profile.igLoggedIn || !profile.proxy || profile.using || profile.status === 'deleting') return
+      const model = models.find(row => row.id === modelId)
+      const account = await accountForProfile(profileId)
+      if (!model || !account || (!account.browserLoggedInAt && account.status !== 'connected')) return
+      let state = snapshot.profiles.find(row => row.profileId === profileId && row.modelId === modelId)
+      if (!state) {
+        await startModelWarmup(profileId, modelId, account.browserLoggedInAt ?? Date.now())
+        state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
+      }
+      if (!state || state.pending) return
+      const now = Date.now()
+      const day = dayNumber(state.startedAt, now)
+      addLogContext({ modelId, profileName: profile.name, accountId: account.id, warmupDay: day,
+        confirmedPostCount: state.postSourceIds.length })
+      if (day < 3) return
+      if (account.status !== 'connected') {
+        if (!account.browserLoggedInAt || (account.retryAfter ?? 0) > now) return
+        await connectScheduledMobile(profileId)
+        if ((await accountForProfile(profileId))?.status !== 'connected') return
+      }
+      if (!await routineReady(automationId, profileId, true)) return
+      addLogContext({ outcome: 'success' })
+      const enrolledIds = new Set(snapshot.profiles.filter(row => row.modelId === modelId).map(row => row.profileId))
+      enrolledIds.add(profileId)
+      const index = profiles.filter(row => enrolledIds.has(row.id) && row.listIds?.includes(modelId))
+        .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+        .findIndex(row => row.id === profileId)
+      if (index < 0) return
+      if (!state.nameDone) {
+        const reservedNames = new Set([
+          ...profiles.map(row => row.name.toLowerCase()),
+          ...snapshot.profiles.flatMap(row => row.targetUsername ? [row.targetUsername.toLowerCase()] : []),
+        ])
+        await applyUsername(state, model, index, profile.name, reservedNames)
+        return
+      }
+      if (!state.fullNameDone && (state.fullName || model.fullName?.trim() ||
+        model.fullNames?.some(name => name.trim()))) {
+        await applyFullName(state, model, index)
+        return
+      }
+      if (state.postSourceIds.length >= 9) {
+        if (!state.outreachReadyMarked)
+          await patch(profileId, { outreachReadyMarked: true, error: undefined })
+        return
+      }
+      if (day < 4) return
+      if (!state.avatarDone && !await applyAvatar(state)) return
+    } catch (error) {
+      logger.error({ event: 'ig-accounts.warmup.model_warmup_step_failed', profileId, error, message: 'Model warmup step failed', outcome: 'error' })
+      try { await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup step failed' }) }
+      catch { logger.error({ event: 'ig-accounts.warmup.save_model_warmup_error', profileId, message: 'Could not save model warmup error', outcome: 'error' }) }
+      throw error
+    } finally { activeActions.delete(profileId) }
+
+  })
 }
 
 export function startModelWarmupWorker(): void {
-  void sweepModelWarmup().catch(() => logger.warn('Could not start model warmup sweep'))
-  setInterval(() => void sweepModelWarmup().catch(() => logger.warn('Model warmup sweep failed')), 15 * 60_000).unref()
+  void sweepModelWarmup().catch(() => logger.error({ event: 'ig-accounts.warmup.start_model_warmup_sweep', message: 'Could not start model warmup sweep', outcome: 'error' }))
+  setInterval(() => void sweepModelWarmup().catch(() => logger.error({ event: 'ig-accounts.warmup.model_warmup_sweep_failed', message: 'Model warmup sweep failed', outcome: 'error' })), 15 * 60_000).unref()
 }
 
 export async function listModelWarmup(): Promise<Progress[]> { return (await read()).profiles }

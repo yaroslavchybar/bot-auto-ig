@@ -83,7 +83,7 @@ test('a sent DM stays successful when Chat refresh fails', () => {
         }
       },
     }))
-    mock.module('./server/shared/logger.ts', () => ({ default: { warn: () => { warnings++ } } }))
+    mock.module('./server/shared/logger.ts', () => ({ addLogContext: () => {}, default: { error: () => { warnings++ } } }))
 
     const { default: router } = await import('./server/chat/routes.ts')
     const app = express()

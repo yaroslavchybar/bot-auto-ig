@@ -8,6 +8,36 @@
 # which CI wipes on every deploy). Only the frontend port is published, on
 # localhost: public traffic enters through Caddy (HTTPS).
 services:
+  vector:
+    image: timberio/vector:0.58.0-debian
+    container_name: ig-bot-vector
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 256m
+    pids_limit: 64
+    stop_grace_period: 30s
+    # Config files are bind mounts; a new revision must recreate the collector.
+    labels:
+      ig-bot.config-revision: ${IMAGE_TAG}
+    command: ["--config", "/etc/vector/vector.toml", "--log-format", "json"]
+    user: "0:0"
+    read_only: true
+    cap_drop: [ALL]
+    # The mode-600 token belongs to the host deploy user, not container root.
+    cap_add: [DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    secrets: [axiom_token]
+    volumes:
+      - ./deploy/vector.toml:/etc/vector/vector.toml:ro
+      - ./deploy/application-logs.vrl:/etc/vector/application-logs.vrl:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vector_data:/var/lib/vector
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   spoofer:
     image: ghcr.io/yaroslavchybar/bot-auto-ig:spoofer-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-spoofer
@@ -15,6 +45,10 @@ services:
     cpus: 0.45
     mem_limit: 768m
     pids_limit: 64
+    environment:
+      NODE_ENV: production
+      COMMIT_SHA: ${IMAGE_TAG}
+      INSTANCE_ID: ig-bot-spoofer
     volumes:
       - /home/alwyzon/ig-bot/data:/app/data
     logging:
@@ -33,6 +67,7 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      COMMIT_SHA: ${IMAGE_TAG}
       SERVER_PORT: 3001
       SPOOFER_URL: http://spoofer:3002/variants
       DISPLAY: :99
@@ -64,3 +99,11 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+
+secrets:
+  axiom_token:
+    file: ../secrets/axiom-token
+
+volumes:
+  vector_data:
+    name: ig-bot-vector-data

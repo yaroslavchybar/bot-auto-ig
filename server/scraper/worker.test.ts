@@ -26,8 +26,9 @@ test('scraper preserves source, resumes saved posts, and cools down mobile 429s'
         if (operation === 'batch') return { added: 1, processed: args.likers.length, limitExhausted: exhausted };
       },
     }));
-    mock.module('./server/shared/logger.ts', () => ({ default: {
-      warn: (...args) => warnings.push(args), error: () => {},
+    mock.module('./server/shared/logger.ts', () => ({
+      logOperation: async (_event, _fields, action) => action(), addLogContext: () => {}, default: {
+      info: (...args) => warnings.push(args), error: () => {},
     } }));
     mock.module('./server/chat/instagram.ts', () => ({ InstagramChat: class {
       static load = async () => ({ recentProfilePosts: async (_username, _since, _limit, onPage) => {

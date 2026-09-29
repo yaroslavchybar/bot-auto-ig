@@ -3,6 +3,8 @@ services:
     build:
       context: ./tools/spoofer
       dockerfile: Dockerfile
+      additional_contexts:
+        repo_root: .
     volumes:
       - ./data:/app/data
     cpus: 0.45

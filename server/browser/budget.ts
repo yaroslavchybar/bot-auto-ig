@@ -1,3 +1,4 @@
+import logger from '../shared/logger.js'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
@@ -37,7 +38,7 @@ export function browserBudgetEndpoint(): string {
   const limit = Number.isFinite(configured) ? Math.max(1, Math.floor(configured)) : 1
   createBrowserBudget(endpoint, limit).on('error', error => {
     // Do not silently run without the resource limit.
-    process.stderr.write(`Browser budget failed: ${error.message}\n`)
+    logger.error({ event: 'browser.budget', error })
   })
   return endpoint
 }

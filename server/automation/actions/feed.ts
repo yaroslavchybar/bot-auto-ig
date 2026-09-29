@@ -185,7 +185,7 @@ async function browseFeedSession(
   // Permalink ids already dwelled on; never read the same post twice.
   const seen = new Set<string>()
   let feedEnds = 0
-  log(`Starting feed session for ${minutes} minute(s)`)
+  log({ event: 'automation.actions.feed.starting_feed_session_for', message: `Starting feed session for ${minutes} minute(s)` })
   while (Date.now() < end && !shouldStop()) {
     session.check()
     if (await dismissPopups(page, session)) {
@@ -195,7 +195,7 @@ async function browseFeedSession(
     }
     if (await isFeedEnd(page)) {
       feedEnds++
-      log('Feed end reached, looking for more')
+      log({ event: 'automation.actions.feed.feed_end_reached_looking_for', message: 'Feed end reached, looking for more' })
       await smoothScroll(page, random(600, 1000), session)
       await sleep(random(1500, 3000))
       await page
@@ -207,7 +207,7 @@ async function browseFeedSession(
       if (feedEnds >= 2 && end - Date.now() > 30_000 && !shouldStop()) {
         const reels = Math.round(random(numeric(config.reels_min, 3), numeric(config.reels_max, 8)))
         if (await openReels(page, log, session)) {
-          log('Watching reels')
+          log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
           await watchReels(page, reels, config, log, shouldStop, end, session)
           await backToFeed(page, log, session)
           session.check()
@@ -232,13 +232,13 @@ async function browseFeedSession(
         continue
       }
       if (reloaded) {
-        log('Feed stuck, ending early')
+        log({ event: 'automation.actions.feed.feed_stuck_ending_early', message: 'Feed stuck, ending early' })
         return 'stalled'
       }
       reloaded = true
       stuckRounds = 0
       lastPosition = ''
-      log('Feed stalled, reloading once')
+      log({ event: 'automation.actions.feed.feed_stalled_reloading_once', message: 'Feed stalled, reloading once' })
       await page.reload({ waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
       session.check()
       await focusPageContent(page)
@@ -343,7 +343,7 @@ async function browseFeedSession(
       detoured = true
       if (await openOwnProfile(page, log, session)) {
         openedDetour = true
-        log('Looking around own profile')
+        log({ event: 'automation.actions.feed.looking_around_own_profile', message: 'Looking around own profile' })
         await wanderProfile(page, log, shouldStop, end, session)
       }
     } else if (canDetour && chance(config.dm_chance ?? 8)) {
@@ -352,7 +352,7 @@ async function browseFeedSession(
         openedDetour = true
         // From inbox: back to feed, or via own profile from the sidebar.
         if (Math.random() < 0.5 && (await openOwnProfile(page, log, session))) {
-          log('Looking around own profile')
+          log({ event: 'automation.actions.feed.looking_around_own_profile', message: 'Looking around own profile' })
           await wanderProfile(page, log, shouldStop, end, session)
         }
       }
@@ -364,7 +364,7 @@ async function browseFeedSession(
       )
       if (await openReels(page, log, session)) {
         openedDetour = true
-        log('Watching reels')
+        log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
         await watchReels(page, reels, config, log, shouldStop, end, session)
       }
     } else if (
@@ -381,15 +381,13 @@ async function browseFeedSession(
       detoured = true
       // Liked the post → visit its author; otherwise 50/50 author/visitor.
       const viaVisitor = !likedThisPost && Math.random() < 0.5
-      log(
-        viaVisitor ? 'Opening a liker profile' : 'Opening the author profile',
-      )
+      log({ event: 'automation.actions.feed.detail', message: viaVisitor ? 'Opening a liker profile' : 'Opening the author profile' })
       const opened = viaVisitor
         ? await openVisitorProfile(page, target, session)
         : await openAuthorProfile(page, target, session)
       if (opened) {
         openedDetour = true
-        log('Looking around the profile')
+        log({ event: 'automation.actions.feed.looking_around_the_profile', message: 'Looking around the profile' })
         await wanderProfile(page, log, shouldStop, end, session)
       }
     }
@@ -419,7 +417,7 @@ async function browseFeedSession(
 
 
   }
-  log('Feed session finished')
+  log({ event: 'automation.actions.feed.feed_session_finished', message: 'Feed session finished' })
   return shouldStop() ? 'stopped' : 'finished'
 }
 

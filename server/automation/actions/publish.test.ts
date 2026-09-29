@@ -68,7 +68,7 @@ test('publish stops when the Create button is missing', async () => {
   }) as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
-  assert.equal(await publishFeedPost(page, image(), message => logs.push(message), () => false,
+  assert.equal(await publishFeedPost(page, image(), fields => logs.push(fields.message || ''), () => false,
     Infinity, session), false)
   assert.ok(logs.some(message => message.includes('no Create button')))
 })
@@ -104,7 +104,7 @@ test('publish picks Post when Create opens the Post menu', async () => {
   }) as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
-  assert.equal(await publishFeedPost(page, image(), message => logs.push(message), () => false,
+  assert.equal(await publishFeedPost(page, image(), fields => logs.push(fields.message || ''), () => false,
     Infinity, session), true)
   assert.equal((page as unknown as FakePage).files.length, 1)
   assert.ok(logs.some(message => message.includes('Post shared')))
@@ -138,7 +138,7 @@ test('publish uploads Original, shares, then likes the new post', async () => {
   }) as unknown as Page
   const session = new BrowseSession()
   session.wait = async () => {}
-  assert.equal(await publishFeedPost(page, image(), message => logs.push(message), () => false,
+  assert.equal(await publishFeedPost(page, image(), fields => logs.push(fields.message || ''), () => false,
     Infinity, session), true)
   assert.deepEqual((page as unknown as FakePage).files.map(file => [file.name, file.mimeType, file.buffer.toString()]),
     [['photo.jpg', 'image/jpeg', 'jpeg']])

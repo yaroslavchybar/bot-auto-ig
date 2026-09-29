@@ -8,7 +8,7 @@
 # Required GitHub secrets: CONVEX_DEPLOY_KEY, VPS_SSH_KEY, VPS_KNOWN_HOSTS,
 # CONVEX_URL, INTERNAL_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME,
 # TELEGRAM_ADMIN_ID, CLOAKBROWSER_LICENSE_KEY, OPENROUTER_API_KEY, APIFY_API_KEY,
-# IG_CREDENTIALS_KEY.
+# IG_CREDENTIALS_KEY, AXIOM_INGEST_TOKEN (ingest-only for ig-bot-prod).
 # Required GitHub vars: VPS_HOST, VPS_USER, APP_PUBLIC_URL, VITE_API_URL,
 # VITE_CONVEX_URL.
 name: deploy
@@ -43,6 +43,25 @@ jobs:
       - run: bun run test:convex
       - run: bun run build
       - run: bun run typecheck
+      - name: Validate log pipeline
+        run: |
+          mkdir -p "$RUNNER_TEMP/vector-secrets"
+          printf '%s' 'ci-ingest-token' > "$RUNNER_TEMP/vector-secrets/axiom_token"
+          chmod 600 "$RUNNER_TEMP/vector-secrets/axiom_token"
+          docker run --rm \
+            --user 0:0 --read-only --cap-drop ALL --cap-add DAC_OVERRIDE \
+            --security-opt no-new-privileges:true \
+            -v /var/lib/vector \
+            -v "$PWD/deploy:/etc/vector:ro" \
+            -v "$RUNNER_TEMP/vector-secrets:/run/secrets:ro" \
+            timberio/vector:0.58.0-debian validate --no-environment --skip-healthchecks /etc/vector/vector.toml
+          docker run --rm \
+            --user 0:0 --read-only --cap-drop ALL --cap-add DAC_OVERRIDE \
+            --security-opt no-new-privileges:true \
+            -v /var/lib/vector \
+            -v "$PWD/deploy:/etc/vector:ro" \
+            -v "$RUNNER_TEMP/vector-secrets:/run/secrets:ro" \
+            timberio/vector:0.58.0-debian test /etc/vector/vector.toml
 
   deploy-convex:
     needs: verify
@@ -136,6 +155,8 @@ jobs:
         with:
           context: ./tools/spoofer
           file: ./tools/spoofer/Dockerfile
+          build-contexts: |
+            repo_root=.
           pull: true
           push: true
           tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
@@ -174,7 +195,12 @@ jobs:
           rm -rf ~/ig-bot/app.prev'
 
       - name: Deploy on VPS
+        env:
+          AXIOM_INGEST_TOKEN: ${{ secrets.AXIOM_INGEST_TOKEN }}
         run: |
+          # A separate mounted secret keeps the token out of the app environment.
+          test -n "$AXIOM_INGEST_TOKEN"
+          printf '%s' "$AXIOM_INGEST_TOKEN" | ssh -i ~/.ssh/ci-key -o BatchMode=yes ${{ vars.VPS_USER }}@${{ vars.VPS_HOST }} 'set -e; umask 077; mkdir -p ~/ig-bot/secrets; cat > ~/ig-bot/secrets/axiom-token'
           ssh -i ~/.ssh/ci-key -o BatchMode=yes ${{ vars.VPS_USER }}@${{ vars.VPS_HOST }} <<'EOF'
           set -e
           cd ~/ig-bot/app
@@ -202,7 +228,18 @@ jobs:
           TELEGRAM_ADMIN_ID=${{ secrets.TELEGRAM_ADMIN_ID }}
           ENV
           chmod 600 .env
+          # Fail before replacing running containers if the pipeline is invalid
+          # or the ingest-only token cannot access its dataset.
           docker compose -f docker-compose.prod.yml pull
+          # Use a separate data directory: the running collector owns its buffer lock.
+          docker run --rm \
+            --user 0:0 --read-only --cap-drop ALL --cap-add DAC_OVERRIDE \
+            --security-opt no-new-privileges:true \
+            -v /var/lib/vector \
+            -v "$PWD/deploy:/etc/vector:ro" \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            -v "$HOME/ig-bot/secrets/axiom-token:/run/secrets/axiom_token:ro" \
+            timberio/vector:0.58.0-debian validate /etc/vector/vector.toml
           docker compose -f docker-compose.prod.yml up -d
           cp deploy/ig-bot.caddy ~/caddy/conf.d/ig-bot.caddy
           docker exec caddy caddy reload --config /etc/caddy/Caddyfile

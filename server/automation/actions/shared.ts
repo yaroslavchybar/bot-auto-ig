@@ -1,8 +1,9 @@
 import { sleep } from '../../browser/lifecycle.js'
+import type { LogFields } from '../../shared/loggingTypes.js'
 
 export { sleep }
 
-export type ActionLogger = (message: string) => void
+export type ActionLogger = (fields: LogFields) => void
 export type StopCheck = () => boolean
 
 export const random = (min: number, max: number) =>

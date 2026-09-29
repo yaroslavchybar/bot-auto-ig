@@ -1,3 +1,4 @@
+import logger from '../shared/logger.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
@@ -27,7 +28,7 @@ export async function pruneProfileCache(profileDir: string): Promise<void> {
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code === 'ENOENT') continue
-      process.stderr.write(`Could not prune browser cache ${relative}: ${code ?? 'unknown error'}\n`)
+      logger.error({ event: 'browser.cache_prune', path: relative, code })
     }
   }
 }

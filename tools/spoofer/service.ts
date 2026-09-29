@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { startRequestLog, addRequestContext } from '../../server/shared/httpLogging.js'
 
 const root = path.resolve(process.env.SPOOFER_DATA_ROOT || '/app/data/model-content')
 const binary = process.env.SPOOF_BINARY || '/usr/local/bin/spoof'
@@ -57,20 +58,43 @@ function execute(source: string): Promise<unknown> {
   })
 }
 
-Bun.serve({ port: 3002, hostname: '0.0.0.0', async fetch(request, server) {
-  if (request.method === 'GET' && new URL(request.url).pathname === '/health') return Response.json({ ok: true })
-  if (request.method !== 'POST' || new URL(request.url).pathname !== '/variants')
-    return Response.json({ error: 'Not found' }, { status: 404 })
-  server.timeout(request, 0)
+export async function handleRequest(request: Request, server: { timeout: (request: Request, seconds: number) => void }, run = execute): Promise<Response> {
+  const log = startRequestLog(request, 'spoofer')
+  let response: Response | undefined
+  let failure: unknown
+  let processing = false
   try {
-    const body = await request.text()
-    if (body.length > 2048) throw new Error('Request too large')
-    const source = sourcePath((JSON.parse(body) as { source?: unknown }).source)
-    if (!(await fs.stat(source)).isFile()) throw new Error('Source image is missing')
-    const job = queue.then(() => execute(source))
-    queue = job.catch(() => undefined)
-    return Response.json(await job)
-  } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Spoofer failed' }, { status: 422 })
+    const pathname = new URL(request.url).pathname
+    if (request.method === 'GET' && pathname === '/health')
+      return response = Response.json({ ok: true })
+    if (request.method !== 'POST' || pathname !== '/variants')
+      return response = Response.json({ error: 'Not found' }, { status: 404 })
+    server.timeout(request, 0)
+    try {
+      const body = await request.text()
+      if (body.length > 2048) throw new Error('Request too large')
+      const source = sourcePath((JSON.parse(body) as { source?: unknown }).source)
+      const [modelId, contentKind, sourceId] = path.relative(root, source).split(path.sep)
+      addRequestContext(request, { modelId, contentKind, sourceId })
+      if (!(await fs.stat(source)).isFile()) throw new Error('Source image is missing')
+      processing = true
+      const queuedAt = Date.now()
+      const job = queue.then(() => {
+        addRequestContext(request, { queueWaitMs: Date.now() - queuedAt })
+        return run(source)
+      })
+      queue = job.catch(() => undefined)
+      const result = await job as { outputs?: unknown[]; failures?: unknown[] }
+      addRequestContext(request, { outputCount: result.outputs?.length ?? 0, failureCount: result.failures?.length ?? 0 })
+      return response = Response.json(result)
+    } catch (error) {
+      failure = error instanceof SyntaxError ? new Error('Invalid request JSON') : error
+      return response = Response.json({ error: error instanceof Error ? error.message : 'Spoofer failed' }, { status: 422 })
+    }
+  } finally {
+    response?.headers.set('X-Request-Id', log.requestId)
+    log.finish(response?.status ?? 500, failure, processing && failure !== undefined)
   }
-} })
+}
+
+if (import.meta.main) Bun.serve({ port: 3002, hostname: '0.0.0.0', fetch: handleRequest })

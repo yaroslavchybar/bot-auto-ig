@@ -53,6 +53,7 @@ htmlcov/
 .cache
 nosetests.xml
 coverage.xml
+coverage/
 *.cover
 *.py,cover
 .hypothesis/
@@ -106,6 +107,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
+!.env.*.example
 .venv
 env/
 venv/
@@ -142,6 +146,7 @@ dmypy.json
 .DS_Store
 
 node_modules/
+*.tsbuildinfo
 
 # Bun is the package manager; never commit npm lockfiles.
 package-lock.json
@@ -173,15 +178,15 @@ Thumbs.db
 *.bak
 *.backup
 
-.env.local
-
-# Codex / AI temporary directory
+# Local agent skills, settings, and temporary files
+.agents/
+/skills-lock.json
 .codex_tmp/
 .factory/
-
 .codex/
 
-.codex/
+# Local Convex state and generated artifacts
+.convex/
 artifacts/
 .worktrees/
 design/

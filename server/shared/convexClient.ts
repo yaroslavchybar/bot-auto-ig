@@ -4,6 +4,8 @@ import type { ChatThread } from '../chat/instagram.js';
  * Convex client for TypeScript using HTTP API.
  */
 import '../env.js';
+import { randomUUID } from 'node:crypto';
+import { currentRequestId } from './logger.js';
 
 const convexCloudUrl = process.env.CONVEX_URL?.trim() || process.env.VITE_CONVEX_URL?.trim();
 // Use INTERNAL_API_KEY to call Convex HTTP endpoints (same key as CONVEX_API_KEY in Convex Dashboard)
@@ -141,6 +143,7 @@ async function convexFetch<T>(endpoint: string, options: { method?: string; body
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        'X-Request-Id': currentRequestId() || randomUUID(),
     };
     headers['Authorization'] = `Bearer ${convexApiKey}`;
 

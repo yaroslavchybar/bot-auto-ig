@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { currentRequestId } from '../shared/logger.js'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { resolveProjectRoot } from '../shared/utils.js'
@@ -11,7 +12,7 @@ const pending = new Map<string, Promise<unknown>>()
 /** The spoofer service shares /app/data and owns its own CPU/memory quota. */
 async function runSpoofer(source: string): Promise<{ outputs?: Array<{ name?: string }>; failures?: unknown[] }> {
   const response = await fetch(process.env.SPOOFER_URL?.trim() || 'http://spoofer:3002/variants', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Request-Id': currentRequestId() || randomUUID() },
     body: JSON.stringify({ source }), signal: AbortSignal.timeout(30 * 60_000),
   })
   const result = await response.json() as { outputs?: Array<{ name?: string }>; failures?: unknown[]; error?: string }

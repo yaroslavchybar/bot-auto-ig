@@ -48,7 +48,7 @@ async function openCreateDialog(page: Page, log: ActionLogger, session: BrowseSe
   session.check()
   await driftMouse(page, undefined, undefined, session).catch(() => undefined)
   if (!await clickHuman(page, CREATE_BUTTON, session)) {
-    log('Post publish skipped: no Create button')
+    log({ event: 'automation.actions.publish.post_publish_skipped_create_button', message: 'Post publish skipped: no Create button' })
     return false
   }
   await session.wait(random(800, 1500))
@@ -61,7 +61,7 @@ async function openCreateDialog(page: Page, log: ActionLogger, session: BrowseSe
       if (await dialogVisible(page, 'Create new post', session)) return true
     }
   }
-  log('Post publish skipped: create dialog did not open')
+  log({ event: 'automation.actions.publish.post_publish_skipped_create_dialog', message: 'Post publish skipped: create dialog did not open' })
   return false
 }
 
@@ -70,13 +70,13 @@ async function attachImage(page: Page, image: FeedImage, log: ActionLogger, sess
   const inputs = page.locator(DIALOG).locator(FILE_INPUT)
   await inputs.first().waitFor({ state: 'attached', timeout: session.timeout(15_000) }).catch(() => undefined)
   if ((await inputs.count().catch(() => 0)) === 0) {
-    log('Post publish skipped: no file input')
+    log({ event: 'automation.actions.publish.post_publish_skipped_file_input', message: 'Post publish skipped: no file input' })
     return false
   }
   await inputs.first().setInputFiles([{ name: image.name, mimeType: image.mimeType, buffer: image.buffer }],
     { timeout: session.timeout(30_000) }).catch(() => undefined)
   if (!await dialogVisible(page, 'Crop', session)) {
-    log('Post publish skipped: crop screen did not open')
+    log({ event: 'automation.actions.publish.post_publish_skipped_crop_screen', message: 'Post publish skipped: crop screen did not open' })
     return false
   }
   return true
@@ -95,17 +95,17 @@ async function chooseOriginalCrop(page: Page, log: ActionLogger, session: Browse
       await session.wait(random(500, 1000))
     }
   }
-  log(picked ? 'Original ratio selected' : 'Keeping default crop: no Original option')
+  log({ event: 'automation.actions.publish.detail', message: picked ? 'Original ratio selected' : 'Keeping default crop: no Original option' })
   if (!await clickDialogButton(page, 'Next', session)) {
-    log('Post publish skipped: could not leave crop screen')
+    log({ event: 'automation.actions.publish.post_publish_skipped_leave_crop', message: 'Post publish skipped: could not leave crop screen' })
     return false
   }
   if (!await dialogVisible(page, 'Edit', session)) {
-    log('Post publish skipped: edit screen did not open')
+    log({ event: 'automation.actions.publish.post_publish_skipped_edit_screen', message: 'Post publish skipped: edit screen did not open' })
     return false
   }
   if (!await clickDialogButton(page, 'Next', session)) {
-    log('Post publish skipped: could not leave edit screen')
+    log({ event: 'automation.actions.publish.post_publish_skipped_leave_edit', message: 'Post publish skipped: could not leave edit screen' })
     return false
   }
   return true
@@ -114,21 +114,21 @@ async function chooseOriginalCrop(page: Page, log: ActionLogger, session: Browse
 async function sharePost(page: Page, log: ActionLogger, session: BrowseSession): Promise<boolean> {
   session.check()
   if (!await dialogVisible(page, 'Create new post', session)) {
-    log('Post publish skipped: share screen did not open')
+    log({ event: 'automation.actions.publish.post_publish_skipped_share_screen', message: 'Post publish skipped: share screen did not open' })
     return false
   }
   if (!await clickDialogButton(page, 'Share', session)) {
-    log('Post publish skipped: no Share button')
+    log({ event: 'automation.actions.publish.post_publish_skipped_share_button', message: 'Post publish skipped: no Share button' })
     return false
   }
   try {
     await page.locator(`${DIALOG}:has-text("Your post has been shared")`).first()
       .waitFor({ state: 'visible', timeout: session.timeout(60_000) })
   } catch {
-    log('Post publish failed: share did not confirm')
+    log({ event: 'automation.actions.publish.post_publish_failed_share_did', message: 'Post publish failed: share did not confirm' })
     return false
   }
-  log('Post shared')
+  log({ event: 'automation.actions.publish.post_shared', message: 'Post shared' })
   await clickDialogButton(page, 'Done', session).catch(() => false)
   return true
 }
@@ -138,7 +138,7 @@ async function likeNewPost(page: Page, log: ActionLogger, session: BrowseSession
   // The share confirmation can linger over the sidebar and hide the avatar.
   await closeDialog(page, session).catch(() => undefined)
   if (!await openOwnProfile(page, log, session)) {
-    log('Own like skipped: own profile did not open')
+    log({ event: 'automation.actions.publish.own_like_skipped_own_profile', message: 'Own like skipped: own profile did not open' })
     return
   }
   const link = page.locator(FIRST_POST_LINK).first()
@@ -154,11 +154,11 @@ async function likeNewPost(page: Page, log: ActionLogger, session: BrowseSession
     opened = await page.locator(DIALOG).first().isVisible().catch(() => false)
   }
   if (!opened) {
-    log('Own like skipped: new post did not open')
+    log({ event: 'automation.actions.publish.own_like_skipped_new_post', message: 'Own like skipped: new post did not open' })
     return
   }
   if ((await page.locator(UNLIKE_ICON).count().catch(() => 0)) > 0) {
-    log('Post already liked')
+    log({ event: 'automation.actions.publish.post_already_liked', message: 'Post already liked' })
     await closeDialog(page, session).catch(() => undefined)
     return
   }
@@ -166,7 +166,7 @@ async function likeNewPost(page: Page, log: ActionLogger, session: BrowseSession
   if (await clickHuman(page, LIKE_BUTTON, session)) {
     await page.locator(UNLIKE_ICON).first()
       .waitFor({ state: 'visible', timeout: session.timeout(5_000) }).catch(() => undefined)
-    if ((await page.locator(UNLIKE_ICON).count().catch(() => 0)) > 0) log('Liked own post')
+    if ((await page.locator(UNLIKE_ICON).count().catch(() => 0)) > 0) log({ event: 'automation.actions.publish.liked_own_post', message: 'Liked own post' })
   }
   await closeDialog(page, session).catch(() => undefined)
 }
@@ -185,7 +185,7 @@ export async function publishFeedPost(
   await page.locator('a:has(svg[aria-label="Home"])').first()
     .waitFor({ state: 'visible', timeout: session.timeout(20_000) }).catch(() => undefined)
   if (!await openOwnProfile(page, log, session)) {
-    log('Post publish skipped: own profile did not open')
+    log({ event: 'automation.actions.publish.post_publish_skipped_own_profile', message: 'Post publish skipped: own profile did not open' })
     return false
   }
   if (!await openCreateDialog(page, log, session)) return false

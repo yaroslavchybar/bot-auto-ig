@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useConvex, useMutation } from 'convex/react'
 import { apiFetch } from '@/lib/api'
-import type { LogEntry } from '@/lib/logs'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useProfiles } from './useProfiles'
@@ -15,23 +14,17 @@ import { useErrorHandler } from '@/hooks/useErrorHandler'
 function useProfileDialogState(profiles: Profile[]) {
   const [editProfile, setEditProfile] = useState<Profile | null>(null)
   const [deleteProfileId, setDeleteProfileId] = useState<string | null>(null)
-  const [logsProfileId, setLogsProfileId] = useState<string | null>(null)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const deleteProfile = useMemo(
     () => (deleteProfileId ? profiles.find((p) => p.id === deleteProfileId) ?? null : null),
     [deleteProfileId, profiles],
   )
-  const logsProfile = useMemo(
-    () => (logsProfileId ? profiles.find((p) => p.id === logsProfileId) ?? null : null),
-    [logsProfileId, profiles],
-  )
   return {
     editProfile, setEditProfile,
     deleteProfileId, setDeleteProfileId,
-    logsProfileId, setLogsProfileId,
     isCreateOpen, setIsCreateOpen,
-    deleteProfile, logsProfile,
+    deleteProfile,
   }
 }
 
@@ -56,38 +49,6 @@ function useProfileSearch(profiles: Profile[]) {
   }, [profiles, searchQuery])
 
   return { searchQuery, setSearchQuery, filteredProfiles }
-}
-
-/* ── Logs fetching ── */
-
-function useProfileLogs(handleError: ReturnType<typeof useErrorHandler>['handleError']) {
-  const [logs, setLogs] = useState<LogEntry[]>([])
-  const [logsLoading, setLogsLoading] = useState(false)
-  const requestVersion = useRef(0)
-
-  const loadLogs = useCallback(async (profileName?: string) => {
-    const version = ++requestVersion.current
-    setLogsLoading(true)
-    try {
-      const data = await apiFetch<LogEntry[]>('/api/logs')
-      if (version !== requestVersion.current) return
-      const filtered = profileName
-        ? data.filter((log) => {
-            const structuredProfile = String(log.profileName || '').trim()
-            return structuredProfile
-              ? structuredProfile === profileName
-              : String(log.message || '').includes(profileName)
-          })
-        : data
-      setLogs(filtered.slice(-500))
-    } catch (e) {
-      if (version === requestVersion.current) handleError(e, 'Profile logs')
-    } finally {
-      if (version === requestVersion.current) setLogsLoading(false)
-    }
-  }, [handleError])
-
-  return { logs, logsLoading, loadLogs }
 }
 
 /* ── CRUD: Save handler ── */
@@ -219,10 +180,6 @@ function useProfilePageActions(
     dialogState.setDeleteProfileId(profile.id)
   }, [dialogState])
 
-  const handleLogs = useCallback((profile: Profile) => {
-    dialogState.setLogsProfileId(profile.id)
-  }, [dialogState])
-
   const handleCloseCreate = useCallback(() => {
     dialogState.setIsCreateOpen(false)
   }, [dialogState])
@@ -233,7 +190,7 @@ function useProfilePageActions(
 
   return {
     handleCreate, handleEdit, handleDeleteClick,
-    handleLogs, handleCloseCreate, handleCloseEdit,
+    handleCloseCreate, handleCloseEdit,
   }
 }
 
@@ -264,21 +221,11 @@ export function useProfilesPage() {
 
   const dialogState = useProfileDialogState(profiles)
   const { searchQuery, setSearchQuery, filteredProfiles } = useProfileSearch(profiles)
-  const { logs, logsLoading, loadLogs } = useProfileLogs(handleError)
 
   const save = useProfileSave(dialogState, refreshProfiles, handleError)
   const crud = useProfileCrud(dialogState, refreshProfiles, save.setSaving, handleError)
 
   useRuntimeReconciliation(refreshProfiles)
-
-  useEffect(() => {
-    const name = dialogState.logsProfile?.name
-    if (!name) return
-    void loadLogs(name)
-    // Auto-refresh while the dialog stays open; no manual button.
-    const timer = setInterval(() => { void loadLogs(name) }, 5000)
-    return () => clearInterval(timer)
-  }, [dialogState.logsProfile?.name, loadLogs])
 
   const actions = useProfilePageActions(
     convex, dialogState, save.setSaving, handleError,
@@ -288,17 +235,13 @@ export function useProfilesPage() {
     profiles, filteredProfiles, loading: profilesLoading,
     saving: save.saving,
     isCreateOpen: dialogState.isCreateOpen,
-    logs, logsLoading, searchQuery,
+    searchQuery,
     editProfile: dialogState.editProfile,
     deleteProfile: dialogState.deleteProfile,
-    logsProfile: dialogState.logsProfile,
-    logsProfileId: dialogState.logsProfileId,
     setSearchQuery, setIsCreateOpen: dialogState.setIsCreateOpen,
     setDeleteProfileId: dialogState.setDeleteProfileId,
-    setLogsProfileId: dialogState.setLogsProfileId,
     handleCreate: actions.handleCreate, handleEdit: actions.handleEdit,
     handleDeleteClick: actions.handleDeleteClick,
-    handleLogs: actions.handleLogs,
     handleCloseCreate: actions.handleCloseCreate,
     handleCloseEdit: actions.handleCloseEdit,
     handleSaveProfile: save.handleSaveProfile,

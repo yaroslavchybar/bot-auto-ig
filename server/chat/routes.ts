@@ -221,7 +221,7 @@ function refreshAfterSend(profileId: string, id: string): void {
       await threadSyncs.get(`${profileId}:${id}`)?.catch(() => {});
       await syncThread(await selectedProfile(profileId), id);
     } catch (err) {
-      logger.warn({ err, profileId, threadId: id }, 'Could not refresh Chat after sent DM');
+      logger.error({ event: 'chat.routes.refresh_chat_after_sent_dm', error: err, profileId, threadId: id, message: 'Could not refresh Chat after sent DM', outcome: 'error' });
     }
   })();
 }
@@ -266,7 +266,7 @@ router.post('/:profileId/threads/:threadId/reaction', asyncHandler(async (req, r
       await threadSyncs.get(`${req.params.profileId}:${id}`)?.catch(() => {});
       await syncThread(await selectedProfile(req.params.profileId), id);
     } catch (err) {
-      logger.warn({ err, profileId: req.params.profileId, threadId: id }, 'Could not refresh Chat after reaction');
+      logger.error({ event: 'chat.routes.refresh_chat_after_reaction', error: err, profileId: req.params.profileId, threadId: id, message: 'Could not refresh Chat after reaction', outcome: 'error' });
     }
   })();
 }));
@@ -280,7 +280,7 @@ router.post('/:profileId/threads/:threadId/unsend', asyncHandler(async (req, res
   // Instagram already removed the message. A cache failure must not report that unsend failed.
   const affected = await chatMarkUnsent(profileId, chat.cacheToken, id, itemId)
     .catch(err => {
-      logger.warn({ err, profileId, threadId: id, itemId }, 'Could not mark unsent Chat message');
+      logger.error({ event: 'chat.routes.mark_unsent_chat_message', error: err, profileId, threadId: id, itemId, message: 'Could not mark unsent Chat message', outcome: 'error' });
       return { profileIds: [profileId] };
     });
   for (const affectedProfileId of affected.profileIds) invalidateChatSnapshots(affectedProfileId, id);
@@ -290,7 +290,7 @@ router.post('/:profileId/threads/:threadId/unsend', asyncHandler(async (req, res
       await threadSyncs.get(`${profileId}:${id}`)?.catch(() => {});
       await syncThread(await selectedProfile(profileId), id);
     } catch (err) {
-      logger.warn({ err, profileId, threadId: id }, 'Could not refresh Chat after unsend');
+      logger.error({ event: 'chat.routes.refresh_chat_after_unsend', error: err, profileId, threadId: id, message: 'Could not refresh Chat after unsend', outcome: 'error' });
     }
   })();
 }));

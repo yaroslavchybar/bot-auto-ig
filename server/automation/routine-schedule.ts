@@ -40,7 +40,7 @@ export async function scheduleRoutine(
     const reason = await browse(browsingMs);
     if (reason === 'stalled' || stopped()) return reason;
     const batch = Math.min(quota - sent, Math.floor(random(1, 6)));
-    log(`DM batch: up to ${batch}; session target ${sent}/${quota}`);
+    log({ event: 'automation.routine-schedule.dm_batch_up_to', message: `DM batch: up to ${batch}; session target ${sent}/${quota}` });
     for (let i = 0; i < batch && !stopped(); i++) {
       while (!stopped() && now() < Math.min(nextSendAt, session.deadline)) {
         await controls.sleep(Math.min(1000, nextSendAt - now(), session.deadline - now()));

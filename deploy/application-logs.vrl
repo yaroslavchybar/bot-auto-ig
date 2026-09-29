@@ -1,0 +1,15 @@
+# Only ship redacted application events. Supervisor output and IPC aren't logs.
+container = {"id": .container_id, "name": .container_name, "stream": .stream}
+raw, raw_error = string(.message)
+if raw_error != null { abort }
+parsed, parse_error = parse_json(raw)
+if parse_error != null || !is_object(parsed) { abort }
+entry = object!(parsed)
+assert!(is_string(entry.id) && is_string(entry.event) && is_string(entry.requestId))
+assert!(entry.level == "info" || entry.level == "error")
+assert!(is_string(entry.outcome) && is_object(entry.context) && is_object(entry.environment))
+assert!(is_integer(entry.ts))
+. = entry
+# Use the event's creation time, including when a buffered event is retried.
+._time = from_unix_timestamp!(int!(.ts), unit: "milliseconds")
+.container = container

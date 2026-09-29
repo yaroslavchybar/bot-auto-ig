@@ -19,7 +19,7 @@ export async function syncConnectedProfileName(
     await setAccountState(accountId, 'connected')
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
-    logger.warn({ profileId, error: detail }, 'Could not sync profile name with IG username')
+    logger.error({ event: 'ig-accounts.profileName.sync_profile_name_with_ig', profileId, error: detail, message: 'Could not sync profile name with IG username', outcome: 'error' })
     await setAccountState(accountId, 'connected', `${syncErrorPrefix}${detail}`)
   }
 }

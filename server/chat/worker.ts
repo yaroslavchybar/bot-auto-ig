@@ -1,6 +1,6 @@
 import { profilesGetById } from '../shared/convexClient.js';
 import { watchChatProfiles } from '../shared/convexRealtime.js';
-import logger from '../shared/logger.js';
+import logger, { logOperation, addLogContext } from '../shared/logger.js';
 import { cachedInbox } from './sync.js';
 
 export const CHAT_SYNC_INTERVAL_MS = 15 * 60_000;
@@ -17,21 +17,26 @@ export function startChatWorker(): () => void {
       const ids = [...profileIds];
       for (let index = 0; index < ids.length && !stopped; index += 4) {
         await Promise.all(ids.slice(index, index + 4).map(async profileId => {
-          try {
-            const profile = await profilesGetById(profileId);
-            if (profile?.igLoggedIn && profile.status !== 'deleting') await cachedInbox(profile, true, true);
-          }
-          catch { logger.warn({ profileId }, 'Background Chat inbox sync failed'); }
+          await logOperation('chat.inbox_sync', { profileId }, async () => {
+            try {
+              const profile = await profilesGetById(profileId);
+              if (profile?.igLoggedIn && profile.status !== 'deleting') {
+                const inbox = await cachedInbox(profile, true, true);
+                addLogContext({ profileName: profile.name, threadCount: inbox.threads.length });
+              } else addLogContext({ outcome: 'skipped' });
+            }
+            catch (error) { addLogContext({ error, outcome: 'error' }); }
+          });
         }));
       }
     } catch {
-      logger.warn('Background Chat sync could not load profiles');
+      logger.error({ event: 'chat.worker.background_chat_sync_load_profiles', message: 'Background Chat sync could not load profiles', outcome: 'error' });
     } finally { busy = false; }
   };
   const timer = setInterval(() => { void tick(); }, CHAT_SYNC_INTERVAL_MS);
   timer.unref();
   const subscription = watchChatProfiles(ids => { profileIds = ids; void tick(); },
-    err => { profileIds = []; logger.warn({ err }, 'Chat profile subscription failed'); });
+    err => { profileIds = []; logger.error({ event: 'chat.worker.chat_profile_subscription_failed', error: err, message: 'Chat profile subscription failed', outcome: 'error' }); });
   void subscription.initial.catch(() => undefined);
   return () => { stopped = true; clearInterval(timer); subscription.unsubscribe(); };
 }

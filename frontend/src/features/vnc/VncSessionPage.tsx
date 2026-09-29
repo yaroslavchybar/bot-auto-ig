@@ -1,8 +1,7 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react'
 import { useNavigate, useParams } from '@/lib/router'
 import { ApiError, apiFetch } from '@/lib/api'
-import { Panel, Group, Separator } from 'react-resizable-panels'
-import { ArrowLeft, FileText } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { buildVncWebSocketUrl } from '@/features/vnc/utils/buildVncWebSocketUrl'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -10,11 +9,6 @@ import { useVncSessions } from './hooks/useVncSessions'
 import { decodeRouteParam, sessionKey, type DisplaySession } from './utils/liveSessions'
 import { VncClipboardButton } from './components/VncClipboard'
 
-const LogsViewer = lazy(() =>
-  import('@/components/shared/LogsViewer').then((module) => ({
-    default: module.LogsViewer,
-  })),
-)
 const VncViewer = lazy(() =>
   import('@/features/vnc/components/VncViewer').then((module) => ({
     default: module.VncViewer,
@@ -212,7 +206,6 @@ function ResolvedVncSessionPage({
 }) {
   const isMobile = useIsMobile()
   const handoff = useControlHandoff(session)
-  const [showMobileLogs, setShowMobileLogs] = useState(false)
 
   const isInteractive = handoff.controlState === 'unlocked'
 
@@ -221,9 +214,7 @@ function ResolvedVncSessionPage({
       <VncMobileLayout
         session={session}
         handoff={handoff}
-        showMobileLogs={showMobileLogs}
         onBack={onBack}
-        onToggleLogs={() => setShowMobileLogs((c) => !c)}
       />
     )
   }
@@ -243,20 +234,16 @@ function ResolvedVncSessionPage({
 function VncMobileLayout({
   session,
   handoff,
-  showMobileLogs,
   onBack,
-  onToggleLogs,
 }: {
   session: DisplaySession
   handoff: ControlHandoff
-  showMobileLogs: boolean
   onBack: () => void
-  onToggleLogs: () => void
 }) {
   const isInteractive = handoff.controlState === 'unlocked'
   return (
     <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
-      <VncMobileHeader session={session} onBack={onBack} onToggleLogs={onToggleLogs} showMobileLogs={showMobileLogs} />
+      <VncMobileHeader session={session} onBack={onBack} />
 
       <div className="min-h-0 flex-1 space-y-2 p-2">
         <div className="flex gap-2">
@@ -275,17 +262,6 @@ function VncMobileLayout({
 
         <ControlToggle handoff={handoff} onBack={onBack} />
 
-        {showMobileLogs ? (
-          <div className="border-line-soft bg-shell h-[42vh] min-h-[260px] overflow-hidden rounded-[4px] border">
-            <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
-              <LogsViewer
-                className="h-full border-0"
-                automationId={session.automationId === 'manual' ? null : session.automationId}
-                profileName={session.profileName}
-              />
-            </Suspense>
-          </div>
-        ) : null}
       </div>
     </div>
   )
@@ -294,13 +270,9 @@ function VncMobileLayout({
 function VncMobileHeader({
   session,
   onBack,
-  onToggleLogs,
-  showMobileLogs,
 }: {
   session: DisplaySession
   onBack: () => void
-  onToggleLogs: () => void
-  showMobileLogs: boolean
 }) {
   return (
     <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-2 shadow-xs select-none">
@@ -317,10 +289,6 @@ function VncMobileHeader({
           </span>
         </div>
       </div>
-      <Button variant="outline" size="sm" onClick={onToggleLogs} className="h-8">
-        <FileText className="h-3.5 w-3.5" />
-        {showMobileLogs ? 'Hide Logs' : 'Show Logs'}
-      </Button>
     </div>
   )
 }
@@ -461,47 +429,7 @@ function VncDesktopPanels({
 }) {
   return (
     <div className="min-h-0 flex-1 p-1">
-      <Group
-        orientation="horizontal"
-        id={`vnc-session-layout-${sessionKey(session)}`}
-        onLayoutChanged={(layout) => {
-          localStorage.setItem(
-            `vnc-focus-layout-sizes-${sessionKey(session)}`,
-            JSON.stringify(layout),
-          )
-        }}
-        defaultLayout={(() => {
-          try {
-            const stored = localStorage.getItem(`vnc-focus-layout-sizes-${sessionKey(session)}`)
-            return stored ? JSON.parse(stored) : undefined
-          } catch { return undefined }
-        })()}
-      >
-        <Panel id="left-vnc" defaultSize={60} minSize={30}>
-          <VncStreamPanel
-            session={session}
-            isInteractive={isInteractive}
-            handoff={handoff}
-            onBack={onBack}
-          />
-        </Panel>
-
-        <Separator className="hover:bg-panel-muted group relative mx-0.5 flex w-2 items-center justify-center rounded-sm transition-colors focus:ring-0 focus:outline-hidden active:outline-hidden">
-          <div className="bg-panel-hover h-8 w-1 rounded-full transition-colors group-hover:bg-white/30" />
-        </Separator>
-
-        <Panel id="right-logs" defaultSize={40} minSize={20}>
-          <div className="flex h-full flex-col overflow-hidden rounded-[3px] shadow-xs">
-            <Suspense fallback={<div className="bg-field-alt h-full w-full animate-pulse" />}>
-              <LogsViewer
-                className="h-full border-0"
-                automationId={session.automationId === 'manual' ? null : session.automationId}
-                profileName={session.profileName}
-              />
-            </Suspense>
-          </div>
-        </Panel>
-      </Group>
+      <VncStreamPanel session={session} isInteractive={isInteractive} handoff={handoff} onBack={onBack} />
     </div>
   )
 }

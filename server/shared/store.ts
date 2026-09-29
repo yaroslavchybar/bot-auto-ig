@@ -6,24 +6,6 @@ import type { SocketSubscription } from './subscriptions.js'
 // Store connected WebSocket clients
 export const clients: Set<WebSocket & { subscription?: SocketSubscription }> = new Set()
 
-// Store logs in memory (limited to last 1000 entries)
-export const MAX_LOGS = 1000
-export const logsStore: Array<{
-    id: string;
-    message: string;
-    level: string;
-    source: string;
-    ts: number;
-    profileName?: string;
-    automationId?: string;
-    taskId?: string;
-    targetUsername?: string;
-    errorCode?: string;
-    outcome?: string;
-    attempt?: number;
-    diagnostics?: string;
-}> = []
-
 export const automationWorkers = new Map<
     string,
     { process: ChildProcess; status: 'running' | 'stopping'; startedAt: number }

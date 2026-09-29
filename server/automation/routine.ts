@@ -90,7 +90,7 @@ export async function runRoutineSession(
         const removed = await unfollow(page, async () => { await check(); return !shouldStop(); });
         if (!removed) return;
         await deps.recordFollow(profileId, task.leadId, false);
-        log(`Unfollowed @${task.username} after seven days`);
+        log({ event: 'automation.routine.unfollowed', message: `Unfollowed @${task.username} after seven days` });
       }
     };
     const warmup = await deps.warmup(
@@ -123,7 +123,7 @@ export async function runRoutineSession(
               profileId,
             );
             if (!attempt) {
-              log('No eligible recipient available for the remaining DM target');
+              log({ event: 'automation.routine.eligible_recipient_available_for_the', message: 'No eligible recipient available for the remaining DM target' });
               return 'unavailable';
             }
             // Navigation and composer preparation happen before permission to press Send.
@@ -167,9 +167,9 @@ export async function runRoutineSession(
               } finally {
                 await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
               }
-              log(blocked
+              log({ event: 'automation.dm_result', targetUsername: attempt.username, sent, blocked, message: blocked
                 ? `Message blocked for @${attempt.username}; followed and unsent`
-                : `Message sent to @${attempt.username}`);
+                : `Message sent to @${attempt.username}` });
               return sent ? 'sent' : 'blocked';
             } catch (error) {
               if (!sendAttempted) {
@@ -187,10 +187,10 @@ export async function runRoutineSession(
     hadActivity = warmup.minutes > 0;
     activityCompleted = hadActivity && warmup.reason === 'finished';
     const target = await deps.target(automation._id, profileId).catch(() => null);
-    if (target && target.target > 0) log(`Daily DM target: ${target.sent}/${target.target} confirmed`);
+    if (target && target.target > 0) log({ event: 'automation.daily_dm_target', sentCount: target.sent, targetCount: target.target });
   } catch (error) {
     issue = error instanceof Error ? error.message : String(error);
-    log(issue);
+    log({ event: 'automation.routine_result', error, outcome: 'error' });
   } finally {
     await deps.record(automation._id, profileId, activityCompleted, issue);
   }

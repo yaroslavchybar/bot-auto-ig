@@ -15,7 +15,7 @@ import {
   automationsUpdateStatus,
   type DbAutomationRow,
 } from '../shared/convexClient.js'
-import logger from '../shared/logger.js'
+import logger, { LogScope, ingestLogEntry } from '../shared/logger.js'
 import { advanceModelWarmup } from '../ig-accounts/warmup.js'
 import { latestQueue } from '../shared/latest-queue.js'
 import {
@@ -49,6 +49,7 @@ type WorkerLifecycle = {
   stopRequested: boolean
   statusUpdates?: Promise<void>
   terminalStatus?: TerminalStatus
+  scope?: LogScope
 }
 
 const workerLifecycles = new WeakMap<ChildProcess, WorkerLifecycle>()
@@ -201,31 +202,33 @@ function handleDisplayEvent(automationId: string, log: ParsedLog): void {
 
 /** Route parsed worker events to status, display, and UI state. */
 function createWorkerEventRouter(automationId: string, lifecycle: WorkerLifecycle) {
-  let currentProfile: string | null = null
   let lastCheckpoint: Record<string, unknown> | undefined
   const updates = latestQueue<ParsedLog>(async log => {
     try {
       const terminalStatus = await handleStatusEvent(automationId, log)
       if (terminalStatus) lifecycle.terminalStatus = terminalStatus
     } catch (error) {
-      logger.error({ err: error, automationId }, 'Automation status update failed')
+      logger.error({ event: 'automations.service.automation_status_update_failed', error: error, automationId, message: 'Automation status update failed', outcome: 'error' })
     }
   })
   return (log: ParsedLog): void => {
+    if (log.logEntry) { ingestLogEntry(log.logEntry); return }
     if (lifecycle.stopRequested && isStopNoiseLog(log.message)) return
+    if (!log.eventType) {
+      lifecycle.scope?.note(log.level, { event: 'worker.output', message: log.message, stream: 'stdout' })
+      return
+    }
     if (log.eventType === 'model_setup_after_session') {
       const profileId = String(log.metadata?.profileId ?? '')
       if (profileId) void advanceModelWarmup(profileId, automationId).catch(error =>
-        logger.warn({ error, profileId, automationId }, 'Model setup after browser session failed'))
+        logger.error({ event: 'automations.service.model_setup_after_browser_session', error, profileId, automationId, message: 'Model setup after browser session failed', outcome: 'error' }))
       return
     }
     if (log.eventType === 'profile_started' || log.eventType === 'profile_completed') {
       const name = String(log.metadata?.profileName || '')
       if (log.eventType === 'profile_started') {
-        currentProfile = name
         if (name) markAutomationProfileActive(automationId, name)
       } else {
-        currentProfile = null
         if (name) clearAutomationProfileActive(automationId, name)
       }
     }
@@ -239,15 +242,7 @@ function createWorkerEventRouter(automationId: string, lifecycle: WorkerLifecycl
     if (log.eventType === 'checkpoint') return
     handleDisplayEvent(automationId, log)
     const { nodeStates, ...uiMetadata } = log.metadata || {}
-    broadcast({
-      automationId,
-      type: log.eventType || 'log',
-      message: log.message,
-      level: log.level,
-      source: 'typescript',
-      profileName: currentProfile,
-      ...uiMetadata,
-    })
+    broadcast({ automationId, type: log.eventType, ...uiMetadata })
   }
 }
 
@@ -268,13 +263,9 @@ function wireStderr(proc: ChildProcess, automationId: string): void {
     for (const log of logs) {
       const stopRequested = lifecycle.stopRequested
       if (stopRequested && isStopNoiseLog(log?.message)) continue
-      broadcast({
-        type: 'log',
-        automationId,
-        message: log.message,
-        level: log.explicitLevel ? log.level : (isBenignBrowserStderr(log.message) ? 'info' : 'error'),
-        source: 'typescript',
-      })
+      if (log.logEntry) { ingestLogEntry(log.logEntry); continue }
+      const level = isBenignBrowserStderr(log.message) ? 'info' : 'error'
+      lifecycle.scope?.note(level, { event: 'worker.output', message: log.message, stream: 'stderr' })
     }
   }
   proc.stderr?.on('data', (data: Buffer) => consume(parser.write(data)))
@@ -287,14 +278,10 @@ export function wireProcessLifecycle(proc: ChildProcess, automationId: string): 
   let spawnError: Error | undefined
   proc.on('close', async (code: number | null) => {
     await waitForStatusUpdates(proc)
-    if (automationWorkers.get(automationId)?.process !== proc) return
-    broadcast({
-      type: 'log',
-      automationId,
-      message: `Automation finished with code ${code}`,
-      level: code === 0 ? 'success' : 'warn',
-      source: 'server',
-    })
+    lifecycle.scope?.add({ exitCode: code, error: spawnError,
+      outcome: lifecycle.stopRequested || lifecycle.terminalStatus === 'cancelled' ? 'cancelled'
+        : spawnError || code !== 0 || lifecycle.terminalStatus === 'failed' ? 'error' : 'success' })
+    if (automationWorkers.get(automationId)?.process !== proc) { lifecycle.scope?.finish(); return }
 
     try {
       const finalStatus = lifecycle.stopRequested ? 'cancelled'
@@ -304,7 +291,8 @@ export function wireProcessLifecycle(proc: ChildProcess, automationId: string): 
       if (finalStatus !== lifecycle.terminalStatus) {
         await automationsUpdateStatus({ automationId, status: finalStatus, error: spawnError?.message })
       }
-    } catch { /* noop */ }
+    } catch (error) { lifecycle.scope?.note('error', { event: 'automation.status_save', error }) }
+    lifecycle.scope?.finish()
     if (automationWorkers.get(automationId)?.process !== proc) return
     automationWorkers.delete(automationId)
     clearAutomationDisplays(automationId)
@@ -314,13 +302,7 @@ export function wireProcessLifecycle(proc: ChildProcess, automationId: string): 
 
   proc.on('error', (err: Error) => {
     spawnError = err
-    broadcast({
-      type: 'log',
-      automationId,
-      message: `Automation error: ${err.message}`,
-      level: 'error',
-      source: 'server',
-    })
+    lifecycle.scope?.add({ error: err, outcome: 'error' })
   })
 }
 
@@ -348,21 +330,19 @@ export async function runAutomation(input: RunAutomationInput, spawn = spawnBun)
   if (!automation) throw new NotFoundError('Automation not found')
 
   broadcast({ type: 'automation_status', automationId, status: 'running' })
-  broadcast({
-    type: 'log',
-    automationId,
-    message: `Starting automation: ${automation.name}`,
-    level: 'info',
-    source: 'server',
-  })
+  logger.info({ event: 'automations.service.starting_automation', automationId, message: `Starting automation: ${automation.name}` })
 
+  const scope = new LogScope('automation.process', { automationId })
   const proc = spawn({
     args: [AUTOMATION_RUNNER],
+    extraEnv: { LOG_SERVICE: 'automation-worker', LOG_AUTOMATION_ID: automationId, LOG_REQUEST_ID: scope.requestId },
   })
   // Injected spawn doubles in tests skip spawnBun's own guard.
   guardChildStdin(proc)
   automationWorkers.set(automationId, { process: proc, status: 'running', startedAt: Date.now() })
 
+  scope.add({ pid: proc.pid })
+  lifecycleFor(proc).scope = scope
   wireStdout(proc, automationId)
   wireStderr(proc, automationId)
   wireProcessLifecycle(proc, automationId)
@@ -400,13 +380,7 @@ export async function stopAutomations(automationId?: string): Promise<string[]> 
     automationWorkers.set(id, { ...worker, status: 'stopping' })
     lifecycleFor(worker.process).stopRequested = true
     broadcast({ type: 'automation_status', automationId: id, status: 'stopping' })
-    broadcast({
-      type: 'log',
-      automationId: id,
-      message: 'Stopping automation...',
-      level: 'warn',
-      source: 'server',
-    })
+    logger.info({ event: 'automation.stop_requested', automationId: id, outcome: 'cancelled' })
     // Cooperative stop first so open browsers close cleanly and free the
     // license seat; force-kill only if the worker stays alive.
     if (!(await requestChildStop(worker.process))) {

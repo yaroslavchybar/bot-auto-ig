@@ -169,7 +169,7 @@ export async function openOwnProfile(page: Page, log: ActionLogger, session = ne
     await page.waitForURL(PROFILE_URL, { timeout: session.timeout(10_000) }).catch(() => undefined)
     await sleep(random(1200, 2500))
     if (!PROFILE_URL.test(page.url())) return false
-    log('Checking own profile')
+    log({ event: 'automation.actions.profiles.checking_own_profile', message: 'Checking own profile' })
     return true
   } catch {
     return false
@@ -212,7 +212,7 @@ export async function wanderProfile(
     await sleep(random(1500, 3000))
     await closeDialog(page, session)
     await sleep(random(600, 1200))
-    log('Watched a highlight')
+    log({ event: 'automation.actions.profiles.watched_a_highlight', message: 'Watched a highlight' })
     break
   }
   if (Date.now() >= end || shouldStop()) return

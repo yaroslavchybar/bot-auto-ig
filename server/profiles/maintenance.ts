@@ -6,7 +6,7 @@ import { automationProfileSessions, profileProcesses } from '../shared/store.js'
 import { stopProfileBrowserLocked } from './service.js'
 import { stopAutomations } from '../automations/service.js'
 import { AppError } from '../shared/errors.js'
-import logger from '../shared/logger.js'
+import logger, { logOperation, addLogContext } from '../shared/logger.js'
 import { watchProfileMaintenance } from '../shared/convexRealtime.js'
 import { reactiveWork } from '../shared/reactiveWork.js'
 
@@ -14,11 +14,11 @@ export function startProfileMaintenance(): () => void {
   const work = reactiveWork<string[]>({
     dueAt: ids => ids.length ? 0 : null,
     run: retryProfileMaintenance,
-    onError: err => logger.warn({ err }, 'Profile maintenance failed'),
+    onError: err => logger.error({ event: 'profiles.maintenance.profile_maintenance_failed', error: err, message: 'Profile maintenance failed', outcome: 'error' }),
   })
   const subscription = watchProfileMaintenance(work.update, err => {
     work.update([])
-    logger.error({ err }, 'Profile maintenance subscription failed')
+    logger.error({ event: 'profiles.maintenance.profile_maintenance_subscription_failed', error: err, message: 'Profile maintenance subscription failed', outcome: 'error' })
   })
   void subscription.initial.catch(() => undefined)
   return () => { work.stop(); subscription.unsubscribe() }
@@ -61,7 +61,7 @@ export async function deleteProfile(name: string): Promise<void> {
     try {
       await finishMaintenance(profile)
     } catch (error) {
-      logger.error({ err: error, profile: name }, 'Profile deletion pending; will retry')
+      logger.error({ event: 'profiles.maintenance.profile_deletion_pending_will_retry', error: error, profileName: name, message: 'Profile deletion pending; will retry', outcome: 'error' })
       throw new AppError('Deletion is pending. Cleanup will retry automatically.', 503, 'PROFILE_DELETE_PENDING')
     }
   } finally { release() }
@@ -78,7 +78,7 @@ export async function updateProfile(oldName: string, profile: Profile): Promise<
       const updated = await profilesGetByName(profile.name)
       if (updated?.renameFrom) {
         try { await profileManager.finishRename(updated) } catch (error) {
-          logger.error({ err: error }, 'Profile rename pending; will retry')
+          logger.error({ event: 'profiles.maintenance.profile_rename_pending_will_retry', error: error, message: 'Profile rename pending; will retry', outcome: 'error' })
           throw new AppError('Rename is pending. Folder moves will retry automatically.', 503, 'PROFILE_RENAME_PENDING')
         }
       }
@@ -89,20 +89,24 @@ export async function updateProfile(oldName: string, profile: Profile): Promise<
 let retrying = false
 /** The database is the durable work queue; never infer deletion from missing rows. */
 export async function retryProfileMaintenance(): Promise<void> {
-  if (retrying) return
-  retrying = true
-  const release = await automationMutex.acquire()
-  try {
-    for (const profile of await profilesList()) {
-      if (profile.status !== 'deleting' && !profile.renameFrom) continue
-      try { await finishMaintenance(profile) } catch (error) {
-        logger.warn({ err: error, profile: profile.name }, 'Profile maintenance will retry')
+  return logOperation('profile.maintenance', {}, async () => {
+    if (retrying) return
+    retrying = true
+    const release = await automationMutex.acquire()
+    try {
+    const pending = (await profilesList()).filter(profile => profile.status === 'deleting' || profile.renameFrom)
+    addLogContext({ pendingProfileCount: pending.length })
+    for (const profile of pending) {
+        try { await finishMaintenance(profile) } catch (error) {
+          logger.error({ event: 'profiles.maintenance.profile_maintenance_will_retry', error: error, profileName: profile.name, message: 'Profile maintenance will retry', outcome: 'error' })
+        }
       }
+    } catch (error) {
+      logger.error({ event: 'profiles.maintenance.load_pending_profile_maintenance', error: error, message: 'Could not load pending profile maintenance', outcome: 'error' })
+    } finally {
+      release()
+      retrying = false
     }
-  } catch (error) {
-    logger.warn({ err: error }, 'Could not load pending profile maintenance')
-  } finally {
-    release()
-    retrying = false
-  }
+
+  })
 }

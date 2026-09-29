@@ -163,7 +163,7 @@ export async function backToFeed(page: Page, log: ActionLogger, session = new Br
     if (/instagram\.com\/(\?.*)?$/.test(page.url())) {
       const posts = await page.locator('article').count().catch(() => 0)
       if (posts > 0) {
-        if (i > 0) log('Went back to feed')
+        if (i > 0) log({ event: 'automation.actions.navigation.went_back_to_feed', message: 'Went back to feed' })
         return
       }
     }

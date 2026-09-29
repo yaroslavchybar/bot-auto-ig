@@ -42,7 +42,7 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
       .catch(() => undefined)
     await sleep(random(1500, 2500))
     if (!/\/reels\//.test(page.url())) return false
-    log('Opened reels')
+    log({ event: 'automation.actions.reels.opened_reels', message: 'Opened reels' })
     return true
   } catch {
     return false
@@ -217,11 +217,11 @@ export async function watchReels(
     }
     // Sponsored reel: flick past fast, never engage.
     if (await isAdReel(page).catch(() => false)) {
-      log('Skipped reel ad')
+      log({ event: 'automation.actions.reels.skipped_reel_ad', message: 'Skipped reel ad' })
       await sleep(random(400, 900))
       if (Date.now() >= end || shouldStop()) break
       if (!(await advanceReel(page, session).catch(() => false))) {
-        log('Reels stuck, heading back')
+        log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
         break
       }
       await sleep(random(1200, 2200))
@@ -232,7 +232,7 @@ export async function watchReels(
       await sleep(random(300, 800))
       if (Date.now() >= end || shouldStop()) break
       if (!(await advanceReel(page, session).catch(() => false))) {
-        log('Reels stuck, heading back')
+        log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
         break
       }
       await sleep(random(1200, 2200))
@@ -261,17 +261,17 @@ export async function watchReels(
       if (like) {
         await like.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
         await sleep(400)
-        if (await inViewLike(page, 'Unlike')) log('Liked reel')
+        if (await inViewLike(page, 'Unlike')) log({ event: 'automation.actions.reels.liked_reel', message: 'Liked reel' })
       }
     }
     if (Date.now() >= end || shouldStop()) break
     watched++
     if (watched >= target) break
     if (!(await advanceReel(page, session).catch(() => false))) {
-      log('Reels stuck, heading back')
+      log({ event: 'automation.actions.reels.reels_stuck_heading_back', message: 'Reels stuck, heading back' })
       break
     }
     await sleep(random(1200, 2200))
   }
-  log(`Watched ${watched} reel(s)`)
+  log({ event: 'automation.reels_result', watchedCount: watched })
 }

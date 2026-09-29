@@ -86,7 +86,7 @@ authRouter.get('/tg-poll', (req: Request, res: Response) => {
         return
     }
     if (!isAdminTelegramId(entry.user.id)) {
-        logger.warn({ telegramId: entry.user.id }, 'Non-admin Telegram login rejected')
+        logger.info({ event: 'auth.login_rejected', telegramId: entry.user.id, reason: 'not_admin', outcome: 'rejected' })
         res.status(403).json({ error: 'Access is restricted to the admin.' })
         return
     }
@@ -121,12 +121,12 @@ authRouter.post('/tg-webhook', (req: Request, res: Response) => {
             })
             if (confirmed) {
                 sendLoginConfirmation(chatId).catch((err) => {
-                    logger.warn({ err }, 'Telegram login confirmation message failed')
+                    logger.error({ event: 'auth.routes.telegram_login_confirmation_message_failed', error: err, message: 'Telegram login confirmation message failed', outcome: 'error' })
                 })
             }
         }
     } catch (err) {
-        logger.warn({ err }, 'Telegram webhook payload error')
+        logger.error({ event: 'auth.routes.telegram_webhook_payload_error', error: err, message: 'Telegram webhook payload error', outcome: 'error' })
     }
     res.json({ ok: true })
 })

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { env } from '@/lib/env'
 import { useAppAuth } from '@/lib/auth'
 import { addWebSocketBreadcrumb } from '@/lib/sentry'
-import type { LogEntry } from '@/lib/logs'
 
 export interface AutomationProgress {
   totalAccounts: number
@@ -18,11 +17,9 @@ interface UseWebSocketOptions {
   autoConnect?: boolean
   enabled?: boolean
   pauseWhenHidden?: boolean
-  maxBuffer?: number
   eventsOnly?: boolean
   automationId?: string | null
   topic?: SocketTopic
-  profileName?: string | null
   onEvent?: (message: WebSocketMessage) => void
 }
 
@@ -49,29 +46,6 @@ function getReconnectDelay(attempt: number): number {
   )
   const jitter = delay * 0.2 * Math.random()
   return delay + jitter
-}
-
-/* ── Parse a log entry from WebSocket message ── */
-
-export function parseLogEntry(
-  data: WebSocketMessage,
-  currentProfile: string | null,
-): LogEntry {
-  return {
-    id: data.id,
-    message: data.message!,
-    level: data.level || 'info',
-    source: data.source || 'unknown',
-    automationId: (data.automationId) ?? undefined,
-    profileName: data.profileName || currentProfile || undefined,
-    taskId: data.taskId || undefined,
-    targetUsername: data.targetUsername || undefined,
-    errorCode: data.errorCode || undefined,
-    outcome: data.outcome || undefined,
-    attempt: typeof data.attempt === 'number' ? data.attempt : undefined,
-    diagnostics: typeof data.diagnostics === 'string' ? data.diagnostics : undefined,
-    ts: typeof data.ts === 'number' ? data.ts : Date.parse(data.ts || '') || Date.now(),
-  }
 }
 
 /* ── Check if message matches the automation filter ── */
@@ -133,16 +107,14 @@ function processSocketMessage(
   rawMessage: string,
   options: {
     automationId?: string | null
-    maxBuffer: number
     eventsOnly: boolean
     onEvent?: (message: WebSocketMessage) => void
     currentProfileRef: React.MutableRefObject<string | null>
-    setLogs: React.Dispatch<React.SetStateAction<LogEntry[]>>
     setStatus: React.Dispatch<React.SetStateAction<'idle' | 'running' | 'stopping'>>
     setProgress: React.Dispatch<React.SetStateAction<AutomationProgress>>
   },
 ) {
-  const { automationId, maxBuffer, eventsOnly, onEvent, currentProfileRef, setLogs, setStatus, setProgress } = options
+  const { automationId, eventsOnly, onEvent, currentProfileRef, setStatus, setProgress } = options
   try {
     const data: WebSocketMessage = JSON.parse(rawMessage)
     try { onEvent?.(data) } catch { /* ignore */ }
@@ -151,15 +123,7 @@ function processSocketMessage(
     const msgAutomationId = data.automationId ?? null
     const matches = matchesAutomationFilter(data, activeAutomationId)
 
-    if (data.type === 'log' && data.message) {
-      if (!matches) return
-      if (activeAutomationId && !msgAutomationId) return
-      const entry = parseLogEntry(data, currentProfileRef.current)
-      setLogs((prev) => {
-        const next = prev.length >= maxBuffer ? prev.slice(-(maxBuffer - 1)) : prev
-        return [...next, entry]
-      })
-    } else if (data.type === 'status' && data.status) {
+    if (data.type === 'status' && data.status) {
       if (activeAutomationId || msgAutomationId) return
       setStatus(data.status as 'idle' | 'running' | 'stopping')
     } else if (data.type === 'automation_status' && data.status) {
@@ -270,20 +234,15 @@ function cleanupConnection(connection: SocketConnection, cancelled: { current: b
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
     url, autoConnect = true, enabled = true,
-    pauseWhenHidden = false, maxBuffer = 500,
-    automationId, onEvent, eventsOnly = false, topic = 'all', profileName,
+    pauseWhenHidden = false,
+    automationId, onEvent, eventsOnly = false, topic = 'all',
   } = options
   const defaultUrl = getDefaultWebSocketUrl()
   const subscriptionUrl = new URL(url ?? defaultUrl, defaultUrl)
   subscriptionUrl.searchParams.set('topic', topic)
-  if (topic === 'logs') {
-    if (automationId) subscriptionUrl.searchParams.set('automationId', automationId)
-    if (profileName) subscriptionUrl.searchParams.set('profileName', profileName)
-  }
   const wsUrl = subscriptionUrl.toString()
   const { getToken } = useAppAuth()
 
-  const [logs, setLogs] = useState<LogEntry[]>([])
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
   const [progress, setProgress] = useState<AutomationProgress>(
     { totalAccounts: 0, currentProfile: null, currentTask: null })
@@ -301,12 +260,11 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
     processSocketMessage(rawMessage, {
-      automationId, maxBuffer, eventsOnly, onEvent,
-      currentProfileRef, setLogs, setStatus, setProgress,
+      automationId, eventsOnly, onEvent,
+      currentProfileRef, setStatus, setProgress,
     })
   })
 
-  const clearLogs = useCallback(() => { setLogs([]) }, [])
   const [connected, setConnected] = useState(false)
   const [reconnectCounter, setReconnectCounter] = useState(0)
 
@@ -358,5 +316,5 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     cleanupConnection(connection, connection.cancelled, setConnected)
   }, [])
 
-  return { logs, status, progress, connected, clearLogs, connect, disconnect }
+  return { status, progress, connected, connect, disconnect }
 }

@@ -37,15 +37,12 @@ import {
   type AutomationEdge,
 } from './graph.js'
 import { executeGraphProfile } from './graph-runner.js'
+import logger, { logOperation, addLogContext } from '../shared/logger.js'
+import type { ActionLogger } from './actions/shared.js'
+import { captureConsole } from '../logs/console.js'
 
 type AnyRecord = Record<string, any>
-type LogLevel = 'info' | 'warn' | 'error' | 'success'
-
-function log(message: string, level: LogLevel = 'info'): void {
-  process.stdout.write(
-    `[${new Date().toISOString()}] ${level.toUpperCase()}: ${message}\n`,
-  )
-}
+const log: ActionLogger = fields => fields.outcome === 'error' ? logger.error(fields) : logger.info(fields)
 
 function event(type: WorkerEvent['type'], data: AnyRecord = {}): Promise<void> {
   return new Promise((resolve, reject) => process.stdout.write(
@@ -182,7 +179,7 @@ async function expandedRuntimeSnapshot(
   try {
     return await loadFullRuntimeSnapshot(automationId, lists, snapshot)
   } catch (error) {
-    log(`full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+    log({ event: 'automation.worker.full_runtime_sweep_failed', message: `full runtime sweep failed: ${error instanceof Error ? error.message : String(error)}`, outcome: 'error' })
     return snapshot
   }
 }
@@ -266,7 +263,7 @@ class RuntimeMonitor {
       snapshot => this.onSnapshot(snapshot),
       error => {
         this.error = error
-        log(`runtime subscription failed: ${error.message}`, 'warn')
+        log({ event: 'automation.worker.runtime_subscription_failed', message: `runtime subscription failed: ${error.message}`, outcome: 'error' })
         this.updates.notify()
       },
     )
@@ -327,57 +324,63 @@ async function withProfile(
     close: () => Promise<void>
   }) => Promise<void>,
 ): Promise<void> {
-  const automationId = options.automationId || 'automation'
-  let session: BrowserSession | undefined
-  let closed = false
-  let markedRunning = false
-  const close = async () => {
-    if (!session || closed) return
-    await session.close()
-    closed = true
-    if (session.display) await event('display_released', { automationId: automationId, profileName: profile.name })
-  }
-  try {
-    session = await (options.openSession ?? openBrowserSession)(profile.name, {
-      headless: options.headless ?? true,
-    })
-    await profilesSyncStatus(profile.name, 'running', true)
-    markedRunning = true
-    await event('profile_started', {
-      profileName: profile.name,
-      profileId: profile.id,
-      automationId: automationId,
-    })
-    if (session.display)
-      await event('display_allocated', {
-        automationId: automationId,
-        profileName: profile.name,
-        displayNum: session.display.displayNum,
-        vncPort: session.display.vncPort,
+  return logOperation('automation.profile_session', { profileId: profile.id, profileName: profile.name, automationId: options.automationId, headless: options.headless ?? true }, async () => {
+    const automationId = options.automationId || 'automation'
+    let session: BrowserSession | undefined
+    let closed = false
+    let markedRunning = false
+    const close = async () => {
+      if (!session || closed) return
+      await session.close()
+      closed = true
+      if (session.display) await event('display_released', { automationId: automationId, profileName: profile.name })
+    }
+    try {
+      session = await (options.openSession ?? openBrowserSession)(profile.name, {
+        headless: options.headless ?? true,
       })
-    await run(session, { close })
-    await event('profile_completed', {
-      profileName: profile.name,
-      profileId: profile.id,
-      automationId: automationId,
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    log(`${profile.name}: ${message}`, 'error')
-    await event('error', {
-      profileName: profile.name,
-      profileId: profile.id,
-      automationId: automationId,
-      error: message,
-    })
-    throw error
-  } finally {
-    await close().catch(() => undefined)
-    if (markedRunning)
-      await profilesSyncStatus(profile.name, 'idle', false).catch(
-        () => undefined,
-      )
-  }
+      await profilesSyncStatus(profile.name, 'running', true)
+      markedRunning = true
+      await event('profile_started', {
+        profileName: profile.name,
+        profileId: profile.id,
+        automationId: automationId,
+      })
+      if (session.display)
+        await event('display_allocated', {
+          automationId: automationId,
+          profileName: profile.name,
+          displayNum: session.display.displayNum,
+          vncPort: session.display.vncPort,
+        })
+      addLogContext({ displayNum: session.display?.displayNum, vncPort: session.display?.vncPort })
+      await run(session, { close })
+      if (shouldStop()) addLogContext({ outcome: 'cancelled' })
+      await event('profile_completed', {
+        profileName: profile.name,
+        profileId: profile.id,
+        automationId: automationId,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (shouldStop()) addLogContext({ outcome: 'cancelled' })
+      else log({ event: 'automation.profile_error', error, outcome: 'error' })
+      await event('error', {
+        profileName: profile.name,
+        profileId: profile.id,
+        automationId: automationId,
+        error: message,
+      })
+      throw error
+    } finally {
+      await close().catch(() => undefined)
+      if (markedRunning)
+        await profilesSyncStatus(profile.name, 'idle', false).catch(
+          () => undefined,
+        )
+    }
+
+  })
 }
 
 async function runRoutineProfile(options: {
@@ -396,7 +399,7 @@ async function runRoutineProfile(options: {
         value => { access = value },
         error => {
           access = false
-          log(`routine access subscription failed: ${error.message}`, 'warn')
+          log({ event: 'automation.worker.routine_access_subscription_failed', message: `routine access subscription failed: ${error.message}`, outcome: 'error' })
         },
       )
     : null
@@ -458,7 +461,7 @@ export async function runAutomation(
     if (useRealtime && isTruncatedSnapshot(latestRuntime)) {
       latestRuntime = await expandedRuntimeSnapshot(automationId, lists, latestRuntime)
       if (latestRuntime && !isTruncatedSnapshot(latestRuntime)) {
-        log(`runtime snapshot truncated; swept ${latestRuntime.profiles.length} profiles across windows`, 'warn')
+        log({ event: 'automation.runtime_snapshot_swept', message: `runtime snapshot truncated; swept ${latestRuntime.profiles.length} profiles across windows`, profileCount: latestRuntime.profiles.length })
       }
     }
     const profiles = (latestRuntime
@@ -476,7 +479,7 @@ export async function runAutomation(
 
     await event('session_started', { automationId: automationId })
     if (!profiles.length)
-      log('No available profiles in the selected lists; waiting for profiles')
+      log({ event: 'automation.worker.available_profiles_in_the_selected', message: 'No available profiles in the selected lists; waiting for profiles' })
 
     // Free Cloak tier allows one browser at a time.
     const parallel = 1
@@ -562,7 +565,7 @@ export async function runAutomation(
           )
           if (fresh.length) await runQueue(fresh)
         } catch (error) {
-          log(`watch poll failed: ${error instanceof Error ? error.message : String(error)}`, 'warn')
+          log({ event: 'automation.worker.watch_poll_failed', message: `watch poll failed: ${error instanceof Error ? error.message : String(error)}`, outcome: 'error' })
         }
       }
     }
@@ -621,14 +624,20 @@ function readCommandInput(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const input = JSON.parse(await readCommandInput()) as AnyRecord
-  if (!input.automation) throw new Error('automation is required')
-  try {
-    await runAutomation(input)
-  } finally {
-    releaseStdin()
-    await closeConvexRealtime()
-  }
+  captureConsole()
+  return logOperation('automation.session', {}, async () => {
+    const input = JSON.parse(await readCommandInput()) as AnyRecord
+    if (!input.automation) throw new Error('automation is required')
+    addLogContext({ automationId: input.automationId || input.automation._id })
+    try {
+      await runAutomation(input)
+    } finally {
+      releaseStdin()
+      if (shouldStop()) addLogContext({ outcome: 'cancelled' })
+      await closeConvexRealtime()
+    }
+
+  })
 }
 
 if (
@@ -637,7 +646,6 @@ if (
 )
   main().catch(async (error) => {
     const message = error instanceof Error ? error.message : String(error)
-    log(message, 'error')
     await event('session_ended', {
       status: shouldStop() ? 'cancelled' : 'failed',
       error: message,

@@ -14,10 +14,10 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
 
 - `frontend/`: React + Vite app.
   Feature-owned UI under `src/features/` (`profiles`, `lists`, `automations`,
-  `logs`, `vnc`, `auth`); shared
+  `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
-- `server/`: Express REST (`/api/automation|profiles|lists|logs|automations|displays|health`)
+- `server/`: Express REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`)
   + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
   subprocess orchestration. Admin session middleware globally;
   `/api/automations` also accepts `INTERNAL_API_KEY`. Rate limits:
@@ -31,7 +31,36 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
 - `convex/`: schema, queries/mutations (`profiles`, `lists`, `automations`,
   `messageTemplates`), HTTP actions. Generated code in
   `convex/_generated/*` — never edit; regenerate via `bunx convex dev`.
-- `data/`: git-ignored runtime state (logs are in-memory only, never written to disk).
+- `data/`: git-ignored runtime state (application logs are JSON on stdout).
+
+## Application logs
+
+There are no log screens, log history endpoints, or log WebSocket topics.
+The API, automation/manual workers, Convex HTTP bridge, and image-processing
+service emit structured JSON completion events. Logs include request/operation
+IDs, duration, outcome, business identifiers/counts, and environment metadata.
+Only `info` and `error` levels are used. Expected rejection, cancellation,
+and daily-limit/rate-limit pauses use `info` with an explicit outcome.
+
+`X-Request-Id` links API requests, Convex HTTP calls, worker processes, and
+image-processing requests. Worker `__EVENT__` messages remain a separate control
+protocol for automation checkpoints and live displays; they are not logs.
+
+The API logger collects bounded step details and counts into each completion
+event. Add business fields with `addLogContext`, and wrap background work with
+`logOperation` from `server/shared/logger.ts`. Do not log payloads, cookies,
+credentials, attachments, or DM text. The logger redacts sensitive fields,
+known environment secrets, proxy credentials, and safe error representations.
+Account login also registers account credentials for redaction in library errors.
+Library console output is captured at API/worker startup and joins the current
+completion event; informational browser banners stay at the info level.
+Browser errors continue through the existing Sentry integration.
+
+Deployment fields use `COMMIT_SHA` (or `GIT_COMMIT` in the API), `SERVICE_VERSION`,
+`REGION`, and `INSTANCE_ID`; unset deployment values are marked `unknown` or use
+local defaults. Production stdout logs are collected by Vector and sent to
+the `ig-bot-prod` Axiom dataset. See [logging.md](logging.md) for the pipeline,
+deployment, validation, and queries.
 
 ## Browser profile data
 

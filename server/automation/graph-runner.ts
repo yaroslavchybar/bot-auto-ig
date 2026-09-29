@@ -3,6 +3,7 @@ import type { BrowserSession } from '../browser/cloak.js'
 import { sleep, shouldStop, shutdownSignal } from '../browser/lifecycle.js'
 import type { DbProfileRow } from '../shared/convexClient.js'
 import { runWarmup } from './warmup.js'
+import type { ActionLogger } from './actions/shared.js'
 import { watchStories } from './actions.js'
 import { advanceLoop, nextNode, nodeActivity, type AutomationNode, type AutomationEdge } from './graph.js'
 
@@ -18,7 +19,7 @@ type GraphProfileContext = {
   aggregateStates: AnyRecord
   repeat: boolean
   emit: (type: WorkerEvent['type'], data: AnyRecord) => Promise<void>
-  log: (message: string, level?: 'info' | 'warn' | 'error' | 'success') => void
+  log: ActionLogger
 }
 
 const random = (min: number, max: number) =>

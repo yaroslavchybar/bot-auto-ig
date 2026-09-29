@@ -25,7 +25,7 @@ export async function watchStories(
   }
   const story = page.locator('a[href*="/stories/"]').first()
   if (!(await story.isVisible().catch(() => false))) {
-    log('Stories: no story tray found')
+    log({ event: 'automation.actions.stories.stories_story_tray_found', message: 'Stories: no story tray found' })
     return
   }
   await story.click()
@@ -42,5 +42,5 @@ export async function watchStories(
     await clickVisible(page, '[aria-label*="Next"], button:has-text("Next")')
   }
   await page.keyboard.press('Escape').catch(() => undefined)
-  log(`Stories: watched ${watched}`)
+  log({ event: 'automation.stories_result', watchedCount: watched })
 }

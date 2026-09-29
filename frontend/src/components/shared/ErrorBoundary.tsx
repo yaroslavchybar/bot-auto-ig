@@ -23,7 +23,6 @@ export class ErrorBoundary extends Component<Props, State> {
     Sentry.captureException(error, {
       contexts: { react: { componentStack: info.componentStack ?? undefined } },
     })
-    console.error('[ErrorBoundary] Caught error:', error, info.componentStack)
   }
 
   handleReload = () => {

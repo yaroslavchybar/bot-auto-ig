@@ -389,7 +389,7 @@ export class InstagramChat {
     const sent = message(result.payload);
     if (!sent.id) throw new Error('Instagram did not confirm the DM reply');
     void saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration)
-      .catch(err => logger.warn({ err, profileId: this.profile.id }, 'Could not persist Chat session after sent DM'));
+      .catch(err => logger.error({ event: 'chat.instagram.persist_chat_session_after_sent', error: err, profileId: this.profile.id, message: 'Could not persist Chat session after sent DM', outcome: 'error' }));
     return { ...sent, text, timestamp: sent.timestamp || Date.now(), clientContext: token };
   }
 
@@ -446,7 +446,7 @@ export class InstagramChat {
     const sent = message(result.payload);
     if (!sent.id) throw new Error('Instagram did not confirm the DM attachment');
     void saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration)
-      .catch(err => logger.warn({ err, profileId: this.profile.id }, 'Could not persist Chat session after sent attachment'));
+      .catch(err => logger.error({ event: 'chat.instagram.persist_chat_session_after_sent', error: err, profileId: this.profile.id, message: 'Could not persist Chat session after sent attachment', outcome: 'error' }));
     return { ...sent, kind: sent.kind === 'text' ? kind : sent.kind,
       mediaType: kind, timestamp: sent.timestamp || Date.now(), clientContext: token };
   }
@@ -473,6 +473,6 @@ export class InstagramChat {
       `direct_v2/threads/${threadId}/items/${itemId}/delete/`, { _uuid: this.ig.state.uuid });
     if (result.status !== 'ok') throw new Error('Instagram did not confirm the unsend');
     void saveSession(this.profile.id, this.ig, this.sessionToken, this.sessionGeneration)
-      .catch(err => logger.warn({ err, profileId: this.profile.id }, 'Could not persist Chat session after unsend'));
+      .catch(err => logger.error({ event: 'chat.instagram.persist_chat_session_after_unsend', error: err, profileId: this.profile.id, message: 'Could not persist Chat session after unsend', outcome: 'error' }));
   }
 }

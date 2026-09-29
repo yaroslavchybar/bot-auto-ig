@@ -1,6 +1,6 @@
 import '../env.js'
 import type { Request, Response, NextFunction } from 'express'
-import logger from '../shared/logger.js'
+import { addLogContext } from '../shared/logger.js'
 import {
     extractSessionToken,
     verifySessionUid,
@@ -15,7 +15,7 @@ export function isLocalAuthBypassEnabled(): boolean {
 
 const LOCAL_AUTH_BYPASS = isLocalAuthBypassEnabled()
 
-const bypassAuth = (_req: Request, _res: Response, next: NextFunction) => next()
+const bypassAuth = (_req: Request, _res: Response, next: NextFunction) => { addLogContext({ authMode: 'local' }); next() }
 
 function sessionAuth(req: Request, res: Response, next: NextFunction) {
     const uid = verifySessionUid(extractSessionToken(req))
@@ -24,6 +24,7 @@ function sessionAuth(req: Request, res: Response, next: NextFunction) {
         return
     }
     ;(req as any).telegramUid = uid
+    addLogContext({ authMode: 'session', userId: uid })
     next()
 }
 
@@ -33,17 +34,15 @@ export const requireApiAuth = LOCAL_AUTH_BYPASS ? bypassAuth : sessionAuth
 // Internal API key for server-to-server calls (from Convex actions)
 const INTERNAL_API_KEY = (process.env.INTERNAL_API_KEY || '').trim()
 
-logger.info({ configured: !!INTERNAL_API_KEY }, 'INTERNAL_API_KEY status')
-
 // Middleware that allows either an admin session OR the internal API key
 export function requireApiAuthOrInternalKey(req: Request, res: Response, next: NextFunction) {
-    if (LOCAL_AUTH_BYPASS) return next()
+    if (LOCAL_AUTH_BYPASS) return bypassAuth(req, res, next)
 
     const authHeader = req.headers.authorization || ''
 
     // Check for internal API key first
     if (INTERNAL_API_KEY && authHeader === `Bearer ${INTERNAL_API_KEY}`) {
-        logger.debug('Internal API key matched')
+        addLogContext({ authMode: 'internal' })
         return next()
     }
 

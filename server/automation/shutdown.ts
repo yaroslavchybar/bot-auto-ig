@@ -14,7 +14,7 @@ import type { WebSocketServer } from 'ws'
 import { automationWorkers, profileProcesses, clients } from '../shared/store.js'
 import { automationMutex } from '../shared/mutex.js'
 import { killProcess, requestChildStop, getTrackedProcesses, getPid, clearRegistry } from '../shared/ProcessService.js'
-import logger from '../shared/logger.js'
+import logger, { logOperation, addLogContext } from '../shared/logger.js'
 
 // ---------------------------------------------------------------------------
 // Shutdown orchestration
@@ -38,23 +38,23 @@ export function registerShutdownHandlers(deps: ShutdownDeps): void {
     if (shutdownInProgress) return
     shutdownInProgress = true
 
-    logger.info({ signal }, 'Shutdown signal received, starting graceful shutdown')
+    await logOperation('server.shutdown', { signal, trackedProcessCount: getTrackedProcesses().size }, async () => {
 
-    // 1. Stop accepting new connections BEFORE acquiring the mutex.
-    //    This prevents new requests from arriving while we wait for
-    //    the mutex (which may be held by an in-flight start/stop op).
-    stopAcceptingConnections(deps.httpServer)
-    closeWebSocketConnections(deps.wss)
+      // 1. Stop accepting new connections BEFORE acquiring the mutex.
+      //    This prevents new requests from arriving while we wait for
+      //    the mutex (which may be held by an in-flight start/stop op).
+      stopAcceptingConnections(deps.httpServer)
+      closeWebSocketConnections(deps.wss)
 
-    // 2. Acquire mutex to prevent race conditions with in-flight operations
-    const release = await automationMutex.acquire()
-    try {
-      await performCleanup()
-    } finally {
-      release()
-    }
+      // 2. Acquire mutex to prevent race conditions with in-flight operations
+      const release = await automationMutex.acquire()
+      try {
+        await performCleanup()
+      } finally {
+        release()
+      }
 
-    logger.info('Graceful shutdown complete')
+    })
     process.exit(0)
   }
 
@@ -76,10 +76,10 @@ async function performCleanup(): Promise<void> {
 function stopAcceptingConnections(httpServer: Server): void {
   httpServer.close((err) => {
     if (err) {
-      logger.error({ err }, 'Error closing HTTP server')
+      logger.error({ event: 'automation.shutdown.closing_http_server', error: err, message: 'Error closing HTTP server', outcome: 'error' })
     }
   })
-  logger.info('Stopped accepting new connections')
+  addLogContext({ acceptingConnections: false })
 }
 
 /** Close all connected WebSocket clients and the WSS server. */
@@ -97,10 +97,10 @@ function closeWebSocketConnections(wss: WebSocketServer): void {
 
   wss.close((err) => {
     if (err) {
-      logger.error({ err }, 'Error closing WebSocket server')
+      logger.error({ event: 'automation.shutdown.closing_websocket_server', error: err, message: 'Error closing WebSocket server', outcome: 'error' })
     }
   })
-  logger.info({ count: closed }, 'Closed WebSocket connections')
+  addLogContext({ closedSocketCount: closed })
 }
 
 /**
@@ -120,7 +120,7 @@ async function killAllChildProcesses(): Promise<void> {
 
   for (const proc of tracked) {
     const pid = getPid(proc)
-    logger.info({ pid }, 'Stopping tracked child process')
+    logger.info({ event: 'automation.shutdown.stopping_tracked_child_process', pid, message: 'Stopping tracked child process' })
     killPromises.push(
       (async () => {
         if (await requestChildStop(proc, 10_000)) return
@@ -129,7 +129,10 @@ async function killAllChildProcesses(): Promise<void> {
     )
   }
 
-  await Promise.allSettled(killPromises)
-  logger.info({ count: tracked.size }, 'All child processes killed')
+  const results = await Promise.allSettled(killPromises)
+  const failures = results.filter(result => result.status === 'rejected')
+  addLogContext({ stoppedProcessCount: results.length - failures.length, failedProcessCount: failures.length })
+  for (const result of failures) if (result.status === 'rejected')
+    logger.error({ event: 'process.shutdown_failure', error: result.reason })
   clearRegistry()
 }

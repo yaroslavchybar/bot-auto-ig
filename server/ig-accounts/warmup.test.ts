@@ -80,7 +80,7 @@ test('model setup advances only after a browser session and keeps the day 3 and 
     mock.module('./server/automation/actions/publish.ts', () => ({
       publishFeedPost: async (_page, image, log) => {
         events.push('session-post:' + image.name)
-        if (publishMode === 'unknown') log('Post publish failed: share did not confirm')
+        if (publishMode === 'unknown') log({ event: 'automation.post_unconfirmed', message: 'Post publish failed: share did not confirm' })
         return publishMode === 'ok'
       },
     }))

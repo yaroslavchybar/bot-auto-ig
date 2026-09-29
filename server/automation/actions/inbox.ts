@@ -17,7 +17,7 @@ export async function openDMs(page: Page, log: ActionLogger, session = new Brows
       .catch(() => undefined)
     await sleep(random(1500, 2500))
     if (!/\/direct\/inbox\/?/.test(page.url())) return false
-    log('Checking messages')
+    log({ event: 'automation.actions.inbox.checking_messages', message: 'Checking messages' })
     const looks = Math.round(random(1, 3))
     for (let i = 0; i < looks; i++) {
       await smoothScroll(page, random(200, 400), session)
