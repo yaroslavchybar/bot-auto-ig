@@ -1,4 +1,4 @@
-import { expect, test, vi, afterEach } from 'vitest'
+import { expect, test, vi, afterEach } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedProfile } from './helpers'
 

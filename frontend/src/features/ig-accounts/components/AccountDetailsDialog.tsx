@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNow } from '@/hooks/use-now'
 import {
   Check,
   CircleAlert,
@@ -160,6 +161,7 @@ function WarmupStages({
   credential: Credential
   progress: WarmupProgress | null
 }) {
+  const now = useNow()
   if (!credential.profileId) {
     return (
       <p className="text-subtle-copy py-4 text-center text-sm">
@@ -178,7 +180,7 @@ function WarmupStages({
     )
   }
 
-  const day = dayNumber(progress.startedAt, Date.now())
+  const day = dayNumber(progress.startedAt, now)
   const connected = credential.status === 'connected'
   const posts = progress.postSourceIds.length
   const fullNameSkipped =
@@ -325,13 +327,17 @@ function WarmupStages({
   )
 }
 
-export function AccountDetailsDialog({
-  account,
-  onClose,
-}: {
+type AccountDetailsDialogProps = {
   account: Account | null
   onClose: () => void
-}) {
+}
+
+export function AccountDetailsDialog(props: AccountDetailsDialogProps) {
+  const key = props.account ? `${props.account.id}:${props.account.profileId ?? ''}` : 'closed'
+  return <AccountDetailsContent key={key} {...props} />
+}
+
+function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) {
   const [credential, setCredential] = useState<Credential | null>(null)
   const [progress, setProgress] = useState<WarmupProgress | null | undefined>(
     undefined,
@@ -340,18 +346,8 @@ export function AccountDetailsDialog({
   const [warmupError, setWarmupError] = useState('')
 
   useEffect(() => {
-    if (!account) {
-      setCredential(null)
-      setProgress(undefined)
-      setError('')
-      setWarmupError('')
-      return
-    }
+    if (!account) return
     const controller = new AbortController()
-    setCredential(null)
-    setProgress(undefined)
-    setError('')
-    setWarmupError('')
     void (async () => {
       try {
         const row = await apiFetch<Credential>(

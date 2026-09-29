@@ -10,7 +10,7 @@ const LOCKS_DIR = path.join(DATA_DIR, 'profile-locks')
 
 export function validateProfileName(name: string): void {
   if (!name || name !== name.trim() || name === '.' || name === '..' ||
-      /[\\/\x00<>:"|?*]/.test(name) || /[. ]$/.test(name) ||
+      name.includes('\0') || /[\\/<>:"|?*]/.test(name) || /[. ]$/.test(name) ||
       /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name)) {
     throw new ValidationError('Invalid profile name')
   }

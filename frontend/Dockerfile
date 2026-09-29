@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.7
-FROM oven/bun:1.4.2-slim AS frontend-build
+FROM node:24.21.0-bookworm-slim AS frontend-build
+
+COPY --from=oven/bun:1.4.2-slim /usr/local/bin/bun /usr/local/bin/bun
 
 WORKDIR /app
 
@@ -17,6 +19,8 @@ COPY . ./frontend/
 COPY --from=convex_src . /app/convex/
 # convex/tsconfig.json extends this config when Vite bundles shared modules.
 COPY --from=repo_root tsconfig.json ./tsconfig.json
+COPY --from=repo_root vite.config.ts ./vite.config.ts
+COPY --from=repo_root .node-version ./.node-version
 # Frontend typechecks shared wire types from the server package
 # (frontend/src/hooks/useWebSocket.ts, frontend/src/features/automations/activities/types.ts).
 # Both are `import type`, erased from the bundle. Keep this in sync if the

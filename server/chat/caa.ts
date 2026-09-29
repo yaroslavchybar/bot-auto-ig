@@ -468,7 +468,7 @@ export async function loginWithCaa(ig: IgApiClient, username: string, password: 
       password: `#PWD_INSTAGRAM:4:${encrypted.time}:${encrypted.encrypted}`,
       sso_token_map_json_string: '', block_store_machine_id: '', ig_vetted_device_nonces: null,
       cloud_trust_token: null, event_flow: 'login_manual',
-      password_contains_non_ascii: String(!/^[\x00-\x7f]*$/.test(password)).toLowerCase(),
+      password_contains_non_ascii: String(/[^\p{ASCII}]/u.test(password)).toLowerCase(),
       client_known_key_hash: '', sso_accounts_auth_data: [], encrypted_msisdn: '',
       has_granted_read_phone_permissions: 0, app_manager_id: '',
       should_show_nested_nta_from_aymh: 0, device_id: ig.state.deviceId,

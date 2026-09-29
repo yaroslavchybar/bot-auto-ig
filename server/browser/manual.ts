@@ -1,4 +1,4 @@
-import logger, { logOperation, addLogContext } from '../shared/logger.js'
+import { logOperation, addLogContext } from '../shared/logger.js'
 import { openBrowserSession } from './cloak.js'
 import { requestStop, releaseStdin, shouldStop } from './lifecycle.js'
 import { captureConsole } from '../logs/console.js'

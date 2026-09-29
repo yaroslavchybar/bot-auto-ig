@@ -132,7 +132,8 @@ export function parseManifest(raw: string | null, multiple: boolean): Array<{ na
   if (!Array.isArray(files) || !files.length || files.length > 20 || (!multiple && files.length > 1)) throw new Error('Invalid file count')
   let total = 0
   for (const file of files) {
-    if (!file || typeof file.name !== 'string' || !file.name || file.name.length > 255 || /[\\/\x00-\x1f]/.test(file.name)
+    if (!file || typeof file.name !== 'string' || !file.name || file.name.length > 255 || /[\\/]/.test(file.name)
+      || [...file.name].some(character => character.charCodeAt(0) <= 0x1f)
       || typeof file.type !== 'string' || file.type.length > 255 || !Number.isSafeInteger(file.size) || file.size < 0) throw new Error('Invalid file metadata')
     total += file.size
   }

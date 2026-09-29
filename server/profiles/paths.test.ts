@@ -81,7 +81,7 @@ test('profile locks reject device names and keep independent profiles independen
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     const { lockProfile, validateProfileName } = await import('./server/profiles/paths.ts')
     try {
-      for (const name of ['CON', 'con.txt', 'PRN', 'AUX.json', 'NUL', 'COM1', 'com9.txt', 'LPT1', 'lpt9.log']) {
+      for (const name of ['CON', 'con.txt', 'PRN', 'AUX.json', 'NUL', 'COM1', 'com9.txt', 'LPT1', 'lpt9.log', 'profile' + String.fromCharCode(0)]) {
         assert.throws(() => validateProfileName(name), /Invalid profile name/)
         assert.throws(() => lockProfile(name), /Invalid profile name/)
       }

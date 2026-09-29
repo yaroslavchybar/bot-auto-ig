@@ -60,5 +60,5 @@ export function getDefaultStartConfig(): Record<string, unknown> {
 export function normalizeStartConfig(
   config: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> {
-  return { ...getDefaultStartConfig(), ...(config ?? {}) }
+  return { ...getDefaultStartConfig(), ...config }
 }

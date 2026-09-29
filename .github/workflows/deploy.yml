@@ -37,12 +37,18 @@ jobs:
       INTERNAL_API_KEY: ci-test-key
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
+      - run: bun run lint
       - run: bun test server
       - run: bun run test:convex
+      - run: bun run --filter frontend test:ui
       - run: bun run build
       - run: bun run typecheck
+      - run: bun run --filter frontend build
       - name: Validate log pipeline
         run: |
           mkdir -p "$RUNNER_TEMP/vector-secrets"

@@ -107,6 +107,7 @@ export function ChatPage() {
                 />
               ) : (
                 <ConversationView
+                  key={`${chat.activeProfileId}:${chat.selectedThreadId}`}
                   conversation={chat.conversation}
                   selectedThread={chat.selectedThread}
                   selectedThreadId={chat.selectedThreadId}

@@ -1,6 +1,6 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vite-plus'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
@@ -21,16 +21,13 @@ function getPackageName(id: string): string | null {
   return name || null
 }
 
-function getManualChunk(id: string): string | undefined {
+function getVendorChunk(id: string): string | undefined {
   const packageName = getPackageName(id)
 
   if (!packageName) return undefined
   if (packageName === '@novnc/novnc') return 'vnc'
   if (packageName === 'convex') return 'convex'
-  if (
-    packageName.startsWith('@radix-ui/') ||
-    packageName.startsWith('@floating-ui/')
-  )
+  if (packageName.startsWith('@radix-ui/') || packageName.startsWith('@floating-ui/'))
     return 'radix'
   if (
     packageName.startsWith('@codemirror/') ||
@@ -65,11 +62,25 @@ export default defineConfig({
   envDir: path.resolve(rootDir, '..'),
   envPrefix: ['VITE_', 'DISABLE_AUTH'],
   plugins: [tailwindcss(), react()],
+  test: {
+    environment: 'happy-dom',
+    include: ['../tests/ui/**/*.test.tsx'],
+    restoreMocks: true,
+    clearMocks: true,
+  },
   build: {
     outDir: 'dist',
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: getManualChunk,
+        codeSplitting: {
+          groups: [
+            {
+              debugName: 'vendor-packages',
+              name: (id) => getVendorChunk(id) ?? 'vendor',
+              test: (id) => getVendorChunk(id) !== undefined,
+            },
+          ],
+        },
       },
     },
   },

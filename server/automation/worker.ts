@@ -23,7 +23,7 @@ import {
   type RuntimeWarmup,
   type RuntimeProgress,
 } from '../shared/convexRealtime.js'
-import { runWarmup, warmupReady } from './warmup.js'
+import { warmupReady } from './warmup.js'
 import { runRoutineSession } from './routine.js'
 import { postModelUpdateInSession } from '../ig-accounts/warmup.js'
 import { routineReady, routineRecordSession } from '../shared/convexClient.js'
@@ -440,7 +440,7 @@ export async function runAutomation(
     Array.isArray(automation.edges) ? automation.edges : []
   ) as AutomationEdge[]
   const nodeStates: AnyRecord = {
-    ...(automation.nodeStates || {}),
+    ...automation.nodeStates,
   }
   const aggregateStates = nodeStates
   const automationId = String(input.automationId || 'automation')

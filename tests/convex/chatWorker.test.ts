@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vite-plus/test'
 
 const mocks = vi.hoisted(() => ({ profilesGetById: vi.fn(), cachedInbox: vi.fn(), warn: vi.fn(), watch: vi.fn(), unsubscribe: vi.fn() }))
 vi.mock('../../server/shared/convexClient.js', () => ({ profilesGetById: mocks.profilesGetById }))

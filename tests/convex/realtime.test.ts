@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedList, seedAutomation } from './helpers'

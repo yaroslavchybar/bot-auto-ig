@@ -156,6 +156,10 @@ test('a sent DM stays successful when Chat refresh fails', () => {
       assert.equal((await reactWithContext('')).status, 200)
       assert.equal((await reactWithContext('17803451234567890')).status, 200)
       assert.deepEqual(reactedContexts, [undefined, undefined, '17803451234567890'])
+      for (const code of [0, 1, 0x1f, 0x7f]) {
+        assert.equal((await reactWithContext('context' + String.fromCharCode(code))).status, 400)
+      }
+      assert.equal((await reactWithContext('a'.repeat(257))).status, 400)
       const unreact = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/reaction', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ messageId: '12345', kind: 'text', emoji: '❤️', remove: true }),

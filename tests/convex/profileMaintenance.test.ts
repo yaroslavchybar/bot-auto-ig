@@ -1,11 +1,11 @@
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedList, seedProfile } from './helpers'
 
 test('create and rename reject Windows device names, including extensions', async () => {
   const t = createConvexTest()
   const profile = (await seedProfile(t, { name: 'Valid' }))!
-  for (const name of ['CON', 'con.txt', 'PRN', 'AUX.json', 'NUL', 'COM1', 'com9.txt', 'LPT1', 'lpt9.log']) {
+  for (const name of ['CON', 'con.txt', 'PRN', 'AUX.json', 'NUL', 'COM1', 'com9.txt', 'LPT1', 'lpt9.log', 'profile' + String.fromCharCode(0)]) {
     await expect(t.mutation(api.profiles.mutations.create, { name })).rejects.toThrow(/Invalid profile name/)
     await expect(t.mutation(api.profiles.mutations.updateById, { profileId: profile._id, name })).rejects.toThrow(/Invalid profile name/)
   }

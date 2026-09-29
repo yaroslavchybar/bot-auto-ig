@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "packageManager": "bun@1.4.2",
+  "engines": {
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
+  },
   "workspaces": [
     "frontend",
     "server"
@@ -13,9 +16,11 @@
     "dev": "concurrently -n server,frontend,convex -c green,magenta,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bunx convex dev\"",
     "dev:server": "bun run --filter anti-server dev",
     "start": "bun run --filter anti-server start",
-    "test:convex": "bunx vitest run --config vitest.convex.config.ts",
+    "test:convex": "vp test run",
     "typecheck": "bun run --filter anti-server typecheck && bun run --filter frontend typecheck && tsc -p convex/tsconfig.json --noEmit && tsc -p tools/spoofer/tsconfig.json --noEmit",
-    "lint": "bun run --filter frontend lint"
+    "lint": "vp lint .",
+    "format": "vp fmt .",
+    "format:check": "vp fmt --check ."
   },
   "dependencies": {
     "convex": "^1.46.0"
@@ -24,9 +29,13 @@
     "@types/node": "^24.10.1",
     "concurrently": "^10.0.5",
     "convex-test": "^0.0.59",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "vitest": "^4.0.18",
-    "@typescript/native": "npm:typescript@7.0.2"
+    "typescript": "7.0.2",
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
+    "vite-plus": "1.0.0"
+  },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.0.0",
+    "vitest": "5.0.1"
   },
   "keywords": [],
   "author": "",

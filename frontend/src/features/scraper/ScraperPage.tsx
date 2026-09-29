@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useNow } from '@/hooks/use-now'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import { toast } from 'sonner'
 import { Inbox, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck, X } from 'lucide-react'
@@ -554,6 +555,7 @@ function JobsEmptyState() {
 /* ── Scraping accounts view ── */
 
 function AccountsView() {
+  const now = useNow()
   const f = useFilters()
   const accounts = useQuery(api.scraper.accounts, {})
   const mobile = useIsMobile()
@@ -588,7 +590,7 @@ function AccountsView() {
       ) : mobile ? (
         <div className="space-y-3">
           {filtered.map((account) => (
-            <AccountCard key={account.id} account={account} />
+            <AccountCard key={account.id} account={account} now={now} />
           ))}
         </div>
       ) : (
@@ -604,7 +606,7 @@ function AccountsView() {
             </TableHeader>
             <TableBody>
               {filtered.map((account) => (
-                <AccountDesktopRow key={account.id} account={account} />
+                <AccountDesktopRow key={account.id} account={account} now={now} />
               ))}
             </TableBody>
           </Table>
@@ -614,9 +616,9 @@ function AccountsView() {
   )
 }
 
-function accountStatus(account: Account) {
+function accountStatus(account: Account, now: number) {
   if (!account.ready) return { label: 'Needs session', className: 'bg-panel-muted text-copy border-line', dot: 'bg-subtle-copy' }
-  if (account.cooldownUntil && account.cooldownUntil > Date.now())
+  if (account.cooldownUntil && account.cooldownUntil > now)
     return { label: 'Cooling down', className: 'bg-status-danger-soft text-status-danger border-status-danger-border', dot: 'status-dot-danger' }
   return { label: 'Ready', className: 'bg-status-success-soft text-status-success border-status-success-border', dot: 'status-dot-success-tight' }
 }
@@ -713,15 +715,15 @@ function DailyLimitEditor({ account, compact }: { account: Account; compact?: bo
   )
 }
 
-function AccountDesktopRow({ account }: { account: Account }) {
-  const status = accountStatus(account)
+function AccountDesktopRow({ account, now }: { account: Account; now: number }) {
+  const status = accountStatus(account, now)
   return (
     <TableRow className="border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle">
       <TableCell className="pl-4 font-medium">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="text-ink truncate">{account.name}</span>
           {!account.ready && <span className="text-subtle-copy text-xs font-normal">Open profile to capture session</span>}
-          {account.ready && account.cooldownUntil && account.cooldownUntil > Date.now() && (
+          {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
             <span className="text-status-danger text-xs font-normal">
               Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
             </span>
@@ -744,8 +746,8 @@ function AccountDesktopRow({ account }: { account: Account }) {
   )
 }
 
-function AccountCard({ account }: { account: Account }) {
-  const status = accountStatus(account)
+function AccountCard({ account, now }: { account: Account; now: number }) {
+  const status = accountStatus(account, now)
   return (
     <div className="bg-panel-strong border-line rounded-2xl border p-4 shadow-xs">
       <div className="flex items-start justify-between gap-3">
@@ -758,7 +760,7 @@ function AccountCard({ account }: { account: Account }) {
           {status.label}
         </span>
       </div>
-      {account.ready && account.cooldownUntil && account.cooldownUntil > Date.now() && (
+      {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
         <p className="text-status-danger mt-2 text-xs">
           Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
         </p>
@@ -777,7 +779,12 @@ function AccountCard({ account }: { account: Account }) {
 
 function SavedView() {
   const f = useFilters()
-  const [visibleCount, setVisibleCount] = useState(100)
+  const filterKey = JSON.stringify([f.savedList, f.savedType, f.savedQuery])
+  const [pagination, setPagination] = useState({ key: filterKey, count: 100 })
+  if (pagination.key !== filterKey) {
+    setPagination({ key: filterKey, count: 100 })
+  }
+  const visibleCount = pagination.key === filterKey ? pagination.count : 100
   const {
     results: leads,
     status: pageStatus,
@@ -787,10 +794,6 @@ function SavedView() {
     classification: f.savedType === 'all' ? undefined : f.savedType as 'male' | 'female' | 'business',
     search: f.savedQuery.trim() || undefined,
   }, { initialNumItems: 100 })
-
-  useEffect(() => {
-    setVisibleCount(100)
-  }, [f.savedList, f.savedType, f.savedQuery])
 
   useEffect(() => {
     if (pageStatus === 'CanLoadMore' && leads.length < visibleCount) loadMore(100)
@@ -807,7 +810,7 @@ function SavedView() {
         hasActiveFilter={!!f.savedQuery || f.savedList !== 'all' || f.savedType !== 'all'}
       />
       {hasMore && (
-        <Button variant="outline" disabled={fillingPage} onClick={() => setVisibleCount(count => count + 100)}>
+        <Button variant="outline" disabled={fillingPage} onClick={() => setPagination({ key: filterKey, count: visibleCount + 100 })}>
           {fillingPage ? 'Loading accounts...' : 'Load more accounts'}
         </Button>
       )}
@@ -951,12 +954,14 @@ function LeadListCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (open) {
       setName('')
       setBusy(false)
     }
-  }, [open])
+  }
 
   const submit = async () => {
     const trimmed = name.trim()
@@ -1013,15 +1018,17 @@ function LeadListRenameDialog({
   list: LeadList | null
   onOpenChange: (open: boolean) => void
 }) {
-  const [name, setName] = useState('')
+  const [name, setName] = useState(list?.name ?? '')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const [previousList, setPreviousList] = useState(list)
+  if (list !== previousList) {
+    setPreviousList(list)
     if (list) {
       setName(list.name)
       setBusy(false)
     }
-  }, [list])
+  }
 
   const submit = async () => {
     const trimmed = name.trim()
@@ -1118,34 +1125,33 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
   const [targetList, setTargetList] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const [wasOpen, setWasOpen] = useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
     if (open) {
       setLinks('')
       setDays('90')
       setPostLimit('10')
       setBusy(false)
     }
-  }, [open ])
+  }
 
-  useEffect(() => {
-    if (open && lists && !lists.some((list) => list._id === targetList)) {
-      setTargetList(lists[0]?._id ?? '')
-    }
-  }, [open, targetList, lists])
+  const selectedTargetList = lists?.some((list) => list._id === targetList)
+    ? targetList : lists?.[0]?._id ?? ''
 
   const daysValue = Number(days)
   const validDays = Number.isSafeInteger(daysValue) && daysValue >= 1 && daysValue <= 3650
   const postLimitValue = Number(postLimit)
   const validPostLimit = Number.isSafeInteger(postLimitValue) && postLimitValue >= 1 && postLimitValue <= 5000
   const parsedCount = splitLinks(links).length
-  const canSubmit = !busy && parsedCount > 0 && !!lists?.some((list) => list._id === targetList) && validDays && validPostLimit
+  const canSubmit = !busy && parsedCount > 0 && !!selectedTargetList && validDays && validPostLimit
 
   const addSources = async () => {
     setBusy(true)
     try {
       const result = await createJobs({
         links: splitLinks(links),
-        listId: targetList as Id<'leadLists'>,
+        listId: selectedTargetList as Id<'leadLists'>,
         lookbackDays: daysValue,
         postLimit: postLimitValue,
       })
@@ -1218,7 +1224,7 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
 
           <div className="grid gap-2">
             <Label>Target lead list</Label>
-            <Select value={targetList} onValueChange={setTargetList}>
+            <Select value={selectedTargetList} onValueChange={setTargetList}>
               <SelectTrigger className="bg-field border-line w-full">
                 <SelectValue placeholder="Choose a list" />
               </SelectTrigger>

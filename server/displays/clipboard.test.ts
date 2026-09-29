@@ -14,7 +14,7 @@ function buildApp() {
   app.use(express.json())
   app.use('/', clipboardRouter)
   // Same translation as the global error middleware in index.ts.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // oxlint-disable-next-line no-unused-vars
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     if (err instanceof AppError) {
       res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } })

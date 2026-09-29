@@ -147,6 +147,8 @@ dmypy.json
 
 node_modules/
 *.tsbuildinfo
+.vite/
+.vitest/
 
 # Bun is the package manager; never commit npm lockfiles.
 package-lock.json
@@ -192,6 +194,7 @@ artifacts/
 design/
 tests/*
 !tests/convex/
+!tests/ui/
 !python/tests/
 python/tests/*
 !python/tests/test_display_manager.py

@@ -12,7 +12,7 @@ Instagram automation platform: React frontend, Express orchestration
 server, CloakBrowser stealth Chromium automation, Convex shared data layer. Package manager and server runtime: Bun
 (`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
-- `frontend/`: React + Vite app.
+- `frontend/`: React + Vite+ app.
   Feature-owned UI under `src/features/` (`profiles`, `lists`, `automations`,
   `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
@@ -135,27 +135,48 @@ deleted: missing database rows alone are not treated as permission to wipe data.
 
 ## Commands
 
-Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`, `lint`.
-Workspaces: `bun run --filter frontend dev|build|start|lint|preview|typecheck`,
-`bun run --filter anti-server dev|build|start|typecheck`.
+Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`,
+`lint`, `format`, `format:check`.
+Workspaces: `bun run --filter frontend dev|build|lint|preview|typecheck|format|format:check`,
+`bun run --filter anti-server dev|build|start|typecheck|lint`.
+React regression checks: `bun run --filter frontend test:ui` (Vitest + Happy DOM).
 Server: `bun run --filter anti-server build`. Docker: `docker compose up --build`
 (services below); Convex: `bunx convex dev|deploy`.
 
-### TypeScript and ESLint
+### TypeScript and Vite+
 
-All builds and typechecks use TypeScript **7.0.2**, pinned as
-`@typescript/native` (an npm alias for `typescript`). `bun run typecheck`
-checks the server, frontend, and Convex. Convex CLI also finds this compiler.
+All builds and typechecks use the standard `typescript` package, pinned to
+**7.0.2** in all three manifests. There are no TypeScript 6 or compiler aliases.
+`bun run typecheck` checks the server, frontend, Convex, and spoofer scripts.
+Convex CLI also finds this compiler. Workspace settings point the TypeScript
+extension at `node_modules/typescript`.
 
-The `typescript` dependency aliases `@typescript/typescript6@6.0.2` because
-ESLint needs its JavaScript compiler API. It supplies `tsc6`, so it does not
-compete with TypeScript 7's `tsc`. Keep both aliases aligned in all three
-package manifests. This follows [Microsoft's setup guide](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/).
+Use Node **24.21.0** from `.node-version` for the tooling; Bun **1.4.2** remains
+the package manager and server runtime. Run `bun install --frozen-lockfile`.
+The frontend uses Vite+ **1.0.0**, including Vite, Rolldown, and Oxc. Its bundled
+Vitest **5.0.1** runs `bun run test:convex`; server and frontend utility tests
+still run with `bun test server` and `bun test frontend`.
+UI regression tests live in `tests/ui/`, separately from the Bun utility
+tests so the two runners never execute each other's suites.
 
-`bun run lint` runs the existing frontend ESLint rules; server and Convex
-currently use typechecks only. Install the recommended VS Code extensions
-when prompted. Workspace settings select TypeScript 7 and the frontend
-ESLint working directory. See the [TypeScript extension setup](https://marketplace.visualstudio.com/items?itemName=TypeScriptTeam.native-preview).
+`bun run lint` runs Oxlint across the app, tests, and tooling, excluding generated
+Convex files and build outputs. Root `vite.config.ts` holds shared lint, format,
+and Convex test settings; `frontend/vite.config.ts` holds application build settings.
+Frontend checks retain error-level core and TypeScript rules plus rules-of-hooks.
+React compiler diagnostics remain errors; effect-driven resets, render-time
+clock reads, and component identity issues found during migration are fixed.
+Oxlint does not implement the old React compiler `config`
+and `gating` rules; this app does not configure React Compiler or its gating.
+
+`bun run format` and `bun run format:check` use Oxfmt, preserving single quotes,
+no semicolons, and Tailwind class sorting against `frontend/src/index.css`.
+Formatting the whole repository is opt-in; this migration does not reformat
+existing application code. Install the recommended TypeScript and Oxc VS Code
+extensions. ESLint and Prettier are no longer direct development dependencies;
+Convex still brings its own internal Prettier dependency.
+
+Tool versions are pinned as a compatible Vite+ bundle, not independently
+overridden. See the [Vite+ migration rules](https://viteplus.dev/guide/migrate-rules).
 
 ## Local Ports & Docker
 
@@ -167,7 +188,8 @@ the server. Both Compose configurations allow 90 seconds before Docker forces
 the container to exit. These are maximum waits; clean shutdowns finish sooner.
 
 `frontend` 5173, `server` 3001, VNC 6080 + 6081–6130.
-Images: `oven/bun:1.4.2-*` for server/frontend. Production frontend builds require `VITE_API_URL`,
+Images: `oven/bun:1.4.2-*` for the server; `node:24.21.0-bookworm-slim` with Bun
+for the frontend build and `nginx:alpine` for its runtime. Production frontend builds require `VITE_API_URL`,
 `VITE_CONVEX_URL` as build args.
 
 ## Authentication

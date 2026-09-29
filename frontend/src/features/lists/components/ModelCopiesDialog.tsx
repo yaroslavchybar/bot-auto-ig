@@ -28,17 +28,23 @@ function CopyThumb({ modelId, item, name }: { modelId: string; item: ModelConten
   return <img src={url} alt={name} loading="lazy" className="aspect-square w-full rounded-lg object-cover" />
 }
 
-export function ModelCopiesDialog({ modelId, item, onClose }: {
+type ModelCopiesDialogProps = {
   modelId: string
   item: ModelContentItem | null
   onClose: () => void
-}) {
+}
+
+export function ModelCopiesDialog(props: ModelCopiesDialogProps) {
+  const key = props.item ? `${props.modelId}:${props.item.kind}:${props.item.id}` : 'closed'
+  return <ModelCopiesContent key={key} {...props} />
+}
+
+function ModelCopiesContent({ modelId, item, onClose }: ModelCopiesDialogProps) {
   const [copies, setCopies] = useState<string[] | null>(null)
 
   useEffect(() => {
     if (!item) return
     const controller = new AbortController()
-    setCopies(null)
     void apiFetch<string[]>(
       `/api/ig-accounts/models/${encodeURIComponent(modelId)}/content/${item.kind}/${encodeURIComponent(item.id)}/copies`,
       { signal: controller.signal },

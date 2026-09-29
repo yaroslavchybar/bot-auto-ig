@@ -1,4 +1,4 @@
-import { expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vite-plus/test'
 import { createConvexTest } from './helpers'
 
 test('Convex HTTP logs one event per request, propagates IDs and omits sensitive payloads', async () => {

@@ -13,7 +13,7 @@ function fingerprintPlatform(value: unknown): 'windows' | 'macos' {
 }
 
 async function assertProfileNameAvailable(ctx: any, name: string, exceptId?: string) {
-	if (!name || name === '.' || name === '..' || /[\\/\x00<>:"|?*]/.test(name) || /[. ]$/.test(name) ||
+	if (!name || name === '.' || name === '..' || name.includes('\0') || /[\\/<>:"|?*]/.test(name) || /[. ]$/.test(name) ||
 		/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(name))
 		throw new DomainError('VALIDATION', 'Invalid profile name');
 	const rows = await ctx.db.query('profiles').collect();

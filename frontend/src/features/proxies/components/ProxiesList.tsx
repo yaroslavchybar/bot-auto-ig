@@ -16,6 +16,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useNow } from '@/hooks/use-now'
 import { Globe, MoreHorizontal, Pencil, RefreshCw, Trash2 } from 'lucide-react'
 import type { ProxyItem } from '../types'
 import type { ProxyUsage } from '../utils/proxyUsage'
@@ -85,8 +86,9 @@ function ProxyPurposeBadge({ purpose }: { purpose: ProxyItem['purpose'] }) {
 }
 
 function ProxyUsageCell({ proxy, usage }: { proxy: ProxyItem; usage: ProxyUsage }) {
+  const now = useNow()
   if (proxy.purpose === 'login') return <span className="text-subtle-copy text-xs">
-    {proxy.loginCooldownUntil && proxy.loginCooldownUntil > Date.now()
+    {proxy.loginCooldownUntil && proxy.loginCooldownUntil > now
       ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}` : 'Ready for login'}
   </span>
   const over = usage.count > proxy.maxProfiles
@@ -123,6 +125,7 @@ function ProxyMobileCard({
   onEdit: (proxy: ProxyItem) => void
   onDelete: (proxy: ProxyItem) => void
 }) {
+  const now = useNow()
   return (
     <div
       className={cn(
@@ -142,7 +145,7 @@ function ProxyMobileCard({
           </p>
           {proxy.country && <p className="text-subtle-copy mt-1 text-xs">{proxy.country.toUpperCase()}</p>}
           {proxy.purpose === 'login' && <p className="text-subtle-copy mt-1 text-xs">
-            {proxy.loginCooldownUntil && proxy.loginCooldownUntil > Date.now()
+            {proxy.loginCooldownUntil && proxy.loginCooldownUntil > now
               ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}` : 'Ready for login'}
           </p>}
           {proxy.purpose === 'work' && <p className="text-subtle-copy mt-1 text-xs">

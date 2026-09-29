@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey } from '../../convex/routinePolicy';
 import { createConvexTest, seedList, seedProfile } from './helpers';

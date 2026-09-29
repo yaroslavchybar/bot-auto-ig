@@ -2,19 +2,23 @@ import { useEffect, useState } from 'react'
 import { apiFetchBlob } from '@/lib/api'
 import type { ModelContentItem } from '../types'
 
-export function ModelImage({ modelId, item, className }: {
+type ModelImageProps = {
   modelId: string
   item: ModelContentItem
   className?: string
-}) {
+}
+
+export function ModelImage(props: ModelImageProps) {
+  return <ModelImageContent key={`${props.modelId}:${props.item.kind}:${props.item.id}`} {...props} />
+}
+
+function ModelImageContent({ modelId, item, className }: ModelImageProps) {
   const [url, setUrl] = useState('')
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
     let objectUrl = ''
-    setUrl('')
-    setFailed(false)
     void apiFetchBlob(
       `/api/ig-accounts/models/${encodeURIComponent(modelId)}/content/${item.kind}/${encodeURIComponent(item.id)}/image`,
       { signal: controller.signal },

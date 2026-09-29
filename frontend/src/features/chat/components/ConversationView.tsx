@@ -112,7 +112,6 @@ export function ConversationView({
   // Open each thread at its latest message.
   useLayoutEffect(() => {
     stickToBottomRef.current = true
-    setStickToBottom(true)
     prependRef.current = null
     loadingMoreRef.current = false
     scrollToLatest()
@@ -511,7 +510,6 @@ function AttachmentBadge({
 }) {
   const label = attachmentLabel(message.mediaType ?? message.kind)
   if (!label || message.text) return null
-  const Icon = kindIcon(message.mediaType ?? message.kind)
   return (
     <span
       className={cn(
@@ -519,7 +517,7 @@ function AttachmentBadge({
         own ? 'opacity-90' : 'text-muted-copy',
       )}
     >
-      <Icon className="size-3.5" /> {label}
+      {kindIcon(message.mediaType ?? message.kind)} {label}
     </span>
   )
 }
@@ -558,24 +556,24 @@ function kindIcon(kind: string) {
     normalized.includes('clip') ||
     normalized.includes('reel')
   )
-    return Video
-  if (normalized.includes('voice') || normalized.includes('audio')) return Mic
+    return <Video className="size-3.5" />
+  if (normalized.includes('voice') || normalized.includes('audio')) return <Mic className="size-3.5" />
   if (
     normalized.includes('like') ||
     normalized.includes('reaction') ||
     normalized.includes('heart')
   )
-    return Heart
-  if (normalized.includes('link')) return Link2
-  if (normalized.includes('location')) return MapPin
+    return <Heart className="size-3.5" />
+  if (normalized.includes('link')) return <Link2 className="size-3.5" />
+  if (normalized.includes('location')) return <MapPin className="size-3.5" />
   if (
     normalized.includes('image') ||
     normalized.includes('media') ||
     normalized.includes('photo') ||
     normalized.includes('story')
   )
-    return ImageIcon
-  return Paperclip
+    return <ImageIcon className="size-3.5" />
+  return <Paperclip className="size-3.5" />
 }
 
 function MessageSkeletons() {

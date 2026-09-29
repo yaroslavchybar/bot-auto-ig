@@ -134,6 +134,7 @@ export async function connectedNames(): Promise<Array<{
   const connected: Array<{
     account: StoredAccount; profileName?: string; renameFrom?: string; profileStatus?: string }> = []
   let cursor: string | undefined
+  let isDone = false
   do {
     const result: { page: Array<{ account: DbAccount; profileName?: string;
       renameFrom?: string; profileStatus?: string }>;
@@ -143,9 +144,9 @@ export async function connectedNames(): Promise<Array<{
         renameFrom: row.renameFrom, profileStatus: row.profileStatus }) }
       catch { /* An unreadable credential cannot be renamed. */ }
     }
-    if (result.isDone) break
+    isDone = result.isDone
     cursor = result.continueCursor
-  } while (true)
+  } while (!isDone)
   return connected
 }
 

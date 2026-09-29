@@ -241,7 +241,7 @@ function createWorkerEventRouter(automationId: string, lifecycle: WorkerLifecycl
     }
     if (log.eventType === 'checkpoint') return
     handleDisplayEvent(automationId, log)
-    const { nodeStates, ...uiMetadata } = log.metadata || {}
+    const { nodeStates: _nodeStates, ...uiMetadata } = log.metadata || {}
     broadcast({ automationId, type: log.eventType, ...uiMetadata })
   }
 }
@@ -254,7 +254,7 @@ function wireStdout(proc: ChildProcess, automationId: string): void {
   proc.stdout?.on('end', () => consume(parser.end()))
 }
 
-function wireStderr(proc: ChildProcess, automationId: string): void {
+function wireStderr(proc: ChildProcess): void {
   const lifecycle = lifecycleFor(proc)
   // Buffered like stdout: a banner line split across chunks would classify
   // as error in halves. Flush leftovers when the stream (or child) ends.
@@ -344,7 +344,7 @@ export async function runAutomation(input: RunAutomationInput, spawn = spawnBun)
   scope.add({ pid: proc.pid })
   lifecycleFor(proc).scope = scope
   wireStdout(proc, automationId)
-  wireStderr(proc, automationId)
+  wireStderr(proc)
   wireProcessLifecycle(proc, automationId)
 
   const payload = buildPayload(automationId, automation, parallelProfiles)

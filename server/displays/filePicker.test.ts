@@ -22,6 +22,12 @@ test('file metadata rejects paths, oversized buffers, and multiple files for a s
   assert.throws(() => parseManifest(JSON.stringify([{ ...file, size: MAX_UPLOAD_BYTES }]), true))
   assert.throws(() => parseManifest(JSON.stringify([file, file]), false))
   assert.throws(() => parseManifest(JSON.stringify([{ ...file, size: -1 }]), true))
+  assert.throws(() => parseManifest(JSON.stringify([{ ...file, name: 'folder\\file' }]), true))
+  for (let code = 0; code <= 0x1f; code++) {
+    assert.throws(() => parseManifest(JSON.stringify([{ ...file, name: `file${String.fromCharCode(code)}` }]), true))
+  }
+  const unicodeFile = { ...file, name: `фото${String.fromCharCode(0x7f, 0x80)}.png` }
+  assert.deepEqual(parseManifest(JSON.stringify([unicodeFile]), true), [unicodeFile])
 })
 
 // Bun's Windows HTTP server cannot listen on named pipes. Run this suite through

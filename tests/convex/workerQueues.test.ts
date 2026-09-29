@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { api } from '../../convex/_generated/api';
 import { createConvexTest } from './helpers';
 afterEach(() => vi.unstubAllEnvs());

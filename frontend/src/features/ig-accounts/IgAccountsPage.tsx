@@ -54,11 +54,13 @@ export function IgAccountsPage() {
   }, [])
 
   useEffect(() => {
-    setLoading(true)
-    void refresh()
-      .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false))
-  }, [refresh])
+    const controller = new AbortController()
+    void apiFetch<Account[]>('/api/ig-accounts', { signal: controller.signal })
+      .then((rows) => { if (!controller.signal.aborted) setAccounts(rows) })
+      .catch((error) => { if (!controller.signal.aborted) setError(String(error)) })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
+  }, [])
 
   const filteredAccounts = useMemo(() => {
     const q = search.trim().toLowerCase()

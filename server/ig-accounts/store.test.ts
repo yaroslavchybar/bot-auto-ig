@@ -23,14 +23,18 @@ test('one unreadable row stays visible but does not block other account batches'
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
     process.env.IG_CREDENTIALS_KEY = 'a'.repeat(64)
-    const request = mock(async (operation, args) =>
-      operation === 'available'
+    const request = mock(async (operation, args) => {
+      if (operation === 'connectedNames') return args?.cursor
+        ? { page: [{ account: valid, profileName: 'Working profile' }], continueCursor: '', isDone: true }
+        : { page: [{ account: invalid }], continueCursor: 'next', isDone: false }
+      return operation === 'available'
         ? args?.cursor
           ? { page: [valid], continueCursor: '', isDone: true }
           : { page: [invalid], continueCursor: 'next', isDone: false }
-        : [invalid, valid])
+        : [invalid, valid]
+    })
     mock.module('./server/shared/convexClient.ts', () => ({ igAccountRequest: request }))
-    const { availableAccounts, encryptAccount, listAccounts } = await import('./server/ig-accounts/store.ts')
+    const { availableAccounts, connectedNames, encryptAccount, listAccounts } = await import('./server/ig-accounts/store.ts')
     const invalid = { _id: 'bad', status: 'available', createdAt: 1,
       ...encryptAccount({ username: 'broken', password: 'secret', authenticatorKey: 'JBSWY3DPEHPK3PXP' }),
       ciphertext: 'v1.corrupt' }
@@ -46,6 +50,11 @@ test('one unreadable row stays visible but does not block other account batches'
     assert.deepEqual((await availableAccounts(1)).map(row => row.id), ['good'])
     assert.deepEqual(request.mock.calls.map(call => call[1]).filter(args => args?.count), [
       { count: 20, cursor: undefined }, { count: 20, cursor: 'next' },
+    ])
+    const connected = await connectedNames()
+    assert.deepEqual(connected.map(row => [row.account.id, row.profileName]), [['good', 'Working profile']])
+    assert.deepEqual(request.mock.calls.filter(call => call[0] === 'connectedNames').map(call => call[1]), [
+      { cursor: undefined }, { cursor: 'next' },
     ])
   `], { cwd: new URL('../../', import.meta.url), timeout: 15_000 })
 })

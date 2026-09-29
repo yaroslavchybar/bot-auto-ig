@@ -64,7 +64,8 @@ function messageContext(value: unknown): string | undefined {
 
 function originalMessageContext(value: unknown): string | undefined {
   if (value === undefined || value === '') return undefined;
-  if (typeof value !== 'string' || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value)) {
+  if (typeof value !== 'string' || value.length > 256 ||
+    [...value].some(character => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f)) {
     throw new ValidationError('Invalid original message context');
   }
   return value;

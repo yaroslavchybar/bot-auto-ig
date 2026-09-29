@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test } from 'vite-plus/test'
 import { api } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedProfile } from './helpers'
 import { parseProxy } from '../../server/shared/proxy'
