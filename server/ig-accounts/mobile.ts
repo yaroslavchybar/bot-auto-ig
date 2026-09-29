@@ -4,7 +4,7 @@ import { profilesGetById } from '../shared/convexClient.js'
 
 type MobileAction = { action: 'username'; targetUsername: string } |
   { action: 'fullName'; fullName: string } |
-  { action: 'avatar' | 'post'; imagePath: string }
+  { action: 'avatar'; imagePath: string }
 
 /** Reuse the connected TypeScript mobile session. No browser or second login is needed. */
 export async function runMobileAction(profileId: string, action: MobileAction):
@@ -15,7 +15,6 @@ export async function runMobileAction(profileId: string, action: MobileAction):
     const chat = await InstagramChat.load(profile)
     if (action.action === 'username') await chat.updateUsername(action.targetUsername)
     else if (action.action === 'fullName') await chat.updateFullName(action.fullName)
-    else if (action.action === 'post') await chat.postPhoto(action.imagePath)
     else {
       const image = await fs.readFile(action.imagePath)
       await chat.changeProfilePicture(image)

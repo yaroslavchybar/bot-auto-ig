@@ -1,5 +1,10 @@
 import { automationsGetById, automationsList, igAccountRequest, listsList, profilesList, routineReady } from '../shared/convexClient.js'
 import logger from '../shared/logger.js'
+import { promises as fs } from 'node:fs'
+import path from 'node:path'
+import type { Page } from 'playwright-core'
+import { publishFeedPost } from '../automation/actions/publish.js'
+import type { ActionLogger, StopCheck } from '../automation/actions/shared.js'
 import { accountForProfile, setAccountUsername } from './store.js'
 import { allocateContent } from './content.js'
 import { runMobileAction } from './mobile.js'
@@ -127,20 +132,52 @@ async function applyAvatar(state: Progress): Promise<boolean> {
   return false
 }
 
-async function applyPost(state: Progress, today: string): Promise<void> {
-  const account = await accountForProfile(state.profileId)
-  if (!account) return
-  const content = await allocateContent(state.modelId, 'posts', state.profileId, state.postSourceIds)
-  if (!content) return
-  await patch(state.profileId, { pending: { kind: 'post', sourceId: content.sourceId, date: today } })
-  const result = await runMobileAction(state.profileId, { action: 'post', imagePath: content.path })
-  if (result.ok) {
+/** Post today's photo on the live routine page, right after feed and DMs. True when shared. */
+export async function postModelUpdateInSession(profileId: string, modelId: string,
+  page: Page, log: ActionLogger, shouldStop: StopCheck = () => false): Promise<boolean> {
+  if (activeActions.has(profileId)) return false
+  activeActions.add(profileId)
+  let posted: { sourceId: string; date: string } | undefined
+  try {
+    const state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
+    if (!state || state.pending || state.postSourceIds.length >= 9) return false
+    if (dayNumber(state.startedAt, Date.now()) < 4 || !state.avatarDone) return false
+    const today = dateKey(Date.now())
+    if (state.postDates.includes(today)) return false
+    const content = await allocateContent(modelId, 'posts', profileId, state.postSourceIds)
+    if (!content) return false
+    const buffer = await fs.readFile(content.path)
+    await patch(profileId, { pending: { kind: 'post', sourceId: content.sourceId, date: today } })
+    const steps: string[] = []
+    const extension = path.extname(content.path).toLowerCase()
+    const mimeType = extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg'
+    const shared = await publishFeedPost(page,
+      { name: path.basename(content.path), mimeType, buffer },
+      message => { steps.push(message); log(message) }, shouldStop)
+    if (!shared) {
+      const error = `Post result needs review (${steps.at(-1) ?? 'BrowserPostFailed'})`
+      // Share clicked but unconfirmed may still have posted: keep pending for review.
+      // Anything earlier never touched the account, so release the profile.
+      if (steps.some(step => step.includes('share did not confirm'))) await patch(profileId, { error })
+      else await patch(profileId, { pending: undefined, error })
+      return false
+    }
     const postSourceIds = [...state.postSourceIds, content.sourceId]
-    await patch(state.profileId, { pending: undefined, error: undefined,
+    posted = { sourceId: content.sourceId, date: today }
+    await patch(profileId, { pending: undefined, error: undefined,
       postSourceIds, postDates: [...state.postDates, today],
       ...(postSourceIds.length >= 9 ? { outreachReadyMarked: true } : {}) })
-  }
-  else await patch(state.profileId, { error: `Post result needs review (${result.errorType})` })
+    return true
+  } catch (error) {
+    logger.warn({ profileId, error }, 'Model warmup post failed')
+    try {
+      if (posted) await patch(profileId, { pending: { kind: 'post', ...posted },
+        error: 'Post shared but save failed — review before retrying (duplicate risk)' })
+      else await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup post failed' })
+    }
+    catch { logger.warn({ profileId }, 'Could not save model warmup error') }
+    return false
+  } finally { activeActions.delete(profileId) }
 }
 
 export async function sweepModelWarmup(): Promise<void> {
@@ -230,7 +267,6 @@ export async function advanceModelWarmup(profileId: string, automationId: string
     }
     if (day < 4) return
     if (!state.avatarDone && !await applyAvatar(state)) return
-    if (!state.postDates.includes(dateKey(now))) await applyPost(state, dateKey(now))
   } catch (error) {
     logger.warn({ profileId, error }, 'Model warmup step failed')
     try { await patch(profileId, { error: error instanceof Error ? error.message : 'Warmup step failed' }) }

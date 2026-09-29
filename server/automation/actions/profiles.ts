@@ -162,6 +162,8 @@ export async function openOwnProfile(page: Page, log: ActionLogger, session = ne
   try {
     // Sidebar avatar has an aria-selected wrapper; feed avatars do not.
     const own = page.locator('a[href^="/"]:has([aria-selected] img[alt$="profile picture"])').first()
+    // Done/share actions reload the page: wait out the reload instead of one glance.
+    await own.waitFor({ state: 'visible', timeout: session.timeout(20_000) }).catch(() => undefined)
     if (!(await own.isVisible().catch(() => false))) return false
     await own.click({ timeout: session.timeout(5_000) })
     await page.waitForURL(PROFILE_URL, { timeout: session.timeout(10_000) }).catch(() => undefined)

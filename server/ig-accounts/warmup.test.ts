@@ -1,7 +1,12 @@
 import { test } from 'node:test'
 import { execFileSync } from 'node:child_process'
+import { promises as fs } from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
-test('model setup advances only after a browser session and keeps the day 3 and day 4 steps', () => {
+test('model setup advances only after a browser session and keeps the day 3 and day 4 steps', async () => {
+  const image = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'warmup-post-')), 'warmup-post.jpg')
+  await fs.writeFile(image, Buffer.from('jpeg'))
   execFileSync('bun', ['--eval', `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
@@ -33,6 +38,7 @@ test('model setup advances only after a browser session and keeps the day 3 and 
           return state
         }
         if (operation === 'modelSetupPatch') {
+          if (failPatch && args.patch.postDates) throw new Error('save failed')
           Object.assign(state, args.patch)
           for (const key of args.clear) delete state[key]
           return null
@@ -69,14 +75,24 @@ test('model setup advances only after a browser session and keeps the day 3 and 
         return { ok: true }
       },
     }))
+    let publishMode = 'ok'
+    let failPatch = false
+    mock.module('./server/automation/actions/publish.ts', () => ({
+      publishFeedPost: async (_page, image, log) => {
+        events.push('session-post:' + image.name)
+        if (publishMode === 'unknown') log('Post publish failed: share did not confirm')
+        return publishMode === 'ok'
+      },
+    }))
     mock.module('./server/ig-accounts/profileName.ts', () => ({
       syncConnectedProfileName: async () => { events.push('sync') },
     }))
     mock.module('./server/ig-accounts/content.ts', () => ({
-      allocateContent: async (_modelId, kind) => ({ sourceId: kind, path: kind }),
+      allocateContent: async (_modelId, kind) => ({ sourceId: kind,
+        path: kind === 'posts' ? process.env.WARMUP_POST_IMAGE : kind }),
     }))
 
-    const { sweepModelWarmup, advanceModelWarmup, reconcileModelWarmup } =
+    const { sweepModelWarmup, advanceModelWarmup, reconcileModelWarmup, postModelUpdateInSession } =
       await import('./server/ig-accounts/warmup.ts')
     await sweepModelWarmup()
     assert.equal(state.startedAt, browserLoggedInAt)
@@ -96,11 +112,42 @@ test('model setup advances only after a browser session and keeps the day 3 and 
     assert.equal(state.fullNameDone, true)
     now = Date.parse('2026-09-28T12:00:00Z')
     await advanceModelWarmup('profile', 'automation')
-    assert.deepEqual(events.slice(-3), ['ready', 'avatar', 'post'])
+    assert.deepEqual(events.slice(-2), ['ready', 'avatar'])
     assert.equal(state.avatarDone, true)
+    assert.deepEqual(state.postSourceIds, [])
+
+    // The photo goes out on the live routine page, never in a post-only session.
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), true)
     assert.deepEqual(state.postSourceIds, ['posts'])
-    await advanceModelWarmup('profile', 'automation')
-    assert.equal(events.filter(event => event === 'post').length, 1)
+    assert.deepEqual(state.postDates, ['2026-09-28'])
+    assert.ok(events.some(event => event.startsWith('session-post:')))
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), false)
+    assert.deepEqual(state.postSourceIds, ['posts'])
+
+    // A failure before Share releases the profile; an unconfirmed Share stays pending.
+    now = Date.parse('2026-09-29T12:00:00Z')
+    publishMode = 'skipped'
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), false)
+    assert.equal(state.pending, undefined)
+    assert.ok(String(state.error).includes('BrowserPostFailed'))
+    assert.deepEqual(state.postSourceIds, ['posts'])
+    publishMode = 'unknown'
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), false)
+    assert.equal(state.pending.kind, 'post')
+    assert.ok(String(state.error).includes('share did not confirm'))
+    state.pending = undefined
+    state.error = undefined
+    publishMode = 'ok'
+
+    // A save failure after a confirmed Share keeps pending with a do-not-retry error.
+    failPatch = true
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), false)
+    assert.equal(state.pending.kind, 'post')
+    assert.ok(String(state.error).includes('duplicate'))
+    assert.deepEqual(state.postSourceIds, ['posts'])
+    failPatch = false
+    state.pending = undefined
+    state.error = undefined
 
     // Existing profiles can keep posting without a configured full name, then change it later.
     state.fullNameDone = undefined
@@ -108,7 +155,7 @@ test('model setup advances only after a browser session and keeps the day 3 and 
     model.fullNames = []
     now = Date.parse('2026-09-29T12:00:00Z')
     await advanceModelWarmup('profile', 'automation')
-    assert.equal(events.at(-1), 'post')
+    assert.equal(events.at(-1), 'ready')
     model.fullNames = ['Late Name']
     now = Date.parse('2026-09-30T12:00:00Z')
     await advanceModelWarmup('profile', 'automation')
@@ -121,5 +168,5 @@ test('model setup advances only after a browser session and keeps the day 3 and 
     assert.equal(account.username, 'legacyname')
     assert.equal(state.pending, undefined)
     assert.equal(events.at(-1), 'sync')
-  `], { stdio: 'pipe' })
+  `], { stdio: 'pipe', env: { ...process.env, WARMUP_POST_IMAGE: image } })
 })
