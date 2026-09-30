@@ -1,21 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNow } from '@/hooks/use-now'
-import {
-  Check,
-  CircleAlert,
-  Copy,
-  Eye,
-  EyeOff,
-  Pause,
-  RefreshCw,
-} from 'lucide-react'
+import { Check, CircleAlert, Copy, Eye, EyeOff, Pause, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, type Account } from './AccountsList'
 import { cn } from '@/lib/utils'
@@ -57,8 +44,7 @@ function dateKey(timestamp: number): string {
     month: '2-digit',
     day: '2-digit',
   }).formatToParts(timestamp)
-  const get = (kind: string) =>
-    parts.find((part) => part.type === kind)?.value ?? ''
+  const get = (kind: string) => parts.find((part) => part.type === kind)?.value ?? ''
   return `${get('year')}-${get('month')}-${get('day')}`
 }
 
@@ -94,10 +80,10 @@ function SecretRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5">
       <div className="min-w-0">
-        <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+        <div className="text-[11px] font-semibold tracking-[0.18em] text-subtle-copy uppercase">
           {label}
         </div>
-        <div className="text-ink mt-0.5 truncate font-mono text-sm">
+        <div className="mt-0.5 truncate font-mono text-sm text-ink">
           {visible ? value : '•'.repeat(Math.min(value.length, 16))}
         </div>
       </div>
@@ -105,7 +91,7 @@ function SecretRow({ label, value }: { label: string; value: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-copy hover:text-ink h-7 w-7"
+          className="h-7 w-7 text-muted-copy hover:text-ink"
           title={visible ? 'Hide' : 'Show'}
           onClick={() => setVisible((v) => !v)}
         >
@@ -114,7 +100,7 @@ function SecretRow({ label, value }: { label: string; value: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className="text-muted-copy hover:text-ink h-7 w-7"
+          className="h-7 w-7 text-muted-copy hover:text-ink"
           title="Copy"
           onClick={() => {
             void copyText(value).then((ok) => {
@@ -126,7 +112,7 @@ function SecretRow({ label, value }: { label: string; value: string }) {
           }}
         >
           {copied ? (
-            <Check className="text-status-success h-3.5 w-3.5" />
+            <Check className="h-3.5 w-3.5 text-status-success" />
           ) : (
             <Copy className="h-3.5 w-3.5" />
           )}
@@ -137,19 +123,17 @@ function SecretRow({ label, value }: { label: string; value: string }) {
 }
 
 function StageDot({ state }: { state: StageState }) {
-  if (state === 'done')
-    return <Check className="text-status-success h-4 w-4 shrink-0" />
-  if (state === 'attention')
-    return <CircleAlert className="text-status-warning h-4 w-4 shrink-0" />
+  if (state === 'done') return <Check className="h-4 w-4 shrink-0 text-status-success" />
+  if (state === 'attention') return <CircleAlert className="h-4 w-4 shrink-0 text-status-warning" />
   if (state === 'current')
     return (
       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-        <span className="bg-status-info h-2 w-2 animate-pulse rounded-full" />
+        <span className="h-2 w-2 rounded-full bg-status-info" />
       </span>
     )
   return (
     <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-      <Pause className="text-subtle-copy/50 h-3.5 w-3.5" />
+      <Pause className="h-3.5 w-3.5 text-subtle-copy/50" />
     </span>
   )
 }
@@ -164,15 +148,14 @@ function WarmupStages({
   const now = useNow()
   if (!credential.profileId) {
     return (
-      <p className="text-subtle-copy py-4 text-center text-sm">
-        Not assigned to a profile yet — warmup starts after assignment and the
-        first browser login.
+      <p className="py-4 text-center text-sm text-subtle-copy">
+        Not assigned to a profile yet — warmup starts after assignment and the first browser login.
       </p>
     )
   }
   if (!progress) {
     return (
-      <p className="text-subtle-copy py-4 text-center text-sm">
+      <p className="py-4 text-center text-sm text-subtle-copy">
         {credential.browserLoggedInAt
           ? 'Warmup has not started for this profile yet.'
           : 'Warmup starts after the first browser login.'}
@@ -183,8 +166,7 @@ function WarmupStages({
   const day = dayNumber(progress.startedAt, now)
   const connected = credential.status === 'connected'
   const posts = progress.postSourceIds.length
-  const fullNameSkipped =
-    !progress.fullNameDone && (progress.avatarDone || posts > 0)
+  const fullNameSkipped = !progress.fullNameDone && (progress.avatarDone || posts > 0)
 
   const stages: Array<{
     label: string
@@ -202,8 +184,7 @@ function WarmupStages({
     },
     {
       label: 'Feed warmup (days 1–2)',
-      state:
-        day >= 3 ? 'done' : credential.browserLoggedInAt ? 'current' : 'waiting',
+      state: day >= 3 ? 'done' : credential.browserLoggedInAt ? 'current' : 'waiting',
     },
     {
       label: 'Mobile login (day 3)',
@@ -211,20 +192,12 @@ function WarmupStages({
     },
     {
       label: 'Username change',
-      detail: progress.targetUsername
-        ? `@${progress.targetUsername}`
-        : undefined,
-      state: progress.nameDone
-        ? 'done'
-        : connected && !progress.pending
-          ? 'current'
-          : 'waiting',
+      detail: progress.targetUsername ? `@${progress.targetUsername}` : undefined,
+      state: progress.nameDone ? 'done' : connected && !progress.pending ? 'current' : 'waiting',
     },
     {
       label: 'Full name',
-      detail: fullNameSkipped
-        ? 'Skipped (no names for this model)'
-        : progress.fullName,
+      detail: fullNameSkipped ? 'Skipped (no names for this model)' : progress.fullName,
       state: progress.fullNameDone || fullNameSkipped ? 'done' : 'waiting',
     },
     {
@@ -246,18 +219,18 @@ function WarmupStages({
   const currentIndex = stages.findIndex((stage) => stage.state !== 'done')
   const pendingKind = progress.pending?.kind
   const attentionIndex = pendingKind
-    ? {
+    ? ({
         name: 3,
         username: 3,
         fullName: 4,
         avatar: 5,
         post: 6,
-      }[pendingKind] ?? -1
+      }[pendingKind] ?? -1)
     : -1
 
   return (
     <div>
-      <p className="text-subtle-copy text-xs">
+      <p className="text-xs text-subtle-copy">
         Day {day} · started{' '}
         {new Date(progress.startedAt).toLocaleDateString('en-US', {
           timeZone: 'Europe/Kyiv',
@@ -269,19 +242,19 @@ function WarmupStages({
       {progress.pending && (
         <div
           role="alert"
-          className="border-status-warning-border bg-status-warning-soft text-status-warning mt-3 flex items-start gap-2 rounded-xl border px-4 py-2.5 text-sm"
+          className="mt-3 flex items-start gap-2 rounded-xl border border-status-warning-border bg-status-warning-soft px-4 py-2.5 text-sm text-status-warning"
         >
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            Needs review: {progress.pending.kind} from {progress.pending.date} —
-            the result is unknown until the account is checked.
+            Needs review: {progress.pending.kind} from {progress.pending.date} — the result is
+            unknown until the account is checked.
           </span>
         </div>
       )}
       {progress.error && (
         <div
           role="alert"
-          className="border-status-danger-border bg-status-danger-soft text-status-danger mt-3 flex items-start gap-2 rounded-xl border px-4 py-2.5 text-sm"
+          className="mt-3 flex items-start gap-2 rounded-xl border border-status-danger-border bg-status-danger-soft px-4 py-2.5 text-sm text-status-danger"
         >
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{progress.error}</span>
@@ -314,9 +287,7 @@ function WarmupStages({
                   {stage.label}
                 </span>
                 {stage.detail && (
-                  <span className="text-subtle-copy ml-2 font-mono text-xs">
-                    {stage.detail}
-                  </span>
+                  <span className="ml-2 font-mono text-xs text-subtle-copy">{stage.detail}</span>
                 )}
               </div>
             </li>
@@ -339,9 +310,7 @@ export function AccountDetailsDialog(props: AccountDetailsDialogProps) {
 
 function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) {
   const [credential, setCredential] = useState<Credential | null>(null)
-  const [progress, setProgress] = useState<WarmupProgress | null | undefined>(
-    undefined,
-  )
+  const [progress, setProgress] = useState<WarmupProgress | null | undefined>(undefined)
   const [error, setError] = useState('')
   const [warmupError, setWarmupError] = useState('')
 
@@ -357,20 +326,15 @@ function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) 
         if (controller.signal.aborted) return
         setCredential(row)
       } catch (e) {
-        if (!controller.signal.aborted)
-          setError(e instanceof Error ? e.message : String(e))
+        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e))
         return
       }
       try {
-        const warmup = await apiFetch<WarmupProgress[]>(
-          '/api/ig-accounts/warmup',
-          { signal: controller.signal },
-        )
+        const warmup = await apiFetch<WarmupProgress[]>('/api/ig-accounts/warmup', {
+          signal: controller.signal,
+        })
         if (controller.signal.aborted) return
-        setProgress(
-          warmup.find((entry) => entry.profileId === account.profileId) ??
-            null,
-        )
+        setProgress(warmup.find((entry) => entry.profileId === account.profileId) ?? null)
       } catch {
         if (!controller.signal.aborted) {
           setProgress(null)
@@ -388,9 +352,9 @@ function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) 
         if (!open) onClose()
       }}
     >
-      <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
+      <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
         <DialogHeader className="shrink-0">
-          <DialogTitle className="page-title-gradient flex items-center gap-3">
+          <DialogTitle className="flex items-center gap-3 page-title-gradient">
             <span className="truncate">
               {account?.username ? `@${account.username}` : 'Credential'}
             </span>
@@ -399,40 +363,38 @@ function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) 
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {error ? (
-            <div className="border-status-danger-border bg-status-danger-soft text-status-danger rounded-md border p-3 text-sm font-medium">
+            <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
               {error}
             </div>
           ) : !credential ? (
-            <div className="text-muted-foreground flex items-center justify-center gap-2 p-6 text-sm">
-              <RefreshCw className="h-4 w-4 animate-spin" /> Loading
-              credential...
+            <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted-foreground">
+              <RefreshCw className="h-4 w-4" /> Loading credential...
             </div>
           ) : (
             <div className="grid gap-5">
               <section>
-                <h3 className="text-muted-copy text-xs font-semibold tracking-wider uppercase">
+                <h3 className="text-xs font-semibold tracking-wider text-muted-copy uppercase">
                   Credentials
                 </h3>
-                <div className="border-line-soft divide-line-soft mt-1 divide-y rounded-xl border px-4 py-1">
+                <div className="mt-1 divide-y divide-line-soft rounded-xl border border-line-soft px-4 py-1">
                   <SecretRow label="Username" value={credential.username} />
                   <SecretRow label="Password" value={credential.password} />
                   <SecretRow label="2FA key" value={credential.authenticatorKey} />
                 </div>
               </section>
               <section>
-                <h3 className="text-muted-copy text-xs font-semibold tracking-wider uppercase">
+                <h3 className="text-xs font-semibold tracking-wider text-muted-copy uppercase">
                   Warmup progress
                 </h3>
                 <div className="mt-2">
                   {warmupError && (
-                    <p role="status" className="text-status-warning mb-2 text-xs">
+                    <p role="status" className="mb-2 text-xs text-status-warning">
                       {warmupError}
                     </p>
                   )}
                   {progress === undefined ? (
-                    <div className="text-muted-foreground flex items-center justify-center gap-2 p-4 text-sm">
-                      <RefreshCw className="h-4 w-4 animate-spin" /> Loading
-                      progress...
+                    <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
+                      <RefreshCw className="h-4 w-4" /> Loading progress...
                     </div>
                   ) : (
                     <WarmupStages credential={credential} progress={progress} />

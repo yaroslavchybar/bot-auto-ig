@@ -1,19 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  CheckCircle2,
-  CircleAlert,
-  Plus,
-  Search,
-  Upload,
-} from 'lucide-react'
+import { PageControls } from '@/components/shared/PageControls'
+import { useAccountsPage } from './hooks/useAccountsPage'
+import { useState } from 'react'
+import { CheckCircle2, CircleAlert, Plus, Search, Upload } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -33,9 +24,18 @@ export function IgAccountsPage() {
   const [searchParams] = useSearchParams()
   const profileId = searchParams.get('profileId')
 
-  const [accounts, setAccounts] = useState<Account[]>([])
-  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [credentialSearch, setCredentialSearch] = useState('')
+  const [selectedLabel, setSelectedLabel] = useState('')
+  const {
+    accounts: filteredAccounts,
+    loading,
+    error: loadError,
+    refresh,
+    pagination,
+  } = useAccountsPage(search)
+  const options = useAccountsPage(credentialSearch, profileId ?? undefined, Boolean(profileId))
+  const connectable = options.accounts.filter((account) => account.status === 'available')
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [detailsAccount, setDetailsAccount] = useState<Account | null>(null)
 
@@ -48,32 +48,6 @@ export function IgAccountsPage() {
 
   const isConnectOpen = Boolean(profileId)
 
-  const refresh = useCallback(async () => {
-    const accountRows = await apiFetch<Account[]>('/api/ig-accounts')
-    setAccounts(accountRows)
-  }, [])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void apiFetch<Account[]>('/api/ig-accounts', { signal: controller.signal })
-      .then((rows) => { if (!controller.signal.aborted) setAccounts(rows) })
-      .catch((error) => { if (!controller.signal.aborted) setError(String(error)) })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    return () => controller.abort()
-  }, [])
-
-  const filteredAccounts = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return accounts
-    return accounts.filter((a) => a.username.toLowerCase().includes(q))
-  }, [accounts, search])
-
-  const connectable = useMemo(
-    () =>
-      accounts.filter((a) => a.status === 'available' || a.profileId === profileId),
-    [accounts, profileId],
-  )
-
   async function importText(value: string, opts?: { closeOnSuccess?: boolean }) {
     if (!value.trim() || importing) return
     setImporting(true)
@@ -84,9 +58,7 @@ export function IgAccountsPage() {
         '/api/ig-accounts/import',
         { method: 'POST', body: { text: value } },
       )
-      setNotice(
-        `Imported ${result.imported}; skipped ${result.skipped} duplicates.`,
-      )
+      setNotice(`Imported ${result.imported}; skipped ${result.skipped} duplicates.`)
       setText('')
       await refresh()
       if (opts?.closeOnSuccess) setIsImportOpen(false)
@@ -103,16 +75,11 @@ export function IgAccountsPage() {
     setError('')
     setNotice('')
     try {
-      await apiFetch(
-        `/api/ig-accounts/${encodeURIComponent(profileId)}/connect`,
-        {
-          method: 'POST',
-          body: selected
-            ? { credentialId: selected }
-            : { credentials: text.trim() },
-          timeout: 90_000,
-        },
-      )
+      await apiFetch(`/api/ig-accounts/${encodeURIComponent(profileId)}/connect`, {
+        method: 'POST',
+        body: selected ? { credentialId: selected } : { credentials: text.trim() },
+        timeout: 90_000,
+      })
       await refresh()
       navigate('/profiles')
     } catch (e) {
@@ -123,17 +90,17 @@ export function IgAccountsPage() {
   }
 
   return (
-    <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
+    <div className="relative flex h-full flex-col bg-shell text-ink">
       <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
           <div className="flex flex-grow items-center gap-2">
             <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
-              <Search className="text-muted-copy pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search accounts..."
-                className="bg-field border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pr-8 pl-9 text-sm leading-5 font-normal shadow-sm"
+                className="h-8 rounded-md brand-focus border-line bg-field pr-8 pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
               />
             </div>
           </div>
@@ -145,7 +112,7 @@ export function IgAccountsPage() {
                 setIsImportOpen(true)
               }}
               disabled={loading}
-              className="mobile-effect-shadow brand-button h-8 font-medium"
+              className="h-8 brand-button font-medium"
             >
               <Plus className="mr-2 h-3.5 w-3.5" /> Import
             </Button>
@@ -155,19 +122,19 @@ export function IgAccountsPage() {
 
       <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
         <div className="mx-auto max-w-[2000px] space-y-4">
-          {error && (
+          {(error || loadError) && (
             <div
               role="alert"
-              className="text-status-danger bg-status-danger-soft border-status-danger-border flex items-start gap-2 rounded-xl border px-4 py-2.5 text-sm"
+              className="flex items-start gap-2 rounded-xl border border-status-danger-border bg-status-danger-soft px-4 py-2.5 text-sm text-status-danger"
             >
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="min-w-0 flex-1 break-words">{error}</span>
+              <span className="min-w-0 flex-1 break-words">{error || loadError}</span>
             </div>
           )}
           {notice && (
             <div
               role="status"
-              className="border-status-success-border bg-status-success-soft text-status-success flex items-start gap-2 rounded-xl border px-4 py-2.5 text-sm"
+              className="flex items-start gap-2 rounded-xl border border-status-success-border bg-status-success-soft px-4 py-2.5 text-sm text-status-success"
             >
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               <span className="min-w-0 flex-1 break-words">{notice}</span>
@@ -185,33 +152,29 @@ export function IgAccountsPage() {
                 : 'Import credentials to get started.'
             }
           />
-
+          <PageControls {...pagination} />
         </div>
       </div>
 
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
-        <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
+        <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="page-title-gradient">
-              Import credentials
-            </DialogTitle>
+            <DialogTitle className="page-title-gradient">Import credentials</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4">
-            <p className="text-subtle-copy text-sm">
-              One per line: username:password:2FA key
-            </p>
+            <p className="text-sm text-subtle-copy">One per line: username:password:2FA key</p>
             <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder="username:password:2FA key (one per line)"
-              className="brand-focus bg-field border-line min-h-28 font-mono text-xs text-ink"
+              className="min-h-28 brand-focus border-line bg-field font-mono text-xs text-ink"
             />
             <Button
               type="button"
               variant="outline"
               size="sm"
               disabled={importing}
-              className="button-panel h-8 justify-self-start font-medium"
+              className="h-8 justify-self-start button-panel font-medium"
               asChild
             >
               <label className="cursor-pointer">
@@ -228,25 +191,19 @@ export function IgAccountsPage() {
                     if (file)
                       void file
                         .text()
-                        .then((value) =>
-                          importText(value, { closeOnSuccess: true }),
-                        )
+                        .then((value) => importText(value, { closeOnSuccess: true }))
                         .catch((err) => setError(String(err)))
                   }}
                 />
               </label>
             </Button>
             {error && (
-              <div className="text-status-danger bg-status-danger-soft border-status-danger-border rounded-md border p-3 text-sm font-medium">
+              <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
                 {error}
               </div>
             )}
-            <div className="border-line flex justify-end gap-3 border-t pt-4">
-              <Button
-                variant="ghost"
-                onClick={() => setIsImportOpen(false)}
-                disabled={importing}
-              >
+            <div className="flex justify-end gap-3 border-t border-line pt-4">
+              <Button variant="ghost" onClick={() => setIsImportOpen(false)} disabled={importing}>
                 Cancel
               </Button>
               <Button
@@ -267,48 +224,67 @@ export function IgAccountsPage() {
           if (!open) navigate('/profiles')
         }}
       >
-        <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
+        <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="page-title-gradient">
-              Connect credential
-            </DialogTitle>
+            <DialogTitle className="page-title-gradient">Connect credential</DialogTitle>
           </DialogHeader>
           <div className="grid gap-5">
-            <p className="text-subtle-copy text-sm">
+            <p className="text-sm text-subtle-copy">
               Pick an imported credential or paste one below.
             </p>
             <div className="grid gap-1.5">
               <Label
                 htmlFor="ig-credential"
-                className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
+                className="text-xs font-semibold tracking-wider text-muted-copy uppercase"
               >
                 Imported credential
               </Label>
-              <Select value={selected} onValueChange={setSelected}>
+              <Input
+                value={credentialSearch}
+                onChange={(event) => setCredentialSearch(event.target.value)}
+                placeholder="Search imported credentials..."
+                aria-label="Search imported credentials"
+              />
+              <Select
+                value={selected}
+                onValueChange={(id) => {
+                  setSelected(id)
+                  const row = connectable.find((account) => account.id === id)
+                  if (row) setSelectedLabel('@' + row.username + ' · ' + row.status)
+                }}
+              >
                 <SelectTrigger
                   id="ig-credential"
-                  className="brand-focus bg-field border-line text-ink"
+                  className="brand-focus border-line bg-field text-ink"
                 >
-                  <SelectValue placeholder="Paste below or choose an imported credential" />
+                  <SelectValue placeholder="Paste below or choose an imported credential">
+                    {selectedLabel || undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="panel-dropdown">
                   {connectable.map((a) => (
                     <SelectItem
                       key={a.id}
                       value={a.id}
-                      className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+                      className="cursor-pointer focus:bg-panel-hover focus:text-ink"
                     >
                       @{a.username} · {a.status}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <PageControls {...options.pagination} />
+              {options.error && (
+                <p role="alert" className="text-sm text-status-danger">
+                  {options.error}
+                </p>
+              )}
             </div>
             {!selected && (
               <div className="grid gap-1.5">
                 <Label
                   htmlFor="ig-credential-paste"
-                  className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
+                  className="text-xs font-semibold tracking-wider text-muted-copy uppercase"
                 >
                   Paste credential
                 </Label>
@@ -318,21 +294,17 @@ export function IgAccountsPage() {
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder="username:password:2FA key"
-                  className="brand-focus bg-field border-line font-mono text-sm text-ink"
+                  className="brand-focus border-line bg-field font-mono text-sm text-ink"
                 />
               </div>
             )}
             {error && (
-              <div className="text-status-danger bg-status-danger-soft border-status-danger-border rounded-md border p-3 text-sm font-medium">
+              <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
                 {error}
               </div>
             )}
-            <div className="border-line flex justify-end gap-3 border-t pt-4">
-              <Button
-                variant="ghost"
-                onClick={() => navigate('/profiles')}
-                disabled={connecting}
-              >
+            <div className="flex justify-end gap-3 border-t border-line pt-4">
+              <Button variant="ghost" onClick={() => navigate('/profiles')} disabled={connecting}>
                 Cancel
               </Button>
               <Button
@@ -347,10 +319,7 @@ export function IgAccountsPage() {
         </DialogContent>
       </Dialog>
 
-      <AccountDetailsDialog
-        account={detailsAccount}
-        onClose={() => setDetailsAccount(null)}
-      />
+      <AccountDetailsDialog account={detailsAccount} onClose={() => setDetailsAccount(null)} />
     </div>
   )
 }

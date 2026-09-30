@@ -1,32 +1,24 @@
-import * as React from 'react'
+import { useSyncExternalStore } from 'react'
 
-export function useDocumentVisibility() {
-  const [isVisible, setIsVisible] = React.useState(() => {
-    if (typeof document === 'undefined') {
-      return true
-    }
+const listeners = new Set<() => void>()
 
-    return document.visibilityState !== 'hidden'
-  })
-
-  React.useEffect(() => {
-    if (typeof document === 'undefined') {
-      return
-    }
-
-    const updateVisibility = () => {
-      setIsVisible(document.visibilityState !== 'hidden')
-    }
-
-    updateVisibility()
-    document.addEventListener('visibilitychange', updateVisibility)
-
-    return () => {
-      document.removeEventListener('visibilitychange', updateVisibility)
-    }
-  }, [])
-
-  return isVisible
+function notify() {
+  for (const listener of listeners) listener()
 }
 
+function subscribe(onChange: () => void) {
+  if (listeners.size === 0) document.addEventListener('visibilitychange', notify)
+  listeners.add(onChange)
+  return () => {
+    listeners.delete(onChange)
+    if (listeners.size === 0) document.removeEventListener('visibilitychange', notify)
+  }
+}
 
+function readVisibility() {
+  return document.visibilityState !== 'hidden'
+}
+
+export function useDocumentVisibility() {
+  return useSyncExternalStore(subscribe, readVisibility, () => true)
+}

@@ -12,7 +12,7 @@ export function ThemeToggle() {
       type="button"
       variant="ghost"
       size="icon"
-      className="border-line-soft bg-panel/80 text-muted-copy hover:bg-panel-hover hover:text-ink h-8 w-8 rounded-full border shadow-none transition-colors"
+      className="h-8 w-8 rounded-full border border-line-soft bg-panel/80 text-muted-copy shadow-none hover:bg-panel-hover hover:text-ink"
       aria-label={label}
       title={label}
       onClick={() => setTheme(nextTheme)}
@@ -21,5 +21,3 @@ export function ThemeToggle() {
     </Button>
   )
 }
-
-

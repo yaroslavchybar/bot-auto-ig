@@ -109,7 +109,7 @@ export function ScraperPage() {
 
   return (
     <FilterProvider>
-      <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
+      <div className="relative flex h-full flex-col bg-shell text-ink">
         <ScraperToolbar tab={tab} onTabChange={setTab} onNewJob={() => setJobOpen(true)} />
 
         <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
@@ -141,7 +141,7 @@ function ScraperToolbar({
   return (
     <div className="relative z-10 flex-none space-y-2 px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
       {/* Header tabs live in the app header on desktop; show a local switch on mobile. */}
-      <div className="button-toolbar-group flex items-center gap-1 rounded-full p-1 md:hidden">
+      <div className="flex items-center gap-1 rounded-full button-toolbar-group p-1 md:hidden">
         {SCRAPER_TABS.map((t) => (
           <button
             key={t.id}
@@ -149,7 +149,7 @@ function ScraperToolbar({
             onClick={() => onTabChange(t.id)}
             aria-current={t.id === tab ? 'page' : undefined}
             className={cn(
-              'h-7 flex-1 rounded-full px-2 text-xs font-medium whitespace-nowrap transition-colors',
+              'h-7 flex-1 rounded-full px-2 text-xs font-medium whitespace-nowrap',
               t.id === tab ? 'bg-panel-muted text-ink shadow-xs' : 'text-muted-copy',
             )}
           >
@@ -168,11 +168,7 @@ function ScraperToolbar({
         <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
           {tab === 'lists' && <NewListButton />}
           {tab === 'saved' && <RetryEnrichmentButton />}
-          <Button
-            size="sm"
-            onClick={onNewJob}
-            className="mobile-effect-shadow brand-button h-8 font-medium"
-          >
+          <Button size="sm" onClick={onNewJob} className="h-8 brand-button font-medium">
             <Plus className="mr-2 h-3.5 w-3.5" /> New job
           </Button>
         </div>
@@ -204,7 +200,12 @@ function RetryEnrichmentButton() {
 function NewListButton() {
   const { setListCreateOpen } = useFilters()
   return (
-    <Button size="sm" variant="outline" onClick={() => setListCreateOpen(true)} className="h-8 font-medium">
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => setListCreateOpen(true)}
+      className="h-8 font-medium"
+    >
       <Plus className="mr-2 h-3.5 w-3.5" /> New list
     </Button>
   )
@@ -268,7 +269,16 @@ function FilterProvider({ children }: { children: React.ReactNode }) {
       listCreateOpen,
       setListCreateOpen,
     }),
-    [jobsQuery, jobsStatus, accountsQuery, savedQuery, savedList, savedType, listsQuery, listCreateOpen],
+    [
+      jobsQuery,
+      jobsStatus,
+      accountsQuery,
+      savedQuery,
+      savedList,
+      savedType,
+      listsQuery,
+      listCreateOpen,
+    ],
   )
   return <FiltersContext.Provider value={value}>{children}</FiltersContext.Provider>
 }
@@ -292,7 +302,7 @@ function SearchBox({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm leading-5 font-normal shadow-sm"
+        className="h-8 rounded-md border brand-focus border-line bg-field pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
       />
     </div>
   )
@@ -310,9 +320,17 @@ function JobsFilters() {
   }, [jobs])
   return (
     <>
-      <SearchBox value={f.jobsQuery} onChange={f.setJobsQuery} placeholder="Search jobs..." label="Search jobs" />
+      <SearchBox
+        value={f.jobsQuery}
+        onChange={f.setJobsQuery}
+        placeholder="Search jobs..."
+        label="Search jobs"
+      />
       <Select value={f.jobsStatus} onValueChange={f.setJobsStatus}>
-        <SelectTrigger aria-label="Job status" className="bg-field border-line h-8 w-full text-sm shadow-sm sm:w-[160px]">
+        <SelectTrigger
+          aria-label="Job status"
+          className="h-8 w-full border-line bg-field text-sm shadow-sm sm:w-[160px]"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="panel-dropdown">
@@ -333,9 +351,14 @@ function JobsFilters() {
             ['Failed', counts.failed, 'text-status-danger'],
           ] as const
         ).map(([label, value, tone]) => (
-          <span key={label} className="inline-flex items-center gap-1.5 leading-none whitespace-nowrap">
-            <span className="text-subtle-copy text-xs font-medium">{label}</span>
-            <span className={cn('text-sm leading-none font-semibold tabular-nums', tone)}>{value}</span>
+          <span
+            key={label}
+            className="inline-flex items-center gap-1.5 leading-none whitespace-nowrap"
+          >
+            <span className="text-xs font-medium text-subtle-copy">{label}</span>
+            <span className={cn('text-sm leading-none font-semibold tabular-nums', tone)}>
+              {value}
+            </span>
           </span>
         ))}
       </div>
@@ -346,7 +369,12 @@ function JobsFilters() {
 function AccountsFilters() {
   const f = useFilters()
   return (
-    <SearchBox value={f.accountsQuery} onChange={f.setAccountsQuery} placeholder="Search accounts..." label="Search scraping accounts" />
+    <SearchBox
+      value={f.accountsQuery}
+      onChange={f.setAccountsQuery}
+      placeholder="Search accounts..."
+      label="Search scraping accounts"
+    />
   )
 }
 
@@ -355,9 +383,17 @@ function SavedFilters() {
   const lists = useQuery(api.leads.lists, {})
   return (
     <>
-      <SearchBox value={f.savedQuery} onChange={f.setSavedQuery} placeholder="Search accounts" label="Search saved accounts" />
+      <SearchBox
+        value={f.savedQuery}
+        onChange={f.setSavedQuery}
+        placeholder="Search accounts"
+        label="Search saved accounts"
+      />
       <Select value={f.savedList} onValueChange={f.setSavedList}>
-        <SelectTrigger aria-label="Lead list" className="bg-field border-line h-8 w-full text-sm shadow-sm sm:w-[180px]">
+        <SelectTrigger
+          aria-label="Lead list"
+          className="h-8 w-full border-line bg-field text-sm shadow-sm sm:w-[180px]"
+        >
           <SelectValue placeholder="All lists" />
         </SelectTrigger>
         <SelectContent className="panel-dropdown">
@@ -370,7 +406,10 @@ function SavedFilters() {
         </SelectContent>
       </Select>
       <Select value={f.savedType} onValueChange={f.setSavedType}>
-        <SelectTrigger aria-label="Account type" className="bg-field border-line h-8 w-full text-sm shadow-sm sm:w-[140px]">
+        <SelectTrigger
+          aria-label="Account type"
+          className="h-8 w-full border-line bg-field text-sm shadow-sm sm:w-[140px]"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="panel-dropdown">
@@ -388,7 +427,12 @@ function SavedFilters() {
 function ListsFilters() {
   const f = useFilters()
   return (
-    <SearchBox value={f.listsQuery} onChange={f.setListsQuery} placeholder="Search lists..." label="Search lead lists" />
+    <SearchBox
+      value={f.listsQuery}
+      onChange={f.setListsQuery}
+      placeholder="Search lists..."
+      label="Search lead lists"
+    />
   )
 }
 
@@ -417,7 +461,7 @@ function JobsView() {
   }, [jobs, f.jobsQuery, f.jobsStatus])
 
   if (jobs === undefined) {
-    return <div className="text-muted-foreground animate-pulse p-12 text-center text-sm">Loading jobs...</div>
+    return <div className="p-12 text-center text-sm text-muted-foreground">Loading jobs...</div>
   }
 
   if (!jobs.length) {
@@ -427,17 +471,22 @@ function JobsView() {
   return (
     <div className="space-y-4">
       {!filtered.length ? (
-        <div className="border-line-soft bg-panel-subtle rounded-2xl border-2 border-dashed p-12 text-center">
-          <p className="text-ink text-sm font-medium">No matching jobs</p>
-          <p className="text-subtle-copy mt-1 text-sm">Try a different search term or status filter.</p>
+        <div className="rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+          <p className="text-sm font-medium text-ink">No matching jobs</p>
+          <p className="mt-1 text-sm text-subtle-copy">
+            Try a different search term or status filter.
+          </p>
         </div>
       ) : mobile ? (
         <div className="space-y-3">
           {filtered.map((job) => (
-            <div key={job._id} className="bg-panel-strong border-line rounded-2xl border p-4 shadow-xs">
+            <div
+              key={job._id}
+              className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs"
+            >
               <div className="flex items-start justify-between gap-3">
                 <a
-                  className="brand-link min-w-0 truncate font-medium"
+                  className="min-w-0 truncate font-medium brand-link"
                   href={`https://www.instagram.com/${job.username}/`}
                   target="_blank"
                   rel="noreferrer"
@@ -446,7 +495,7 @@ function JobsView() {
                 </a>
                 <JobStatusBadge status={job.status} />
               </div>
-              <dl className="text-subtle-copy mt-3 space-y-1.5 text-xs">
+              <dl className="mt-3 space-y-1.5 text-xs text-subtle-copy">
                 <div className="flex justify-between gap-3">
                   <dt>Leads</dt>
                   <dd className="text-copy">
@@ -455,20 +504,22 @@ function JobsView() {
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt>List</dt>
-                  <dd className="text-copy truncate">{listName(job.listId)}</dd>
+                  <dd className="truncate text-copy">{listName(job.listId)}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt>Since</dt>
                   <dd className="text-copy">{new Date(job.sinceDate).toLocaleDateString()}</dd>
                 </div>
               </dl>
-              {job.error && <p className="text-status-danger mt-2 text-xs">{job.error}</p>}
+              {job.error && <p className="mt-2 text-xs text-status-danger">{job.error}</p>}
               {['failed', 'paused'].includes(job.status) && (
                 <Button
                   size="sm"
                   variant="outline"
                   className="mt-3"
-                  onClick={() => void retryJob({ jobId: job._id }).catch((e) => toast.error(String(e)))}
+                  onClick={() =>
+                    void retryJob({ jobId: job._id }).catch((e) => toast.error(String(e)))
+                  }
                 >
                   <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry
                 </Button>
@@ -477,43 +528,56 @@ function JobsView() {
           ))}
         </div>
       ) : (
-        <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
           <Table>
             <TableHeader>
-              <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-                <TableHead className="text-muted-copy h-12 pl-4 font-medium">Source</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[130px] font-medium">Status</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[150px] font-medium">Progress</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[170px] font-medium">List</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[120px] font-medium">Since</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[110px] pr-4 text-right font-medium">Actions</TableHead>
+              <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+                <TableHead className="h-12 pl-4 font-medium text-muted-copy">Source</TableHead>
+                <TableHead className="h-12 w-[130px] font-medium text-muted-copy">Status</TableHead>
+                <TableHead className="h-12 w-[150px] font-medium text-muted-copy">
+                  Progress
+                </TableHead>
+                <TableHead className="h-12 w-[170px] font-medium text-muted-copy">List</TableHead>
+                <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Since</TableHead>
+                <TableHead className="h-12 w-[110px] pr-4 text-right font-medium text-muted-copy">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((job) => (
-                <TableRow key={job._id} className="group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle">
+                <TableRow
+                  key={job._id}
+                  className="group h-14 border-b border-line-soft hover:bg-panel-subtle"
+                >
                   <TableCell className="pl-4 font-medium">
                     <div className="flex min-w-0 flex-col gap-0.5">
                       <a
-                        className="brand-link truncate"
+                        className="truncate brand-link"
                         href={`https://www.instagram.com/${job.username}/`}
                         target="_blank"
                         rel="noreferrer"
                       >
                         @{job.username}
                       </a>
-                      {job.error && <span className="text-status-danger truncate text-xs font-normal">{job.error}</span>}
+                      {job.error && (
+                        <span className="truncate text-xs font-normal text-status-danger">
+                          {job.error}
+                        </span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
                     <JobStatusBadge status={job.status} />
                   </TableCell>
-                  <TableCell className="text-copy text-xs whitespace-nowrap">
+                  <TableCell className="text-xs whitespace-nowrap text-copy">
                     {job.posts?.length ?? 0} posts · {job.discovered} leads
                     <span className="text-subtle-copy"> / max {job.postLimit}</span>
                   </TableCell>
-                  <TableCell className="text-muted-copy max-w-[170px] truncate text-xs">{listName(job.listId)}</TableCell>
-                  <TableCell className="text-muted-copy text-xs whitespace-nowrap">
+                  <TableCell className="max-w-[170px] truncate text-xs text-muted-copy">
+                    {listName(job.listId)}
+                  </TableCell>
+                  <TableCell className="text-xs whitespace-nowrap text-muted-copy">
                     {new Date(job.sinceDate).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="pr-4 text-right">
@@ -521,13 +585,15 @@ function JobsView() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="text-muted-copy hover:bg-panel-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink"
-                        onClick={() => void retryJob({ jobId: job._id }).catch((e) => toast.error(String(e)))}
+                        className="text-muted-copy opacity-0 group-hover:opacity-100 hover:bg-panel-muted hover:text-ink"
+                        onClick={() =>
+                          void retryJob({ jobId: job._id }).catch((e) => toast.error(String(e)))
+                        }
                       >
                         <RotateCcw className="mr-1 h-3.5 w-3.5" /> Retry
                       </Button>
                     ) : (
-                      <span className="text-subtle-copy/50 text-xs">—</span>
+                      <span className="text-xs text-subtle-copy/50">—</span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -542,11 +608,12 @@ function JobsView() {
 
 function JobsEmptyState() {
   return (
-    <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-      <Inbox className="text-subtle-copy mb-4 h-10 w-10" />
-      <h3 className="text-ink text-lg font-medium">No source jobs yet</h3>
-      <p className="text-subtle-copy mt-1 max-w-md text-sm">
-        Add Instagram profiles to collect recent post likers. Classified accounts land in your outreach lists.
+    <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+      <Inbox className="mb-4 h-10 w-10 text-subtle-copy" />
+      <h3 className="text-lg font-medium text-ink">No source jobs yet</h3>
+      <p className="mt-1 max-w-md text-sm text-subtle-copy">
+        Add Instagram profiles to collect recent post likers. Classified accounts land in your
+        outreach lists.
       </p>
     </div>
   )
@@ -567,15 +634,15 @@ function AccountsView() {
   }, [accounts, f.accountsQuery])
 
   if (accounts === undefined) {
-    return <div className="text-muted-foreground animate-pulse p-12 text-center text-sm">Loading accounts...</div>
+    return <div className="p-12 text-center text-sm text-muted-foreground">Loading accounts...</div>
   }
 
   if (!accounts.length) {
     return (
-      <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-        <UserCheck className="text-subtle-copy mb-4 h-10 w-10" />
-        <h3 className="text-ink text-lg font-medium">No profiles available</h3>
-        <p className="text-subtle-copy mt-1 text-sm">Create a profile to start scraping.</p>
+      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+        <UserCheck className="mb-4 h-10 w-10 text-subtle-copy" />
+        <h3 className="text-lg font-medium text-ink">No profiles available</h3>
+        <p className="mt-1 text-sm text-subtle-copy">Create a profile to start scraping.</p>
       </div>
     )
   }
@@ -583,9 +650,9 @@ function AccountsView() {
   return (
     <div className="space-y-4">
       {!filtered.length ? (
-        <div className="border-line-soft bg-panel-subtle rounded-2xl border-2 border-dashed p-12 text-center">
-          <p className="text-ink text-sm font-medium">No matching accounts</p>
-          <p className="text-subtle-copy mt-1 text-sm">Try a different search term.</p>
+        <div className="rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+          <p className="text-sm font-medium text-ink">No matching accounts</p>
+          <p className="mt-1 text-sm text-subtle-copy">Try a different search term.</p>
         </div>
       ) : mobile ? (
         <div className="space-y-3">
@@ -594,14 +661,18 @@ function AccountsView() {
           ))}
         </div>
       ) : (
-        <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
           <Table>
             <TableHeader>
-              <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-                <TableHead className="text-muted-copy h-12 pl-4 font-medium">Account</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[220px] font-medium">Usage today</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[150px] font-medium">Status</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[220px] pr-4 text-right font-medium">Daily limit</TableHead>
+              <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+                <TableHead className="h-12 pl-4 font-medium text-muted-copy">Account</TableHead>
+                <TableHead className="h-12 w-[220px] font-medium text-muted-copy">
+                  Usage today
+                </TableHead>
+                <TableHead className="h-12 w-[150px] font-medium text-muted-copy">Status</TableHead>
+                <TableHead className="h-12 w-[220px] pr-4 text-right font-medium text-muted-copy">
+                  Daily limit
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -617,25 +688,39 @@ function AccountsView() {
 }
 
 function accountStatus(account: Account, now: number) {
-  if (!account.ready) return { label: 'Needs session', className: 'bg-panel-muted text-copy border-line', dot: 'bg-subtle-copy' }
+  if (!account.ready)
+    return {
+      label: 'Needs session',
+      className: 'bg-panel-muted text-copy border-line',
+      dot: 'bg-subtle-copy',
+    }
   if (account.cooldownUntil && account.cooldownUntil > now)
-    return { label: 'Cooling down', className: 'bg-status-danger-soft text-status-danger border-status-danger-border', dot: 'status-dot-danger' }
-  return { label: 'Ready', className: 'bg-status-success-soft text-status-success border-status-success-border', dot: 'status-dot-success-tight' }
+    return {
+      label: 'Cooling down',
+      className: 'bg-status-danger-soft text-status-danger border-status-danger-border',
+      dot: 'status-dot-danger',
+    }
+  return {
+    label: 'Ready',
+    className: 'bg-status-success-soft text-status-success border-status-success-border',
+    dot: 'status-dot-success-tight',
+  }
 }
 
 function UsageBar({ used, limit }: { used: number; limit?: number }) {
   const pct = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0
-  const fill = pct >= 90 ? 'bg-status-danger' : pct >= 70 ? 'bg-status-warning' : 'bg-status-success'
+  const fill =
+    pct >= 90 ? 'bg-status-danger' : pct >= 70 ? 'bg-status-warning' : 'bg-status-success'
   return (
     <div>
       <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="text-copy font-medium tabular-nums">
+        <span className="font-medium text-copy tabular-nums">
           {limit ? `${used} / ${limit}` : `${used} · no limit`}
         </span>
         <span className="text-subtle-copy tabular-nums">{limit ? `${pct}%` : ''}</span>
       </div>
-      <div className="bg-panel-muted mt-1.5 h-1.5 overflow-hidden rounded-full">
-        <div className={cn('h-full rounded-full transition-[width]', fill)} style={{ width: `${pct}%` }} />
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-panel-muted">
+        <div className={cn('h-full rounded-full', fill)} style={{ width: `${pct}%` }} />
       </div>
     </div>
   )
@@ -657,22 +742,28 @@ function DailyLimitEditor({ account, compact }: { account: Account; compact?: bo
     let active = true
     const timer = setTimeout(() => {
       // Keep edits ordered, including reverting while an earlier save is in flight.
-      const operation = pendingSave.current.catch(() => {}).then(() =>
-        save({ profileId: account.id, limit: empty ? undefined : parsed }))
+      const operation = pendingSave.current
+        .catch(() => {})
+        .then(() => save({ profileId: account.id, limit: empty ? undefined : parsed }))
       pendingSave.current = operation
-      void operation.then(() => {
-        if (active) {
-          setDraft(null)
-          setStatus('saved')
-        }
-      }).catch((error) => {
-        if (active) {
-          setStatus('error')
-          toast.error(String(error))
-        }
-      })
+      void operation
+        .then(() => {
+          if (active) {
+            setDraft(null)
+            setStatus('saved')
+          }
+        })
+        .catch((error) => {
+          if (active) {
+            setStatus('error')
+            toast.error(String(error))
+          }
+        })
     }, 700)
-    return () => { active = false; clearTimeout(timer) }
+    return () => {
+      active = false
+      clearTimeout(timer)
+    }
   }, [draft, empty, valid, parsed, account.id, save])
 
   const edit = (value: string) => {
@@ -691,7 +782,7 @@ function DailyLimitEditor({ account, compact }: { account: Account; compact?: bo
         placeholder="No limit"
         value={limit}
         onChange={(e) => edit(e.target.value)}
-        className="bg-field border-line brand-focus h-8 w-24 shadow-sm"
+        className="h-8 w-24 brand-focus border-line bg-field shadow-sm"
       />
       {!empty && (
         <Button
@@ -700,16 +791,26 @@ function DailyLimitEditor({ account, compact }: { account: Account; compact?: bo
           title="Clear limit"
           aria-label={`Clear ${account.name} daily limit`}
           onClick={() => edit('')}
-          className="text-muted-copy hover:bg-panel-muted h-8 w-8 shrink-0 hover:text-ink"
+          className="h-8 w-8 shrink-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
         >
           <X className="h-3.5 w-3.5" />
         </Button>
       )}
       {status === 'error' && (
-        <Button size="sm" variant="ghost" onClick={() => edit(limit)} className="h-8">Retry</Button>
+        <Button size="sm" variant="ghost" onClick={() => edit(limit)} className="h-8">
+          Retry
+        </Button>
       )}
-      <span aria-live="polite" className="text-subtle-copy min-w-12 text-xs whitespace-nowrap">
-        {!empty && !valid ? '1–100000' : status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : status === 'error' ? 'Failed' : ''}
+      <span aria-live="polite" className="min-w-12 text-xs whitespace-nowrap text-subtle-copy">
+        {!empty && !valid
+          ? '1–100000'
+          : status === 'saving'
+            ? 'Saving…'
+            : status === 'saved'
+              ? 'Saved'
+              : status === 'error'
+                ? 'Failed'
+                : ''}
       </span>
     </div>
   )
@@ -718,13 +819,17 @@ function DailyLimitEditor({ account, compact }: { account: Account; compact?: bo
 function AccountDesktopRow({ account, now }: { account: Account; now: number }) {
   const status = accountStatus(account, now)
   return (
-    <TableRow className="border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle">
+    <TableRow className="h-14 border-b border-line-soft hover:bg-panel-subtle">
       <TableCell className="pl-4 font-medium">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="text-ink truncate">{account.name}</span>
-          {!account.ready && <span className="text-subtle-copy text-xs font-normal">Open profile to capture session</span>}
+          <span className="truncate text-ink">{account.name}</span>
+          {!account.ready && (
+            <span className="text-xs font-normal text-subtle-copy">
+              Open profile to capture session
+            </span>
+          )}
           {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
-            <span className="text-status-danger text-xs font-normal">
+            <span className="text-xs font-normal text-status-danger">
               Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
             </span>
           )}
@@ -734,7 +839,12 @@ function AccountDesktopRow({ account, now }: { account: Account; now: number }) 
         <UsageBar used={account.used} limit={account.dailyLimit} />
       </TableCell>
       <TableCell>
-        <span className={cn('inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap', status.className)}>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap',
+            status.className,
+          )}
+        >
           <span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} />
           {status.label}
         </span>
@@ -749,26 +859,33 @@ function AccountDesktopRow({ account, now }: { account: Account; now: number }) 
 function AccountCard({ account, now }: { account: Account; now: number }) {
   const status = accountStatus(account, now)
   return (
-    <div className="bg-panel-strong border-line rounded-2xl border p-4 shadow-xs">
+    <div className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-ink truncate text-base font-semibold">{account.name}</h3>
-          {!account.ready && <p className="text-subtle-copy mt-0.5 text-xs">Open profile to capture session</p>}
+          <h3 className="truncate text-base font-semibold text-ink">{account.name}</h3>
+          {!account.ready && (
+            <p className="mt-0.5 text-xs text-subtle-copy">Open profile to capture session</p>
+          )}
         </div>
-        <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium', status.className)}>
+        <span
+          className={cn(
+            'inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium',
+            status.className,
+          )}
+        >
           <span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} />
           {status.label}
         </span>
       </div>
       {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
-        <p className="text-status-danger mt-2 text-xs">
+        <p className="mt-2 text-xs text-status-danger">
           Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
         </p>
       )}
       <div className="mt-3">
         <UsageBar used={account.used} limit={account.dailyLimit} />
       </div>
-      <div className="border-line mt-3 border-t pt-3">
+      <div className="mt-3 border-t border-line pt-3">
         <DailyLimitEditor account={account} compact />
       </div>
     </div>
@@ -789,11 +906,16 @@ function SavedView() {
     results: leads,
     status: pageStatus,
     loadMore,
-  } = usePaginatedQuery(api.leads.listPage, {
-    listId: f.savedList === 'all' ? undefined : f.savedList as Id<'leadLists'>,
-    classification: f.savedType === 'all' ? undefined : f.savedType as 'male' | 'female' | 'business',
-    search: f.savedQuery.trim() || undefined,
-  }, { initialNumItems: 100 })
+  } = usePaginatedQuery(
+    api.leads.listPage,
+    {
+      listId: f.savedList === 'all' ? undefined : (f.savedList as Id<'leadLists'>),
+      classification:
+        f.savedType === 'all' ? undefined : (f.savedType as 'male' | 'female' | 'business'),
+      search: f.savedQuery.trim() || undefined,
+    },
+    { initialNumItems: 100 },
+  )
 
   useEffect(() => {
     if (pageStatus === 'CanLoadMore' && leads.length < visibleCount) loadMore(100)
@@ -806,11 +928,17 @@ function SavedView() {
     <div className="space-y-3">
       <LeadsList
         leads={leads.slice(0, visibleCount)}
-        loading={pageStatus === 'LoadingFirstPage' || (pageStatus !== 'Exhausted' && leads.length === 0)}
+        loading={
+          pageStatus === 'LoadingFirstPage' || (pageStatus !== 'Exhausted' && leads.length === 0)
+        }
         hasActiveFilter={!!f.savedQuery || f.savedList !== 'all' || f.savedType !== 'all'}
       />
       {hasMore && (
-        <Button variant="outline" disabled={fillingPage} onClick={() => setPagination({ key: filterKey, count: visibleCount + 100 })}>
+        <Button
+          variant="outline"
+          disabled={fillingPage}
+          onClick={() => setPagination({ key: filterKey, count: visibleCount + 100 })}
+        >
           {fillingPage ? 'Loading accounts...' : 'Load more accounts'}
         </Button>
       )}
@@ -836,15 +964,15 @@ function ListsView() {
   }, [lists, f.listsQuery])
 
   if (lists === undefined) {
-    return <div className="text-muted-foreground animate-pulse p-12 text-center text-sm">Loading lists...</div>
+    return <div className="p-12 text-center text-sm text-muted-foreground">Loading lists...</div>
   }
 
   if (!lists.length) {
     return (
       <>
-        <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-          <h3 className="text-ink text-lg font-medium">No lead lists yet</h3>
-          <p className="text-subtle-copy mt-1 text-sm">Create a list to organize scraped leads.</p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+          <h3 className="text-lg font-medium text-ink">No lead lists yet</h3>
+          <p className="mt-1 text-sm text-subtle-copy">Create a list to organize scraped leads.</p>
         </div>
         <LeadListCreateDialog open={f.listCreateOpen} onOpenChange={f.setListCreateOpen} />
       </>
@@ -854,22 +982,27 @@ function ListsView() {
   return (
     <div className="space-y-4">
       {!filtered.length ? (
-        <div className="border-line-soft bg-panel-subtle rounded-2xl border-2 border-dashed p-12 text-center">
-          <p className="text-ink text-sm font-medium">No matching lists</p>
-          <p className="text-subtle-copy mt-1 text-sm">Try a different search term.</p>
+        <div className="rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+          <p className="text-sm font-medium text-ink">No matching lists</p>
+          <p className="mt-1 text-sm text-subtle-copy">Try a different search term.</p>
         </div>
       ) : mobile ? (
         <div className="space-y-3">
           {filtered.map((list) => (
-            <div key={list._id} className="bg-panel-strong border-line rounded-2xl border p-4 shadow-xs">
+            <div
+              key={list._id}
+              className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs"
+            >
               <div className="flex items-center justify-between gap-3">
-                <h3 className="text-ink min-w-0 flex-1 truncate text-base font-semibold">{list.name}</h3>
+                <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-ink">
+                  {list.name}
+                </h3>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
                     aria-label={`Rename ${list.name}`}
-                    className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
+                    className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
                     onClick={() => setRenameTarget(list)}
                   >
                     <Pencil className="h-4 w-4" />
@@ -878,41 +1011,50 @@ function ListsView() {
                     variant="ghost"
                     size="icon"
                     aria-label={`Delete ${list.name}`}
-                    className="text-status-danger hover:bg-status-danger-soft h-8 w-8"
+                    className="h-8 w-8 text-status-danger hover:bg-status-danger-soft"
                     onClick={() => setDeleteTarget(list)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-              <p className="text-subtle-copy mt-1 text-xs">Created {new Date(list.createdAt).toLocaleDateString()}</p>
+              <p className="mt-1 text-xs text-subtle-copy">
+                Created {new Date(list.createdAt).toLocaleDateString()}
+              </p>
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
           <Table>
             <TableHeader>
-              <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-                <TableHead className="text-muted-copy h-12 pl-4 font-medium">Name</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[160px] font-medium">Created</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[110px] pr-4 text-right font-medium">Actions</TableHead>
+              <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+                <TableHead className="h-12 pl-4 font-medium text-muted-copy">Name</TableHead>
+                <TableHead className="h-12 w-[160px] font-medium text-muted-copy">
+                  Created
+                </TableHead>
+                <TableHead className="h-12 w-[110px] pr-4 text-right font-medium text-muted-copy">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((list) => (
-                <TableRow key={list._id} className="group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle">
-                  <TableCell className="text-ink pl-4 font-medium">{list.name}</TableCell>
-                  <TableCell className="text-muted-copy text-xs whitespace-nowrap">
+                <TableRow
+                  key={list._id}
+                  className="group h-14 border-b border-line-soft hover:bg-panel-subtle"
+                >
+                  <TableCell className="pl-4 font-medium text-ink">{list.name}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap text-muted-copy">
                     {new Date(list.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="pr-4 text-right">
-                    <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100">
                       <Button
                         variant="ghost"
                         size="icon"
                         title="Rename list"
-                        className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
+                        className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
                         onClick={() => setRenameTarget(list)}
                       >
                         <Pencil className="h-4 w-4" />
@@ -921,7 +1063,7 @@ function ListsView() {
                         variant="ghost"
                         size="icon"
                         title="Delete list"
-                        className="text-status-danger hover:bg-status-danger-soft h-8 w-8"
+                        className="h-8 w-8 text-status-danger hover:bg-status-danger-soft"
                         onClick={() => setDeleteTarget(list)}
                       >
                         <Trash2 className="h-4 w-4" />
@@ -949,7 +1091,13 @@ function ListsView() {
   )
 }
 
-function LeadListCreateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function LeadListCreateDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const createList = useMutation(api.leads.createList)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
@@ -980,7 +1128,7 @@ function LeadListCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[440px]">
+      <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[440px]">
         <DialogHeader className="shrink-0">
           <DialogTitle className="page-title-gradient">New lead list</DialogTitle>
         </DialogHeader>
@@ -994,15 +1142,24 @@ function LeadListCreateDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             onKeyDown={(e) => {
               if (e.key === 'Enter') void submit()
             }}
-            className="bg-field border-line brand-focus"
+            className="brand-focus border-line bg-field"
             autoFocus
           />
         </div>
         <DialogFooter className="shrink-0 gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy} className="button-ghost">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+            className="button-ghost"
+          >
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={busy || !name.trim()} className="brand-button">
+          <Button
+            onClick={() => void submit()}
+            disabled={busy || !name.trim()}
+            className="brand-button"
+          >
             Create list
           </Button>
         </DialogFooter>
@@ -1035,7 +1192,10 @@ function LeadListRenameDialog({
     if (!list || !trimmed || trimmed === list.name) return
     setBusy(true)
     try {
-      await apiFetch('/api/lead-lists/rename', { method: 'POST', body: { listId: list._id, name: trimmed } })
+      await apiFetch('/api/lead-lists/rename', {
+        method: 'POST',
+        body: { listId: list._id, name: trimmed },
+      })
       toast.success('List renamed')
       onOpenChange(false)
     } catch (e) {
@@ -1047,7 +1207,7 @@ function LeadListRenameDialog({
 
   return (
     <Dialog open={Boolean(list)} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[440px]">
+      <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[440px]">
         <DialogHeader className="shrink-0">
           <DialogTitle className="page-title-gradient">Rename list</DialogTitle>
         </DialogHeader>
@@ -1060,12 +1220,17 @@ function LeadListRenameDialog({
             onKeyDown={(e) => {
               if (e.key === 'Enter') void submit()
             }}
-            className="bg-field border-line brand-focus"
+            className="brand-focus border-line bg-field"
             autoFocus
           />
         </div>
         <DialogFooter className="shrink-0 gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy} className="button-ghost">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+            className="button-ghost"
+          >
             Cancel
           </Button>
           <Button
@@ -1114,7 +1279,13 @@ function LeadListDeleteDialog({ list, onCancel }: { list: LeadList; onCancel: ()
 
 /* ── New job dialog (popup) ── */
 
-function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+function NewJobDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const lists = useQuery(api.leads.lists, {})
   const createJobs = useMutation(api.scraper.createJobs)
   const navigate = useNavigate()
@@ -1137,12 +1308,14 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
   }
 
   const selectedTargetList = lists?.some((list) => list._id === targetList)
-    ? targetList : lists?.[0]?._id ?? ''
+    ? targetList
+    : (lists?.[0]?._id ?? '')
 
   const daysValue = Number(days)
   const validDays = Number.isSafeInteger(daysValue) && daysValue >= 1 && daysValue <= 3650
   const postLimitValue = Number(postLimit)
-  const validPostLimit = Number.isSafeInteger(postLimitValue) && postLimitValue >= 1 && postLimitValue <= 5000
+  const validPostLimit =
+    Number.isSafeInteger(postLimitValue) && postLimitValue >= 1 && postLimitValue <= 5000
   const parsedCount = splitLinks(links).length
   const canSubmit = !busy && parsedCount > 0 && !!selectedTargetList && validDays && validPostLimit
 
@@ -1170,7 +1343,7 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
+      <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
         <DialogHeader className="shrink-0">
           <DialogTitle className="page-title-gradient">New scraping job</DialogTitle>
         </DialogHeader>
@@ -1184,10 +1357,10 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
               onChange={(e) => setLinks(e.target.value)}
               placeholder="https://www.instagram.com/example/&#10;@another_profile"
               rows={4}
-              className="bg-field border-line brand-focus mt-1 min-h-24"
+              className="mt-1 min-h-24 brand-focus border-line bg-field"
             />
             {parsedCount > 0 && (
-              <p className="text-subtle-copy text-xs">
+              <p className="text-xs text-subtle-copy">
                 {parsedCount} profile{parsedCount === 1 ? '' : 's'} detected
               </p>
             )}
@@ -1204,7 +1377,7 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
                 step={1}
                 value={days}
                 onChange={(e) => setDays(e.target.value)}
-                className="bg-field border-line brand-focus"
+                className="brand-focus border-line bg-field"
               />
             </div>
             <div className="grid gap-2">
@@ -1217,7 +1390,7 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
                 step={1}
                 value={postLimit}
                 onChange={(e) => setPostLimit(e.target.value)}
-                className="bg-field border-line brand-focus"
+                className="brand-focus border-line bg-field"
               />
             </div>
           </div>
@@ -1225,7 +1398,7 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
           <div className="grid gap-2">
             <Label>Target lead list</Label>
             <Select value={selectedTargetList} onValueChange={setTargetList}>
-              <SelectTrigger className="bg-field border-line w-full">
+              <SelectTrigger className="w-full border-line bg-field">
                 <SelectValue placeholder="Choose a list" />
               </SelectTrigger>
               <SelectContent className="panel-dropdown">
@@ -1240,11 +1413,20 @@ function NewJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
         </div>
 
         <DialogFooter className="shrink-0 gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy} className="button-ghost">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={busy}
+            className="button-ghost"
+          >
             Cancel
           </Button>
           <Button onClick={() => void addSources()} disabled={!canSubmit} className="brand-button">
-            {busy ? 'Queueing...' : parsedCount > 0 ? `Add ${parsedCount} to scraper` : 'Add to scraper'}
+            {busy
+              ? 'Queueing...'
+              : parsedCount > 0
+                ? `Add ${parsedCount} to scraper`
+                : 'Add to scraper'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -4,11 +4,7 @@ import { Code, Loader2, Send } from 'lucide-react'
 import { AuthCardShell } from '@/components/shared/AuthCardShell'
 import { Button } from '@/components/ui/button'
 import { useAppAuth, type AppUser, type AuthConfig } from '@/lib/auth'
-import {
-  AUTH_ROUTES,
-  REDIRECT_URL_PARAM,
-  getSafeRedirectTarget,
-} from '@/lib/auth-routing'
+import { AUTH_ROUTES, REDIRECT_URL_PARAM, getSafeRedirectTarget } from '@/lib/auth-routing'
 
 type AppLink = { token: string; bot: string; url: string }
 
@@ -16,8 +12,7 @@ const POLL_INTERVAL_MS = 2000
 const MAX_POLL_ATTEMPTS = 300
 
 export function TelegramLoginPageContainer() {
-  const { isLoaded, isSignedIn, authFetch, loginWithToken, devLogin } =
-    useAppAuth()
+  const { isLoaded, isSignedIn, authFetch, loginWithToken, devLogin } = useAppAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [config, setConfig] = useState<AuthConfig | null>(null)
@@ -75,11 +70,7 @@ export function TelegramLoginPageContainer() {
         url?: unknown
         error?: unknown
       } | null
-      if (
-        !res.ok ||
-        typeof data?.token !== 'string' ||
-        typeof data?.bot !== 'string'
-      ) {
+      if (!res.ok || typeof data?.token !== 'string' || typeof data?.bot !== 'string') {
         throw new Error(
           typeof data?.error === 'string' && data.error
             ? data.error
@@ -103,9 +94,7 @@ export function TelegramLoginPageContainer() {
       pollTimerRef.current = setInterval(async () => {
         attempts++
         try {
-          const poll = await authFetch(
-            `/api/auth/tg-poll?token=${encodeURIComponent(link.token)}`,
-          )
+          const poll = await authFetch(`/api/auth/tg-poll?token=${encodeURIComponent(link.token)}`)
           const state = (await poll.json().catch(() => null)) as {
             user?: AppUser
             token?: unknown
@@ -123,9 +112,7 @@ export function TelegramLoginPageContainer() {
             setIsWaitingApp(false)
             if (poll.status === 403) {
               setError(
-                typeof state?.error === 'string' && state.error
-                  ? state.error
-                  : 'Login failed',
+                typeof state?.error === 'string' && state.error ? state.error : 'Login failed',
               )
             } else if (attempts > MAX_POLL_ATTEMPTS) {
               setError('Login timed out. Try again.')
@@ -137,9 +124,7 @@ export function TelegramLoginPageContainer() {
         }
       }, POLL_INTERVAL_MS)
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : 'Telegram login failed',
-      )
+      setError(cause instanceof Error ? cause.message : 'Telegram login failed')
       setAppLink(null)
     } finally {
       setSubmitting(false)
@@ -176,8 +161,8 @@ export function TelegramLoginPageContainer() {
       error={error}
     >
       {config === null ? (
-        <div className="text-muted-copy flex items-center gap-2 text-sm">
-          <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="flex items-center gap-2 text-sm text-muted-copy">
+          <Loader2 className="h-4 w-4" />
           Loading login options...
         </div>
       ) : (
@@ -188,8 +173,7 @@ export function TelegramLoginPageContainer() {
               <p className="mt-1 leading-relaxed">
                 Set <code className="font-mono">TELEGRAM_BOT_TOKEN</code>,{' '}
                 <code className="font-mono">TELEGRAM_BOT_USERNAME</code> and{' '}
-                <code className="font-mono">TELEGRAM_ADMIN_ID</code> on the
-                server, then reload.
+                <code className="font-mono">TELEGRAM_ADMIN_ID</code> on the server, then reload.
               </p>
             </div>
           )}
@@ -202,24 +186,19 @@ export function TelegramLoginPageContainer() {
                 disabled={submitting}
                 onClick={handleAppLogin}
               >
-                {submitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+                {submitting ? <Loader2 className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                 Continue with Telegram
               </Button>
-              <p className="text-muted-copy text-center text-[11px]">
-                Opens your Telegram app — tap START in the bot, no phone number
-                needed.
+              <p className="text-center text-[11px] text-muted-copy">
+                Opens your Telegram app — tap START in the bot, no phone number needed.
               </p>
             </div>
           )}
 
           {config.isConfigured && isWaitingApp && appLink && (
             <div className="flex flex-col items-center gap-3">
-              <div className="text-muted-copy flex items-center gap-2 text-xs">
-                <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="flex items-center gap-2 text-xs text-muted-copy">
+                <Loader2 className="h-4 w-4" />
                 Waiting for you to tap START in Telegram…
               </div>
               <a
@@ -233,7 +212,7 @@ export function TelegramLoginPageContainer() {
               <button
                 type="button"
                 onClick={cancelAppLogin}
-                className="text-muted-copy text-[11px] underline transition hover:text-zinc-700 dark:hover:text-zinc-300"
+                className="text-[11px] text-muted-copy underline hover:text-zinc-700 dark:hover:text-zinc-300"
               >
                 Cancel
               </button>
@@ -248,22 +227,17 @@ export function TelegramLoginPageContainer() {
               disabled={submitting}
               onClick={handleDevLogin}
             >
-              {submitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Code className="h-4 w-4" />
-              )}
+              {submitting ? <Loader2 className="h-4 w-4" /> : <Code className="h-4 w-4" />}
               Dev login as admin
             </Button>
           )}
 
           {config.isConfigured && (
-            <p className="text-muted-copy flex items-center justify-center gap-1.5 text-[11px]">
+            <p className="flex items-center justify-center gap-1.5 text-[11px] text-muted-copy">
               <Send className="h-3.5 w-3.5" />
               Only the admin Telegram account can sign in.
             </p>
           )}
-
         </>
       )}
     </AuthCardShell>

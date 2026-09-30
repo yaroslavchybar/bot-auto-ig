@@ -20,9 +20,7 @@ export function AutomationsPage() {
   const remove = useMutation(api.automations.mutations.remove)
 
   const selected =
-    editing !== null && editing !== 'new'
-      ? (rows?.find((a) => a._id === editing) ?? null)
-      : null
+    editing !== null && editing !== 'new' ? (rows?.find((a) => a._id === editing) ?? null) : null
 
   const act = async (action: () => Promise<unknown>) => {
     setSaving(true)
@@ -36,9 +34,7 @@ export function AutomationsPage() {
   }
 
   const handleToggleActive = (automation: Automation) =>
-    void act(() =>
-      toggle({ id: automation._id, isActive: !automation.isActive }),
-    )
+    void act(() => toggle({ id: automation._id, isActive: !automation.isActive }))
 
   const handleDuplicate = (automation: Automation) =>
     void act(async () => {
@@ -55,7 +51,7 @@ export function AutomationsPage() {
   }
 
   return (
-    <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
+    <div className="relative flex h-full flex-col bg-shell text-ink">
       <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
           <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
@@ -63,7 +59,7 @@ export function AutomationsPage() {
               size="icon"
               onClick={() => setEditing('new')}
               disabled={saving}
-              className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm font-medium"
+              className="h-8 w-auto brand-button px-3.5 text-sm font-medium"
             >
               <Plus className="mr-2 h-4 w-4" />
               New Automation

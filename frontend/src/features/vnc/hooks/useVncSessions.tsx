@@ -1,31 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  useContext,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { apiFetch } from '@/lib/api'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
-import {
-  applyDisplayEvent,
-  normalizeSessions,
-  type DisplaySession,
-} from '../utils/liveSessions'
+import { applyDisplayEvent, normalizeSessions, type DisplaySession } from '../utils/liveSessions'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 import { createSessionSnapshotGuard, isSessionEvent } from '../utils/sessionSnapshot'
 
-/**
- * Fetches and live-updates VNC display sessions.
- *
- * @param enabled – controls whether polling and WebSocket subscription
- *   are active. Callers decide when to enable:
- *   - Grid page passes `useRouteActive('/vnc')` so polling pauses when
- *     the keep-alive cache hides the route.
- *   - Session detail page passes `true` so it always fetches.
- */
-export function useVncSessions(enabled: boolean) {
+function useVncSessionSource(enabled: boolean) {
   const isMobile = useIsMobile()
   const isVisible = useDocumentVisibility()
   const active = enabled && isVisible
   const { handleError } = useErrorHandler()
   const [sessions, setSessions] = useState<DisplaySession[]>([])
+  const [previousEnabled, setPreviousEnabled] = useState(enabled)
+  if (previousEnabled !== enabled) {
+    setPreviousEnabled(enabled)
+    setSessions([])
+  }
   const [loading, setLoading] = useState(false)
   const [snapshots] = useState(createSessionSnapshotGuard)
   const requestRef = useRef<AbortController | null>(null)
@@ -38,7 +38,8 @@ export function useVncSessions(enabled: boolean) {
     setLoading(true)
     try {
       const data = await apiFetch<DisplaySession[]>('/api/displays', { signal: controller.signal })
-      if (!controller.signal.aborted && snapshots.isCurrent(snapshot)) setSessions(normalizeSessions(data))
+      if (!controller.signal.aborted && snapshots.isCurrent(snapshot))
+        setSessions(normalizeSessions(data))
     } catch (cause) {
       if (!controller.signal.aborted) handleError(cause, 'VNC sessions')
     } finally {
@@ -49,11 +50,14 @@ export function useVncSessions(enabled: boolean) {
     }
   }, [handleError, snapshots])
 
-  const handleSocketEvent = useCallback((event: unknown) => {
-    if (!isSessionEvent(event)) return
-    snapshots.invalidate()
-    setSessions((current) => applyDisplayEvent(current, event))
-  }, [snapshots])
+  const handleSocketEvent = useCallback(
+    (event: unknown) => {
+      if (!isSessionEvent(event)) return
+      snapshots.invalidate()
+      setSessions((current) => applyDisplayEvent(current, event))
+    },
+    [snapshots],
+  )
 
   const { connected } = useWebSocket({
     topic: 'displays',
@@ -74,13 +78,15 @@ export function useVncSessions(enabled: boolean) {
     const poll = async () => {
       await refresh()
       if (!disposed) {
-        const nextMs = connected
-          ? (isMobile ? 30000 : 15000)
-          : (isMobile ? 15000 : 5000)
-        timer = setTimeout(() => { void poll() }, nextMs)
+        const nextMs = connected ? (isMobile ? 30000 : 15000) : isMobile ? 15000 : 5000
+        timer = setTimeout(() => {
+          void poll()
+        }, nextMs)
       }
     }
-    let timer = setTimeout(() => { void poll() }, 0)
+    let timer = setTimeout(() => {
+      void poll()
+    }, 0)
     return () => {
       disposed = true
       snapshots.invalidate()
@@ -95,4 +101,23 @@ export function useVncSessions(enabled: boolean) {
     connected,
     refresh,
   }
+}
+
+const SessionsContext = createContext<ReturnType<typeof useVncSessionSource> | null>(null)
+
+export function VncSessionsProvider({
+  children,
+  enabled = true,
+}: {
+  children: ReactNode
+  enabled?: boolean
+}) {
+  const sessions = useVncSessionSource(enabled)
+  return <SessionsContext.Provider value={sessions}>{children}</SessionsContext.Provider>
+}
+
+export function useVncSessions() {
+  const sessions = useContext(SessionsContext)
+  if (!sessions) throw new Error('VncSessionsProvider is required')
+  return sessions
 }

@@ -1,33 +1,20 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useRef, type ReactNode } from 'react'
 import { AuthGuard } from '@/components/layout/AuthGuard'
-import { ProtectedLayoutShell } from '@/components/layout/ProtectedLayoutShell'
+const ProtectedLayoutShell = lazy(() =>
+  import('@/components/layout/ProtectedLayoutShell').then((module) => ({
+    default: module.ProtectedLayoutShell,
+  })),
+)
 import { ErrorBoundary as AppErrorBoundary } from '@/components/shared/ErrorBoundary'
 import { ThemeProvider } from '@/hooks/use-theme'
 import { Toaster } from '@/components/ui/toaster'
-import { usePerformanceMode } from '@/hooks/use-performance-mode'
 import { AppAuthProvider } from '@/lib/auth'
 import { addNavigationBreadcrumb } from '@/lib/sentry'
-import { cn } from '@/lib/utils'
-import {
-  matchRoute,
-  RouterProvider,
-  useLocation,
-} from '@/lib/router'
+import { matchRoute, RouterProvider, useLocation } from '@/lib/router'
 import { ROUTE_META, type RouteMeta } from '@/lib/routes'
 
 function AppFrame({ children }: { children: ReactNode }) {
-  const performanceMode = usePerformanceMode()
-
-  return (
-    <div
-      className={cn(
-        'bg-shell text-ink relative min-h-screen font-sans',
-        performanceMode && 'performance-mode',
-      )}
-    >
-      {children}
-    </div>
-  )
+  return <div className="relative min-h-screen bg-shell font-sans text-ink">{children}</div>
 }
 
 function ProtectedRoute({
@@ -41,21 +28,21 @@ function ProtectedRoute({
 }) {
   return (
     <AuthGuard>
-      <ProtectedLayoutShell routeMeta={meta} pathname={pathname}>
-        {children}
-      </ProtectedLayoutShell>
+      <Suspense fallback={null}>
+        <ProtectedLayoutShell routeMeta={meta} pathname={pathname}>
+          {children}
+        </ProtectedLayoutShell>
+      </Suspense>
     </AuthGuard>
   )
 }
 
 function NotFoundView() {
   return (
-    <div className="bg-shell text-ink flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-shell px-6 text-center text-ink">
       <h1 className="text-2xl font-semibold">Page not found</h1>
-      <p className="text-muted-copy text-sm">
-        The page you are looking for does not exist.
-      </p>
-      <a href="/profiles" className="brand-link text-sm font-medium">
+      <p className="text-sm text-muted-copy">The page you are looking for does not exist.</p>
+      <a href="/profiles" className="text-sm font-medium brand-link">
         Go to Profiles Manager
       </a>
     </div>
@@ -74,8 +61,7 @@ function Routes() {
     }
   }, [pathname])
 
-  // Note: '/' is canonicalized to '/profiles' in readLocation, so no
-  // redirect handling is needed here.
+  // Bootstrap and navigation canonicalize '/' before rendering.
   const match = matchRoute(pathname, ROUTE_META)
   if (!match?.meta) {
     return <NotFoundView />
@@ -83,9 +69,17 @@ function Routes() {
 
   const { meta } = match
   const Page = meta.Page
-  if (match.pattern === '/login') return <Page />
-  return <ProtectedRoute meta={meta} pathname={pathname}><Page /></ProtectedRoute>
-
+  const page = (
+    <Suspense fallback={null}>
+      <Page />
+    </Suspense>
+  )
+  if (match.pattern === '/login') return page
+  return (
+    <ProtectedRoute meta={meta} pathname={pathname}>
+      {page}
+    </ProtectedRoute>
+  )
 }
 
 export default function App() {

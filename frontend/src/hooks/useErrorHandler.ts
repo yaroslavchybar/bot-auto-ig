@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useLocation } from '@/lib/router'
 import { toast } from 'sonner'
-import * as Sentry from '@sentry/react'
+import { captureException } from '@/lib/sentry'
 
 /**
  * Extract a user-visible message from any thrown value.
@@ -44,17 +44,14 @@ export function useErrorHandler() {
    * Returns the extracted message string for callers that still
    * need to store it (e.g. for inline form error display).
    */
-  const handleError = useCallback(
-    (error: unknown, context?: string): string => {
-      const message = extractMessage(error)
-      toast.error(context ? `${context}: ${message}` : message)
-      Sentry.captureException(error instanceof Error ? error : new Error(message), {
-        tags: { context: context ?? 'unknown' },
-      })
-      return message
-    },
-    [],
-  )
+  const handleError = useCallback((error: unknown, context?: string): string => {
+    const message = extractMessage(error)
+    toast.error(context ? `${context}: ${message}` : message)
+    captureException(error instanceof Error ? error : new Error(message), {
+      tags: { context: context ?? 'unknown' },
+    })
+    return message
+  }, [])
 
   /**
    * Wrap an async function so that any thrown error is automatically

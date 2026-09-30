@@ -2,6 +2,14 @@
 
 Account onboarding, model content, and warmup: [ig-accounts.md](ig-accounts.md).
 
+Browser caching, memory changes, and measurements: [frontend-performance.md](frontend-performance.md).
+Profiles, proxies, and account lists use 50-row pages with server-side search.
+Search scans stop after five batches and return a continuation cursor. Unused
+credential counts are exact through 100, then display 100+ for larger totals.
+Production shell assets use hashed filenames and one-year browser caching;
+HTML revalidates. Model previews use disk-cached thumbnails and release image
+blobs off screen. Protected UI database connections close on logout.
+
 Consolidated from the former per-area guides. `docs/` remains canonical;
 `AGENTS.md` is the short navigation map; module READMEs are pointer stubs.
 Conflict order: `docs/` → `AGENTS.md` → README stubs.
@@ -18,11 +26,11 @@ server, CloakBrowser stealth Chromium automation, Convex shared data layer. Pack
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Express handles orchestration only.
 - `server/`: Express REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`)
-  + public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
-  subprocess orchestration. Admin session middleware globally;
-  `/api/automations` also accepts `INTERNAL_API_KEY`. Rate limits:
-  general 100/min, automation 10/min, writes 30/min. Authenticated model images
-  use a separate 600/min limit and a one-hour private browser cache.
+  - public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
+    subprocess orchestration. Admin session middleware globally;
+    `/api/automations` also accepts `INTERNAL_API_KEY`. Rate limits:
+    general 100/min, automation 10/min, writes 30/min. Authenticated model images
+    use a separate 600/min limit and a one-hour private browser cache.
 - `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
 - `server/automation/`: Bun workers and TypeScript Instagram actions

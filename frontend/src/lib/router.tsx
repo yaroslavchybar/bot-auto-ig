@@ -1,10 +1,9 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type MouseEvent,
   type ReactNode,
 } from 'react'
@@ -48,8 +47,7 @@ export function matchRoute(
   routes: Record<string, RouteMeta>,
 ): MatchedRoute | null {
   // Treat "/profiles/" the same as "/profiles".
-  const normalized =
-    pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
+  const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
 
   // Exact static routes first (cheapest + most common).
   const exactMeta = routes[normalized]
@@ -74,24 +72,34 @@ export function navigate(to: string, options?: NavigateOptions) {
   } else {
     window.history.pushState(null, '', to)
   }
+  normalizeLocation()
   window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
 const DEFAULT_ROUTE = '/profiles'
 
-function readLocation() {
-  // Canonicalize the root path up front so the first render already shows
-  // the default page. A <Navigate> redirect in render would only run after
-  // mount (returning blank UI meanwhile) and its popstate event would fire
-  // before RouterProvider subscribes below, leaving the app stuck blank.
+// Run during bootstrap and navigation, never while React is rendering.
+export function normalizeLocation() {
   if (window.location.pathname === '/') {
-    window.history.replaceState(null, '', DEFAULT_ROUTE + window.location.search)
-    return { pathname: DEFAULT_ROUTE, search: window.location.search }
+    window.history.replaceState(
+      window.history.state,
+      '',
+      DEFAULT_ROUTE + window.location.search + window.location.hash,
+    )
   }
-  return {
-    pathname: window.location.pathname,
-    search: window.location.search,
+}
+
+function readLocation() {
+  return window.location.pathname + window.location.search
+}
+
+function subscribeLocation(onChange: () => void) {
+  const update = () => {
+    normalizeLocation()
+    onChange()
   }
+  window.addEventListener('popstate', update)
+  return () => window.removeEventListener('popstate', update)
 }
 
 type RouterContextValue = {
@@ -117,23 +125,16 @@ export function RouterProvider({
   children: ReactNode
   routes: Record<string, RouteMeta>
 }) {
-  const [location, setLocation] = useState(readLocation)
-
-  useEffect(() => {
-    const onChange = () => setLocation(readLocation())
-    // A <Navigate> rendered on the initial mount (e.g. AuthGuard -> /login)
-    // fires before this subscription exists, so its popstate event is lost.
-    // Re-read the URL after subscribing to recover instead of staying stuck.
-    onChange()
-    window.addEventListener('popstate', onChange)
-    return () => window.removeEventListener('popstate', onChange)
-  }, [])
+  const location = useSyncExternalStore(subscribeLocation, readLocation)
 
   const value = useMemo<RouterContextValue>(() => {
-    const match = matchRoute(location.pathname, routes)
+    const queryIndex = location.indexOf('?')
+    const pathname = queryIndex === -1 ? location : location.slice(0, queryIndex)
+    const search = queryIndex === -1 ? '' : location.slice(queryIndex)
+    const match = matchRoute(pathname, routes)
     return {
-      pathname: location.pathname,
-      search: location.search,
+      pathname,
+      search,
       params: match?.params ?? {},
       pattern: match?.pattern ?? null,
       navigate,
@@ -149,11 +150,7 @@ export function useLocation() {
 }
 
 export function useNavigate() {
-  const { navigate: navigateFn } = useContext(RouterContext)
-  return useCallback(
-    (to: string, options?: NavigateOptions) => navigateFn(to, options),
-    [navigateFn],
-  )
+  return useContext(RouterContext).navigate
 }
 
 export function useParams<T extends Record<string, string> = Record<string, string>>(): T {

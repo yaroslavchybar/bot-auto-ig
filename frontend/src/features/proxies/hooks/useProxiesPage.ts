@@ -1,20 +1,24 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useMutation } from 'convex/react'
+import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
-import { useProxies } from './useProxies'
-import { useProfiles } from '../../profiles/hooks/useProfiles'
+import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
 import type { ProxyFormValues, ProxyItem } from '../types'
 import { normalizeProxy } from '../../../../../server/shared/proxy'
-import { buildProxyUsage } from '../utils/proxyUsage'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
 
 export function useProxiesPage() {
-  const { proxies, loading } = useProxies()
-  const { profiles } = useProfiles()
   const { handleError } = useErrorHandler()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const search = useDebouncedSearch(searchQuery)
+  const pagination = useCursorPage(search)
+  const data = useQuery(api.proxies.listPage, { search, cursor: pagination.cursor })
+  const loading = data === undefined
+  const proxies = useMemo<ProxyItem[]>(
+    () => data?.page.map((row) => ({ ...row, id: String(row._id) })) ?? [],
+    [data],
+  )
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [editProxyId, setEditProxyId] = useState<string | null>(null)
   const [deleteProxyId, setDeleteProxyId] = useState<string | null>(null)
@@ -25,23 +29,13 @@ export function useProxiesPage() {
   const deleteProxy = useMutation(api.proxies.remove)
 
   const editProxy = useMemo(
-    () => (editProxyId ? proxies.find((p) => p.id === editProxyId) ?? null : null),
+    () => (editProxyId ? (proxies.find((p) => p.id === editProxyId) ?? null) : null),
     [editProxyId, proxies],
   )
   const deleteTarget = useMemo(
-    () => (deleteProxyId ? proxies.find((p) => p.id === deleteProxyId) ?? null : null),
+    () => (deleteProxyId ? (proxies.find((p) => p.id === deleteProxyId) ?? null) : null),
     [deleteProxyId, proxies],
   )
-
-  const filteredProxies = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) return proxies
-    return proxies.filter((p) =>
-      [p.name, p.proxy, p.proxyType, p.purpose, p.country].some((f) =>
-        String(f ?? '').toLowerCase().includes(q),
-      ),
-    )
-  }, [proxies, searchQuery])
 
   const handleCreate = useCallback(() => setIsCreateOpen(true), [])
   const handleEdit = useCallback((proxy: ProxyItem) => setEditProxyId(proxy.id), [])
@@ -62,8 +56,14 @@ export function useProxiesPage() {
       try {
         const { proxy, proxyType } = normalizeProxy(rawProxy, values.proxyType)
         if (isCreateOpen) {
-          await createProxy({ name, proxy, proxyType, purpose: values.purpose,
-            country: values.country, maxProfiles })
+          await createProxy({
+            name,
+            proxy,
+            proxyType,
+            purpose: values.purpose,
+            country: values.country,
+            maxProfiles,
+          })
           setIsCreateOpen(false)
         } else if (editProxy) {
           await updateProxy({
@@ -99,10 +99,21 @@ export function useProxiesPage() {
     }
   }, [deleteProxy, deleteTarget, handleError])
 
-  const usage = useMemo(() => buildProxyUsage(proxies, profiles), [proxies, profiles])
+  const usage = useMemo(
+    () => Object.fromEntries(data?.page.map((row) => [String(row._id), row.usage]) ?? []),
+    [data],
+  )
 
   return {
-    proxies: filteredProxies,
+    pagination: {
+      ...pagination,
+      hasNext: data !== undefined && !data.isDone,
+      loading,
+      next: () => {
+        if (data && !data.isDone) pagination.next(data.continueCursor)
+      },
+    },
+    proxies,
     allProxies: proxies,
     usage,
     loading,

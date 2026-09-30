@@ -1,3 +1,4 @@
+import { thumbnail } from './thumbnails.js'
 import { randomUUID } from 'node:crypto'
 import { currentRequestId } from '../shared/logger.js'
 import { promises as fs } from 'node:fs'
@@ -6,16 +7,34 @@ import { resolveProjectRoot } from '../shared/utils.js'
 
 const defaultRoot = path.join(resolveProjectRoot(import.meta.url), 'data', 'model-content')
 export type ContentKind = 'posts' | 'avatars'
-export type ContentItem = { id: string; kind: ContentKind; name: string; variants: string[]; assigned: Record<string, number>; createdAt: number }
+export type ContentItem = {
+  id: string
+  kind: ContentKind
+  name: string
+  variants: string[]
+  assigned: Record<string, number>
+  createdAt: number
+}
 const pending = new Map<string, Promise<unknown>>()
 
 /** The spoofer service shares /app/data and owns its own CPU/memory quota. */
-async function runSpoofer(source: string): Promise<{ outputs?: Array<{ name?: string }>; failures?: unknown[] }> {
+async function runSpoofer(
+  source: string,
+): Promise<{ outputs?: Array<{ name?: string }>; failures?: unknown[] }> {
   const response = await fetch(process.env.SPOOFER_URL?.trim() || 'http://spoofer:3002/variants', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Request-Id': currentRequestId() || randomUUID() },
-    body: JSON.stringify({ source }), signal: AbortSignal.timeout(30 * 60_000),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Request-Id': currentRequestId() || randomUUID(),
+    },
+    body: JSON.stringify({ source }),
+    signal: AbortSignal.timeout(30 * 60_000),
   })
-  const result = await response.json() as { outputs?: Array<{ name?: string }>; failures?: unknown[]; error?: string }
+  const result = (await response.json()) as {
+    outputs?: Array<{ name?: string }>
+    failures?: unknown[]
+    error?: string
+  }
   if (!response.ok) throw new Error(result.error || `Spoofer HTTP ${response.status}`)
   return result
 }
@@ -26,8 +45,11 @@ function modelDir(modelId: string): string {
 }
 
 async function read(modelId: string): Promise<ContentItem[]> {
-  try { return JSON.parse(await fs.readFile(path.join(modelDir(modelId), 'manifest.json'), 'utf8')) as ContentItem[] }
-  catch (error) {
+  try {
+    return JSON.parse(
+      await fs.readFile(path.join(modelDir(modelId), 'manifest.json'), 'utf8'),
+    ) as ContentItem[]
+  } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw error
   }
@@ -38,33 +60,54 @@ async function write(modelId: string, rows: ContentItem[]): Promise<void> {
   await fs.mkdir(dir, { recursive: true })
   const temp = path.join(dir, `manifest.${randomUUID()}.tmp`)
   await fs.writeFile(temp, JSON.stringify(rows), { mode: 0o600 })
-  try { await fs.rename(temp, path.join(dir, 'manifest.json')) }
-  catch (error) { await fs.rm(temp, { force: true }); throw error }
+  try {
+    await fs.rename(temp, path.join(dir, 'manifest.json'))
+  } catch (error) {
+    await fs.rm(temp, { force: true })
+    throw error
+  }
 }
 
 async function locked<T>(modelId: string, work: () => Promise<T>): Promise<T> {
   const previous = pending.get(modelId) ?? Promise.resolve()
   const result = previous.then(work, work)
-  pending.set(modelId, result.catch(() => undefined))
+  pending.set(
+    modelId,
+    result.catch(() => undefined),
+  )
   return result
 }
 
 export async function listContent(modelId: string) {
-  return locked(modelId, async () => (await read(modelId)).map(row => ({
-    id: row.id, kind: row.kind, name: row.name,
-    variantCount: row.variants.length, usedCount: Object.keys(row.assigned).length,
-    createdAt: row.createdAt,
-  })))
+  return locked(modelId, async () =>
+    (await read(modelId)).map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      name: row.name,
+      variantCount: row.variants.length,
+      usedCount: Object.keys(row.assigned).length,
+      createdAt: row.createdAt,
+    })),
+  )
 }
 
 /** Serve only an original recorded in this model's manifest. */
-export async function contentImage(modelId: string, kind: ContentKind, contentId: string) {
-  const item = (await read(modelId)).find(row => row.id === contentId && row.kind === kind)
+export async function contentImage(
+  modelId: string,
+  kind: ContentKind,
+  contentId: string,
+  preview = false,
+) {
+  const item = (await read(modelId)).find((row) => row.id === contentId && row.kind === kind)
   if (!item) return null
   const extension = path.extname(item.name).toLowerCase()
   if (!['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) return null
   const file = path.join(modelDir(modelId), kind, item.id, `source${extension}`)
-  return { bytes: await fs.readFile(file), type: extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg' }
+  if (preview) return { bytes: await thumbnail(file), type: 'image/webp' }
+  return {
+    bytes: await fs.readFile(file),
+    type: extension === '.png' ? 'image/png' : extension === '.webp' ? 'image/webp' : 'image/jpeg',
+  }
 }
 
 /** Uploaded originals enter the bank immediately; copies are generated on demand. */
@@ -72,7 +115,8 @@ export async function addContent(modelId: string, kind: ContentKind, name: strin
   if (!['posts', 'avatars'].includes(kind)) throw new Error('Invalid content type')
   if (!bytes.length || bytes.length > 15 * 1024 * 1024) throw new Error('Image must be 1–15 MB')
   const extension = path.extname(name).toLowerCase()
-  if (!['.jpg', '.jpeg', '.png', '.webp'].includes(extension)) throw new Error('Upload a JPG, PNG, or WebP image')
+  if (!['.jpg', '.jpeg', '.png', '.webp'].includes(extension))
+    throw new Error('Upload a JPG, PNG, or WebP image')
   const id = randomUUID()
   const dir = path.join(modelDir(modelId), kind, id)
   await fs.mkdir(dir, { recursive: true })
@@ -80,7 +124,14 @@ export async function addContent(modelId: string, kind: ContentKind, name: strin
   try {
     await locked(modelId, async () => {
       const rows = await read(modelId)
-      rows.push({ id, kind, name: path.basename(name), variants: [], assigned: {}, createdAt: Date.now() })
+      rows.push({
+        id,
+        kind,
+        name: path.basename(name),
+        variants: [],
+        assigned: {},
+        createdAt: Date.now(),
+      })
       await write(modelId, rows)
     })
   } catch (error) {
@@ -100,23 +151,31 @@ export async function generateCopies(modelId: string, kind: ContentKind, content
   generating.add(key)
   try {
     const source = await locked(modelId, async () => {
-      const row = (await read(modelId)).find(item => item.id === contentId && item.kind === kind)
+      const row = (await read(modelId)).find((item) => item.id === contentId && item.kind === kind)
       if (!row) throw new Error('Image not found')
       if (row.variants.length) throw new Error('Copies already exist')
       const extension = path.extname(row.name).toLowerCase()
-      return { file: path.join(modelDir(modelId), row.kind, row.id, `source${extension}`),
-        kind: row.kind, id: row.id }
+      return {
+        file: path.join(modelDir(modelId), row.kind, row.id, `source${extension}`),
+        kind: row.kind,
+        id: row.id,
+      }
     })
     const variantsDir = path.join(modelDir(modelId), source.kind, source.id, 'variants')
     try {
       const result = await runSpoofer(source.file)
-      const variants = [...new Set((result.outputs ?? []).map(item => item.name ?? '')
-        .filter(item => /^[^/\\]+\.jpg$/i.test(item)))]
+      const variants = [
+        ...new Set(
+          (result.outputs ?? [])
+            .map((item) => item.name ?? '')
+            .filter((item) => /^[^/\\]+\.jpg$/i.test(item)),
+        ),
+      ]
       if (variants.length !== 50 || result.failures?.length)
         throw new Error(`Spoofer produced ${variants.length}/50 variants`)
       return await locked(modelId, async () => {
         const rows = await read(modelId)
-        const row = rows.find(item => item.id === contentId)
+        const row = rows.find((item) => item.id === contentId)
         if (!row) throw new Error('Image not found')
         if (row.variants.length) throw new Error('Copies already exist')
         row.variants = variants
@@ -137,9 +196,12 @@ export async function generateCopies(modelId: string, kind: ContentKind, content
 export async function removeContent(modelId: string, kind: ContentKind, contentId: string) {
   return locked(modelId, async () => {
     const rows = await read(modelId)
-    const row = rows.find(item => item.id === contentId && item.kind === kind)
+    const row = rows.find((item) => item.id === contentId && item.kind === kind)
     if (!row) throw new Error('Image not found')
-    await write(modelId, rows.filter(item => item.id !== contentId))
+    await write(
+      modelId,
+      rows.filter((item) => item.id !== contentId),
+    )
     await fs.rm(path.join(modelDir(modelId), row.kind, row.id), { recursive: true, force: true })
     return { removed: true }
   })
@@ -147,26 +209,43 @@ export async function removeContent(modelId: string, kind: ContentKind, contentI
 
 /** Copy names for the viewer. Only rows with generated variants are served. */
 export async function listCopies(modelId: string, kind: ContentKind, contentId: string) {
-  const row = (await read(modelId)).find(item => item.id === contentId && item.kind === kind)
+  const row = (await read(modelId)).find((item) => item.id === contentId && item.kind === kind)
   if (!row) throw new Error('Image not found')
-  return row.variants.filter(item => /^[^/\\]+\.jpg$/i.test(item))
+  return row.variants.filter((item) => /^[^/\\]+\.jpg$/i.test(item))
 }
 
 /** Serve a single generated copy. The name must belong to this image's manifest row. */
-export async function copyImage(modelId: string, kind: ContentKind, contentId: string, variant: string) {
-  const row = (await read(modelId)).find(item => item.id === contentId && item.kind === kind)
+export async function copyImage(
+  modelId: string,
+  kind: ContentKind,
+  contentId: string,
+  variant: string,
+  preview = false,
+) {
+  const row = (await read(modelId)).find((item) => item.id === contentId && item.kind === kind)
   if (!row || !row.variants.includes(variant) || !/^[^/\\]+\.jpg$/i.test(variant)) return null
-  const bytes = await fs.readFile(path.join(modelDir(modelId), kind, row.id, 'variants', variant))
+  const file = path.join(modelDir(modelId), kind, row.id, 'variants', variant)
+  if (preview) return { bytes: await thumbnail(file), type: 'image/webp' }
+  const bytes = await fs.readFile(file)
   return { bytes, type: 'image/jpeg' }
 }
 
 /** A variant may be used by one account only, and an account gets one copy per source. */
-export async function allocateContent(modelId: string, kind: ContentKind, profileId: string,
-  excludeIds: string[] = []): Promise<{ sourceId: string; path: string } | null> {
+export async function allocateContent(
+  modelId: string,
+  kind: ContentKind,
+  profileId: string,
+  excludeIds: string[] = [],
+): Promise<{ sourceId: string; path: string } | null> {
   return locked(modelId, async () => {
     const rows = await read(modelId)
-    const row = rows.find(item => item.kind === kind && !excludeIds.includes(item.id) &&
-      (item.assigned[profileId] !== undefined || Object.keys(item.assigned).length < item.variants.length))
+    const row = rows.find(
+      (item) =>
+        item.kind === kind &&
+        !excludeIds.includes(item.id) &&
+        (item.assigned[profileId] !== undefined ||
+          Object.keys(item.assigned).length < item.variants.length),
+    )
     if (!row) return null
     let index = row.assigned[profileId]
     if (index === undefined) {
@@ -176,13 +255,28 @@ export async function allocateContent(modelId: string, kind: ContentKind, profil
       row.assigned[profileId] = index
       await write(modelId, rows)
     }
-    return { sourceId: row.id, path: path.join(modelDir(modelId), kind, row.id, 'variants', row.variants[index]) }
+    return {
+      sourceId: row.id,
+      path: path.join(modelDir(modelId), kind, row.id, 'variants', row.variants[index]),
+    }
   })
 }
 
-export async function availableSources(modelId: string, kind: ContentKind, profileId: string,
-  excludeIds: string[] = []): Promise<number> {
-  return locked(modelId, async () => (await read(modelId)).filter(item => item.kind === kind &&
-    !excludeIds.includes(item.id) && (item.assigned[profileId] !== undefined ||
-      Object.keys(item.assigned).length < item.variants.length)).length)
+export async function availableSources(
+  modelId: string,
+  kind: ContentKind,
+  profileId: string,
+  excludeIds: string[] = [],
+): Promise<number> {
+  return locked(
+    modelId,
+    async () =>
+      (await read(modelId)).filter(
+        (item) =>
+          item.kind === kind &&
+          !excludeIds.includes(item.id) &&
+          (item.assigned[profileId] !== undefined ||
+            Object.keys(item.assigned).length < item.variants.length),
+      ).length,
+  )
 }

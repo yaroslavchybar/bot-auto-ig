@@ -58,10 +58,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <Label
-          htmlFor={input.name}
-          className="text-copy min-w-0 truncate text-[13px] font-medium"
-        >
+        <Label htmlFor={input.name} className="min-w-0 truncate text-[13px] font-medium text-copy">
           {cleanLabel(input.label)}
         </Label>
 
@@ -72,7 +69,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
             aria-label={`Decrease ${input.label}`}
             onClick={() => nudge(-step)}
             disabled={clampedValue <= min}
-            className="text-subtle-copy hover:text-ink hover:bg-panel-hover flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:opacity-30"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-subtle-copy hover:bg-panel-hover hover:text-ink disabled:opacity-30"
           >
             <Minus className="h-3 w-3" />
           </button>
@@ -99,18 +96,16 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
                   commit(Number((e.target as HTMLInputElement).value))
                 }
               }}
-              className="w-10 bg-transparent text-center outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              className="w-10 [appearance:textfield] bg-transparent text-center outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
-            {input.unit && (
-              <span className="text-subtle-copy text-[11px]">{input.unit}</span>
-            )}
+            {input.unit && <span className="text-[11px] text-subtle-copy">{input.unit}</span>}
           </div>
           <button
             type="button"
             aria-label={`Increase ${input.label}`}
             onClick={() => nudge(step)}
             disabled={clampedValue >= max}
-            className="text-subtle-copy hover:text-ink hover:bg-panel-hover flex h-6 w-6 items-center justify-center rounded-md transition-colors disabled:opacity-30"
+            className="flex h-6 w-6 items-center justify-center rounded-md text-subtle-copy hover:bg-panel-hover hover:text-ink disabled:opacity-30"
           >
             <Plus className="h-3 w-3" />
           </button>
@@ -133,7 +128,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
             ? 'var(--panel-soft)'
             : `linear-gradient(to right, var(--status-info) 0%, var(--status-info) ${progress}%, var(--panel-soft) ${progress}%, var(--panel-soft) 100%)`,
         }}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-status-info-border focus-visible:ring-offset-0 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-panel [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:transition-transform [&::-moz-range-thumb]:hover:scale-110 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-panel [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-110"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full outline-none focus-visible:ring-2 focus-visible:ring-status-info-border focus-visible:ring-offset-0 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-panel [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:shadow-md [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-panel [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:shadow-md"
       />
 
       {showPresets && (
@@ -146,7 +141,7 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
                 type="button"
                 onClick={() => onChange(preset.value)}
                 className={cn(
-                  'h-6 rounded-full border px-2.5 font-mono text-[10px] transition-colors',
+                  'h-6 rounded-full border px-2.5 font-mono text-[10px]',
                   active
                     ? 'border-status-info-border bg-status-info-soft text-ink'
                     : 'border-line-soft text-subtle-copy hover:text-ink hover:bg-panel-hover',
@@ -156,16 +151,14 @@ export function RangeInput({ input, value, onChange }: RangeInputProps) {
               </button>
             )
           })}
-          <span className="text-dim-copy ml-auto hidden font-mono text-[10px] tabular-nums min-[400px]:block">
+          <span className="ml-auto hidden font-mono text-[10px] text-dim-copy tabular-nums min-[400px]:block">
             {clampedValue}/{max}
           </span>
         </div>
       )}
 
       {input.helpText && (
-        <p className="text-subtle-copy text-[11px] leading-snug">
-          {input.helpText}
-        </p>
+        <p className="text-[11px] leading-snug text-subtle-copy">{input.helpText}</p>
       )}
     </div>
   )

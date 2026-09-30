@@ -3,7 +3,17 @@ import { mkdtemp, mkdir, writeFile, rm, readFile, readdir, stat } from 'node:fs/
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { addContent, allocateContent, availableSources, contentImage, copyImage, generateCopies, listCopies, removeContent } from './content.js'
+import sharp from 'sharp'
+import {
+  addContent,
+  allocateContent,
+  availableSources,
+  contentImage,
+  copyImage,
+  generateCopies,
+  listCopies,
+  removeContent,
+} from './content.js'
 
 let directory = ''
 let spoofer: ReturnType<typeof createServer> | undefined
@@ -12,7 +22,7 @@ afterEach(async () => {
   delete process.env.SPOOFER_URL
   if (spoofer) {
     spoofer.closeAllConnections()
-    await new Promise<void>(resolve => spoofer?.close(() => resolve()))
+    await new Promise<void>((resolve) => spoofer?.close(() => resolve()))
     spoofer = undefined
   }
   if (directory) await rm(directory, { recursive: true, force: true })
@@ -24,6 +34,38 @@ async function useDirectory() {
   process.env.MODEL_CONTENT_DIR = directory
 }
 
+test('previews are small, cached, and leave originals intact', async () => {
+  await useDirectory()
+  const source = await sharp({
+    create: { width: 1600, height: 1000, channels: 3, background: '#123456' },
+  })
+    .png()
+    .toBuffer()
+  const item = await addContent('model-one', 'posts', 'original.png', source)
+  const [first, second] = await Promise.all([
+    contentImage('model-one', 'posts', item.id, true),
+    contentImage('model-one', 'posts', item.id, true),
+  ])
+  expect(first?.type).toBe('image/webp')
+  expect(first?.bytes.equals(second!.bytes)).toBe(true)
+  expect((await sharp(first!.bytes).metadata()).width).toBe(512)
+  expect(first!.bytes.length).toBeLessThan(source.length)
+  const destination = path.join(
+    directory,
+    'model-one',
+    'posts',
+    item.id,
+    'source.png.thumbnail.webp',
+  )
+  const before = (await stat(destination)).mtimeMs
+  await contentImage('model-one', 'posts', item.id, true)
+  expect((await stat(destination)).mtimeMs).toBe(before)
+  expect((await contentImage('model-one', 'posts', item.id))?.bytes.equals(source)).toBe(true)
+  expect(await contentImage('model-two', 'posts', item.id, true)).toBeNull()
+  await removeContent('model-one', 'posts', item.id)
+  expect(await contentImage('model-one', 'posts', item.id, true)).toBeNull()
+})
+
 /** Local spoofer stub that fails the request. */
 async function useFailingSpoofer() {
   spoofer = createServer((_req, res) => {
@@ -31,7 +73,7 @@ async function useFailingSpoofer() {
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ error: 'broken' }))
   })
-  await new Promise<void>(resolve => spoofer?.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>((resolve) => spoofer?.listen(0, '127.0.0.1', resolve))
   const address = spoofer?.address()
   const port = typeof address === 'object' && address ? address.port : 0
   process.env.SPOOFER_URL = `http://127.0.0.1:${port}/variants`
@@ -40,17 +82,25 @@ async function useFailingSpoofer() {
 /** Local spoofer stub that waits until released. */
 async function useGatedSpoofer() {
   let release!: () => void
-  const entered = new Promise<void>(resolve => { release = resolve as () => void })
+  const entered = new Promise<void>((resolve) => {
+    release = resolve as () => void
+  })
   let releaseResponse!: () => void
-  const responded = new Promise<void>(resolve => { releaseResponse = resolve })
+  const responded = new Promise<void>((resolve) => {
+    releaseResponse = resolve
+  })
   spoofer = createServer((_req, res) => {
     release()
     void responded.then(() => {
       res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ outputs: Array.from({ length: 50 }, (_, index) => ({ name: `copy_${index}.jpg` })) }))
+      res.end(
+        JSON.stringify({
+          outputs: Array.from({ length: 50 }, (_, index) => ({ name: `copy_${index}.jpg` })),
+        }),
+      )
     })
   })
-  await new Promise<void>(resolve => spoofer?.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>((resolve) => spoofer?.listen(0, '127.0.0.1', resolve))
   const address = spoofer?.address()
   const port = typeof address === 'object' && address ? address.port : 0
   process.env.SPOOFER_URL = `http://127.0.0.1:${port}/variants`
@@ -60,9 +110,9 @@ async function useSpoofer(count: number, names?: string[]) {
   spoofer = createServer((_req, res) => {
     res.setHeader('Content-Type', 'application/json')
     const outputs = names ?? Array.from({ length: count }, (_, index) => `copy_${index}.jpg`)
-    res.end(JSON.stringify({ outputs: outputs.map(name => ({ name })) }))
+    res.end(JSON.stringify({ outputs: outputs.map((name) => ({ name })) }))
   })
-  await new Promise<void>(resolve => spoofer?.listen(0, '127.0.0.1', resolve))
+  await new Promise<void>((resolve) => spoofer?.listen(0, '127.0.0.1', resolve))
   const address = spoofer?.address()
   const port = typeof address === 'object' && address ? address.port : 0
   process.env.SPOOFER_URL = `http://127.0.0.1:${port}/variants`
@@ -72,7 +122,9 @@ test('upload stores the original with no copies until generation', async () => {
   await useDirectory()
   const added = await addContent('model-1', 'posts', 'photo.jpg', Buffer.from('original'))
   expect(added.variantCount).toBe(0)
-  expect(await readFile(path.join(directory, 'model-1', 'posts', added.id, 'source.jpg'), 'utf8')).toBe('original')
+  expect(
+    await readFile(path.join(directory, 'model-1', 'posts', added.id, 'source.jpg'), 'utf8'),
+  ).toBe('original')
   // The original is viewable but skipped by allocation until copies exist.
   expect((await contentImage('model-1', 'posts', added.id))?.bytes.toString()).toBe('original')
   expect(await allocateContent('model-1', 'posts', 'profile-0')).toBeNull()
@@ -84,7 +136,10 @@ test('generation requires the kind to match and unique copy names', async () => 
   await useDirectory()
   const added = await addContent('model-1', 'posts', 'photo.jpg', Buffer.from('original'))
   await expect(generateCopies('model-1', 'avatars', added.id)).rejects.toThrow('Image not found')
-  await useSpoofer(50, Array.from({ length: 50 }, () => 'same.jpg'))
+  await useSpoofer(
+    50,
+    Array.from({ length: 50 }, () => 'same.jpg'),
+  )
   await expect(generateCopies('model-1', 'posts', added.id)).rejects.toThrow('1/50')
   expect(await allocateContent('model-1', 'posts', 'profile-0')).toBeNull()
 })
@@ -92,8 +147,9 @@ test('generation requires the kind to match and unique copy names', async () => 
 test('a failed manifest write removes the uploaded directory', async () => {
   await useDirectory()
   await mkdir(path.join(directory, 'model-1', 'manifest.json'), { recursive: true })
-  await expect(addContent('model-1', 'posts', 'photo.jpg', Buffer.from('original')))
-    .rejects.toThrow()
+  await expect(
+    addContent('model-1', 'posts', 'photo.jpg', Buffer.from('original')),
+  ).rejects.toThrow()
   // The item directory is gone; only the empty kind parent remains.
   expect(await readdir(path.join(directory, 'model-1', 'posts'))).toEqual([])
 })
@@ -187,9 +243,19 @@ test('original images are scoped to their model and content type', async () => {
   for (const modelId of ['model-1', 'model-2']) {
     const imageDir = path.join(directory, modelId, 'avatars', 'source-1')
     await mkdir(imageDir, { recursive: true })
-    await writeFile(path.join(directory, modelId, 'manifest.json'), JSON.stringify([{
-      id: 'source-1', kind: 'avatars', name: 'photo.png', variants: [], assigned: {}, createdAt: 1,
-    }]))
+    await writeFile(
+      path.join(directory, modelId, 'manifest.json'),
+      JSON.stringify([
+        {
+          id: 'source-1',
+          kind: 'avatars',
+          name: 'photo.png',
+          variants: [],
+          assigned: {},
+          createdAt: 1,
+        },
+      ]),
+    )
     await writeFile(path.join(imageDir, 'source.png'), modelId)
   }
 
@@ -203,11 +269,19 @@ test('one source gives each account a distinct copy and stops at 50', async () =
   directory = await mkdtemp(path.join(tmpdir(), 'model-content-test-'))
   process.env.MODEL_CONTENT_DIR = directory
   await mkdir(path.join(directory, 'model-1'))
-  await writeFile(path.join(directory, 'model-1', 'manifest.json'), JSON.stringify([{
-    id: 'source-1', kind: 'posts', name: 'image.jpg',
-    variants: Array.from({ length: 50 }, (_, index) => `image_${index}.jpg`),
-    assigned: {}, createdAt: Date.now(),
-  }]))
+  await writeFile(
+    path.join(directory, 'model-1', 'manifest.json'),
+    JSON.stringify([
+      {
+        id: 'source-1',
+        kind: 'posts',
+        name: 'image.jpg',
+        variants: Array.from({ length: 50 }, (_, index) => `image_${index}.jpg`),
+        assigned: {},
+        createdAt: Date.now(),
+      },
+    ]),
+  )
   const paths = []
   for (let index = 0; index < 50; index++) {
     const item = await allocateContent('model-1', 'posts', `profile-${index}`)

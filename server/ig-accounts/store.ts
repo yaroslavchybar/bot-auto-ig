@@ -1,6 +1,7 @@
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto'
 import { igAccountRequest } from '../shared/convexClient.js'
 import { parseChatCredentials, type ChatCredentials } from '../chat/totp.js'
+import { scanPage, type CursorPage } from '../shared/pagination.js'
 
 export type AccountStatus = 'available' | 'assigned' | 'connected' | 'invalid'
 export type StoredAccount = ChatCredentials & {
@@ -14,13 +15,20 @@ export type StoredAccount = ChatCredentials & {
 }
 
 type EncryptedAccount = { usernameHash: string; ciphertext: string }
-type DbAccount = EncryptedAccount & { _id: string; status: AccountStatus; profileId?: string;
-  error?: string; createdAt: number; retryAfter?: number;
-  browserLoggedInAt?: number }
+type DbAccount = EncryptedAccount & {
+  _id: string
+  status: AccountStatus
+  profileId?: string
+  error?: string
+  createdAt: number
+  retryAfter?: number
+  browserLoggedInAt?: number
+}
 
 function key(): Buffer {
   const value = process.env.IG_CREDENTIALS_KEY?.trim() ?? ''
-  if (!/^[0-9a-f]{64}$/i.test(value)) throw new Error('IG_CREDENTIALS_KEY must be a 32-byte hex key')
+  if (!/^[0-9a-f]{64}$/i.test(value))
+    throw new Error('IG_CREDENTIALS_KEY must be a 32-byte hex key')
   return Buffer.from(value, 'hex')
 }
 
@@ -36,8 +44,15 @@ export function encryptAccount(account: ChatCredentials): EncryptedAccount {
   const cipher = createCipheriv('aes-256-gcm', key(), iv)
   cipher.setAAD(Buffer.from(hash, 'hex'))
   const encrypted = Buffer.concat([cipher.update(JSON.stringify(account), 'utf8'), cipher.final()])
-  return { usernameHash: hash, ciphertext: ['v1', iv.toString('base64url'),
-    cipher.getAuthTag().toString('base64url'), encrypted.toString('base64url')].join('.') }
+  return {
+    usernameHash: hash,
+    ciphertext: [
+      'v1',
+      iv.toString('base64url'),
+      cipher.getAuthTag().toString('base64url'),
+      encrypted.toString('base64url'),
+    ].join('.'),
+  }
 }
 
 export function decryptAccount(row: EncryptedAccount): ChatCredentials {
@@ -50,49 +65,121 @@ export function decryptAccount(row: EncryptedAccount): ChatCredentials {
   const decipher = createDecipheriv('aes-256-gcm', key(), iv)
   decipher.setAAD(Buffer.from(row.usernameHash, 'hex'))
   decipher.setAuthTag(tag)
-  const value = JSON.parse(Buffer.concat([decipher.update(Buffer.from(parts[3], 'base64url')),
-    decipher.final()]).toString('utf8')) as ChatCredentials
-  if (typeof value.username !== 'string' || typeof value.password !== 'string' ||
-    typeof value.authenticatorKey !== 'string' || usernameHash(value.username) !== row.usernameHash)
+  const value = JSON.parse(
+    Buffer.concat([decipher.update(Buffer.from(parts[3], 'base64url')), decipher.final()]).toString(
+      'utf8',
+    ),
+  ) as ChatCredentials
+  if (
+    typeof value.username !== 'string' ||
+    typeof value.password !== 'string' ||
+    typeof value.authenticatorKey !== 'string' ||
+    usernameHash(value.username) !== row.usernameHash
+  )
     throw new Error('Invalid encrypted IG credential')
   return value
 }
 
 function account(row: DbAccount): StoredAccount {
-  return { ...decryptAccount(row), id: row._id, status: row.status,
-    profileId: row.profileId, error: row.error, createdAt: row.createdAt, retryAfter: row.retryAfter,
-    browserLoggedInAt: row.browserLoggedInAt }
+  return {
+    ...decryptAccount(row),
+    id: row._id,
+    status: row.status,
+    profileId: row.profileId,
+    error: row.error,
+    createdAt: row.createdAt,
+    retryAfter: row.retryAfter,
+    browserLoggedInAt: row.browserLoggedInAt,
+  }
 }
 
 export function publicAccount(row: StoredAccount) {
-  return { id: row.id, username: row.username, status: row.status,
-    profileId: row.profileId, error: row.error, createdAt: row.createdAt,
-    browserLoggedInAt: row.browserLoggedInAt }
+  return {
+    id: row.id,
+    username: row.username,
+    status: row.status,
+    profileId: row.profileId,
+    error: row.error,
+    createdAt: row.createdAt,
+    browserLoggedInAt: row.browserLoggedInAt,
+  }
 }
 
 export async function listAccounts() {
   const rows = await igAccountRequest<DbAccount[]>('list')
-  return rows.map(row => {
-    try { return publicAccount(account(row)) }
-    catch { return { id: row._id, username: '', status: 'invalid' as const,
-      profileId: row.profileId, error: 'Credential cannot be decrypted', createdAt: row.createdAt } }
+  return rows.map((row) => {
+    try {
+      return publicAccount(account(row))
+    } catch {
+      return {
+        id: row._id,
+        username: '',
+        status: 'invalid' as const,
+        profileId: row.profileId,
+        error: 'Credential cannot be decrypted',
+        createdAt: row.createdAt,
+      }
+    }
   })
+}
+
+export async function listAccountsPage(search: string, cursor: string | null, profileId?: string) {
+  const term = search.trim().toLowerCase()
+  return scanPage(
+    async (next, count) => {
+      const result = await igAccountRequest<CursorPage<DbAccount>>('page', {
+        cursor: next,
+        count,
+        profileId,
+      })
+      return {
+        ...result,
+        page: result.page.map((row) => {
+          try {
+            return publicAccount(account(row))
+          } catch {
+            return {
+              id: row._id,
+              username: '',
+              status: 'invalid' as const,
+              profileId: row.profileId,
+              error: 'Credential cannot be decrypted',
+              createdAt: row.createdAt,
+            }
+          }
+        }),
+      }
+    },
+    (row) => row.username.toLowerCase().includes(term),
+    cursor,
+  )
+}
+
+export function availableAccountCount() {
+  return igAccountRequest<{ available: number; capped?: boolean }>('availableCount')
 }
 
 function readableAccounts(rows: DbAccount[]): StoredAccount[] {
   const readable: StoredAccount[] = []
   for (const row of rows) {
-    try { readable.push(account(row)) }
-    catch { /* Keep unreadable rows out of login and allocation batches. */ }
+    try {
+      readable.push(account(row))
+    } catch {
+      /* Keep unreadable rows out of login and allocation batches. */
+    }
   }
   return readable
 }
 
 export async function importAccounts(text: string) {
-  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
   if (lines.length > 1000) throw new Error('Import at most 1000 accounts at a time')
   const parsed = lines.map(parseChatCredentials)
-  if (parsed.some(value => !value)) throw new Error('Every line must be username:password:2FA key')
+  if (parsed.some((value) => !value))
+    throw new Error('Every line must be username:password:2FA key')
   let imported = 0
   for (let start = 0; start < lines.length; start += 100) {
     const rows = (parsed.slice(start, start + 100) as ChatCredentials[]).map(encryptAccount)
@@ -107,7 +194,9 @@ export async function accountById(id: string): Promise<StoredAccount | undefined
 }
 
 export async function accountByUsername(username: string): Promise<StoredAccount | undefined> {
-  const row = await igAccountRequest<DbAccount | null>('byUsernameHash', { usernameHash: usernameHash(username) })
+  const row = await igAccountRequest<DbAccount | null>('byUsernameHash', {
+    usernameHash: usernameHash(username),
+  })
   return row ? account(row) : undefined
 }
 
@@ -129,20 +218,44 @@ export async function availableAccounts(count: number): Promise<StoredAccount[]>
   return available
 }
 
-export async function connectedNames(): Promise<Array<{
-  account: StoredAccount; profileName?: string; renameFrom?: string; profileStatus?: string }>> {
+export async function connectedNames(): Promise<
+  Array<{
+    account: StoredAccount
+    profileName?: string
+    renameFrom?: string
+    profileStatus?: string
+  }>
+> {
   const connected: Array<{
-    account: StoredAccount; profileName?: string; renameFrom?: string; profileStatus?: string }> = []
+    account: StoredAccount
+    profileName?: string
+    renameFrom?: string
+    profileStatus?: string
+  }> = []
   let cursor: string | undefined
   let isDone = false
   do {
-    const result: { page: Array<{ account: DbAccount; profileName?: string;
-      renameFrom?: string; profileStatus?: string }>;
-      continueCursor: string; isDone: boolean } = await igAccountRequest('connectedNames', { cursor })
+    const result: {
+      page: Array<{
+        account: DbAccount
+        profileName?: string
+        renameFrom?: string
+        profileStatus?: string
+      }>
+      continueCursor: string
+      isDone: boolean
+    } = await igAccountRequest('connectedNames', { cursor })
     for (const row of result.page) {
-      try { connected.push({ account: account(row.account), profileName: row.profileName,
-        renameFrom: row.renameFrom, profileStatus: row.profileStatus }) }
-      catch { /* An unreadable credential cannot be renamed. */ }
+      try {
+        connected.push({
+          account: account(row.account),
+          profileName: row.profileName,
+          renameFrom: row.renameFrom,
+          profileStatus: row.profileStatus,
+        })
+      } catch {
+        /* An unreadable credential cannot be renamed. */
+      }
     }
     isDone = result.isDone
     cursor = result.continueCursor
@@ -158,19 +271,37 @@ export function claimLoginProxy(id: string, loginProxyId: string, token: string)
   return igAccountRequest<boolean>('claimLoginProxy', { id, loginProxyId, token })
 }
 
-export async function releaseLoginProxy(id: string, loginProxyId: string, token: string): Promise<void> {
+export async function releaseLoginProxy(
+  id: string,
+  loginProxyId: string,
+  token: string,
+): Promise<void> {
   await igAccountRequest('releaseLoginProxy', { id, loginProxyId, token })
 }
 
-export async function setAccountState(id: string, status: Exclude<AccountStatus, 'available'>,
-  error?: string, retryAfter?: number): Promise<void> {
+export async function setAccountState(
+  id: string,
+  status: Exclude<AccountStatus, 'available'>,
+  error?: string,
+  retryAfter?: number,
+): Promise<void> {
   await igAccountRequest('setState', { id, status, error, retryAfter })
 }
 
-export function recordBrowserLogin(id: string, browserLoggedInAt: number,
-  loginProxyId: string, claimToken: string, cooldownMs: number): Promise<{ cooldownRecorded: boolean }> {
-  return igAccountRequest('recordBrowserLogin', { id, browserLoggedInAt,
-    loginProxyId, claimToken, cooldownMs })
+export function recordBrowserLogin(
+  id: string,
+  browserLoggedInAt: number,
+  loginProxyId: string,
+  claimToken: string,
+  cooldownMs: number,
+): Promise<{ cooldownRecorded: boolean }> {
+  return igAccountRequest('recordBrowserLogin', {
+    id,
+    browserLoggedInAt,
+    loginProxyId,
+    claimToken,
+    cooldownMs,
+  })
 }
 
 export async function setAccountUsername(id: string, username: string): Promise<void> {
@@ -178,7 +309,10 @@ export async function setAccountUsername(id: string, username: string): Promise<
   const existing = await accountById(id)
   if (!existing) throw new Error('Credential not found')
   if (existing.username.toLowerCase() === username.toLowerCase()) return
-  const encrypted = encryptAccount({ username, password: existing.password,
-    authenticatorKey: existing.authenticatorKey })
+  const encrypted = encryptAccount({
+    username,
+    password: existing.password,
+    authenticatorKey: existing.authenticatorKey,
+  })
   await igAccountRequest('setUsername', { id, ...encrypted })
 }

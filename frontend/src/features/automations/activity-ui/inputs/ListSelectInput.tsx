@@ -15,11 +15,7 @@ interface ListSelectInputProps {
   onChange: (value: string[]) => void
 }
 
-export function ListSelectInput({
-  input,
-  value,
-  onChange,
-}: ListSelectInputProps) {
+export function ListSelectInput({ input, value, onChange }: ListSelectInputProps) {
   const lists = useQuery(api.lists.list, {})
   const selectedLists = (value as string[]) || []
   const availableLists: SelectableList[] = Array.isArray(lists)
@@ -39,38 +35,30 @@ export function ListSelectInput({
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-copy text-[11px] font-medium">
-        {input.label}
-      </Label>
+      <Label className="text-[11px] font-medium text-copy">{input.label}</Label>
       {input.helpText && (
-        <p className="text-subtle-copy text-[10px] leading-tight">
-          {input.helpText}
-        </p>
+        <p className="text-[10px] leading-tight text-subtle-copy">{input.helpText}</p>
       )}
-      <div className="bg-field-alt mt-1 max-h-40 space-y-0.5 overflow-auto rounded-lg p-2">
+      <div className="mt-1 max-h-40 space-y-0.5 overflow-auto rounded-lg bg-field-alt p-2">
         {!lists ? (
-          <p className="text-subtle-copy py-2 text-center text-[10px]">
-            Loading lists...
-          </p>
+          <p className="py-2 text-center text-[10px] text-subtle-copy">Loading lists...</p>
         ) : availableLists.length === 0 ? (
-          <p className="text-subtle-copy py-2 text-center text-[10px]">
-            No lists available
-          </p>
+          <p className="py-2 text-center text-[10px] text-subtle-copy">No lists available</p>
         ) : (
           availableLists.map((list) => (
             <div
               key={list._id}
-              className="hover:bg-panel-hover/70 flex items-center space-x-2 rounded-md px-2 py-1.5 transition-colors duration-100"
+              className="flex items-center space-x-2 rounded-md px-2 py-1.5 hover:bg-panel-hover/70"
             >
               <Checkbox
                 id={`list-${list._id}`}
                 checked={selectedLists.includes(list._id)}
                 onCheckedChange={() => toggleList(list._id)}
-                className="brand-checkbox h-3.5 w-3.5"
+                className="h-3.5 w-3.5 brand-checkbox"
               />
               <Label
                 htmlFor={`list-${list._id}`}
-                className="text-copy flex-1 cursor-pointer text-[11px]"
+                className="flex-1 cursor-pointer text-[11px] text-copy"
               >
                 {list.name}
               </Label>
@@ -79,7 +67,7 @@ export function ListSelectInput({
         )}
       </div>
       {selectedLists.length > 0 && (
-        <p className="text-subtle-copy mt-1 text-right font-mono text-[9px] tracking-wide uppercase">
+        <p className="mt-1 text-right font-mono text-[9px] tracking-wide text-subtle-copy uppercase">
           {selectedLists.length} list(s) selected
         </p>
       )}

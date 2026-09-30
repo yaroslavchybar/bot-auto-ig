@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
-import { buildProxyUsage, proxyUsageKey } from '../../proxies/utils/proxyUsage'
+import { proxyUsageKey } from '../../proxies/utils/proxyUsage'
+import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
+import { PageControls } from '@/components/shared/PageControls'
 import type { Profile } from '../types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,9 +26,7 @@ import { stripScheme } from '../../proxies/utils/maskProxy'
 import { formatProxyForInput } from '../../proxies/utils/formatProxyForInput'
 
 interface ProfileFormProps {
-  mode: 'create' | 'edit'
   initialData?: Partial<Profile>
-  existingNames: string[]
   saving: boolean
   onSave: (data: Partial<Profile>) => void
   onCancel: () => void
@@ -47,7 +47,7 @@ function ProfileNameField({ draft, saving, setDraft, setLocalError }: FieldProps
     <div className="grid gap-1.5">
       <Label
         htmlFor="name"
-        className="text-muted-copy text-xs font-semibold tracking-wider uppercase"
+        className="text-xs font-semibold tracking-wider text-muted-copy uppercase"
       >
         Profile Name
       </Label>
@@ -60,7 +60,7 @@ function ProfileNameField({ draft, saving, setDraft, setLocalError }: FieldProps
         }}
         disabled={saving}
         placeholder="e.g. Work Account 1"
-        className="brand-focus bg-field border-line h-9 font-medium text-ink"
+        className="h-9 brand-focus border-line bg-field font-medium text-ink"
       />
     </div>
   )
@@ -72,16 +72,13 @@ function CookiesField({ draft, saving, setDraft, setLocalError }: FieldProps) {
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
-        <Label className="text-copy flex items-center gap-2 text-sm font-medium">
+        <Label className="flex items-center gap-2 text-sm font-medium text-copy">
           <Shield className="h-4 w-4" /> Browser Cookies
         </Label>
       </div>
-      <div className="bg-panel-subtle border-line-soft space-y-3 rounded-md border p-4">
+      <div className="space-y-3 rounded-md border border-line-soft bg-panel-subtle p-4">
         <div className="grid gap-1.5">
-          <Label
-            htmlFor="cookiesJson"
-            className="text-muted-copy text-xs"
-          >
+          <Label htmlFor="cookiesJson" className="text-xs text-muted-copy">
             Cookies JSON
           </Label>
           <Textarea
@@ -95,9 +92,7 @@ function CookiesField({ draft, saving, setDraft, setLocalError }: FieldProps) {
               setLocalError(null)
             }}
             onBlur={() => {
-              const result = normalizeCookiesJsonForForm(
-                String(draft.cookiesJson ?? ''),
-              )
+              const result = normalizeCookiesJsonForForm(String(draft.cookiesJson ?? ''))
               if (result.error) {
                 setLocalError(result.error)
                 return
@@ -109,13 +104,12 @@ function CookiesField({ draft, saving, setDraft, setLocalError }: FieldProps) {
               }))
             }}
             disabled={saving}
-            placeholder='Paste cookies as JSON, Netscape cookies.txt, or name=value pairs'
-            className="brand-focus bg-field border-line min-h-[180px] resize-y font-mono text-xs text-ink"
+            placeholder="Paste cookies as JSON, Netscape cookies.txt, or name=value pairs"
+            className="min-h-[180px] resize-y brand-focus border-line bg-field font-mono text-xs text-ink"
           />
-          <p className="text-subtle-copy ml-1 text-[10px]">
-            Accepted: Playwright/AdsPower JSON arrays, Netscape
-            cookies.txt, and document.cookie strings. Cookies without a
-            domain default to .instagram.com.
+          <p className="ml-1 text-[10px] text-subtle-copy">
+            Accepted: Playwright/AdsPower JSON arrays, Netscape cookies.txt, and document.cookie
+            strings. Cookies without a domain default to .instagram.com.
           </p>
         </div>
       </div>
@@ -138,32 +132,30 @@ function ProxyFields({
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
-        <Label className="text-copy flex items-center gap-2 text-sm font-medium">
+        <Label className="flex items-center gap-2 text-sm font-medium text-copy">
           <Globe className="h-4 w-4" /> Network Connection
         </Label>
         <Select
           value={connection}
-          onValueChange={(value) =>
-            setConnection(value as 'direct' | 'proxy')
-          }
+          onValueChange={(value) => setConnection(value as 'direct' | 'proxy')}
           disabled={saving}
         >
           <SelectTrigger
             id="connection"
-            className="brand-focus bg-field border-line h-8 w-[180px] text-xs text-ink"
+            className="h-8 w-[180px] brand-focus border-line bg-field text-xs text-ink"
           >
             <SelectValue placeholder="Select connection" />
           </SelectTrigger>
           <SelectContent className="panel-dropdown">
             <SelectItem
               value="direct"
-              className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+              className="cursor-pointer focus:bg-panel-hover focus:text-ink"
             >
               Direct Connection
             </SelectItem>
             <SelectItem
               value="proxy"
-              className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+              className="cursor-pointer focus:bg-panel-hover focus:text-ink"
             >
               Proxy
             </SelectItem>
@@ -202,20 +194,11 @@ function SavedProxyPicker({
   currentProxy?: string
   currentProxyType?: string
 }) {
-  const allSaved = useQuery(api.proxies.list, {})
-  const profiles = useQuery(api.profiles.queries.list, {})
-  if (allSaved === undefined) return null
-  const saved = allSaved.filter(p => p.purpose === 'work')
-  if (saved.length === 0) return null
-
-  const usage = buildProxyUsage(
-    saved.map((p) => ({ id: String(p._id), proxy: p.proxy, proxyType: p.proxyType })),
-    (profiles ?? []).map((p: { name: string; proxy?: string; proxyType?: string }) => ({
-      name: p.name,
-      proxy: p.proxy,
-      proxyType: p.proxyType,
-    })),
-  )
+  const [searchQuery, setSearchQuery] = useState('')
+  const search = useDebouncedSearch(searchQuery)
+  const position = useCursorPage(search)
+  const data = useQuery(api.proxies.listPage, { search, cursor: position.cursor, purpose: 'work' })
+  const saved = data?.page ?? []
   const currentKey = proxyUsageKey(currentProxy, currentProxyType)
   const selectedId = saved.find(
     (p) => currentKey !== null && proxyUsageKey(p.proxy, p.proxyType) === currentKey,
@@ -223,12 +206,18 @@ function SavedProxyPicker({
 
   return (
     <div className="grid gap-1.5">
-      <Label className="text-muted-copy text-xs">Saved proxy</Label>
+      <Label className="text-xs text-muted-copy">Saved proxy</Label>
+      <Input
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+        placeholder="Search saved proxies..."
+        aria-label="Search saved proxies"
+      />
       <Select
         disabled={saving}
-        value={selectedId ? String(selectedId._id) : ''}
-        onValueChange={(id) => {
-          const found = saved.find((p) => String(p._id) === id)
+        value={currentKey ?? ''}
+        onValueChange={(key) => {
+          const found = saved.find((p) => proxyUsageKey(p.proxy, p.proxyType) === key)
           if (!found) return
           setDraft((prev) => ({
             ...prev,
@@ -237,29 +226,40 @@ function SavedProxyPicker({
           }))
         }}
       >
-        <SelectTrigger className="brand-focus bg-field border-line h-9 text-ink">
-          <SelectValue placeholder="Choose a saved proxy..." />
+        <SelectTrigger className="h-9 brand-focus border-line bg-field text-ink">
+          <SelectValue placeholder="Choose a saved proxy...">
+            {selectedId?.name ?? (currentKey ? 'Current proxy' : undefined)}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent className="panel-dropdown">
           {saved.map((p) => {
-            const id = String(p._id)
             const limit = typeof p.maxProfiles === 'number' ? p.maxProfiles : 3
-            const used = usage[id]?.count ?? 0
-            const isCurrent = currentKey !== null && currentKey === proxyUsageKey(p.proxy, p.proxyType)
+            const used = p.usage.count
+            const isCurrent =
+              currentKey !== null && currentKey === proxyUsageKey(p.proxy, p.proxyType)
             const full = used >= limit && !isCurrent
             return (
               <SelectItem
-                key={id}
-                value={id}
+                key={p._id}
+                value={proxyUsageKey(p.proxy, p.proxyType)!}
                 disabled={full}
-                className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+                className="cursor-pointer focus:bg-panel-hover focus:text-ink"
               >
-                {p.name} ({p.proxyType}) · {used}/{limit}{full ? ' · full' : ''}
+                {p.name} ({p.proxyType}) · {used}/{limit}
+                {full ? ' · full' : ''}
               </SelectItem>
             )
           })}
         </SelectContent>
       </Select>
+      <PageControls
+        {...position}
+        loading={data === undefined}
+        hasNext={Boolean(data && !data.isDone)}
+        next={() => {
+          if (data && !data.isDone) position.next(data.continueCursor)
+        }}
+      />
     </div>
   )
 }
@@ -282,26 +282,30 @@ function ProxyInputRow({
           <Select
             value={String(draft.proxyType ?? 'http')}
             onValueChange={(value) =>
-              setDraft((prev) => ({ ...prev, proxyType: value, proxy: stripScheme(prev.proxy ?? '') }))
+              setDraft((prev) => ({
+                ...prev,
+                proxyType: value,
+                proxy: stripScheme(prev.proxy ?? ''),
+              }))
             }
             disabled={saving}
           >
             <SelectTrigger
               id="proxyType"
-              className="bg-panel-muted border-line h-9 w-[100px] rounded-r-none border-r-0 text-ink focus:ring-0 focus:ring-offset-0"
+              className="h-9 w-[100px] rounded-r-none border-r-0 border-line bg-panel-muted text-ink focus:ring-0 focus:ring-offset-0"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="panel-dropdown">
               <SelectItem
                 value="http"
-                className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+                className="cursor-pointer focus:bg-panel-hover focus:text-ink"
               >
                 HTTP
               </SelectItem>
               <SelectItem
                 value="socks5"
-                className="focus:bg-panel-hover cursor-pointer focus:text-ink"
+                className="cursor-pointer focus:bg-panel-hover focus:text-ink"
               >
                 SOCKS5
               </SelectItem>
@@ -313,9 +317,7 @@ function ProxyInputRow({
           <Input
             id="proxy"
             value={String(draft.proxy ?? '')}
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, proxy: e.target.value }))
-            }
+            onChange={(e) => setDraft((prev) => ({ ...prev, proxy: e.target.value }))}
             disabled={saving}
             placeholder="host:port:user:pass"
             onBlur={() => {
@@ -326,15 +328,17 @@ function ProxyInputRow({
                   proxy: formatProxyForInput(normalized.proxy, normalized.proxyType),
                   proxyType: normalized.proxyType || prev.proxyType,
                 }))
-              } catch { /* Keep invalid input for submit validation. */ }
+              } catch {
+                /* Keep invalid input for submit validation. */
+              }
             }}
-            className="brand-focus bg-field border-line h-9 rounded-l-none font-mono text-sm text-ink focus-visible:ring-1 focus-visible:ring-offset-0"
+            className="h-9 rounded-l-none brand-focus border-line bg-field font-mono text-sm text-ink focus-visible:ring-1 focus-visible:ring-offset-0"
           />
         </div>
       </div>
-      <p className="text-subtle-copy mt-1.5 ml-1 text-[10px]">
-        Format: <span className="font-mono">host:port:user:pass</span>{' '}
-        or <span className="font-mono">host:port</span>
+      <p className="mt-1.5 ml-1 text-[10px] text-subtle-copy">
+        Format: <span className="font-mono">host:port:user:pass</span> or{' '}
+        <span className="font-mono">host:port</span>
       </p>
     </div>
   )
@@ -355,15 +359,24 @@ function OsSelector({
 }) {
   return (
     <div className="grid flex-1 gap-1.5">
-      <Label className="text-muted-copy text-xs">Operating System</Label>
+      <Label className="text-xs text-muted-copy">Operating System</Label>
       <Select value={value} onValueChange={onChange} disabled={saving}>
-        <SelectTrigger className="brand-focus bg-field border-line h-9 text-ink">
+        <SelectTrigger className="h-9 brand-focus border-line bg-field text-ink">
           <SelectValue placeholder="OS" />
         </SelectTrigger>
         <SelectContent className="panel-dropdown">
-          <SelectItem value="windows" className="focus:bg-panel-hover cursor-pointer focus:text-ink">Windows</SelectItem>
-          <SelectItem value="macos" className="focus:bg-panel-hover cursor-pointer focus:text-ink">macOS</SelectItem>
-          <SelectItem value="linux" className="focus:bg-panel-hover cursor-pointer focus:text-ink">Linux</SelectItem>
+          <SelectItem
+            value="windows"
+            className="cursor-pointer focus:bg-panel-hover focus:text-ink"
+          >
+            Windows
+          </SelectItem>
+          <SelectItem value="macos" className="cursor-pointer focus:bg-panel-hover focus:text-ink">
+            macOS
+          </SelectItem>
+          <SelectItem value="linux" className="cursor-pointer focus:bg-panel-hover focus:text-ink">
+            Linux
+          </SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -373,19 +386,22 @@ function OsSelector({
 /* ── Fingerprint Fields ── */
 
 function FingerprintFields({
-  draft, saving, setDraft,
+  draft,
+  saving,
+  setDraft,
 }: {
-  draft: Partial<Profile>; saving: boolean
+  draft: Partial<Profile>
+  saving: boolean
   setDraft: React.Dispatch<React.SetStateAction<Partial<Profile>>>
 }) {
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between">
-        <Label className="text-copy flex items-center gap-2 text-sm font-medium">
+        <Label className="flex items-center gap-2 text-sm font-medium text-copy">
           <Fingerprint className="h-4 w-4" /> Browser Fingerprint
         </Label>
       </div>
-      <div className="bg-panel-subtle border-line-soft space-y-4 rounded-md border p-4">
+      <div className="space-y-4 rounded-md border border-line-soft bg-panel-subtle p-4">
         <OsSelector
           value={draft.fingerprintOs || 'windows'}
           saving={saving}
@@ -410,26 +426,18 @@ function FormActions({
   onCancel: () => void
 }) {
   return (
-    <div className="border-line mt-4 shrink-0 border-t pt-4">
+    <div className="mt-4 shrink-0 border-t border-line pt-4">
       {localError && (
-        <div className="text-status-danger bg-status-danger-soft border-status-danger-border mb-4 rounded-md border p-3 text-sm font-medium">
+        <div className="mb-4 rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
           {localError}
         </div>
       )}
 
       <div className="flex justify-end gap-3">
-        <Button
-          variant="ghost"
-          onClick={onCancel}
-          disabled={saving}
-        >
+        <Button variant="ghost" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
-        <Button
-          onClick={onSave}
-          disabled={saving}
-          className="brand-button font-medium"
-        >
+        <Button onClick={onSave} disabled={saving} className="brand-button font-medium">
           {saving ? 'Saving...' : 'Save Profile'}
         </Button>
       </div>
@@ -440,9 +448,7 @@ function FormActions({
 /* ── Main ProfileForm ── */
 
 export function ProfileForm({
-  mode,
   initialData,
-  existingNames,
   saving,
   onSave,
   onCancel,
@@ -465,27 +471,31 @@ export function ProfileForm({
 
   const handleSave = () => {
     const name = String(draft.name ?? '').trim()
-    if (!name) { setLocalError('Name is required'); return }
-    const isSameName = mode === 'edit' && initialData?.name === name
-    if (!isSameName && existingNames.includes(name)) {
-      setLocalError('Name already exists'); return
+    if (!name) {
+      setLocalError('Name is required')
+      return
     }
     const finalData = {
       ...draft,
       name,
     }
-    const normalizedCookies = normalizeCookiesJsonForForm(
-      String(finalData.cookiesJson ?? ''),
-    )
-    if (normalizedCookies.error) { setLocalError(normalizedCookies.error); return }
+    const normalizedCookies = normalizeCookiesJsonForForm(String(finalData.cookiesJson ?? ''))
+    if (normalizedCookies.error) {
+      setLocalError(normalizedCookies.error)
+      return
+    }
     finalData.cookiesJson = normalizedCookies.normalized || undefined
     if (connection === 'proxy') {
       try {
         const normalized = normalizeProxy(finalData.proxy, finalData.proxyType)
-        if (!normalized.proxy) { setLocalError('Proxy is required'); return }
+        if (!normalized.proxy) {
+          setLocalError('Proxy is required')
+          return
+        }
         Object.assign(finalData, normalized)
       } catch {
-        setLocalError('Invalid proxy URL or protocol'); return
+        setLocalError('Invalid proxy URL or protocol')
+        return
       }
     } else if (connection === 'direct') {
       finalData.proxy = ''
@@ -510,7 +520,12 @@ export function ProfileForm({
           <FingerprintFields draft={draft} saving={saving} setDraft={setDraft} />
         </div>
       </ScrollArea>
-      <FormActions localError={localError} saving={saving} onSave={handleSave} onCancel={onCancel} />
+      <FormActions
+        localError={localError}
+        saving={saving}
+        onSave={handleSave}
+        onCancel={onCancel}
+      />
     </div>
   )
 }

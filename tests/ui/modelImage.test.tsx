@@ -15,6 +15,7 @@ afterEach(async () => {
 })
 
 test('switching images clears old content, aborts its request, and revokes its URL', async () => {
+  vi.stubGlobal('IntersectionObserver', undefined)
   const createObjectURL = vi.fn(() => 'blob:first')
   const revokeObjectURL = vi.fn()
   vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
@@ -50,4 +51,58 @@ test('switching images clears old content, aborts its request, and revokes its U
   })
   expect(view.container.querySelector('img')?.getAttribute('src')).toBe('blob:second')
   expect(view.container.querySelector('img')?.alt).toBe('Second')
+})
+
+test('image fetch waits until near the viewport and requests a thumbnail', async () => {
+  let notify: IntersectionObserverCallback = () => {}
+  const disconnect = vi.fn()
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      constructor(callback: IntersectionObserverCallback) {
+        notify = callback
+      }
+      observe = vi.fn()
+      unobserve = vi.fn()
+      disconnect = disconnect
+    },
+  )
+  vi.mocked(apiFetchBlob).mockImplementation(() => new Promise(() => {}))
+  view = mount()
+  await view.render(
+    <ModelImage
+      modelId="model"
+      item={{ id: 'first', kind: 'posts', name: 'First', variantCount: 0, usedCount: 0 }}
+    />,
+  )
+  expect(apiFetchBlob).not.toHaveBeenCalled()
+  await act(async () => {
+    notify(
+      [
+        {
+          isIntersecting: true,
+          target: view!.container.querySelector('span')!,
+        } as unknown as IntersectionObserverEntry,
+      ],
+      {} as IntersectionObserver,
+    )
+  })
+  expect(apiFetchBlob).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(apiFetchBlob).mock.calls[0][0]).toContain('/image?thumbnail=1')
+  const signal = vi.mocked(apiFetchBlob).mock.calls[0][1]?.signal
+  await act(async () => {
+    notify(
+      [
+        {
+          isIntersecting: false,
+          target: view!.container.querySelector('span')!,
+        } as unknown as IntersectionObserverEntry,
+      ],
+      {} as IntersectionObserver,
+    )
+  })
+  expect(signal?.aborted).toBe(true)
+  await view.unmount()
+  view = undefined
+  expect(disconnect).toHaveBeenCalled()
 })

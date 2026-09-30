@@ -2,15 +2,7 @@ import * as React from 'react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { Link, useLocation } from '@/lib/router'
-import {
-  Users,
-  List,
-  GitBranch,
-  Monitor,
-  Globe,
-  MessageSquare,
-  KeyRound,
-} from 'lucide-react'
+import { Users, List, GitBranch, Monitor, Globe, MessageSquare, KeyRound } from 'lucide-react'
 
 import {
   Sidebar,
@@ -64,7 +56,13 @@ export const NAV_ITEMS = [
   },
   { title: 'Scraper', id: 'scraper', to: '/scraper', icon: Users, breadcrumb: 'Scraper' },
   { title: 'Chat', id: 'chat', to: '/chat', icon: MessageSquare, breadcrumb: 'Chat' },
-  { title: 'IG Accounts', id: 'ig_accounts', to: '/ig-accounts', icon: KeyRound, breadcrumb: 'IG Accounts' },
+  {
+    title: 'IG Accounts',
+    id: 'ig_accounts',
+    to: '/ig-accounts',
+    icon: KeyRound,
+    breadcrumb: 'IG Accounts',
+  },
   {
     title: 'Proxies',
     id: 'proxies',
@@ -101,20 +99,16 @@ export function AppSidebar(props: AppSidebarProps) {
   ] as const
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="border-line-soft border-r"
-      {...props}
-    >
+    <Sidebar collapsible="icon" className="border-r border-line-soft" {...props}>
       <SidebarHeader>
         <div className="flex items-center justify-start px-1 group-data-[collapsible=icon]:justify-center">
-          <SidebarTrigger className="text-muted-copy hover:text-ink size-8" />
+          <SidebarTrigger className="size-8 text-muted-copy hover:text-ink" />
         </div>
       </SidebarHeader>
       <SidebarContent>
         {navMain.map((group) => (
           <SidebarGroup key={group.title}>
-            <SidebarGroupLabel className="text-muted-copy/80 text-[10px] tracking-widest uppercase">
+            <SidebarGroupLabel className="text-[10px] tracking-widest text-muted-copy/80 uppercase">
               {group.title}
             </SidebarGroupLabel>
             <SidebarGroupContent>
@@ -123,17 +117,17 @@ export function AppSidebar(props: AppSidebarProps) {
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
                       asChild
-                      isActive={
-                        pathname === item.to || pathname.startsWith(`${item.to}/`)
-                      }
-                      className="text-muted-copy hover:text-ink hover:bg-panel-subtle data-[active=true]:bg-panel-selected transition-colors data-[active=true]:text-ink"
+                      isActive={pathname === item.to || pathname.startsWith(`${item.to}/`)}
+                      className="text-muted-copy hover:bg-panel-subtle hover:text-ink data-[active=true]:bg-panel-selected data-[active=true]:text-ink"
                     >
                       <Link to={item.to} onClick={() => setOpenMobile(false)}>
                         {item.icon && <item.icon />}
                         <span>{item.title}</span>
                         {item.id === 'chat' && unreadChats > 0 && (
-                          <span className="ml-auto rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground"
-                            aria-label={`${unreadChats} conversations awaiting reply`}>
+                          <span
+                            className="ml-auto rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground"
+                            aria-label={`${unreadChats} conversations awaiting reply`}
+                          >
                             {unreadChats}
                           </span>
                         )}
@@ -150,5 +144,3 @@ export function AppSidebar(props: AppSidebarProps) {
     </Sidebar>
   )
 }
-
-

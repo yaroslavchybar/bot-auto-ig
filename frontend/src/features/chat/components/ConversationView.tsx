@@ -80,7 +80,7 @@ export function ConversationView({
   onBack,
 }: ConversationViewProps) {
   const title = selectedThread?.title || conversation?.title || ''
-  const users = selectedThread?.users.length ? selectedThread.users : conversation?.users ?? []
+  const users = selectedThread?.users.length ? selectedThread.users : (conversation?.users ?? [])
   const otherUsers = users.filter((user) => user.id !== viewerId)
   const instagramUsername =
     otherUsers.length === 1 && /^[a-zA-Z0-9._]{1,30}$/.test(otherUsers[0].username)
@@ -90,7 +90,9 @@ export function ConversationView({
   const contentRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(true)
   const lastScrollHeightRef = useRef(0)
-  const prependRef = useRef<{ height: number; top: number; oldestId: string | undefined } | null>(null)
+  const prependRef = useRef<{ height: number; top: number; oldestId: string | undefined } | null>(
+    null,
+  )
   const loadingMoreRef = useRef(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -124,7 +126,9 @@ export function ConversationView({
     node.scrollTop = pending.top + node.scrollHeight - pending.height
     lastScrollHeightRef.current = node.scrollHeight
     prependRef.current = null
-    requestAnimationFrame(() => { loadingMoreRef.current = false })
+    requestAnimationFrame(() => {
+      loadingMoreRef.current = false
+    })
   }, [oldestMessageId, threadKey])
 
   useLayoutEffect(() => {
@@ -142,7 +146,10 @@ export function ConversationView({
       frame = requestAnimationFrame(scrollToLatest)
     })
     observer.observe(content)
-    return () => { observer.disconnect(); cancelAnimationFrame(frame) }
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
   }, [threadKey])
 
   // Auto-grow composer up to ~160px.
@@ -158,10 +165,18 @@ export function ConversationView({
     event.target.value = ''
     if (!file) return
     const name = file.name.toLowerCase()
-    const kind = file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name) ? 'photo' :
-      file.type.startsWith('video/') || name.endsWith('.mp4') ? 'video' :
-        file.type.startsWith('audio/') || /\.(m4a|mp3|wav|webm)$/.test(name) ? 'voice' : null
-    if (!kind) { onError('Choose a photo, MP4 video, or audio file'); return }
+    const kind =
+      file.type.startsWith('image/') || /\.(jpe?g|png|webp)$/.test(name)
+        ? 'photo'
+        : file.type.startsWith('video/') || name.endsWith('.mp4')
+          ? 'video'
+          : file.type.startsWith('audio/') || /\.(m4a|mp3|wav|webm)$/.test(name)
+            ? 'voice'
+            : null
+    if (!kind) {
+      onError('Choose a photo, MP4 video, or audio file')
+      return
+    }
     onSendAttachment(file, kind)
   }
 
@@ -169,12 +184,17 @@ export function ConversationView({
     const node = scrollRef.current
     if (!node) return
     // Content growth is not the user scrolling up; the resize observer will follow it.
-    if (node.scrollHeight !== lastScrollHeightRef.current && stickToBottomRef.current &&
-      node.scrollHeight - node.scrollTop - node.clientHeight < 80) return
+    if (
+      node.scrollHeight !== lastScrollHeightRef.current &&
+      stickToBottomRef.current &&
+      node.scrollHeight - node.scrollTop - node.clientHeight < 80
+    )
+      return
     const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 80
     stickToBottomRef.current = atBottom
     setStickToBottom(atBottom)
-    if (!atBottom && node.scrollTop < 80 && node.scrollHeight > node.clientHeight && hasOlder) requestOlder()
+    if (!atBottom && node.scrollTop < 80 && node.scrollHeight > node.clientHeight && hasOlder)
+      requestOlder()
   }
 
   function requestOlder() {
@@ -183,45 +203,43 @@ export function ConversationView({
     loadingMoreRef.current = true
     stickToBottomRef.current = false
     setStickToBottom(false)
-    prependRef.current = { height: node.scrollHeight, top: node.scrollTop, oldestId: oldestMessageId }
-    void onLoadOlder().then((added) => {
-      if (!added) {
+    prependRef.current = {
+      height: node.scrollHeight,
+      top: node.scrollTop,
+      oldestId: oldestMessageId,
+    }
+    void onLoadOlder()
+      .then((added) => {
+        if (!added) {
+          prependRef.current = null
+          loadingMoreRef.current = false
+        } else {
+          requestAnimationFrame(() => {
+            if (prependRef.current?.oldestId === oldestMessageId) {
+              prependRef.current = null
+              loadingMoreRef.current = false
+            }
+          })
+        }
+      })
+      .catch(() => {
         prependRef.current = null
         loadingMoreRef.current = false
-      } else {
-        requestAnimationFrame(() => {
-          if (prependRef.current?.oldestId === oldestMessageId) {
-            prependRef.current = null
-            loadingMoreRef.current = false
-          }
-        })
-      }
-    }).catch(() => {
-      prependRef.current = null
-      loadingMoreRef.current = false
-    })
+      })
   }
 
   async function copyMessage(message: ChatMessage) {
     try {
       await navigator.clipboard.writeText(messageText(message))
       setCopiedId(message.id)
-      setTimeout(
-        () =>
-          setCopiedId((current) => (current === message.id ? null : current)),
-        1500,
-      )
+      setTimeout(() => setCopiedId((current) => (current === message.id ? null : current)), 1500)
     } catch {
       // Clipboard unavailable — no-op, text remains selectable.
     }
   }
 
   function sendOnEnter(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (
-      event.key === 'Enter' &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
       if (draft.trim() && !sending) onSend(event as unknown as FormEvent)
     }
@@ -230,9 +248,9 @@ export function ConversationView({
   if (!selectedThreadId) {
     return (
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
-        <MessageSquare className="text-subtle-copy size-8" />
+        <MessageSquare className="size-8 text-subtle-copy" />
         <p className="text-sm font-medium">Select a conversation</p>
-        <p className="text-muted-copy max-w-xs text-xs">
+        <p className="max-w-xs text-xs text-muted-copy">
           Choose a thread from the list to read messages and reply.
         </p>
       </div>
@@ -244,7 +262,7 @@ export function ConversationView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-line-soft flex items-center gap-2.5 border-b px-3 py-2 md:px-4">
+      <div className="flex items-center gap-2.5 border-b border-line-soft px-3 py-2 md:px-4">
         <Button
           variant="ghost"
           size="icon"
@@ -254,19 +272,14 @@ export function ConversationView({
         >
           <ArrowLeft />
         </Button>
-        <Avatar className="brand-avatar size-8 shrink-0 border">
-          <AvatarFallback className="bg-panel-strong text-copy text-[11px] font-semibold">
+        <Avatar className="size-8 shrink-0 border brand-avatar">
+          <AvatarFallback className="bg-panel-strong text-[11px] font-semibold text-copy">
             {initials(title)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-semibold">
-            {title || 'Conversation'}
-          </p>
-          <ConversationSubtitle
-            users={users}
-            profileName={selectedThread?.profileName}
-          />
+          <p className="truncate text-[13px] font-semibold">{title || 'Conversation'}</p>
+          <ConversationSubtitle users={users} profileName={selectedThread?.profileName} />
         </div>
         {instagramUsername && (
           <Button asChild variant="outline" size="sm" className="shrink-0">
@@ -290,143 +303,172 @@ export function ConversationView({
           className="h-full overflow-y-auto px-4 py-4 md:px-6"
         >
           <div ref={contentRef} className="flex min-h-full flex-col">
-          {hasOlder && conversation && groups.length > 0 && (
-            <div className="mb-2 flex justify-center">
-              <button type="button" disabled={loadingOlder} onClick={requestOlder}
-                className="text-muted-copy rounded px-3 py-1 text-xs hover:bg-panel-muted disabled:opacity-50">
-                {loadingOlder ? 'Loading older messages…' : 'Load older messages'}
-              </button>
-            </div>
-          )}
-          {loading && !conversation && <MessageSkeletons />}
-          {!loading && conversation && groups.length === 0 && (
-            <div className="text-muted-copy flex flex-1 items-center justify-center text-sm">
-              No messages in this thread yet.
-            </div>
-          )}
-          {groups.map((group, groupIndex) => (
-            <div key={`${group.messages[0]?.id ?? groupIndex}`}>
-              {group.dayChanged && (
-                <div className="my-3 flex justify-center">
-                  <span className="bg-panel-muted border-line text-muted-copy rounded-full border px-3 py-1 text-[11px] font-medium">
-                    {formatDayLabel(group.messages[0]?.timestamp ?? 0)}
-                  </span>
-                </div>
-              )}
-              <div className="space-y-1">
-                {group.messages.map((message) => {
-                  const own =
-                    Boolean(message.delivery) ||
-                    (viewerId !== '' && message.senderId === viewerId)
-                  return (
-                    <div
-                      key={message.id}
-                      className={cn(
-                        'group flex',
-                        own ? 'justify-end' : 'justify-start',
-                      )}
-                    >
+            {hasOlder && conversation && groups.length > 0 && (
+              <div className="mb-2 flex justify-center">
+                <button
+                  type="button"
+                  disabled={loadingOlder}
+                  onClick={requestOlder}
+                  className="rounded px-3 py-1 text-xs text-muted-copy hover:bg-panel-muted disabled:opacity-50"
+                >
+                  {loadingOlder ? 'Loading older messages…' : 'Load older messages'}
+                </button>
+              </div>
+            )}
+            {loading && !conversation && <MessageSkeletons />}
+            {!loading && conversation && groups.length === 0 && (
+              <div className="flex flex-1 items-center justify-center text-sm text-muted-copy">
+                No messages in this thread yet.
+              </div>
+            )}
+            {groups.map((group, groupIndex) => (
+              <div key={`${group.messages[0]?.id ?? groupIndex}`}>
+                {group.dayChanged && (
+                  <div className="my-3 flex justify-center">
+                    <span className="rounded-full border border-line bg-panel-muted px-3 py-1 text-[11px] font-medium text-muted-copy">
+                      {formatDayLabel(group.messages[0]?.timestamp ?? 0)}
+                    </span>
+                  </div>
+                )}
+                <div className="space-y-1">
+                  {group.messages.map((message) => {
+                    const own =
+                      Boolean(message.delivery) ||
+                      (viewerId !== '' && message.senderId === viewerId)
+                    return (
                       <div
-                        className={cn(
-                          'max-w-[85%] md:max-w-[70%]',
-                          own ? 'items-end' : 'items-start',
-                          'flex flex-col',
-                        )}
+                        key={message.id}
+                        className={cn('group flex', own ? 'justify-end' : 'justify-start')}
                       >
                         <div
                           className={cn(
-                            'px-3.5 py-2 text-sm break-words whitespace-pre-wrap',
-                            own
-                              ? 'button-positive rounded-2xl rounded-br-md'
-                              : 'bg-panel-strong border-line text-ink rounded-2xl rounded-bl-md border',
+                            'max-w-[85%] md:max-w-[70%]',
+                            own ? 'items-end' : 'items-start',
+                            'flex flex-col',
                           )}
                         >
-                          <AttachmentBadge message={message} own={own} />
-                          {message.mediaUrl && message.mediaType === 'photo' && (
-                            <img src={message.mediaUrl} alt="Chat photo" loading="lazy"
-                              className="max-h-80 max-w-full rounded-lg object-contain" />
-                          )}
-                          {message.mediaUrl && message.mediaType === 'video' && (
-                            <video src={message.mediaUrl} controls preload="metadata"
-                              className="max-h-80 max-w-full rounded-lg" />
-                          )}
-                          {message.mediaUrl && message.mediaType === 'voice' && (
-                            <audio src={message.mediaUrl} controls preload="none" className="max-w-full" />
-                          )}
-                          {message.text && <span>{message.text}</span>}
-                        </div>
-                        {Boolean(message.reactions?.length) && (
-                          <div className="mt-1 flex flex-wrap gap-1 px-1 text-xs">
-                            {message.reactions?.map((reaction) =>
-                              reaction.senderId === viewerId && /^\d{1,40}$/.test(message.id) ? (
-                                <button key={`${reaction.senderId}:${reaction.emoji}`} type="button"
-                                  disabled={reactingMessageId === message.id}
-                                  onClick={() => onReact(message, reaction.emoji)}
-                                  aria-label={`Remove your ${reaction.emoji} reaction`}
-                                  title="Remove your reaction"
-                                  className="rounded px-1 hover:bg-panel-muted focus-visible:outline">
-                                  {reaction.emoji}
-                                </button>
-                              ) : (
-                                <span key={`${reaction.senderId}:${reaction.emoji}`} title="Reaction">
-                                  {reaction.emoji}
-                                </span>
-                              ))}
-                          </div>
-                        )}
-                        <div className="text-subtle-copy mt-0.5 flex items-center gap-1 px-1 text-[11px]">
-                          <span>{formatClock(message.timestamp)}</span>
-                          {own && (
-                            <span>
-                              {message.delivery === 'sending'
-                                ? '· Sending…'
-                                : message.delivery === 'unconfirmed'
-                                  ? '· Not confirmed'
-                                  : seenAt.some(
-                                        (seen) =>
-                                          seen.userId !== viewerId &&
-                                          seen.timestamp >= message.timestamp,
-                                      )
-                                    ? '· Seen'
-                                    : '· Sent'}
-                            </span>
-                          )}
-                          {/^[0-9]{1,40}$/.test(message.id) && (
-                            <ReactionPicker message={message} onReact={onReact}
-                              disabled={reactingMessageId === message.id} />
-                          )}
-                          {own && /^\d{1,40}$/.test(message.id) && (
-                            <button type="button" disabled={unsendingMessageId === message.id}
-                              onClick={() => {
-                                if (window.confirm('Unsend this message for everyone?')) onUnsend(message)
-                              }}
-                              aria-label="Unsend message" title="Unsend message"
-                              className="text-status-danger rounded p-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
-                              <Trash2 className="size-3" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => copyMessage(message)}
-                            aria-label="Copy message"
-                            title="Copy message"
-                            className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                          >
-                            {copiedId === message.id ? (
-                              <Check className="size-3" />
-                            ) : (
-                              <Copy className="size-3" />
+                          <div
+                            className={cn(
+                              'px-3.5 py-2 text-sm break-words whitespace-pre-wrap',
+                              own
+                                ? 'button-positive rounded-2xl rounded-br-md'
+                                : 'bg-panel-strong border-line text-ink rounded-2xl rounded-bl-md border',
                             )}
-                          </button>
+                          >
+                            <AttachmentBadge message={message} own={own} />
+                            {message.mediaUrl && message.mediaType === 'photo' && (
+                              <img
+                                src={message.mediaUrl}
+                                alt="Chat photo"
+                                loading="lazy"
+                                className="max-h-80 max-w-full rounded-lg object-contain"
+                              />
+                            )}
+                            {message.mediaUrl && message.mediaType === 'video' && (
+                              <video
+                                src={message.mediaUrl}
+                                controls
+                                preload="metadata"
+                                className="max-h-80 max-w-full rounded-lg"
+                              />
+                            )}
+                            {message.mediaUrl && message.mediaType === 'voice' && (
+                              <audio
+                                src={message.mediaUrl}
+                                controls
+                                preload="none"
+                                className="max-w-full"
+                              />
+                            )}
+                            {message.text && <span>{message.text}</span>}
+                          </div>
+                          {Boolean(message.reactions?.length) && (
+                            <div className="mt-1 flex flex-wrap gap-1 px-1 text-xs">
+                              {message.reactions?.map((reaction) =>
+                                reaction.senderId === viewerId && /^\d{1,40}$/.test(message.id) ? (
+                                  <button
+                                    key={`${reaction.senderId}:${reaction.emoji}`}
+                                    type="button"
+                                    disabled={reactingMessageId === message.id}
+                                    onClick={() => onReact(message, reaction.emoji)}
+                                    aria-label={`Remove your ${reaction.emoji} reaction`}
+                                    title="Remove your reaction"
+                                    className="rounded px-1 hover:bg-panel-muted focus-visible:outline"
+                                  >
+                                    {reaction.emoji}
+                                  </button>
+                                ) : (
+                                  <span
+                                    key={`${reaction.senderId}:${reaction.emoji}`}
+                                    title="Reaction"
+                                  >
+                                    {reaction.emoji}
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                          )}
+                          <div className="mt-0.5 flex items-center gap-1 px-1 text-[11px] text-subtle-copy">
+                            <span>{formatClock(message.timestamp)}</span>
+                            {own && (
+                              <span>
+                                {message.delivery === 'sending'
+                                  ? '· Sending…'
+                                  : message.delivery === 'unconfirmed'
+                                    ? '· Not confirmed'
+                                    : seenAt.some(
+                                          (seen) =>
+                                            seen.userId !== viewerId &&
+                                            seen.timestamp >= message.timestamp,
+                                        )
+                                      ? '· Seen'
+                                      : '· Sent'}
+                              </span>
+                            )}
+                            {/^[0-9]{1,40}$/.test(message.id) && (
+                              <ReactionPicker
+                                message={message}
+                                onReact={onReact}
+                                disabled={reactingMessageId === message.id}
+                              />
+                            )}
+                            {own && /^\d{1,40}$/.test(message.id) && (
+                              <button
+                                type="button"
+                                disabled={unsendingMessageId === message.id}
+                                onClick={() => {
+                                  if (window.confirm('Unsend this message for everyone?'))
+                                    onUnsend(message)
+                                }}
+                                aria-label="Unsend message"
+                                title="Unsend message"
+                                className="rounded p-0.5 text-status-danger opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                              >
+                                <Trash2 className="size-3" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => copyMessage(message)}
+                              aria-label="Copy message"
+                              title="Copy message"
+                              className="rounded p-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            >
+                              {copiedId === message.id ? (
+                                <Check className="size-3" />
+                              ) : (
+                                <Copy className="size-3" />
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
+                {groupIndex < groups.length - 1 && <div className="h-2" />}
               </div>
-              {groupIndex < groups.length - 1 && <div className="h-2" />}
-            </div>
-          ))}
+            ))}
           </div>
         </div>
         {!stickToBottom && (
@@ -437,7 +479,7 @@ export function ConversationView({
               setStickToBottom(true)
               scrollToLatest()
             }}
-            className="bg-panel-strong border-line text-copy absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium shadow-lg"
+            className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-panel-strong px-3 py-1.5 text-xs font-medium text-copy shadow-lg"
           >
             <ArrowDown className="size-3.5" /> Jump to latest
           </button>
@@ -445,33 +487,43 @@ export function ConversationView({
       </div>
 
       {selectedThreadId && connected && (
-        <form onSubmit={onSend} className="border-line-soft border-t p-3">
+        <form onSubmit={onSend} className="border-t border-line-soft p-3">
           <div className="flex items-end gap-2">
-            <input ref={fileRef} type="file" className="hidden"
+            <input
+              ref={fileRef}
+              type="file"
+              className="hidden"
               accept="image/jpeg,image/png,image/webp,video/mp4,audio/*,.mp3"
-              onChange={selectFile} aria-label="Choose chat attachment" />
-            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
-              disabled={sending} onClick={() => fileRef.current?.click()}
-              aria-label="Attach photo, video, or MP3 voice note" title="Attach photo, video, or MP3 voice note">
+              onChange={selectFile}
+              aria-label="Choose chat attachment"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 shrink-0"
+              disabled={sending}
+              onClick={() => fileRef.current?.click()}
+              aria-label="Attach photo, video, or MP3 voice note"
+              title="Attach photo, video, or MP3 voice note"
+            >
               <Paperclip />
             </Button>
             <Textarea
               ref={composerRef}
               value={draft}
-              onChange={(event) =>
-                onDraftChange(event.target.value.slice(0, replyMaxLength))
-              }
+              onChange={(event) => onDraftChange(event.target.value.slice(0, replyMaxLength))}
               onKeyDown={sendOnEnter}
               placeholder="Write a reply..."
               aria-label="Reply"
               rows={1}
-              className="bg-field brand-focus max-h-40 min-h-10 resize-none shadow-xs"
+              className="max-h-40 min-h-10 resize-none brand-focus bg-field shadow-xs"
             />
             <Button
               type="submit"
               size="sm"
               disabled={!draft.trim() || sending}
-              className="brand-button h-10 shrink-0 px-3.5"
+              className="h-10 shrink-0 brand-button px-3.5"
             >
               <Send /> Send
             </Button>
@@ -496,18 +548,10 @@ function ConversationSubtitle({
   if (users.length > 3) names.push(`+${users.length - 3} more`)
   if (profileName) names.push(`via ${profileName}`)
   if (names.length === 0) return null
-  return (
-    <p className="text-subtle-copy truncate text-[11px]">{names.join(' · ')}</p>
-  )
+  return <p className="truncate text-[11px] text-subtle-copy">{names.join(' · ')}</p>
 }
 
-function AttachmentBadge({
-  message,
-  own,
-}: {
-  message: ChatMessage
-  own: boolean
-}) {
+function AttachmentBadge({ message, own }: { message: ChatMessage; own: boolean }) {
   const label = attachmentLabel(message.mediaType ?? message.kind)
   if (!label || message.text) return null
   return (
@@ -522,7 +566,11 @@ function AttachmentBadge({
   )
 }
 
-function ReactionPicker({ message, onReact, disabled }: {
+function ReactionPicker({
+  message,
+  onReact,
+  disabled,
+}: {
   message: ChatMessage
   onReact: (message: ChatMessage, emoji: string) => void
   disabled: boolean
@@ -531,16 +579,28 @@ function ReactionPicker({ message, onReact, disabled }: {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button type="button" disabled={disabled} aria-label="React to message" title="React to message"
-          className="rounded p-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label="React to message"
+          title="React to message"
+          className="rounded p-0.5 opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+        >
           <SmilePlus className="size-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="flex w-auto gap-1 p-1">
         {['❤️', '😂', '🔥', '😍', '👍', '😮'].map((emoji) => (
-          <button key={emoji} type="button" aria-label={`React ${emoji}`}
-            onClick={() => { setOpen(false); onReact(message, emoji) }}
-            className="rounded px-1.5 py-1 text-lg hover:bg-panel-subtle">
+          <button
+            key={emoji}
+            type="button"
+            aria-label={`React ${emoji}`}
+            onClick={() => {
+              setOpen(false)
+              onReact(message, emoji)
+            }}
+            className="rounded px-1.5 py-1 text-lg hover:bg-panel-subtle"
+          >
             {emoji}
           </button>
         ))}
@@ -551,13 +611,10 @@ function ReactionPicker({ message, onReact, disabled }: {
 
 function kindIcon(kind: string) {
   const normalized = kind.toLowerCase()
-  if (
-    normalized.includes('video') ||
-    normalized.includes('clip') ||
-    normalized.includes('reel')
-  )
+  if (normalized.includes('video') || normalized.includes('clip') || normalized.includes('reel'))
     return <Video className="size-3.5" />
-  if (normalized.includes('voice') || normalized.includes('audio')) return <Mic className="size-3.5" />
+  if (normalized.includes('voice') || normalized.includes('audio'))
+    return <Mic className="size-3.5" />
   if (
     normalized.includes('like') ||
     normalized.includes('reaction') ||
@@ -580,16 +637,16 @@ function MessageSkeletons() {
   return (
     <div className="space-y-3" aria-hidden="true" aria-label="Loading messages">
       <div className="flex justify-start">
-        <div className="bg-panel-muted h-10 w-48 animate-pulse rounded-2xl rounded-bl-md" />
+        <div className="h-10 w-48 rounded-2xl rounded-bl-md bg-panel-muted" />
       </div>
       <div className="flex justify-end">
-        <div className="bg-panel-muted h-10 w-56 animate-pulse rounded-2xl rounded-br-md" />
+        <div className="h-10 w-56 rounded-2xl rounded-br-md bg-panel-muted" />
       </div>
       <div className="flex justify-start">
-        <div className="bg-panel-muted h-14 w-64 animate-pulse rounded-2xl rounded-bl-md" />
+        <div className="h-14 w-64 rounded-2xl rounded-bl-md bg-panel-muted" />
       </div>
       <div className="flex justify-end">
-        <div className="bg-panel-muted h-10 w-40 animate-pulse rounded-2xl rounded-br-md" />
+        <div className="h-10 w-40 rounded-2xl rounded-br-md bg-panel-muted" />
       </div>
     </div>
   )

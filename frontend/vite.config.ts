@@ -2,7 +2,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 import tailwindcss from '@tailwindcss/vite'
-import react from '@vitejs/plugin-react'
+import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url))
 
@@ -26,9 +27,6 @@ function getVendorChunk(id: string): string | undefined {
 
   if (!packageName) return undefined
   if (packageName === '@novnc/novnc') return 'vnc'
-  if (packageName === 'convex') return 'convex'
-  if (packageName.startsWith('@radix-ui/') || packageName.startsWith('@floating-ui/'))
-    return 'radix'
   if (
     packageName.startsWith('@codemirror/') ||
     packageName.startsWith('@lezer/') ||
@@ -42,15 +40,7 @@ function getVendorChunk(id: string): string | undefined {
   if (['react', 'react-dom', 'scheduler'].includes(packageName)) {
     return 'react-core'
   }
-  if (
-    [
-      'class-variance-authority',
-      'clsx',
-      'sonner',
-      'tailwind-merge',
-      'tailwindcss-animate',
-    ].includes(packageName)
-  ) {
+  if (['class-variance-authority', 'clsx', 'sonner', 'tailwind-merge'].includes(packageName)) {
     return 'ui-utils'
   }
 
@@ -60,7 +50,7 @@ function getVendorChunk(id: string): string | undefined {
 export default defineConfig({
   envDir: path.resolve(rootDir, '..'),
   envPrefix: ['VITE_', 'DISABLE_AUTH'],
-  plugins: [tailwindcss(), react()],
+  plugins: [tailwindcss(), react(), babel({ presets: [reactCompilerPreset()] })],
   test: {
     environment: 'happy-dom',
     include: ['../tests/ui/**/*.test.tsx'],

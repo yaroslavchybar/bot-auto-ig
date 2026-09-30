@@ -20,14 +20,17 @@ export function buildProxyUsage(
   for (const proxy of proxies) {
     usage[proxy.id] = { count: 0, profileNames: [] }
   }
+  const byKey = new Map<string, ProxyUsage[]>()
+  for (const proxy of proxies) {
+    const key = proxyUsageKey(proxy.proxy, proxy.proxyType)
+    if (key) byKey.set(key, [...(byKey.get(key) ?? []), usage[proxy.id]!])
+  }
   for (const profile of profiles) {
     const key = proxyUsageKey(profile.proxy, profile.proxyType)
     if (!key) continue
-    for (const proxy of proxies) {
-      if (proxyUsageKey(proxy.proxy, proxy.proxyType) === key) {
-        usage[proxy.id]!.count += 1
-        usage[proxy.id]!.profileNames.push(profile.name)
-      }
+    for (const entry of byKey.get(key) ?? []) {
+      entry.count++
+      entry.profileNames.push(profile.name)
     }
   }
   for (const entry of Object.values(usage)) {

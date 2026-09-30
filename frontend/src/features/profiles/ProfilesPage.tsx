@@ -1,3 +1,4 @@
+import { PageControls } from '@/components/shared/PageControls'
 import { Plus, Search } from 'lucide-react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileForm } from './components/ProfileForm'
@@ -6,31 +7,40 @@ import { ProfilesList } from './components/ProfilesList'
 import type { Profile } from './types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useProfilesPage } from './hooks/useProfilesPage'
 
 export function ProfilesPage() {
   const s = useProfilesPage()
   return (
-    <div className="bg-shell text-ink animate-in fade-in relative flex h-full flex-col duration-300">
-      <ProfilesHeader searchQuery={s.searchQuery} onSearchChange={s.setSearchQuery}
+    <div className="relative flex h-full flex-col bg-shell text-ink">
+      <ProfilesHeader
+        searchQuery={s.searchQuery}
+        onSearchChange={s.setSearchQuery}
         onCreate={s.handleCreate}
-        loading={s.loading} saving={s.saving} />
+        loading={s.loading}
+        saving={s.saving}
+      />
       <ProfilesContent s={s} />
-      <ProfileFormDialogs profiles={s.profiles} isCreateOpen={s.isCreateOpen}
-        editProfile={s.editProfile} saving={s.saving}
+      <ProfileFormDialogs
+        isCreateOpen={s.isCreateOpen}
+        editProfile={s.editProfile}
+        saving={s.saving}
         refreshProfiles={s.refreshProfiles}
-        onCreateOpenChange={(open) => { s.setIsCreateOpen(open); if (!open) s.handleCloseCreate() }}
-        onCloseEdit={s.handleCloseEdit} onSaveProfile={s.handleSaveProfile}
-        onCloseCreate={s.handleCloseCreate} />
-      <ProfileViewDialogs deleteProfile={s.deleteProfile} saving={s.saving}
+        onCreateOpenChange={(open) => {
+          s.setIsCreateOpen(open)
+          if (!open) s.handleCloseCreate()
+        }}
+        onCloseEdit={s.handleCloseEdit}
+        onSaveProfile={s.handleSaveProfile}
+        onCloseCreate={s.handleCloseCreate}
+      />
+      <ProfileViewDialogs
+        deleteProfile={s.deleteProfile}
+        saving={s.saving}
         onSetDeleteProfileId={s.setDeleteProfileId}
-        onDeleteConfirm={s.handleDeleteConfirm} />
+        onDeleteConfirm={s.handleDeleteConfirm}
+      />
     </div>
   )
 }
@@ -39,13 +49,20 @@ function ProfilesContent({ s }: { s: ReturnType<typeof useProfilesPage> }) {
   return (
     <div className="flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
       <div className="mx-auto max-w-[2000px] space-y-4">
-        <ProfilesList profiles={s.filteredProfiles} loading={s.loading}
-          onEdit={s.handleEdit} onDelete={s.handleDeleteClick}
+        <ProfilesList
+          profiles={s.filteredProfiles}
+          loading={s.loading}
+          onEdit={s.handleEdit}
+          onDelete={s.handleDeleteClick}
           onToggleStatus={(p) => s.toggleUsing(p)}
           emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
-          emptyDescription={s.searchQuery.trim()
-            ? 'Try a different search term or clear the filter.'
-            : 'Create a new profile to get started.'} />
+          emptyDescription={
+            s.searchQuery.trim()
+              ? 'Try a different search term or clear the filter.'
+              : 'Create a new profile to get started.'
+          }
+        />
+        <PageControls {...s.pagination} />
       </div>
     </div>
   )
@@ -76,7 +93,7 @@ function ProfilesHeader({
               value={searchQuery}
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Search..."
-              className="bg-field border border-line text-copy placeholder:text-muted-copy brand-focus h-8 rounded-md pl-9 text-sm font-normal leading-5 shadow-sm"
+              className="h-8 rounded-md border brand-focus border-line bg-field pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
             />
           </div>
         </div>
@@ -85,7 +102,7 @@ function ProfilesHeader({
             size="icon"
             onClick={onCreate}
             disabled={loading || saving}
-            className="mobile-effect-shadow brand-button h-8 w-auto px-3.5 text-sm"
+            className="h-8 w-auto brand-button px-3.5 text-sm"
           >
             <Plus className="mr-2 h-4 w-4" />
             New Profile
@@ -99,7 +116,6 @@ function ProfilesHeader({
 /* ── Form Dialogs (Create + Edit) ── */
 
 function ProfileFormDialogs({
-  profiles,
   isCreateOpen,
   editProfile,
   saving,
@@ -109,7 +125,6 @@ function ProfileFormDialogs({
   onSaveProfile,
   onCloseCreate,
 }: {
-  profiles: Profile[]
   isCreateOpen: boolean
   editProfile: Profile | null
   saving: boolean
@@ -122,34 +137,35 @@ function ProfileFormDialogs({
   return (
     <>
       <Dialog open={isCreateOpen} onOpenChange={onCreateOpenChange}>
-        <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
+        <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="page-title-gradient">
-              Create Profile
-            </DialogTitle>
+            <DialogTitle className="page-title-gradient">Create Profile</DialogTitle>
           </DialogHeader>
-          <BatchCreateForm key={isCreateOpen ? 'profile-create-open' : 'profile-create-closed'}
-            onCreated={async () => { await refreshProfiles(); onCloseCreate() }}
-            onCancel={onCloseCreate} />
+          <BatchCreateForm
+            key={isCreateOpen ? 'profile-create-open' : 'profile-create-closed'}
+            onCreated={async () => {
+              await refreshProfiles()
+              onCloseCreate()
+            }}
+            onCancel={onCloseCreate}
+          />
         </DialogContent>
       </Dialog>
 
       <Dialog
         open={Boolean(editProfile)}
-        onOpenChange={(open) => { if (!open) onCloseEdit() }}
+        onOpenChange={(open) => {
+          if (!open) onCloseEdit()
+        }}
       >
-        <DialogContent className="bg-panel border-line text-ink flex max-h-[90vh] flex-col sm:max-w-[560px]">
+        <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
           <DialogHeader className="shrink-0">
-            <DialogTitle className="page-title-gradient">
-              Edit Profile
-            </DialogTitle>
+            <DialogTitle className="page-title-gradient">Edit Profile</DialogTitle>
           </DialogHeader>
           {editProfile && (
             <ProfileForm
               key={editProfile.id}
-              mode="edit"
               initialData={editProfile}
-              existingNames={profiles.map((p) => p.name)}
               saving={saving}
               onSave={onSaveProfile}
               onCancel={onCloseEdit}
@@ -174,10 +190,17 @@ function ProfileViewDialogs(p: ProfileViewDialogsProps) {
   return (
     <>
       {p.deleteProfile ? (
-        <ConfirmDeleteDialog open={Boolean(p.deleteProfile)} title="Delete Profile?"
-          entityLabel="and its data" itemName={p.deleteProfile.name} confirmLabel="Delete Profile"
-          saving={p.saving} error={null} onConfirm={p.onDeleteConfirm}
-          onCancel={() => p.onSetDeleteProfileId(null)} />
+        <ConfirmDeleteDialog
+          open={Boolean(p.deleteProfile)}
+          title="Delete Profile?"
+          entityLabel="and its data"
+          itemName={p.deleteProfile.name}
+          confirmLabel="Delete Profile"
+          saving={p.saving}
+          error={null}
+          onConfirm={p.onDeleteConfirm}
+          onCancel={() => p.onSetDeleteProfileId(null)}
+        />
       ) : null}
     </>
   )

@@ -9,22 +9,14 @@ interface NumberInputProps {
   compact?: boolean
 }
 
-export function NumberInput({
-  input,
-  value,
-  onChange,
-  compact,
-}: NumberInputProps) {
+export function NumberInput({ input, value, onChange, compact }: NumberInputProps) {
   const displayValue = value ?? input.default ?? ''
 
   return (
     <div className="flex min-w-0 flex-1 flex-col space-y-1.5">
-      <Label
-        htmlFor={input.name}
-        className="text-copy truncate text-[13px] font-medium"
-      >
+      <Label htmlFor={input.name} className="truncate text-[13px] font-medium text-copy">
         {compact ? input.label.replace(/^(Min|Max)\s*/i, '') || input.label : input.label}
-        {input.required && <span className="text-status-danger ml-1">*</span>}
+        {input.required && <span className="ml-1 text-status-danger">*</span>}
       </Label>
       <div className="relative">
         <BaseInput
@@ -39,18 +31,16 @@ export function NumberInput({
             onChange(next === '' ? Number.NaN : Number(next))
           }}
           placeholder={input.placeholder}
-          className="border-line-soft bg-field-alt h-8 rounded-lg pr-9 text-[13px] tabular-nums transition-colors duration-100 focus-visible:ring-2 focus-visible:ring-offset-0"
+          className="h-8 rounded-lg border-line-soft bg-field-alt pr-9 text-[13px] tabular-nums focus-visible:ring-2 focus-visible:ring-offset-0"
         />
         {input.unit && (
-          <span className="text-subtle-copy pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[11px]">
+          <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[11px] text-subtle-copy">
             {input.unit}
           </span>
         )}
       </div>
       {input.helpText && !compact && (
-        <p className="text-subtle-copy text-[11px] leading-snug">
-          {input.helpText}
-        </p>
+        <p className="text-[11px] leading-snug text-subtle-copy">{input.helpText}</p>
       )}
     </div>
   )

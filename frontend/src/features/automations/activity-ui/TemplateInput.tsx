@@ -4,11 +4,7 @@ import { api } from '../../../../../convex/_generated/api'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Plus, Trash2, Edit2, Save, X, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ActivityInput } from '@/features/automations/activities/types'
@@ -29,8 +25,7 @@ function resolveTemplateKind(
   config?: Record<string, unknown>,
 ): 'message' | 'message_2' {
   const fieldName = input.templateKindField
-  const rawValue =
-    fieldName && config ? String(config[fieldName] ?? '').trim() : ''
+  const rawValue = fieldName && config ? String(config[fieldName] ?? '').trim() : ''
   return rawValue === 'message_2' ? 'message_2' : 'message'
 }
 
@@ -51,24 +46,24 @@ function MacroDropdownContent({
     <Popover open={macroDropdownOpen} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
-        className="border-line bg-panel w-48 rounded-[2px] p-0 shadow-md"
+        className="w-48 rounded-[2px] border-line bg-panel p-0 shadow-md"
         align="start"
         sideOffset={4}
         onOpenAutoFocus={(e: Event) => e.preventDefault()}
       >
-        <div className="bg-panel max-h-60 overflow-y-auto">
+        <div className="max-h-60 overflow-y-auto bg-panel">
           {MACROS.map((macro) => (
             <Button
               key={macro.id}
               variant="ghost"
-              className="hover:bg-panel-hover h-auto w-full justify-start rounded-none px-2 py-1.5 text-[11px] font-normal"
+              className="h-auto w-full justify-start rounded-none px-2 py-1.5 text-[11px] font-normal hover:bg-panel-hover"
               onClick={() => insertMacro(macro.label)}
             >
               <div className="flex flex-col items-start gap-0.5">
-                <span className="border-line bg-panel-muted text-copy rounded-[2px] border px-1 font-mono text-[10px]">
+                <span className="rounded-[2px] border border-line bg-panel-muted px-1 font-mono text-[10px] text-copy">
                   {macro.label}
                 </span>
-                <span className="text-subtle-copy text-[10px]">{macro.desc}</span>
+                <span className="text-[10px] text-subtle-copy">{macro.desc}</span>
               </div>
             </Button>
           ))}
@@ -82,18 +77,25 @@ function MacroDropdownContent({
 
 function TemplateCreateForm(props: SharedEditorProps) {
   return (
-    <div className="bg-panel-subtle border-line-strong relative space-y-2 rounded-[3px] border p-2">
-      <span className="text-copy text-[10px] font-bold tracking-wider uppercase">
-        NEW TEMPLATE
-      </span>
+    <div className="relative space-y-2 rounded-[3px] border border-line-strong bg-panel-subtle p-2">
+      <span className="text-[10px] font-bold tracking-wider text-copy uppercase">NEW TEMPLATE</span>
       <TemplateTextarea {...props} placeholder="Enter message... (type / for macros)" />
-      <div className="border-line-soft flex justify-end gap-1.5 border-t pt-1">
-        <Button variant="outline" size="sm"
-          className="border-line bg-panel text-copy hover:bg-panel-hover h-6 rounded-[3px] px-2.5 text-[10px]"
-          onClick={props.onCancel}>Cancel</Button>
-        <Button size="sm"
-          className="brand-button h-6 rounded-[3px] px-2.5 text-[10px]"
-          onClick={props.onSave}>Save</Button>
+      <div className="flex justify-end gap-1.5 border-t border-line-soft pt-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 rounded-[3px] border-line bg-panel px-2.5 text-[10px] text-copy hover:bg-panel-hover"
+          onClick={props.onCancel}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="h-6 rounded-[3px] brand-button px-2.5 text-[10px]"
+          onClick={props.onSave}
+        >
+          Save
+        </Button>
       </div>
     </div>
   )
@@ -103,17 +105,22 @@ function TemplateCreateForm(props: SharedEditorProps) {
 
 function TemplateEditItem(props: SharedEditorProps) {
   return (
-    <div className="border-line-strong bg-panel-subtle relative space-y-1.5 rounded-[3px] border p-1.5">
+    <div className="relative space-y-1.5 rounded-[3px] border border-line-strong bg-panel-subtle p-1.5">
       <TemplateTextarea {...props} placeholder="Enter message... (type / for macros)" />
       <div className="flex justify-end gap-1">
-        <Button variant="ghost" size="sm"
+        <Button
+          variant="ghost"
+          size="sm"
           className="h-5 rounded-[2px] px-1.5 text-subtle-copy hover:bg-panel-hover"
-          onClick={props.onCancel}>
+          onClick={props.onCancel}
+        >
           <X className="h-[10px] w-[10px]" />
         </Button>
-        <Button size="sm"
+        <Button
+          size="sm"
           className="h-5 rounded-[2px] bg-primary px-1.5 text-primary-foreground hover:bg-primary/90"
-          onClick={props.onSave}>
+          onClick={props.onSave}
+        >
           <Save className="h-[10px] w-[10px]" />
         </Button>
       </div>
@@ -155,7 +162,7 @@ function TemplateTextarea({
           value={editValue}
           onChange={onTextareaChange}
           placeholder={placeholder}
-          className="border-line bg-field min-h-[50px] rounded-[2px] text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0"
+          className="min-h-[50px] rounded-[2px] border-line bg-field text-[11px] focus-visible:ring-1 focus-visible:ring-offset-0"
         />
       </div>
     </MacroDropdownContent>
@@ -176,20 +183,26 @@ function TemplateDisplayItem({
   onDelete: (index: number) => void
 }) {
   return (
-    <div className="border-line bg-panel-subtle hover:border-line-strong group rounded-[3px] border p-1.5 transition-colors">
+    <div className="group rounded-[3px] border border-line bg-panel-subtle p-1.5 hover:border-line-strong">
       <div className="flex items-start gap-1.5">
         <p className="flex-1 text-[11px] font-medium break-words whitespace-pre-wrap text-muted-copy">
           {template.length > 80 ? template.slice(0, 80) + '...' : template}
         </p>
-        <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <Button variant="ghost" size="icon"
+        <div className="flex shrink-0 gap-0.5 opacity-0 group-hover:opacity-100">
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-5 w-5 rounded-[2px] text-subtle-copy hover:bg-panel-hover hover:text-ink"
-            onClick={() => onStartEdit(index)}>
+            onClick={() => onStartEdit(index)}
+          >
             <Edit2 className="h-3 w-3" />
           </Button>
-          <Button variant="ghost" size="icon"
-            className="text-status-danger h-5 w-5 rounded-[2px] hover:bg-status-danger-soft hover:text-status-danger"
-            onClick={() => onDelete(index)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5 rounded-[2px] text-status-danger hover:bg-status-danger-soft hover:text-status-danger"
+            onClick={() => onDelete(index)}
+          >
             <Trash2 className="h-3 w-3" />
           </Button>
         </div>
@@ -243,33 +256,54 @@ function useTemplateEditor(
 
   const handleSave = async () => {
     const trimmed = editValue.trim()
-    if (!trimmed || !templates) { setEditingIndex(null); setIsCreating(false); return }
+    if (!trimmed || !templates) {
+      setEditingIndex(null)
+      setIsCreating(false)
+      return
+    }
     const next = [...templates]
     if (isCreating) next.push(trimmed)
     else if (editingIndex !== null) next[editingIndex] = trimmed
     try {
       await upsertMutation({ kind: templateKind, texts: next })
-      setEditingIndex(null); setIsCreating(false); setEditValue('')
+      setEditingIndex(null)
+      setIsCreating(false)
+      setEditValue('')
       toast.success('Template saved')
-    } catch { toast.error('Failed to save template') }
+    } catch {
+      toast.error('Failed to save template')
+    }
   }
 
   const handleDelete = async (index: number) => {
     if (!templates) return
-    const next = [...templates]; next.splice(index, 1)
+    const next = [...templates]
+    next.splice(index, 1)
     try {
       await upsertMutation({ kind: templateKind, texts: next })
       toast.success('Template deleted')
-    } catch { toast.error('Failed to delete template') }
+    } catch {
+      toast.error('Failed to delete template')
+    }
   }
 
   const startEdit = (index: number) => {
     if (!templates) return
-    setEditingIndex(index); setEditValue(templates[index]); setIsCreating(false)
+    setEditingIndex(index)
+    setEditValue(templates[index])
+    setIsCreating(false)
   }
 
-  const startCreate = () => { setEditingIndex(null); setEditValue(''); setIsCreating(true) }
-  const cancelEdit = () => { setEditingIndex(null); setEditValue(''); setIsCreating(false) }
+  const startCreate = () => {
+    setEditingIndex(null)
+    setEditValue('')
+    setIsCreating(true)
+  }
+  const cancelEdit = () => {
+    setEditingIndex(null)
+    setEditValue('')
+    setIsCreating(false)
+  }
 
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value
@@ -281,13 +315,25 @@ function useTemplateEditor(
 
   const insertMacro = (macroLabel: string) => {
     if (!textareaRef.current) return
-    applyMacroInsertion(textareaRef.current, editValue, macroLabel, setEditValue, () => setMacroDropdownOpen(false))
+    applyMacroInsertion(textareaRef.current, editValue, macroLabel, setEditValue, () =>
+      setMacroDropdownOpen(false),
+    )
   }
 
   return {
-    editingIndex, editValue, isCreating, macroDropdownOpen, textareaRef,
-    setMacroDropdownOpen, handleSave, handleDelete, startEdit, startCreate,
-    cancelEdit, handleTextareaChange, insertMacro,
+    editingIndex,
+    editValue,
+    isCreating,
+    macroDropdownOpen,
+    textareaRef,
+    setMacroDropdownOpen,
+    handleSave,
+    handleDelete,
+    startEdit,
+    startCreate,
+    cancelEdit,
+    handleTextareaChange,
+    insertMacro,
   }
 }
 
@@ -295,7 +341,9 @@ function useTemplateEditor(
 
 export function TemplateInput({ input, config }: TemplateInputProps) {
   const templateKind = resolveTemplateKind(input, config)
-  const templates = useQuery(api.messageTemplates.get, { kind: templateKind }) as string[] | undefined
+  const templates = useQuery(api.messageTemplates.get, { kind: templateKind }) as
+    | string[]
+    | undefined
   const upsertMutation = useMutation(api.messageTemplates.upsert)
   const editor = useTemplateEditor(templates, templateKind, upsertMutation)
 
@@ -313,14 +361,16 @@ export function TemplateInput({ input, config }: TemplateInputProps) {
   return (
     <div className="space-y-1">
       <div className="mt-1 mb-0.5 flex items-center justify-between">
-        <Label className="text-copy text-[11px] font-medium">
-          {input.label}
-        </Label>
-        <Button variant="outline" size="sm"
-          className="border-line bg-panel text-copy hover:bg-panel-hover h-6 rounded-[3px] px-2 text-[10px]"
+        <Label className="text-[11px] font-medium text-copy">{input.label}</Label>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 rounded-[3px] border-line bg-panel px-2 text-[10px] text-copy hover:bg-panel-hover"
           onClick={editor.startCreate}
-          disabled={editor.isCreating || editor.editingIndex !== null}>
-          <Plus className="mr-1 h-3 w-3" />Add
+          disabled={editor.isCreating || editor.editingIndex !== null}
+        >
+          <Plus className="mr-1 h-3 w-3" />
+          Add
         </Button>
       </div>
 
@@ -336,9 +386,7 @@ export function TemplateInput({ input, config }: TemplateInputProps) {
       />
 
       {input.helpText && (
-        <p className="text-subtle-copy pt-1 text-[10px] leading-tight">
-          {input.helpText}
-        </p>
+        <p className="pt-1 text-[10px] leading-tight text-subtle-copy">{input.helpText}</p>
       )}
     </div>
   )
@@ -362,14 +410,14 @@ function TemplateListContent({
   onDelete: (index: number) => void
 }) {
   if (templates === undefined) {
-    return <div className="text-subtle-copy py-2 text-[10px]">Loading templates...</div>
+    return <div className="py-2 text-[10px] text-subtle-copy">Loading templates...</div>
   }
 
   if (templates.length === 0 && !isCreating) {
     return (
-      <div className="border-line bg-panel-subtle rounded-[3px] border border-dashed p-3 text-center">
-        <MessageSquare className="text-subtle-copy mx-auto mb-1 h-4 w-4 opacity-20" />
-        <p className="text-subtle-copy text-[10px]">No templates</p>
+      <div className="rounded-[3px] border border-dashed border-line bg-panel-subtle p-3 text-center">
+        <MessageSquare className="mx-auto mb-1 h-4 w-4 text-subtle-copy opacity-20" />
+        <p className="text-[10px] text-subtle-copy">No templates</p>
       </div>
     )
   }

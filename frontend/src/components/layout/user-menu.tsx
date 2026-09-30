@@ -39,9 +39,9 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="border-line-soft hover:bg-panel-muted data-[state=open]:bg-panel-hover relative h-8 w-8 rounded-full border transition-colors"
+          className="relative h-8 w-8 rounded-full border border-line-soft hover:bg-panel-muted data-[state=open]:bg-panel-hover"
         >
-          <Avatar className="ring-line text-ink h-8 w-8 ring-1 transition-shadow hover:shadow-xs">
+          <Avatar className="h-8 w-8 text-ink ring-1 ring-line hover:shadow-xs">
             <AvatarImage src={user.photoUrl} alt={user.fullName ?? 'User'} />
             <AvatarFallback className="brand-avatar text-[10px] font-medium">
               {initials}
@@ -50,43 +50,38 @@ export function UserMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
-        className="bg-panel border-line text-ink w-56 rounded-xl border shadow-2xl backdrop-blur-xl"
+        className="w-56 rounded-xl border border-line bg-panel text-ink shadow-2xl"
         align="end"
-        forceMount
       >
         <DropdownMenuLabel className="px-3 py-3 font-normal">
           <div className="flex items-center gap-3">
-            <Avatar className="ring-line h-10 w-10 ring-1">
+            <Avatar className="h-10 w-10 ring-1 ring-line">
               <AvatarImage src={user.photoUrl} alt={user.fullName ?? 'User'} />
               <AvatarFallback className="brand-avatar text-[12px] font-medium">
                 {initials}
               </AvatarFallback>
             </Avatar>
-            <span className="text-ink truncate text-sm font-medium">
-              {displayName}
-            </span>
+            <span className="truncate text-sm font-medium text-ink">{displayName}</span>
           </div>
         </DropdownMenuLabel>
-        <DropdownMenuSeparator className="bg-panel-hover mx-1" />
+        <DropdownMenuSeparator className="mx-1 bg-panel-hover" />
         <div className="p-1">
           {env.disableAuth ? (
-            <DropdownMenuItem disabled>
-              Local development auth bypass
-            </DropdownMenuItem>
+            <DropdownMenuItem disabled>Local development auth bypass</DropdownMenuItem>
           ) : (
             <>
               <DropdownMenuItem
-                className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
+                className="cursor-pointer gap-3 rounded-lg py-2 text-copy focus:bg-panel-hover focus:text-ink"
                 disabled
               >
-                <ShieldCheck className="text-muted-copy h-4 w-4" />
+                <ShieldCheck className="h-4 w-4 text-muted-copy" />
                 <span>Admin session</span>
               </DropdownMenuItem>
               <DropdownMenuItem
-                className="text-copy focus:bg-panel-hover cursor-pointer gap-3 rounded-lg py-2 transition-colors focus:text-ink"
+                className="cursor-pointer gap-3 rounded-lg py-2 text-copy focus:bg-panel-hover focus:text-ink"
                 onClick={handleSignOut}
               >
-                <LogOut className="text-muted-copy h-4 w-4" />
+                <LogOut className="h-4 w-4 text-muted-copy" />
                 <span>Sign out</span>
               </DropdownMenuItem>
             </>

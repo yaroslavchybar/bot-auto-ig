@@ -65,11 +65,12 @@ function getOsLabel(fingerprintOs?: string) {
 
 function getStatusMeta(profile: Profile) {
   if (profile.status === 'deleting' || profile.renameFrom) {
-    return { label: profile.status === 'deleting' ? 'DELETING' : 'RENAMING', className: 'text-muted-copy' }
+    return {
+      label: profile.status === 'deleting' ? 'DELETING' : 'RENAMING',
+      className: 'text-muted-copy',
+    }
   }
-  const label = profile.using
-    ? 'ACTIVE'
-    : String(profile.status ?? 'IDLE').toUpperCase()
+  const label = profile.using ? 'ACTIVE' : String(profile.status ?? 'IDLE').toUpperCase()
 
   if (profile.using) {
     return { label, className: 'text-status-success font-bold' }
@@ -92,43 +93,46 @@ function ProfileActionsMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-ink"
+          className="h-8 w-8 p-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
         >
           <span className="sr-only">Open menu</span>
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="panel-dropdown w-48">
-        <DropdownMenuLabel className="text-muted-copy">
-          Actions
-        </DropdownMenuLabel>
+      <DropdownMenuContent align="end" className="w-48 panel-dropdown">
+        <DropdownMenuLabel className="text-muted-copy">Actions</DropdownMenuLabel>
         <DropdownMenuItem
           onClick={() => onToggleStatus(profile)}
           disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
-          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+          className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
         >
           {profile.using ? (
-            <><Square className="mr-2 h-4 w-4" /> Stop Browser</>
+            <>
+              <Square className="mr-2 h-4 w-4" /> Stop Browser
+            </>
           ) : (
-            <><Play className="mr-2 h-4 w-4" /> Start Browser</>
+            <>
+              <Play className="mr-2 h-4 w-4" /> Start Browser
+            </>
           )}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onEdit(profile)}
           disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
-          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+          className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
         >
           <Pencil className="mr-2 h-4 w-4" /> Edit Configuration
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => navigate(`/ig-accounts?profileId=${encodeURIComponent(profile.id)}`)}
-          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer">
+          className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
+        >
           <Link className="mr-2 h-4 w-4" /> Connect IG credential
         </DropdownMenuItem>
         <DropdownMenuSeparator className="bg-panel-muted" />
         <DropdownMenuItem
           onClick={() => onDelete(profile)}
-          className="text-status-danger focus:text-status-danger focus:bg-status-danger-soft hover:bg-status-danger-soft cursor-pointer"
+          className="cursor-pointer text-status-danger hover:bg-status-danger-soft focus:bg-status-danger-soft focus:text-status-danger"
         >
           <Trash2 className="mr-2 h-4 w-4" /> Delete Profile
         </DropdownMenuItem>
@@ -153,20 +157,15 @@ function ProfileMobileCard({
   return (
     <div
       className={cn(
-        'bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors',
+        'bg-panel-strong rounded-2xl border p-4 shadow-xs',
         'border-line hover:border-line-strong',
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-ink truncate text-base font-semibold">
-            {profile.name}
-          </h3>
+          <h3 className="truncate text-base font-semibold text-ink">{profile.name}</h3>
         </div>
-        <div
-          className="flex items-center gap-2"
-          onClick={(event) => event.stopPropagation()}
-        >
+        <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
           <IgStateToggles profile={profile} />
           <ProfileActionsMenu
             profile={profile}
@@ -180,36 +179,26 @@ function ProfileMobileCard({
 
       <MobileCardTags profile={profile} osLabel={osLabel} />
 
-      <MobileCardFooter
-        profile={profile}
-        statusMeta={statusMeta}
-        onToggleStatus={onToggleStatus}
-      />
+      <MobileCardFooter profile={profile} statusMeta={statusMeta} onToggleStatus={onToggleStatus} />
     </div>
   )
 }
 
 /* ── Mobile Card Tags ── */
 
-function MobileCardTags({
-  profile,
-  osLabel,
-}: {
-  profile: Profile
-  osLabel: string
-}) {
+function MobileCardTags({ profile, osLabel }: { profile: Profile; osLabel: string }) {
   return (
-    <div className="text-muted-copy mt-4 space-y-3 text-xs">
+    <div className="mt-4 space-y-3 text-xs text-muted-copy">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="border-line bg-panel-muted text-ink flex items-center gap-1 rounded-md border px-2 py-1">
+        <div className="flex items-center gap-1 rounded-md border border-line bg-panel-muted px-2 py-1 text-ink">
           <Cpu className="h-3.5 w-3.5" />
           {osLabel}
         </div>
       </div>
 
       <div className="flex items-start gap-2">
-        <Globe className="text-subtle-copy mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span className="text-copy truncate">
+        <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-subtle-copy" />
+        <span className="truncate text-copy">
           {profile.proxy ? maskProxyForDisplay(profile.proxy ?? '') : 'Direct connection'}
         </span>
       </div>
@@ -229,20 +218,15 @@ function MobileCardFooter({
   onToggleStatus: (profile: Profile) => void
 }) {
   return (
-    <div className="border-line mt-4 flex items-center justify-between gap-3 border-t pt-3">
+    <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
       <div className="min-w-0">
-        <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+        <div className="text-[11px] font-semibold tracking-[0.18em] text-subtle-copy uppercase">
           Status
         </div>
-        <div className={cn('mt-1 text-xs', statusMeta.className)}>
-          {statusMeta.label}
-        </div>
+        <div className={cn('mt-1 text-xs', statusMeta.className)}>{statusMeta.label}</div>
       </div>
 
-      <div
-        className="flex items-center gap-2"
-        onClick={(event) => event.stopPropagation()}
-      >
+      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
         <Button
           size="sm"
           className={cn(
@@ -277,14 +261,10 @@ function ProfileDesktopRow({
   profile: Profile
 } & Omit<ProfilesListProps, 'profiles' | 'loading' | 'emptyTitle' | 'emptyDescription'>) {
   return (
-    <TableRow
-      className={cn(
-        'group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle',
-      )}
-    >
+    <TableRow className={cn('group border-line-soft h-14 border-b hover:bg-panel-subtle')}>
       <TableCell className="pl-4 font-medium">
         <div className="flex flex-col gap-0.5">
-          <span className="text-ink truncate">{profile.name}</span>
+          <span className="truncate text-ink">{profile.name}</span>
         </div>
       </TableCell>
       <TableCell>
@@ -299,30 +279,33 @@ function ProfileDesktopRow({
       <TableCell className="pr-4 text-right">
         <div className="flex items-center justify-end gap-2">
           <IgStateToggles profile={profile} />
-          <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
-            onClick={(e) => { e.stopPropagation(); onToggleStatus(profile) }}
-            disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
-            title={profile.using ? 'Stop Browser' : 'Start Browser'}
-          >
-            {profile.using ? (
-              <Square className="h-4 w-4 fill-current" />
-            ) : (
-              <Play className="h-4 w-4 fill-current" />
-            )}
-          </Button>
-          <div onClick={(e) => e.stopPropagation()}>
-            <ProfileActionsMenu
-              profile={profile}
-              onEdit={onEdit}
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleStatus(profile)
+              }}
+              disabled={profile.status === 'deleting' || Boolean(profile.renameFrom)}
+              title={profile.using ? 'Stop Browser' : 'Start Browser'}
+            >
+              {profile.using ? (
+                <Square className="h-4 w-4 fill-current" />
+              ) : (
+                <Play className="h-4 w-4 fill-current" />
+              )}
+            </Button>
+            <div onClick={(e) => e.stopPropagation()}>
+              <ProfileActionsMenu
+                profile={profile}
+                onEdit={onEdit}
 
-              onDelete={onDelete}
-              onToggleStatus={onToggleStatus}
-            />
-          </div>
+                onDelete={onDelete}
+                onToggleStatus={onToggleStatus}
+              />
+            </div>
           </div>
         </div>
       </TableCell>
@@ -347,7 +330,13 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
             profile.using ? 'status-dot-success-tight' : 'bg-subtle-copy',
           )}
         />
-        {profile.status === 'deleting' ? 'Deleting' : profile.renameFrom ? 'Renaming' : profile.using ? 'Active' : 'Idle'}
+        {profile.status === 'deleting'
+          ? 'Deleting'
+          : profile.renameFrom
+            ? 'Renaming'
+            : profile.using
+              ? 'Active'
+              : 'Idle'}
       </div>
     </div>
   )
@@ -355,8 +344,8 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
 
 function DesktopConfigBadges({ profile }: { profile: Profile }) {
   return (
-    <div className="text-subtle-copy flex items-center gap-2 text-xs">
-      <div className="bg-panel-muted border-line text-copy flex items-center gap-1 rounded-sm border px-1.5 py-0.5">
+    <div className="flex items-center gap-2 text-xs text-subtle-copy">
+      <div className="flex items-center gap-1 rounded-sm border border-line bg-panel-muted px-1.5 py-0.5 text-copy">
         <Cpu className="h-3 w-3" />
         {getOsLabel(profile.fingerprintOs)}
       </div>
@@ -366,11 +355,11 @@ function DesktopConfigBadges({ profile }: { profile: Profile }) {
 
 function DesktopProxyCell({ profile }: { profile: Profile }) {
   if (!profile.proxy) {
-    return <span className="text-subtle-copy/50 text-xs">-</span>
+    return <span className="text-xs text-subtle-copy/50">-</span>
   }
   return (
     <div
-      className="text-muted-copy flex max-w-[200px] items-center gap-1.5 text-xs"
+      className="flex max-w-[200px] items-center gap-1.5 text-xs text-muted-copy"
       title={maskProxyForDisplay(profile.proxy ?? '')}
     >
       <Globe className="h-3 w-3 shrink-0" />
@@ -393,19 +382,15 @@ export function ProfilesList({
   const isMobile = useIsMobile()
 
   if (loading && profiles.length === 0) {
-    return (
-      <div className="text-muted-foreground animate-pulse p-12 text-center text-sm">
-        Loading profiles...
-      </div>
-    )
+    return <div className="p-12 text-center text-sm text-muted-foreground">Loading profiles...</div>
   }
 
   if (profiles.length === 0) {
     return (
-      <div className="bg-muted/5 flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
-        <Monitor className="text-muted-foreground/50 mb-4 h-10 w-10" />
+      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/5 p-12 text-center">
+        <Monitor className="mb-4 h-10 w-10 text-muted-foreground/50" />
         <h3 className="text-lg font-medium">{emptyTitle}</h3>
-        <p className="text-muted-foreground mt-1 text-sm">{emptyDescription}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>
       </div>
     )
   }
@@ -423,15 +408,17 @@ export function ProfilesList({
   }
 
   return (
-    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
       <Table>
         <TableHeader>
-          <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-            <TableHead className="text-muted-copy h-12 w-[300px] pl-4 font-medium">Name</TableHead>
-            <TableHead className="text-muted-copy h-12 w-[120px] font-medium">Status</TableHead>
-            <TableHead className="text-muted-copy h-12 w-[180px] font-medium">Config</TableHead>
-            <TableHead className="text-muted-copy h-12 font-medium">Proxy</TableHead>
-            <TableHead className="text-muted-copy h-12 w-[140px] pr-4 text-right font-medium">Actions</TableHead>
+          <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+            <TableHead className="h-12 w-[300px] pl-4 font-medium text-muted-copy">Name</TableHead>
+            <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Status</TableHead>
+            <TableHead className="h-12 w-[180px] font-medium text-muted-copy">Config</TableHead>
+            <TableHead className="h-12 font-medium text-muted-copy">Proxy</TableHead>
+            <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
+              Actions
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -41,35 +41,28 @@
   }
 }
 
-.performance-mode .mobile-effect-glow {
-  filter: none !important;
-  box-shadow: none !important;
-}
-
-.performance-mode .mobile-effect-blur,
-.performance-mode [class*='backdrop-blur'] {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-
-.performance-mode [class*='animate-ping'],
-.performance-mode [class*='animate-pulse'] {
-  animation: none !important;
-}
-
 @supports (-webkit-touch-callout: none) {
-  input:not([type='checkbox']):not([type='radio']):not([type='range']):not(
-      [type='file']
-    ):not([type='color']):not([type='button']):not([type='submit']):not(
-      [type='reset']
-    ),
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not(
+      [type='color']
+    ):not([type='button']):not([type='submit']):not([type='reset']),
   textarea,
   select {
     font-size: 16px !important;
   }
+}
 
-  .performance-mode .mobile-effect-sticky {
-    position: relative;
-    top: auto;
+/* Native rules also cover third-party motion before JavaScript runs. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
   }
+}
+
+[data-sonner-toast] {
+  transition: none !important;
+  animation: none !important;
 }

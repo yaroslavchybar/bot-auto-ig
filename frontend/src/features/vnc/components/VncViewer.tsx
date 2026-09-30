@@ -72,7 +72,8 @@ function useRfbConnection(
     }
 
     const scheduleReconnect = () => {
-      if (lifecycle.disposed || lifecycle.terminalFailure || reconnectTimerRef.current !== null) return
+      if (lifecycle.disposed || lifecycle.terminalFailure || reconnectTimerRef.current !== null)
+        return
       reconnectAttemptRef.current += 1
       setConnectionOverlay({
         tone: 'info',
@@ -81,20 +82,31 @@ function useRfbConnection(
             ? `Connection lost. Retrying (${reconnectAttemptRef.current})...`
             : 'Connection lost. Reconnecting...',
       })
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnectTimerRef.current = null
-        setReconnectKey((current) => current + 1)
-      }, Math.min(RECONNECT_DELAY_MS * 2 ** Math.min(reconnectAttemptRef.current - 1, 5), 30000))
+      reconnectTimerRef.current = window.setTimeout(
+        () => {
+          reconnectTimerRef.current = null
+          setReconnectKey((current) => current + 1)
+        },
+        Math.min(RECONNECT_DELAY_MS * 2 ** Math.min(reconnectAttemptRef.current - 1, 5), 30000),
+      )
     }
 
     screen.replaceChildren()
     const rfb = new RFB(screen, url)
     rfbRef.current = rfb
     configureRfb(rfb, interactiveRef)
-    attachRfbListeners(rfb, lifecycle, clearReconnectTimer,
-      reconnectAttemptRef, setConnectionOverlay, scheduleReconnect)
+    attachRfbListeners(
+      rfb,
+      lifecycle,
+      clearReconnectTimer,
+      reconnectAttemptRef,
+      setConnectionOverlay,
+      scheduleReconnect,
+    )
     let connected = false
-    rfb.addEventListener('connect', () => { connected = true })
+    rfb.addEventListener('connect', () => {
+      connected = true
+    })
     rfb.addEventListener('disconnect', () => {
       connected = false
       if (!lifecycle.disposed) clipboardRef.current?.cancel()
@@ -104,11 +116,12 @@ function useRfbConnection(
       rfb,
       canInteract: () => connected && interactiveRef.current,
       clipboard: navigator.clipboard,
-      writeRemoteText: (text, signal) => apiFetch(`/api/displays/${vncPort}/clipboard`, {
-        method: 'POST',
-        body: { text },
-        signal,
-      }),
+      writeRemoteText: (text, signal) =>
+        apiFetch(`/api/displays/${vncPort}/clipboard`, {
+          method: 'POST',
+          body: { text },
+          signal,
+        }),
       onError: (message) => toast.error(message, { id: `clipboard-${vncPort}` }),
     })
     clipboardRef.current = clipboard
@@ -154,10 +167,8 @@ function VncConnectionOverlay({ overlay }: { overlay: OverlayState }) {
     <div className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center px-3">
       <div
         className={cn(
-          'max-w-full rounded-md border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur-md',
-          overlay.tone === 'error'
-            ? 'status-banner-danger'
-            : 'border-line bg-overlay text-ink',
+          'max-w-full rounded-md border px-3 py-1.5 text-xs font-medium shadow-lg',
+          overlay.tone === 'error' ? 'status-banner-danger' : 'border-line bg-overlay text-ink',
         )}
       >
         {overlay.text}
@@ -198,7 +209,15 @@ export function VncViewer({
   }
 
   useSyncInteractive(interactive && visible, rfbRef, interactiveRef, clipboardRef)
-  const { connectionOverlay } = useRfbConnection(enabled, url, vncPort, screenRef, rfbRef, interactiveRef, clipboardRef)
+  const { connectionOverlay } = useRfbConnection(
+    enabled,
+    url,
+    vncPort,
+    screenRef,
+    rfbRef,
+    interactiveRef,
+    clipboardRef,
+  )
 
   return (
     <div
@@ -212,7 +231,9 @@ export function VncViewer({
       <VncConnectionOverlay overlay={connectionOverlay} />
       {interactive && <VncFilePicker key={vncPort} vncPort={vncPort} visible={visible} />}
       <Button
-        type="button" variant="outline" size="icon"
+        type="button"
+        variant="outline"
+        size="icon"
         className="absolute top-2 right-2 z-10 h-8 w-8"
         aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}

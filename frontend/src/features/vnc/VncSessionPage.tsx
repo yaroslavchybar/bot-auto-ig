@@ -22,33 +22,38 @@ function useVncSessionResolution() {
   const { automationId: rawAutomationId, profileName: rawProfileName } = useParams()
   const automationId = decodeRouteParam(rawAutomationId)
   const profileName = decodeRouteParam(rawProfileName)
-  const { sessions, loading } = useVncSessions(true)
+  const { sessions, loading } = useVncSessions()
 
   const session = useMemo(
-    () => sessions.find(
-      (item) => item.automationId === automationId && item.profileName === profileName,
-    ) ?? null,
+    () =>
+      sessions.find(
+        (item) => item.automationId === automationId && item.profileName === profileName,
+      ) ?? null,
     [profileName, sessions, automationId],
   )
 
-  const handleBack = useCallback(() => { navigate('/vnc') }, [navigate])
+  const handleBack = useCallback(() => {
+    navigate('/vnc')
+  }, [navigate])
 
   return { automationId, profileName, session, loading, handleBack }
 }
 
 export function VncSessionPage() {
-  const {
-    automationId, profileName, session, loading,
-    handleBack,
-  } = useVncSessionResolution()
+  const { automationId, profileName, session, loading, handleBack } = useVncSessionResolution()
 
   if (!automationId || !profileName) {
-    return <VncMissingParamsView onBack={handleBack} message="Session information is missing from the URL." />
+    return (
+      <VncMissingParamsView
+        onBack={handleBack}
+        message="Session information is missing from the URL."
+      />
+    )
   }
 
   if (loading && !session) {
     return (
-      <div className="bg-shell text-subtle-copy flex h-full items-center justify-center text-sm">
+      <div className="flex h-full items-center justify-center bg-shell text-sm text-subtle-copy">
         Loading live session...
       </div>
     )
@@ -56,19 +61,11 @@ export function VncSessionPage() {
 
   if (!session) {
     return (
-      <VncMissingParamsView
-        onBack={handleBack}
-        message="This live session is no longer active."
-      />
+      <VncMissingParamsView onBack={handleBack} message="This live session is no longer active." />
     )
   }
 
-  return (
-    <ResolvedVncSessionPage
-      key={sessionKey(session)} session={session}
-      onBack={handleBack}
-    />
-  )
+  return <ResolvedVncSessionPage key={sessionKey(session)} session={session} onBack={handleBack} />
 }
 
 /* ── Missing/error view ── */
@@ -83,12 +80,12 @@ function VncMissingParamsView({
   error?: string
 }) {
   return (
-    <div className="bg-shell flex h-full items-center justify-center p-6">
-      <div className="bg-panel border-line flex w-full max-w-lg flex-col gap-4 rounded-2xl border p-6 text-center shadow-xs">
+    <div className="flex h-full items-center justify-center bg-shell p-6">
+      <div className="flex w-full max-w-lg flex-col gap-4 rounded-2xl border border-line bg-panel p-6 text-center shadow-xs">
         <div>
-          <h1 className="text-ink text-lg font-semibold">Session unavailable</h1>
-          <p className="text-subtle-copy mt-2 text-sm">{message}</p>
-          {error ? <p className="text-status-danger mt-3 text-sm">{error}</p> : null}
+          <h1 className="text-lg font-semibold text-ink">Session unavailable</h1>
+          <p className="mt-2 text-sm text-subtle-copy">{message}</p>
+          {error ? <p className="mt-3 text-sm text-status-danger">{error}</p> : null}
         </div>
         <div className="flex justify-center gap-3">
           <Button onClick={onBack} className="brand-button">
@@ -130,7 +127,9 @@ function handoffErrorMessage(error: unknown): string {
       const parsed = JSON.parse(error.message) as { error?: { message?: unknown } }
       const message = parsed?.error?.message
       if (typeof message === 'string' && message.trim()) return message
-    } catch { /* fall through to raw message */ }
+    } catch {
+      /* fall through to raw message */
+    }
     return error.message.trim() || `Request failed (HTTP ${error.status})`
   }
   return error instanceof Error ? error.message : 'Request failed'
@@ -190,8 +189,15 @@ function useControlHandoff(session: DisplaySession): ControlHandoff {
   }, [])
 
   return {
-    controlState, isManual, working, error,
-    requestTake, cancelTake, confirmTake, returnToView, dismissError,
+    controlState,
+    isManual,
+    working,
+    error,
+    requestTake,
+    cancelTake,
+    confirmTake,
+    returnToView,
+    dismissError,
   }
 }
 
@@ -210,13 +216,7 @@ function ResolvedVncSessionPage({
   const isInteractive = handoff.controlState === 'unlocked'
 
   if (isMobile) {
-    return (
-      <VncMobileLayout
-        session={session}
-        handoff={handoff}
-        onBack={onBack}
-      />
-    )
+    return <VncMobileLayout session={session} handoff={handoff} onBack={onBack} />
   }
 
   return (
@@ -242,15 +242,15 @@ function VncMobileLayout({
 }) {
   const isInteractive = handoff.controlState === 'unlocked'
   return (
-    <div className="bg-shell relative flex h-full flex-col overflow-auto font-sans">
+    <div className="relative flex h-full flex-col overflow-auto bg-shell font-sans">
       <VncMobileHeader session={session} onBack={onBack} />
 
       <div className="min-h-0 flex-1 space-y-2 p-2">
         <div className="flex gap-2">
           <VncClipboardButton vncPort={session.vncPort} interactive={isInteractive} />
         </div>
-        <div className="border-line-soft h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border bg-black">
-          <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+        <div className="h-[50vh] min-h-[320px] overflow-hidden rounded-[4px] border border-line-soft bg-black">
+          <Suspense fallback={<div className="h-full w-full bg-overlay" />}>
             <VncViewer
               vncPort={session.vncPort}
               url={buildVncWebSocketUrl(session.vncPort)}
@@ -261,30 +261,24 @@ function VncMobileLayout({
         </div>
 
         <ControlToggle handoff={handoff} onBack={onBack} />
-
       </div>
     </div>
   )
 }
 
-function VncMobileHeader({
-  session,
-  onBack,
-}: {
-  session: DisplaySession
-  onBack: () => void
-}) {
+function VncMobileHeader({ session, onBack }: { session: DisplaySession; onBack: () => void }) {
   return (
-    <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-2 shadow-xs select-none">
+    <div className="z-10 flex shrink-0 items-center justify-between border-b border-line-soft bg-panel-subtle px-3 py-2 shadow-xs select-none">
       <div className="flex min-w-0 items-center gap-3">
         <Button variant="outline" size="sm" onClick={onBack} className="h-8">
-          <ArrowLeft className="mr-2 h-3.5 w-3.5" />Back
+          <ArrowLeft className="mr-2 h-3.5 w-3.5" />
+          Back
         </Button>
         <div className="min-w-0">
-          <h2 className="page-title-gradient truncate text-sm font-bold tracking-wider uppercase">
+          <h2 className="truncate page-title-gradient text-sm font-bold tracking-wider uppercase">
             {session.profileName}
           </h2>
-          <span className="text-subtle-copy font-mono text-[10px]">
+          <span className="font-mono text-[10px] text-subtle-copy">
             {session.automationId} / :{session.displayNum}
           </span>
         </div>
@@ -295,13 +289,7 @@ function VncMobileHeader({
 
 /* ── Control Toggle ── */
 
-function ControlToggle({
-  handoff,
-  onBack,
-}: {
-  handoff: ControlHandoff
-  onBack: () => void
-}) {
+function ControlToggle({ handoff, onBack }: { handoff: ControlHandoff; onBack: () => void }) {
   const { controlState, isManual, working, error } = handoff
   const isConfirming = controlState === 'confirm'
 
@@ -315,13 +303,14 @@ function ControlToggle({
 
   if (controlState === 'agent-stopped') {
     return (
-      <div className="border-line bg-panel rounded-xl border p-3">
-        <p className="text-copy mb-1 text-sm font-medium">Agent stopped</p>
-        <p className="text-muted-copy mb-3 text-xs">
-          The live stream has ended. To drive this profile by hand, start its
-          browser from Profiles.
+      <div className="rounded-xl border border-line bg-panel p-3">
+        <p className="mb-1 text-sm font-medium text-copy">Agent stopped</p>
+        <p className="mb-3 text-xs text-muted-copy">
+          The live stream has ended. To drive this profile by hand, start its browser from Profiles.
         </p>
-        <Button variant="outline" onClick={onBack} className="w-full">Back to Sessions</Button>
+        <Button variant="outline" onClick={onBack} className="w-full">
+          Back to Sessions
+        </Button>
       </div>
     )
   }
@@ -331,24 +320,45 @@ function ControlToggle({
     : 'An agent is driving this browser. Taking control stops the agent first.'
 
   return (
-    <div className="border-line bg-panel rounded-xl border p-3">
-      <p className="text-muted-copy mb-3 text-xs">{description}</p>
+    <div className="rounded-xl border border-line bg-panel p-3">
+      <p className="mb-3 text-xs text-muted-copy">{description}</p>
       {error ? (
-        <p className="text-status-danger mb-3 text-xs" role="alert">
+        <p className="mb-3 text-xs text-status-danger" role="alert">
           {error}{' '}
-          <button type="button" onClick={handoff.dismissError} className="underline">Dismiss</button>
+          <button type="button" onClick={handoff.dismissError} className="underline">
+            Dismiss
+          </button>
         </p>
       ) : null}
       <div className="flex gap-2">
         {isConfirming ? (
           <>
-            <Button variant="outline" onClick={handoff.cancelTake} disabled={working} className="flex-1">Cancel</Button>
-            <Button onClick={handoff.confirmTake} disabled={working} className="mobile-effect-shadow brand-button flex-1 font-medium">
-              {working ? (isManual ? 'Taking control…' : 'Stopping agent…') : isManual ? 'Confirm' : 'Stop Agent'}
+            <Button
+              variant="outline"
+              onClick={handoff.cancelTake}
+              disabled={working}
+              className="flex-1"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handoff.confirmTake}
+              disabled={working}
+              className="flex-1 brand-button font-medium"
+            >
+              {working
+                ? isManual
+                  ? 'Taking control…'
+                  : 'Stopping agent…'
+                : isManual
+                  ? 'Confirm'
+                  : 'Stop Agent'}
             </Button>
           </>
         ) : (
-          <Button variant="outline" onClick={handoff.requestTake} className="w-full">Take Control</Button>
+          <Button variant="outline" onClick={handoff.requestTake} className="w-full">
+            Take Control
+          </Button>
         )}
       </div>
     </div>
@@ -369,12 +379,8 @@ function VncDesktopLayout({
   onBack: () => void
 }) {
   return (
-    <div className="bg-shell relative flex h-full flex-col overflow-hidden font-sans">
-      <VncDesktopHeader
-        session={session}
-        isInteractive={isInteractive}
-        onBack={onBack}
-      />
+    <div className="relative flex h-full flex-col overflow-hidden bg-shell font-sans">
+      <VncDesktopHeader session={session} isInteractive={isInteractive} onBack={onBack} />
       <VncDesktopPanels
         session={session}
         isInteractive={isInteractive}
@@ -395,16 +401,17 @@ function VncDesktopHeader({
   onBack: () => void
 }) {
   return (
-    <div className="mobile-effect-blur bg-panel-subtle border-line-soft z-10 flex shrink-0 items-center justify-between border-b px-3 py-1.5 shadow-xs backdrop-blur-xs select-none">
+    <div className="z-10 flex shrink-0 items-center justify-between border-b border-line-soft bg-panel-subtle px-3 py-1.5 shadow-xs select-none">
       <div className="flex items-center gap-3">
         <Button variant="outline" size="sm" onClick={onBack} className="h-8">
-          <ArrowLeft className="mr-2 h-3.5 w-3.5" />Back to Grid
+          <ArrowLeft className="mr-2 h-3.5 w-3.5" />
+          Back to Grid
         </Button>
         <div className="flex items-baseline gap-2">
           <h2 className="page-title-gradient text-xs font-bold tracking-wider uppercase">
             {session.profileName}
           </h2>
-          <span className="text-subtle-copy font-mono text-[10px]">
+          <span className="font-mono text-[10px] text-subtle-copy">
             {session.automationId} / :{session.displayNum}
           </span>
         </div>
@@ -429,7 +436,12 @@ function VncDesktopPanels({
 }) {
   return (
     <div className="min-h-0 flex-1 p-1">
-      <VncStreamPanel session={session} isInteractive={isInteractive} handoff={handoff} onBack={onBack} />
+      <VncStreamPanel
+        session={session}
+        isInteractive={isInteractive}
+        handoff={handoff}
+        onBack={onBack}
+      />
     </div>
   )
 }
@@ -448,14 +460,14 @@ function VncStreamPanel({
   onBack: () => void
 }) {
   return (
-    <div className="bg-shell border-line-soft group relative flex h-full flex-col overflow-hidden rounded-[3px] border shadow-xs">
-      <div className="pointer-events-none absolute top-0 right-0 left-0 z-10 flex h-6 items-center bg-gradient-to-b from-black/80 to-transparent px-2 opacity-0 transition-opacity group-hover:opacity-100">
-        <div className="text-muted-copy font-mono text-[10px] tracking-widest uppercase">
+    <div className="group relative flex h-full flex-col overflow-hidden rounded-[3px] border border-line-soft bg-shell shadow-xs">
+      <div className="pointer-events-none absolute top-0 right-0 left-0 z-10 flex h-6 items-center bg-gradient-to-b from-black/80 to-transparent px-2 opacity-0 group-hover:opacity-100">
+        <div className="font-mono text-[10px] tracking-widest text-muted-copy uppercase">
           Display Stream :{session.displayNum}
         </div>
       </div>
 
-      <Suspense fallback={<div className="bg-overlay h-full w-full animate-pulse" />}>
+      <Suspense fallback={<div className="h-full w-full bg-overlay" />}>
         <VncViewer
           vncPort={session.vncPort}
           url={buildVncWebSocketUrl(session.vncPort)}
@@ -464,9 +476,7 @@ function VncStreamPanel({
         />
       </Suspense>
 
-      {!isInteractive && (
-        <VncControlOverlay handoff={handoff} onBack={onBack} />
-      )}
+      {!isInteractive && <VncControlOverlay handoff={handoff} onBack={onBack} />}
 
       {isInteractive && (
         <div className="absolute right-4 bottom-4 z-20">
@@ -479,13 +489,7 @@ function VncStreamPanel({
   )
 }
 
-function VncControlOverlay({
-  handoff,
-  onBack,
-}: {
-  handoff: ControlHandoff
-  onBack: () => void
-}) {
+function VncControlOverlay({ handoff, onBack }: { handoff: ControlHandoff; onBack: () => void }) {
   const { controlState, isManual, working, error } = handoff
   const isConfirming = controlState === 'confirm'
   const isStopped = controlState === 'agent-stopped'
@@ -500,24 +504,24 @@ function VncControlOverlay({
 
   return (
     <div
-      className={`absolute inset-0 z-20 flex items-center justify-center transition-colors ${showCard ? 'bg-overlay pointer-events-auto backdrop-blur-xs' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
+      className={`absolute inset-0 z-20 flex items-center justify-center ${showCard ? 'pointer-events-auto bg-overlay' : 'pointer-events-none bg-black/0 group-hover:bg-black/25'}`}
     >
       <div className={`${showCard ? 'mx-4 w-full max-w-[360px]' : ''}`}>
         <div
-          className={`bg-panel border-line overflow-hidden rounded-lg border shadow-lg sm:rounded-lg ${showCard ? 'opacity-100' : 'pointer-events-auto opacity-0 transition-opacity group-hover:opacity-100'}`}
+          className={`overflow-hidden rounded-lg border border-line bg-panel shadow-lg sm:rounded-lg ${showCard ? 'opacity-100' : 'pointer-events-auto opacity-0 group-hover:opacity-100'}`}
         >
           {showCard && (
             <div className="flex flex-col space-y-1.5 px-6 py-4 text-center sm:text-left">
               <h2 className="brand-text-gradient text-lg leading-none font-semibold tracking-tight">
                 {title}
               </h2>
-              <p className="text-subtle-copy text-sm">
-                {description}
-              </p>
+              <p className="text-sm text-subtle-copy">{description}</p>
               {error ? (
-                <p className="text-status-danger text-sm" role="alert">
+                <p className="text-sm text-status-danger" role="alert">
                   {error}{' '}
-                  <button type="button" onClick={handoff.dismissError} className="underline">Dismiss</button>
+                  <button type="button" onClick={handoff.dismissError} className="underline">
+                    Dismiss
+                  </button>
                 </p>
               ) : null}
             </div>
@@ -526,16 +530,37 @@ function VncControlOverlay({
             className={`flex flex-col-reverse px-6 sm:flex-row sm:justify-end sm:space-x-2 ${showCard ? 'pt-2 pb-6' : 'py-6'}`}
           >
             {isStopped ? (
-              <Button variant="outline" onClick={onBack}>Back to Sessions</Button>
+              <Button variant="outline" onClick={onBack}>
+                Back to Sessions
+              </Button>
             ) : isConfirming ? (
               <>
-                <Button variant="outline" onClick={handoff.cancelTake} disabled={working} className="mt-2 sm:mt-0">Cancel</Button>
-                <Button onClick={handoff.confirmTake} disabled={working} className="brand-button font-medium">
-                  {working ? (isManual ? 'Taking control…' : 'Stopping agent…') : isManual ? 'Confirm' : 'Stop Agent'}
+                <Button
+                  variant="outline"
+                  onClick={handoff.cancelTake}
+                  disabled={working}
+                  className="mt-2 sm:mt-0"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handoff.confirmTake}
+                  disabled={working}
+                  className="brand-button font-medium"
+                >
+                  {working
+                    ? isManual
+                      ? 'Taking control…'
+                      : 'Stopping agent…'
+                    : isManual
+                      ? 'Confirm'
+                      : 'Stop Agent'}
                 </Button>
               </>
             ) : (
-              <Button variant="outline" onClick={handoff.requestTake}>Take Control</Button>
+              <Button variant="outline" onClick={handoff.requestTake}>
+                Take Control
+              </Button>
             )}
           </div>
         </div>

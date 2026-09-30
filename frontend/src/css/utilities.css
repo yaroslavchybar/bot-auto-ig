@@ -5,29 +5,21 @@
   color: var(--button-positive-foreground);
   background-color: var(--button-positive-bg);
   box-shadow: none;
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out,
-    transform 200ms ease-out;
 
   & svg {
     color: var(--button-positive-icon);
   }
 
-  &:hover:not(:disabled) {
-    border-color: var(--button-positive-border-hover);
-    background-color: var(--button-positive-bg-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--button-positive-border-hover);
+      background-color: var(--button-positive-bg-hover);
+    }
   }
 
   &:focus-visible {
     outline: 4px solid var(--button-positive-focus);
     outline-offset: 1px;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
   }
 }
 
@@ -38,29 +30,21 @@
   color: var(--button-positive-foreground);
   background-color: var(--button-positive-bg);
   box-shadow: none;
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out,
-    transform 200ms ease-out;
 
   & svg {
     color: var(--button-positive-icon);
   }
 
-  &:hover:not(:disabled) {
-    border-color: var(--button-positive-border-hover);
-    background-color: var(--button-positive-bg-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--button-positive-border-hover);
+      background-color: var(--button-positive-bg-hover);
+    }
   }
 
   &:focus-visible {
     outline: 4px solid var(--button-positive-focus);
     outline-offset: 1px;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
   }
 }
 
@@ -71,29 +55,21 @@
   color: var(--button-neutral-foreground);
   background-color: var(--button-neutral-bg);
   box-shadow: none;
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out,
-    transform 200ms ease-out;
 
   & svg {
     color: var(--button-neutral-icon);
   }
 
-  &:hover:not(:disabled) {
-    border-color: var(--button-neutral-border-hover);
-    background-color: var(--button-neutral-bg-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--button-neutral-border-hover);
+      background-color: var(--button-neutral-bg-hover);
+    }
   }
 
   &:focus-visible {
     outline: 4px solid var(--button-neutral-focus);
     outline-offset: 1px;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
   }
 }
 
@@ -104,29 +80,21 @@
   color: var(--button-warning-foreground);
   background-color: var(--button-warning-bg);
   box-shadow: none;
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out,
-    transform 200ms ease-out;
 
   & svg {
     color: var(--button-warning-icon);
   }
 
-  &:hover:not(:disabled) {
-    border-color: var(--button-warning-border-hover);
-    background-color: var(--button-warning-bg-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--button-warning-border-hover);
+      background-color: var(--button-warning-bg-hover);
+    }
   }
 
   &:focus-visible {
     outline: 4px solid var(--button-warning-focus);
     outline-offset: 1px;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
   }
 }
 
@@ -137,29 +105,21 @@
   color: var(--button-danger-foreground);
   background-color: var(--button-danger-bg);
   box-shadow: none;
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out,
-    transform 200ms ease-out;
 
   & svg {
     color: var(--button-danger-icon);
   }
 
-  &:hover:not(:disabled) {
-    border-color: var(--button-danger-border-hover);
-    background-color: var(--button-danger-bg-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--button-danger-border-hover);
+      background-color: var(--button-danger-bg-hover);
+    }
   }
 
   &:focus-visible {
     outline: 4px solid var(--button-danger-focus);
     outline-offset: 1px;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
   }
 }
 
@@ -170,29 +130,21 @@
   color: var(--button-ghost-foreground);
   background-color: transparent;
   box-shadow: none;
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out,
-    transform 200ms ease-out;
 
   & svg {
     color: currentColor;
   }
 
-  &:hover:not(:disabled) {
-    background-color: var(--button-ghost-bg-hover);
-    color: var(--button-ghost-foreground-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background-color: var(--button-ghost-bg-hover);
+      color: var(--button-ghost-foreground-hover);
+    }
   }
 
   &:focus-visible {
     outline: 4px solid var(--button-ghost-focus);
     outline-offset: 1px;
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(1px);
   }
 }
 
@@ -202,18 +154,16 @@
   border-color: transparent;
   color: var(--button-toolbar-foreground);
   background-color: transparent;
-  transition:
-    background-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out;
 
   & svg {
     color: currentColor;
   }
 
-  &:hover:not(:disabled) {
-    background-color: var(--button-toolbar-bg-hover);
-    color: var(--button-toolbar-foreground-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      background-color: var(--button-toolbar-bg-hover);
+      color: var(--button-toolbar-foreground-hover);
+    }
   }
 
   &:focus-visible {
@@ -233,15 +183,12 @@
   border-color: var(--button-panel-border);
   color: var(--button-panel-foreground);
   background-color: var(--button-panel-bg);
-  transition:
-    background-color 200ms ease-out,
-    border-color 200ms ease-out,
-    color 200ms ease-out,
-    outline-color 200ms ease-out;
 
-  &:hover:not(:disabled) {
-    border-color: var(--button-panel-border-hover);
-    background-color: var(--button-panel-bg-hover);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: var(--button-panel-border-hover);
+      background-color: var(--button-panel-bg-hover);
+    }
   }
 
   &:focus-visible {
@@ -258,11 +205,7 @@
 }
 
 @utility brand-text-gradient {
-  background-image: linear-gradient(
-    to right,
-    var(--copy),
-    var(--muted-copy)
-  );
+  background-image: linear-gradient(to right, var(--copy), var(--muted-copy));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -272,8 +215,10 @@
   background-color: var(--panel-muted);
   border-color: var(--line);
 
-  &:hover {
-    background-color: var(--panel-hover);
+  @media (hover: hover) {
+    &:hover {
+      background-color: var(--panel-hover);
+    }
   }
 }
 
@@ -284,17 +229,14 @@
 @utility brand-text-soft {
   color: var(--muted-copy);
 
-  &:hover {
-    color: var(--copy);
+  @media (hover: hover) {
+    &:hover {
+      color: var(--copy);
+    }
   }
 }
 
 @utility brand-focus {
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    background-color 150ms ease;
-
   &:focus,
   &:focus-visible {
     border-color: var(--line-strong);
@@ -311,22 +253,14 @@
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.04),
     0 0 0 1px rgb(0 0 0 / 0.18);
-  transition:
-    background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    background-image 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
-    color 150ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  &:hover:not(:disabled) {
-    border-color: color-mix(
-      in srgb,
-      var(--button-brand-border) 48%,
-      var(--line-strong)
-    );
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.05),
-      0 0 0 1px rgb(0 0 0 / 0.2);
+  @media (hover: hover) {
+    &:hover:not(:disabled) {
+      border-color: color-mix(in srgb, var(--button-brand-border) 48%, var(--line-strong));
+      box-shadow:
+        inset 0 1px 0 rgb(255 255 255 / 0.05),
+        0 0 0 1px rgb(0 0 0 / 0.2);
+    }
   }
 
   &[data-state='checked'],
@@ -341,15 +275,16 @@
       0 0 0 2px rgb(0 0 0 / 0.14);
   }
 
-  &[data-state='checked']:hover:not(:disabled),
-  &[data-state='indeterminate']:hover:not(:disabled) {
-    border-color: var(--button-brand-border-hover);
-    background-image: var(--button-brand-surface-hover);
-    box-shadow:
-      var(--button-brand-shadow-hover),
-      0 0 0 1px
-        color-mix(in srgb, var(--button-brand-border-hover) 94%, transparent),
-      0 0 0 2px rgb(0 0 0 / 0.12);
+  @media (hover: hover) {
+    &[data-state='checked']:hover:not(:disabled),
+    &[data-state='indeterminate']:hover:not(:disabled) {
+      border-color: var(--button-brand-border-hover);
+      background-image: var(--button-brand-surface-hover);
+      box-shadow:
+        var(--button-brand-shadow-hover),
+        0 0 0 1px color-mix(in srgb, var(--button-brand-border-hover) 94%, transparent),
+        0 0 0 2px rgb(0 0 0 / 0.12);
+    }
   }
 }
 
@@ -363,12 +298,14 @@
       inset 0 1px 0 rgb(255 255 255 / 0.05);
   }
 
-  &[data-state='checked']:hover:not(:disabled) {
-    border-color: var(--button-brand-border-hover);
-    background-image: var(--button-brand-surface-hover);
-    box-shadow:
-      var(--button-brand-shadow-hover),
-      inset 0 1px 0 rgb(255 255 255 / 0.05);
+  @media (hover: hover) {
+    &[data-state='checked']:hover:not(:disabled) {
+      border-color: var(--button-brand-border-hover);
+      background-image: var(--button-brand-surface-hover);
+      box-shadow:
+        var(--button-brand-shadow-hover),
+        inset 0 1px 0 rgb(255 255 255 / 0.05);
+    }
   }
 
   &[data-state='unchecked'] {
@@ -379,9 +316,11 @@
 @utility brand-link {
   color: var(--copy);
 
-  &:hover {
-    color: var(--ink);
-    text-decoration: underline;
+  @media (hover: hover) {
+    &:hover {
+      color: var(--ink);
+      text-decoration: underline;
+    }
   }
 }
 
@@ -443,7 +382,9 @@
 @utility automation-handle {
   background-color: var(--automation-edge) !important;
 
-  &:hover {
-    background-color: var(--ink) !important;
+  @media (hover: hover) {
+    &:hover {
+      background-color: var(--ink) !important;
+    }
   }
 }

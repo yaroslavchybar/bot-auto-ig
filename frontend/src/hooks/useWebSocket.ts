@@ -1,3 +1,4 @@
+import { useDocumentVisibility } from './use-document-visibility'
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { env } from '@/lib/env'
 import { useAppAuth } from '@/lib/auth'
@@ -40,10 +41,7 @@ function getDefaultWebSocketUrl() {
 }
 
 function getReconnectDelay(attempt: number): number {
-  const delay = Math.min(
-    BASE_RECONNECT_DELAY * Math.pow(2, attempt),
-    MAX_RECONNECT_DELAY,
-  )
+  const delay = Math.min(BASE_RECONNECT_DELAY * Math.pow(2, attempt), MAX_RECONNECT_DELAY)
   const jitter = delay * 0.2 * Math.random()
   return delay + jitter
 }
@@ -70,35 +68,17 @@ function handleProgressUpdate(
     setProgress({ totalAccounts: data.totalAccounts || 0, currentProfile: null, currentTask: null })
   } else if (data.type === 'profile_started') {
     currentProfileRef.current = data.profileName || null
-    setProgress((prev) => ({ ...prev, currentProfile: data.profileName || null, currentTask: null }))
+    setProgress((prev) => ({
+      ...prev,
+      currentProfile: data.profileName || null,
+      currentTask: null,
+    }))
   } else if (data.type === 'task_started') {
     setProgress((prev) => ({ ...prev, currentTask: data.task || null }))
   } else if (data.type === 'profile_completed') {
     currentProfileRef.current = null
     setProgress((prev) => ({ ...prev, currentProfile: null, currentTask: null }))
   }
-}
-
-/* ── Visibility tracking ── */
-
-function useVisibility() {
-  const [isVisible, setIsVisible] = useState(() => {
-    if (typeof document === 'undefined') return true
-    return document.visibilityState !== 'hidden'
-  })
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return
-    const onVisibilityChange = () => {
-      setIsVisible(document.visibilityState !== 'hidden')
-    }
-    onVisibilityChange()
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () =>
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-  }, [])
-
-  return isVisible
 }
 
 /* ── Message processing (plain fn, no hooks) ── */
@@ -117,7 +97,11 @@ function processSocketMessage(
   const { automationId, eventsOnly, onEvent, currentProfileRef, setStatus, setProgress } = options
   try {
     const data: WebSocketMessage = JSON.parse(rawMessage)
-    try { onEvent?.(data) } catch { /* ignore */ }
+    try {
+      onEvent?.(data)
+    } catch {
+      /* ignore */
+    }
     if (eventsOnly) return
     const activeAutomationId = automationId ?? null
     const msgAutomationId = data.automationId ?? null
@@ -132,7 +116,9 @@ function processSocketMessage(
     } else if (matches && !(activeAutomationId && !msgAutomationId)) {
       handleProgressUpdate(data, currentProfileRef, setProgress)
     }
-  } catch { /* ignore parse errors */ }
+  } catch {
+    /* ignore parse errors */
+  }
 }
 
 /* ── Safely close a WebSocket if it is not already closed ── */
@@ -169,8 +155,13 @@ async function connectWebSocket(options: {
   try {
     const token = await getToken()
     if (token) connectionUrl.searchParams.set('token', token)
-  } catch { /* continue */ }
-  if (cancelled.current) { connection.connecting = false; return }
+  } catch {
+    /* continue */
+  }
+  if (cancelled.current) {
+    connection.connecting = false
+    return
+  }
 
   // Close any lingering socket before creating a new one
   safeCloseSocket(connection.ws)
@@ -181,7 +172,10 @@ async function connectWebSocket(options: {
 
   ws.onopen = () => {
     connection.connecting = false
-    if (cancelled.current) { ws.close(); return }
+    if (cancelled.current) {
+      ws.close()
+      return
+    }
     onConnected(true)
     addWebSocketBreadcrumb('open', wsUrl)
   }
@@ -217,7 +211,11 @@ function scheduleReconnect(options: {
 
 /* ── Connection effect cleanup helper ── */
 
-function cleanupConnection(connection: SocketConnection, cancelled: { current: boolean }, setConnected: (v: boolean) => void) {
+function cleanupConnection(
+  connection: SocketConnection,
+  cancelled: { current: boolean },
+  setConnected: (v: boolean) => void,
+) {
   cancelled.current = true
   if (connection.reconnectTimer) {
     clearTimeout(connection.reconnectTimer)
@@ -233,9 +231,14 @@ function cleanupConnection(connection: SocketConnection, cancelled: { current: b
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
   const {
-    url, autoConnect = true, enabled = true,
+    url,
+    autoConnect = true,
+    enabled = true,
     pauseWhenHidden = false,
-    automationId, onEvent, eventsOnly = false, topic = 'all',
+    automationId,
+    onEvent,
+    eventsOnly = false,
+    topic = 'all',
   } = options
   const defaultUrl = getDefaultWebSocketUrl()
   const subscriptionUrl = new URL(url ?? defaultUrl, defaultUrl)
@@ -244,9 +247,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const { getToken } = useAppAuth()
 
   const [status, setStatus] = useState<'idle' | 'running' | 'stopping'>('idle')
-  const [progress, setProgress] = useState<AutomationProgress>(
-    { totalAccounts: 0, currentProfile: null, currentTask: null })
-  const documentVisible = useVisibility()
+  const [progress, setProgress] = useState<AutomationProgress>({
+    totalAccounts: 0,
+    currentProfile: null,
+    currentTask: null,
+  })
+  const documentVisible = useDocumentVisibility()
   const isVisible = !pauseWhenHidden || documentVisible
   const connectionRef = useRef<SocketConnection>({
     ws: null,
@@ -260,8 +266,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
 
   const handleSocketMessage = useEffectEvent((rawMessage: string) => {
     processSocketMessage(rawMessage, {
-      automationId, eventsOnly, onEvent,
-      currentProfileRef, setStatus, setProgress,
+      automationId,
+      eventsOnly,
+      onEvent,
+      currentProfileRef,
+      setStatus,
+      setProgress,
     })
   })
 
@@ -279,37 +289,49 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     connection.intentionalDisconnect = false
     const cancelled = { current: false }
     connection.cancelled = cancelled
-    const reconnect = () => scheduleReconnect({
-      autoConnect, enabled, isVisible, connection, cancelled,
-      retry: () => setReconnectCounter((count) => count + 1),
-    })
+    const reconnect = () =>
+      scheduleReconnect({
+        autoConnect,
+        enabled,
+        isVisible,
+        connection,
+        cancelled,
+        retry: () => setReconnectCounter((count) => count + 1),
+      })
 
     void connectWebSocket({
-      wsUrl, getToken, onMessage: handleSocketMessage,
+      wsUrl,
+      getToken,
+      onMessage: handleSocketMessage,
       onConnected: (connected) => {
         setConnected(connected)
         if (connected) connection.reconnectAttempt = 0
       },
-      connection, cancelled,
-    }).then((ws) => {
-      if (!ws) return
-      ws.onclose = () => {
-        connection.connecting = false
-        if (cancelled.current) return
-        setConnected(false)
-        connection.ws = null
-        addWebSocketBreadcrumb('close', wsUrl)
-        if (!connection.intentionalDisconnect) reconnect()
-      }
-    }).catch(() => {
-      connection.connecting = false
-      if (!connection.intentionalDisconnect) reconnect()
+      connection,
+      cancelled,
     })
+      .then((ws) => {
+        if (!ws) return
+        ws.onclose = () => {
+          connection.connecting = false
+          if (cancelled.current) return
+          setConnected(false)
+          connection.ws = null
+          addWebSocketBreadcrumb('close', wsUrl)
+          if (!connection.intentionalDisconnect) reconnect()
+        }
+      })
+      .catch(() => {
+        connection.connecting = false
+        if (!connection.intentionalDisconnect) reconnect()
+      })
 
     return () => cleanupConnection(connection, cancelled, setConnected)
   }, [wsUrl, autoConnect, enabled, pauseWhenHidden, reconnectCounter, getToken, isVisible])
 
-  const connect = useCallback(() => { setReconnectCounter((c) => c + 1) }, [])
+  const connect = useCallback(() => {
+    setReconnectCounter((c) => c + 1)
+  }, [])
   const disconnect = useCallback(() => {
     const connection = connectionRef.current
     connection.intentionalDisconnect = true

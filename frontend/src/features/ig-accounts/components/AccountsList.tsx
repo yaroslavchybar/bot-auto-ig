@@ -36,7 +36,7 @@ export function StatusBadge({ account }: { account: Account }) {
       return (
         <Badge
           variant="outline"
-          className="border-status-success-border bg-status-success-soft text-status-success text-[10px] tracking-[0.14em] uppercase"
+          className="border-status-success-border bg-status-success-soft text-[10px] tracking-[0.14em] text-status-success uppercase"
         >
           Available
         </Badge>
@@ -45,7 +45,7 @@ export function StatusBadge({ account }: { account: Account }) {
       return (
         <Badge
           variant="outline"
-          className="border-status-info-border bg-status-info-soft text-status-info text-[10px] tracking-[0.14em] uppercase"
+          className="border-status-info-border bg-status-info-soft text-[10px] tracking-[0.14em] text-status-info uppercase"
         >
           {account.browserLoggedInAt ? 'Browser logged in' : 'Assigned'}
         </Badge>
@@ -54,7 +54,7 @@ export function StatusBadge({ account }: { account: Account }) {
       return (
         <Badge
           variant="outline"
-          className="border-status-success-border bg-status-success-soft text-status-success text-[10px] tracking-[0.14em] uppercase"
+          className="border-status-success-border bg-status-success-soft text-[10px] tracking-[0.14em] text-status-success uppercase"
         >
           Connected
         </Badge>
@@ -63,7 +63,7 @@ export function StatusBadge({ account }: { account: Account }) {
       return (
         <Badge
           variant="outline"
-          className="border-status-danger-border bg-status-danger-soft text-status-danger text-[10px] tracking-[0.14em] uppercase"
+          className="border-status-danger-border bg-status-danger-soft text-[10px] tracking-[0.14em] text-status-danger uppercase"
         >
           Invalid
         </Badge>
@@ -71,10 +71,7 @@ export function StatusBadge({ account }: { account: Account }) {
   }
 }
 
-function handleSelectKey(
-  event: KeyboardEvent,
-  onSelect: () => void,
-) {
+function handleSelectKey(event: KeyboardEvent, onSelect: () => void) {
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
     onSelect()
@@ -102,23 +99,22 @@ function AccountMobileCard({
   return (
     <div
       onClick={onSelect ? () => onSelect(account) : undefined}
-      onKeyDown={
-        onSelect ? (event) => handleSelectKey(event, () => onSelect(account)) : undefined
-      }
+      onKeyDown={onSelect ? (event) => handleSelectKey(event, () => onSelect(account)) : undefined}
       role={onSelect ? 'button' : undefined}
       tabIndex={onSelect ? 0 : undefined}
-      className={`bg-panel-strong border-line hover:border-line-strong rounded-2xl border p-4 shadow-xs transition-colors${onSelect ? ' cursor-pointer' : ''}`}>
+      className={`rounded-2xl border border-line bg-panel-strong p-4 hover:border-line-strong shadow-xs${onSelect ? ' cursor-pointer' : ''}`}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-ink truncate text-base font-semibold">
+          <h3 className="truncate text-base font-semibold text-ink">
             {account.username ? `@${account.username}` : 'Unreadable credential'}
           </h3>
         </div>
         <StatusBadge account={account} />
       </div>
       {detail && (
-        <div className="border-line mt-4 border-t pt-3">
-          <div className="text-subtle-copy text-[11px] font-semibold tracking-[0.18em] uppercase">
+        <div className="mt-4 border-t border-line pt-3">
+          <div className="text-[11px] font-semibold tracking-[0.18em] text-subtle-copy uppercase">
             Detail
           </div>
           <p
@@ -148,17 +144,16 @@ function AccountDesktopRow({
   return (
     <TableRow
       onClick={onSelect ? () => onSelect(account) : undefined}
-      onKeyDown={
-        onSelect ? (event) => handleSelectKey(event, () => onSelect(account)) : undefined
-      }
+      onKeyDown={onSelect ? (event) => handleSelectKey(event, () => onSelect(account)) : undefined}
       role={onSelect ? 'button' : undefined}
       tabIndex={onSelect ? 0 : undefined}
-      className={`group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle${onSelect ? ' cursor-pointer' : ''}`}>
+      className={`group h-14 border-b border-line-soft hover:bg-panel-subtle${onSelect ? ' cursor-pointer' : ''}`}
+    >
       <TableCell className="w-[80px] pl-4">
-        <span className="text-subtle-copy font-mono text-sm">{index + 1}</span>
+        <span className="font-mono text-sm text-subtle-copy">{index + 1}</span>
       </TableCell>
       <TableCell className="font-medium">
-        <span className="text-ink truncate">
+        <span className="truncate text-ink">
           {account.username ? `@${account.username}` : 'Unreadable credential'}
         </span>
       </TableCell>
@@ -174,7 +169,7 @@ function AccountDesktopRow({
             {detail}
           </span>
         ) : (
-          <span className="text-subtle-copy/50 text-xs">-</span>
+          <span className="text-xs text-subtle-copy/50">-</span>
         )}
       </TableCell>
     </TableRow>
@@ -194,19 +189,18 @@ export function AccountsList({
 
   if (loading && accounts.length === 0) {
     return (
-      <div className="text-muted-foreground flex animate-pulse items-center justify-center gap-2 p-12 text-center text-sm">
-        <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> Loading
-        accounts...
+      <div className="flex items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
+        <RefreshCw className="h-4 w-4 shrink-0" /> Loading accounts...
       </div>
     )
   }
 
   if (accounts.length === 0) {
     return (
-      <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-        <Users className="text-subtle-copy mb-4 h-10 w-10" />
-        <h3 className="text-ink text-lg font-medium">{emptyTitle}</h3>
-        <p className="text-subtle-copy mt-1 text-sm">{emptyDescription}</p>
+      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+        <Users className="mb-4 h-10 w-10 text-subtle-copy" />
+        <h3 className="text-lg font-medium text-ink">{emptyTitle}</h3>
+        <p className="mt-1 text-sm text-subtle-copy">{emptyDescription}</p>
       </div>
     )
   }
@@ -222,22 +216,14 @@ export function AccountsList({
   }
 
   return (
-    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
       <Table>
         <TableHeader>
-          <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-            <TableHead className="text-muted-copy h-12 w-[80px] pl-4 font-medium">
-              No.
-            </TableHead>
-            <TableHead className="text-muted-copy h-12 w-[250px] font-medium">
-              Account
-            </TableHead>
-            <TableHead className="text-muted-copy h-12 w-[200px] font-medium">
-              Status
-            </TableHead>
-            <TableHead className="text-muted-copy h-12 pr-4 font-medium">
-              Detail
-            </TableHead>
+          <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+            <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">No.</TableHead>
+            <TableHead className="h-12 w-[250px] font-medium text-muted-copy">Account</TableHead>
+            <TableHead className="h-12 w-[200px] font-medium text-muted-copy">Status</TableHead>
+            <TableHead className="h-12 pr-4 font-medium text-muted-copy">Detail</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

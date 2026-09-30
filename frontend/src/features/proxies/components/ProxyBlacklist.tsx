@@ -4,7 +4,12 @@ import { apiFetch } from '@/lib/api'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Button } from '@/components/ui/button'
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '@/components/ui/table'
 
 type BlacklistedProxy = {
@@ -25,10 +30,18 @@ export function ProxyBlacklist() {
   useEffect(() => {
     let active = true
     apiFetch<BlacklistedProxy[]>('/api/ig-accounts/blacklist')
-      .then((result) => { if (active) setRows(result) })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : String(cause)) })
-      .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+      .then((result) => {
+        if (active) setRows(result)
+      })
+      .catch((cause) => {
+        if (active) setError(cause instanceof Error ? cause.message : String(cause))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [reload])
 
   const retry = () => {
@@ -38,57 +51,94 @@ export function ProxyBlacklist() {
   }
 
   if (loading && rows.length === 0) {
-    return <div className="text-muted-foreground flex animate-pulse items-center justify-center gap-2 p-12 text-sm"><RefreshCw className="h-4 w-4 animate-spin" /> Loading blacklist...</div>
+    return (
+      <div className="flex items-center justify-center gap-2 p-12 text-sm text-muted-foreground">
+        <RefreshCw className="h-4 w-4" /> Loading blacklist...
+      </div>
+    )
   }
 
   return (
     <section>
       <div className="mb-2 flex items-center gap-2 px-1">
-        <Ban className="text-copy h-4 w-4" />
-        <h2 className="text-ink text-base font-semibold">Proxy blacklist</h2>
-        <span className="text-subtle-copy text-sm tabular-nums">{rows.length}</span>
+        <Ban className="h-4 w-4 text-copy" />
+        <h2 className="text-base font-semibold text-ink">Proxy blacklist</h2>
+        <span className="text-sm text-subtle-copy tabular-nums">{rows.length}</span>
       </div>
       {error && (
-        <div role="alert" className="text-status-danger bg-status-danger-soft border-status-danger-border mb-3 flex items-center justify-between gap-3 rounded-xl border px-4 py-2.5 text-sm">
+        <div
+          role="alert"
+          className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-status-danger-border bg-status-danger-soft px-4 py-2.5 text-sm text-status-danger"
+        >
           <span>{error}</span>
-          <Button type="button" size="sm" variant="outline" onClick={retry}>Retry</Button>
+          <Button type="button" size="sm" variant="outline" onClick={retry}>
+            Retry
+          </Button>
         </div>
       )}
       {rows.length === 0 ? (
-        <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-          <Ban className="text-subtle-copy mb-4 h-10 w-10" />
-          <h3 className="text-ink text-lg font-medium">No blacklisted proxies</h3>
-          <p className="text-subtle-copy mt-1 text-sm">Login proxy IPs rejected by Instagram will appear here.</p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+          <Ban className="mb-4 h-10 w-10 text-subtle-copy" />
+          <h3 className="text-lg font-medium text-ink">No blacklisted proxies</h3>
+          <p className="mt-1 text-sm text-subtle-copy">
+            Login proxy IPs rejected by Instagram will appear here.
+          </p>
         </div>
       ) : isMobile ? (
         <div className="space-y-3">
           {rows.map((row) => (
-            <div key={row.ip} className="bg-panel-strong border-line hover:border-line-strong rounded-2xl border p-4 shadow-xs transition-colors">
-              <h3 className="text-ink font-mono text-base font-semibold">{row.ip}</h3>
-              <p className="text-subtle-copy mt-2 text-xs">{row.country.toUpperCase()} · {row.proxyName} · {row.reason}</p>
+            <div
+              key={row.ip}
+              className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs hover:border-line-strong"
+            >
+              <h3 className="font-mono text-base font-semibold text-ink">{row.ip}</h3>
+              <p className="mt-2 text-xs text-subtle-copy">
+                {row.country.toUpperCase()} · {row.proxyName} · {row.reason}
+              </p>
             </div>
           ))}
         </div>
       ) : (
-        <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
           <Table>
             <TableHeader>
-              <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-                <TableHead className="text-muted-copy h-12 w-[80px] pl-4 font-medium">No.</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[180px] font-medium">IP</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[120px] font-medium">Country</TableHead>
-                <TableHead className="text-muted-copy h-12 w-full font-medium">Proxy</TableHead>
-                <TableHead className="text-muted-copy h-12 w-[220px] pr-4 font-medium">Reason</TableHead>
+              <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+                <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">
+                  No.
+                </TableHead>
+                <TableHead className="h-12 w-[180px] font-medium text-muted-copy">IP</TableHead>
+                <TableHead className="h-12 w-[120px] font-medium text-muted-copy">
+                  Country
+                </TableHead>
+                <TableHead className="h-12 w-full font-medium text-muted-copy">Proxy</TableHead>
+                <TableHead className="h-12 w-[220px] pr-4 font-medium text-muted-copy">
+                  Reason
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((row, index) => (
-                <TableRow key={row.ip} className="border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle">
-                  <TableCell className="pl-4"><span className="text-subtle-copy font-mono text-sm">{index + 1}</span></TableCell>
-                  <TableCell><span className="text-ink font-mono text-sm">{row.ip}</span></TableCell>
-                  <TableCell><span className="text-copy text-sm">{row.country.toUpperCase()}</span></TableCell>
-                  <TableCell><span className="text-subtle-copy block max-w-[280px] truncate text-sm">{row.proxyName}</span></TableCell>
-                  <TableCell className="pr-4"><span className="text-subtle-copy text-xs">{row.reason}</span></TableCell>
+                <TableRow
+                  key={row.ip}
+                  className="h-14 border-b border-line-soft hover:bg-panel-subtle"
+                >
+                  <TableCell className="pl-4">
+                    <span className="font-mono text-sm text-subtle-copy">{index + 1}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-sm text-ink">{row.ip}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm text-copy">{row.country.toUpperCase()}</span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="block max-w-[280px] truncate text-sm text-subtle-copy">
+                      {row.proxyName}
+                    </span>
+                  </TableCell>
+                  <TableCell className="pr-4">
+                    <span className="text-xs text-subtle-copy">{row.reason}</span>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

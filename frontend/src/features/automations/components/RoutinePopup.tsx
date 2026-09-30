@@ -57,12 +57,8 @@ export function RoutinePopup({
 }) {
   const [tab, setTab] = useState<(typeof tabs)[number]>('General')
   const [name, setName] = useState(automation?.name ?? '')
-  const [listIds, setListIds] = useState<Id<'lists'>[]>(
-    automation?.listIds ?? [],
-  )
-  const [policy, setPolicy] = useState<RoutinePolicy>(
-    automation?.routine ?? defaultRoutine,
-  )
+  const [listIds, setListIds] = useState<Id<'lists'>[]>(automation?.listIds ?? [])
+  const [policy, setPolicy] = useState<RoutinePolicy>(automation?.routine ?? defaultRoutine)
   const [saving, setSaving] = useState(false)
   const lists = useQuery(api.lists.list, {})
   const automations = useQuery(api.automations.queries.list, {})
@@ -73,10 +69,8 @@ export function RoutinePopup({
     automation?.isActive === true ||
     automation?.status === 'running' ||
     automation?.status === 'pending'
-  const change = <K extends keyof RoutinePolicy>(
-    key: K,
-    value: RoutinePolicy[K],
-  ) => setPolicy((p) => ({ ...p, [key]: value }))
+  const change = <K extends keyof RoutinePolicy>(key: K, value: RoutinePolicy[K]) =>
+    setPolicy((p) => ({ ...p, [key]: value }))
   const numberField = (
     key: 'outreachStartDay' | 'initialDms' | 'maxDms',
     label: string,
@@ -91,10 +85,8 @@ export function RoutinePopup({
         value={Number.isNaN(policy[key]) ? '' : policy[key]}
         min={min}
         max={max}
-        onChange={(e) =>
-          change(key, e.target.value === '' ? Number.NaN : Number(e.target.value))
-        }
-        className="bg-field border-line"
+        onChange={(e) => change(key, e.target.value === '' ? Number.NaN : Number(e.target.value))}
+        className="border-line bg-field"
       />
     </div>
   )
@@ -102,8 +94,7 @@ export function RoutinePopup({
     setSaving(true)
     try {
       validateRoutine(policy)
-      if (!name.trim() || listIds.length !== 1)
-        throw new Error('Enter a name and select one model')
+      if (!name.trim() || listIds.length !== 1) throw new Error('Enter a name and select one model')
       const data = {
         name: name.trim(),
         listIds,
@@ -130,7 +121,7 @@ export function RoutinePopup({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="bg-panel border-line text-ink flex h-[90vh] flex-col sm:max-w-4xl"
+        className="flex h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-4xl"
       >
         <DialogHeader className="shrink-0">
           <DialogTitle className="page-title-gradient">
@@ -151,7 +142,7 @@ export function RoutinePopup({
               aria-selected={t === tab}
               onClick={() => setTab(t)}
               className={cn(
-                'inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors',
+                'inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium',
                 t === tab
                   ? 'border-line-strong bg-panel-selected text-ink'
                   : 'border-line text-muted-copy hover:border-line-strong hover:text-ink',
@@ -163,10 +154,10 @@ export function RoutinePopup({
         </div>
 
         {locked && tab !== 'Profiles' && (
-          <div className="bg-status-info-soft border-status-info-border text-status-info flex shrink-0 items-start gap-2 rounded-xl border px-4 py-2.5 text-xs">
+          <div className="flex shrink-0 items-start gap-2 rounded-xl border border-status-info-border bg-status-info-soft px-4 py-2.5 text-xs text-status-info">
             <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Disable and wait for the current session to stop before editing
-            settings. Profiles and model membership can still be managed.
+            Disable and wait for the current session to stop before editing settings. Profiles and
+            model membership can still be managed.
           </div>
         )}
 
@@ -175,15 +166,12 @@ export function RoutinePopup({
             automation ? (
               <RoutineProfiles automationId={automation._id} modelId={automation.listIds?.[0]} />
             ) : (
-              <p className="text-subtle-copy text-sm">
+              <p className="text-sm text-subtle-copy">
                 Save the automation to manage profile setup and progress.
               </p>
             )
           ) : (
-            <fieldset
-              disabled={locked || saving}
-              className="space-y-5 disabled:opacity-60"
-            >
+            <fieldset disabled={locked || saving} className="space-y-5 disabled:opacity-60">
               {tab === 'General' && (
                 <>
                   <div className="grid gap-1.5">
@@ -193,27 +181,35 @@ export function RoutinePopup({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="My automation"
-                      className="bg-field border-line"
+                      className="border-line bg-field"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Model</Label>
                     {lists === undefined ? (
-                      <p className="text-subtle-copy text-sm">Loading models…</p>
+                      <p className="text-sm text-subtle-copy">Loading models…</p>
                     ) : lists.length === 0 ? (
-                      <p className="text-subtle-copy text-sm">
-                        Create a model first.
-                      </p>
+                      <p className="text-sm text-subtle-copy">Create a model first.</p>
                     ) : (
-                      <Select value={listIds[0] ?? ''} onValueChange={(id) => setListIds([id as Id<'lists'>])}>
-                        <SelectTrigger className="bg-field border-line"><SelectValue placeholder="Choose a model" /></SelectTrigger>
+                      <Select
+                        value={listIds[0] ?? ''}
+                        onValueChange={(id) => setListIds([id as Id<'lists'>])}
+                      >
+                        <SelectTrigger className="border-line bg-field">
+                          <SelectValue placeholder="Choose a model" />
+                        </SelectTrigger>
                         <SelectContent className="panel-dropdown">
                           {lists.map((list) => {
-                            const assigned = automations?.some((row) =>
-                              row._id !== automation?._id && row.routine && row.listIds?.includes(list._id))
+                            const assigned = automations?.some(
+                              (row) =>
+                                row._id !== automation?._id &&
+                                row.routine &&
+                                row.listIds?.includes(list._id),
+                            )
                             return (
                               <SelectItem key={list._id} value={list._id} disabled={assigned}>
-                                {list.name}{assigned ? ' · already has an automation' : ''}
+                                {list.name}
+                                {assigned ? ' · already has an automation' : ''}
                               </SelectItem>
                             )
                           })}
@@ -221,44 +217,38 @@ export function RoutinePopup({
                       </Select>
                     )}
                   </div>
-                  <label className="bg-panel-subtle/40 border-line-soft flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3">
+                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line-soft bg-panel-subtle/40 px-4 py-3">
                     <span>
-                      <span className="text-copy block text-sm font-medium">
+                      <span className="block text-sm font-medium text-copy">
                         Run without a visible browser
                       </span>
-                      <span className="text-subtle-copy mt-0.5 block text-xs">
+                      <span className="mt-0.5 block text-xs text-subtle-copy">
                         Headless sessions use fewer resources
                       </span>
                     </span>
                     <Switch
                       checked={policy.headless}
-                      onCheckedChange={(checked) =>
-                        change('headless', checked)
-                      }
-                      className="brand-switch shrink-0"
+                      onCheckedChange={(checked) => change('headless', checked)}
+                      className="shrink-0 brand-switch"
                     />
                   </label>
                 </>
               )}
               {tab === 'Warm-up & activity' && (
                 <>
-                  <p className="text-subtle-copy text-sm">
-                    Browser login starts model setup. Daily feed browsing starts
-                    the next day with its time budget. On day 3, the mobile session
-                    connects through the Work proxy. Username and full name change
-                    separately; the full name waits for a model name. From day 4,
-                    setup can add the avatar and start nine daily posts. After
-                    the ninth post, the profile becomes ready for outreach.
-                    Activity continues during outreach with breaks between sessions.
+                  <p className="text-sm text-subtle-copy">
+                    Browser login starts model setup. Daily feed browsing starts the next day with
+                    its time budget. On day 3, the mobile session connects through the Work proxy.
+                    Username and full name change separately; the full name waits for a model name.
+                    From day 4, setup can add the avatar and start nine daily posts. After the ninth
+                    post, the profile becomes ready for outreach. Activity continues during outreach
+                    with breaks between sessions.
                   </p>
                   <GroupedInputs
                     inputs={browseFeed.inputs}
                     config={policy.activity}
                     onChange={(key, value) => {
-                      if (
-                        typeof value === 'number' ||
-                        typeof value === 'boolean'
-                      )
+                      if (typeof value === 'number' || typeof value === 'boolean')
                         change('activity', { ...policy.activity, [key]: value })
                     }}
                   />
@@ -266,59 +256,39 @@ export function RoutinePopup({
               )}
               {tab === 'Outreach' && (
                 <>
-                  <label className="bg-panel-subtle/40 border-line-soft flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-4 py-3">
+                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line-soft bg-panel-subtle/40 px-4 py-3">
                     <span>
-                      <span className="text-copy block text-sm font-medium">
-                        Enable outreach
-                      </span>
-                      <span className="text-subtle-copy mt-0.5 block text-xs">
+                      <span className="block text-sm font-medium text-copy">Enable outreach</span>
+                      <span className="mt-0.5 block text-xs text-subtle-copy">
                         Work toward the daily DM target within the daily time budget
                       </span>
                     </span>
                     <Switch
                       checked={policy.outreachEnabled}
-                      onCheckedChange={(checked) =>
-                        change('outreachEnabled', checked)
-                      }
-                      className="brand-switch shrink-0"
+                      onCheckedChange={(checked) => change('outreachEnabled', checked)}
+                      className="shrink-0 brand-switch"
                     />
                   </label>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    {numberField(
-                      'outreachStartDay',
-                      'Earliest activity day',
-                      1,
-                      365,
-                    )}
-                    {numberField(
-                      'initialDms',
-                      'Initial daily target',
-                      1,
-                      35,
-                    )}
+                    {numberField('outreachStartDay', 'Earliest activity day', 1, 365)}
+                    {numberField('initialDms', 'Initial daily target', 1, 35)}
                     {numberField('maxDms', 'Maximum DMs per day', 1, 35)}
                   </div>
-                  <p className="text-subtle-copy text-xs">
+                  <p className="text-xs text-subtle-copy">
                     The daily target increases by a random 1–4 after each day with a confirmed DM,
-                    up to the maximum. Sessions alternate browsing and batches of 1–5 DMs.
-                    Browsing, sending, and 30–90 second DM pauses share the daily time budget.
-                    Delivery problems or insufficient time can leave the target incomplete.
+                    up to the maximum. Sessions alternate browsing and batches of 1–5 DMs. Browsing,
+                    sending, and 30–90 second DM pauses share the daily time budget. Delivery
+                    problems or insufficient time can leave the target incomplete.
                   </p>
                   <div className="grid gap-1.5">
                     <Label htmlFor="routine-lead-list">Recipient lead list</Label>
                     <Select
                       value={policy.leadListId ?? 'none'}
                       onValueChange={(v) =>
-                        change(
-                          'leadListId',
-                          v === 'none' ? undefined : (v as Id<'leadLists'>),
-                        )
+                        change('leadListId', v === 'none' ? undefined : (v as Id<'leadLists'>))
                       }
                     >
-                      <SelectTrigger
-                        id="routine-lead-list"
-                        className="bg-field border-line"
-                      >
+                      <SelectTrigger id="routine-lead-list" className="border-line bg-field">
                         <SelectValue placeholder="Select lead list" />
                       </SelectTrigger>
                       <SelectContent className="panel-dropdown">
@@ -334,7 +304,7 @@ export function RoutinePopup({
                   <div className="grid gap-1.5">
                     <div className="flex items-baseline justify-between">
                       <Label htmlFor="routine-message">Message</Label>
-                      <span className="text-subtle-copy font-mono text-[11px]">
+                      <span className="font-mono text-[11px] text-subtle-copy">
                         {policy.message.length}/1000
                       </span>
                     </div>
@@ -345,13 +315,13 @@ export function RoutinePopup({
                       value={policy.message}
                       onChange={(e) => change('message', e.target.value)}
                       placeholder="Hi {{username}} ..."
-                      className="bg-field border-line"
+                      className="border-line bg-field"
                     />
                   </div>
-                  <p className="text-subtle-copy text-sm">
-                    Use {'{{username}}'} for the recipient. Claimed, messaged, or
-                    followed leads are skipped for new sessions. A lead followed
-                    in the current session still receives its DM.
+                  <p className="text-sm text-subtle-copy">
+                    Use {'{{username}}'} for the recipient. Claimed, messaged, or followed leads are
+                    skipped for new sessions. A lead followed in the current session still receives
+                    its DM.
                   </p>
                 </>
               )}
@@ -360,19 +330,10 @@ export function RoutinePopup({
         </div>
 
         <DialogFooter className="shrink-0 gap-2 border-t border-line pt-3">
-          <Button
-            variant="ghost"
-            onClick={onClose}
-            disabled={saving}
-            className="button-ghost"
-          >
+          <Button variant="ghost" onClick={onClose} disabled={saving} className="button-ghost">
             Close
           </Button>
-          <Button
-            onClick={() => void save()}
-            disabled={locked || saving}
-            className="brand-button"
-          >
+          <Button onClick={() => void save()} disabled={locked || saving} className="brand-button">
             {saving ? 'Saving…' : 'Save automation'}
           </Button>
         </DialogFooter>
@@ -400,13 +361,21 @@ function RoutineProfiles({
     const refresh = () => {
       void apiFetch<ModelWarmup[]>('/api/ig-accounts/warmup')
         .then((result) => {
-          if (active) { setWarmups(result.filter((item) => item.modelId === modelId)); setWarmupError('') }
+          if (active) {
+            setWarmups(result.filter((item) => item.modelId === modelId))
+            setWarmupError('')
+          }
         })
-        .catch((error) => { if (active) setWarmupError(error instanceof Error ? error.message : String(error)) })
+        .catch((error) => {
+          if (active) setWarmupError(error instanceof Error ? error.message : String(error))
+        })
     }
     refresh()
     const timer = window.setInterval(refresh, 30_000)
-    return () => { active = false; window.clearInterval(timer) }
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
   }, [modelId])
   const mutate = async (args: Parameters<typeof setAccount>[0]) => {
     try {
@@ -416,35 +385,44 @@ function RoutineProfiles({
     }
   }
   const reconcile = async (profileId: string, resolution: 'completed' | 'failed') => {
-    if (resolution === 'failed' && !window.confirm('Confirm this action did not succeed in Instagram. Retrying a successful post would publish it twice.')) return
+    if (
+      resolution === 'failed' &&
+      !window.confirm(
+        'Confirm this action did not succeed in Instagram. Retrying a successful post would publish it twice.',
+      )
+    )
+      return
     setReviewing(profileId)
     try {
       await apiFetch(`/api/ig-accounts/warmup/${profileId}/reconcile`, {
-        method: 'POST', body: { resolution },
+        method: 'POST',
+        body: { resolution },
       })
       const result = await apiFetch<ModelWarmup[]>('/api/ig-accounts/warmup')
       setWarmups(result.filter((item) => item.modelId === modelId))
       toast.success(resolution === 'completed' ? 'Action marked complete' : 'Action ready to retry')
-    } catch (error) { toast.error(error instanceof Error ? error.message : String(error)) }
-    finally { setReviewing(null) }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : String(error))
+    } finally {
+      setReviewing(null)
+    }
   }
-  if (!rows)
-    return <p className="text-subtle-copy text-sm">Loading profiles…</p>
+  if (!rows) return <p className="text-sm text-subtle-copy">Loading profiles…</p>
   if (!rows.length)
-    return (
-      <p className="text-subtle-copy text-sm">
-        Add profiles to this model to start.
-      </p>
-    )
+    return <p className="text-sm text-subtle-copy">Add profiles to this model to start.</p>
   return (
     <div className="space-y-2">
-      {warmupError && <p role="alert" className="text-status-danger text-xs">Warm-up progress: {warmupError}</p>}
+      {warmupError && (
+        <p role="alert" className="text-xs text-status-danger">
+          Warm-up progress: {warmupError}
+        </p>
+      )}
       {rows.map((row) => (
         <div
           key={row.profileId}
-          className="bg-panel-subtle/40 border-line-soft flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border p-3"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line-soft bg-panel-subtle/40 p-3"
         >
-          <span className="text-ink text-sm font-semibold">{row.name}</span>
+          <span className="text-sm font-semibold text-ink">{row.name}</span>
           <Badge
             variant="outline"
             className={cn(
@@ -456,26 +434,24 @@ function RoutineProfiles({
                   : 'border-status-success-border bg-status-success-soft text-status-success',
             )}
           >
-            {row.paused
-              ? 'Paused'
-              : row.issue
-                ? 'Needs attention'
-                : row.stage}
+            {row.paused ? 'Paused' : row.issue ? 'Needs attention' : row.stage}
           </Badge>
-          <span className="text-muted-copy text-xs">
+          <span className="text-xs text-muted-copy">
             {row.activeDays} active days · DMs {row.sent}/{row.allowance}
-            {row.budgetExhausted && row.sent < row.allowance ? ' · Target incomplete: time budget used' : ''}
+            {row.budgetExhausted && row.sent < row.allowance
+              ? ' · Target incomplete: time budget used'
+              : ''}
           </span>
-          <ModelSetupStatus progress={warmups.find((item) => item.profileId === row.profileId)}
+          <ModelSetupStatus
+            progress={warmups.find((item) => item.profileId === row.profileId)}
             reviewing={reviewing === row.profileId}
-            onReview={(resolution) => void reconcile(String(row.profileId), resolution)} />
+            onReview={(resolution) => void reconcile(String(row.profileId), resolution)}
+          />
           <Button
             size="sm"
             variant="outline"
             className="h-8"
-            onClick={() =>
-              void mutate({ profileId: row.profileId, paused: !row.paused })
-            }
+            onClick={() => void mutate({ profileId: row.profileId, paused: !row.paused })}
           >
             {row.paused ? 'Resume' : 'Pause'}
           </Button>
@@ -484,41 +460,61 @@ function RoutineProfiles({
               size="sm"
               variant="outline"
               className="h-8"
-              onClick={() =>
-                void mutate({ profileId: row.profileId, clearIssue: true })
-              }
+              onClick={() => void mutate({ profileId: row.profileId, clearIssue: true })}
             >
               Issue resolved
             </Button>
           )}
-          <span className="text-subtle-copy ml-auto text-xs">
+          <span className="ml-auto text-xs text-subtle-copy">
             Next session:{' '}
             {row.nextRunAt
               ? new Date(row.nextRunAt).toLocaleString()
               : 'When eligible and its rest period ends'}
           </span>
-          {row.issue && (
-            <p className="text-status-danger basis-full text-xs">{row.issue}</p>
-          )}
+          {row.issue && <p className="basis-full text-xs text-status-danger">{row.issue}</p>}
         </div>
       ))}
     </div>
   )
 }
 
-function ModelSetupStatus({ progress, reviewing, onReview }: { progress?: ModelWarmup;
-  reviewing: boolean; onReview: (resolution: 'completed' | 'failed') => void }) {
+function ModelSetupStatus({
+  progress,
+  reviewing,
+  onReview,
+}: {
+  progress?: ModelWarmup
+  reviewing: boolean
+  onReview: (resolution: 'completed' | 'failed') => void
+}) {
   return (
-    <div className="text-subtle-copy basis-full text-xs">
-      Setup: {progress
+    <div className="basis-full text-xs text-subtle-copy">
+      Setup:{' '}
+      {progress
         ? `Username ${progress.nameDone ? 'done' : 'waiting'} · Full name ${progress.fullNameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/9${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
         : 'Starts after IG connects and this automation is enabled'}
-      {progress?.error && <span className="text-status-danger mt-1 block">{progress.error}</span>}
-      {progress?.pending && <div className="mt-2 flex flex-wrap items-center gap-2">
-        <span>Check Instagram before resolving this {progress.pending.kind} action.</span>
-        <Button size="sm" variant="outline" disabled={reviewing} onClick={() => onReview('completed')}>It succeeded</Button>
-        <Button size="sm" variant="outline" disabled={reviewing} onClick={() => onReview('failed')}>It failed, retry</Button>
-      </div>}
+      {progress?.error && <span className="mt-1 block text-status-danger">{progress.error}</span>}
+      {progress?.pending && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span>Check Instagram before resolving this {progress.pending.kind} action.</span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={reviewing}
+            onClick={() => onReview('completed')}
+          >
+            It succeeded
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={reviewing}
+            onClick={() => onReview('failed')}
+          >
+            It failed, retry
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useConvex, useMutation } from 'convex/react'
+import { useConvex, useMutation, useQuery } from 'convex/react'
 import { apiFetch } from '@/lib/api'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
-import { useProfiles } from './useProfiles'
+import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
 import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
 import { getCookieUpdate } from '../utils/cookieJson'
@@ -17,39 +17,21 @@ function useProfileDialogState(profiles: Profile[]) {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
 
   const deleteProfile = useMemo(
-    () => (deleteProfileId ? profiles.find((p) => p.id === deleteProfileId) ?? null : null),
+    () => (deleteProfileId ? (profiles.find((p) => p.id === deleteProfileId) ?? null) : null),
     [deleteProfileId, profiles],
   )
   return {
-    editProfile, setEditProfile,
-    deleteProfileId, setDeleteProfileId,
-    isCreateOpen, setIsCreateOpen,
+    editProfile,
+    setEditProfile,
+    deleteProfileId,
+    setDeleteProfileId,
+    isCreateOpen,
+    setIsCreateOpen,
     deleteProfile,
   }
 }
 
 /* ── Search + filtering ── */
-
-function useProfileSearch(profiles: Profile[]) {
-  const [searchQuery, setSearchQuery] = useState('')
-
-  const filteredProfiles = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase()
-    if (!query) return profiles
-    return profiles.filter((profile) => {
-      const status = profile.using ? 'active' : (profile.status ?? 'idle')
-      const fields = [
-        profile.name, profile.id, profile.proxy,
-        profile.proxyType, profile.fingerprintOs, status,
-      ]
-      return fields.some((field) =>
-        String(field ?? '').toLowerCase().includes(query),
-      )
-    })
-  }, [profiles, searchQuery])
-
-  return { searchQuery, setSearchQuery, filteredProfiles }
-}
 
 /* ── CRUD: Save handler ── */
 
@@ -61,36 +43,40 @@ function useProfileSave(
   const createProfile = useMutation(api.profiles.mutations.create)
   const [saving, setSaving] = useState(false)
 
-  const handleSaveProfile = useCallback(async (data: Partial<Profile>) => {
-    const name = String(data.name ?? '').trim()
-    setSaving(true)
-    try {
-      const payload = {
-        name,
-        proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
-        proxyType: typeof data.proxyType === 'string' ? data.proxyType.trim() : '',
-        fingerprintOs: data.fingerprintOs || undefined,
-        cookiesJson: dialogState.isCreateOpen
-          ? data.cookiesJson?.trim()
-          : getCookieUpdate(data.cookiesJson, dialogState.editProfile?.cookiesJson),
+  const handleSaveProfile = useCallback(
+    async (data: Partial<Profile>) => {
+      const name = String(data.name ?? '').trim()
+      setSaving(true)
+      try {
+        const payload = {
+          name,
+          proxy: typeof data.proxy === 'string' ? data.proxy.trim() : '',
+          proxyType: typeof data.proxyType === 'string' ? data.proxyType.trim() : '',
+          fingerprintOs: data.fingerprintOs || undefined,
+          cookiesJson: dialogState.isCreateOpen
+            ? data.cookiesJson?.trim()
+            : getCookieUpdate(data.cookiesJson, dialogState.editProfile?.cookiesJson),
+        }
+        if (dialogState.isCreateOpen) {
+          await createProfile(payload)
+          await refreshProfiles()
+          dialogState.setIsCreateOpen(false)
+        } else if (dialogState.editProfile) {
+          await apiFetch(`/api/profiles/${encodeURIComponent(dialogState.editProfile.name)}`, {
+            method: 'PUT',
+            body: payload,
+          })
+          await refreshProfiles()
+          dialogState.setEditProfile(null)
+        }
+      } catch (e) {
+        handleError(e, 'Save profile')
+      } finally {
+        setSaving(false)
       }
-      if (dialogState.isCreateOpen) {
-        await createProfile(payload)
-        await refreshProfiles()
-        dialogState.setIsCreateOpen(false)
-      } else if (dialogState.editProfile) {
-        await apiFetch(`/api/profiles/${encodeURIComponent(dialogState.editProfile.name)}`, {
-          method: 'PUT', body: payload,
-        })
-        await refreshProfiles()
-        dialogState.setEditProfile(null)
-      }
-    } catch (e) {
-      handleError(e, 'Save profile')
-    } finally {
-      setSaving(false)
-    }
-  }, [createProfile, dialogState, handleError, refreshProfiles])
+    },
+    [createProfile, dialogState, handleError, refreshProfiles],
+  )
 
   return { saving, setSaving, handleSaveProfile }
 }
@@ -109,10 +95,9 @@ function useProfileCrud(
     try {
       // Delete via backend so the DB row and data/profiles/<name> go together.
       // (Direct Convex removeById leaves the browser folder behind.)
-      await apiFetch(
-        `/api/profiles/${encodeURIComponent(dialogState.deleteProfile.name)}`,
-        { method: 'DELETE' },
-      )
+      await apiFetch(`/api/profiles/${encodeURIComponent(dialogState.deleteProfile.name)}`, {
+        method: 'DELETE',
+      })
       await refreshProfiles()
       dialogState.setDeleteProfileId(null)
     } catch (e) {
@@ -122,29 +107,32 @@ function useProfileCrud(
     }
   }, [dialogState, refreshProfiles, handleError, setSaving])
 
-  const toggleUsing = useCallback(async (profile: Profile) => {
-    setSaving(true)
-    try {
-      if (profile.using) {
-        try {
-          await apiFetch(
-            `/api/profiles/${encodeURIComponent(profile.name)}/stop`,
-            { method: 'POST' },
-          )
-        } catch { /* ignore */ }
-      } else {
-        await apiFetch(
-          `/api/profiles/${encodeURIComponent(profile.name)}/start`,
-          { method: 'POST' },
-        )
+  const toggleUsing = useCallback(
+    async (profile: Profile) => {
+      setSaving(true)
+      try {
+        if (profile.using) {
+          try {
+            await apiFetch(`/api/profiles/${encodeURIComponent(profile.name)}/stop`, {
+              method: 'POST',
+            })
+          } catch {
+            /* ignore */
+          }
+        } else {
+          await apiFetch(`/api/profiles/${encodeURIComponent(profile.name)}/start`, {
+            method: 'POST',
+          })
+        }
+        await refreshProfiles()
+      } catch (e) {
+        handleError(e, 'Toggle profile')
+      } finally {
+        setSaving(false)
       }
-      await refreshProfiles()
-    } catch (e) {
-      handleError(e, 'Toggle profile')
-    } finally {
-      setSaving(false)
-    }
-  }, [refreshProfiles, handleError, setSaving])
+    },
+    [refreshProfiles, handleError, setSaving],
+  )
 
   return { handleDeleteConfirm, toggleUsing }
 }
@@ -162,23 +150,31 @@ function useProfilePageActions(
     dialogState.setIsCreateOpen(true)
   }, [dialogState])
 
-  const handleEdit = useCallback(async (profile: Profile) => {
-    setSaving(true)
-    try {
-      const fullProfile = await convex.query(api.profiles.queries.getById, {
-        profileId: profile.id as Id<'profiles'>,
-      })
-      dialogState.setEditProfile(fullProfile ? mapProfileRecord(fullProfile, { includeCookies: true }) : null)
-    } catch (e) {
-      handleError(e, 'Load profile')
-    } finally {
-      setSaving(false)
-    }
-  }, [convex, dialogState, handleError, setSaving])
+  const handleEdit = useCallback(
+    async (profile: Profile) => {
+      setSaving(true)
+      try {
+        const fullProfile = await convex.query(api.profiles.queries.getById, {
+          profileId: profile.id as Id<'profiles'>,
+        })
+        dialogState.setEditProfile(
+          fullProfile ? mapProfileRecord(fullProfile, { includeCookies: true }) : null,
+        )
+      } catch (e) {
+        handleError(e, 'Load profile')
+      } finally {
+        setSaving(false)
+      }
+    },
+    [convex, dialogState, handleError, setSaving],
+  )
 
-  const handleDeleteClick = useCallback((profile: Profile) => {
-    dialogState.setDeleteProfileId(profile.id)
-  }, [dialogState])
+  const handleDeleteClick = useCallback(
+    (profile: Profile) => {
+      dialogState.setDeleteProfileId(profile.id)
+    },
+    [dialogState],
+  )
 
   const handleCloseCreate = useCallback(() => {
     dialogState.setIsCreateOpen(false)
@@ -189,63 +185,86 @@ function useProfilePageActions(
   }, [dialogState])
 
   return {
-    handleCreate, handleEdit, handleDeleteClick,
-    handleCloseCreate, handleCloseEdit,
+    handleCreate,
+    handleEdit,
+    handleDeleteClick,
+    handleCloseCreate,
+    handleCloseEdit,
   }
 }
 
 /* ── Runtime reconciliation effect ── */
 
-function useRuntimeReconciliation(refreshProfiles: () => Promise<void>) {
+function useRuntimeReconciliation() {
   useEffect(() => {
-    let active = true
     const reconcile = async () => {
       try {
         await apiFetch<{ success: boolean; cleared?: number; errors?: string[] }>(
-          '/api/profiles/reconcile-runtime', { method: 'POST' },
+          '/api/profiles/reconcile-runtime',
+          { method: 'POST' },
         )
-      } catch { /* ignore */ }
-      if (active) await refreshProfiles()
+      } catch {
+        /* ignore */
+      }
     }
     void reconcile()
-    return () => { active = false }
-  }, [refreshProfiles])
+  }, [])
 }
 
 /* ── Main hook ── */
 
 export function useProfilesPage() {
   const convex = useConvex()
-  const { profiles, loading: profilesLoading, refresh: refreshProfiles } = useProfiles()
+  const [searchQuery, setSearchQuery] = useState('')
+  const search = useDebouncedSearch(searchQuery)
+  const pagination = useCursorPage(search)
+  const args = { search, cursor: pagination.cursor }
+  const data = useQuery(api.profiles.queries.listPage, args)
+  const profiles = useMemo(() => data?.page.map((row) => mapProfileRecord(row)) ?? [], [data])
+  const profilesLoading = data === undefined
+  const refreshProfiles = useCallback(async () => {
+    await convex.query(api.profiles.queries.listPage, { search, cursor: pagination.cursor })
+  }, [convex, search, pagination.cursor])
+  const filteredProfiles = profiles
   const { handleError } = useErrorHandler()
 
   const dialogState = useProfileDialogState(profiles)
-  const { searchQuery, setSearchQuery, filteredProfiles } = useProfileSearch(profiles)
 
   const save = useProfileSave(dialogState, refreshProfiles, handleError)
   const crud = useProfileCrud(dialogState, refreshProfiles, save.setSaving, handleError)
 
-  useRuntimeReconciliation(refreshProfiles)
+  useRuntimeReconciliation()
 
-  const actions = useProfilePageActions(
-    convex, dialogState, save.setSaving, handleError,
-  )
+  const actions = useProfilePageActions(convex, dialogState, save.setSaving, handleError)
 
   return {
-    profiles, filteredProfiles, loading: profilesLoading,
+    pagination: {
+      ...pagination,
+      hasNext: data !== undefined && !data.isDone,
+      loading: profilesLoading,
+      next: () => {
+        if (data && !data.isDone) pagination.next(data.continueCursor)
+      },
+    },
+    profiles,
+    filteredProfiles,
+    loading: profilesLoading,
     saving: save.saving,
     isCreateOpen: dialogState.isCreateOpen,
     searchQuery,
     editProfile: dialogState.editProfile,
     deleteProfile: dialogState.deleteProfile,
-    setSearchQuery, setIsCreateOpen: dialogState.setIsCreateOpen,
+    setSearchQuery,
+    setIsCreateOpen: dialogState.setIsCreateOpen,
     setDeleteProfileId: dialogState.setDeleteProfileId,
-    handleCreate: actions.handleCreate, handleEdit: actions.handleEdit,
+    handleCreate: actions.handleCreate,
+    handleEdit: actions.handleEdit,
     handleDeleteClick: actions.handleDeleteClick,
     handleCloseCreate: actions.handleCloseCreate,
     handleCloseEdit: actions.handleCloseEdit,
     handleSaveProfile: save.handleSaveProfile,
     handleDeleteConfirm: crud.handleDeleteConfirm,
-    toggleUsing: crud.toggleUsing, refreshProfiles,
+    toggleUsing: crud.toggleUsing,
+    refreshProfiles,
   }
 }

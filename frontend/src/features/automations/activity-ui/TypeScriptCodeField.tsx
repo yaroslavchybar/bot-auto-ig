@@ -1,5 +1,5 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
-import { EditorState } from '@codemirror/state'
+import { useRef, useEffect, useEffectEvent, useState } from 'react'
+import { Annotation, EditorState } from '@codemirror/state'
 import {
   EditorView,
   keymap,
@@ -9,12 +9,7 @@ import {
   drawSelection,
   rectangularSelection,
 } from '@codemirror/view'
-import {
-  defaultKeymap,
-  indentWithTab,
-  history,
-  historyKeymap,
-} from '@codemirror/commands'
+import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands'
 import { javascript } from '@codemirror/lang-javascript'
 import {
   syntaxHighlighting,
@@ -49,8 +44,7 @@ const editorTheme = EditorView.theme(
   {
     '&': {
       fontSize: '12px',
-      fontFamily:
-        '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace',
+      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace',
       backgroundColor: '#0d0d0d',
       color: '#d4d4d4',
       borderRadius: '2px',
@@ -191,6 +185,8 @@ const syntaxColors = HighlightStyle.define([
 ])
 
 /* ── Shared extensions builder ── */
+const externalUpdate = Annotation.define<boolean>()
+
 function createExtensions(onDocChange: (doc: string) => void) {
   return [
     lineNumbers(),
@@ -218,7 +214,10 @@ function createExtensions(onDocChange: (doc: string) => void) {
       indentWithTab,
     ]),
     EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
+      if (
+        update.docChanged &&
+        !update.transactions.some((transaction) => transaction.annotation(externalUpdate))
+      ) {
         onDocChange(update.state.doc.toString())
       }
     }),
@@ -228,27 +227,18 @@ function createExtensions(onDocChange: (doc: string) => void) {
 }
 
 /* ── Inline (sidebar) editor ── */
-function InlineEditor({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (v: string) => void
-}) {
+function InlineEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const onChangeRef = useRef(onChange)
-
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
+  const [initialValue] = useState(value)
+  const onEditorChange = useEffectEvent((doc: string) => onChange(doc))
 
   useEffect(() => {
     if (!containerRef.current) return
     const view = new EditorView({
       state: EditorState.create({
-        doc: value,
-        extensions: createExtensions((doc) => onChangeRef.current(doc)),
+        doc: initialValue,
+        extensions: createExtensions((doc) => onEditorChange(doc)),
       }),
       parent: containerRef.current,
     })
@@ -257,8 +247,7 @@ function InlineEditor({
       view.destroy()
       viewRef.current = null
     }
-    // oxlint-disable-next-line react/exhaustive-deps
-  }, [])
+  }, [initialValue])
 
   // sync external changes
   useEffect(() => {
@@ -266,7 +255,10 @@ function InlineEditor({
     if (!view) return
     const cur = view.state.doc.toString()
     if (cur !== value) {
-      view.dispatch({ changes: { from: 0, to: cur.length, insert: value } })
+      view.dispatch({
+        changes: { from: 0, to: cur.length, insert: value },
+        annotations: externalUpdate.of(true),
+      })
     }
   }, [value])
 
@@ -280,27 +272,18 @@ function InlineEditor({
 }
 
 /* ── Modal (popup) editor ── */
-function ModalEditor({
-  value,
-  onChange,
-}: {
-  value: string
-  onChange: (v: string) => void
-}) {
+function ModalEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
-  const onChangeRef = useRef(onChange)
-
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
+  const [initialValue] = useState(value)
+  const onEditorChange = useEffectEvent((doc: string) => onChange(doc))
 
   useEffect(() => {
     if (!containerRef.current) return
     const view = new EditorView({
       state: EditorState.create({
-        doc: value,
-        extensions: createExtensions((doc) => onChangeRef.current(doc)),
+        doc: initialValue,
+        extensions: createExtensions((doc) => onEditorChange(doc)),
       }),
       parent: containerRef.current,
     })
@@ -311,8 +294,7 @@ function ModalEditor({
       view.destroy()
       viewRef.current = null
     }
-    // oxlint-disable-next-line react/exhaustive-deps
-  }, [])
+  }, [initialValue])
 
   // sync external changes
   useEffect(() => {
@@ -320,7 +302,10 @@ function ModalEditor({
     if (!view) return
     const cur = view.state.doc.toString()
     if (cur !== value) {
-      view.dispatch({ changes: { from: 0, to: cur.length, insert: value } })
+      view.dispatch({
+        changes: { from: 0, to: cur.length, insert: value },
+        annotations: externalUpdate.of(true),
+      })
     }
   }, [value])
 
@@ -406,7 +391,7 @@ function ModalEditorHeader({
         <Button
           variant="outline"
           size="sm"
-          className="text-status-success dark:text-status-success h-6 gap-1 rounded-[2px] border-neutral-600 bg-neutral-900 px-2.5 text-[10px] font-medium hover:bg-neutral-700"
+          className="h-6 gap-1 rounded-[2px] border-neutral-600 bg-neutral-900 px-2.5 text-[10px] font-medium text-status-success hover:bg-neutral-700 dark:text-status-success"
           onClick={onClose}
         >
           <Check className="h-3 w-3" />
@@ -427,13 +412,7 @@ function ModalEditorHeader({
 
 /* ── Modal Editor Status Bar ── */
 
-function ModalEditorStatusBar({
-  lineCount,
-  charCount,
-}: {
-  lineCount: number
-  charCount: number
-}) {
+function ModalEditorStatusBar({ lineCount, charCount }: { lineCount: number; charCount: number }) {
   return (
     <div className="flex shrink-0 items-center justify-between border-t border-neutral-700 bg-neutral-800 px-4 py-1.5 font-mono text-[10px] text-neutral-500">
       <div className="flex items-center gap-3">
@@ -456,20 +435,9 @@ interface TypeScriptCodeFieldProps {
   onChange: (value: unknown) => void
 }
 
-export function TypeScriptCodeField({
-  input,
-  value,
-  onChange,
-}: TypeScriptCodeFieldProps) {
+export function TypeScriptCodeField({ input, value, onChange }: TypeScriptCodeFieldProps) {
   const [modalOpen, setModalOpen] = useState(false)
   const displayValue = (value ?? input.default ?? '') as string
-
-  const handleChange = useCallback(
-    (newValue: string) => {
-      onChange(newValue)
-    },
-    [onChange],
-  )
 
   const lineCount = displayValue.split('\n').length
   const charCount = displayValue.length
@@ -486,9 +454,7 @@ export function TypeScriptCodeField({
               PY
             </span>
             {input.label}
-            {input.required && (
-              <span className="text-status-danger ml-0.5">*</span>
-            )}
+            {input.required && <span className="ml-0.5 text-status-danger">*</span>}
           </span>
           <Button
             variant="outline"
@@ -501,14 +467,12 @@ export function TypeScriptCodeField({
           </Button>
         </Label>
 
-        <InlineEditor value={displayValue} onChange={handleChange} />
+        <InlineEditor value={displayValue} onChange={onChange} />
 
         <div className="flex items-center justify-between px-0.5">
           {input.helpText && (
             <p className="text-[10px] leading-tight text-neutral-500 dark:text-neutral-400">
-              <span className="mr-1 font-mono text-yellow-600/60 dark:text-yellow-400/60">
-                ℹ
-              </span>
+              <span className="mr-1 font-mono text-yellow-600/60 dark:text-yellow-400/60">ℹ</span>
               {input.helpText}
             </p>
           )}
@@ -525,7 +489,7 @@ export function TypeScriptCodeField({
         displayValue={displayValue}
         lineCount={lineCount}
         charCount={charCount}
-        onChange={handleChange}
+        onChange={onChange}
       />
     </>
   )

@@ -45,26 +45,26 @@ function ProxyActionsMenu({
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="text-muted-copy hover:bg-panel-muted h-8 w-8 p-0 hover:text-ink"
+          className="h-8 w-8 p-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="panel-dropdown w-48"
+        className="w-48 panel-dropdown"
         onClick={(e) => e.stopPropagation()}
       >
         <DropdownMenuLabel className="text-muted-copy">Actions</DropdownMenuLabel>
         <DropdownMenuItem
           onClick={() => onEdit(proxy)}
-          className="hover:bg-panel-hover focus:bg-panel-hover cursor-pointer"
+          className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
         >
           <Pencil className="mr-2 h-4 w-4" /> Edit Proxy
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onDelete(proxy)}
-          className="text-status-danger focus:text-status-danger focus:bg-status-danger-soft hover:bg-status-danger-soft cursor-pointer"
+          className="cursor-pointer text-status-danger hover:bg-status-danger-soft focus:bg-status-danger-soft focus:text-status-danger"
         >
           <Trash2 className="mr-2 h-4 w-4" /> Delete Proxy
         </DropdownMenuItem>
@@ -82,29 +82,41 @@ function ProxyTypeBadge({ proxyType }: { proxyType: string }) {
 }
 
 function ProxyPurposeBadge({ purpose }: { purpose: ProxyItem['purpose'] }) {
-  return <Badge variant="outline" className="text-[11px] capitalize">{purpose}</Badge>
+  return (
+    <Badge variant="outline" className="text-[11px] capitalize">
+      {purpose}
+    </Badge>
+  )
 }
 
-function ProxyUsageCell({ proxy, usage }: { proxy: ProxyItem; usage: ProxyUsage }) {
-  const now = useNow()
-  if (proxy.purpose === 'login') return <span className="text-subtle-copy text-xs">
-    {proxy.loginCooldownUntil && proxy.loginCooldownUntil > now
-      ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}` : 'Ready for login'}
-  </span>
+function ProxyUsageCell({
+  proxy,
+  usage,
+  now,
+}: {
+  proxy: ProxyItem
+  usage: ProxyUsage
+  now: number
+}) {
+  if (proxy.purpose === 'login')
+    return (
+      <span className="text-xs text-subtle-copy">
+        {proxy.loginCooldownUntil && proxy.loginCooldownUntil > now
+          ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}`
+          : 'Ready for login'}
+      </span>
+    )
   const over = usage.count > proxy.maxProfiles
   return (
     <div className="flex flex-col gap-0.5">
       <span
-        className={cn(
-          'font-mono text-xs font-medium',
-          over ? 'text-status-danger' : 'text-ink',
-        )}
+        className={cn('font-mono text-xs font-medium', over ? 'text-status-danger' : 'text-ink')}
       >
         {usage.count}/{proxy.maxProfiles}
       </span>
       {usage.profileNames.length > 0 && (
         <span
-          className="text-subtle-copy max-w-[280px] truncate text-[11px]"
+          className="max-w-[280px] truncate text-[11px] text-subtle-copy"
           title={usage.profileNames.join(', ')}
         >
           {usage.profileNames.join(', ')}
@@ -117,56 +129,69 @@ function ProxyUsageCell({ proxy, usage }: { proxy: ProxyItem; usage: ProxyUsage 
 function ProxyMobileCard({
   proxy,
   usage,
+  now,
   onEdit,
   onDelete,
 }: {
   proxy: ProxyItem
   usage: ProxyUsage
+  now: number
   onEdit: (proxy: ProxyItem) => void
   onDelete: (proxy: ProxyItem) => void
 }) {
-  const now = useNow()
   return (
     <div
       className={cn(
-        'bg-panel-strong rounded-2xl border p-4 shadow-xs transition-colors',
+        'bg-panel-strong rounded-2xl border p-4 shadow-xs',
         'border-line hover:border-line-strong',
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="text-ink truncate text-base font-semibold">{proxy.name}</h3>
+            <h3 className="truncate text-base font-semibold text-ink">{proxy.name}</h3>
             <ProxyTypeBadge proxyType={proxy.proxyType} />
             <ProxyPurposeBadge purpose={proxy.purpose} />
           </div>
-          <p className="text-subtle-copy mt-2 truncate font-mono text-xs">
+          <p className="mt-2 truncate font-mono text-xs text-subtle-copy">
             {maskProxyForDisplay(proxy.proxy)}
           </p>
-          {proxy.country && <p className="text-subtle-copy mt-1 text-xs">{proxy.country.toUpperCase()}</p>}
-          {proxy.purpose === 'login' && <p className="text-subtle-copy mt-1 text-xs">
-            {proxy.loginCooldownUntil && proxy.loginCooldownUntil > now
-              ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}` : 'Ready for login'}
-          </p>}
-          {proxy.purpose === 'work' && <p className="text-subtle-copy mt-1 text-xs">
-            Usage:{' '}
-            <span className={cn('font-mono font-medium', usage.count > proxy.maxProfiles ? 'text-status-danger' : 'text-ink')}>
-              {usage.count}/{proxy.maxProfiles}
-            </span>
-            {usage.profileNames.length > 0 && (
-              <span className="ml-1">{usage.profileNames.join(', ')}</span>
-            )}
-          </p>}
+          {proxy.country && (
+            <p className="mt-1 text-xs text-subtle-copy">{proxy.country.toUpperCase()}</p>
+          )}
+          {proxy.purpose === 'login' && (
+            <p className="mt-1 text-xs text-subtle-copy">
+              {proxy.loginCooldownUntil && proxy.loginCooldownUntil > now
+                ? `Available ${new Date(proxy.loginCooldownUntil).toLocaleString()}`
+                : 'Ready for login'}
+            </p>
+          )}
+          {proxy.purpose === 'work' && (
+            <p className="mt-1 text-xs text-subtle-copy">
+              Usage:{' '}
+              <span
+                className={cn(
+                  'font-mono font-medium',
+                  usage.count > proxy.maxProfiles ? 'text-status-danger' : 'text-ink',
+                )}
+              >
+                {usage.count}/{proxy.maxProfiles}
+              </span>
+              {usage.profileNames.length > 0 && (
+                <span className="ml-1">{usage.profileNames.join(', ')}</span>
+              )}
+            </p>
+          )}
         </div>
         <div onClick={(event) => event.stopPropagation()}>
           <ProxyActionsMenu proxy={proxy} onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
-      <div className="border-line mt-4 border-t pt-3">
+      <div className="mt-4 border-t border-line pt-3">
         <Button
           variant="ghost"
           size="sm"
-          className="border-line text-ink hover:bg-panel-muted h-9 rounded-full border px-3"
+          className="h-9 rounded-full border border-line px-3 text-ink hover:bg-panel-muted"
           onClick={(event) => {
             event.stopPropagation()
             onEdit(proxy)
@@ -182,45 +207,49 @@ function ProxyMobileCard({
 function ProxyDesktopRow({
   proxy,
   usage,
+  now,
   idx,
   onEdit,
   onDelete,
 }: {
   proxy: ProxyItem
   usage: ProxyUsage
+  now: number
   idx: number
   onEdit: (proxy: ProxyItem) => void
   onDelete: (proxy: ProxyItem) => void
 }) {
   return (
-    <TableRow
-      className={cn('group border-line-soft h-14 border-b transition-colors hover:bg-panel-subtle')}
-    >
+    <TableRow className={cn('group border-line-soft h-14 border-b hover:bg-panel-subtle')}>
       <TableCell className="pl-4">
-        <span className="text-subtle-copy font-mono text-sm">{idx + 1}</span>
+        <span className="font-mono text-sm text-subtle-copy">{idx + 1}</span>
       </TableCell>
       <TableCell className="font-medium">
         <span className="text-ink">{proxy.name}</span>
-        {proxy.country && <span className="text-subtle-copy ml-2 text-xs">{proxy.country.toUpperCase()}</span>}
+        {proxy.country && (
+          <span className="ml-2 text-xs text-subtle-copy">{proxy.country.toUpperCase()}</span>
+        )}
       </TableCell>
       <TableCell>
-        <div className="flex gap-1"><ProxyTypeBadge proxyType={proxy.proxyType} />
-          <ProxyPurposeBadge purpose={proxy.purpose} /></div>
+        <div className="flex gap-1">
+          <ProxyTypeBadge proxyType={proxy.proxyType} />
+          <ProxyPurposeBadge purpose={proxy.purpose} />
+        </div>
       </TableCell>
       <TableCell>
-        <span className="text-subtle-copy font-mono text-xs">
+        <span className="font-mono text-xs text-subtle-copy">
           {maskProxyForDisplay(proxy.proxy)}
         </span>
       </TableCell>
       <TableCell>
-        <ProxyUsageCell proxy={proxy} usage={usage} />
+        <ProxyUsageCell proxy={proxy} usage={usage} now={now} />
       </TableCell>
       <TableCell className="pr-4 text-right">
-        <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100">
           <Button
             variant="ghost"
             size="icon"
-            className="text-muted-copy hover:bg-panel-muted h-8 w-8 hover:text-ink"
+            className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
             onClick={(e) => {
               e.stopPropagation()
               onEdit(proxy)
@@ -238,23 +267,28 @@ function ProxyDesktopRow({
 
 export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: ProxiesListProps) {
   const isMobile = useIsMobile()
+  const cooldownUntil = Math.max(
+    0,
+    ...proxies
+      .filter((proxy) => proxy.purpose === 'login')
+      .map((proxy) => proxy.loginCooldownUntil ?? 0),
+  )
+  const now = useNow(30_000, cooldownUntil)
 
   if (loading && proxies.length === 0) {
     return (
-      <div className="text-muted-foreground flex animate-pulse items-center justify-center gap-2 p-12 text-center text-sm">
-        <RefreshCw className="h-4 w-4 shrink-0 animate-spin" /> Loading proxies...
+      <div className="flex items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
+        <RefreshCw className="h-4 w-4 shrink-0" /> Loading proxies...
       </div>
     )
   }
 
   if (proxies.length === 0) {
     return (
-      <div className="border-line-soft bg-panel-subtle flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 text-center">
-        <Globe className="text-subtle-copy mb-4 h-10 w-10" />
-        <h3 className="text-ink text-lg font-medium">No proxies</h3>
-        <p className="text-subtle-copy mt-1 text-sm">
-          Add a proxy to reuse it across profiles.
-        </p>
+      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+        <Globe className="mb-4 h-10 w-10 text-subtle-copy" />
+        <h3 className="text-lg font-medium text-ink">No proxies</h3>
+        <p className="mt-1 text-sm text-subtle-copy">Add a proxy to reuse it across profiles.</p>
       </div>
     )
   }
@@ -266,6 +300,7 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
           <ProxyMobileCard
             key={proxy.id}
             proxy={proxy}
+            now={now}
             usage={usage[proxy.id] ?? { count: 0, profileNames: [] }}
             onEdit={onEdit}
             onDelete={onDelete}
@@ -276,16 +311,16 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
   }
 
   return (
-    <div className="bg-panel-subtle border-line-soft overflow-hidden rounded-2xl border shadow-xs backdrop-blur-xs">
+    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
       <Table>
         <TableHeader>
-          <TableRow className="border-line-soft border-b bg-transparent hover:bg-transparent">
-            <TableHead className="text-muted-copy h-12 w-[80px] pl-4 font-medium">No.</TableHead>
-            <TableHead className="text-muted-copy h-12 font-medium">Name</TableHead>
-            <TableHead className="text-muted-copy h-12 w-[120px] font-medium">Type</TableHead>
-            <TableHead className="text-muted-copy h-12 w-full font-medium">Proxy</TableHead>
-            <TableHead className="text-muted-copy h-12 w-[220px] font-medium">Usage</TableHead>
-            <TableHead className="text-muted-copy h-12 w-[140px] pr-4 text-right font-medium">
+          <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+            <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">No.</TableHead>
+            <TableHead className="h-12 font-medium text-muted-copy">Name</TableHead>
+            <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Type</TableHead>
+            <TableHead className="h-12 w-full font-medium text-muted-copy">Proxy</TableHead>
+            <TableHead className="h-12 w-[220px] font-medium text-muted-copy">Usage</TableHead>
+            <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
               Actions
             </TableHead>
           </TableRow>
@@ -295,6 +330,7 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
             <ProxyDesktopRow
               key={proxy.id}
               proxy={proxy}
+              now={now}
               usage={usage[proxy.id] ?? { count: 0, profileNames: [] }}
               idx={idx}
               onEdit={onEdit}

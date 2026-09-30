@@ -1,30 +1,17 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { createVisibilityGate } from '../utils/visibilityGate'
+import { useNearViewport } from '@/hooks/use-near-viewport'
+import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 
 export function useViewerVisibility(ref: RefObject<HTMLElement | null>, graceMs = 0) {
-  const [visible, setVisible] = useState(false)
+  const inViewport = useNearViewport(ref, '0px')
+  const tabVisible = useDocumentVisibility()
+  const visible = inViewport && tabVisible
   const [enabled, setEnabled] = useState(false)
+  const [gate] = useState(() => createVisibilityGate(setEnabled, graceMs))
   useEffect(() => {
-    const element = ref.current
-    if (!element) return
-    let inViewport = false
-    const gate = createVisibilityGate(setEnabled, graceMs)
-    const update = () => {
-      const active = inViewport && document.visibilityState !== 'hidden'
-      setVisible(active)
-      gate.update(active)
-    }
-    const observer = new IntersectionObserver(([entry]) => {
-      inViewport = entry.isIntersecting
-      update()
-    })
-    observer.observe(element)
-    document.addEventListener('visibilitychange', update)
-    return () => {
-      observer.disconnect()
-      document.removeEventListener('visibilitychange', update)
-      gate.dispose()
-    }
-  }, [ref, graceMs])
+    gate.update(visible)
+  }, [visible, gate])
+  useEffect(() => () => gate.dispose(), [gate])
   return { visible, enabled }
 }

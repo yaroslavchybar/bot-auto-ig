@@ -1,13 +1,38 @@
-import { ListsPage } from '@/features/lists/ListsPage'
-import { ProfilesPage } from '@/features/profiles/ProfilesPage'
-import { ProxiesPage } from '@/features/proxies/ProxiesPage'
-import { VncPage } from '@/features/vnc/VncPage'
-import { VncSessionPage } from '@/features/vnc/VncSessionPage'
-import { ScraperPage } from '@/features/scraper/ScraperPage'
-import { AutomationsPage } from '@/features/automations/AutomationsPage'
-import { LoginPage } from '@/pages/LoginPage'
-import { ChatPage } from '@/features/chat/ChatPage'
-import { IgAccountsPage } from '@/features/ig-accounts/IgAccountsPage'
+import { lazy } from 'react'
+const ListsPage = lazy(() =>
+  import('@/features/lists/ListsPage').then((module) => ({ default: module.ListsPage })),
+)
+const ProfilesPage = lazy(() =>
+  import('@/features/profiles/ProfilesPage').then((module) => ({ default: module.ProfilesPage })),
+)
+const ProxiesPage = lazy(() =>
+  import('@/features/proxies/ProxiesPage').then((module) => ({ default: module.ProxiesPage })),
+)
+const VncPage = lazy(() =>
+  import('@/features/vnc/VncPage').then((module) => ({ default: module.VncPage })),
+)
+const VncSessionPage = lazy(() =>
+  import('@/features/vnc/VncSessionPage').then((module) => ({ default: module.VncSessionPage })),
+)
+const ScraperPage = lazy(() =>
+  import('@/features/scraper/ScraperPage').then((module) => ({ default: module.ScraperPage })),
+)
+const AutomationsPage = lazy(() =>
+  import('@/features/automations/AutomationsPage').then((module) => ({
+    default: module.AutomationsPage,
+  })),
+)
+const LoginPage = lazy(() =>
+  import('@/pages/LoginPage').then((module) => ({ default: module.LoginPage })),
+)
+const ChatPage = lazy(() =>
+  import('@/features/chat/ChatPage').then((module) => ({ default: module.ChatPage })),
+)
+const IgAccountsPage = lazy(() =>
+  import('@/features/ig-accounts/IgAccountsPage').then((module) => ({
+    default: module.IgAccountsPage,
+  })),
+)
 import type { NavId } from '@/components/layout/app-sidebar'
 
 // Keep page imports outside the router: pages also import its hooks.
@@ -27,10 +52,10 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   '/lists': { Page: ListsPage, breadcrumb: 'Models', navId: 'lists' },
   '/proxies': { Page: ProxiesPage, breadcrumb: 'Proxies', navId: 'proxies' },
   '/vnc': { Page: VncPage, breadcrumb: 'Browser View', navId: 'vnc' },
-  '/vnc/session/:automationId/:profileName': { Page: VncSessionPage,
+  '/vnc/session/:automationId/:profileName': {
+    Page: VncSessionPage,
     breadcrumb: 'Live Session',
     navId: 'vnc',
   },
   '/login': { Page: LoginPage, breadcrumb: 'Sign In' },
 }
-
