@@ -1,5 +1,4 @@
 import type { ProfileRecord } from './contracts.js'
-import type { ChatThread } from '../chat/instagram.js'
 /**
  * Convex client for TypeScript using HTTP API.
  */
@@ -409,80 +408,16 @@ export function chatSessionDelete(profileId: string): Promise<{ connected: false
   })
 }
 
-export type CachedChatInbox = {
-  connected: boolean
-  viewerId: string
-  threads: ChatThread[]
-  syncedAt: number
-}
-export type CachedChatThread = ChatThread & { syncedAt: number }
-
-export function chatCacheInbox(profileId: string): Promise<CachedChatInbox> {
-  return convexFetch(`/api/chat/cache?profileId=${encodeURIComponent(profileId)}`, {
-    maxRetries: 1,
-  })
-}
-
-export function chatCacheThread(
-  profileId: string,
-  threadId: string,
-): Promise<CachedChatThread | null> {
-  return convexFetch(
-    `/api/chat/cache?profileId=${encodeURIComponent(profileId)}&threadId=${encodeURIComponent(threadId)}`,
-    { maxRetries: 1 },
-  )
-}
-
-export function chatCacheSaveInbox(
+export function chatUnreadSave(
   profileId: string,
   token: string,
-  inbox: { viewerId: string; threads: ChatThread[] },
-  mode: 'full' | 'unread' = 'full',
-): Promise<CachedChatInbox> {
-  return convexFetch('/api/chat/cache', {
-    method: 'POST',
-    maxRetries: 0,
-    body: { scope: 'inbox', profileId, token, mode, ...inbox },
-  })
-}
-
-export function chatMarkReplied(
-  profileId: string,
-  token: string,
-  threadId: string,
-  throughAt: number,
+  unreadCount: number,
 ): Promise<void> {
-  return convexFetch('/api/chat/cache', {
-    method: 'POST',
-    maxRetries: 1,
-    body: { scope: 'replied', profileId, token, threadId, throughAt },
-  }).then(() => {})
-}
-
-export function chatMarkUnsent(
-  profileId: string,
-  token: string,
-  threadId: string,
-  messageId: string,
-): Promise<{ profileIds: string[] }> {
-  return convexFetch('/api/chat/cache', {
-    method: 'POST',
-    maxRetries: 1,
-    body: { scope: 'unsent', profileId, token, threadId, messageId },
-  })
-}
-
-export function chatCacheSaveThread(
-  profileId: string,
-  token: string,
-  thread: ChatThread,
-  fetchedAt: number,
-): Promise<CachedChatThread> {
-  return convexFetch('/api/chat/cache', {
+  return convexFetch('/api/chat/count', {
     method: 'POST',
     maxRetries: 0,
-    body: { scope: 'thread', profileId, token, thread, fetchedAt },
-  })
+    body: { profileId, token, unreadCount },
+  }).then(() => {})
 }
 
 // ==================== AUTOMATIONS ====================

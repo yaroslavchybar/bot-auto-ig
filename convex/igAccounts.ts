@@ -1,3 +1,4 @@
+import { setChatCounterEnabled } from './chatCache'
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, query, type MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
@@ -434,7 +435,10 @@ export const recordBrowserLoginInternal = internalMutation({
       cooldownMs,
     )
     await ctx.db.patch(id, { browserLoggedInAt, error: undefined, retryAfter: undefined })
-    if (!profile.igLoggedIn) await ctx.db.patch(profile._id, { igLoggedIn: true })
+    if (!profile.igLoggedIn) {
+      await ctx.db.patch(profile._id, { igLoggedIn: true })
+      await setChatCounterEnabled(ctx, profile._id, true)
+    }
     return { cooldownRecorded }
   },
 })

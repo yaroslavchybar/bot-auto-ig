@@ -21,7 +21,7 @@ export function resolveApiUrl(path: string): string {
   return new URL(path, `${env.apiUrl}/`).toString()
 }
 
-type ApiFetchOptions = {
+export type ApiFetchOptions = {
   method?: string
   body?: unknown
   timeout?: number

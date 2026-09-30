@@ -3,52 +3,84 @@ import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
 import { proxyKey, proxyPurpose, resolveMaxProfiles } from '../proxies';
-import { clearProfileChatCache } from '../chatCache';
+import { clearChatCounter, setChatCounterEnabled } from '../chatCache'
 
 export const setIgState = mutation({
-  args: { profileId: v.id('profiles'), igLoggedIn: v.optional(v.boolean()), outreachReady: v.optional(v.boolean()) },
+  args: {
+    profileId: v.id('profiles'),
+    igLoggedIn: v.optional(v.boolean()),
+    outreachReady: v.optional(v.boolean()),
+  },
   handler: async (ctx, { profileId, ...state }) => {
     const profile = await ctx.db.get(profileId)
     if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
-    if (Object.entries(state).some(([key, value]) =>
-      value !== undefined && profile[key as keyof typeof profile] !== value))
+    if (
+      Object.entries(state).some(
+        ([key, value]) => value !== undefined && profile[key as keyof typeof profile] !== value,
+      )
+    )
       await ctx.db.patch(profileId, state)
+    if (state.igLoggedIn !== undefined)
+      await setChatCounterEnabled(ctx, profileId, state.igLoggedIn)
   },
 })
 
 export const setIgStateInternal = internalMutation({
-  args: { profileId: v.id('profiles'), igLoggedIn: v.optional(v.boolean()), outreachReady: v.optional(v.boolean()) },
+  args: {
+    profileId: v.id('profiles'),
+    igLoggedIn: v.optional(v.boolean()),
+    outreachReady: v.optional(v.boolean()),
+  },
   handler: async (ctx, { profileId, igLoggedIn, outreachReady }) => {
-    const profile = await ctx.db.get(profileId);
-    if (!profile || profile.status === 'deleting') throw new DomainError('NOT_FOUND', 'Profile unavailable');
-    if (igLoggedIn === undefined && outreachReady === undefined) throw new DomainError('VALIDATION', 'No IG state provided');
+    const profile = await ctx.db.get(profileId)
+    if (!profile || profile.status === 'deleting')
+      throw new DomainError('NOT_FOUND', 'Profile unavailable')
+    if (igLoggedIn === undefined && outreachReady === undefined)
+      throw new DomainError('VALIDATION', 'No IG state provided')
     const patch = {
       ...(igLoggedIn !== undefined ? { igLoggedIn } : {}),
       ...(outreachReady !== undefined ? { outreachReady } : {}),
-    };
-    if (Object.entries(patch).some(([key, value]) => profile[key as keyof typeof profile] !== value))
-      await ctx.db.patch(profileId, patch);
+    }
+    if (
+      Object.entries(patch).some(([key, value]) => profile[key as keyof typeof profile] !== value)
+    )
+      await ctx.db.patch(profileId, patch)
+    if (igLoggedIn !== undefined) await setChatCounterEnabled(ctx, profileId, igLoggedIn)
   },
-});
+})
 
 export const saveChatSessionInternal = internalMutation({
-  args: { profileId: v.id('profiles'), storageId: v.id('_storage'), token: v.string(),
-    expectedToken: v.optional(v.string()) },
+  args: {
+    profileId: v.id('profiles'),
+    storageId: v.id('_storage'),
+    token: v.string(),
+    expectedToken: v.optional(v.string()),
+  },
   handler: async (ctx, { profileId, storageId, token, expectedToken }) => {
     const profile = await ctx.db.get(profileId)
     if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
-    const existing = await ctx.db.query('chatSessions')
-      .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
-    if (expectedToken !== undefined && existing?.token !== expectedToken) throw new Error('Chat session changed')
-    if (existing && existing.token !== token) await clearProfileChatCache(ctx, profileId)
+    const existing = await ctx.db
+      .query('chatSessions')
+      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+      .first()
+    if (expectedToken !== undefined && existing?.token !== expectedToken)
+      throw new Error('Chat session changed')
+    if (!existing || existing.token !== token) await clearChatCounter(ctx, profileId)
     if (existing) {
-      await ctx.db.patch(existing._id, { storageId, token,
-        ...(existing.token !== token ? { viewerId: undefined, inboxSyncedAt: undefined,
-          inboxThreadIds: undefined, unreadCount: undefined } : {}) })
+      await ctx.db.patch(existing._id, {
+        storageId,
+        token,
+        viewerId: undefined,
+        inboxSyncedAt: undefined,
+        inboxThreadIds: undefined,
+        unreadCount: undefined,
+      })
       if (existing.storageId !== storageId) await ctx.storage.delete(existing.storageId)
     } else await ctx.db.insert('chatSessions', { profileId, storageId, token })
-    const membership = await ctx.db.query('chatMemberships')
-      .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
+    const membership = await ctx.db
+      .query('chatMemberships')
+      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+      .first()
     if (!membership) await ctx.db.insert('chatMemberships', { profileId })
   },
 })
@@ -56,28 +88,36 @@ export const saveChatSessionInternal = internalMutation({
 export const deleteChatSessionInternal = internalMutation({
   args: { profileId: v.id('profiles') },
   handler: async (ctx, { profileId }) => {
-    await clearProfileChatCache(ctx, profileId)
-    const existing = await ctx.db.query('chatSessions')
-      .withIndex('by_profile', q => q.eq('profileId', profileId)).first()
+    await clearChatCounter(ctx, profileId)
+    const existing = await ctx.db
+      .query('chatSessions')
+      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+      .first()
     if (existing) {
       await ctx.storage.delete(existing.storageId)
       await ctx.db.delete(existing._id)
     }
-    for (const row of await ctx.db.query('chatMemberships')
-      .withIndex('by_profile', q => q.eq('profileId', profileId)).collect())
+    for (const row of await ctx.db
+      .query('chatMemberships')
+      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+      .collect())
       await ctx.db.delete(row._id)
   },
 })
 
 export const beginDeleteInternal = internalMutation({
-	args: { name: v.string() },
-	handler: async (ctx, { name }) => {
-		const profile = await ctx.db.query('profiles').withIndex('by_name', q => q.eq('name', name)).first();
-		if (!profile) return null;
-		await ctx.db.patch(profile._id, { status: 'deleting' });
-		return { ...profile, status: 'deleting' };
-	},
-});
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    const profile = await ctx.db
+      .query('profiles')
+      .withIndex('by_name', (q) => q.eq('name', name))
+      .first()
+    if (!profile) return null
+    await ctx.db.patch(profile._id, { status: 'deleting' })
+    await setChatCounterEnabled(ctx, profile._id, false)
+    return { ...profile, status: 'deleting' }
+  },
+})
 
 export const finishRenameInternal = internalMutation({
 	args: { profileId: v.id('profiles') },

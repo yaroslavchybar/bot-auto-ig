@@ -2,6 +2,8 @@
 
 Account onboarding, model content, and warmup: [ig-accounts.md](ig-accounts.md).
 
+Chat storage, device sharing, polling, and retirement cleanup: [chat-caching.md](chat-caching.md).
+
 Browser caching, memory changes, and measurements: [frontend-performance.md](frontend-performance.md).
 Profiles, proxies, and account lists use 50-row pages with server-side search.
 Search scans stop after five batches and return a continuation cursor. Unused

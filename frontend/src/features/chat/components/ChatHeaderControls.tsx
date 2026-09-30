@@ -15,7 +15,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { Profile } from '@/features/profiles/types'
 import type { useChatPage } from '../hooks/useChatPage'
 
 // Profile switch + connection status + actions. Rendered in the app header
@@ -46,7 +45,7 @@ export function ChatProfileSelect({
       </SelectTrigger>
       <SelectContent className="panel-dropdown">
         <SelectItem value="all">All profiles</SelectItem>
-        {chat.profiles.map((profile: Profile) => (
+        {chat.profiles.map((profile) => (
           <SelectItem key={profile.id} value={profile.id}>
             {profile.name}
           </SelectItem>
@@ -65,29 +64,18 @@ export function ChatStatusActions({
 }) {
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
-      {chat.activeProfileId !== 'all' && (
-        <ConnectionBadge connected={chat.connected} />
-      )}
+      {chat.activeProfileId !== 'all' && <ConnectionBadge connected={chat.connected} />}
 
       <div className="ml-auto flex items-center gap-2">
         {chat.connected === false && chat.activeProfile && (
-          <Button
-            size="sm"
-            onClick={() => chat.setConnectOpen(true)}
-            className="brand-button h-8"
-          >
+          <Button size="sm" onClick={() => chat.setConnectOpen(true)} className="h-8 brand-button">
             <KeyRound /> Connect
           </Button>
         )}
         {chat.activeProfile && chat.connected && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Chat options"
-                className="size-8"
-              >
+              <Button variant="outline" size="icon" aria-label="Chat options" className="size-8">
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>
@@ -129,7 +117,7 @@ function ConnectionBadge({ connected }: { connected: boolean | null }) {
   if (connected === null) {
     return (
       <Badge variant="secondary" className="gap-1.5">
-        <span className="bg-panel-muted size-1.5 rounded-full" /> Checking...
+        <span className="size-1.5 rounded-full bg-panel-muted" /> Checking...
       </Badge>
     )
   }

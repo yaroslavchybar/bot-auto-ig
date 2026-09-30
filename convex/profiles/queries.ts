@@ -211,3 +211,17 @@ export const modelOptions = query({
       ({ _id, name, status, igLoggedIn, listIds }) => ({ _id, name, status, igLoggedIn, listIds }),
     ),
 })
+
+// The Chat selector needs every eligible profile, without browser configuration or cookies.
+export const chatOptions = query({
+  args: {},
+  handler: async (ctx) =>
+    (
+      await ctx.db
+        .query('profiles')
+        .withIndex('by_chat', (q) => q.eq('igLoggedIn', true))
+        .collect()
+    )
+      .filter((profile) => profile.igLoggedIn && profile.status !== 'deleting')
+      .map(({ _id, name, status }) => ({ _id, name, status })),
+})

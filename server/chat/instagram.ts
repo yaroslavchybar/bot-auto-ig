@@ -1,15 +1,14 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { randomUUID } from 'node:crypto'
 import { IgApiClient, type UserFeed } from 'instagram-private-api';
 import type { ProfileRecord } from '../shared/contracts.js';
 import { chatSessionDelete, chatSessionGet, chatSessionHas, chatSessionSave } from '../shared/convexClient.js';
-import { resolveProjectRoot } from '../shared/utils.js';
 import logger from '../shared/logger.js';
 import { completeCaaTwoFactor, loginWithCaa, mobileRequest, useCurrentAppProfile, useCurrentAppVersion } from './caa.js';
 import { chatDeviceForProfile } from './devices.js';
 import { chatProxy, configureMobileProxyTransport } from './proxy.js';
 import { uploadChatAttachment, type AttachmentKind, type VideoMetadata } from './attachments.js';
+import { getChatCache } from './cache.js'
+import { sessionStateHash } from './sessionState.js'
 
 type Json = Record<string, unknown>;
 const record = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
@@ -20,39 +19,7 @@ const generations = new Map<string, number>();
 const writes = new Map<string, Promise<void>>();
 const savedStates = new Map<string, { token: string; hash: string }>();
 const loggingOut = new Set<string>();
-const migrations = new Map<string, Promise<boolean>>();
-const oldSessionDir = path.join(resolveProjectRoot(import.meta.url), 'data', 'chat-sessions');
-
 function generation(profileId: string): number { return generations.get(profileId) ?? 0; }
-
-function oldSessionPath(profileId: string): string {
-  return path.join(oldSessionDir, `${createHash('sha256').update(profileId).digest('hex')}.json`);
-}
-
-// Import sessions created by the local-file Chat test, then remove the old copy.
-async function ensureSessionStored(profileId: string): Promise<boolean> {
-  const existing = migrations.get(profileId);
-  if (existing) return existing;
-  const operation = (async () => {
-    const remote = await chatSessionHas(profileId);
-    if (remote.connected) {
-      await fs.rm(oldSessionPath(profileId), { force: true });
-      return true;
-    }
-    let state: string;
-    try { state = await fs.readFile(oldSessionPath(profileId), 'utf8'); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-      throw error;
-    }
-    await chatSessionSave(profileId, state, randomUUID());
-    await fs.rm(oldSessionPath(profileId), { force: true });
-    return true;
-  })();
-  migrations.set(profileId, operation);
-  try { return await operation; }
-  finally { if (migrations.get(profileId) === operation) migrations.delete(profileId); }
-}
 
 export type ChatMessage = {
   id: string;
@@ -145,58 +112,73 @@ export function parseChatInboxThread(raw: unknown): ChatThread {
 }
 
 export async function fetchChatInboxPages(
-  request: (query: Record<string, string>) => Promise<Json>, onlyUnread = false,
+  request: (query: Record<string, string>) => Promise<Json>,
+  onlyUnread = false,
 ): Promise<ChatThread[]> {
-  const threads = new Map<string, ChatThread>();
-  const limit = onlyUnread ? Infinity : 30;
-  const cursors = new Set<string>();
-  let cursor = '';
+  const threads = new Map<string, ChatThread>()
+  const limit = onlyUnread ? 200 : 30
+  const cursors = new Set<string>()
+  let cursor = ''
   while (true) {
     const data = await request({
-      eb_device_id: '0', igd_request_log_tracking_id: randomUUID(),
-      visual_message_return_type: 'unseen', thread_message_limit: '1',
-      persistentBadging: 'true', limit: '20', is_prefetching: 'false',
-      fetch_reason: cursor ? 'page_scroll' : 'initial_snapshot', include_old_mrs: 'false',
-      no_pending_badge: 'true', push_disabled: 'true',
+      eb_device_id: '0',
+      igd_request_log_tracking_id: randomUUID(),
+      visual_message_return_type: 'unseen',
+      thread_message_limit: '1',
+      persistentBadging: 'true',
+      limit: '20',
+      is_prefetching: 'false',
+      fetch_reason: cursor ? 'page_scroll' : 'initial_snapshot',
+      include_old_mrs: 'false',
+      no_pending_badge: 'true',
+      push_disabled: 'true',
       ...(onlyUnread ? { selected_filter: 'unread' } : {}),
       ...(cursor ? { cursor, direction: 'older' } : {}),
-    });
-    const inbox = record(data.inbox);
-    if (!Array.isArray(inbox.threads)) throw new Error('Instagram returned no DM inbox');
+    })
+    const inbox = record(data.inbox)
+    if (!Array.isArray(inbox.threads)) throw new Error('Instagram returned no DM inbox')
     for (const raw of inbox.threads) {
-      const thread = parseChatInboxThread(raw);
-      if (thread.id && !threads.has(thread.id)) threads.set(thread.id, thread);
-      if (threads.size >= limit) return [...threads.values()];
+      const thread = parseChatInboxThread(raw)
+      if (thread.id && !threads.has(thread.id)) threads.set(thread.id, thread)
+      if (threads.size >= limit) return [...threads.values()]
     }
-    const nextCursor = string(inbox.oldest_cursor);
+    const nextCursor = string(inbox.oldest_cursor)
     if (!nextCursor) {
-      if (inbox.has_older === true) throw new Error('Instagram DM inbox cursor is missing');
-      return [...threads.values()];
+      if (inbox.has_older === true) throw new Error('Instagram DM inbox cursor is missing')
+      return [...threads.values()]
     }
-    if (cursors.has(nextCursor)) throw new Error('Instagram DM inbox cursor repeated');
-    cursors.add(nextCursor);
-    cursor = nextCursor;
+    if (cursors.has(nextCursor)) throw new Error('Instagram DM inbox cursor repeated')
+    cursors.add(nextCursor)
+    cursor = nextCursor
   }
 }
 
-async function saveSession(profileId: string, ig: IgApiClient, token: string,
-  expectedGeneration: number, initial = false): Promise<void> {
-  if (generation(profileId) !== expectedGeneration) return;
-  const previous = writes.get(profileId);
+async function saveSession(
+  profileId: string,
+  ig: IgApiClient,
+  token: string,
+  expectedGeneration: number,
+  initial = false,
+): Promise<void> {
+  if (generation(profileId) !== expectedGeneration) return
+  const previous = writes.get(profileId)
   const operation = (async () => {
-    if (previous) await previous.catch(() => {});
-    if (generation(profileId) !== expectedGeneration) return;
-    const state = JSON.stringify(await ig.state.serialize());
-    if (generation(profileId) !== expectedGeneration) return;
-    const hash = createHash('sha256').update(state).digest('hex');
-    const saved = savedStates.get(profileId);
-    if (!initial && saved?.token === token && saved.hash === hash) return;
-    await chatSessionSave(profileId, state, token, initial ? undefined : token);
-    savedStates.set(profileId, { token, hash });
-  })();
-  writes.set(profileId, operation);
-  try { await operation; }
-  finally { if (writes.get(profileId) === operation) writes.delete(profileId); }
+    if (previous) await previous.catch(() => {})
+    if (generation(profileId) !== expectedGeneration) return
+    const state = JSON.stringify(await ig.state.serialize())
+    if (generation(profileId) !== expectedGeneration) return
+    const hash = sessionStateHash(state)
+    const saved = savedStates.get(profileId)
+    if (!initial && saved?.token === token && saved.hash === hash) return
+    await chatSessionSave(profileId, state, token, initial ? undefined : token)
+    savedStates.set(profileId, { token, hash })
+  })()
+  writes.set(profileId, operation)
+  try {
+    await operation
+  } finally {
+    if (writes.get(profileId) === operation) writes.delete(profileId)
+  }
 }
 
 /** Pinned posts are out of date order; only ordinary posts can end the date window. */
@@ -246,67 +228,94 @@ export class InstagramChat {
 
   get cacheToken(): string { return this.sessionToken; }
 
+  static forgetSession(profileId: string): void {
+    generations.set(profileId, generation(profileId) + 1)
+    sessions.delete(profileId)
+    savedStates.delete(profileId)
+    getChatCache().clear(profileId)
+  }
+
   static async hasSession(profileId: string): Promise<boolean> {
-    if (loggingOut.has(profileId)) return false;
-    const connected = await ensureSessionStored(profileId);
-    return connected && !loggingOut.has(profileId);
+    if (loggingOut.has(profileId)) return false
+    if (sessions.has(profileId)) return true
+    const connected = (await chatSessionHas(profileId)).connected
+    return connected && !loggingOut.has(profileId)
   }
 
   static async load(profile: ProfileRecord): Promise<InstagramChat> {
-    if (loggingOut.has(profile.id)) throw new Error('Chat session is logging out');
-    let pending = sessions.get(profile.id);
+    if (loggingOut.has(profile.id)) throw new Error('Chat session is logging out')
+    let pending = sessions.get(profile.id)
+    const reused = Boolean(pending)
     if (!pending) {
-      const currentGeneration = generation(profile.id);
+      const currentGeneration = generation(profile.id)
       pending = (async () => {
-        await ensureSessionStored(profile.id);
-        const saved = await chatSessionGet(profile.id);
-        if (!saved.connected) throw new Error('Connect this profile to Instagram Chat first');
-        const ig = new IgApiClient();
-        configureMobileProxyTransport(ig);
-        await ig.state.deserialize(saved.state);
-        if (generation(profile.id) !== currentGeneration) throw new Error('Chat session was logged out');
-        savedStates.set(profile.id, { token: saved.token,
-          hash: createHash('sha256').update(saved.state).digest('hex') });
-        useCurrentAppVersion(ig);
-        ig.state.proxyUrl = chatProxy(profile) || '';
-        return new InstagramChat(profile, ig, currentGeneration, saved.token);
-      })();
-      sessions.set(profile.id, pending);
-      pending.catch(() => { if (sessions.get(profile.id) === pending) sessions.delete(profile.id); });
+        const saved = await chatSessionGet(profile.id)
+        if (!saved.connected) throw new Error('Connect this profile to Instagram Chat first')
+        const ig = new IgApiClient()
+        configureMobileProxyTransport(ig)
+        await ig.state.deserialize(saved.state)
+        if (generation(profile.id) !== currentGeneration)
+          throw new Error('Chat session was logged out')
+        savedStates.set(profile.id, { token: saved.token, hash: sessionStateHash(saved.state) })
+        useCurrentAppVersion(ig)
+        ig.state.proxyUrl = chatProxy(profile) || ''
+        return new InstagramChat(profile, ig, currentGeneration, saved.token)
+      })()
+      sessions.set(profile.id, pending)
+      pending.catch(() => {
+        if (sessions.get(profile.id) === pending) sessions.delete(profile.id)
+      })
     }
-    const chat = await pending;
-    chat.profile = profile;
-    chat.ig.state.proxyUrl = chatProxy(profile) || '';
-    return chat;
+    const chat = await pending
+    if (reused && getChatCache().token(profile.id) !== chat.cacheToken) {
+      generations.set(profile.id, generation(profile.id) + 1)
+      sessions.delete(profile.id)
+      savedStates.delete(profile.id)
+      return InstagramChat.load(profile)
+    }
+    getChatCache().connect(profile.id, chat.cacheToken, chat.ig.state.extractUserId())
+    chat.profile = profile
+    chat.ig.state.proxyUrl = chatProxy(profile) || ''
+    return chat
   }
 
-  static async login(profile: ProfileRecord, username: string, password: string, authenticatorKey: string): Promise<void> {
-    if (loggingOut.has(profile.id)) throw new Error('Chat session is logging out');
-    const currentGeneration = generation(profile.id);
-    const token = randomUUID();
-    const ig = new IgApiClient();
-    configureMobileProxyTransport(ig);
-    ig.state.generateDevice(`${username}:${profile.id}`);
-    ig.state.proxyUrl = chatProxy(profile) || '';
-    useCurrentAppProfile(ig, chatDeviceForProfile(profile.id));
-    const context = await loginWithCaa(ig, username, password);
-    if (context) await completeCaaTwoFactor(ig, context, authenticatorKey);
-    await saveSession(profile.id, ig, token, currentGeneration, true);
-    if (generation(profile.id) !== currentGeneration) throw new Error('Chat session was logged out');
-    sessions.set(profile.id, Promise.resolve(new InstagramChat(profile, ig, currentGeneration, token)));
+  static async login(
+    profile: ProfileRecord,
+    username: string,
+    password: string,
+    authenticatorKey: string,
+  ): Promise<void> {
+    if (loggingOut.has(profile.id)) throw new Error('Chat session is logging out')
+    const currentGeneration = generation(profile.id)
+    const token = randomUUID()
+    const ig = new IgApiClient()
+    configureMobileProxyTransport(ig)
+    ig.state.generateDevice(`${username}:${profile.id}`)
+    ig.state.proxyUrl = chatProxy(profile) || ''
+    useCurrentAppProfile(ig, chatDeviceForProfile(profile.id))
+    const context = await loginWithCaa(ig, username, password)
+    if (context) await completeCaaTwoFactor(ig, context, authenticatorKey)
+    await saveSession(profile.id, ig, token, currentGeneration, true)
+    if (generation(profile.id) !== currentGeneration) throw new Error('Chat session was logged out')
+    sessions.set(
+      profile.id,
+      Promise.resolve(new InstagramChat(profile, ig, currentGeneration, token)),
+    )
+    getChatCache().connect(profile.id, token, ig.state.extractUserId())
   }
 
   static async logout(profileId: string): Promise<void> {
-    loggingOut.add(profileId);
-    generations.set(profileId, generation(profileId) + 1);
-    sessions.delete(profileId);
+    loggingOut.add(profileId)
+    generations.set(profileId, generation(profileId) + 1)
+    sessions.delete(profileId)
     try {
-      await migrations.get(profileId)?.catch(() => {});
-      await writes.get(profileId)?.catch(() => {});
-      savedStates.delete(profileId);
-      await chatSessionDelete(profileId);
-      await fs.rm(oldSessionPath(profileId), { force: true });
-    } finally { loggingOut.delete(profileId); }
+      await writes.get(profileId)?.catch(() => {})
+      savedStates.delete(profileId)
+      await chatSessionDelete(profileId)
+      getChatCache().clear(profileId)
+    } finally {
+      loggingOut.delete(profileId)
+    }
   }
 
   /** Profile setup preserves the other identity field on each separate update. */

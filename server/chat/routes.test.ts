@@ -1,8 +1,12 @@
-import { test } from 'node:test';
-import { execFileSync } from 'node:child_process';
+import { test } from 'node:test'
+import { execFileSync } from 'node:child_process'
 
 test('a sent DM stays successful when Chat refresh fails', () => {
-  execFileSync('bun', ['--eval', `
+  execFileSync(
+    'bun',
+    [
+      '--eval',
+      `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
     import express from 'express'
@@ -30,9 +34,11 @@ test('a sent DM stays successful when Chat refresh fails', () => {
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetById: async () => profile,
       profilesList: async () => [profile],
+    }))
+    mock.module('./server/chat/store.ts', () => ({
       chatMarkUnsent: async (_profileId, _token, _threadId, itemId) => {
         unsentCacheItem = itemId
-        if (failUnsentMark) throw new Error('Convex unavailable')
+        if (failUnsentMark) throw new Error('Cache unavailable')
         return { profileIds: ['profile-1', 'profile-2'] }
       },
     }))
@@ -184,5 +190,8 @@ test('a sent DM stays successful when Chat refresh fails', () => {
     } finally {
       server.close()
     }
-  `], { cwd: process.cwd(), stdio: 'pipe', timeout: 30_000 });
-});
+  `,
+    ],
+    { cwd: process.cwd(), stdio: 'pipe', timeout: 30_000 },
+  )
+})

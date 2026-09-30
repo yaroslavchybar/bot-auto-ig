@@ -26,8 +26,7 @@ function openDb(): Promise<IDBDatabase | null> {
       resolve(db)
     }
     request.onupgradeneeded = () => {
-      if (request.result.objectStoreNames.contains(STORE))
-        request.result.deleteObjectStore(STORE)
+      if (request.result.objectStoreNames.contains(STORE)) request.result.deleteObjectStore(STORE)
       request.result.createObjectStore(STORE)
     }
     request.onsuccess = () => {
@@ -50,22 +49,15 @@ function scheduleCleanup(userId: string): void {
   void cleanupUser(userId)
 }
 
-async function read<T>(userId: string, key: string): Promise<T | null> {
+async function read<T>(userId: string, key: string, maxAge = MAX_AGE_MS): Promise<T | null> {
   try {
     const db = await openDb()
     if (!db) return null
     return await new Promise<T | null>((resolve) => {
-      const request = db
-        .transaction(STORE, 'readonly')
-        .objectStore(STORE)
-        .get(key)
+      const request = db.transaction(STORE, 'readonly').objectStore(STORE).get(key)
       request.onsuccess = () => {
         const snapshot = request.result as Snapshot<T> | undefined
-        resolve(
-          snapshot && Date.now() - snapshot.updatedAt < MAX_AGE_MS
-            ? snapshot.value
-            : null,
-        )
+        resolve(snapshot && Date.now() - snapshot.updatedAt < maxAge ? snapshot.value : null)
         scheduleCleanup(userId)
       }
       request.onerror = () => resolve(null)
@@ -89,6 +81,23 @@ async function write(
       const store = transaction.objectStore(STORE)
       if (replaceKey && replaceKey !== key) store.delete(replaceKey)
       store.put({ value, updatedAt: Date.now() } satisfies Snapshot<unknown>, key)
+      if (key.startsWith(`${userId}:request:`)) {
+        const prefix = `${userId}:request:`
+        const records: { key: IDBValidKey; updatedAt: number }[] = []
+        const cursorRequest = store.openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`))
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result
+          if (!cursor) {
+            records.sort((a, b) => b.updatedAt - a.updatedAt)
+            for (const old of records.slice(20)) store.delete(old.key)
+            return
+          }
+          const updatedAt = (cursor.value as Snapshot<unknown>).updatedAt
+          if (Date.now() - updatedAt >= 60_000) cursor.delete()
+          else records.push({ key: cursor.key, updatedAt })
+          cursor.continue()
+        }
+      }
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => resolve()
       transaction.onabort = () => resolve()
@@ -99,8 +108,7 @@ async function write(
   }
 }
 
-const inboxKey = (userId: string, profileId: string) =>
-  `${userId}:inbox:${profileId}`
+const inboxKey = (userId: string, profileId: string) => `${userId}:inbox:${profileId}`
 const threadKey = (userId: string, profileId: string, threadId: string) =>
   `${userId}:thread:${profileId}:${threadId}`
 const pendingPrefix = (userId: string, profileId: string, threadId: string) =>
@@ -108,31 +116,18 @@ const pendingPrefix = (userId: string, profileId: string, threadId: string) =>
 const pendingKey = (userId: string, profileId: string, threadId: string, messageId: string) =>
   `${pendingPrefix(userId, profileId, threadId)}${messageId}`
 
-export async function readInboxCache(
-  userId: string,
-  profileId: string,
-): Promise<ChatInbox | null> {
+export async function readInboxCache(userId: string, profileId: string): Promise<ChatInbox | null> {
   const value = await read<ChatInbox>(userId, inboxKey(userId, profileId))
-  return value &&
-    typeof value.viewerId === 'string' &&
-    Array.isArray(value.threads)
-    ? value
-    : null
+  return value && typeof value.viewerId === 'string' && Array.isArray(value.threads) ? value : null
 }
-export const saveInboxCache = (
-  userId: string,
-  profileId: string,
-  inbox: ChatInbox,
-) => write(userId, inboxKey(userId, profileId), inbox)
+export const saveInboxCache = (userId: string, profileId: string, inbox: ChatInbox) =>
+  write(userId, inboxKey(userId, profileId), inbox)
 export async function readThreadCache(
   userId: string,
   profileId: string,
   threadId: string,
 ): Promise<ChatThread | null> {
-  const value = await read<ChatThread>(
-    userId,
-    threadKey(userId, profileId, threadId),
-  )
+  const value = await read<ChatThread>(userId, threadKey(userId, profileId, threadId))
   return value?.id === threadId && Array.isArray(value.messages) ? value : null
 }
 export const saveThreadCache = (
@@ -147,16 +142,30 @@ export const saveThreadCache = (
   })
 
 export const savePendingChatMessage = (
-  userId: string, profileId: string, threadId: string, message: ChatMessage,
+  userId: string,
+  profileId: string,
+  threadId: string,
+  message: ChatMessage,
 ) => write(userId, pendingKey(userId, profileId, threadId, message.id), message)
 
 export const replacePendingChatMessage = (
-  userId: string, profileId: string, threadId: string, oldId: string, message: ChatMessage,
-) => write(userId, pendingKey(userId, profileId, threadId, message.id), message,
-  pendingKey(userId, profileId, threadId, oldId))
+  userId: string,
+  profileId: string,
+  threadId: string,
+  oldId: string,
+  message: ChatMessage,
+) =>
+  write(
+    userId,
+    pendingKey(userId, profileId, threadId, message.id),
+    message,
+    pendingKey(userId, profileId, threadId, oldId),
+  )
 
 export async function readPendingChatMessages(
-  userId: string, profileId: string, threadId: string,
+  userId: string,
+  profileId: string,
+  threadId: string,
 ): Promise<ChatMessage[]> {
   try {
     const db = await openDb()
@@ -164,11 +173,17 @@ export async function readPendingChatMessages(
     const prefix = pendingPrefix(userId, profileId, threadId)
     return await new Promise<ChatMessage[]>((resolve) => {
       const messages: ChatMessage[] = []
-      const request = db.transaction(STORE, 'readonly').objectStore(STORE)
+      const request = db
+        .transaction(STORE, 'readonly')
+        .objectStore(STORE)
         .openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`))
       request.onsuccess = () => {
         const cursor = request.result
-        if (!cursor) { resolve(messages); scheduleCleanup(userId); return }
+        if (!cursor) {
+          resolve(messages)
+          scheduleCleanup(userId)
+          return
+        }
         const snapshot = cursor.value as Snapshot<ChatMessage>
         if (Date.now() - snapshot.updatedAt < PENDING_AGE_MS && snapshot.value?.id)
           messages.push(snapshot.value)
@@ -182,12 +197,18 @@ export async function readPendingChatMessages(
 }
 
 export const clearPendingChatMessage = (
-  userId: string, profileId: string, threadId: string, messageId: string,
+  userId: string,
+  profileId: string,
+  threadId: string,
+  messageId: string,
 ) => removeMatching((key) => key === pendingKey(userId, profileId, threadId, messageId))
 
 export const clearThreadChatCache = (userId: string, threadId: string) =>
-  removeMatching((key) => key.startsWith(`${userId}:inbox:`) ||
-    (key.startsWith(`${userId}:thread:`) && key.endsWith(`:${threadId}`)))
+  removeMatching(
+    (key) =>
+      key.startsWith(`${userId}:inbox:`) ||
+      (key.startsWith(`${userId}:thread:`) && key.endsWith(`:${threadId}`)),
+  )
 
 async function cleanupUser(userId: string): Promise<void> {
   try {
@@ -202,18 +223,17 @@ async function cleanupUser(userId: string): Promise<void> {
         const cursor = request.result
         if (!cursor) {
           threads.sort((a, b) => b.updatedAt - a.updatedAt)
-          for (const old of threads.slice(MAX_THREADS_PER_USER))
-            store.delete(old.key)
+          for (const old of threads.slice(MAX_THREADS_PER_USER)) store.delete(old.key)
           return
         }
-        if (
-          typeof cursor.key === 'string' &&
-          cursor.key.startsWith(`${userId}:`)
-        ) {
+        if (typeof cursor.key === 'string' && cursor.key.startsWith(`${userId}:`)) {
           const updatedAt = (cursor.value as Snapshot<unknown>).updatedAt
-          const maxAge = cursor.key.startsWith(`${userId}:pending:`) ? PENDING_AGE_MS : MAX_AGE_MS
-          if (!Number.isFinite(updatedAt) || Date.now() - updatedAt >= maxAge)
-            cursor.delete()
+          const maxAge = cursor.key.startsWith(`${userId}:request:`)
+            ? 60_000
+            : cursor.key.startsWith(`${userId}:pending:`)
+              ? PENDING_AGE_MS
+              : MAX_AGE_MS
+          if (!Number.isFinite(updatedAt) || Date.now() - updatedAt >= maxAge) cursor.delete()
           else if (cursor.key.startsWith(`${userId}:thread:`))
             threads.push({ key: cursor.key, updatedAt })
         }
@@ -228,9 +248,7 @@ async function cleanupUser(userId: string): Promise<void> {
   }
 }
 
-async function removeMatching(
-  predicate: (key: string) => boolean,
-): Promise<void> {
+async function removeMatching(predicate: (key: string) => boolean): Promise<void> {
   try {
     const db = await openDb()
     if (!db) return
@@ -241,8 +259,7 @@ async function removeMatching(
       request.onsuccess = () => {
         const cursor = request.result
         if (!cursor) return
-        if (typeof cursor.key === 'string' && predicate(cursor.key))
-          cursor.delete()
+        if (typeof cursor.key === 'string' && predicate(cursor.key)) cursor.delete()
         cursor.continue()
       }
       transaction.oncomplete = () => resolve()
@@ -260,10 +277,19 @@ export const clearProfileChatCache = (userId: string, profileId: string) =>
       key === inboxKey(userId, 'all') ||
       key === inboxKey(userId, profileId) ||
       key.startsWith(`${userId}:thread:${profileId}:`) ||
-      key.startsWith(`${userId}:pending:${profileId}:`),
+      key.startsWith(`${userId}:pending:${profileId}:`) ||
+      key.startsWith(`${userId}:request:`),
   )
 
 export const clearUserChatCache = (userId: string) =>
   removeMatching((key) => key.startsWith(`${userId}:`)).then(() => {
     lastCleanup.delete(userId)
   })
+
+// Short-lived responses let tabs reuse a fetch under a browser lock without keeping histories in RAM.
+export const readSharedChatResponse = <T>(userId: string, key: string) =>
+  read<T>(userId, `${userId}:request:${key}`, 10_000)
+export const saveSharedChatResponse = (userId: string, key: string, value: unknown) =>
+  write(userId, `${userId}:request:${key}`, value)
+export const clearSharedChatResponses = (userId: string) =>
+  removeMatching((key) => key.startsWith(`${userId}:request:`))

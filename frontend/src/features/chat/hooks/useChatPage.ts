@@ -3,6 +3,7 @@ import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import {
   useDeferredValue,
   useEffect,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -10,14 +11,16 @@ import {
   type FormEvent,
 } from 'react'
 import { apiFetch } from '@/lib/api'
+import { useWebSocket } from '@/hooks/useWebSocket'
+import { fetchChatSnapshot, subscribeChatResponses } from '../requests'
 import { useAppUser } from '@/lib/auth'
 import { useLocation, useNavigate } from '@/lib/router'
-import { useProfiles } from '@/features/profiles/hooks/useProfiles'
-import type { Profile } from '@/features/profiles/types'
+import { useChatProfiles } from './useChatProfiles'
 import { errorText, filterThreads, sortThreadsByLatest } from '../utils/chat'
 import { preparePhoto, videoMetadata } from '../utils/media'
 import {
   clearPendingChatMessage,
+  clearSharedChatResponses,
   clearProfileChatCache,
   clearThreadChatCache,
   readInboxCache,
@@ -38,6 +41,7 @@ import type {
 } from '../types'
 
 const REPLY_MAX_LENGTH = 1000
+const POLL_TOLERANCE_MS = 100
 type OutgoingReply = { threadKey: string; message: ChatMessage }
 
 function mergeConversation(current: ChatThread | null, incoming: ChatThread): ChatThread {
@@ -71,19 +75,18 @@ export function useChatPage() {
   ).test(rawThreadId)
     ? rawThreadId
     : ''
-  const { profiles, loading: profilesLoading } = useProfiles()
+  const { profiles, loading: profilesLoading } = useChatProfiles()
   const eligibleProfiles = useMemo(
-    () =>
-      profiles.filter((profile: Profile) => profile.igLoggedIn && profile.status !== 'deleting'),
+    () => profiles.filter((profile) => profile.igLoggedIn && profile.status !== 'deleting'),
     [profiles],
   )
   const activeProfileId =
     profileId === 'all' ||
     profilesLoading ||
-    eligibleProfiles.some((profile: Profile) => profile.id === profileId)
+    eligibleProfiles.some((profile) => profile.id === profileId)
       ? profileId
       : 'all'
-  const activeProfile = eligibleProfiles.find((profile: Profile) => profile.id === activeProfileId)
+  const activeProfile = eligibleProfiles.find((profile) => profile.id === activeProfileId)
 
   const [inbox, setInbox] = useState<ChatInbox | null>(null)
   const [inboxErrors, setInboxErrors] = useState<string[]>([])
@@ -124,6 +127,56 @@ export function useChatPage() {
   // Ticking clock so relative timestamps ("5m ago") stay fresh.
   const now = useNow()
   const visible = useDocumentVisibility()
+  const changeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingChange = useRef({ invalidate: false, thread: false })
+  const queueChatRefresh = useCallback(
+    (invalidate: boolean, threadId?: string) => {
+      const selectedId =
+        activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+      pendingChange.current.invalidate ||= invalidate
+      pendingChange.current.thread ||= Boolean(selectedId && (!threadId || threadId === selectedId))
+      if (changeTimer.current) clearTimeout(changeTimer.current)
+      changeTimer.current = setTimeout(() => {
+        changeTimer.current = null
+        void (async () => {
+          const change = pendingChange.current
+          pendingChange.current = { invalidate: false, thread: false }
+          if (change.invalidate) await clearSharedChatResponses(userId)
+          setInboxRefresh((value) => value + 1)
+          if (change.thread) setThreadRefresh((value) => value + 1)
+        })()
+      }, 250)
+    },
+    [userId, activeProfileId, selectedThreadId],
+  )
+  useWebSocket({
+    enabled: Boolean(connected && userId),
+    pauseWhenHidden: true,
+    eventsOnly: true,
+    topic: 'chat',
+    onEvent: (event) => {
+      if (
+        event.type === 'chat_changed' &&
+        (activeProfileId === 'all' || event.profileId === activeProfileId)
+      )
+        queueChatRefresh(true, event.threadId)
+    },
+  })
+  useEffect(() => {
+    if (!visible || !userId) return
+    const unsubscribe = subscribeChatResponses((owner, path) => {
+      if (
+        owner === userId &&
+        (activeProfileId === 'all' || path.startsWith('/api/chat/' + activeProfileId + '/'))
+      )
+        queueChatRefresh(false)
+    })
+    return () => {
+      unsubscribe()
+      if (changeTimer.current) clearTimeout(changeTimer.current)
+      pendingChange.current = { invalidate: false, thread: false }
+    }
+  }, [userId, activeProfileId, visible, queueChatRefresh])
 
   const connectionKey = JSON.stringify([userId, activeProfileId, profileId, profilesLoading])
   const inboxScope = JSON.stringify([userId, activeProfileId])
@@ -214,14 +267,37 @@ export function useChatPage() {
 
   useEffect(() => {
     if (!connected || !visible) return
+    let lastActivity = Date.now()
+    let lastInboxPoll = Date.now()
+    let lastThreadPoll = Date.now()
+    const onActivity = () => {
+      lastActivity = Date.now()
+    }
+    document.addEventListener('pointerdown', onActivity, { passive: true })
+    document.addEventListener('keydown', onActivity)
     const inboxTimer = setInterval(() => {
-      if (!inboxPending.current && document.visibilityState === 'visible')
+      if (
+        !inboxPending.current &&
+        document.visibilityState === 'visible' &&
+        Date.now() - lastInboxPoll >=
+          (Date.now() - lastActivity < 60_000 ? 60_000 : 180_000) - POLL_TOLERANCE_MS
+      ) {
+        lastInboxPoll = Date.now()
         setInboxRefresh((value) => value + 1)
+      }
     }, 60_000)
     const threadTimer = setInterval(() => {
-      if (!threadPending.current && selectedThreadId && document.visibilityState === 'visible')
+      if (
+        !threadPending.current &&
+        selectedThreadId &&
+        document.visibilityState === 'visible' &&
+        Date.now() - lastThreadPoll >=
+          (Date.now() - lastActivity < 60_000 ? 30_000 : 120_000) - POLL_TOLERANCE_MS
+      ) {
+        lastThreadPoll = Date.now()
         setThreadRefresh((value) => value + 1)
-    }, 20_000)
+      }
+    }, 30_000)
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       if (!inboxPending.current) setInboxRefresh((value) => value + 1)
@@ -232,6 +308,8 @@ export function useChatPage() {
       clearInterval(inboxTimer)
       clearInterval(threadTimer)
       document.removeEventListener('visibilitychange', onVisible)
+      document.removeEventListener('pointerdown', onActivity)
+      document.removeEventListener('keydown', onActivity)
     }
   }, [connected, selectedThreadId, visible])
 
@@ -335,7 +413,8 @@ export function useChatPage() {
       return
     const controller = new AbortController()
     inboxPending.current = true
-    apiFetch<ChatInbox | AllChatInbox>(
+    fetchChatSnapshot<ChatInbox | AllChatInbox>(
+      userId,
       `${activeProfileId === 'all' ? '/api/chat/threads' : `/api/chat/${encodeURIComponent(activeProfileId)}/threads`}`,
       {
         signal: controller.signal,
@@ -396,7 +475,8 @@ export function useChatPage() {
       return
     const controller = new AbortController()
     threadPending.current = true
-    apiFetch<ChatThread>(
+    fetchChatSnapshot<ChatThread>(
+      userId,
       `/api/chat/${encodeURIComponent(targetProfileId)}/threads/${targetThreadId}`,
       { signal: controller.signal, maxRetries: 1 },
     )
@@ -709,6 +789,7 @@ export function useChatPage() {
           reply.message.id === localId ? { ...reply, message: pendingMessage } : reply,
         ),
       )
+      await clearSharedChatResponses(userId)
       setThreadRefresh((value) => value + 1)
       setInboxRefresh((value) => value + 1)
     } catch (error) {
@@ -730,6 +811,7 @@ export function useChatPage() {
       setError(
         `${errorText(error)}. Check the conversation before trying again; the reply may have been sent.`,
       )
+      await clearSharedChatResponses(userId)
       setThreadRefresh((value) => value + 1)
     } finally {
       sendingRef.current = false
@@ -813,6 +895,7 @@ export function useChatPage() {
           reply.message.id === localId ? { ...reply, message: sentMessage } : reply,
         ),
       )
+      await clearSharedChatResponses(userId)
       setThreadRefresh((value) => value + 1)
       setInboxRefresh((value) => value + 1)
     } catch (error) {
@@ -834,7 +917,10 @@ export function useChatPage() {
           ? `${errorText(error)}. Check the conversation before trying again; it may have been sent.`
           : errorText(error),
       )
-      if (localId) setThreadRefresh((value) => value + 1)
+      if (localId) {
+        await clearSharedChatResponses(userId)
+        setThreadRefresh((value) => value + 1)
+      }
     } finally {
       sendingRef.current = false
       setSending(false)
@@ -951,6 +1037,7 @@ export function useChatPage() {
             ),
           },
       )
+      await clearSharedChatResponses(userId)
       setThreadRefresh((value) => value + 1)
       setInboxRefresh((value) => value + 1)
     } catch (error) {

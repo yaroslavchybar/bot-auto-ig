@@ -19,11 +19,15 @@ vi.mock('@/lib/router', () => ({
   useLocation: () => ({ search: mocks.search }),
   useNavigate: () => mocks.navigate,
 }))
-vi.mock('@/features/profiles/hooks/useProfiles', () => ({
-  useProfiles: () => ({ profiles: mocks.profiles, loading: false }),
+vi.mock('@/features/chat/hooks/useChatProfiles', () => ({
+  useChatProfiles: () => ({ profiles: mocks.profiles, loading: false }),
 }))
+vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: () => ({ connected: true }) }))
 vi.mock('@/lib/api', () => ({ apiFetch: mocks.apiFetch }))
 vi.mock('@/features/chat/cache', () => ({
+  clearSharedChatResponses: () => Promise.resolve(),
+  readSharedChatResponse: () => Promise.resolve(null),
+  saveSharedChatResponse: () => Promise.resolve(),
   readInboxCache: () => Promise.resolve(null),
   readThreadCache: () => Promise.resolve(null),
   readPendingChatMessages: mocks.readPending,
@@ -81,6 +85,44 @@ beforeEach(() => {
 afterEach(async () => {
   await view?.unmount()
   view = undefined
+  vi.useRealTimers()
+})
+
+test.each([
+  { scope: 'inbox', active: true, interval: 60_000, threshold: 60_000 },
+  { scope: 'inbox', active: false, interval: 60_000, threshold: 180_000 },
+  { scope: 'thread', active: true, interval: 30_000, threshold: 30_000 },
+  { scope: 'thread', active: false, interval: 30_000, threshold: 120_000 },
+])('$scope polling tolerates clock drift (active: $active)', async ({ scope, active, interval, threshold }) => {
+  vi.useFakeTimers()
+  let now = Date.now()
+  const startedAt = now
+  vi.spyOn(Date, 'now').mockImplementation(() => now)
+  const timers = vi.spyOn(globalThis, 'setInterval')
+  view = mount()
+  await view.render(<Probe />)
+  const callback = timers.mock.calls.filter(([, delay]) => delay === interval).at(-1)?.[0]
+  if (typeof callback !== 'function') throw new Error('Missing polling timer')
+  const path = scope === 'inbox' ? '/api/chat/profile/threads' : '/api/chat/profile/threads/1'
+  const polls = () => mocks.apiFetch.mock.calls.filter(([url]) => url === path).length
+  const initialPolls = polls()
+  now = startedAt + threshold - 101
+  if (active) document.dispatchEvent(new Event('keydown'))
+  await act(async () => { callback() })
+  expect(polls()).toBe(initialPolls)
+
+  now = startedAt + threshold - 1
+  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+  await act(async () => { callback() })
+  expect(polls()).toBe(initialPolls)
+  visibility.mockRestore()
+  mocks.apiFetch.mockImplementation(() => new Promise(() => {}))
+  await act(async () => { callback() })
+  expect(polls()).toBe(initialPolls + 1)
+
+  now += threshold
+  await act(async () => { callback() })
+  expect(polls()).toBe(initialPolls + 1) // An outstanding request still blocks polling.
 })
 
 test('thread changes immediately reset drafts, conversation, and older-message pagination', async () => {

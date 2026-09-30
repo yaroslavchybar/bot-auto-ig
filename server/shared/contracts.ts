@@ -23,10 +23,18 @@ export type ProfileRecord = {
   lastOpenedAt?: number
 }
 
-export const ACTIVITY_IDS = ['browse_feed', 'close_browser', 'condition', 'delay', 'loop', 'random_branch', 'watch_stories'] as const
-export type ActivityId = typeof ACTIVITY_IDS[number]
+export const ACTIVITY_IDS = [
+  'browse_feed',
+  'close_browser',
+  'condition',
+  'delay',
+  'loop',
+  'random_branch',
+  'watch_stories',
+] as const
+export type ActivityId = (typeof ACTIVITY_IDS)[number]
 
-export type SocketTopic = 'all' | 'displays'
+export type SocketTopic = 'all' | 'displays' | 'chat'
 
 export type WebSocketEventType =
   | 'status'
@@ -43,6 +51,7 @@ export type WebSocketEventType =
   | 'session_ended'
   | 'display_allocated'
   | 'display_released'
+  | 'chat_changed'
 
 type EventFields = {
   automationId?: string
@@ -53,6 +62,8 @@ type EventFields = {
   totalProfiles?: number
   profileName?: string
   profileId?: string
+  threadId?: string
+  messageId?: string
   taskId?: string
   task?: string
   nodeId?: string
@@ -68,4 +79,6 @@ type EventFields = {
   ts?: string | number
 }
 
-export type WorkerEvent = { [Kind in WebSocketEventType]: EventFields & { type: Kind } }[WebSocketEventType]
+export type WorkerEvent = {
+  [Kind in WebSocketEventType]: EventFields & { type: Kind }
+}[WebSocketEventType]

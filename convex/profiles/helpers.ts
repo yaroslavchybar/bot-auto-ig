@@ -1,5 +1,5 @@
 import { DomainError } from '../errors';
-import { clearProfileChatCache } from '../chatCache';
+import { clearChatCounter } from '../chatCache'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 
 function assertProfileEditable(profile: any) {
@@ -318,44 +318,76 @@ async function releaseIgAccount(ctx: any, profileId: any) {
 }
 
 export async function removeProfileByNameRow(ctx: any, name: string) {
-	const cleaned = String(name || "").trim();
-	if (!cleaned) throw new DomainError('VALIDATION', "name is required");
-	const existing = await ctx.db
-		.query("profiles")
-		.withIndex("by_name", (q: any) => q.eq("name", cleaned))
-		.first();
-	if (!existing) return true;
-	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
-	for (const assignment of await ctx.db.query("profileListAssignments").withIndex("by_profile", (q: any) => q.eq("profileId", existing._id)).collect())
-		await ctx.db.delete(assignment._id);
-	await clearProfileChatCache(ctx, existing._id);
-	const chat = await ctx.db.query('chatSessions').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).first();
-	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
-	for (const membership of await ctx.db.query('chatMemberships').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).collect())
-		await ctx.db.delete(membership._id);
-	await releaseIgAccount(ctx, existing._id);
-	const setup = await ctx.db.query('modelSetupStates').withIndex('by_profile', (q: any) => q.eq('profileId', existing._id)).first();
-	if (setup) await ctx.db.delete(setup._id);
-	await ctx.db.delete(existing._id);
-	return true;
+  const cleaned = String(name || '').trim()
+  if (!cleaned) throw new DomainError('VALIDATION', 'name is required')
+  const existing = await ctx.db
+    .query('profiles')
+    .withIndex('by_name', (q: any) => q.eq('name', cleaned))
+    .first()
+  if (!existing) return true
+  if (existing.status !== 'deleting')
+    throw new DomainError('CONFLICT', 'Begin profile deletion first')
+  for (const assignment of await ctx.db
+    .query('profileListAssignments')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
+    .collect())
+    await ctx.db.delete(assignment._id)
+  await clearChatCounter(ctx, existing._id)
+  const chat = await ctx.db
+    .query('chatSessions')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
+    .first()
+  if (chat) {
+    await ctx.storage.delete(chat.storageId)
+    await ctx.db.delete(chat._id)
+  }
+  for (const membership of await ctx.db
+    .query('chatMemberships')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
+    .collect())
+    await ctx.db.delete(membership._id)
+  await releaseIgAccount(ctx, existing._id)
+  const setup = await ctx.db
+    .query('modelSetupStates')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
+    .first()
+  if (setup) await ctx.db.delete(setup._id)
+  await ctx.db.delete(existing._id)
+  return true
 }
 
 export async function removeProfileByIdRow(ctx: any, profileId: any) {
-	const existing = await ctx.db.get(profileId);
-	if (!existing) return true;
-	if (existing.status !== 'deleting') throw new DomainError('CONFLICT', 'Begin profile deletion first');
-	for (const assignment of await ctx.db.query("profileListAssignments").withIndex("by_profile", (q: any) => q.eq("profileId", profileId)).collect())
-		await ctx.db.delete(assignment._id);
-	await clearProfileChatCache(ctx, profileId);
-	const chat = await ctx.db.query('chatSessions').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
-	if (chat) { await ctx.storage.delete(chat.storageId); await ctx.db.delete(chat._id); }
-	for (const membership of await ctx.db.query('chatMemberships').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).collect())
-		await ctx.db.delete(membership._id);
-	await releaseIgAccount(ctx, profileId);
-	const setup = await ctx.db.query('modelSetupStates').withIndex('by_profile', (q: any) => q.eq('profileId', profileId)).first();
-	if (setup) await ctx.db.delete(setup._id);
-	await ctx.db.delete(profileId);
-	return true;
+  const existing = await ctx.db.get(profileId)
+  if (!existing) return true
+  if (existing.status !== 'deleting')
+    throw new DomainError('CONFLICT', 'Begin profile deletion first')
+  for (const assignment of await ctx.db
+    .query('profileListAssignments')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
+    .collect())
+    await ctx.db.delete(assignment._id)
+  await clearChatCounter(ctx, profileId)
+  const chat = await ctx.db
+    .query('chatSessions')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
+    .first()
+  if (chat) {
+    await ctx.storage.delete(chat.storageId)
+    await ctx.db.delete(chat._id)
+  }
+  for (const membership of await ctx.db
+    .query('chatMemberships')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
+    .collect())
+    await ctx.db.delete(membership._id)
+  await releaseIgAccount(ctx, profileId)
+  const setup = await ctx.db
+    .query('modelSetupStates')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
+    .first()
+  if (setup) await ctx.db.delete(setup._id)
+  await ctx.db.delete(profileId)
+  return true
 }
 
 export async function syncProfileStatusRow(ctx: any, name: string, status: string, using?: boolean) {

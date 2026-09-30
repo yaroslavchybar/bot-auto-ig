@@ -1,6 +1,7 @@
 import { Router, raw } from 'express';
 import { IgResponseError } from 'instagram-private-api';
-import { chatMarkUnsent, profilesGetById, profilesList } from '../shared/convexClient.js';
+import { profilesGetById, profilesList } from '../shared/convexClient.js'
+import { chatMarkUnsent } from './store.js'
 import { cachedInbox, cachedThread, clearSyncFailures, invalidateChatSnapshots, syncThread, threadSyncs } from './sync.js';
 import { asyncHandler } from '../shared/asyncHandler.js';
 import { ExternalServiceError, NotFoundError, ValidationError } from '../shared/errors.js';

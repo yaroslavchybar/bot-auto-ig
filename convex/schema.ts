@@ -2,25 +2,6 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 import { routineValidator } from './routinePolicy'
 
-const chatMessage = v.object({
-  id: v.string(),
-  senderId: v.string(),
-  text: v.string(),
-  timestamp: v.number(),
-  kind: v.string(),
-  clientContext: v.optional(v.string()),
-  mediaType: v.optional(v.union(v.literal('photo'), v.literal('video'), v.literal('voice'))),
-  mediaUrl: v.optional(v.string()),
-  reactions: v.optional(
-    v.array(
-      v.object({
-        senderId: v.string(),
-        emoji: v.string(),
-      }),
-    ),
-  ),
-})
-
 export default defineSchema({
   leadLists: defineTable({ name: v.string(), createdAt: v.number() }),
   leads: defineTable({
@@ -191,6 +172,7 @@ export default defineSchema({
   })
     .index('by_name', ['name'])
     .index('by_status', ['status'])
+    .index('by_chat', ['igLoggedIn', 'status'])
     .index('by_rename', ['renameFrom'])
     .index('by_created', ['createdAt'])
     .index('by_proxy', ['proxy', 'proxyType']),
@@ -206,31 +188,12 @@ export default defineSchema({
   chatMemberships: defineTable({
     profileId: v.id('profiles'),
   }).index('by_profile', ['profileId']),
-  chatThreads: defineTable({
+  chatCounters: defineTable({
     profileId: v.id('profiles'),
-    threadId: v.string(),
-    sessionToken: v.string(),
-    title: v.string(),
-    users: v.array(v.object({ id: v.string(), username: v.string() })),
-    preview: v.optional(chatMessage),
-    previewUpdatedAt: v.optional(v.number()),
-    unsentMessageIds: v.optional(v.array(v.string())),
-    lastSeenAt: v.array(v.object({ userId: v.string(), timestamp: v.number() })),
-    threadSyncedAt: v.optional(v.number()),
-    unread: v.optional(v.boolean()),
-    lastIncomingAt: v.optional(v.number()),
-    repliedThroughAt: v.optional(v.number()),
-  })
-    .index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId'])
-    .index('by_thread', ['threadId']),
-  // Bounded recent history, read only when a conversation is opened.
-  chatHistories: defineTable({
-    profileId: v.id('profiles'),
-    threadId: v.string(),
-    sessionToken: v.string(),
-    messages: v.array(chatMessage),
-    confirmedMessageIds: v.optional(v.array(v.string())),
-  }).index('by_profile_session_thread', ['profileId', 'sessionToken', 'threadId']),
+    token: v.string(),
+    unreadCount: v.number(),
+    enabled: v.boolean(),
+  }).index('by_profile', ['profileId']),
 
   scrapeJobs: defineTable({
     username: v.string(),

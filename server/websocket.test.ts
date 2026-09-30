@@ -8,7 +8,15 @@ import { parseSubscription } from './shared/subscriptions.js'
 test('slow clients are terminated before another message is buffered', () => {
   let sent = 0
   let terminated = 0
-  const client = { bufferedAmount: 9, send: () => { sent++ }, terminate: () => { terminated++ } } as unknown as WebSocket
+  const client = {
+    bufferedAmount: 9,
+    send: () => {
+      sent++
+    },
+    terminate: () => {
+      terminated++
+    },
+  } as unknown as WebSocket
   sendBounded(client, 'é', 10)
   assert.equal(sent, 0)
   assert.equal(terminated, 1)
@@ -19,8 +27,13 @@ test('healthy clients receive messages and send errors terminate the socket', ()
   let terminated = false
   const client = {
     bufferedAmount: 0,
-    send: (message: string, callback: (error?: Error) => void) => { sent = message; callback(new Error('gone')) },
-    terminate: () => { terminated = true },
+    send: (message: string, callback: (error?: Error) => void) => {
+      sent = message
+      callback(new Error('gone'))
+    },
+    terminate: () => {
+      terminated = true
+    },
   } as unknown as WebSocket
   sendBounded(client, 'hello')
   assert.equal(sent, 'hello')
@@ -28,20 +41,48 @@ test('healthy clients receive messages and send errors terminate the socket', ()
 })
 
 test('broadcast sends control events to the general feed and display changes to display subscribers', () => {
-  const feeds = ['topic=displays', ''].map(query => {
+  const feeds = ['topic=displays', ''].map((query) => {
     const messages: Array<Record<string, unknown>> = []
     const client = {
-      readyState: 1, bufferedAmount: 0, subscription: parseSubscription(new URLSearchParams(query)),
+      readyState: 1,
+      bufferedAmount: 0,
+      subscription: parseSubscription(new URLSearchParams(query)),
       send: (raw: string) => messages.push(JSON.parse(raw)),
     } as unknown as WebSocket
     clients.add(client)
     return { client, messages }
   })
   try {
-    for (const type of ['display_allocated', 'display_released', 'profile_completed', 'automation_status'])
+    for (const type of [
+      'display_allocated',
+      'display_released',
+      'profile_completed',
+      'automation_status',
+    ])
       broadcast({ type, automationId: 'a' })
     broadcast({ type: 'task_started' })
     assert.equal(feeds[0].messages.length, 4)
     assert.equal(feeds[1].messages.length, 5)
-  } finally { feeds.forEach(({ client }) => clients.delete(client)) }
+  } finally {
+    feeds.forEach(({ client }) => clients.delete(client))
+  }
+})
+
+test('chat subscribers receive only small chat invalidations', () => {
+  const messages: object[] = []
+  const client = {
+    readyState: 1,
+    bufferedAmount: 0,
+    subscription: parseSubscription(new URLSearchParams('topic=chat')),
+    send: (raw: string) => messages.push(JSON.parse(raw)),
+  } as unknown as WebSocket
+  clients.add(client)
+  try {
+    broadcast({ type: 'task_started' })
+    broadcast({ type: 'display_allocated' })
+    broadcast({ type: 'chat_changed', profileId: 'one', threadId: '123' })
+    assert.deepEqual(messages, [{ type: 'chat_changed', profileId: 'one', threadId: '123' }])
+  } finally {
+    clients.delete(client)
+  }
 })
