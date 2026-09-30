@@ -8,14 +8,17 @@
 import type { Request, Response, NextFunction } from 'express'
 import { addLogContext } from './logger.js'
 
+// These routes use named parameters, rather than Express 5 wildcard arrays.
+type RouteRequest = Request<Record<string, string>>
+
 type AsyncRouteHandler = (
-  req: Request,
+  req: RouteRequest,
   res: Response,
   next: NextFunction,
-) => Promise<any>
+) => Promise<unknown>
 
 export function asyncHandler(fn: AsyncRouteHandler) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: RouteRequest, res: Response, next: NextFunction): void => {
     // Only identifiers and operation names; request bodies may contain credentials or messages.
     const keys = ['profileId', 'profileName', 'automationId', 'jobId', 'accountId', 'modelId', 'listId', 'threadId', 'action']
     const fields: Record<string, unknown> = {}

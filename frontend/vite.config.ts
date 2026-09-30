@@ -42,7 +42,6 @@ function getVendorChunk(id: string): string | undefined {
   if (['react', 'react-dom', 'scheduler'].includes(packageName)) {
     return 'react-core'
   }
-  if (packageName === 'react-resizable-panels') return 'layout'
   if (
     [
       'class-variance-authority',
