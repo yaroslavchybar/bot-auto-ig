@@ -2,6 +2,9 @@
 **/bun-debug.log
 **/dist
 **/build
+**/target
+.codex_tmp
+.agents
 __pycache__
 **/__pycache__
 .git

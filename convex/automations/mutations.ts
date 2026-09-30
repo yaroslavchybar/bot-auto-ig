@@ -171,6 +171,9 @@ export const setActive = mutation({
         }
 		await ctx.db.patch(args.id, {
 			isActive: args.isActive,
+            // A sleeping routine has no worker left to acknowledge a stop.
+            ...(automation.routine && !args.isActive && automation.status === 'pending'
+              ? { status: 'cancelled' as const, completedAt: Date.now() } : {}),
 			updatedAt: Date.now(),
 		});
 		return await ctx.db.get(args.id);

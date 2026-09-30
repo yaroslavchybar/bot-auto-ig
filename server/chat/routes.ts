@@ -1,4 +1,5 @@
-import { Router, raw } from 'express';
+import { Router } from 'express';
+import { stageAttachment, removeAttachment } from './uploads.js'
 import { IgResponseError } from 'instagram-private-api';
 import { profilesGetById, profilesList } from '../shared/convexClient.js'
 import { chatMarkUnsent } from './store.js'
@@ -228,22 +229,32 @@ function refreshAfterSend(profileId: string, id: string): void {
   })();
 }
 
-router.post('/:profileId/threads/:threadId/attachment', raw({ type: 'application/octet-stream', limit: '25mb' }),
+router.post('/:profileId/threads/:threadId/attachment',
   asyncHandler(async (req, res) => {
     const id = threadId(req.params.threadId);
     const kind = req.query.kind;
     if (kind !== 'photo' && kind !== 'video' && kind !== 'voice') {
       throw new ValidationError('Choose a photo, video, or voice message');
     }
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      throw new ValidationError('Attachment is empty');
-    }
     const clientContext = messageContext(req.query.clientContext);
     const video = kind === 'video' ? videoMetadata(req.query) : undefined;
     const chat = await client(req.params.profileId);
     let message: ChatThread['messages'][number];
-    try { message = await chat.sendAttachment(id, kind as AttachmentKind, req.body, clientContext, video); }
-    catch (error) { if (error instanceof ValidationError) throw error; instagramError(error); }
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    req.once('aborted', abort)
+    res.once('close', abort)
+    let file: Awaited<ReturnType<typeof stageAttachment>> | undefined
+    try {
+      file = await stageAttachment(req, kind, controller.signal)
+      try { message = await chat.sendAttachment(id, kind as AttachmentKind, file, clientContext, video); }
+      catch (error) { if (error instanceof ValidationError) throw error; instagramError(error); }
+    }
+    finally {
+      req.removeListener('aborted', abort)
+      res.removeListener('close', abort)
+      if (file) await removeAttachment(file).catch(() => {})
+    }
     res.json({ success: true, message });
     refreshAfterSend(String(req.params.profileId), id);
   }));

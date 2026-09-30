@@ -10,7 +10,7 @@ export function assertValidStatusTransition(currentStatus: AutomationStatus | un
 	const allowedTransitions: Record<AutomationStatus, AutomationStatus[]> = {
 		idle: ["idle", "pending"],
 		pending: ["pending", "running", "completed", "failed", "cancelled"],
-		running: ["running", "paused", "completed", "failed", "cancelled"],
+		running: ["running", "pending", "paused", "completed", "failed", "cancelled"],
 		paused: ["paused", "running", "failed", "cancelled"],
 		completed: ["completed"],
 		failed: ["failed"],

@@ -12,15 +12,16 @@
     "server"
   ],
   "scripts": {
-    "build": "bun run --filter anti-server build",
+    "build": "bun run build:rust && bun run --filter anti-server build",
     "dev": "concurrently -n server,frontend,convex -c green,magenta,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bunx convex dev\"",
     "dev:server": "bun run --filter anti-server dev",
     "start": "bun run --filter anti-server start",
     "test:convex": "vp test run",
-    "typecheck": "bun run --filter anti-server typecheck && bun run --filter frontend typecheck && tsc -p convex/tsconfig.json --noEmit && tsc -p tools/spoofer/tsconfig.json --noEmit",
+    "typecheck": "bun run --filter anti-server typecheck && bun run --filter frontend typecheck && tsc -p convex/tsconfig.json --noEmit",
     "lint": "vp lint .",
     "format": "vp fmt .",
-    "format:check": "vp fmt --check ."
+    "format:check": "vp fmt --check .",
+    "build:rust": "cargo build --release --workspace --locked"
   },
   "dependencies": {
     "convex": "^1.46.0"

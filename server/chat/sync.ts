@@ -10,6 +10,7 @@ import { publishUnread } from './store.js'
 import { InstagramChat } from './instagram.js';
 import type { ChatThread } from './instagram.js';
 import { createHash } from 'node:crypto'
+import { LruMap } from '../shared/lru.js'
 const INBOX_STALE_MS = 60_000;
 const THREAD_STALE_MS = 20_000;
 const SYNC_RETRY_MS = 120_000;
@@ -22,7 +23,7 @@ const inboxSnapshots = new Map<string, { value: CachedChatInbox; checkedAt: numb
 const threadSnapshots = new Map<string, { value: ChatThread & { syncedAt: number }; checkedAt: number }>();
 const inboxFingerprints = new Map<string, string>();
 const threadFingerprints = new Map<string, string>();
-const syncFailures = new Map<string, { until: number; error: unknown }>();
+const syncFailures = new LruMap<string, { until: number; error: unknown }>(256);
 const cacheVersions = new Map<string, number>();
 const sessionTokens = new Map<string, string>()
 

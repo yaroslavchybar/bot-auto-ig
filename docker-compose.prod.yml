@@ -38,6 +38,24 @@ services:
         max-size: 10m
         max-file: "3"
 
+  gateway:
+    image: ghcr.io/yaroslavchybar/bot-auto-ig:gateway-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
+    container_name: ig-bot-gateway
+    restart: unless-stopped
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 64
+    environment:
+      NODE_ENV: production
+      COMMIT_SHA: ${IMAGE_TAG}
+      INSTANCE_ID: ig-bot-gateway
+      VNC_UPSTREAM_HOST: server
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
   spoofer:
     image: ghcr.io/yaroslavchybar/bot-auto-ig:spoofer-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-spoofer
@@ -61,7 +79,7 @@ services:
     image: ghcr.io/yaroslavchybar/bot-auto-ig:server-${IMAGE_TAG:?IMAGE_TAG is required (set by CI deploy)}
     container_name: ig-bot-server
     restart: unless-stopped
-    # Supervisor allows 60s for worker cleanup, then stops display services.
+    # The native controller allows 60s for browser worker cleanup.
     stop_grace_period: 90s
     # Written by CI from GitHub secrets on every deploy.
     env_file: .env
@@ -70,7 +88,6 @@ services:
       COMMIT_SHA: ${IMAGE_TAG}
       SERVER_PORT: 3001
       SPOOFER_URL: http://spoofer:3002/variants
-      DISPLAY: :99
       # Cloak cache (Pro binary, GeoIP db) lives on the persisted data
       # volume: without this the container re-downloads ~70MB+ on every
       # redeploy, since /root/.cloakbrowser is ephemeral.
@@ -94,6 +111,7 @@ services:
       - "127.0.0.1:3101:80"
     depends_on:
       - server
+      - gateway
     logging:
       driver: json-file
       options:

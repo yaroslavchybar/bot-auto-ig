@@ -1,15 +1,14 @@
 import { randomBytes, randomInt } from 'node:crypto';
-import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { request as httpsRequest } from 'node:https';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { gunzipSync, inflateSync } from 'node:zlib';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { IgApiClient } from 'instagram-private-api';
 import { parse as parseLossless } from 'lossless-json';
 import { SocksProxyAgent } from 'socks-proxy-agent';
 import { ValidationError } from '../shared/errors.js';
+import { createReadStream } from 'node:fs'
+import type { StagedAttachment } from './uploads.js'
 
 export type AttachmentKind = 'photo' | 'video' | 'voice';
 export type VideoMetadata = { width: number; height: number; duration: number };
@@ -19,6 +18,15 @@ const host = 'rupload.facebook.com';
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 type MediaRequest = typeof messengerRequest;
+export type AttachmentBody = StagedAttachment
+const byteLength = (body: AttachmentBody) => body.size
+const sliceBody = (body: AttachmentBody, offset: number): AttachmentBody => ({ ...body, offset })
+
+async function prefix(body: AttachmentBody): Promise<Buffer> {
+  const file = await fs.open(body.path, 'r')
+  try { const bytes = Buffer.alloc(12); const { bytesRead } = await file.read(bytes, 0, 12, 0); return bytes.subarray(0, bytesRead) }
+  finally { await file.close() }
+}
 
 function uploadHeaders(ig: IgApiClient, extra: Record<string, string>): Record<string, string> {
   const userId = ig.state.extractUserId();
@@ -44,7 +52,7 @@ function uploadHeaders(ig: IgApiClient, extra: Record<string, string>): Record<s
 }
 
 async function messengerRequest(ig: IgApiClient, method: 'GET' | 'POST', endpoint: string,
-  headers: Record<string, string>, body?: Buffer): Promise<Record<string, unknown>> {
+  headers: Record<string, string>, body?: AttachmentBody): Promise<Record<string, unknown>> {
   const proxy = ig.state.proxyUrl;
   const agent = proxy ? proxy.startsWith('socks5://')
     ? new SocksProxyAgent(proxy.replace(/^socks5:\/\//, 'socks5h://'))
@@ -81,7 +89,18 @@ async function messengerRequest(ig: IgApiClient, method: 'GET' | 'POST', endpoin
       });
       request.on('error', error => reject(controller.signal.aborted
         ? new Error('Instagram media upload timed out') : error));
-      request.end(body);
+      if (!body) request.end();
+      else {
+        const remaining = body.size - (body.offset ?? 0)
+        request.setHeader('Content-Length', remaining)
+        if (!remaining) request.end()
+        else {
+          const stream = createReadStream(body.path, { start: body.offset ?? 0, highWaterMark: 64 * 1024 })
+          stream.on('error', error => request.destroy(error))
+          request.once('close', () => stream.destroy())
+          stream.pipe(request)
+        }
+      }
     });
   } finally { clearTimeout(timer); }
 }
@@ -92,87 +111,51 @@ function mediaId(data: Record<string, unknown>): string {
   return value;
 }
 
-async function resumableUpload(ig: IgApiClient, endpoint: string, bytes: Buffer,
+async function resumableUpload(ig: IgApiClient, endpoint: string, bytes: AttachmentBody,
   headers: Record<string, string>, entity: string, contentType: string,
   request: MediaRequest): Promise<string> {
   const initial = await request(ig, 'GET', endpoint, headers);
   const offset = Number(initial.offset ?? 0);
-  if (!Number.isInteger(offset) || offset < 0 || offset > bytes.length) {
+  if (!Number.isInteger(offset) || offset < 0 || offset > byteLength(bytes)) {
     throw new Error('Instagram media upload returned an invalid offset');
   }
   return mediaId(await request(ig, 'POST', endpoint, {
     ...headers, 'content-type': 'application/octet-stream', offset: String(offset),
-    'x-entity-length': String(bytes.length), 'x-entity-name': entity, 'x-entity-type': contentType,
-  }, bytes.subarray(offset)));
-}
-
-async function voiceAsM4a(bytes: Buffer): Promise<Buffer> {
-  const directory = await fs.mkdtemp(path.join(tmpdir(), 'ig-chat-voice-'));
-  const input = path.join(directory, 'input');
-  const output = path.join(directory, 'voice.m4a');
-  try {
-    await fs.writeFile(input, bytes);
-    await new Promise<void>((resolve, reject) => {
-      const child = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-i', input,
-        '-vn', '-t', '120', '-c:a', 'aac', '-b:a', '64k', '-ac', '1', '-ar', '44100', output],
-      { stdio: ['ignore', 'ignore', 'pipe'] });
-      let settled = false;
-      let timedOut = false;
-      const finish = (error?: Error) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (error) reject(error); else resolve();
-      };
-      const timer = setTimeout(() => {
-        timedOut = true;
-        child.kill();
-      }, 60_000);
-      child.on('error', () => finish(new Error('ffmpeg is required to send voice messages')));
-      child.on('close', code => finish(timedOut ? new Error('Voice conversion timed out') :
-        code === 0 ? undefined : new ValidationError('Audio could not be converted to an Instagram voice message')));
-      child.stderr.on('data', () => {});
-    });
-    const converted = await fs.readFile(output);
-    if (converted.length === 0 || converted.length > 10_000_000) {
-      throw new ValidationError('Voice message is too large');
-    }
-    return converted;
-  } finally {
-    await fs.unlink(input).catch(() => {});
-    await fs.unlink(output).catch(() => {});
-    await fs.rmdir(directory).catch(() => {});
-  }
+    'x-entity-length': String(byteLength(bytes)), 'x-entity-name': entity, 'x-entity-type': contentType,
+  }, sliceBody(bytes, offset)));
 }
 
 /** Uploads attachment bytes through the selected Instagram profile's proxy. */
 export async function uploadChatAttachment(ig: IgApiClient, kind: AttachmentKind,
-  bytes: Buffer, video?: VideoMetadata, request: MediaRequest = messengerRequest): Promise<UploadedAttachment> {
+  bytes: AttachmentBody, video?: VideoMetadata, request: MediaRequest = messengerRequest): Promise<UploadedAttachment> {
+  const size = byteLength(bytes)
+  const header = await prefix(bytes)
   if (kind === 'photo') {
-    if (bytes.length > 10_000_000 || bytes[0] !== 0xff || bytes[1] !== 0xd8) {
+    if (size > 10_000_000 || header[0] !== 0xff || header[1] !== 0xd8) {
       throw new ValidationError('Choose a JPEG photo under 10 MB');
     }
     const entity = `fb_uploader_${Date.now()}`;
     const headers = uploadHeaders(ig, { image_type: 'FILE_ATTACHMENT',
       'content-type': 'application/octet-stream', offset: '0',
-      'x-entity-length': String(bytes.length), 'x-entity-name': entity, 'x-entity-type': 'image/jpeg' });
+      'x-entity-length': String(size), 'x-entity-name': entity, 'x-entity-type': 'image/jpeg' });
     return { mediaId: mediaId(await request(ig, 'POST', `/messenger_image/${entity}`, headers, bytes)) };
   }
   if (kind === 'voice') {
-    if (bytes.length > 10_000_000) throw new ValidationError('Voice message is too large');
-    const audio = await voiceAsM4a(bytes);
+    if (size > 10_000_000) throw new ValidationError('Voice message is too large');
+    const audio = bytes
+    if (!audio.voiceConverted) throw new ValidationError('Voice message was not converted')
     const uploadId = String(Date.now());
     const entity = `${uploadId}_0_${randomInt(-2147483648, 2147483648)}`;
     const headers = uploadHeaders(ig, { audio_type: 'FILE_ATTACHMENT' });
     return { mediaId: await resumableUpload(ig, `/messenger_audio/${entity}`, audio,
       headers, entity, 'audio/mp4', request), uploadId };
   }
-  if (!video || bytes.length > 25_000_000 || bytes.toString('ascii', 4, 8) !== 'ftyp') {
+  if (!video || size > 25_000_000 || header.toString('ascii', 4, 8) !== 'ftyp') {
     throw new ValidationError('Choose an H.264 MP4 video under 25 MB');
   }
   const hex = randomBytes(16).toString('hex');
   const timestamp = Date.now();
-  const entity = `${hex}-0-${bytes.length}-${timestamp}-${timestamp}`;
+  const entity = `${hex}-0-${size}-${timestamp}-${timestamp}`;
   const uploadId = String(randomInt(10 ** 11, 10 ** 12));
   const waterfallId = `${uploadId}_${hex.slice(0, 12).toUpperCase()}_Mixed_0`;
   const headers = uploadHeaders(ig, { video_type: 'FILE_ATTACHMENT',

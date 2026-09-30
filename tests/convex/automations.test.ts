@@ -12,6 +12,20 @@ import {
 } from '../../frontend/src/features/automations/startNode'
 import { validateAutomationImport } from '../../frontend/src/features/automations/utils/automationImportExport'
 import { selectedLists } from '../../server/automation/graph'
+import { defaultRoutine } from '../../convex/routinePolicy'
+
+test('sleeping routines keep checkpoints on wake and become editable when disabled', async () => {
+  const t = createConvexTest()
+  const model = await seedList(t)
+  const automation = await seedAutomation(t, { listIds: [model!._id], status: 'running', routine: defaultRoutine, nodeStates: { saved: true } })
+  const pending = await t.mutation(internal.automations.mutations.updateStatusInternal, { id: automation!._id, status: 'pending' })
+  expect(pending?.status).toBe('pending')
+  const resumed = await t.mutation(internal.automations.mutations.startInternal, { id: automation!._id })
+  expect(resumed?.nodeStates).toEqual({ saved: true })
+  const disabled = await t.mutation(api.automations.mutations.setActive, { id: automation!._id, isActive: false })
+  expect(disabled).toMatchObject({ status: 'cancelled', isActive: false })
+  expect((await t.mutation(api.automations.mutations.update, { id: automation!._id, name: 'Editable' }))?.name).toBe('Editable')
+})
 
 test('editor saves preserve source list selections for reopening and execution', async () => {
   const t = createConvexTest()

@@ -9,7 +9,7 @@ remove_trailing_whitespace = true
 [sources.application]
 type = "docker_logs"
 docker_host = "unix:///var/run/docker.sock"
-include_containers = ["ig-bot-server", "ig-bot-spoofer"]
+include_containers = ["ig-bot-server", "ig-bot-spoofer", "ig-bot-gateway"]
 auto_partial_merge = true
 
 [transforms.application_events]
@@ -82,7 +82,7 @@ container_id = "container-id"
 stream = "stderr"
 
 [[tests]]
-name = "Drops supervisor output"
+name = "Drops plain subprocess output"
 no_outputs_from = ["application_events"]
 [[tests.inputs]]
 insert_at = "application_events"

@@ -43,6 +43,15 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo build --workspace --locked
       - run: bun test server
       - run: bun run test:convex
       - run: bun run --filter frontend test:ui
@@ -99,6 +108,9 @@ jobs:
           - service: frontend
             dockerfile: frontend/Dockerfile
             tag: frontend
+          - service: gateway
+            dockerfile: tools/runtime/Dockerfile
+            tag: gateway
           - service: spoofer
             dockerfile: tools/spoofer/Dockerfile
             tag: spoofer
@@ -169,6 +181,20 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
+      - name: Build and push gateway
+        if: matrix.service == 'gateway'
+        uses: docker/build-push-action@v7
+        with:
+          context: ./tools/runtime
+          file: ./tools/runtime/Dockerfile
+          build-contexts: |
+            repo_root=.
+          pull: true
+          push: true
+          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
   deploy-vps:
     needs: [verify, deploy-convex, build-images]
     if: github.event_name == 'push'
@@ -217,7 +243,6 @@ jobs:
           # into the :server-<sha> / :frontend-<sha> image tags.
           IMAGE_TAG=${{ github.sha }}
           SERVER_PORT=3001
-          DISPLAY=:99
           ALLOWED_ORIGINS=${{ vars.APP_PUBLIC_URL }}
           # Public HTTPS base the Telegram login webhook registers against.
           PUBLIC_BASE_URL=${{ vars.APP_PUBLIC_URL }}
@@ -253,7 +278,7 @@ jobs:
           # Health through the frontend proxy; proves nginx + server are up.
           curl -sf http://127.0.0.1:3101/api/health > /dev/null
           # Auto-prune old images: keep 2 newest revisions per service.
-          KEEP_IDS=$( ( (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' server-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' frontend-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' spoofer-' || true) | sort -r | head -n 2 ) | awk '{print $5}' | sort -u)
+          KEEP_IDS=$( ( (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' server-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' frontend-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' spoofer-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' gateway-' || true) | sort -r | head -n 2 ) | awk '{print $5}' | sort -u)
           if [ -z "$KEEP_IDS" ]; then
             echo "prune skipped: empty keep list"
           else

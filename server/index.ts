@@ -38,6 +38,7 @@ import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
 import { AppError } from './shared/errors.js'
 import { startScraperWorker } from './scraper/worker.js'
 import type { Request, Response, NextFunction } from 'express'
+import { startRuntime } from './shared/runtime.js'
 
 const app = express()
 captureConsole()
@@ -84,6 +85,7 @@ const jsonParser = express.json({ limit: '1mb' })
 app.use((req, _res, next) => {
     // File bytes are streamed to the browser worker without JSON parsing.
     if (req.method === 'POST' && /^\/api\/displays\/\d+\/file-picker$/.test(req.path)) return next()
+    if (req.method === 'POST' && /^\/api\/chat\/[^/]+\/threads\/[^/]+\/attachment$/.test(req.path)) return next()
     jsonParser(req, _res, next)
 })
 
@@ -161,6 +163,7 @@ async function startServer(): Promise<void> {
     // Kill stale automation processes left behind by a crash. Detached
     // children survive restarts, so reconcile them before touching flags.
     await cleanupOrphanedProcesses()
+    await startRuntime()
     const prunedBinaries = pruneOldCloakBrowsers()
     addLogContext({ prunedBinaryCount: prunedBinaries.length })
     if (prunedBinaries.length > 0) {

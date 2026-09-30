@@ -145,7 +145,7 @@ deleted: missing database rows alone are not treated as permission to wipe data.
 
 ## Commands
 
-Root (`bun run …`): `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`,
+Root (`bun run …`): `build:rust`, `dev`, `dev:server`, `build`, `start`, `test:convex`, `typecheck`,
 `lint`, `format`, `format:check`.
 Workspaces: `bun run --filter frontend dev|build|lint|preview|typecheck|format|format:check`,
 `bun run --filter anti-server dev|build|start|typecheck|lint`.
@@ -157,7 +157,7 @@ Server: `bun run --filter anti-server build`. Docker: `docker compose up --build
 
 All builds and typechecks use the standard `typescript` package, pinned to
 **7.0.2** in all three manifests. There are no TypeScript 6 or compiler aliases.
-`bun run typecheck` checks the server, frontend, Convex, and spoofer scripts.
+`bun run typecheck` checks the server, frontend, and Convex. Rust services use `cargo check --workspace`.
 Convex CLI also finds this compiler. Workspace settings point the TypeScript
 extension at `node_modules/typescript`.
 
@@ -190,14 +190,30 @@ overridden. See the [Vite+ migration rules](https://viteplus.dev/guide/migrate-r
 
 ## Local Ports & Docker
 
-On container shutdown, Supervisor sends SIGTERM directly to the server and
+On container shutdown, the Rust controller sends SIGTERM directly to the server and
 allows 60 seconds for in-flight operations and worker cleanup. The server asks
 workers to close browsers, waits up to 10 seconds, then force-stops stragglers
 (with up to 5 more seconds for SIGTERM on Linux). Display services stop after
-the server. Both Compose configurations allow 90 seconds before Docker forces
+the workers. Both Compose configurations allow 90 seconds before Docker forces
 the container to exit. These are maximum waits; clean shutdowns finish sooner.
 
-`frontend` 5173, `server` 3001, VNC 6080 + 6081–6130.
+`frontend` 5173, `server` 3001, Rust spoofer 3002, Rust VNC gateway 3003.
+The server's Rust helper listens on loopback port 3004. Browser workers, TigerVNC,
+and Fluxbox stay in the server container. Desktops are created only when needed;
+RFB ports 5901–5950 are private to Docker. The gateway maps `/vnc/6081/websockify`
+through `/vnc/6130/websockify` to those ports with bounded, asynchronous writes.
+
+Install Rust **1.98.1**, then run `cargo build --workspace` before local development
+or server tests. `bun run build` also builds release Rust binaries. Outside Docker,
+the API starts the helper automatically. Run `target/debug/ig-runtime gateway`
+with `VNC_UPSTREAM_HOST=127.0.0.1` for local Linux desktops.
+
+Routine browser workers exit after draining their ready profiles. The API watches
+Convex readiness; Rust stores wakeup deadlines, then the API launches a new Bun
+worker. Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
+Chat SDK clients use a 32-entry LRU cache; saved session hashes use 64 entries.
+Attachments stream to temporary files managed by Rust (four simultaneous uploads,
+32 pending files, 15-minute expiry), then stream through the account's proxy.
 Images: `oven/bun:1.4.2-*` for the server; `node:24.21.0-bookworm-slim` with Bun
 for the frontend build and `nginx:alpine` for its runtime. Production frontend builds require `VITE_API_URL`,
 `VITE_CONVEX_URL` as build args.

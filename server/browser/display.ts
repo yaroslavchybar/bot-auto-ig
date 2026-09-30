@@ -26,7 +26,7 @@ function listening(port: number): Promise<boolean> {
   })
 }
 
-/** Give each visible Linux browser its own desktop and noVNC endpoint. */
+/** Allocate a desktop on demand. One external Rust gateway forwards all RFB ports. */
 export async function allocateDisplay(): Promise<Display | undefined> {
   if (process.platform !== 'linux') return undefined
   for (let index = 1; index <= 50; index++) {
@@ -96,7 +96,7 @@ export async function allocateDisplay(): Promise<Display | undefined> {
       throw new Error(`Display did not start on port ${port}`)
     }
     try {
-      if ((await listening(vncPort)) || (await listening(rfbPort))) {
+      if (await listening(rfbPort)) {
         await close()
         continue
       }
@@ -111,20 +111,13 @@ export async function allocateDisplay(): Promise<Display | undefined> {
         '-SecurityTypes',
         'None',
         '-AlwaysShared',
-        '-localhost',
+        process.env.RUNTIME_MANAGED === '1' ? '-localhost=0' : '-localhost=1',
         // Sync explicit copies, not every change while selecting text.
         '-SendPrimary=0',
         '-SetPrimary=0',
       ])
       await ready(rfbPort)
       start('fluxbox', ['-display', `:${displayNum}`])
-      start('websockify', [
-        '--heartbeat=20',
-        '--web=/usr/share/novnc',
-        String(vncPort),
-        `127.0.0.1:${rfbPort}`,
-      ])
-      await ready(vncPort)
       return { display: `:${displayNum}`, displayNum, vncPort, close }
     } catch (error) {
       await close()

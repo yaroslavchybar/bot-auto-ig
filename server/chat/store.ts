@@ -4,8 +4,9 @@ import { InstagramChat } from './instagram.js'
 import { chatUnreadSave } from '../shared/convexClient.js'
 import { broadcast } from '../websocket.js'
 import logger from '../shared/logger.js'
+import { LruMap } from '../shared/lru.js'
 
-const published = new Map<string, string>()
+const published = new LruMap<string, string>(256)
 const publishing = new Map<string, Promise<void>>()
 
 // A failed counter update never blocks messages. The next inbox check retries it.

@@ -447,6 +447,14 @@ export function spawnBun(options: SpawnBunOptions): ChildProcess {
   return child
 }
 
+/** Native helpers use the same registry and shutdown ownership as Bun runners. */
+export function spawnNative(binary: string, args: string[]): ChildProcess {
+  const child = nodeSpawn(binary, args, { cwd: PROJECT_ROOT, stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true })
+  guardChildStdin(child)
+  trackProcess(child, { script: path.resolve(binary), detached: false, spawnedAt: Date.now() })
+  return child
+}
+
 // ---------------------------------------------------------------------------
 // Kill helpers
 // ---------------------------------------------------------------------------

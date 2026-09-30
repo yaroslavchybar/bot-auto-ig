@@ -1,4 +1,19 @@
 services:
+  gateway:
+    build:
+      context: ./tools/runtime
+      dockerfile: Dockerfile
+      additional_contexts:
+        repo_root: .
+    ports:
+      - "127.0.0.1:3003:3003"
+    environment:
+      VNC_UPSTREAM_HOST: server
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 64
+    restart: unless-stopped
+
   spoofer:
     build:
       context: ./tools/spoofer
@@ -23,8 +38,6 @@ services:
         repo_root: .
     ports:
       - "3001:3001"
-      - "6080:6080"
-      - "6081-6130:6081-6130"
     volumes:
       - ./data:/app/data
     env_file:
@@ -32,7 +45,6 @@ services:
     environment:
       - SERVER_PORT=3001
       - SPOOFER_URL=http://spoofer:3002/variants
-      - DISPLAY=:99
       # Same persisted-cache reasoning as prod: the 70MB GeoIP db and the
       # browser binary survive container recreates.
       - CLOAKBROWSER_CACHE_DIR=/app/data/.cloakbrowser
@@ -42,7 +54,7 @@ services:
     restart: unless-stopped
     depends_on:
       - spoofer
-    # Match production: allow server cleanup before display services stop.
+    # Browser workers finish cleanup before the native controller exits.
     stop_grace_period: 90s
 
   frontend:
@@ -64,4 +76,5 @@ services:
       - "5173:80"
     depends_on:
       - server
+      - gateway
     restart: unless-stopped

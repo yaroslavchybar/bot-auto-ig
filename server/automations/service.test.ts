@@ -2,12 +2,44 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import type { ChildProcess } from '../shared/ProcessService.js'
-import { runAutomation, wireProcessLifecycle, waitForStatusUpdates, automationWorkers } from './service.js'
+import { runAutomation, wireProcessLifecycle, waitForStatusUpdates, automationWorkers, onWorkerClosed } from './service.js'
 import { clients } from '../shared/store.js'
 import { WebSocket } from 'ws'
 import { assertValidStatusTransition, type AutomationStatus } from '../../convex/automations/helpers.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
+
+test('an idle worker saves checkpoints, returns to pending and releases its worker slot', async () => {
+  const originalFetch = globalThis.fetch
+  const stdout = new EventEmitter()
+  const proc = Object.assign(new EventEmitter(), {
+    stdout, stdin: { write: (_value: string, callback?: () => void) => callback?.(), on: () => ({}) },
+  }) as unknown as ChildProcess
+  const statuses: string[] = []
+  let status: AutomationStatus = 'pending'
+  let notified: unknown
+  const dueAt = Date.now() + 60_000
+  const stop = onWorkerClosed((id, at) => { notified = { id, at } })
+  globalThis.fetch = (async (url, options) => {
+    if (String(url).endsWith('/update-status')) {
+      const body = JSON.parse(String(options?.body))
+      assertValidStatusTransition(status, body.status)
+      status = body.status
+      statuses.push(status)
+    }
+    return Response.json({ name: 'Routine', nodes: [], edges: [], routine: { headless: true } })
+  }) as typeof fetch
+  try {
+    await runAutomation({ automationId: 'sleep-test' }, () => proc)
+    stdout.emit('data', Buffer.from(`__EVENT__${JSON.stringify({ type: 'worker_waiting', dueAt, nodeStates: { saved: true } })}__EVENT__\n`))
+    await waitForStatusUpdates(proc)
+    proc.emit('close', 0)
+    await tick()
+    assert.deepEqual(statuses, ['running', 'pending'])
+    assert.equal(automationWorkers.has('sleep-test'), false)
+    assert.deepEqual(notified, { id: 'sleep-test', at: dueAt })
+  } finally { stop(); globalThis.fetch = originalFetch; automationWorkers.delete('sleep-test') }
+})
 
 test('cancelled terminal event stays cancelled through process close', async () => {
   const originalFetch = globalThis.fetch

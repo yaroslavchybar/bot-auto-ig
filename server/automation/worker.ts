@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url'
 import { sleep, shouldStop, shutdownSignal, requestStop, releaseStdin } from '../browser/lifecycle.js'
 import {
   automationsGetById,
-  automationsRuntimePage,
   profilesList,
   profilesSyncStatus,
   warmupGetByProfile,
@@ -20,8 +19,6 @@ import {
   watchRoutineAccess,
   watchRoutineRuntime,
   type RuntimeSnapshot,
-  type RuntimeWarmup,
-  type RuntimeProgress,
 } from '../shared/convexRealtime.js'
 import { warmupReady } from './warmup.js'
 import { runRoutineSession } from './routine.js'
@@ -40,6 +37,8 @@ import { executeGraphProfile } from './graph-runner.js'
 import logger, { logOperation, addLogContext } from '../shared/logger.js'
 import type { ActionLogger } from './actions/shared.js'
 import { captureConsole } from '../logs/console.js'
+import { routineDueAt, loadFullRuntimeSnapshot } from './readiness.js'
+export { loadFullRuntimeSnapshot } from './readiness.js'
 
 type AnyRecord = Record<string, any>
 const log: ActionLogger = fields => fields.outcome === 'error' ? logger.error(fields) : logger.info(fields)
@@ -119,55 +118,6 @@ export function routineMayRun(snapshot: RuntimeSnapshot, profileId: string, now 
     if (warmup.activeRun || (warmup.minutesUsedToday ?? 0) >= (warmup.todayMinutes ?? Infinity)) return false
   }
   return true
-}
-
-/**
- * Sweep every list with keyset cursor pages so profiles outside the first
- * window still enter the queue. Each page performs one bounded index read,
- * so a full sweep costs O(N) reads. Profiles in several lists merge once.
- * Exported for tests.
- */
-export async function loadFullRuntimeSnapshot(
-  automationId: string,
-  listIds: string[],
-  first: RuntimeSnapshot,
-): Promise<NonNullable<RuntimeSnapshot>> {
-  const base = first ?? { automation: {}, profiles: [] }
-  const seen = new Map<string, Record<string, any>>()
-  const warmups = new Map<string, RuntimeWarmup>()
-  const progress = new Map<string, RuntimeProgress>()
-  for (const profile of base.profiles ?? []) seen.set(String((profile as AnyRecord).id), profile as Record<string, any>)
-  for (const row of base.warmups ?? []) warmups.set(String(row.profileId), row)
-  for (const row of base.progress ?? []) progress.set(String(row.profileId), row)
-  for (const listId of listIds.map(String)) {
-    let cursor: string | null | undefined = null
-    let guard = 0
-    while (guard++ < 500) {
-      const page = await automationsRuntimePage(automationId, listId, cursor ?? undefined)
-      if (!page) break
-      for (const profile of page.profiles ?? []) {
-        const id = String((profile as AnyRecord).id ?? (profile as AnyRecord)._id ?? '')
-        if (id && !seen.has(id)) seen.set(id, profile as Record<string, any>)
-      }
-      for (const row of page.warmups ?? []) {
-        const id = String(row.profileId)
-        if (id && !warmups.has(id)) warmups.set(id, row)
-      }
-      for (const row of page.progress ?? []) {
-        const id = String(row.profileId)
-        if (id && !progress.has(id)) progress.set(id, row)
-      }
-      if (page.isDone || !page.nextCursor) break
-      cursor = page.nextCursor
-    }
-  }
-  return {
-    automation: base.automation,
-    profiles: [...seen.values()],
-    warmups: [...warmups.values()],
-    progress: [...progress.values()],
-    truncated: false,
-  }
 }
 
 async function expandedRuntimeSnapshot(
@@ -534,6 +484,11 @@ export async function runAutomation(
       ? number(setupConfig.profileReopenCooldownMinutes, 30)
       : 0
     if (useRealtime) {
+      if (input.yieldWhenIdle && automation.routine && monitor?.isActive()) {
+        const snapshot = await expandedRuntimeSnapshot(automationId, lists, monitor.snapshot)
+        await event('worker_waiting', { automationId, dueAt: Math.max(Date.now() + 1000, routineDueAt(snapshot)), nodeStates })
+        return
+      }
       while (monitor?.isActive()) {
         // Sweep all windows when truncated so wakeups cover rest periods in
         // later windows too; otherwise a profile outside the first prefix

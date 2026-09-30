@@ -1,6 +1,6 @@
 export function buildVncWebSocketUrl(vncPort: number) {
   if (typeof window === 'undefined') {
-    return `ws://localhost:${vncPort}/websockify`
+    return `ws://localhost:3003/vnc/${vncPort}/websockify`
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -9,7 +9,7 @@ export function buildVncWebSocketUrl(vncPort: number) {
     window.location.hostname === '127.0.0.1'
 
   if (isLocalDevHost) {
-    return `${protocol}://localhost:${vncPort}/websockify`
+    return `${protocol}://localhost:3003/vnc/${vncPort}/websockify`
   }
 
   return `${protocol}://${window.location.host}/vnc/${vncPort}/websockify`

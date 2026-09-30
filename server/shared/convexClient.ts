@@ -533,6 +533,8 @@ export type RuntimeProfile = {
   listIds?: string[]
   lastOpenedAt?: number
   igLoggedIn?: boolean
+  igAccountStatus?: string
+  browserLoggedInAt?: number
   outreachReady?: boolean
   renameFrom?: string
 }

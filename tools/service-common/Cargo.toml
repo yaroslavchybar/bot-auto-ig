@@ -1,0 +1,10 @@
+[package]
+name = "ig-service-common"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.8"
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+

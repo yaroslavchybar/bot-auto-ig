@@ -72,6 +72,7 @@ export const listRoutinesForScheduler = query({
 			.map((automation) => ({
 				_id: automation._id,
 				hasRoutine: true,
+				listIds: (automation.listIds ?? []).map(String),
 				isActive: automation.isActive,
 				status: automation.status,
 				configRevision: configRevision(automation.routine, automation.listIds),
@@ -114,6 +115,7 @@ async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
 	// Subscribe to timing changes; client timers handle expiry without database polling.
 	const warmups: any[] = [];
 	const progresses: any[] = [];
+    const accounts: any[] = [];
 	for (let i = 0; i < profiles.length; i += 50) {
 		const batch = profiles.slice(i, i + 50);
 		const w = await Promise.all(
@@ -132,11 +134,15 @@ async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
 					.unique(),
 			),
 		);
+		accounts.push(...await Promise.all(batch.map((profile: any) => profile.igAccountId ? ctx.db.get(profile.igAccountId) : null)));
 		warmups.push(...w);
 		progresses.push(...p);
 	}
 	return {
-		profiles: profiles.map(toRuntimeProfile),
+		profiles: profiles.map((profile: any, index: number) => ({ ...toRuntimeProfile(profile),
+          ...(profile.igAccountId ? { igAccountStatus: accounts[index]?.status ?? 'missing',
+            browserLoggedInAt: accounts[index]?.browserLoggedInAt } : {}),
+        })),
 		warmups: profiles.map((profile: any, index: number) => ({
 			profileId: profile._id,
 			nextRunAt: warmups[index]?.nextRunAt ?? 0,

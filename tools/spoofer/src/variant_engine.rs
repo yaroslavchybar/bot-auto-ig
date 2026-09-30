@@ -1,9 +1,10 @@
+use image::{DynamicImage, ImageDecoder, ImageReader, Rgb, RgbImage};
+use jpeg_encoder::{ColorType, Encoder};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::json;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const HELP: &str = "Usage: spoof variants <image> --output-dir <path> [--copies 1-100] [--json]";
@@ -39,48 +40,56 @@ impl Rng {
     }
 }
 
-fn run(command: &str, args: &[String]) -> Result<std::process::Output, String> {
-    let output = Command::new(command)
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|error| format!("Could not start {command}: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "{command}: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+const MAX_PIXELS: u64 = 12_000_000;
+const MAX_SOURCE_BYTES: u64 = 15 * 1024 * 1024;
+
+fn check_dimensions(width: u32, height: u32) -> Result<(), String> {
+    if width < 64
+        || height < 64
+        || width > 16384
+        || height > 16384
+        || u64::from(width) * u64::from(height) > MAX_PIXELS
+    {
+        return Err("Image must be 64-16384 pixels per side and at most 12 megapixels".into());
     }
-    Ok(output)
+    Ok(())
 }
 
-fn dimensions(input: &Path) -> Result<(u32, u32), String> {
-    let output = run(
-        "ffprobe",
-        &[
-            "-v".into(),
-            "error".into(),
-            "-select_streams".into(),
-            "v:0".into(),
-            "-show_entries".into(),
-            "stream=width,height".into(),
-            "-of".into(),
-            "json".into(),
-            input.to_string_lossy().into_owned(),
-        ],
-    )?;
-    let data: Value = serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("Invalid image metadata: {error}"))?;
-    let stream = data["streams"]
-        .as_array()
-        .and_then(|items| items.first())
-        .ok_or("No image stream found")?;
-    let width = stream["width"].as_u64().unwrap_or(0) as u32;
-    let height = stream["height"].as_u64().unwrap_or(0) as u32;
-    if width < 64 || height < 64 || width > 16384 || height > 16384 {
-        return Err("Image dimensions must be 64–16384 pixels".into());
+/// Validate headers before decoding; one source frame is reused for every variant.
+fn decode_source(input: &Path) -> Result<RgbImage, String> {
+    if fs::metadata(input)
+        .map_err(|_| "Source image is missing")?
+        .len()
+        > MAX_SOURCE_BYTES
+    {
+        return Err("Image must be at most 15 MB".into());
     }
-    Ok((width, height))
+    let reader = ImageReader::open(input)
+        .map_err(|_| "Could not open image")?
+        .with_guessed_format()
+        .map_err(|_| "Could not identify image")?;
+    let (width, height) = reader
+        .into_dimensions()
+        .map_err(|_| "Invalid image metadata")?;
+    check_dimensions(width, height)?;
+    let mut reader = ImageReader::open(input)
+        .map_err(|_| "Could not open image")?
+        .with_guessed_format()
+        .map_err(|_| "Could not identify image")?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16384);
+    limits.max_image_height = Some(16384);
+    limits.max_alloc = Some(128 * 1024 * 1024);
+    reader.limits(limits);
+    let mut decoder = reader
+        .into_decoder()
+        .map_err(|_| "Could not decode image")?;
+    let orientation = decoder
+        .orientation()
+        .map_err(|_| "Invalid image orientation")?;
+    let mut image = DynamicImage::from_decoder(decoder).map_err(|_| "Could not decode image")?;
+    image.apply_orientation(orientation);
+    Ok(image.into_rgb8())
 }
 
 fn fingerprint(bytes: &[u8]) -> u64 {
@@ -89,86 +98,74 @@ fn fingerprint(bytes: &[u8]) -> u64 {
     })
 }
 
-/** Compare decoded pixels so metadata and JPEG encoding alone cannot make a copy unique. */
-fn pixel_fingerprint(path: &Path) -> Result<u64, String> {
-    let output = run(
-        "ffmpeg",
-        &[
-            "-v".into(),
-            "error".into(),
-            "-threads".into(),
-            "1".into(),
-            "-filter_threads".into(),
-            "1".into(),
-            "-i".into(),
-            path.to_string_lossy().into_owned(),
-            "-frames:v".into(),
-            "1".into(),
-            "-vf".into(),
-            "scale=256:256:flags=lanczos,format=rgb24".into(),
-            "-f".into(),
-            "rawvideo".into(),
-            "-pix_fmt".into(),
-            "rgb24".into(),
-            "pipe:1".into(),
-        ],
-    )?;
-    if output.stdout.len() != 256 * 256 * 3 {
-        return Err("Could not fingerprint image pixels".into());
+/// Compare decoded JPEG pixels, so metadata or encoding alone cannot establish uniqueness.
+fn pixel_fingerprint(image: &RgbImage) -> u64 {
+    fingerprint(image.as_raw())
+}
+
+fn sample(image: &RgbImage, x: f64, y: f64) -> [f64; 3] {
+    if x < 0.0 || y < 0.0 || x > f64::from(image.width() - 1) || y > f64::from(image.height() - 1) {
+        return [0.0; 3];
     }
-    Ok(fingerprint(&output.stdout))
+    let x0 = x.floor() as u32;
+    let y0 = y.floor() as u32;
+    let x1 = (x0 + 1).min(image.width() - 1);
+    let y1 = (y0 + 1).min(image.height() - 1);
+    let dx = x - f64::from(x0);
+    let dy = y - f64::from(y0);
+    std::array::from_fn(|channel| {
+        let top = f64::from(image.get_pixel(x0, y0)[channel]) * (1.0 - dx)
+            + f64::from(image.get_pixel(x1, y0)[channel]) * dx;
+        let bottom = f64::from(image.get_pixel(x0, y1)[channel]) * (1.0 - dx)
+            + f64::from(image.get_pixel(x1, y1)[channel]) * dx;
+        top * (1.0 - dy) + bottom * dy
+    })
 }
 
-fn even(value: f64) -> u32 {
-    ((value / 2.0).floor() as u32 * 2).max(2)
-}
-
-fn make_variant(
-    input: &Path,
-    output: &Path,
-    width: u32,
-    height: u32,
-    rng: &mut Rng,
-    attempt: usize,
-) -> Result<(), String> {
+/// Fuse rotation, crop, resize and color changes into one bounded output frame.
+fn make_variant(source: &RgbImage, rng: &mut Rng, attempt: usize) -> Result<Vec<u8>, String> {
+    let (width, height) = source.dimensions();
     let stage = 1.0 + ((attempt - 1) / 16) as f64;
     let crop = (rng.between(0.002, 0.005) * stage).min(0.03);
-    let cw = even(width as f64 * (1.0 - crop));
-    let ch = even(height as f64 * (1.0 - crop));
-    let x = (rng.next() * f64::from(width.saturating_sub(cw))).floor() as u32;
-    let y = (rng.next() * f64::from(height.saturating_sub(ch))).floor() as u32;
-    let angle = rng.between(-0.0026, 0.0026) * stage;
-    let brightness = rng.between(-0.015, 0.015);
+    let cw = f64::from(width) * (1.0 - crop);
+    let ch = f64::from(height) * (1.0 - crop);
+    let crop_x = rng.next() * (f64::from(width) - cw);
+    let crop_y = rng.next() * (f64::from(height) - ch);
+    let (sin, cos) = (rng.between(-0.0026, 0.0026) * stage).sin_cos();
+    let brightness = rng.between(-0.015, 0.015) * 255.0;
     let contrast = rng.between(0.985, 1.015);
     let saturation = rng.between(0.97, 1.03);
-    let hue = rng.between(-2.0, 2.0);
+    let (hue_sin, hue_cos) = rng.between(-2.0, 2.0).to_radians().sin_cos();
     let noise = rng.between(0.8, 2.0) * stage;
-    let quality = rng.between(91.0, 97.0);
-    let filter = format!("rotate={angle}:ow=iw:oh=ih:c=black:bilinear=1,crop={cw}:{ch}:{x}:{y},scale={width}:{height}:flags=lanczos,eq=brightness={brightness}:contrast={contrast}:saturation={saturation},hue=h={hue},noise=alls={noise}:allf=t+u");
-    run(
-        "ffmpeg",
-        &[
-            "-v".into(),
-            "error".into(),
-            "-y".into(),
-            "-threads".into(),
-            "1".into(),
-            "-filter_threads".into(),
-            "1".into(),
-            "-i".into(),
-            input.to_string_lossy().into_owned(),
-            "-frames:v".into(),
-            "1".into(),
-            "-vf".into(),
-            filter,
-            "-map_metadata".into(),
-            "-1".into(),
-            "-q:v".into(),
-            ((100.0 - quality) / 3.0_f64).round().max(2.0).to_string(),
-            output.to_string_lossy().into_owned(),
-        ],
-    )?;
-    Ok(())
+    let quality = rng.between(91.0, 97.0).round() as u8;
+    let cx = f64::from(width - 1) / 2.0;
+    let cy = f64::from(height - 1) / 2.0;
+    let mut output = RgbImage::new(width, height);
+    for (x, y, pixel) in output.enumerate_pixels_mut() {
+        let px = crop_x + (f64::from(x) + 0.5) * cw / f64::from(width) - 0.5 - cx;
+        let py = crop_y + (f64::from(y) + 0.5) * ch / f64::from(height) - 0.5 - cy;
+        let [r, g, b] = sample(source, cos * px + sin * py + cx, -sin * px + cos * py + cy);
+        let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+        let i = 0.596 * r - 0.274 * g - 0.322 * b;
+        let q = 0.211 * r - 0.523 * g + 0.312 * b;
+        let rotated_i = (i * hue_cos - q * hue_sin) * saturation;
+        let rotated_q = (i * hue_sin + q * hue_cos) * saturation;
+        let rgb = [
+            luminance + 0.956 * rotated_i + 0.621 * rotated_q,
+            luminance - 0.272 * rotated_i - 0.647 * rotated_q,
+            luminance - 1.106 * rotated_i + 1.703 * rotated_q,
+        ];
+        *pixel = Rgb(rgb.map(|value| {
+            ((value - 127.5) * contrast + 127.5 + brightness + rng.between(-noise, noise))
+                .round()
+                .clamp(0.0, 255.0) as u8
+        }));
+    }
+    let mut encoded = Vec::new();
+    Encoder::new(&mut encoded, quality)
+        .encode(output.as_raw(), width as u16, height as u16, ColorType::Rgb)
+        .map_err(|_| "Could not encode variant")?;
+    Ok(encoded)
 }
 
 fn exif_field(
@@ -188,7 +185,7 @@ fn exif_field(
         field[8..12].copy_from_slice(&offset.to_le_bytes());
         extra.extend_from_slice(value);
         *offset += value.len() as u32;
-        if *offset % 2 != 0 {
+        if !(*offset).is_multiple_of(2) {
             extra.push(0);
             *offset += 1;
         }
@@ -313,8 +310,14 @@ fn parse_args(args: &[String]) -> Result<(PathBuf, PathBuf, usize, bool), String
     ))
 }
 
-pub fn run_cli(args: &[String]) -> Result<(), String> {
-    let (input, output_dir, copies, output_json) = parse_args(args)?;
+pub fn generate(
+    input: &Path,
+    output_dir: &Path,
+    copies: usize,
+) -> Result<serde_json::Value, String> {
+    if !(1..=100).contains(&copies) {
+        return Err("Copies must be 1-100".into());
+    }
     let extension = input
         .extension()
         .and_then(|value| value.to_str())
@@ -323,9 +326,9 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
     if !["jpg", "jpeg", "png", "webp"].contains(&extension.as_str()) || !input.is_file() {
         return Err("Provide an existing JPG, PNG, or WebP image".into());
     }
-    let (width, height) = dimensions(&input)?;
-    let source_hash = pixel_fingerprint(&input)?;
-    fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
+    let source = decode_source(input)?;
+    let source_hash = pixel_fingerprint(&source);
+    fs::create_dir_all(output_dir).map_err(|error| error.to_string())?;
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -339,24 +342,28 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
         let mut failure = "Could not make a unique image".to_string();
         for attempt in 1..=48 {
             let mut rng = Rng::new(&format!("{seed}:{index}:{attempt}"));
-            match make_variant(&input, &output, width, height, &mut rng, attempt) {
-                Ok(()) => {}
-                Err(error) => {
-                    failure = error;
-                    break;
-                }
-            }
-            let hash = match pixel_fingerprint(&output) {
-                Ok(hash) => hash,
+            let encoded = match make_variant(&source, &mut rng, attempt) {
+                Ok(bytes) => bytes,
                 Err(error) => {
                     failure = error;
                     break;
                 }
             };
+            let decoded =
+                match image::load_from_memory_with_format(&encoded, image::ImageFormat::Jpeg) {
+                    Ok(image) => image.into_rgb8(),
+                    Err(_) => {
+                        failure = "Could not verify variant pixels".to_string();
+                        break;
+                    }
+                };
+            let hash = pixel_fingerprint(&decoded);
+            drop(decoded);
             if hash == source_hash || seen.contains(&hash) {
                 let _ = fs::remove_file(&output);
                 continue;
             }
+            fs::write(&output, encoded).map_err(|_| "Could not write variant")?;
             if let Err(error) = inject_exif(&output, &mut rng) {
                 failure = error;
                 break;
@@ -379,19 +386,48 @@ pub fn run_cli(args: &[String]) -> Result<(), String> {
             failures.push(json!({ "index": index, "error": failure }));
         }
     }
+    Ok(
+        json!({ "ok": failures.is_empty(), "total": copies, "outputs": outputs, "failures": failures }),
+    )
+}
+
+pub fn run_cli(args: &[String]) -> Result<(), String> {
+    let (input, output_dir, copies, output_json) = parse_args(args)?;
+    let result = generate(&input, &output_dir, copies)?;
     if output_json {
-        println!(
-            "{}",
-            json!({ "ok": failures.is_empty(), "total": copies,
-            "outputs": outputs, "failures": failures })
-        );
+        println!("{result}");
     } else {
         println!(
             "Created {}/{} image variants in {}",
-            outputs.len(),
+            result["outputs"].as_array().unwrap().len(),
             copies,
             output_dir.display()
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn dimensions_bound_total_memory() {
+        assert!(check_dimensions(16384, 16384).is_err());
+        assert!(check_dimensions(4000, 3000).is_ok());
+        assert!(check_dimensions(4000, 3001).is_err());
+        assert!(check_dimensions(63, 64).is_err());
+    }
+    #[test]
+    fn decoded_variants_are_unique_and_keep_dimensions() {
+        let source = RgbImage::from_fn(96, 64, |x, y| Rgb([x as u8, (y * 3) as u8, (x + y) as u8]));
+        let mut seen = HashSet::new();
+        for seed in 0..50 {
+            let bytes = make_variant(&source, &mut Rng::new(&seed.to_string()), 1).unwrap();
+            let decoded = image::load_from_memory(&bytes).unwrap().into_rgb8();
+            assert_eq!(decoded.dimensions(), source.dimensions());
+            let hash = pixel_fingerprint(&decoded);
+            assert_ne!(hash, pixel_fingerprint(&source));
+            assert!(seen.insert(hash));
+        }
+    }
 }

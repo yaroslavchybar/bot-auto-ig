@@ -55,6 +55,14 @@ test('a sent DM stays successful when Chat refresh fails', () => {
         return { id: '123', messages: [] }
       },
     }))
+    mock.module('./server/chat/uploads.ts', () => ({
+      stageAttachment: async request => {
+        let size = 0
+        for await (const chunk of request) size += chunk.length
+        return { id: 'staged', path: '/tmp/staged', size, voiceConverted: false }
+      },
+      removeAttachment: async () => {},
+    }))
     mock.module('./server/chat/instagram.ts', () => ({
       InstagramChat: class {
         static hasSession = async () => { throw new Error('Redundant session check') }
@@ -68,7 +76,7 @@ test('a sent DM stays successful when Chat refresh fails', () => {
         }
         async sendAttachment(_threadId, kind, bytes) {
           attachmentKind = kind
-          attachmentBytes = bytes.length
+          attachmentBytes = bytes.size
           return { id: 'media-1', senderId: 'viewer', text: '', timestamp: Date.now(), kind, mediaType: kind }
         }
         async react(_threadId, item, emoji, remove) {

@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1.7
+FROM rust:1.98.1-bookworm AS rust-build
+WORKDIR /build
+COPY --from=repo_root Cargo.toml Cargo.lock ./
+COPY --from=repo_root tools ./tools
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+  --mount=type=cache,target=/usr/local/cargo/git \
+  cargo build --release --locked -p ig-runtime
+
 FROM oven/bun:1.4.2-debian AS system-base
 
 WORKDIR /app
@@ -13,8 +21,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   # Virtual display and window manager for headless=false
   fluxbox \
   tigervnc-standalone-server \
-  novnc \
-  websockify \
   # Remote clipboard read/write (xclip on the session DISPLAY)
   xclip \
   # Font discovery for the browser + cloak's Windows-font check
@@ -46,7 +52,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   libatspi2.0-0 \
   libxss1 \
   procps \
-  supervisor \
+  tini \
   # Video codecs for Chromium media playback
   ffmpeg \
   libavcodec-extra \
@@ -96,7 +102,7 @@ COPY --from=repo_root server ./server
 RUN bun run --filter anti-server build
 
 FROM browser-deps AS server-runtime
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY --from=rust-build /build/target/release/ig-runtime /usr/local/bin/ig-runtime
 COPY --chmod=755 scripts/seed-cloak-cache.sh /app/server/scripts/seed-cloak-cache.sh
 COPY --from=browser-deps /app/node_modules /app/node_modules
 COPY --from=browser-deps /app/server /app/server
@@ -107,10 +113,9 @@ COPY --from=app-build /app/server/dist /app/server/dist
 COPY --from=app-build /app/server/package.json /app/server/package.json
 WORKDIR /app/server
 ENV NODE_ENV=production
-ENV DISPLAY=:99
 
 EXPOSE 3001
-EXPOSE 6080
-EXPOSE 6081-6130
+EXPOSE 5901-5950
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["ig-runtime", "supervise"]

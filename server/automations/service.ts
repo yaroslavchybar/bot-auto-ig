@@ -46,6 +46,7 @@ const stopProcess = killProcess
 
 type TerminalStatus = 'completed' | 'failed' | 'cancelled'
 type WorkerLifecycle = {
+  dueAt?: number
   stopRequested: boolean
   statusUpdates?: Promise<void>
   terminalStatus?: TerminalStatus
@@ -53,6 +54,11 @@ type WorkerLifecycle = {
 }
 
 const workerLifecycles = new WeakMap<ChildProcess, WorkerLifecycle>()
+const workerClosedListeners = new Set<(automationId: string, dueAt?: number) => void>()
+export function onWorkerClosed(listener: (automationId: string, dueAt?: number) => void): () => void {
+  workerClosedListeners.add(listener)
+  return () => { workerClosedListeners.delete(listener) }
+}
 
 function lifecycleFor(proc: ChildProcess): WorkerLifecycle {
   let lifecycle = workerLifecycles.get(proc)
@@ -212,6 +218,12 @@ function createWorkerEventRouter(automationId: string, lifecycle: WorkerLifecycl
     }
   })
   return (log: ParsedLog): void => {
+    if (log.eventType === 'worker_waiting') {
+      const at = Number(log.metadata?.dueAt)
+      if (Number.isFinite(at)) lifecycle.dueAt = at
+      lifecycle.statusUpdates = updates.push({ ...log, eventType: 'checkpoint' })
+      return
+    }
     if (log.logEntry) { ingestLogEntry(log.logEntry); return }
     if (lifecycle.stopRequested && isStopNoiseLog(log.message)) return
     if (!log.eventType) {
@@ -285,6 +297,7 @@ export function wireProcessLifecycle(proc: ChildProcess, automationId: string): 
 
     try {
       const finalStatus = lifecycle.stopRequested ? 'cancelled'
+        : !spawnError && code === 0 && lifecycle.dueAt !== undefined ? 'pending'
         : lifecycle.terminalStatus === 'failed' || lifecycle.terminalStatus === 'cancelled'
           ? lifecycle.terminalStatus
           : !spawnError && code === 0 ? 'completed' : 'failed'
@@ -297,7 +310,8 @@ export function wireProcessLifecycle(proc: ChildProcess, automationId: string): 
     automationWorkers.delete(automationId)
     clearAutomationDisplays(automationId)
     clearAutomationProfileActive(automationId)
-    broadcast({ type: 'automation_status', automationId, status: 'idle' })
+    broadcast({ type: 'automation_status', automationId, status: !lifecycle.stopRequested && lifecycle.dueAt !== undefined ? 'pending' : 'idle' })
+    for (const listener of workerClosedListeners) listener(automationId, lifecycle.stopRequested ? undefined : lifecycle.dueAt)
   })
 
   proc.on('error', (err: Error) => {
@@ -347,7 +361,7 @@ export async function runAutomation(input: RunAutomationInput, spawn = spawnBun)
   wireStderr(proc)
   wireProcessLifecycle(proc, automationId)
 
-  const payload = buildPayload(automationId, automation, parallelProfiles)
+  const payload = JSON.stringify({ ...JSON.parse(buildPayload(automationId, automation, parallelProfiles)), yieldWhenIdle: Boolean(automation.routine) })
   // One JSON line, stdin stays open: later `stop` lines abort the run
   // (signals don't reach detached children on Windows).
   try {

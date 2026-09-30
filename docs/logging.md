@@ -1,7 +1,7 @@
 # Production logs
 
 The API, automation/manual workers, and image service emit redacted JSON.
-Vector 0.58.0 collects `ig-bot-server` and `ig-bot-spoofer` Docker stdout/stderr,
+Vector 0.58.0 collects `ig-bot-server`, `ig-bot-spoofer`, and `ig-bot-gateway` Docker stdout/stderr,
 parses canonical events, and batches them into Axiom's `ig-bot-prod` dataset
 in US East. Retention uses the organization default (30 days at setup).
 Dev logs stay local. Browser errors continue through Sentry.
@@ -9,7 +9,7 @@ Dev logs stay local. Browser errors continue through Sentry.
 The pipeline preserves business fields, nested context, errors, and correlation
 IDs. `_time` comes from the original millisecond `ts`, not the delivery time.
 Docker metadata is under `container`. Partial Docker lines are reassembled.
-Plain supervisor output, IPC messages, and malformed/noncanonical JSON are
+Plain subprocess output, IPC messages, and malformed/noncanonical JSON are
 discarded. No sampling is configured. Do not send raw payloads or private data.
 
 Vector retries failed delivery with a persistent 512 MiB disk buffer. Docker's
@@ -33,7 +33,7 @@ The existing main-branch workflow validates Vector config, transforms, and live
 Axiom connectivity before starting the production collector. Its named volume
 `ig-bot-vector-data` survives replacement of the application directory. Deploy
 only through that workflow; do not deploy manually or delete the buffer volume.
-The collector needs Docker socket access to discover/follow the two containers;
+The collector needs Docker socket access to discover/follow the application containers;
 the read-only socket mount does not restrict Docker API permissions.
 
 ## Convex

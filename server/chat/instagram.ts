@@ -9,15 +9,17 @@ import { chatProxy, configureMobileProxyTransport } from './proxy.js';
 import { uploadChatAttachment, type AttachmentKind, type VideoMetadata } from './attachments.js';
 import { getChatCache } from './cache.js'
 import { sessionStateHash } from './sessionState.js'
+import { LruMap } from '../shared/lru.js'
+import type { AttachmentBody } from './attachments.js'
 
 type Json = Record<string, unknown>;
 const record = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
 const string = (value: unknown): string => value == null ? '' : String(value);
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
-const sessions = new Map<string, Promise<InstagramChat>>();
+const sessions = new LruMap<string, Promise<InstagramChat>>(32);
 const generations = new Map<string, number>();
 const writes = new Map<string, Promise<void>>();
-const savedStates = new Map<string, { token: string; hash: string }>();
+const savedStates = new LruMap<string, { token: string; hash: string }>(64);
 const loggingOut = new Set<string>();
 function generation(profileId: string): number { return generations.get(profileId) ?? 0; }
 
@@ -402,7 +404,7 @@ export class InstagramChat {
     return { ...sent, text, timestamp: sent.timestamp || Date.now(), clientContext: token };
   }
 
-  async sendAttachment(threadId: string, kind: AttachmentKind, bytes: Buffer,
+  async sendAttachment(threadId: string, kind: AttachmentKind, bytes: AttachmentBody,
     clientContext: string = randomUUID(), video?: VideoMetadata): Promise<ChatMessage> {
     const uploaded = await uploadChatAttachment(this.ig, kind, bytes, video);
     const token = clientContext;

@@ -49,11 +49,13 @@ export type WebSocketEventType =
   | 'profile_completed'
   | 'model_setup_after_session'
   | 'session_ended'
+  | 'worker_waiting'
   | 'display_allocated'
   | 'display_released'
   | 'chat_changed'
 
 type EventFields = {
+  dueAt?: number
   automationId?: string
   id?: string
   message?: string

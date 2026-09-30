@@ -1,4 +1,4 @@
-# Only ship redacted application events. Supervisor output and IPC aren't logs.
+# Only ship redacted application events. Subprocess output and IPC aren't logs.
 container = {"id": .container_id, "name": .container_name, "stream": .stream}
 raw, raw_error = string(.message)
 if raw_error != null { abort }

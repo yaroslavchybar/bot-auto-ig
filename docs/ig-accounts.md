@@ -76,7 +76,8 @@ volume. The server submits image jobs over the private Docker network. Warmup
 reuses the connected Chat session and its saved proxy.
 
 The spoofer handles one image at a time. Docker limits it to 0.45 CPU and
-768 MB memory, and FFmpeg uses one thread. This is 15% of the three CPU cores
+768 MB memory. It decodes the source once, creates and verifies JPEG variants in Rust,
+and accepts at most 12 megapixels before decoding. This is 15% of the three CPU cores
 available to this VPS. The app's container has a separate CPU allocation.
-For local development outside Docker, run `bun tools/spoofer/service.ts` with
-`SPOOF_BINARY`, `SPOOFER_DATA_ROOT`, and `SPOOFER_URL` set to matching paths.
+For local development outside Docker, run `target/debug/spoof serve` after
+`cargo build --workspace`, with `SPOOFER_DATA_ROOT` and `SPOOFER_URL` set to matching paths.
