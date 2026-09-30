@@ -38,6 +38,7 @@ export function IgAccountsPage() {
   const connectable = options.accounts.filter((account) => account.status === 'available')
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [detailsAccount, setDetailsAccount] = useState<Account | null>(null)
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null)
 
   const [text, setText] = useState('')
   const [selected, setSelected] = useState('')
@@ -86,6 +87,26 @@ export function IgAccountsPage() {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setConnecting(false)
+    }
+  }
+
+  async function reconnect(account: Account) {
+    if (reconnectingId || !account.profileId) return
+    setReconnectingId(account.id)
+    setError('')
+    setNotice('')
+    try {
+      await apiFetch(`/api/ig-accounts/${encodeURIComponent(account.profileId)}/connect`, {
+        method: 'POST',
+        body: { credentialId: account.id },
+        timeout: 360_000,
+      })
+      setNotice(`@${account.username} reconnected.`)
+      await refresh()
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Reconnect failed')
+    } finally {
+      setReconnectingId(null)
     }
   }
 
@@ -145,6 +166,8 @@ export function IgAccountsPage() {
             accounts={filteredAccounts}
             loading={loading}
             onSelect={setDetailsAccount}
+            onReconnect={(account) => void reconnect(account)}
+            reconnectingId={reconnectingId}
             emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
             emptyDescription={
               search.trim()

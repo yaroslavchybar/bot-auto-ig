@@ -1,6 +1,6 @@
 # Chat storage and synchronization
 
-Messages travel from Instagram through the authenticated Express API to the device.
+Messages travel from Instagram through the authenticated Rust/Axum API to the device.
 Instagram credentials and account proxies stay on the server.
 
 - IndexedDB shows the last inbox and recent messages immediately. It stores at
@@ -44,10 +44,12 @@ messages on both connected sides of a conversation. Replacing or disconnecting
 a login session clears its server cache. Browser pending sends remain separate
 until Instagram confirms them.
 
-Session persistence compares meaningful state: cookie access timestamps and
-creation timestamps for cookies without a relative max-age do not trigger saves.
-Cookie values, absolute expiry, relative expiry, and authorization changes still
-do. Credentials remain durable in Convex; this cache does not replace them.
+The custom Rust mobile client persists cookies (including session cookies),
+authorization, and device identity in Convex when state changes. Operations share
+a per-profile lock, and saves use the current connection token to prevent an old
+client from restoring a disconnected session. Existing TypeScript SDK sessions
+are imported into Rust with their cookies, authorization, and device identity;
+the format change does not require login. Message caching remains in Bun/SQLite.
 
 ## Rollout
 

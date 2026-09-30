@@ -26,7 +26,7 @@ function listening(port: number): Promise<boolean> {
   })
 }
 
-/** Allocate a desktop on demand. One external Rust gateway forwards all RFB ports. */
+/** Allocate a desktop on demand. The server's Rust gateway forwards loopback RFB ports. */
 export async function allocateDisplay(): Promise<Display | undefined> {
   if (process.platform !== 'linux') return undefined
   for (let index = 1; index <= 50; index++) {
@@ -45,8 +45,7 @@ export async function allocateDisplay(): Promise<Display | undefined> {
         try {
           if (pid > 0) process.kill(pid, 0)
         } catch (err) {
-          if ((err as NodeJS.ErrnoException).code === 'ESRCH')
-            fs.unlinkSync(lockPath)
+          if ((err as NodeJS.ErrnoException).code === 'ESRCH') fs.unlinkSync(lockPath)
         }
         continue
       }
@@ -60,8 +59,7 @@ export async function allocateDisplay(): Promise<Display | undefined> {
           children.map(
             (child) =>
               new Promise<void>((resolve) => {
-                if (child.exitCode !== null || child.signalCode || !child.pid)
-                  return resolve()
+                if (child.exitCode !== null || child.signalCode || !child.pid) return resolve()
                 const timer = setTimeout(() => {
                   child.kill('SIGKILL')
                   resolve()
@@ -111,7 +109,7 @@ export async function allocateDisplay(): Promise<Display | undefined> {
         '-SecurityTypes',
         'None',
         '-AlwaysShared',
-        process.env.RUNTIME_MANAGED === '1' ? '-localhost=0' : '-localhost=1',
+        '-localhost=1',
         // Sync explicit copies, not every change while selecting text.
         '-SendPrimary=0',
         '-SetPrimary=0',

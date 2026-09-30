@@ -108,9 +108,6 @@ jobs:
           - service: frontend
             dockerfile: frontend/Dockerfile
             tag: frontend
-          - service: gateway
-            dockerfile: tools/runtime/Dockerfile
-            tag: gateway
           - service: spoofer
             dockerfile: tools/spoofer/Dockerfile
             tag: spoofer
@@ -173,20 +170,6 @@ jobs:
         with:
           context: ./tools/spoofer
           file: ./tools/spoofer/Dockerfile
-          build-contexts: |
-            repo_root=.
-          pull: true
-          push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-
-      - name: Build and push gateway
-        if: matrix.service == 'gateway'
-        uses: docker/build-push-action@v7
-        with:
-          context: ./tools/runtime
-          file: ./tools/runtime/Dockerfile
           build-contexts: |
             repo_root=.
           pull: true
@@ -271,14 +254,14 @@ jobs:
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
             -v "$HOME/ig-bot/secrets/axiom-token:/run/secrets/axiom_token:ro" \
             timberio/vector:0.58.0-debian validate /etc/vector/vector.toml
-          docker compose -f docker-compose.prod.yml up -d
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
           cp deploy/ig-bot.caddy ~/caddy/conf.d/ig-bot.caddy
           docker exec caddy caddy reload --config /etc/caddy/Caddyfile
           sleep 5
           # Health through the frontend proxy; proves nginx + server are up.
           curl -sf http://127.0.0.1:3101/api/health > /dev/null
           # Auto-prune old images: keep 2 newest revisions per service.
-          KEEP_IDS=$( ( (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' server-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' frontend-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' spoofer-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' gateway-' || true) | sort -r | head -n 2 ) | awk '{print $5}' | sort -u)
+          KEEP_IDS=$( ( (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' server-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' frontend-' || true) | sort -r | head -n 2; (docker images 'ghcr.io/yaroslavchybar/bot-auto-ig' --format '{{.CreatedAt}} {{.ID}} {{.Tag}}' | grep ' spoofer-' || true) | sort -r | head -n 2 ) | awk '{print $5}' | sort -u)
           if [ -z "$KEEP_IDS" ]; then
             echo "prune skipped: empty keep list"
           else

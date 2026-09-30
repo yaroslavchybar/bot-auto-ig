@@ -20,8 +20,7 @@ function subscribe(listener: () => void) {
   }
 }
 
-// Convex reads are server-gated at the Express layer; the browser client
-// carries no identity. Admin-only access is enforced by the session login.
+// This client carries no identity and lives inside the authenticated app layout.
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const convex = useSyncExternalStore(subscribe, getClient, () => null)
   return convex ? <ConvexProvider client={convex}>{children}</ConvexProvider> : null

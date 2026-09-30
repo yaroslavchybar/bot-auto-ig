@@ -6,6 +6,30 @@ import type { AddressInfo } from 'node:net'
 process.env.VITE_CONVEX_URL ??= 'https://example.invalid'
 const { apiFetch, apiFetchBlob, setTokenGetter, withRetry } = await import('./api')
 
+test('structured API errors expose the message and preserve the HTTP status', async () => {
+  const server = createServer((_req, res) => {
+    res.writeHead(400, { 'Content-Type': 'application/json' })
+    res.end(
+      JSON.stringify({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Instagram requires verification' },
+      }),
+    )
+  }).listen(0, '127.0.0.1')
+  await new Promise<void>((resolve) => server.once('listening', resolve))
+  try {
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    await assert.rejects(apiFetch(url), {
+      name: 'ApiError',
+      message: 'Instagram requires verification',
+      status: 400,
+    })
+  } finally {
+    server.closeAllConnections()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  }
+})
+
 test('zero configured retries still makes the first request', async () => {
   let attempts = 0
   const result = await withRetry(async () => { attempts++; return 'sent' }, { maxRetries: 0 })

@@ -9,7 +9,7 @@ remove_trailing_whitespace = true
 [sources.application]
 type = "docker_logs"
 docker_host = "unix:///var/run/docker.sock"
-include_containers = ["ig-bot-server", "ig-bot-spoofer", "ig-bot-gateway"]
+include_containers = ["ig-bot-server", "ig-bot-spoofer"]
 auto_partial_merge = true
 
 [transforms.application_events]

@@ -1,0 +1,362 @@
+[
+  {
+    "id": "profiles.get.list",
+    "method": "GET",
+    "path": "/api/profiles",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.get.by-id",
+    "method": "GET",
+    "path": "/api/profiles/by-id",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.post.list",
+    "method": "POST",
+    "path": "/api/profiles",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.put.name",
+    "method": "PUT",
+    "path": "/api/profiles/:name",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.delete.name",
+    "method": "DELETE",
+    "path": "/api/profiles/:name",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.post.name_start",
+    "method": "POST",
+    "path": "/api/profiles/:name/start",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.post.name_stop",
+    "method": "POST",
+    "path": "/api/profiles/:name/stop",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.post.reconcile-runtime",
+    "method": "POST",
+    "path": "/api/profiles/reconcile-runtime",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "profiles.post.sync-status",
+    "method": "POST",
+    "path": "/api/profiles/sync-status",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "automations.get.status",
+    "method": "GET",
+    "path": "/api/automations/status",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "automations.post.run",
+    "method": "POST",
+    "path": "/api/automations/run",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "automations.post.stop",
+    "method": "POST",
+    "path": "/api/automations/stop",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.get.threads",
+    "method": "GET",
+    "path": "/api/chat/threads",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.get.profileId_session",
+    "method": "GET",
+    "path": "/api/chat/:profileId/session",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.post.profileId_session",
+    "method": "POST",
+    "path": "/api/chat/:profileId/session",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.delete.profileId_session",
+    "method": "DELETE",
+    "path": "/api/chat/:profileId/session",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.get.profileId_threads",
+    "method": "GET",
+    "path": "/api/chat/:profileId/threads",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.get.profileId_threads_threadId",
+    "method": "GET",
+    "path": "/api/chat/:profileId/threads/:threadId",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.get.profileId_threads_threadId_older",
+    "method": "GET",
+    "path": "/api/chat/:profileId/threads/:threadId/older",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.post.profileId_threads_threadId_reply",
+    "method": "POST",
+    "path": "/api/chat/:profileId/threads/:threadId/reply",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.post.profileId_threads_threadId_attachment",
+    "method": "POST",
+    "path": "/api/chat/:profileId/threads/:threadId/attachment",
+    "body": "stream",
+    "maxBody": 25000000,
+    "imageRead": false
+  },
+  {
+    "id": "chat.post.profileId_threads_threadId_reaction",
+    "method": "POST",
+    "path": "/api/chat/:profileId/threads/:threadId/reaction",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.post.profileId_threads_threadId_unsend",
+    "method": "POST",
+    "path": "/api/chat/:profileId/threads/:threadId/unsend",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.list",
+    "method": "GET",
+    "path": "/api/ig-accounts",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.page",
+    "method": "GET",
+    "path": "/api/ig-accounts/page",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.available-count",
+    "method": "GET",
+    "path": "/api/ig-accounts/available-count",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.blacklist",
+    "method": "GET",
+    "path": "/api/ig-accounts/blacklist",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.warmup",
+    "method": "GET",
+    "path": "/api/ig-accounts/warmup",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.post.warmup_profileId_reconcile",
+    "method": "POST",
+    "path": "/api/ig-accounts/warmup/:profileId/reconcile",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.credentials_id",
+    "method": "GET",
+    "path": "/api/ig-accounts/credentials/:id",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.models_modelId_content",
+    "method": "GET",
+    "path": "/api/ig-accounts/models/:modelId/content",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.models_modelId_content_kind_contentId_image",
+    "method": "GET",
+    "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/image",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": true
+  },
+  {
+    "id": "ig-accounts.post.models_modelId_content_kind",
+    "method": "POST",
+    "path": "/api/ig-accounts/models/:modelId/content/:kind",
+    "body": "raw",
+    "maxBody": 15728640,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.post.models_modelId_content_kind_contentId_copies",
+    "method": "POST",
+    "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/copies",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.models_modelId_content_kind_contentId_copies",
+    "method": "GET",
+    "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/copies",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.get.models_modelId_content_kind_contentId_copies_variant_image",
+    "method": "GET",
+    "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId/copies/:variant/image",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": true
+  },
+  {
+    "id": "ig-accounts.delete.models_modelId_content_kind_contentId",
+    "method": "DELETE",
+    "path": "/api/ig-accounts/models/:modelId/content/:kind/:contentId",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.post.import",
+    "method": "POST",
+    "path": "/api/ig-accounts/import",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.post.create-batch",
+    "method": "POST",
+    "path": "/api/ig-accounts/create-batch",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "ig-accounts.post.profileId_connect",
+    "method": "POST",
+    "path": "/api/ig-accounts/:profileId/connect",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "displays.get.vncPort_clipboard",
+    "method": "GET",
+    "path": "/api/displays/:vncPort/clipboard",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "displays.post.vncPort_clipboard",
+    "method": "POST",
+    "path": "/api/displays/:vncPort/clipboard",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "displays.all.vncPort_file-picker",
+    "method": "ALL",
+    "path": "/api/displays/:vncPort/file-picker",
+    "body": "stream",
+    "maxBody": 53477376,
+    "imageRead": false
+  },
+  {
+    "id": "displays.get.vncPort_preview",
+    "method": "GET",
+    "path": "/api/displays/:vncPort/preview",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "displays.get.list",
+    "method": "GET",
+    "path": "/api/displays",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  }
+]

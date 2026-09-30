@@ -17,6 +17,7 @@ type Credential = {
   error?: string
   createdAt: number
   browserLoggedInAt?: number
+  reconnectRequired?: boolean
 }
 
 type WarmupProgress = {
@@ -164,7 +165,7 @@ function WarmupStages({
   }
 
   const day = dayNumber(progress.startedAt, now)
-  const connected = credential.status === 'connected'
+  const connected = credential.status === 'connected' && !credential.reconnectRequired
   const posts = progress.postSourceIds.length
   const fullNameSkipped = !progress.fullNameDone && (progress.avatarDone || posts > 0)
 

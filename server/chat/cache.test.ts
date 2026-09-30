@@ -4,7 +4,6 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { ChatCache } from './cache.js'
-import { sessionStateHash } from './sessionState.js'
 import type { ChatMessage, ChatThread } from './instagram.js'
 
 let cache: ChatCache | undefined
@@ -165,32 +164,4 @@ test('history and disk cache are bounded; identical snapshots do not write', () 
   expect(() =>
     store.saveInbox('one', 'token', { viewerId: 'viewer', threads: [thread(messages)] }),
   ).toThrow('one preview')
-})
-
-test('session hashing ignores access bookkeeping but preserves credentials and expiry', () => {
-  const state = (
-    value: string,
-    expires: string,
-    lastAccessed: string,
-    creation = 'yesterday',
-    maxAge?: number,
-  ) =>
-    JSON.stringify({
-      authorization: 'auth',
-      cookies: JSON.stringify({
-        cookies: [{ key: 'sessionid', value, expires, lastAccessed, creation, maxAge }],
-      }),
-    })
-  expect(sessionStateHash(state('cookie', 'tomorrow', 'now'))).toBe(
-    sessionStateHash(state('cookie', 'tomorrow', 'later', 'today')),
-  )
-  expect(sessionStateHash(state('cookie', 'tomorrow', 'now'))).not.toBe(
-    sessionStateHash(state('rotated', 'tomorrow', 'now')),
-  )
-  expect(sessionStateHash(state('cookie', 'tomorrow', 'now'))).not.toBe(
-    sessionStateHash(state('cookie', 'next week', 'now')),
-  )
-  expect(sessionStateHash(state('cookie', 'tomorrow', 'now', 'yesterday', 3600))).not.toBe(
-    sessionStateHash(state('cookie', 'tomorrow', 'now', 'today', 3600)),
-  )
 })

@@ -11,16 +11,11 @@
         "lint": "vp lint ."
     },
     "dependencies": {
-        "@openrouter/sdk": "^1.4.10",
         "@sentry/node": "^11.1.0",
         "cloakbrowser": "^0.5.11",
         "convex": "^1.46.0",
         "dotenv": "^18.0.4",
-        "express": "^5.2.1",
-        "express-rate-limit": "^8.7.0",
         "https-proxy-agent": "^9.1.0",
-        "instagram-private-api": "^1.46.1",
-        "lossless-json": "^4.3.1",
         "mmdb-lib": "^3.0.3",
         "pino": "^10.3.1",
         "playwright-core": "1.63.0",
@@ -30,7 +25,6 @@
     },
     "devDependencies": {
         "@types/bun": "^1.4.2",
-        "@types/express": "^5.0.6",
         "@types/node": "^20.0.0",
         "@types/ws": "^8.18.2",
         "typescript": "7.0.2"

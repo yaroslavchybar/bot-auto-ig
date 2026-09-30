@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from 'react'
 import { RefreshCw, Users } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Table,
@@ -20,6 +21,7 @@ export type Account = {
   profileId?: string
   error?: string
   browserLoggedInAt?: number
+  reconnectRequired?: boolean
 }
 
 interface AccountsListProps {
@@ -28,9 +30,20 @@ interface AccountsListProps {
   emptyTitle?: string
   emptyDescription?: string
   onSelect?: (account: Account) => void
+  onReconnect?: (account: Account) => void
+  reconnectingId?: string | null
 }
 
 export function StatusBadge({ account }: { account: Account }) {
+  if (account.reconnectRequired)
+    return (
+      <Badge
+        variant="outline"
+        className="border-status-warning-border bg-status-warning-soft text-[10px] tracking-[0.14em] text-status-warning uppercase"
+      >
+        Reconnect needed
+      </Badge>
+    )
   switch (account.status) {
     case 'available':
       return (
@@ -85,14 +98,43 @@ function accountDetail(account: Account): string | undefined {
   return undefined
 }
 
+function ReconnectButton({
+  account,
+  onReconnect,
+  reconnectingId,
+}: Pick<AccountsListProps, 'onReconnect' | 'reconnectingId'> & { account: Account }) {
+  if (!account.reconnectRequired || !onReconnect) return null
+  const busy = reconnectingId === account.id
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={Boolean(reconnectingId)}
+      aria-busy={busy}
+      onKeyDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation()
+        onReconnect(account)
+      }}
+    >
+      <RefreshCw className={busy ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />
+      {busy ? 'Reconnecting...' : 'Reconnect'}
+    </Button>
+  )
+}
+
 /* ── Mobile card ── */
 
 function AccountMobileCard({
   account,
   onSelect,
+  onReconnect,
+  reconnectingId,
 }: {
   account: Account
   onSelect?: (account: Account) => void
+  onReconnect?: (account: Account) => void
+  reconnectingId?: string | null
 }) {
   const detail = accountDetail(account)
 
@@ -112,6 +154,15 @@ function AccountMobileCard({
         </div>
         <StatusBadge account={account} />
       </div>
+      {account.reconnectRequired && (
+        <div className="mt-3">
+          <ReconnectButton
+            account={account}
+            onReconnect={onReconnect}
+            reconnectingId={reconnectingId}
+          />
+        </div>
+      )}
       {detail && (
         <div className="mt-4 border-t border-line pt-3">
           <div className="text-[11px] font-semibold tracking-[0.18em] text-subtle-copy uppercase">
@@ -134,10 +185,14 @@ function AccountDesktopRow({
   account,
   index,
   onSelect,
+  onReconnect,
+  reconnectingId,
 }: {
   account: Account
   index: number
   onSelect?: (account: Account) => void
+  onReconnect?: (account: Account) => void
+  reconnectingId?: string | null
 }) {
   const detail = accountDetail(account)
 
@@ -161,16 +216,23 @@ function AccountDesktopRow({
         <StatusBadge account={account} />
       </TableCell>
       <TableCell className="pr-4">
-        {detail ? (
-          <span
-            className={`${account.error ? 'text-status-danger' : 'text-subtle-copy'} block max-w-[280px] truncate text-xs`}
-            title={detail}
-          >
-            {detail}
-          </span>
-        ) : (
-          <span className="text-xs text-subtle-copy/50">-</span>
-        )}
+        <div className="flex items-center justify-between gap-3">
+          {detail ? (
+            <span
+              className={`${account.error ? 'text-status-danger' : 'text-subtle-copy'} block max-w-[280px] truncate text-xs`}
+              title={detail}
+            >
+              {detail}
+            </span>
+          ) : (
+            <span className="text-xs text-subtle-copy/50">-</span>
+          )}
+          <ReconnectButton
+            account={account}
+            onReconnect={onReconnect}
+            reconnectingId={reconnectingId}
+          />
+        </div>
       </TableCell>
     </TableRow>
   )
@@ -184,6 +246,8 @@ export function AccountsList({
   emptyTitle = 'No accounts',
   emptyDescription = 'Import credentials to get started.',
   onSelect,
+  onReconnect,
+  reconnectingId,
 }: AccountsListProps) {
   const isMobile = useIsMobile()
 
@@ -209,7 +273,13 @@ export function AccountsList({
     return (
       <div className="space-y-4">
         {accounts.map((account) => (
-          <AccountMobileCard key={account.id} account={account} onSelect={onSelect} />
+          <AccountMobileCard
+            key={account.id}
+            account={account}
+            onSelect={onSelect}
+            onReconnect={onReconnect}
+            reconnectingId={reconnectingId}
+          />
         ))}
       </div>
     )
@@ -233,6 +303,8 @@ export function AccountsList({
               account={account}
               index={index}
               onSelect={onSelect}
+              onReconnect={onReconnect}
+              reconnectingId={reconnectingId}
             />
           ))}
         </TableBody>

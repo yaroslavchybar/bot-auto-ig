@@ -1,7 +1,7 @@
 # Production logs
 
 The API, automation/manual workers, and image service emit redacted JSON.
-Vector 0.58.0 collects `ig-bot-server`, `ig-bot-spoofer`, and `ig-bot-gateway` Docker stdout/stderr,
+Vector 0.58.0 collects `ig-bot-server` and `ig-bot-spoofer` Docker stdout/stderr,
 parses canonical events, and batches them into Axiom's `ig-bot-prod` dataset
 in US East. Retention uses the organization default (30 days at setup).
 Dev logs stay local. Browser errors continue through Sentry.

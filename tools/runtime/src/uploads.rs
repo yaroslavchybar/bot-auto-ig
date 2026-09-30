@@ -22,8 +22,11 @@ use tokio::{
 use uuid::Uuid;
 
 pub struct Upload {
-    _directory: TempDir,
-    expires: Instant,
+    pub(crate) _directory: TempDir,
+    pub(crate) expires: Instant,
+    pub path: PathBuf,
+    pub size: u64,
+    pub kind: String,
 }
 impl Upload {
     pub fn is_live(&self) -> bool {
@@ -31,7 +34,7 @@ impl Upload {
     }
 }
 pub struct Uploads {
-    pub entries: Mutex<HashMap<String, Upload>>,
+    pub entries: Mutex<HashMap<String, Arc<Upload>>>,
     pub slots: Arc<Semaphore>,
 }
 
@@ -176,10 +179,13 @@ pub async fn stage(
     );
     entries.insert(
         id,
-        Upload {
+        Arc::new(Upload {
             _directory: directory,
             expires: Instant::now() + Duration::from_secs(15 * 60),
-        },
+            path: prepared,
+            size,
+            kind: kind.kind,
+        }),
     );
     response.into_response()
 }

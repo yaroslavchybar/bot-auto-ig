@@ -1,7 +1,8 @@
 # Server memory changes
 
-The Rust VNC gateway has its own container. Bun browser workers, Chromium,
-TigerVNC and Fluxbox stay in the server. The default desktop, Python websockify
+The Rust VNC gateway runs inside the server's native controller alongside
+Bun browser workers, Chromium, TigerVNC and Fluxbox. RFB listens only on loopback.
+The default desktop, Python websockify
 and Supervisor were removed. A Rust controller supervises Bun and owns local
 wakeup deadlines and temporary uploads. Routine workers exit between runs.
 
@@ -20,10 +21,10 @@ was built from commit `f33b4be`. Three runs per engine were measured sequentiall
 with no concurrent builds. Memory is sampled aggregate process-tree RSS every
 20 ms; it includes FFmpeg children in the original engine.
 
-| Engine | Median time | Median peak RSS |
-| --- | ---: | ---: |
-| Original Rust CLI spawning FFmpeg | 5.66 s | 39.3 MiB |
-| Rust pixel pipeline and JPEG codec | 5.13 s | 13.9 MiB |
+| Engine                             | Median time | Median peak RSS |
+| ---------------------------------- | ----------: | --------------: |
+| Original Rust CLI spawning FFmpeg  |      5.66 s |        39.3 MiB |
+| Rust pixel pipeline and JPEG codec |      5.13 s |        13.9 MiB |
 
 That fixture used about 65% less peak memory and took about 9% less time.
 Outputs passed decoded pixel uniqueness checks. These numbers do not predict
@@ -32,7 +33,16 @@ Image output is intentionally changed, so the two encoders are not bit-identical
 
 ## Other bounds
 
-- Chat SDK clients: 32 entries. Saved session hashes: 64 entries. Disk sessions remain reusable.
+- Public API: Rust/Axum, 64 in-flight HTTP requests and 128 event sockets.
+  JSON is capped at 1 MiB; media routes stream bodies with their own limits.
+- Instagram: custom Rust transport, CAA login/password encryption, TOTP, DMs,
+  reactions, uploads, and profile edits. At most 32 profile transport entries
+  and four mobile commands; per-profile locks serialize session updates.
+  Session cookies and authorization persist in Convex. Existing SDK sessions
+  are reused without login; reconnect preserves their saved device identity.
+- Scraper: Rust HTTP, source discovery, batches of 25, resume checkpoints,
+  cooldowns, OpenRouter descriptions, and Jev classification. Convex subscriptions
+  in the Bun worker wake native jobs; there is no idle native polling.
 - Uploads: four active receivers, 32 pending files, 15-minute expiry. Photo and
   voice inputs: 10 MB; videos: 25 MB. The API receives file descriptors and
   streams each file through the selected account's proxy.
@@ -40,3 +50,11 @@ Image output is intentionally changed, so the two encoders are not bit-identical
   read buffers and awaited writes with timeouts.
 - Routine workers: at most `AUTOMATION_MAX_CONCURRENCY`, default three. Convex
   subscriptions wake changed accounts; Rust timers wake resting accounts.
+
+## API and mobile migration validation
+
+Compatibility fixtures exercise CAA login and TOTP, cookie persistence, authenticated
+SOCKS connections and remote DNS, messaging, profile edits, streaming uploads,
+scraper fallbacks/checkpoints, Telegram sessions, and public HTTP/WebSocket routing.
+Live Instagram behavior and VPS memory have not been measured for this migration.
+Browser automation, chat-cache/business commands, and Convex functions remain TypeScript.

@@ -9,7 +9,8 @@ test('a sent DM stays successful when Chat refresh fails', () => {
       `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
-    import express from 'express'
+    import { createServer } from 'node:http'
+    import { commandTestHandler } from './server/worker/testing.ts'
 
     let sends = 0
     let refreshes = 0
@@ -64,6 +65,7 @@ test('a sent DM stays successful when Chat refresh fails', () => {
       removeAttachment: async () => {},
     }))
     mock.module('./server/chat/instagram.ts', () => ({
+      InstagramError: class extends Error {},
       InstagramChat: class {
         static hasSession = async () => { throw new Error('Redundant session check') }
         static load = async () => new this()
@@ -100,11 +102,7 @@ test('a sent DM stays successful when Chat refresh fails', () => {
     mock.module('./server/shared/logger.ts', () => ({ addLogContext: () => {}, default: { error: () => { warnings++ } } }))
 
     const { default: router } = await import('./server/chat/routes.ts')
-    const app = express()
-    app.use(express.json())
-    app.use('/api/chat', router)
-    app.use((err, _req, res, _next) => res.status(err.statusCode ?? 500).json({ error: err.message }))
-    const server = app.listen(0)
+    const server = createServer(commandTestHandler(router, '/api/chat')).listen(0)
     try {
       const port = server.address().port
       const older = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/older?before=16')

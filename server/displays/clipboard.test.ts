@@ -1,33 +1,16 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import express from 'express'
+import { createServer } from 'node:http'
+import { commandTestHandler } from '../worker/testing.js'
 import type { AddressInfo } from 'node:net'
 import { activeDisplays, automationWorkers } from '../shared/store.js'
-import { AppError } from '../shared/errors.js'
 import clipboardRouter from './clipboard.js'
 import childProcess from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-function buildApp() {
-  const app = express()
-  app.use(express.json())
-  app.use('/', clipboardRouter)
-  // Same translation as the global error middleware in index.ts.
-  // oxlint-disable-next-line no-unused-vars
-  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    if (err instanceof AppError) {
-      res.status(err.statusCode).json({ success: false, error: { code: err.code, message: err.message } })
-      return
-    }
-    res.status(500).json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } })
-  })
-  return app
-}
-
 async function withServer(fn: (base: string) => Promise<void>): Promise<void> {
-  const app = buildApp()
-  const server = app.listen(0, '127.0.0.1')
+  const server = createServer(commandTestHandler(clipboardRouter)).listen(0, '127.0.0.1')
   await new Promise<void>((resolve) => server.once('listening', resolve))
   try {
     await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
@@ -119,10 +102,14 @@ test('clipboard write replies when the parent exits even if the clipboard owner 
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(),
     stderr: new PassThrough(),
-    kill: () => { throw new Error('Must not kill the clipboard owner') },
+    kill: () => {
+      throw new Error('Must not kill the clipboard owner')
+    },
   })
   let received = ''
-  child.stdin.on('data', (chunk: Buffer) => { received += chunk.toString() })
+  child.stdin.on('data', (chunk: Buffer) => {
+    received += chunk.toString()
+  })
   child.stdin.on('finish', () => {
     // The real xclip parent exits, but its background child retains stderr.
     child.emit('exit', 0, null)
@@ -166,7 +153,7 @@ test('clipboard write reports xclip startup failure', async (t) => {
         body: JSON.stringify({ text: 'hello' }),
       })
       assert.equal(res.status, 503)
-      const body = await res.json() as { error: { message: string } }
+      const body = (await res.json()) as { error: { message: string } }
       assert.match(body.error.message, /Cannot open display/)
     })
   } finally {

@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Commands } from '../worker/commands.js'
 import { automationWorkers } from '../shared/store.js'
 import {
   getAutomationStatus,
@@ -7,72 +7,79 @@ import {
   normalizeOptionalParallelProfiles,
   automationMutex,
 } from './service.js'
-import { asyncHandler } from '../shared/asyncHandler.js'
-import {
-  AppError,
-  ValidationError,
-} from '../shared/errors.js'
+import { AppError, ValidationError } from '../shared/errors.js'
 
-const router = Router()
+const commands = new Commands()
 
 // ---------------------------------------------------------------------------
 // GET /status
 // ---------------------------------------------------------------------------
 
-router.get('/status', (req, res) => {
-  const automationId = String(
-    (req.query as any)?.automationId ??
-'',
-  ).trim()
-  res.json(getAutomationStatus(automationId || undefined))
-})
+commands.register(
+  'automations.get.status',
+  'GET',
+  '/status',
+  (req, res) => {
+    const automationId = String((req.query as any)?.automationId ?? '').trim()
+    res.json(getAutomationStatus(automationId || undefined))
+  },
+  'json',
+)
 
 // ---------------------------------------------------------------------------
 // POST /run — validates input, acquires mutex, delegates to runAutomation
 // ---------------------------------------------------------------------------
 
-router.post('/run', asyncHandler(async (req, res) => {
-  const { automationId, parallelProfiles } = parseRunInput(req.body)
+commands.register(
+  'automations.post.run',
+  'POST',
+  '/run',
+  async (req, res) => {
+    const { automationId, parallelProfiles } = parseRunInput(req.body)
 
-  const release = await automationMutex.acquire()
-  try {
-    // Re-check state inside mutex to prevent race conditions
-    validateAutomationCanStart(automationId)
-    await runAutomation({ automationId, parallelProfiles })
-    res.json({ success: true, message: 'Automation started' })
-  } finally {
-    release()
-  }
-}))
+    const release = await automationMutex.acquire()
+    try {
+      // Re-check state inside mutex to prevent race conditions
+      validateAutomationCanStart(automationId)
+      await runAutomation({ automationId, parallelProfiles })
+      res.json({ success: true, message: 'Automation started' })
+    } finally {
+      release()
+    }
+  },
+  'json',
+)
 
 // ---------------------------------------------------------------------------
 // POST /stop
 // ---------------------------------------------------------------------------
 
-router.post('/stop', asyncHandler(async (req, res) => {
-  const automationId = String(
-    req.body?.automationId ?? '',
-  ).trim()
+commands.register(
+  'automations.post.stop',
+  'POST',
+  '/stop',
+  async (req, res) => {
+    const automationId = String(req.body?.automationId ?? '').trim()
 
-  const release = await automationMutex.acquire()
-  try {
-    // Re-check state inside mutex to prevent race conditions
-    const idsToStop = automationId
-      ? [automationId]
-      : Array.from(automationWorkers.keys())
-    if (idsToStop.length === 0) {
-      throw new ValidationError('No automation running')
-    }
+    const release = await automationMutex.acquire()
+    try {
+      // Re-check state inside mutex to prevent race conditions
+      const idsToStop = automationId ? [automationId] : Array.from(automationWorkers.keys())
+      if (idsToStop.length === 0) {
+        throw new ValidationError('No automation running')
+      }
 
-    const stopped = await stopAutomations(automationId || undefined)
-    if (automationId && stopped.length === 0) {
-      throw new ValidationError('Automation not running')
+      const stopped = await stopAutomations(automationId || undefined)
+      if (automationId && stopped.length === 0) {
+        throw new ValidationError('Automation not running')
+      }
+      res.json({ success: true, stopped })
+    } finally {
+      release()
     }
-    res.json({ success: true, stopped })
-  } finally {
-    release()
-  }
-}))
+  },
+  'json',
+)
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,15 +90,11 @@ function parseRunInput(body: any): {
   automationId: string
   parallelProfiles: number | undefined
 } {
-  const automationId = String(
-    body?.automationId ?? '',
-  ).trim()
+  const automationId = String(body?.automationId ?? '').trim()
   if (!automationId) {
     throw new ValidationError('automationId is required')
   }
-  const parallelProfiles = normalizeOptionalParallelProfiles(
-    body?.parallelProfiles,
-  )
+  const parallelProfiles = normalizeOptionalParallelProfiles(body?.parallelProfiles)
   return { automationId, parallelProfiles }
 }
 
@@ -101,16 +104,10 @@ function validateAutomationCanStart(automationId: string): void {
     throw new ValidationError('Automation already running')
   }
   const configuredMax = Number(process.env.AUTOMATION_MAX_CONCURRENCY ?? 3)
-  const maxConcurrency = Number.isFinite(configuredMax)
-    ? Math.max(1, Math.floor(configuredMax))
-    : 3
+  const maxConcurrency = Number.isFinite(configuredMax) ? Math.max(1, Math.floor(configuredMax)) : 3
   if (automationWorkers.size >= maxConcurrency) {
-    throw new AppError(
-      `Too many automations running (max ${maxConcurrency})`,
-      429,
-      'RATE_LIMITED',
-    )
+    throw new AppError(`Too many automations running (max ${maxConcurrency})`, 429, 'RATE_LIMITED')
   }
 }
 
-export default router
+export default commands

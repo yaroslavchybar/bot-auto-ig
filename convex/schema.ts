@@ -180,6 +180,8 @@ export default defineSchema({
     profileId: v.id('profiles'),
     storageId: v.id('_storage'),
     token: v.string(),
+    sessionVersion: v.optional(v.literal(1)),
+    reconnectRequired: v.optional(v.boolean()),
     viewerId: v.optional(v.string()),
     inboxSyncedAt: v.optional(v.number()),
     inboxThreadIds: v.optional(v.array(v.string())),

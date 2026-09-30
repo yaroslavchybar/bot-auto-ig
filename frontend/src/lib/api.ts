@@ -110,7 +110,15 @@ async function apiFetchOnce<T>(
 
     if (!resp.ok) {
       const text = await resp.text()
-      throw new ApiError(text || `HTTP ${resp.status}`, resp.status)
+      let message = text || `HTTP ${resp.status}`
+      try {
+        const body = JSON.parse(text)
+        const detail = body?.error?.message ?? body?.message ?? body?.error
+        if (typeof detail === 'string' && detail.trim()) message = detail
+      } catch {
+        // Non-JSON errors, such as proxy failures, already contain readable text.
+      }
+      throw new ApiError(message, resp.status)
     }
 
     if (resp.status === 204) return undefined as T

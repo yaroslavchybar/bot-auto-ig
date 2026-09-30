@@ -16,7 +16,6 @@ use tokio::{
 
 #[derive(Clone)]
 pub struct Gateway {
-    pub host: String,
     pub connections: Arc<Semaphore>,
 }
 
@@ -37,7 +36,7 @@ pub async fn upgrade(
     };
     let Ok(Ok(tcp)) = tokio::time::timeout(
         Duration::from_secs(5),
-        TcpStream::connect((state.host.as_str(), port)),
+        TcpStream::connect(("127.0.0.1", port)),
     )
     .await
     else {

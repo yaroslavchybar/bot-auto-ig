@@ -2,7 +2,11 @@ import test from 'node:test'
 import { execFileSync } from 'node:child_process'
 
 test('native wakeups start only ready routines, enforce capacity and cancel disabled jobs', () => {
-  execFileSync('bun', ['--eval', `
+  execFileSync(
+    'bun',
+    [
+      '--eval',
+      `
     import assert from 'node:assert/strict'
     import { mock } from 'bun:test'
     import { spawn } from 'node:child_process'
@@ -15,7 +19,7 @@ test('native wakeups start only ready routines, enforce capacity and cancel disa
     process.env.RUNTIME_URL = 'http://127.0.0.1:' + port
     process.env.AUTOMATION_MAX_CONCURRENCY = '1'
     const child = spawn(path.resolve('target/debug/ig-runtime' + (process.platform === 'win32' ? '.exe' : '')),
-      ['helper'], { env: { ...process.env, RUNTIME_PORT: String(port) }, stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true })
+      ['helper'], { env: { ...process.env, TELEGRAM_BOT_TOKEN: '', TELEGRAM_BOT_USERNAME: '', SERVER_PORT: '0', PUBLIC_BASE_URL: '', APP_PUBLIC_URL: '', RUNTIME_PORT: String(port), VNC_GATEWAY_PORT: '0' }, stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true })
     child.stderr.on('data', () => {})
     const until = async check => {
       const deadline = Date.now() + 4000
@@ -74,5 +78,8 @@ test('native wakeups start only ready routines, enforce capacity and cancel disa
       const timer = setTimeout(() => child.kill(), 2000)
       await exited; clearTimeout(timer)
     }
-  `], { cwd: process.cwd(), stdio: 'pipe', timeout: 15_000 })
+  `,
+    ],
+    { cwd: process.cwd(), stdio: 'pipe', timeout: 15_000 },
+  )
 })

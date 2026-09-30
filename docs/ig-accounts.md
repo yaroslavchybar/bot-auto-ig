@@ -16,11 +16,24 @@ The server encrypts each credential with `IG_CREDENTIALS_KEY` (64 hex characters
 before saving it to the Convex `igAccounts` table. Convex stores ciphertext and a
 keyed username lookup hash; the key stays in the server environment. Keep that
 key stable: losing it makes imported credentials unreadable. Mobile Chat
-sessions and content live in the persisted `data/` volume. Model setup progress
+sessions live in Convex; content and message caches use the persisted `data/` volume. Model setup progress
 and shared full-name variations live in Convex.
 Unreadable credentials appear as Invalid and are skipped for new profiles;
 the stored rows are preserved so restoring the key can recover them.
 Back up the key separately from Convex.
+
+Accounts with a missing or expired mobile session show **Reconnect needed** and a
+**Reconnect** button on desktop and mobile. It reuses saved credentials and the
+profile's Work proxy with the Rust client. During login the button is disabled;
+success refreshes the row to Connected. Failed attempts show an error and allow
+retry without deleting the previous session. Session version metadata is stored
+in Convex so lists can identify sessions needing login without loading their files.
+Existing TypeScript sessions are imported without another login. Reconnect reuses
+the saved device IDs, model, cookies, and device signing key. Failed login attempts
+leave the saved session intact.
+Instagram rate limits show a readable message. Login respects `Retry-After`
+without sending another login request during the cooldown; when Instagram sends
+no retry time, the default cooldown is one hour.
 
 The **Create Profile** dialog selects a model and a count. It uses unused
 credentials and saved **Work** proxies, respecting each proxy's profile limit.
@@ -55,7 +68,7 @@ The automation starts model setup from the browser login date; browsing starts
 on day 2, followed later by outreach. Its Profiles tab
 shows setup progress and errors. Disabling the automation pauses model setup.
 Day 1 is the browser login date in the Europe/Kyiv calendar. After a browser
-warmup session on day 3, the TypeScript mobile API logs in. It changes the
+warmup session on day 3, the Rust mobile client logs in. It changes the
 username and full name in separate steps. A full name added later is still
 applied, even when the profile is past day 3 or already posting. Posting can
 continue while no full name is configured. One full-name variation is shared by four accounts.

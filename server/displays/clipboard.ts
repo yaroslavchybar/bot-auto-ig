@@ -1,8 +1,7 @@
-import { Router } from 'express'
+import { Commands } from '../worker/commands.js'
 import childProcess, { execFile } from 'node:child_process'
 import { automationWorkers, type ActiveDisplaySession } from '../shared/store.js'
 import { resolveDisplay } from './session.js'
-import { asyncHandler } from '../shared/asyncHandler.js'
 import { AppError, ExternalServiceError, ValidationError } from '../shared/errors.js'
 
 // Server-side clipboard for a remote display (option 2).
@@ -30,7 +29,11 @@ function assertNoAgentControls(session: ActiveDisplaySession): void {
 }
 
 function xclipErrorMessage(stderr: string): string {
-  return String(stderr || '').trim().split('\n')[0] || 'clipboard command failed'
+  return (
+    String(stderr || '')
+      .trim()
+      .split('\n')[0] || 'clipboard command failed'
+  )
 }
 
 function runXclip(displayNum: number, args: string[], input?: string): Promise<string> {
@@ -91,12 +94,20 @@ function writeXclip(displayNum: number, args: string[], input: string): Promise<
       stderr = (stderr + chunk.toString()).slice(0, 4096)
     })
     child.on('error', (error: NodeJS.ErrnoException) => {
-      finish(new ExternalServiceError(error.code === 'ENOENT'
-        ? 'Clipboard unavailable on this host'
-        : 'Clipboard failed: could not start'))
+      finish(
+        new ExternalServiceError(
+          error.code === 'ENOENT'
+            ? 'Clipboard unavailable on this host'
+            : 'Clipboard failed: could not start',
+        ),
+      )
     })
     child.on('exit', (code) => {
-      finish(code === 0 ? undefined : new ExternalServiceError(`Clipboard failed: ${xclipErrorMessage(stderr)}`))
+      finish(
+        code === 0
+          ? undefined
+          : new ExternalServiceError(`Clipboard failed: ${xclipErrorMessage(stderr)}`),
+      )
     })
     child.stdin.on('error', () => {
       finish(new ExternalServiceError('Clipboard failed: could not write'))
@@ -105,23 +116,28 @@ function writeXclip(displayNum: number, args: string[], input: string): Promise<
   })
 }
 
-const router = Router()
+const commands = new Commands()
 
 // Read the remote CLIPBOARD selection as text ('' when empty).
 // Reads don't disturb the agent, so they stay open while it runs.
-router.get(
+commands.register(
+  'displays.get.vncPort_clipboard',
+  'GET',
   '/:vncPort/clipboard',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     const session = resolveDisplay(req.params.vncPort)
     const text = await runXclip(session.displayNum, ['-selection', 'clipboard', '-o'])
     res.json({ text })
-  }),
+  },
+  'json',
 )
 
 // Replace the remote CLIPBOARD selection. The user then pastes with Ctrl+V.
-router.post(
+commands.register(
+  'displays.post.vncPort_clipboard',
+  'POST',
   '/:vncPort/clipboard',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     const session = resolveDisplay(req.params.vncPort)
     assertNoAgentControls(session)
     const text = (req.body as { text?: unknown } | undefined)?.text
@@ -129,7 +145,8 @@ router.post(
     if (text.length > MAX_CHARS) throw new ValidationError('Text too large (max 100k chars)')
     await runXclip(session.displayNum, ['-selection', 'clipboard', '-i'], text)
     res.json({ success: true })
-  }),
+  },
+  'json',
 )
 
-export default router
+export default commands

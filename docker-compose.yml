@@ -1,19 +1,4 @@
 services:
-  gateway:
-    build:
-      context: ./tools/runtime
-      dockerfile: Dockerfile
-      additional_contexts:
-        repo_root: .
-    ports:
-      - "127.0.0.1:3003:3003"
-    environment:
-      VNC_UPSTREAM_HOST: server
-    cpus: 0.25
-    mem_limit: 128m
-    pids_limit: 64
-    restart: unless-stopped
-
   spoofer:
     build:
       context: ./tools/spoofer
@@ -26,7 +11,7 @@ services:
     mem_limit: 768m
     pids_limit: 64
     ports:
-      - "127.0.0.1:3002:3002"
+      - '127.0.0.1:3002:3002'
     restart: unless-stopped
 
   server:
@@ -37,7 +22,8 @@ services:
       additional_contexts:
         repo_root: .
     ports:
-      - "3001:3001"
+      - '3001:3001'
+      - '127.0.0.1:3003:3003'
     volumes:
       - ./data:/app/data
     env_file:
@@ -73,8 +59,7 @@ services:
     environment:
       - PORT=80
     ports:
-      - "5173:80"
+      - '5173:80'
     depends_on:
       - server
-      - gateway
     restart: unless-stopped

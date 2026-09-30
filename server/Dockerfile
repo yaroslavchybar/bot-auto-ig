@@ -115,7 +115,7 @@ WORKDIR /app/server
 ENV NODE_ENV=production
 
 EXPOSE 3001
-EXPOSE 5901-5950
+EXPOSE 3003
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["ig-runtime", "supervise"]

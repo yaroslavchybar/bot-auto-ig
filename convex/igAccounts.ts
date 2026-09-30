@@ -1,7 +1,13 @@
 import { setChatCounterEnabled } from './chatCache'
 import { v } from 'convex/values'
-import { internalMutation, internalQuery, query, type MutationCtx } from './_generated/server'
-import type { Id } from './_generated/dataModel'
+import {
+  internalMutation,
+  internalQuery,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from './_generated/server'
+import type { Id, Doc } from './_generated/dataModel'
 import { DomainError } from './errors'
 import { requireServerBridgeAuth } from './serverBridgeAuth'
 
@@ -12,9 +18,24 @@ const status = v.union(
   v.literal('invalid'),
 )
 
+/** Session metadata keeps account lists fast without loading private session files. */
+async function withConnectionStatus(ctx: QueryCtx, account: Doc<'igAccounts'>) {
+  if (account.status !== 'connected' || !account.profileId) return account
+  const session = await ctx.db
+    .query('chatSessions')
+    .withIndex('by_profile', (q) => q.eq('profileId', account.profileId!))
+    .first()
+  return { ...account, reconnectRequired: !session || session.reconnectRequired === true }
+}
+
 export const listInternal = internalQuery({
   args: {},
-  handler: async (ctx) => ctx.db.query('igAccounts').collect(),
+  handler: async (ctx) =>
+    Promise.all(
+      (await ctx.db.query('igAccounts').collect()).map((account) =>
+        withConnectionStatus(ctx, account),
+      ),
+    ),
 })
 
 export const pageInternal = internalQuery({
@@ -27,13 +48,17 @@ export const pageInternal = internalQuery({
     if (!Number.isInteger(count) || count < 1 || count > 50)
       throw new DomainError('VALIDATION', 'Invalid page size')
     const rows = ctx.db.query('igAccounts').withIndex('by_created')
-    return (
+    const page = await (
       profileId
         ? rows.filter((q) =>
             q.or(q.eq(q.field('status'), 'available'), q.eq(q.field('profileId'), profileId)),
           )
         : rows
     ).paginate({ cursor, numItems: count })
+    return {
+      ...page,
+      page: await Promise.all(page.page.map((account) => withConnectionStatus(ctx, account))),
+    }
   },
 })
 
@@ -55,7 +80,10 @@ export const availableCountInternal = internalQuery({
 
 export const byIdInternal = internalQuery({
   args: { id: v.id('igAccounts') },
-  handler: async (ctx, { id }) => ctx.db.get(id),
+  handler: async (ctx, { id }) => {
+    const account = await ctx.db.get(id)
+    return account ? withConnectionStatus(ctx, account) : null
+  },
 })
 
 export const byUsernameHashInternal = internalQuery({

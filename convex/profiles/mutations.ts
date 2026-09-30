@@ -55,8 +55,10 @@ export const saveChatSessionInternal = internalMutation({
     storageId: v.id('_storage'),
     token: v.string(),
     expectedToken: v.optional(v.string()),
+    sessionVersion: v.optional(v.literal(1)),
+    reconnectRequired: v.optional(v.boolean()),
   },
-  handler: async (ctx, { profileId, storageId, token, expectedToken }) => {
+  handler: async (ctx, { profileId, storageId, token, expectedToken, sessionVersion, reconnectRequired }) => {
     const profile = await ctx.db.get(profileId)
     if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
     const existing = await ctx.db
@@ -70,13 +72,15 @@ export const saveChatSessionInternal = internalMutation({
       await ctx.db.patch(existing._id, {
         storageId,
         token,
+        sessionVersion,
+        reconnectRequired,
         viewerId: undefined,
         inboxSyncedAt: undefined,
         inboxThreadIds: undefined,
         unreadCount: undefined,
       })
       if (existing.storageId !== storageId) await ctx.storage.delete(existing.storageId)
-    } else await ctx.db.insert('chatSessions', { profileId, storageId, token })
+    } else await ctx.db.insert('chatSessions', { profileId, storageId, token, sessionVersion, reconnectRequired })
     const membership = await ctx.db
       .query('chatMemberships')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))

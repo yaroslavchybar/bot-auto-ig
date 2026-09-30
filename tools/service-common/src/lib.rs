@@ -53,6 +53,9 @@ pub async fn request_log(mut request: Request, next: Next) -> Response {
         .map(str::to_owned)
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let context = RequestContext(Arc::new(Mutex::new(Map::new())));
+    request
+        .headers_mut()
+        .insert("x-request-id", HeaderValue::from_str(&request_id).unwrap());
     context.add("method", request.method().as_str());
     context.add("path", request.uri().path());
     request.extensions_mut().insert(context.clone());

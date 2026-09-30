@@ -12,6 +12,7 @@ export type StoredAccount = ChatCredentials & {
   createdAt: number
   retryAfter?: number
   browserLoggedInAt?: number
+  reconnectRequired?: boolean
 }
 
 type EncryptedAccount = { usernameHash: string; ciphertext: string }
@@ -23,6 +24,7 @@ type DbAccount = EncryptedAccount & {
   createdAt: number
   retryAfter?: number
   browserLoggedInAt?: number
+  reconnectRequired?: boolean
 }
 
 function key(): Buffer {
@@ -90,6 +92,7 @@ function account(row: DbAccount): StoredAccount {
     createdAt: row.createdAt,
     retryAfter: row.retryAfter,
     browserLoggedInAt: row.browserLoggedInAt,
+    reconnectRequired: row.reconnectRequired,
   }
 }
 
@@ -102,6 +105,7 @@ export function publicAccount(row: StoredAccount) {
     error: row.error,
     createdAt: row.createdAt,
     browserLoggedInAt: row.browserLoggedInAt,
+    ...(row.reconnectRequired === undefined ? {} : { reconnectRequired: row.reconnectRequired }),
   }
 }
 

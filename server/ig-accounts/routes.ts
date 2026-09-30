@@ -1,6 +1,6 @@
-import { Router, raw } from 'express'
-import { asyncHandler } from '../shared/asyncHandler.js'
-import { ValidationError } from '../shared/errors.js'
+import { Commands } from '../worker/commands.js'
+import { AppError, ValidationError } from '../shared/errors.js'
+import { InstagramError } from '../chat/instagram.js'
 import { listsList, profilesCreateForModel, profilesGetById } from '../shared/convexClient.js'
 import { parseChatCredentials } from '../chat/totp.js'
 import {
@@ -15,6 +15,7 @@ import {
 } from './store.js'
 import { listBlacklistedProxies } from './blacklist.js'
 import { queueProfileLogin } from './login.js'
+import { reconnectAccount } from './reconnect.js'
 import {
   addContent,
   contentImage,
@@ -26,20 +27,24 @@ import {
   type ContentKind,
 } from './content.js'
 import { listModelWarmup, reconcileModelWarmup } from './warmup.js'
-import { modelImageLimiter } from '../security/rate-limit.js'
 
-const router = Router()
+const commands = new Commands()
 
-router.get(
+commands.register(
+  'ig-accounts.get.list',
+  'GET',
   '/',
-  asyncHandler(async (_req, res) => {
+  async (_req, res) => {
     res.json(await listAccounts())
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.page',
+  'GET',
   '/page',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     const { search = '', cursor, profileId } = req.query
     if (
       typeof search !== 'string' ||
@@ -49,33 +54,45 @@ router.get(
     )
       throw new ValidationError('Invalid page parameters')
     res.json(await listAccountsPage(search, cursor ?? null, profileId))
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.available-count',
+  'GET',
   '/available-count',
-  asyncHandler(async (_req, res) => {
+  async (_req, res) => {
     res.json(await availableAccountCount())
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.blacklist',
+  'GET',
   '/blacklist',
-  asyncHandler(async (_req, res) => {
+  async (_req, res) => {
     res.json(await listBlacklistedProxies())
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.warmup',
+  'GET',
   '/warmup',
-  asyncHandler(async (_req, res) => {
+  async (_req, res) => {
     res.json(await listModelWarmup())
-  }),
+  },
+  'json',
 )
 
-router.post(
+commands.register(
+  'ig-accounts.post.warmup_profileId_reconcile',
+  'POST',
   '/warmup/:profileId/reconcile',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     const resolution = req.body?.resolution
     if (resolution !== 'completed' && resolution !== 'failed')
       throw new ValidationError('Choose completed or failed')
@@ -87,12 +104,15 @@ router.post(
       )
     }
     res.json({ ok: true })
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.credentials_id',
+  'GET',
   '/credentials/:id',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     try {
       const account = await accountById(req.params.id)
       if (!account) throw new ValidationError('Credential not found')
@@ -107,26 +127,32 @@ router.get(
         createdAt: account.createdAt,
         retryAfter: account.retryAfter,
         browserLoggedInAt: account.browserLoggedInAt,
+        reconnectRequired: account.reconnectRequired,
       })
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : 'Credential not found')
     }
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.models_modelId_content',
+  'GET',
   '/models/:modelId/content',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     if (!(await listsList()).some((row) => row.id === req.params.modelId))
       throw new ValidationError('Model not found')
     res.json(await listContent(req.params.modelId))
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.models_modelId_content_kind_contentId_image',
+  'GET',
   '/models/:modelId/content/:kind/:contentId/image',
-  modelImageLimiter,
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     if (!(await listsList()).some((row) => row.id === req.params.modelId))
       throw new ValidationError('Model not found')
     const kind = req.params.kind
@@ -143,13 +169,15 @@ router.get(
       .set('Cache-Control', 'private, max-age=3600')
       .type(image.type)
       .send(image.bytes)
-  }),
+  },
+  'json',
 )
 
-router.post(
+commands.register(
+  'ig-accounts.post.models_modelId_content_kind',
+  'POST',
   '/models/:modelId/content/:kind',
-  raw({ type: 'application/octet-stream', limit: '15mb' }),
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     if (!(await listsList()).some((row) => row.id === req.params.modelId))
       throw new ValidationError('Model not found')
     const kind = req.params.kind
@@ -160,7 +188,8 @@ router.post(
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : 'Could not process image')
     }
-  }),
+  },
+  'raw',
 )
 
 function contentKind(kind: unknown): ContentKind {
@@ -173,9 +202,11 @@ async function contentModel(modelId: string): Promise<void> {
     throw new ValidationError('Model not found')
 }
 
-router.post(
+commands.register(
+  'ig-accounts.post.models_modelId_content_kind_contentId_copies',
+  'POST',
   '/models/:modelId/content/:kind/:contentId/copies',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     await contentModel(req.params.modelId)
     const kind = contentKind(req.params.kind)
     try {
@@ -185,12 +216,15 @@ router.post(
         error instanceof Error ? error.message : 'Could not generate copies',
       )
     }
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.models_modelId_content_kind_contentId_copies',
+  'GET',
   '/models/:modelId/content/:kind/:contentId/copies',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     await contentModel(req.params.modelId)
     const kind = contentKind(req.params.kind)
     try {
@@ -198,13 +232,15 @@ router.get(
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : 'Image not found')
     }
-  }),
+  },
+  'json',
 )
 
-router.get(
+commands.register(
+  'ig-accounts.get.models_modelId_content_kind_contentId_copies_variant_image',
+  'GET',
   '/models/:modelId/content/:kind/:contentId/copies/:variant/image',
-  modelImageLimiter,
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     await contentModel(req.params.modelId)
     const kind = contentKind(req.params.kind)
     const image = await copyImage(
@@ -220,12 +256,15 @@ router.get(
       .set('Cache-Control', 'private, max-age=3600')
       .type(image.type)
       .send(image.bytes)
-  }),
+  },
+  'json',
 )
 
-router.delete(
+commands.register(
+  'ig-accounts.delete.models_modelId_content_kind_contentId',
+  'DELETE',
   '/models/:modelId/content/:kind/:contentId',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     await contentModel(req.params.modelId)
     const kind = contentKind(req.params.kind)
     try {
@@ -233,24 +272,30 @@ router.delete(
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : 'Could not remove image')
     }
-  }),
+  },
+  'json',
 )
 
-router.post(
+commands.register(
+  'ig-accounts.post.import',
+  'POST',
   '/import',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     if (typeof req.body?.text !== 'string') throw new ValidationError('Choose a TXT file')
     try {
       res.json(await importAccounts(req.body.text))
     } catch (error) {
       throw new ValidationError(error instanceof Error ? error.message : 'Invalid credentials')
     }
-  }),
+  },
+  'json',
 )
 
-router.post(
+commands.register(
+  'ig-accounts.post.create-batch',
+  'POST',
   '/create-batch',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     const modelId = String(req.body?.modelId ?? '')
     const count = Number(req.body?.count)
     if (!Number.isSafeInteger(count) || count < 1 || count > 100)
@@ -266,20 +311,24 @@ router.post(
     )
     for (const row of created) queueProfileLogin(row.profileId)
     res.json({ created, count: created.length })
-  }),
+  },
+  'json',
 )
 
-router.post(
+commands.register(
+  'ig-accounts.post.profileId_connect',
+  'POST',
   '/:profileId/connect',
-  asyncHandler(async (req, res) => {
+  async (req, res) => {
     const profile = await profilesGetById(req.params.profileId)
-    if (!profile || !profile.igLoggedIn || profile.status === 'deleting')
+    if (!profile || profile.status === 'deleting')
       throw new ValidationError('Choose a logged-in profile')
     let account =
       typeof req.body?.credentialId === 'string'
         ? await accountById(req.body.credentialId)
         : undefined
     if (!account && typeof req.body?.credentials === 'string') {
+      if (!profile.igLoggedIn) throw new ValidationError('Choose a logged-in profile')
       const parsed = parseChatCredentials(req.body.credentials)
       if (!parsed) throw new ValidationError('Enter username:password:2FA key')
       await importAccounts(req.body.credentials)
@@ -287,10 +336,25 @@ router.post(
     }
     if (!account || (account.profileId && account.profileId !== profile.id))
       throw new ValidationError('Choose an available credential')
+    if (account.status === 'connected' && account.profileId === profile.id) {
+      try {
+        await reconnectAccount(account.id)
+      } catch (error) {
+        if (error instanceof InstagramError && error.status === 429) {
+          res.set('Retry-After', String(Math.ceil(error.retryAfterMs / 1000)))
+          throw new AppError(error.message, 429, 'RATE_LIMITED')
+        }
+        throw new ValidationError(error instanceof Error ? error.message : 'Reconnect failed')
+      }
+      res.json({ ok: true })
+      return
+    }
+    if (!profile.igLoggedIn) throw new ValidationError('Choose a logged-in profile')
     await assignAccount(account.id, profile.id)
     queueProfileLogin(profile.id)
     res.status(202).json({ queued: true, username: account.username })
-  }),
+  },
+  'json',
 )
 
-export default router
+export default commands

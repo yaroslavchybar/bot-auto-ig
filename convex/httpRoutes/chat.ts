@@ -1,12 +1,19 @@
-import type { HttpRouter } from 'convex/server';
-import type { Id } from '../_generated/dataModel';
-import { internal } from '../_generated/api';
-import { jsonResponse, parseBody, registerPreflight, ValidationError, withErrorHandling } from './shared';
+import type { HttpRouter } from 'convex/server'
+import type { Id } from '../_generated/dataModel'
+import { internal } from '../_generated/api'
+import {
+  jsonResponse,
+  parseBody,
+  registerPreflight,
+  ValidationError,
+  withErrorHandling,
+} from './shared'
 
 const profileIdFrom = (value: unknown): Id<'profiles'> => {
-  if (typeof value !== 'string' || !value.trim()) throw new ValidationError('Profile ID is required');
-  return value as Id<'profiles'>;
-};
+  if (typeof value !== 'string' || !value.trim())
+    throw new ValidationError('Profile ID is required')
+  return value as Id<'profiles'>
+}
 
 export function registerChatRoutes(http: HttpRouter): void {
   registerPreflight(http, ['/api/chat/session', '/api/chat/count'])
@@ -41,7 +48,10 @@ export function registerChatRoutes(http: HttpRouter): void {
       })
       if (!row) return jsonResponse({ connected: false })
       if (new URL(request.url).searchParams.get('status') === '1')
-        return jsonResponse({ connected: true })
+        return jsonResponse({
+          connected: row.reconnectRequired !== true,
+          reconnectRequired: row.reconnectRequired === true,
+        })
       const blob = await ctx.storage.get(row.storageId)
       if (!blob) throw new Error('Chat session file is missing')
       return jsonResponse({ connected: true, state: await blob.text(), token: row.token })
@@ -63,6 +73,12 @@ export function registerChatRoutes(http: HttpRouter): void {
       ) {
         throw new ValidationError('Invalid Chat session')
       }
+      let sessionVersion: 1 | undefined
+      try {
+        if (JSON.parse(body.state)?.version === 1) sessionVersion = 1
+      } catch {
+        /* Older SDK session. */
+      }
       const storageId = await ctx.storage.store(
         new Blob([body.state], { type: 'application/json' }),
       )
@@ -72,6 +88,8 @@ export function registerChatRoutes(http: HttpRouter): void {
           storageId,
           token: body.token,
           expectedToken: body.expectedToken,
+          sessionVersion,
+          reconnectRequired: body.reconnectRequired === true,
         })
         return jsonResponse({ connected: true })
       } catch (error) {

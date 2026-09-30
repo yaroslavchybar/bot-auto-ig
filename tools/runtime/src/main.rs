@@ -1,4 +1,10 @@
+#![recursion_limit = "256"]
+mod api;
+mod instagram;
 mod schedules;
+mod scraper;
+#[cfg(test)]
+mod test_support;
 mod uploads;
 mod vnc;
 
@@ -14,6 +20,7 @@ use tokio::sync::{Mutex, Semaphore};
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     if let Err(error) = run().await {
         ig_service_common::service_error("runtime.failed", &error.to_string());
         std::process::exit(1);
@@ -52,19 +59,15 @@ async fn helper_shutdown() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mode = std::env::args().nth(1).unwrap_or_else(|| "gateway".into());
-    let app = if mode == "gateway" {
-        Router::new()
-            .route("/vnc/{port}/websockify", get(vnc::upgrade))
-            .with_state(vnc::Gateway {
-                host: std::env::var("VNC_UPSTREAM_HOST").unwrap_or_else(|_| "server".into()),
-                connections: Arc::new(Semaphore::new(64)),
-            })
-    } else if mode == "helper" || mode == "supervise" {
+    let mode = std::env::args().nth(1).unwrap_or_else(|| "helper".into());
+    let api_state = api::Api::from_env()?;
+    let app = if mode == "helper" || mode == "supervise" {
         let uploads = Arc::new(uploads::Uploads {
             entries: Mutex::new(HashMap::new()),
             slots: Arc::new(Semaphore::new(4)),
         });
+        let mobile = instagram::Service::new(api_state.clone(), uploads.clone());
+        let scraper = scraper::Scraper::start(api_state.clone(), mobile.clone());
         let cleanup = uploads.clone();
         tokio::spawn(async move {
             let mut timer = tokio::time::interval(Duration::from_secs(60));
@@ -78,6 +81,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
         Router::new()
+            .merge(instagram::router(mobile))
+            .merge(scraper::router(scraper))
             .merge(
                 Router::new()
                     .route(
@@ -94,38 +99,78 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     .with_state(uploads),
             )
     } else {
-        return Err("Use gateway, helper or supervise".into());
+        return Err("Use helper or supervise".into());
     };
     let app = app
         .route("/health", get(|| async { Json(json!({"ok": true})) }))
-        .layer(DefaultBodyLimit::max(1024 * 1024))
+        .layer(DefaultBodyLimit::max(15 * 1024 * 1024))
         .layer(middleware::from_fn(ig_service_common::request_log));
-    let host = if mode == "gateway" {
+    let port = std::env::var("RUNTIME_PORT").unwrap_or_else(|_| "3004".into());
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
+    let gateway = Router::new()
+        .route("/vnc/{port}/websockify", get(vnc::upgrade))
+        .with_state(vnc::Gateway {
+            connections: Arc::new(Semaphore::new(64)),
+        })
+        .layer(middleware::from_fn(ig_service_common::request_log));
+    // Docker nginx reaches the gateway, while RFB and helper endpoints stay local.
+    let gateway_host = if mode == "supervise" {
         "0.0.0.0"
     } else {
         "127.0.0.1"
     };
-    let port = std::env::var("RUNTIME_PORT").unwrap_or_else(|_| {
-        if mode == "gateway" {
-            "3003".into()
-        } else {
-            "3004".into()
-        }
+    let gateway_port = std::env::var("VNC_GATEWAY_PORT").unwrap_or_else(|_| "3003".into());
+    let gateway_listener =
+        tokio::net::TcpListener::bind(format!("{gateway_host}:{gateway_port}")).await?;
+    let public_api = api::router(api_state.clone());
+    let api_port = api::env("SERVER_PORT", "3001");
+    let api_listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{api_port}")).await?;
+    let auth = api_state.auth.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        auth.register_webhook().await;
     });
-    let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;
-    if mode != "gateway" {
-        uploads::cleanup_orphans(&std::env::temp_dir(), Duration::from_secs(15 * 60)).await?;
-    }
-    if mode != "supervise" {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                if mode == "helper" {
-                    helper_shutdown().await
-                } else {
-                    shutdown().await
-                }
-            })
-            .await?;
+    uploads::cleanup_orphans(&std::env::temp_dir(), Duration::from_secs(15 * 60)).await?;
+    let (stop, mut stopped) = tokio::sync::watch::channel(false);
+    let mut gateway_stopped = stopped.clone();
+    let mut api_stopped = stopped.clone();
+    let mut server = tokio::spawn(async move {
+        tokio::try_join!(
+            async {
+                axum::serve(listener, app)
+                    .with_graceful_shutdown(async move {
+                        let _ = stopped.changed().await;
+                    })
+                    .await
+            },
+            async {
+                axum::serve(gateway_listener, gateway)
+                    .with_graceful_shutdown(async move {
+                        let _ = gateway_stopped.changed().await;
+                    })
+                    .await
+            },
+            async {
+                axum::serve(
+                    api_listener,
+                    public_api.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+                )
+                .with_graceful_shutdown(async move {
+                    let _ = api_stopped.changed().await;
+                })
+                .await
+            },
+        )
+        .map(|_| ())
+    });
+    if mode == "helper" {
+        tokio::select! {
+            result = &mut server => { result??; },
+            _ = helper_shutdown() => {
+                let _ = stop.send(true);
+                if let Ok(result) = tokio::time::timeout(Duration::from_secs(5), server).await { result??; }
+            }
+        }
         return Ok(());
     }
     // The API closes its workers before this native controller stops the helper.
@@ -135,14 +180,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if !seed.success() {
         return Err("Browser cache initialization failed".into());
     }
-    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
-    let server = tokio::spawn(async move {
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async {
-                let _ = stopped.await;
-            })
-            .await
-    });
     let mut child = tokio::process::Command::new("bun")
         .arg("dist/index.js")
         .current_dir("/app/server")
@@ -151,6 +188,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .spawn()?;
     let result = tokio::select! {
         result = child.wait() => result,
+        _ = &mut server => {
+            child.kill().await?;
+            return Err("Native runtime stopped unexpectedly".into());
+        },
         _ = shutdown() => {
             #[cfg(unix)]
             if let Some(pid) = child.id() { unsafe { libc::kill(pid as i32, libc::SIGTERM); } }
@@ -160,7 +201,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }?;
-    let _ = stop.send(());
+    let _ = stop.send(true);
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
     if !result.success() {
         return Err("API process stopped with an error".into());

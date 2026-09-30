@@ -18,21 +18,22 @@ Conflict order: `docs/` → `AGENTS.md` → README stubs.
 
 ## What This Repo Is
 
-Instagram automation platform: React frontend, Express orchestration
-server, CloakBrowser stealth Chromium automation, Convex shared data layer. Package manager and server runtime: Bun
+Instagram automation platform: React frontend, Rust/Axum API,
+Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared data layer. Package manager and browser-worker runtime: Bun
 (`packageManager: bun@1.4.2`, workspaces `frontend` + `server`).
 
 - `frontend/`: React + Vite+ app.
   Feature-owned UI under `src/features/` (`profiles`, `lists`, `automations`,
   `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
-  directly (no per-user identity); Express handles orchestration only.
-- `server/`: Express REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`)
-  - public `/api/auth/*` (Telegram login) + WebSocket (`/ws`) + Bun/CloakBrowser
-    subprocess orchestration. Admin session middleware globally;
-    `/api/automations` also accepts `INTERNAL_API_KEY`. Rate limits:
-    general 100/min, automation 10/min, writes 30/min. Authenticated model images
-    use a separate 600/min limit and a one-hour private browser cache.
+  directly (no per-user identity); Axum handles the public API.
+- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, upload staging, scheduling, custom Instagram mobile client, and scraper HTTP/batching/enrichment.
+  Requests are limited to 64 in flight. Normal authenticated requests use 100/min per IP;
+  model images use 600/min, Telegram links 10/min, and login polling 120/min.
+  `/api/automations` also accepts `INTERNAL_API_KEY`.
+- `server/`: private named worker commands on loopback, authenticated with `INTERNAL_API_KEY`.
+  Browser control, business validation, chat SQLite caching, Convex subscriptions,
+  and Bun/CloakBrowser subprocess orchestration remain TypeScript.
 - `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
 - `server/automation/`: Bun workers and TypeScript Instagram actions
@@ -198,20 +199,25 @@ the workers. Both Compose configurations allow 90 seconds before Docker forces
 the container to exit. These are maximum waits; clean shutdowns finish sooner.
 
 `frontend` 5173, `server` 3001, Rust spoofer 3002, Rust VNC gateway 3003.
-The server's Rust helper listens on loopback port 3004. Browser workers, TigerVNC,
-and Fluxbox stay in the server container. Desktops are created only when needed;
-RFB ports 5901–5950 are private to Docker. The gateway maps `/vnc/6081/websockify`
+The server's Rust controller hosts the VNC gateway on port 3003 and the helper
+on loopback port 3004. Bun worker commands and internal event sockets use
+loopback port 3005; only the Rust API on 3001 is public. Browser workers, TigerVNC, and Fluxbox stay in the server
+container. Desktops are created only when needed; RFB ports 5901–5950 bind only
+to loopback. The gateway maps `/vnc/6081/websockify`
 through `/vnc/6130/websockify` to those ports with bounded, asynchronous writes.
 
 Install Rust **1.98.1**, then run `cargo build --workspace` before local development
 or server tests. `bun run build` also builds release Rust binaries. Outside Docker,
-the API starts the helper automatically. Run `target/debug/ig-runtime gateway`
-with `VNC_UPSTREAM_HOST=127.0.0.1` for local Linux desktops.
+the Bun worker starts the Rust API, helper, and VNC gateway automatically. The local gateway
+binds to loopback; in Docker nginx connects to `server:3003`.
 
 Routine browser workers exit after draining their ready profiles. The API watches
 Convex readiness; Rust stores wakeup deadlines, then the API launches a new Bun
 worker. Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
-Chat SDK clients use a 32-entry LRU cache; saved session hashes use 64 entries.
+The custom Rust mobile client keeps at most 32 profile transport entries and
+serializes operations per profile. Four mobile HTTP commands may run at once.
+Sessions are persisted in Convex; existing SDK sessions are imported with the
+same login and device, without reconnecting. Browser cookies and mobile sessions remain separate.
 Attachments stream to temporary files managed by Rust (four simultaneous uploads,
 32 pending files, 15-minute expiry), then stream through the account's proxy.
 Images: `oven/bun:1.4.2-*` for the server; `node:24.21.0-bookworm-slim` with Bun
@@ -262,8 +268,8 @@ longer waits after repeated 429s or when Instagram sends `Retry-After`.
 workers launched by one server, including manual/login sessions. Workers must be
 launched through the server so they share its resource budget; waiting is cancellable.
 `DISABLE_AUTH=true` bypasses auth in local dev only. High-risk edit
-areas: `server/auth/*`, `server/security/*`, `server/index.ts` (CORS/auth mounting),
-`server/websocket.ts`, `convex/http.ts`.
+areas: `tools/runtime/src/api/`, `tools/runtime/src/instagram/`,
+`server/worker/`, `server/websocket.ts`, and `convex/http.ts`.
 
 ## Automation & Quality Gates
 

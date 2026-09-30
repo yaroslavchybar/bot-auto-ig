@@ -1,8 +1,8 @@
 /**
- * Custom error classes for structured Express error handling.
+ * Custom error classes for structured worker command errors.
  *
  * AppError is the base class; throw typed subclasses from route handlers
- * and let the global error middleware translate them into consistent
+ * and let the worker transport translate them into consistent
  * JSON responses: { success: false, error: { code, message } }.
  */
 

@@ -372,42 +372,6 @@ export function profilesSetOutreachReady(profileId: string): Promise<void> {
   })
 }
 
-export type ChatSessionFile =
-  | { connected: false }
-  | { connected: true; state: string; token: string }
-
-export function chatSessionGet(profileId: string): Promise<ChatSessionFile> {
-  return convexFetch(`/api/chat/session?profileId=${encodeURIComponent(profileId)}`, {
-    maxRetries: 1,
-  })
-}
-
-export function chatSessionHas(profileId: string): Promise<{ connected: boolean }> {
-  return convexFetch(`/api/chat/session?profileId=${encodeURIComponent(profileId)}&status=1`, {
-    maxRetries: 1,
-  })
-}
-
-export function chatSessionSave(
-  profileId: string,
-  state: string,
-  token: string,
-  expectedToken?: string,
-): Promise<{ connected: true }> {
-  return convexFetch('/api/chat/session', {
-    method: 'POST',
-    body: { profileId, state, token, expectedToken },
-    maxRetries: 0,
-  })
-}
-
-export function chatSessionDelete(profileId: string): Promise<{ connected: false }> {
-  return convexFetch(`/api/chat/session?profileId=${encodeURIComponent(profileId)}`, {
-    method: 'DELETE',
-    maxRetries: 0,
-  })
-}
-
 export function chatUnreadSave(
   profileId: string,
   token: string,
