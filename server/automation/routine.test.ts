@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Page } from "playwright-core";
 import { runRoutineSession } from "./routine.js";
 
-function setup() {
+function setup(relationship: 'Follow' | 'Following' | 'Requested' = 'Following', messageNeedsFollow = false) {
   const calls: string[] = [];
   let now = 0;
   let sent = false,
@@ -14,7 +14,7 @@ function setup() {
     sleep: async ms => { now += ms; },
     random: (min) => min,
     followTasks: async () => [],
-    recordFollow: async () => undefined,
+    recordFollow: async () => { calls.push('record-follow'); },
     ready: async () => true,
     warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity) => {
       await activity!({ deadline: now + 600_000, remainingMinutes: 10, browse: async minutes => {
@@ -77,7 +77,27 @@ function setup() {
   const page = {
     locator: () => ({
       first: () => locator,
-      getByRole: () => ({ ...locator, waitFor: async () => {}, isVisible: async () => true }),
+      getByRole: (_role: string, options: { name: string | RegExp }) => {
+        if (options.name === 'Message') return {
+          ...locator,
+          click: async () => {
+            if (messageNeedsFollow) assert.notEqual(relationship, 'Follow');
+            await locator.click();
+          },
+        };
+        const name = options.name as RegExp;
+        return {
+          ...locator,
+          or: () => ({ waitFor: async () => {} }),
+          waitFor: async () => { assert.equal(name.test(relationship), true); },
+          isVisible: async () => name.test(relationship),
+          click: async () => {
+            assert.equal(relationship, 'Follow');
+            relationship = 'Following';
+            calls.push('follow');
+          },
+        };
+      },
     }),
     url: () => "https://www.instagram.com/",
     goto: async () => {},
@@ -295,33 +315,61 @@ test("login challenges stop before browsing and are reported", async () => {
   assert.equal(s.result().deliveryFailed, true);
 });
 
-test('missing Message follows once and records the relationship before sending', async () => {
-  const s = setup();
-  const events: string[] = [];
-  let following = false;
-  s.page.locator = (() => ({
-    first: () => ({ ...s.locator, count: async () => 0 }),
-    getByRole: (_: string, options: { name: string | RegExp }) => {
-    if (options.name === 'Message') return {
-      waitFor: async () => { if (!following) throw new Error('missing'); },
-      click: async () => { assert.equal(following, true); events.push('message'); },
+for (const messageNeedsFollow of [false, true]) {
+  test(`follows before sending when Message is ${messageNeedsFollow ? 'missing' : 'already available'}`, async () => {
+    const s = setup('Follow', messageNeedsFollow);
+    s.deps.recordFollow = async (profileId, leadId, followed) => {
+      assert.equal(profileId, 'profile'); assert.equal(leadId, 'lead'); assert.equal(followed, true);
+      s.calls.push('record-follow');
     };
-    if (String(options.name).includes('Following')) return { waitFor: async () => { assert.equal(following, true); } };
-    return { isVisible: async () => true, click: async () => { following = true; events.push('follow'); } };
-    },
-  })) as unknown as Page['locator'];
-  s.deps.begin = async () => true;
-  s.deps.recordFollow = async (profileId, leadId, followed) => {
-    assert.equal(profileId, 'profile'); assert.equal(leadId, 'lead'); assert.equal(followed, true);
-    events.push('record-follow');
+    await s.run();
+    assert.deepEqual(s.calls.filter(c => ['authorize', 'follow', 'record-follow', 'message-button', 'send'].includes(c)),
+      ['authorize', 'follow', 'record-follow', 'message-button', 'authorize', 'send']);
+    assert.equal(s.result().sent, true);
+  });
+}
+
+test('refused follow authorization prevents both following and messaging', async () => {
+  const s = setup('Follow');
+  s.deps.begin = async () => false;
+  await s.run();
+  assert.equal(s.calls.includes('follow'), false);
+  assert.equal(s.calls.includes('message-button'), false);
+  assert.equal(s.calls.includes('send'), false);
+});
+
+test('a deadline reached during follow authorization skips following and messaging', async () => {
+  const s = setup('Follow');
+  s.deps.begin = async () => {
+    await s.deps.sleep(600_000);
+    return true;
   };
   await s.run();
-  assert.deepEqual(events, ['follow', 'record-follow', 'message']);
-  assert.equal(s.result().sent, true);
+  assert.equal(s.calls.includes('follow'), false);
+  assert.equal(s.calls.includes('message-button'), false);
+  assert.equal(s.calls.includes('send'), false);
+  assert.equal(s.result().deliveryFailed, false);
+});
+
+test('an unconfirmed follow prevents messaging and is not recorded', async () => {
+  const s = setup('Follow');
+  const controls = s.page.locator('main header');
+  const getByRole = controls.getByRole;
+  s.page.locator = (() => ({ getByRole: (role: string, options: { name: RegExp }) => {
+    const control = getByRole(role as 'button', options);
+    if (String(options.name).includes('Following')) control.waitFor = async () => { throw new Error('follow not confirmed'); };
+    return control;
+  } })) as unknown as Page['locator'];
+  await s.run();
+  assert.equal(s.calls.includes('follow'), true);
+  assert.equal(s.calls.includes('record-follow'), false);
+  assert.equal(s.calls.includes('message-button'), false);
+  assert.equal(s.calls.includes('send'), false);
+  assert.equal(s.result().deliveryFailed, true);
 });
 
 test('blocked message follows and unsends without marking delivery successful', async () => {
-  const s = setup();
+  const s = setup('Follow');
   const events: string[] = [];
   s.page.getByText = ((text: string | RegExp, options?: { exact?: boolean }) => {
     if (options?.exact && String(text).startsWith("This account can't receive"))
@@ -339,15 +387,20 @@ test('blocked message follows and unsends without marking delivery successful', 
   };
   await s.run();
   assert.deepEqual(events, ['follow', 'blocked']);
+  assert.equal(s.calls.filter(c => c === 'follow').length, 1);
   assert.deepEqual(s.result(), { sent: false, deliveryFailed: false });
 });
 
-test('existing Message does not authorize or record a follow', async () => {
-  const s = setup();
-  s.deps.recordFollow = async () => { throw new Error('unexpected record'); };
-  await s.run();
-  assert.equal(s.result().sent, true);
-});
+for (const relationship of ['Following', 'Requested'] as const) {
+  test(`existing ${relationship} does not click or record a follow`, async () => {
+    const s = setup(relationship);
+    s.deps.recordFollow = async () => { throw new Error('unexpected record'); };
+    await s.run();
+    assert.equal(s.calls.includes('follow'), false);
+    assert.equal(s.calls.filter(c => c === 'authorize').length, 1);
+    assert.equal(s.result().sent, true);
+  });
+}
 
 test('an exhausted daily budget also prevents follow cleanup', async () => {
   const s = setup();

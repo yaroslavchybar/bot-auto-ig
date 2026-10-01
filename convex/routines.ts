@@ -8,7 +8,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { dmAllowance, dayKey, routineLists } from "./routinePolicy";
+import { dmAllowance, dayKey, routineLists, randomInRange, unfollowRange } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
 
@@ -291,7 +291,7 @@ export const reserve = internalMutation({
       await ctx.db.patch(membership._id, { available: false });
     }
     if (!lead) return null;
-    await ctx.db.patch(lead._id, { senderId: args.profileId });
+    await ctx.db.patch(lead._id, { senderId: args.profileId, unfollowDays: randomInRange(unfollowRange(e.policy)) });
     await setLeadAvailability(ctx, lead._id, false);
     await ctx.db.patch(state._id, { date, used: used + 1, allowance,
       sentToday: state.date === date ? state.sentToday ?? 0 : 0, updatedAt: Date.now() });
@@ -350,7 +350,12 @@ export const followTasks = internalQuery({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected')) return [];
-    const due = await ctx.db.query('leads').withIndex('by_follow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', (args.now ?? Date.now()) - followDelay)).take(5);
+    const now = args.now ?? Date.now();
+    const due = await ctx.db.query('leads').withIndex('by_unfollow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('unfollowAt', undefined).lte('unfollowAt', now)).take(5);
+    // Existing follows without a saved deadline retain their original seven-day delay.
+    if (due.length < 5) due.push(...await ctx.db.query('leads')
+      .withIndex('by_follow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', now - followDelay))
+      .filter(q => q.eq(q.field('unfollowAt'), undefined)).take(5 - due.length));
     return due.map(lead => ({ leadId: lead._id, username: lead.username }));
   },
 });
@@ -361,8 +366,11 @@ export const recordFollow = internalMutation({
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.senderId !== args.profileId) throw new Error('Follow belongs to another profile');
     if (args.followed === lead.followed) return;
-    if (!args.followed && (lead.followDate ?? Infinity) > Date.now() - followDelay) throw new Error('Follow is not due for removal');
-    await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? { followDate: Date.now() } : {}) });
+    const now = Date.now();
+    if (!args.followed && (lead.unfollowAt ?? (lead.followDate ?? Infinity) + followDelay) > now) throw new Error('Follow is not due for removal');
+    await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? {
+      followDate: now, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000,
+    } : {}) });
     if (args.followed) await setLeadAvailability(ctx, lead._id, false);
   },
 });

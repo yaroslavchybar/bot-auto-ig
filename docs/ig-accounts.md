@@ -72,8 +72,9 @@ warmup session on day 3, the Rust mobile client logs in. It changes the
 username and full name in separate steps. A full name added later is still
 applied, even when the profile is past day 3 or already posting. Posting can
 continue while no full name is configured. One full-name variation is shared by four accounts.
-From day 4, after a browser warmup session, it changes the avatar and starts nine
-daily posts without captions. Mobile setup starts in the background while the
+From day 4, after a browser warmup session, it changes the avatar and starts daily
+posts without captions, up to the account's saved random target from the automation's
+warm-up post range (default 9–9). Mobile setup starts in the background while the
 browser worker can move to its next profile. Each post uses a different uploaded
 image; if the bank is empty, posting waits for the next upload. A failed or uncertain mobile API
 action is shown for review rather than retried blindly. In the automation's
@@ -82,7 +83,7 @@ it failed to let the worker retry. Model moves reset outreach readiness.
 After Chat login and each confirmed username change, the profile name follows
 the IG username. The existing profile maintenance flow moves its browser data
 directory; sync errors appear on the connected account and retry in the background.
-After the ninth post, the automation marks the profile ready for outreach.
+After the account's post target is reached, the automation marks the profile ready for outreach.
 
 The Rust spoofer runs in its own Docker container, using the shared `data/`
 volume. The server submits image jobs over the private Docker network. Warmup

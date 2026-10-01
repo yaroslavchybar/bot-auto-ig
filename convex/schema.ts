@@ -27,13 +27,16 @@ export default defineSchema({
     dmSent: v.boolean(),
     followed: v.boolean(),
     followDate: v.optional(v.number()),
+    unfollowDays: v.optional(v.number()),
+    unfollowAt: v.optional(v.number()),
     dmBlocked: v.optional(v.boolean()),
   })
     .index('by_username', ['username'])
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
     .index('by_enrichment', ['enrichmentStatus'])
-    .index('by_follow_due', ['senderId', 'followed', 'followDate']),
+    .index('by_follow_due', ['senderId', 'followed', 'followDate'])
+    .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),
   leadMemberships: defineTable({
     leadId: v.id('leads'),
     listId: v.id('leadLists'),
@@ -121,6 +124,7 @@ export default defineSchema({
     avatarSourceId: v.optional(v.string()),
     avatarDone: v.optional(v.boolean()),
     postSourceIds: v.array(v.string()),
+    postTarget: v.optional(v.number()),
     postDates: v.array(v.string()),
     outreachReadyMarked: v.optional(v.boolean()),
     pending: v.optional(

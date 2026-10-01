@@ -16,7 +16,7 @@ type PendingAction = { kind: 'name' | 'username' | 'fullName' | 'avatar' | 'post
 type Progress = { profileId: string; modelId: string; startedAt: number; targetUsername?: string;
   fullName?: string; nameDone?: boolean; fullNameDone?: boolean;
   avatarSourceId?: string; avatarDone?: boolean;
-  postSourceIds: string[]; postDates: string[]; outreachReadyMarked?: boolean;
+  postSourceIds: string[]; postDates: string[]; postTarget?: number; outreachReadyMarked?: boolean;
   pending?: PendingAction; error?: string }
 let running = false
 const activeActions = new Set<string>()
@@ -142,7 +142,7 @@ export async function postModelUpdateInSession(profileId: string, modelId: strin
     let posted: { sourceId: string; date: string } | undefined
     try {
       const state = (await read()).profiles.find(row => row.profileId === profileId && row.modelId === modelId)
-      if (!state || state.pending || state.postSourceIds.length >= 9) return false
+      if (!state || state.pending || state.postSourceIds.length >= (state.postTarget ?? 9)) return false
       if (dayNumber(state.startedAt, Date.now()) < 4 || !state.avatarDone) return false
       const today = dateKey(Date.now())
       if (state.postDates.includes(today)) return false
@@ -171,7 +171,7 @@ export async function postModelUpdateInSession(profileId: string, modelId: strin
       posted = { sourceId: content.sourceId, date: today }
       await patch(profileId, { pending: undefined, error: undefined,
         postSourceIds, postDates: [...state.postDates, today],
-        ...(postSourceIds.length >= 9 ? { outreachReadyMarked: true } : {}) })
+        ...(postSourceIds.length >= (state.postTarget ?? 9) ? { outreachReadyMarked: true } : {}) })
       return true
     } catch (error) {
       addLogContext({ outcome: 'error', error })
@@ -276,7 +276,7 @@ export async function advanceModelWarmup(profileId: string, automationId: string
         await applyFullName(state, model, index)
         return
       }
-      if (state.postSourceIds.length >= 9) {
+      if (state.postSourceIds.length >= (state.postTarget ?? 9)) {
         if (!state.outreachReadyMarked)
           await patch(profileId, { outreachReadyMarked: true, error: undefined })
         return

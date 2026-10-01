@@ -168,5 +168,16 @@ test('model setup advances only after a browser session and keeps the day 3 and 
     assert.equal(account.username, 'legacyname')
     assert.equal(state.pending, undefined)
     assert.equal(events.at(-1), 'sync')
+
+    // Posting stops at this account's saved target rather than a hardcoded nine.
+    state.postTarget = 3
+    state.postSourceIds = ['p1', 'p2']
+    state.postDates = ['2026-09-28', '2026-09-29']
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), true)
+    assert.equal(state.postSourceIds.length, 3)
+    assert.equal(state.outreachReadyMarked, true)
+    now = Date.parse('2026-10-01T12:00:00Z')
+    assert.equal(await postModelUpdateInSession('profile', 'model', {}, () => {}), false)
+    assert.equal(state.postSourceIds.length, 3)
   `], { stdio: 'pipe', env: { ...process.env, WARMUP_POST_IMAGE: image } })
 })

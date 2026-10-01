@@ -10,6 +10,8 @@ import {
 import type { Id, Doc } from './_generated/dataModel'
 import { DomainError } from './errors'
 import { requireServerBridgeAuth } from './serverBridgeAuth'
+import { modelRoutine, recordedPostsReady } from './modelSetupPolicy'
+import { randomInRange, warmupPostRange } from './routinePolicy'
 
 const status = v.union(
   v.literal('available'),
@@ -173,7 +175,8 @@ export const modelSetupEnrollInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .first()
     if (existing?.modelId === modelId) return existing
-    const progress = { profileId, modelId, startedAt, postSourceIds: [], postDates: [] }
+    const postTarget = randomInRange(warmupPostRange(await modelRoutine(ctx, modelId)))
+    const progress = { profileId, modelId, startedAt, postTarget, postSourceIds: [], postDates: [] }
     await ctx.db.patch(profileId, { outreachReady: false })
     if (existing) {
       await ctx.db.replace(existing._id, progress)
@@ -196,10 +199,6 @@ const modelSetupPatchKeys = new Set([
   'pending',
   'error',
 ])
-
-function nineRecordedPosts(sourceIds: string[], dates: string[]): boolean {
-  return sourceIds.length >= 9 && sourceIds.length === dates.length
-}
 
 export const modelSetupPatchInternal = internalMutation({
   args: { profileId: v.id('profiles'), patch: v.any(), clear: v.array(v.string()) },
@@ -232,12 +231,13 @@ export const modelSetupPatchInternal = internalMutation({
     if (!profile?.listIds?.includes(state.modelId))
       throw new DomainError('CONFLICT', 'Profile moved to another model')
     const postsChanged = patch.postSourceIds !== undefined || patch.postDates !== undefined
-    const ready = nineRecordedPosts(
+    const ready = recordedPostsReady(
       patch.postSourceIds ?? state.postSourceIds,
       patch.postDates ?? state.postDates,
+      state.postTarget,
     )
     if (patch.outreachReadyMarked === true && !ready)
-      throw new DomainError('VALIDATION', 'Nine recorded posts are required for outreach')
+      throw new DomainError('VALIDATION', `${state.postTarget ?? 9} recorded posts are required for outreach`)
     await ctx.db.patch(state._id, {
       ...patch,
       ...Object.fromEntries(clear.map((key) => [key, undefined])),
@@ -278,7 +278,7 @@ export const modelSetupReconcileInternal = internalMutation({
       if (!action.sourceId) throw new DomainError('VALIDATION', 'Post source is missing')
       const postSourceIds = [...state.postSourceIds, action.sourceId]
       const postDates = [...state.postDates, action.date]
-      const ready = nineRecordedPosts(postSourceIds, postDates)
+      const ready = recordedPostsReady(postSourceIds, postDates, state.postTarget)
       await ctx.db.patch(state._id, {
         postSourceIds,
         postDates,

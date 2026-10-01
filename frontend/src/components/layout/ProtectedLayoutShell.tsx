@@ -49,7 +49,7 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   if (appChrome === 'immersive') {
     return (
       <ConvexClientProvider>
-        <div className="flex h-svh min-w-0 flex-col overflow-hidden bg-shell">
+        <div data-app-shell className="flex h-svh min-w-0 flex-col overflow-hidden bg-shell">
           <div className="min-h-0 min-w-0 flex-1">{children}</div>
         </div>
       </ConvexClientProvider>
@@ -59,6 +59,7 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   return (
     <ConvexClientProvider>
       <SidebarProvider
+        data-app-shell
         defaultOpen={readSidebarDefaultOpen()}
         className="h-svh min-w-0 overflow-hidden"
       >

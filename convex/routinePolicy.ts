@@ -11,6 +11,10 @@ export const routineValidator = v.object({
   message: v.string(),
   activity: v.record(v.string(), v.union(v.number(), v.boolean())),
   headless: v.boolean(),
+  unfollowMinDays: v.optional(v.number()),
+  unfollowMaxDays: v.optional(v.number()),
+  warmupMinPosts: v.optional(v.number()),
+  warmupMaxPosts: v.optional(v.number()),
 });
 
 export type RoutinePolicy = typeof routineValidator.type;
@@ -22,9 +26,28 @@ export const defaultRoutine: RoutinePolicy = {
   message: "",
   activity: {},
   headless: false,
+  unfollowMinDays: 7,
+  unfollowMaxDays: 7,
+  warmupMinPosts: 9,
+  warmupMaxPosts: 9,
 };
 
+export const unfollowRange = (p?: RoutinePolicy) =>
+  [p?.unfollowMinDays ?? 7, p?.unfollowMaxDays ?? 7] as const;
+export const warmupPostRange = (p?: RoutinePolicy) =>
+  [p?.warmupMinPosts ?? 9, p?.warmupMaxPosts ?? 9] as const;
+export const randomInRange = ([min, max]: readonly [number, number]) =>
+  min + Math.floor(Math.random() * (max - min + 1));
+
 export function validateRoutine(p: RoutinePolicy) {
+  for (const [name, range, limit] of [
+    ['Unfollow days', unfollowRange(p), 365],
+    ['Warm-up posts', warmupPostRange(p), 100],
+  ] as const) {
+    const [min, max] = range;
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < min || max > limit)
+      throw new Error(`${name} must be 1–${limit}, with min no greater than max`);
+  }
   for (const [key, value] of Object.entries(p.activity)) {
     if (
       typeof value === "number" &&

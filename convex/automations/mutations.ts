@@ -1,5 +1,6 @@
 import { DomainError } from '../errors';
-import { routineValidator, validateRoutine } from '../routinePolicy';
+import { routineValidator, validateRoutine, warmupPostRange } from '../routinePolicy';
+import { updateWarmupPostTargets } from '../modelSetupPolicy';
 import { assertAssignments } from '../routines';
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
@@ -54,6 +55,7 @@ export const create = mutation({
 			createdAt: now,
 			updatedAt: now,
 		});
+		if (args.routine && listIds[0]) await updateWarmupPostTargets(ctx, listIds[0], args.routine);
 		return await ctx.db.get(id);
 	},
 });
@@ -99,6 +101,16 @@ export const update = mutation({
 		if (updates.routine) {
           validateRoutine(updates.routine);
           await ctx.db.patch(id, { routine: updates.routine });
+        }
+        const routine = updates.routine ?? existing.routine;
+        if (routine) {
+          const previousRange = warmupPostRange(existing.routine);
+          const nextRange = warmupPostRange(routine);
+          const modelId = normalizeListIds(updates.listIds ?? existing.listIds)[0];
+          if (previousRange[0] !== nextRange[0] || previousRange[1] !== nextRange[1] ||
+              modelId !== existing.listIds?.[0]) {
+            if (modelId) await updateWarmupPostTargets(ctx, modelId, routine);
+          }
         }
         await assertAssignments(ctx);
 		return await ctx.db.get(id);

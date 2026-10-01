@@ -30,6 +30,7 @@ type WarmupProgress = {
   fullNameDone?: boolean
   avatarDone?: boolean
   postSourceIds: string[]
+  postTarget?: number
   postDates: string[]
   outreachReadyMarked?: boolean
   pending?: { kind: string; date: string }
@@ -167,6 +168,7 @@ function WarmupStages({
   const day = dayNumber(progress.startedAt, now)
   const connected = credential.status === 'connected' && !credential.reconnectRequired
   const posts = progress.postSourceIds.length
+  const postTarget = progress.postTarget ?? 9
   const fullNameSkipped = !progress.fullNameDone && (progress.avatarDone || posts > 0)
 
   const stages: Array<{
@@ -207,8 +209,8 @@ function WarmupStages({
     },
     {
       label: 'Feed posts',
-      detail: `${Math.min(posts, 9)}/9${progress.postDates.length ? ` · last ${progress.postDates[progress.postDates.length - 1]}` : ''}`,
-      state: posts >= 9 ? 'done' : day >= 4 ? 'current' : 'waiting',
+      detail: `${posts}/${postTarget}${progress.postDates.length ? ` · last ${progress.postDates[progress.postDates.length - 1]}` : ''}`,
+      state: posts >= postTarget ? 'done' : day >= 4 ? 'current' : 'waiting',
     },
     {
       label: 'Outreach ready',

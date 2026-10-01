@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { GroupedInputs } from '../activity-ui/GroupedInputs'
+import { MinMaxField } from '../activity-ui/MinMaxField'
 import { browseFeed } from '../activities/browsing/browse-feed'
 import { cn } from '@/lib/utils'
 
@@ -44,6 +45,7 @@ type ModelWarmup = {
   fullNameDone?: boolean
   avatarDone?: boolean
   postSourceIds: string[]
+  postTarget?: number
   pending?: { kind: string }
   error?: string
 }
@@ -87,6 +89,34 @@ export function RoutinePopup({
         max={max}
         onChange={(e) => change(key, e.target.value === '' ? Number.NaN : Number(e.target.value))}
         className="border-line bg-field"
+      />
+    </div>
+  )
+  const rangeField = (
+    minKey: 'unfollowMinDays' | 'warmupMinPosts',
+    maxKey: 'unfollowMaxDays' | 'warmupMaxPosts',
+    label: string,
+    unit: string,
+    limit: number,
+    fallback: number,
+  ) => (
+    <div className="grid gap-1.5">
+      <Label>{label}</Label>
+      <MinMaxField
+        unit={unit}
+        minInput={{
+          name: minKey, label: `Minimum ${label.toLowerCase()}`,
+          type: 'number', min: 1, max: limit, step: 1,
+        }}
+        maxInput={{
+          name: maxKey, label: `Maximum ${label.toLowerCase()}`,
+          type: 'number', min: 1, max: limit, step: 1,
+        }}
+        minValue={policy[minKey] ?? fallback}
+        maxValue={policy[maxKey] ?? fallback}
+        onChange={(key, value) => {
+          if (typeof value === 'number' && (key === minKey || key === maxKey)) change(key, value)
+        }}
       />
     </div>
   )
@@ -240,9 +270,15 @@ export function RoutinePopup({
                     Browser login starts model setup. Daily feed browsing starts the next day with
                     its time budget. On day 3, the mobile session connects through the Work proxy.
                     Username and full name change separately; the full name waits for a model name.
-                    From day 4, setup can add the avatar and start nine daily posts. After the ninth
-                    post, the profile becomes ready for outreach. Activity continues during outreach
-                    with breaks between sessions.
+                    From day 4, setup can add the avatar and publish one post daily until its chosen
+                    post target is reached. The profile then becomes ready for outreach. Activity
+                    continues during outreach with breaks between sessions.
+                  </p>
+                  {rangeField('warmupMinPosts', 'warmupMaxPosts', 'Warm-up posts', 'posts', 100, 9)}
+                  <p className="text-xs text-subtle-copy">
+                    Each account gets a random total from this range. Changing the range assigns
+                    new targets to unfinished accounts, keeping their existing posts. Completed
+                    accounts stay ready.
                   </p>
                   <GroupedInputs
                     inputs={browseFeed.inputs}
@@ -274,6 +310,11 @@ export function RoutinePopup({
                     {numberField('initialDms', 'Initial daily target', 1, 35)}
                     {numberField('maxDms', 'Maximum DMs per day', 1, 35)}
                   </div>
+                  {rangeField('unfollowMinDays', 'unfollowMaxDays', 'Unfollow after', 'days', 365, 7)}
+                  <p className="text-xs text-subtle-copy">
+                    Follow each recipient before messaging. Each new follow gets a random delay
+                    from this range. Existing scheduled unfollows keep their dates.
+                  </p>
                   <p className="text-xs text-subtle-copy">
                     The daily target increases by a random 1–4 after each day with a confirmed DM,
                     up to the maximum. Sessions alternate browsing and batches of 1–5 DMs. Browsing,
@@ -491,7 +532,7 @@ function ModelSetupStatus({
     <div className="basis-full text-xs text-subtle-copy">
       Setup:{' '}
       {progress
-        ? `Username ${progress.nameDone ? 'done' : 'waiting'} · Full name ${progress.fullNameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/9${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
+        ? `Username ${progress.nameDone ? 'done' : 'waiting'} · Full name ${progress.fullNameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/${progress.postTarget ?? 9}${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
         : 'Starts after IG connects and this automation is enabled'}
       {progress?.error && <span className="mt-1 block text-status-danger">{progress.error}</span>}
       {progress?.pending && (

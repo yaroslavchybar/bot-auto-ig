@@ -12,7 +12,7 @@ import {
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
 import { scheduleRoutine } from './routine-schedule.js';
-import { followButton, followingButton, hasMessageButton, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
+import { followButton, followingButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
 
@@ -65,12 +65,15 @@ export async function runRoutineSession(
   const timeout = (ms: number) => Math.max(1, Math.min(ms, deadline - deps.now()));
   const shouldStop = () => deps.now() >= deadline || stopped() || !allowed || Boolean(liveAccess && !liveAccess());
   const followIfNeeded = async (leadId: string, date: string) => {
+    // Wait for the profile relationship controls before deciding whether to follow.
+    // Existing follows and requests are never claimed as automation-created follows.
+    if (await isFollowing(page)) return false;
     const follow = followButton(page);
-    if (!(await follow.isVisible().catch(() => false))) return false;
     await check();
     if (shouldStop()) throw new Error('Session stopped before following');
     if (!await deps.begin(automation._id, profileId, leadId, date))
       throw new Error('Follow was not authorized');
+    if (shouldStop()) throw new Error('Session stopped before following');
     await follow.click({ timeout: 10_000 });
     await followingButton(page).waitFor({ state: 'visible', timeout: 15_000 });
     await deps.recordFollow(profileId, leadId, true);
@@ -90,7 +93,7 @@ export async function runRoutineSession(
         const removed = await unfollow(page, async () => { await check(); return !shouldStop(); });
         if (!removed) return;
         await deps.recordFollow(profileId, task.leadId, false);
-        log({ event: 'automation.routine.unfollowed', message: `Unfollowed @${task.username} after seven days` });
+        log({ event: 'automation.routine.unfollowed', message: `Unfollowed @${task.username} after the scheduled delay` });
       }
     };
     const warmup = await deps.warmup(
@@ -133,10 +136,7 @@ export async function runRoutineSession(
                 waitUntil: "domcontentloaded",
                 timeout: 30_000,
               });
-              if (!await hasMessageButton(page)) {
-                // Existing relationships are never claimed as automation-created follows.
-                await followIfNeeded(attempt.leadId, attempt.date);
-              }
+              await followIfNeeded(attempt.leadId, attempt.date);
               await messageButton(page).click({ timeout: 15_000 });
               // Current Instagram keeps the profile URL and opens the composer in
               // an overlay, so the composer is the navigation-complete signal.
@@ -158,7 +158,6 @@ export async function runRoutineSession(
                   .last()
                   .waitFor({ state: "visible", timeout: 15_000 });
                 if (await messageWasBlocked(page)) {
-                  await followIfNeeded(attempt.leadId, attempt.date);
                   await unsendMessage(page, attempt.message);
                   blocked = true;
                 } else {

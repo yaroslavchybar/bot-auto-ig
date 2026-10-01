@@ -30,6 +30,25 @@
     overflow-x: hidden;
   }
 
+  /* Keep the app shell still; lists and dialogs own their scrolling. */
+  html:has([data-app-shell]),
+  body:has([data-app-shell]),
+  #root:has([data-app-shell]) {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  body:has([data-app-shell]) {
+    position: fixed;
+    inset: 0;
+  }
+
+  [data-app-shell] :where(.overflow-auto, .overflow-y-auto, .overflow-x-auto) {
+    overscroll-behavior: none;
+  }
+
   ::selection {
     background-color: var(--selection);
     color: var(--inverse);

@@ -51,12 +51,7 @@ export async function unsendMessage(page: Page, message: string) {
   await sentMessage.waitFor({ state: 'detached', timeout: 15_000 });
 }
 
-export async function hasMessageButton(page: Page) {
-  return messageButton(page)
-    .waitFor({ state: 'visible', timeout: 5_000 }).then(() => true, () => false);
-}
-
-/** Read the relationship after a crash without repeating the Follow click. */
+/** Wait for relationship controls and recognize both follows and pending requests. */
 export async function isFollowing(page: Page) {
   await followingButton(page).or(followButton(page)).waitFor({ state: 'visible', timeout: 15_000 });
   return followingButton(page).isVisible();

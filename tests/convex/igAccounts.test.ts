@@ -73,7 +73,7 @@ test('model setup in Convex resets outreach on moves and opens it after nine pos
     .toBeUndefined()
   await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
     { profileId: profile._id, patch: { outreachReadyMarked: true }, clear: [] }))
-    .rejects.toThrow('Nine recorded posts')
+    .rejects.toThrow('9 recorded posts')
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id,
     patch: { postDates: Array.from({ length: 9 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`) },
     clear: [] })

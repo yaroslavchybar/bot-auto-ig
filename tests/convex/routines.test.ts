@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
-import { defaultRoutine, dayKey } from '../../convex/routinePolicy';
+import { defaultRoutine, dayKey, validateRoutine } from '../../convex/routinePolicy';
 import { createConvexTest, seedList, seedProfile } from './helpers';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -257,6 +257,59 @@ test('follows become due after seven days and unfollowing never requeues the lea
   expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
   expect((await readLeads(t)).find(l => l._id === claim.leadId)).toMatchObject({ followed: false, followDate, senderId: profile._id });
   expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
+});
+
+test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=%s)', async random => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
+  const { t, args, loggedIn, profile, automation } = await setup(); await loggedIn();
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: {
+    ...automation.routine!, unfollowMinDays: 3, unfollowMaxDays: 10,
+  } }));
+  const rng = vi.spyOn(Math, 'random').mockReturnValue(random);
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  rng.mockRestore();
+  const days = random === 0 ? 3 : 10;
+  const follow = { profileId: profile._id, leadId: claim.leadId, followed: true };
+  await t.mutation(internal.routines.recordFollow, follow);
+  const followDate = Date.now();
+  const unfollowAt = followDate + days * 86_400_000;
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: {
+    ...automation.routine!, unfollowMinDays: 1, unfollowMaxDays: 1,
+  } }));
+  vi.setSystemTime(unfollowAt - 1);
+  await t.mutation(internal.routines.recordFollow, follow);
+  expect((await readLeads(t)).find(l => l._id === claim.leadId))
+    .toMatchObject({ followDate, unfollowDays: days, unfollowAt });
+  expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
+  await expect(t.mutation(internal.routines.recordFollow, { ...follow, followed: false })).rejects.toThrow('not due');
+  vi.setSystemTime(unfollowAt);
+  expect(await t.query(internal.routines.followTasks, args)).toEqual([{ leadId: claim.leadId, username: claim.username }]);
+  await t.mutation(internal.routines.recordFollow, { ...follow, followed: false });
+  expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
+});
+
+test('existing follows without saved deadlines still become due after seven days', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
+  const { t, args, loggedIn, profile } = await setup(); await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const followDate = Date.now();
+  await t.run(ctx => ctx.db.patch(claim.leadId, { followed: true, followDate, unfollowDays: undefined }));
+  const follow = { profileId: profile._id, leadId: claim.leadId, followed: false };
+  vi.setSystemTime(followDate + 7 * 86_400_000 - 1);
+  expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
+  await expect(t.mutation(internal.routines.recordFollow, follow)).rejects.toThrow('not due');
+  vi.setSystemTime(followDate + 7 * 86_400_000);
+  expect(await t.query(internal.routines.followTasks, args)).toHaveLength(1);
+  await t.mutation(internal.routines.recordFollow, follow);
+});
+
+test.each([
+  { unfollowMinDays: 0 }, { unfollowMaxDays: 366 },
+  { unfollowMinDays: 8, unfollowMaxDays: 3 }, { unfollowMinDays: 1.5 },
+  { warmupMinPosts: 0 }, { warmupMaxPosts: 101 },
+  { warmupMinPosts: 6, warmupMaxPosts: 3 }, { warmupMinPosts: Number.NaN },
+])('invalid random ranges are rejected: %j', patch => {
+  expect(() => validateRoutine({ ...defaultRoutine, ...patch })).toThrow(/Unfollow days|Warm-up posts/);
 });
 
 test('a followed lead can finish its same-session DM and stays claimed after unfollow', async () => {
