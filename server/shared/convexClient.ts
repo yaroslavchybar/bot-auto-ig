@@ -444,13 +444,15 @@ export async function automationsUpdateStatus(input: {
 
 export async function automationsReconcileInterrupted(): Promise<{ reconciled: number }> {
   let reconciled = 0
+  let cursor: string | undefined
   while (true) {
-    const batch = await convexFetch<{ reconciled: number; hasMore?: boolean }>(
+    const batch = await convexFetch<{ reconciled: number; hasMore?: boolean; cursor?: string }>(
       '/api/automations/reconcile',
-      { method: 'POST', body: {} },
+      { method: 'POST', body: { cursor } },
     )
     reconciled += batch.reconciled
     if (!batch.hasMore) return { reconciled }
+    cursor = batch.cursor
   }
 }
 

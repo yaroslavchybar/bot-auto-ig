@@ -21,7 +21,12 @@ export function registerAutomationRoutes(http: HttpRouter): void {
   registerPreflight(http, automationPaths);
   http.route({
     path: '/api/automations/reconcile', method: 'POST',
-    handler: withErrorHandling(async ctx => jsonResponse(await ctx.runMutation(internal.automations.mutations.reconcileInterruptedInternal, {}))),
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      if (body.cursor !== undefined && typeof body.cursor !== 'string')
+        throw new ValidationError('Invalid recovery cursor');
+      return jsonResponse(await ctx.runMutation(internal.automations.mutations.reconcileInterruptedInternal, { cursor: body.cursor }));
+    }),
   });
 
   http.route({

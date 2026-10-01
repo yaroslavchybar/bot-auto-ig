@@ -287,16 +287,34 @@ export const reset = mutation({
 });
 
 export const reconcileInterruptedInternal = internalMutation({
-  args: {},
-  handler: async ctx => {
-    // Drain bounded batches before startup continues. Updated rows leave these
-    // index ranges, so the next call resumes without a cursor or a history scan.
+  args: { cursor: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    // Scan status rows in bounded pages, then select recovery candidates in memory.
+    // Carry the cursor past unchanged waiting routines and genuine failures.
     const batchSize = 100;
-    const running = await ctx.db.query('automations').withIndex('by_status', q => q.eq('status', 'running')).take(batchSize);
-    const pending = await ctx.db.query('automations').withIndex('by_status', q => q.eq('status', 'pending')).take(batchSize);
-    const interrupted = [...running, ...pending];
+    const now = Date.now();
+    const restartError = 'Server restarted during execution';
+    const batch = await ctx.db.query('automations')
+      .withIndex('by_status', q => q.gte('status', 'failed').lte('status', 'running'))
+      .paginate({ cursor: args.cursor ?? null, numItems: batchSize, maximumRowsRead: batchSize });
+    const interrupted = batch.page.filter(automation =>
+      automation.status === 'running' ||
+      (automation.status === 'pending' && (!automation.routine || automation.isActive !== true)) ||
+      (automation.status === 'failed' && automation.routine && automation.error === restartError));
     for (const automation of interrupted) {
-      await ctx.db.patch(automation._id, { status: 'failed', error: 'Server restarted during execution', completedAt: Date.now(), updatedAt: Date.now() });
+      if (automation.routine) {
+        // Account progress and checkpoints persist. The scheduler decides when
+        // the next session is allowed after budgets and cooldowns are restored.
+        await ctx.db.patch(automation._id, {
+          status: automation.isActive === true ? 'pending' : 'cancelled',
+          error: undefined,
+          startedAt: undefined,
+          completedAt: automation.isActive === true ? undefined : now,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.patch(automation._id, { status: 'failed', error: restartError, completedAt: now, updatedAt: now });
+      }
     }
     // Called only after orphan workers are stopped. Charge interrupted reserved time
     // conservatively, then release it so other sessions can continue today.
@@ -305,11 +323,11 @@ export const reconcileInterruptedInternal = internalMutation({
       if (!state.activeRun) continue;
       await ctx.db.patch(state._id, {
         minutesUsedToday: Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + state.activeRun.minutes),
-        nextRunAt: Date.now() + state.activeRun.restMinutes * 60_000,
+        nextRunAt: Math.max(state.nextRunAt ?? 0, now + state.activeRun.restMinutes * 60_000),
         activeRun: undefined,
       });
     }
-    const hasMore = [running, pending, activeWarmups].some(rows => rows.length === batchSize);
-    return { reconciled: interrupted.length, ...(hasMore ? { hasMore: true } : {}) };
+    const hasMore = !batch.isDone || activeWarmups.length === batchSize;
+    return { reconciled: interrupted.length, ...(hasMore ? { hasMore: true, cursor: batch.continueCursor } : {}) };
   },
 });
