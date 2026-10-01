@@ -7,6 +7,7 @@ import { RoutinePopup } from '@/features/automations/components/RoutinePopup'
 import { mount } from './mount'
 
 vi.mock('convex/react', () => ({ useMutation: vi.fn(), useQuery: vi.fn() }))
+vi.mock('@/lib/api', () => ({ apiFetch: vi.fn() }))
 vi.mock('@/components/ui/dialog', () => ({
   Dialog: ({ children }: { children: ReactNode }) => children,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
