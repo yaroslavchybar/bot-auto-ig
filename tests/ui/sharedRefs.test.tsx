@@ -1,5 +1,5 @@
 import { createRef } from 'react'
-import { afterEach, expect, test } from 'vite-plus/test'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Trigger as DialogTrigger } from '@radix-ui/react-dialog'
@@ -60,5 +60,6 @@ test('Radix dialog refs, focus, and immediate close remain functional', async ()
   await render(false)
   expect(content.current).toBeNull()
   expect(document.querySelector('[role="dialog"]')).toBeNull()
-  expect(document.activeElement).toBe(trigger.current)
+  // Radix restores focus on a timer after the dialog unmounts.
+  await vi.waitFor(() => expect(document.activeElement).toBe(trigger.current))
 })
