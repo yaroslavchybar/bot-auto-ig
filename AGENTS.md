@@ -16,6 +16,7 @@ Always response to me in short and plain english.
 - If bug or issue is just a symthtom then fix root cause.
 
 ## VPS access
-- `alwyzon@46.102.156.250` use ssh key in `C:\Users\yaros\.ssh` parse it as an Ed25519 private key
-- The `password` value in `.env` is only for `sudo -S`; never print it.
+- `computebox@94.249.199.135` use the existing Ed25519 SSH key in `C:\Users\yaros\.ssh\keys\vps-94_ed25519`.
+- The `Password` value in `.env.local` is only for `sudo -S`; never print it.
+- GitHub CI deploys as `computebox` using the existing `igbot-ci_ed25519` key. Deployment folders live in `/home/computebox/ig-bot` and `/home/computebox/caddy`; app data lives in `/home/computebox/ig-bot/data`.
 - VPS read only access
