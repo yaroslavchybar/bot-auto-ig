@@ -37,6 +37,7 @@ import type {
   ChatMessage,
   ChatSession,
   ChatThread,
+  ChatTagRecord,
   OlderChatPage,
 } from '../types'
 
@@ -68,6 +69,20 @@ export function useChatPage() {
   const navigate = useNavigate()
   const selection = new URLSearchParams(search)
   const profileId = selection.get('profile') || 'all'
+  const tagFilter = selection.get('tag') || ''
+  const [tagSnapshot, setTagSnapshot] = useState<{ userId: string; rows: ChatTagRecord[] } | null>(
+    null,
+  )
+  const tagRows = tagSnapshot?.userId === userId ? tagSnapshot.rows : undefined
+  const [tagRefresh, setTagRefresh] = useState(0)
+  const tagsByThread = useMemo(
+    () => new Map((tagRows ?? []).map((row) => [`${row.profileId}:${row.threadId}`, row.tags])),
+    [tagRows],
+  )
+  const availableTags = useMemo(
+    () => [...new Set((tagRows ?? []).flatMap((row) => row.tags))].sort(),
+    [tagRows],
+  )
   const rawThreadId = selection.get('thread') || ''
   const selectedThreadId = (profileId === 'all'
     ? /^[a-z0-9_-]{1,80}:\d{1,40}$/i
@@ -127,6 +142,18 @@ export function useChatPage() {
   // Ticking clock so relative timestamps ("5m ago") stay fresh.
   const now = useNow()
   const visible = useDocumentVisibility()
+  useEffect(() => {
+    if (!userId || !visible) return
+    const controller = new AbortController()
+    void apiFetch<ChatTagRecord[]>('/api/chat/tags', { signal: controller.signal })
+      .then((rows) => {
+        if (!controller.signal.aborted) setTagSnapshot({ userId, rows })
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setError(errorText(error))
+      })
+    return () => controller.abort()
+  }, [userId, visible, inboxRefresh, tagRefresh])
   const changeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingChange = useRef({ invalidate: false, thread: false })
   const queueChatRefresh = useCallback(
@@ -155,6 +182,10 @@ export function useChatPage() {
     eventsOnly: true,
     topic: 'chat',
     onEvent: (event) => {
+      if (event.type === 'chat_changed' && event.tagsChanged === true) {
+        setTagRefresh((value) => value + 1)
+        return
+      }
       if (
         event.type === 'chat_changed' &&
         (activeProfileId === 'all' || event.profileId === activeProfileId)
@@ -253,10 +284,11 @@ export function useChatPage() {
   const loadingThread =
     canLoadChat && Boolean(selectedThreadId) && completedThreadRequest !== threadRequestKey
 
-  function updateSelection(nextProfileId: string, nextThreadId = '') {
+  function updateSelection(nextProfileId: string, nextThreadId = '', nextTag = tagFilter) {
     const next = new URLSearchParams()
     if (nextProfileId !== 'all') next.set('profile', nextProfileId)
     if (nextThreadId) next.set('thread', nextThreadId)
+    if (nextTag) next.set('tag', nextTag)
     const query = next.toString()
     navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
   }
@@ -520,17 +552,21 @@ export function useChatPage() {
           const latest = outgoingReplies
             .filter((reply) => reply.threadKey === key)
             .sort((a, b) => b.message.timestamp - a.message.timestamp)[0]?.message
-          return latest && latest.timestamp >= (thread.messages[0]?.timestamp ?? 0)
-            ? { ...thread, messages: [latest] }
-            : thread
+          return {
+            ...thread,
+            tags: tagsByThread.get(key) ?? [],
+            ...(latest && latest.timestamp >= (thread.messages[0]?.timestamp ?? 0)
+              ? { messages: [latest] }
+              : {}),
+          }
         }),
       ),
-    [inbox, activeProfileId, outgoingReplies],
+    [inbox, activeProfileId, outgoingReplies, tagsByThread],
   )
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const visibleThreads = useMemo(
-    () => filterThreads(threads, deferredSearchQuery),
-    [threads, deferredSearchQuery],
+    () => filterThreads(threads, deferredSearchQuery, tagFilter),
+    [threads, deferredSearchQuery, tagFilter],
   )
   const selectedThread = useMemo(
     () =>
@@ -545,6 +581,7 @@ export function useChatPage() {
       ? selectedThreadId
       : `${activeProfileId}:${selectedThreadId}`
     : ''
+  const selectedTags = tagsByThread.get(selectedReplyKey) ?? []
   useLayoutEffect(() => {
     activeThreadKey.current = selectedReplyKey
     return () => {
@@ -676,6 +713,35 @@ export function useChatPage() {
     setDraft('')
     setConversation(null)
     updateSelection(activeProfileId, id)
+  }
+
+  function selectTagFilter(tag: string) {
+    updateSelection(activeProfileId, selectedThreadId, tag)
+  }
+
+  async function changeTag(tag: string, enabled: boolean) {
+    if (!selectedThreadId) return
+    const targetProfileId =
+      activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
+    const targetThreadId =
+      activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+    if (!targetProfileId || !targetThreadId) return
+    setError('')
+    try {
+      const rows = await apiFetch<ChatTagRecord[]>(
+        `/api/chat/${encodeURIComponent(targetProfileId)}/tags`,
+        {
+          method: 'POST',
+          body: { threadId: targetThreadId, tag, enabled },
+          maxRetries: 0,
+        },
+      )
+      setTagSnapshot((current) => (current?.userId !== userId ? current : { userId, rows }))
+    } catch (error) {
+      setError(errorText(error))
+      // The tag editor catches this and keeps its input for a retry.
+      throw error
+    }
   }
 
   async function connect(event: FormEvent) {
@@ -1058,6 +1124,12 @@ export function useChatPage() {
     inboxErrors,
     threads,
     visibleThreads,
+    availableTags,
+    selectedTags,
+    tagsLoading: tagRows === undefined,
+    tagFilter,
+    selectTagFilter,
+    changeTag,
     selectedThread,
     conversation: displayedConversation,
     hasOlder:

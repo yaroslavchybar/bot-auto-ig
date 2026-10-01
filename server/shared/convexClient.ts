@@ -194,6 +194,11 @@ async function convexFetch<T>(
   throw lastError
 }
 
+/** Server-only tag access; the browser never receives the Convex bridge key. */
+export function chatTagsRequest<T>(body?: Record<string, unknown>): Promise<T> {
+  return convexFetch('/api/chat/tags', body ? { method: 'POST', body, maxRetries: 0 } : undefined)
+}
+
 /** Authenticated calls from the scraper worker to Convex internal functions. */
 export function scraperRequest<T>(
   operation: string,

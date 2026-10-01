@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   search: '?profile=profile&thread=1',
   apiFetch: vi.fn(),
   navigate: vi.fn(),
+  onEvent: null as null | ((event: { type: string; profileId?: string; tagsChanged?: boolean }) => void),
+  tagRows: [] as { profileId: string; threadId: string; tags: string[] }[],
+  toggleTag: vi.fn<(args: Record<string, unknown>) => Promise<void>>(() => Promise.resolve()),
   clearPending: vi.fn(() => Promise.resolve()),
   readPending: vi.fn<() => Promise<ChatMessage[]>>(() => Promise.resolve([])),
   profiles: [{ id: 'profile', name: 'Profile', igLoggedIn: true, status: 'idle' }],
@@ -22,8 +25,19 @@ vi.mock('@/lib/router', () => ({
 vi.mock('@/features/chat/hooks/useChatProfiles', () => ({
   useChatProfiles: () => ({ profiles: mocks.profiles, loading: false }),
 }))
-vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: () => ({ connected: true }) }))
-vi.mock('@/lib/api', () => ({ apiFetch: mocks.apiFetch }))
+vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: (options: { onEvent: typeof mocks.onEvent }) => {
+  mocks.onEvent = options.onEvent
+  return { connected: true }
+} }))
+vi.mock('@/lib/api', () => ({
+  apiFetch: (path: string, options?: { body?: Record<string, unknown> }) => {
+    if (path === '/api/chat/tags') return Promise.resolve(mocks.tagRows)
+    if (path.endsWith('/tags')) {
+      return mocks.toggleTag({ profileId: path.split('/')[3], ...options?.body }).then(() => mocks.tagRows)
+    }
+    return mocks.apiFetch(path, options)
+  },
+}))
 vi.mock('@/features/chat/cache', () => ({
   clearSharedChatResponses: () => Promise.resolve(),
   readSharedChatResponse: () => Promise.resolve(null),
@@ -74,6 +88,7 @@ function conversation(id: string): ChatThread {
 beforeEach(() => {
   mocks.userId = 'user'
   mocks.search = '?profile=profile&thread=1'
+  mocks.tagRows = []
   mocks.readPending.mockResolvedValue([])
   mocks.apiFetch.mockImplementation(async (path: string) => {
     if (path.endsWith('/session')) return { connected: true }
@@ -257,4 +272,108 @@ test('confirmed replies leave persistent pending storage and do not appear twice
   expect(chat.conversation?.messages.some((message) => message.delivery === 'unconfirmed')).toBe(
     false,
   )
+})
+
+test('tag and search filters combine with the selected profile, without losing chat selection', async () => {
+  mocks.search = '?profile=profile&thread=1&tag=customer'
+  mocks.tagRows = [
+    { profileId: 'profile', threadId: '1', tags: ['customer'] },
+    { profileId: 'other', threadId: '2', tags: ['customer'] },
+  ]
+  mocks.apiFetch.mockImplementation(async (path: string) => {
+    if (path.endsWith('/session')) return { connected: true }
+    if (path.endsWith('/threads'))
+      return { viewerId: 'viewer', threads: [conversation('1'), conversation('2')] }
+    return conversation('1')
+  })
+  view = mount()
+  await view.render(<Probe />)
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['1'])
+  expect(chat.selectedTags).toEqual(['customer'])
+  await act(async () => chat.setSearchQuery('Thread 2'))
+  expect(chat.visibleThreads).toEqual([])
+  await act(async () => chat.setSearchQuery('Thread 1'))
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['1'])
+  await act(async () => chat.selectTagFilter('hot lead'))
+  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?profile=profile&thread=1&tag=hot+lead', {
+    replace: true,
+  })
+  await act(async () => chat.selectThread('2'))
+  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?profile=profile&thread=2&tag=customer', {
+    replace: true,
+  })
+  await act(async () => chat.selectProfile('all'))
+  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?tag=customer', { replace: true })
+})
+
+test('all-profile tags and mutations use the profile/thread pair, even with identical thread IDs', async () => {
+  mocks.search = '?thread=profile%3A1&tag=customer'
+  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer'] }]
+  mocks.apiFetch.mockImplementation(async (path: string) => {
+    if (path === '/api/chat/threads')
+      return {
+        errors: [],
+        threads: [
+          { ...conversation('1'), profileId: 'profile', profileName: 'Profile' },
+          { ...conversation('1'), profileId: 'other', profileName: 'Other' },
+        ],
+      }
+    return conversation('1')
+  })
+  view = mount()
+  await view.render(<Probe />)
+  expect(chat.visibleThreads.map((thread) => thread.profileId)).toEqual(['profile'])
+  await act(async () => chat.changeTag('customer', false))
+  expect(mocks.toggleTag).toHaveBeenLastCalledWith({
+    profileId: 'profile',
+    threadId: '1',
+    tag: 'customer',
+    enabled: false,
+  })
+  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['hot lead'] }]
+  await act(async () => chat.changeTag('hot lead', true))
+  expect(chat.selectedTags).toEqual(['hot lead'])
+  expect(chat.visibleThreads).toEqual([])
+})
+
+test('tag notifications refresh the shared catalog without reloading messages, and changing users hides old tags', async () => {
+  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer'] }]
+  view = mount()
+  await view.render(<Probe />)
+  expect(chat.availableTags).toEqual(['customer'])
+  const messageRequests = mocks.apiFetch.mock.calls.length
+  mocks.tagRows = [{ profileId: 'other', threadId: '2', tags: ['hot lead'] }]
+  await act(async () => mocks.onEvent?.({ type: 'chat_changed', profileId: 'other', tagsChanged: true }))
+  expect(chat.availableTags).toEqual(['hot lead'])
+  expect(mocks.apiFetch.mock.calls).toHaveLength(messageRequests)
+  mocks.userId = ''
+  await view.render(<Probe />)
+  expect(chat.availableTags).toEqual([])
+  expect(chat.selectedTags).toEqual([])
+})
+
+test('tag saves clear old errors, report failures, and preserve the previous tags on failure', async () => {
+  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer'] }]
+  view = mount()
+  await view.render(<Probe />)
+  await act(async () => chat.setError('Previous error'))
+  let rejectSave!: (error: Error) => void
+  mocks.toggleTag.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject }))
+  let pending!: Promise<void>
+  await act(async () => {
+    pending = chat.changeTag('hot lead', true)
+    void pending.catch(() => {}) // The editor attaches the same rejection handler.
+  })
+  expect(chat.error).toBe('')
+  expect(chat.selectedTags).toEqual(['customer'])
+  await act(async () => {
+    rejectSave(new Error(JSON.stringify({ error: { message: 'Could not save tag' } })))
+    await expect(pending).rejects.toThrow('Could not save tag')
+  })
+  expect(chat.error).toBe('Could not save tag')
+  expect(chat.selectedTags).toEqual(['customer'])
+  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer', 'hot lead'] }]
+  await act(async () => chat.changeTag('hot lead', true))
+  expect(chat.error).toBe('')
+  expect(chat.selectedTags).toEqual(['customer', 'hot lead'])
 })

@@ -19,6 +19,23 @@ Instagram credentials and account proxies stay on the server.
 The Chat profile selector fetches only eligible profile IDs, names, and status,
 without browser configuration or cookie payloads.
 
+## Chat tags and filters
+
+Open a conversation and use **Tags** to create a tag, reuse an existing one,
+or remove a tag. Each chat supports up to 10 tags, with 40 characters per tag.
+Names are trimmed, spaces collapsed, and stored in lowercase to avoid duplicates.
+
+Use **All tags** above the conversation list to filter by tag. Combine it with
+the profile selector and search. The tag and profile filters stay in the page URL.
+Tags apply to a profile/conversation pair, so matching Instagram thread IDs in
+different profiles remain independent.
+
+Convex stores only the tag metadata in `chatTags`. Reads and writes use internal
+functions behind the authenticated API and server-only Convex HTTP bridge key.
+The sole app admin can access all existing profiles; deleting profiles are excluded.
+Authenticated chat socket notifications refresh tags on other devices.
+Tags survive cache eviction, logout, and reconnect. Deleting a profile removes its tags.
+
 The shared inbox and open conversation have 60-second and 20-second server
 freshness windows, respectively. In-flight Instagram requests are shared and
 failures back off for two minutes. The server keeps at most 32 inbox snapshots

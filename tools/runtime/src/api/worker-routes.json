@@ -96,6 +96,22 @@
     "imageRead": false
   },
   {
+    "id": "chat.get.tags",
+    "method": "GET",
+    "path": "/api/chat/tags",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
+    "id": "chat.post.profileId_tags",
+    "method": "POST",
+    "path": "/api/chat/:profileId/tags",
+    "body": "json",
+    "maxBody": 1048576,
+    "imageRead": false
+  },
+  {
     "id": "chat.get.threads",
     "method": "GET",
     "path": "/api/chat/threads",

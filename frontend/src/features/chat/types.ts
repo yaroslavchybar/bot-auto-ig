@@ -1,3 +1,5 @@
+export type ChatTagRecord = { profileId: string; threadId: string; tags: string[] }
+
 export type ChatMessage = {
   id: string
   senderId: string
@@ -13,6 +15,7 @@ export type ChatMessage = {
 
 export type ChatThread = {
   id: string
+  tags?: string[]
   unread?: boolean
   confirmedMessageIds?: string[]
   profileId?: string

@@ -151,6 +151,18 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
                 )
                     .into_response();
             }
+            if path == "/commands/chat.get.tags" {
+                assert_eq!(params, json!({}));
+                return Json(json!([{"threadId":"123", "tags":["customer"]}])).into_response();
+            }
+            if path == "/commands/chat.post.profileId_tags" {
+                assert_eq!(params["profileId"], "profile");
+                assert_eq!(
+                    body(request).await,
+                    json!({"threadId":"123", "tag":"customer", "enabled":true})
+                );
+                return Json(json!([{"threadId":"123", "tags":["customer"]}])).into_response();
+            }
             if path.contains("file-picker") {
                 assert_eq!(request.headers()["x-worker-method"], "POST");
                 let bytes = axum::body::to_bytes(request.into_body(), 100)
@@ -192,6 +204,27 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
         .unwrap();
     assert_eq!(reconnect.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(reconnect.headers()["retry-after"], "60");
+    for method in [Method::GET, Method::POST] {
+        let path = if method == Method::GET {
+            "/api/chat/tags"
+        } else {
+            "/api/chat/profile/tags"
+        };
+        let mut request = client
+            .request(method.clone(), format!("{}{path}", public.url))
+            .header("x-request-id", "fixture-request-123");
+        if method == Method::POST {
+            request = request.json(&json!({
+                "threadId":"123", "tag":"customer", "enabled":true
+            }));
+        }
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.json::<Value>().await.unwrap(),
+            json!([{"threadId":"123", "tags":["customer"]}])
+        );
+    }
     let profiles: Value = client
         .get(format!("{}/api/profiles/", public.url))
         .send()
@@ -330,6 +363,21 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
     state.worker_url = worker.url.clone();
     state.key = "fixture".into();
     let public = Fixture::router(router(Arc::new(state))).await;
+    for (method, path) in [
+        (Method::GET, "/api/chat/tags"),
+        (Method::POST, "/api/chat/profile/tags"),
+    ] {
+        for token in [None, Some("invalid-session"), Some("fixture")] {
+            let mut request = client.request(method.clone(), format!("{}{path}", public.url));
+            if let Some(token) = token {
+                request = request.bearer_auth(token);
+            }
+            assert_eq!(
+                request.send().await.unwrap().status(),
+                StatusCode::UNAUTHORIZED
+            );
+        }
+    }
     assert_eq!(
         client
             .get(format!("{}/api/ig-accounts/warmup", public.url))

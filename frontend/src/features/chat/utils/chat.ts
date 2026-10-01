@@ -60,13 +60,12 @@ export function sortThreadsByLatest(threads: ChatThread[]): ChatThread[] {
   return [...threads].sort((a, b) => threadTime(b) - threadTime(a))
 }
 
-export function filterThreads(
-  threads: ChatThread[],
-  query: string,
-): ChatThread[] {
+export function filterThreads(threads: ChatThread[], query: string, tag = ''): ChatThread[] {
   const needle = query.trim().toLowerCase()
-  if (!needle) return threads
+  if (!needle && !tag) return threads
   return threads.filter((thread) => {
+    if (tag && !thread.tags?.includes(tag)) return false
+    if (!needle) return true
     const haystacks = [
       thread.title,
       thread.profileName ?? '',

@@ -1,6 +1,13 @@
 import { MessageSquare, Search, X } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import type { ChatThread } from '../types'
 import { formatTimeAgo, initials, threadPreview, threadTime } from '../utils/chat'
@@ -16,6 +23,10 @@ type ThreadListProps = {
   onSearchChange: (value: string) => void
   onSelect: (id: string) => void
   now: number
+  tagFilter: string
+  availableTags: string[]
+  tagsLoading: boolean
+  onTagFilterChange: (tag: string) => void
 }
 
 export function ThreadList({
@@ -29,6 +40,10 @@ export function ThreadList({
   onSearchChange,
   onSelect,
   now,
+  tagFilter,
+  availableTags,
+  tagsLoading,
+  onTagFilterChange,
 }: ThreadListProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -54,6 +69,28 @@ export function ThreadList({
             </button>
           )}
         </div>
+        <Select
+          value={tagFilter ? `tag:${tagFilter}` : 'all'}
+          onValueChange={(value) => onTagFilterChange(value === 'all' ? '' : value.slice(4))}
+          disabled={tagsLoading}
+        >
+          <SelectTrigger
+            aria-label="Filter conversations by tag"
+            className="mt-2 h-8 w-full bg-field text-sm"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All tags</SelectItem>
+            {[...new Set([...availableTags, ...(tagFilter ? [tagFilter] : [])])]
+              .sort()
+              .map((tag) => (
+                <SelectItem key={tag} value={`tag:${tag}`}>
+                  {tag}
+                </SelectItem>
+              ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2" role="listbox" aria-label="Conversations">
@@ -133,6 +170,18 @@ export function ThreadList({
                     />
                   )}
                 </span>
+                {Boolean(thread.tags?.length) && (
+                  <span className="mt-1 flex flex-wrap gap-1">
+                    {thread.tags?.map((tag) => (
+                      <span
+                        key={tag}
+                        className="max-w-full truncate rounded-full bg-panel-subtle px-1.5 py-0.5 text-[10px] text-muted-copy"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </span>
+                )}
               </span>
             </button>
           )

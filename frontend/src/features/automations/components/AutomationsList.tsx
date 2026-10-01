@@ -20,7 +20,12 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { MoreHorizontal, Pencil, Trash2, Copy, Bot, RefreshCw } from 'lucide-react'
 import type { Automation } from '../types'
-import { formatTimestamp, getStatusColor, getStatusLabel } from '../types'
+import {
+  formatTimestamp,
+  getAutomationDisplayStatus,
+  getStatusColor,
+  getStatusLabel,
+} from '../types'
 import { cn } from '@/lib/utils'
 
 interface AutomationsListProps {
@@ -110,7 +115,8 @@ function AutomationMobileCard({
   automation: Automation
 } & Omit<AutomationsListProps, 'automations' | 'loading'>) {
   const isActive = automation.isActive ?? false
-  const isRunning = automation.status === 'running'
+  const displayStatus = getAutomationDisplayStatus(automation)
+  const isRunning = displayStatus === 'running'
 
   return (
     <div
@@ -123,17 +129,18 @@ function AutomationMobileCard({
           <div className="flex items-center gap-2">
             <h3 className="truncate text-base font-semibold text-ink">{automation.name}</h3>
             <Badge
+              role="status"
               variant="outline"
               className={cn(
                 'shrink-0 border text-[10px] tracking-[0.18em] uppercase',
                 isRunning
                   ? 'border-status-success-border bg-status-success-soft text-status-success'
-                  : automation.status === 'failed'
+                  : displayStatus === 'failed'
                     ? 'border-status-danger-border bg-status-danger-soft text-status-danger'
                     : 'border-line bg-panel-muted text-copy',
               )}
             >
-              {getStatusLabel(automation.status)}
+              {getStatusLabel(displayStatus)}
             </Badge>
           </div>
           <p className="mt-2 text-xs text-subtle-copy">
@@ -191,6 +198,7 @@ function AutomationDesktopRow({
   automation: Automation
 } & Omit<AutomationsListProps, 'automations' | 'loading'>) {
   const isActive = automation.isActive ?? false
+  const displayStatus = getAutomationDisplayStatus(automation)
 
   return (
     <TableRow
@@ -221,8 +229,8 @@ function AutomationDesktopRow({
         </div>
       </TableCell>
       <TableCell>
-        <Badge variant={getStatusColor(automation.status)}>
-          {getStatusLabel(automation.status)}
+        <Badge role="status" variant={getStatusColor(displayStatus)}>
+          {getStatusLabel(displayStatus)}
         </Badge>
       </TableCell>
       <TableCell className="text-sm whitespace-nowrap text-subtle-copy">

@@ -13,11 +13,28 @@ export type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline'
 
 export type Automation = Doc<'automations'>
 
-export function getStatusColor(status?: AutomationStatus): BadgeVariant {
+type DisplayStatus = AutomationStatus | 'waiting'
+
+// Enabled routines wait between browser sessions; a terminal status belongs to the previous run.
+export function getAutomationDisplayStatus(automation: Automation): DisplayStatus | undefined {
+  if (
+    automation.routine &&
+    automation.isActive &&
+    (automation.status === 'idle' ||
+      automation.status === 'pending' ||
+      automation.status === 'completed' ||
+      automation.status === 'cancelled')
+  )
+    return 'waiting'
+  return automation.status
+}
+
+export function getStatusColor(status?: DisplayStatus): BadgeVariant {
   switch (status) {
     case 'idle':
       return 'secondary'
     case 'pending':
+    case 'waiting':
       return 'outline'
     case 'running':
       return 'default'
@@ -34,12 +51,14 @@ export function getStatusColor(status?: AutomationStatus): BadgeVariant {
   }
 }
 
-export function getStatusLabel(status?: AutomationStatus): string {
+export function getStatusLabel(status?: DisplayStatus): string {
   switch (status) {
     case 'idle':
       return 'Idle'
     case 'pending':
       return 'Pending'
+    case 'waiting':
+      return 'Waiting'
     case 'running':
       return 'Running'
     case 'paused':
@@ -73,5 +92,3 @@ export function formatDuration(startMs?: number, endMs?: number): string {
   const remainingMinutes = minutes % 60
   return `${hours}h ${remainingMinutes}m`
 }
-
-

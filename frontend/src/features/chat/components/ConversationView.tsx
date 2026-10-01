@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { ChatTags } from './ChatTags'
 import type { ChatMessage, ChatThread } from '../types'
 import {
   attachmentLabel,
@@ -54,6 +55,10 @@ type ConversationViewProps = {
   onError: (message: string) => void
   replyMaxLength: number
   onBack: () => void
+  tags: string[]
+  availableTags: string[]
+  tagsLoading: boolean
+  onTagChange: (tag: string, enabled: boolean) => Promise<void>
 }
 
 export function ConversationView({
@@ -78,6 +83,10 @@ export function ConversationView({
   onError,
   replyMaxLength,
   onBack,
+  tags,
+  availableTags,
+  tagsLoading,
+  onTagChange,
 }: ConversationViewProps) {
   const title = selectedThread?.title || conversation?.title || ''
   const users = selectedThread?.users.length ? selectedThread.users : (conversation?.users ?? [])
@@ -295,6 +304,13 @@ export function ConversationView({
           </Button>
         )}
       </div>
+
+      <ChatTags
+        tags={tags}
+        availableTags={availableTags}
+        loading={tagsLoading}
+        onChange={onTagChange}
+      />
 
       <div className="relative min-h-0 flex-1">
         <div

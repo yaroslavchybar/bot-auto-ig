@@ -28,6 +28,9 @@ test('a sent DM stays successful when Chat refresh fails', () => {
     let unsentCacheItem
     const invalidations = []
     const olderQueries = []
+    const tagWrites = []
+    const notifications = []
+    const tags = [{ profileId: 'profile-1', threadId: '123', tags: ['customer'] }]
     let releaseRefresh
     const refreshGate = new Promise(resolve => { releaseRefresh = resolve })
     const profile = { id: 'profile-1', name: 'Profile', igLoggedIn: true }
@@ -35,6 +38,7 @@ test('a sent DM stays successful when Chat refresh fails', () => {
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetById: async () => profile,
       profilesList: async () => [profile],
+      chatTagsRequest: async body => { if (body) tagWrites.push(body); return tags },
     }))
     mock.module('./server/chat/store.ts', () => ({
       chatMarkUnsent: async (_profileId, _token, _threadId, itemId) => {
@@ -99,12 +103,24 @@ test('a sent DM stays successful when Chat refresh fails', () => {
         }
       },
     }))
+    mock.module('./server/websocket.ts', () => ({ broadcast: event => notifications.push(event) }))
     mock.module('./server/shared/logger.ts', () => ({ addLogContext: () => {}, default: { error: () => { warnings++ } } }))
 
     const { default: router } = await import('./server/chat/routes.ts')
     const server = createServer(commandTestHandler(router, '/api/chat')).listen(0)
     try {
       const port = server.address().port
+      const tagsUrl = 'http://127.0.0.1:' + port + '/api/chat'
+      assert.deepEqual(await (await fetch(tagsUrl + '/tags')).json(), tags)
+      const tagged = await fetch(tagsUrl + '/profile-1/tags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ threadId: '123', tag: 'customer', enabled: true }) })
+      assert.equal(tagged.status, 200)
+      assert.deepEqual(await tagged.json(), tags)
+      assert.deepEqual(tagWrites, [{ profileId: 'profile-1', threadId: '123', tag: 'customer', enabled: true }])
+      assert.deepEqual(notifications, [{ type: 'chat_changed', profileId: 'profile-1', tagsChanged: true }])
+      for (const body of [null, { threadId: 'invalid', tag: 'customer', enabled: true }, { threadId: '123', tag: 'customer', enabled: 'true' }]) {
+        assert.equal((await fetch(tagsUrl + '/profile-1/tags', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).status, 400)
+      }
+      assert.equal(tagWrites.length, 1)
       const older = await fetch('http://127.0.0.1:' + port + '/api/chat/profile-1/threads/123/older?before=16')
       assert.equal(older.status, 200)
       const firstPage = await older.json()

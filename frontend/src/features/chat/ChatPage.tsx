@@ -94,6 +94,10 @@ export function ChatPage() {
                 onSearchChange={chat.setSearchQuery}
                 onSelect={chat.selectThread}
                 now={chat.now}
+                tagFilter={chat.tagFilter}
+                availableTags={chat.availableTags}
+                tagsLoading={chat.tagsLoading}
+                onTagFilterChange={chat.selectTagFilter}
               />
             </div>
 
@@ -132,6 +136,10 @@ export function ChatPage() {
                   onError={chat.setError}
                   replyMaxLength={chat.replyMaxLength}
                   onBack={() => chat.selectThread('')}
+                  tags={chat.selectedTags}
+                  availableTags={chat.availableTags}
+                  tagsLoading={chat.tagsLoading}
+                  onTagChange={chat.changeTag}
                 />
               )}
             </div>

@@ -1,6 +1,7 @@
 import { Commands } from '../worker/commands.js'
 import { stageAttachment, removeAttachment } from './uploads.js'
-import { profilesGetById, profilesList } from '../shared/convexClient.js'
+import { chatTagsRequest, profilesGetById, profilesList } from '../shared/convexClient.js'
+import { broadcast } from '../websocket.js'
 import { chatMarkUnsent } from './store.js'
 import {
   cachedInbox,
@@ -18,6 +19,41 @@ import type { AttachmentKind, VideoMetadata } from './attachments.js'
 import { parseChatCredentials } from './totp.js'
 
 const commands = new Commands()
+commands.register(
+  'chat.get.tags',
+  'GET',
+  '/tags',
+  async (_req, res) => {
+    res.json(await chatTagsRequest())
+  },
+  'json',
+)
+commands.register(
+  'chat.post.profileId_tags',
+  'POST',
+  '/:profileId/tags',
+  async (req, res) => {
+    const profile = await selectedProfile(req.params.profileId)
+    const body = req.body as Record<string, unknown>
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      typeof body.tag !== 'string' ||
+      typeof body.enabled !== 'boolean'
+    )
+      throw new ValidationError('Invalid chat tag')
+    const rows = await chatTagsRequest({
+      profileId: profile.id,
+      threadId: threadId(body.threadId),
+      tag: body.tag,
+      enabled: body.enabled,
+    })
+    broadcast({ type: 'chat_changed', profileId: profile.id, tagsChanged: true })
+    res.json(rows)
+  },
+  'json',
+)
 commands.register(
   'chat.get.threads',
   'GET',

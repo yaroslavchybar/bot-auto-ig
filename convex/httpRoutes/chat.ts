@@ -16,7 +16,39 @@ const profileIdFrom = (value: unknown): Id<'profiles'> => {
 }
 
 export function registerChatRoutes(http: HttpRouter): void {
-  registerPreflight(http, ['/api/chat/session', '/api/chat/context', '/api/chat/count'])
+  registerPreflight(http, [
+    '/api/chat/session',
+    '/api/chat/context',
+    '/api/chat/count',
+    '/api/chat/tags',
+  ])
+  http.route({
+    path: '/api/chat/tags',
+    method: 'GET',
+    handler: withErrorHandling(async (ctx) =>
+      jsonResponse(await ctx.runQuery(internal.chatTags.list, {})),
+    ),
+  })
+  http.route({
+    path: '/api/chat/tags',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request)
+      if (
+        typeof body.threadId !== 'string' ||
+        typeof body.tag !== 'string' ||
+        typeof body.enabled !== 'boolean'
+      )
+        throw new ValidationError('Invalid chat tag')
+      await ctx.runMutation(internal.chatTags.toggle, {
+        profileId: profileIdFrom(body.profileId),
+        threadId: body.threadId,
+        tag: body.tag,
+        enabled: body.enabled,
+      })
+      return jsonResponse(await ctx.runQuery(internal.chatTags.list, {}))
+    }),
+  })
   http.route({
     path: '/api/chat/context',
     method: 'GET',
