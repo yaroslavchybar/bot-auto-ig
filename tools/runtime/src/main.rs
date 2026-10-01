@@ -60,7 +60,7 @@ async fn helper_shutdown() {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "helper".into());
-    let api_state = api::Api::from_env()?;
+    let api_state = Arc::new(api::Api::from_env()?);
     let app = if mode == "helper" || mode == "supervise" {
         let uploads = Arc::new(uploads::Uploads {
             entries: Mutex::new(HashMap::new()),

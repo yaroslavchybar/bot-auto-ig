@@ -4,6 +4,7 @@ use serde::Serialize;
 use serde_json::json;
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufWriter, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -123,7 +124,13 @@ fn sample(image: &RgbImage, x: f64, y: f64) -> [f64; 3] {
 }
 
 /// Fuse rotation, crop, resize and color changes into one bounded output frame.
-fn make_variant(source: &RgbImage, rng: &mut Rng, attempt: usize) -> Result<Vec<u8>, String> {
+fn make_variant(
+    source: &RgbImage,
+    rng: &mut Rng,
+    attempt: usize,
+    output: &mut RgbImage,
+    encoded: &mut Vec<u8>,
+) -> Result<(), String> {
     let (width, height) = source.dimensions();
     let stage = 1.0 + ((attempt - 1) / 16) as f64;
     let crop = (rng.between(0.002, 0.005) * stage).min(0.03);
@@ -140,7 +147,6 @@ fn make_variant(source: &RgbImage, rng: &mut Rng, attempt: usize) -> Result<Vec<
     let quality = rng.between(91.0, 97.0).round() as u8;
     let cx = f64::from(width - 1) / 2.0;
     let cy = f64::from(height - 1) / 2.0;
-    let mut output = RgbImage::new(width, height);
     for (x, y, pixel) in output.enumerate_pixels_mut() {
         let px = crop_x + (f64::from(x) + 0.5) * cw / f64::from(width) - 0.5 - cx;
         let py = crop_y + (f64::from(y) + 0.5) * ch / f64::from(height) - 0.5 - cy;
@@ -161,11 +167,25 @@ fn make_variant(source: &RgbImage, rng: &mut Rng, attempt: usize) -> Result<Vec<
                 .clamp(0.0, 255.0) as u8
         }));
     }
-    let mut encoded = Vec::new();
-    Encoder::new(&mut encoded, quality)
+    encoded.clear();
+    Encoder::new(encoded, quality)
         .encode(output.as_raw(), width as u16, height as u16, ColorType::Rgb)
         .map_err(|_| "Could not encode variant")?;
-    Ok(encoded)
+    Ok(())
+}
+
+/// Verification replaces the working pixels, avoiding a second decoded RGB frame.
+fn verify_pixels(encoded: &[u8], output: &mut RgbImage) -> Result<u64, String> {
+    let decoder = image::codecs::jpeg::JpegDecoder::new(Cursor::new(encoded))
+        .map_err(|_| "Could not verify variant pixels")?;
+    if decoder.dimensions() != output.dimensions() || decoder.color_type() != image::ColorType::Rgb8
+    {
+        return Err("Could not verify variant pixels".into());
+    }
+    decoder
+        .read_image(output.as_mut())
+        .map_err(|_| "Could not verify variant pixels")?;
+    Ok(pixel_fingerprint(output))
 }
 
 fn exif_field(
@@ -193,8 +213,8 @@ fn exif_field(
     field
 }
 
-/** Add one plausible iPhone make/model and capture time to each JPEG. */
-fn inject_exif(path: &Path, rng: &mut Rng) -> Result<(), String> {
+/// Write JPEG and capture metadata once, without copying or rereading the JPEG.
+fn write_variant(path: &Path, bytes: &[u8], rng: &mut Rng) -> Result<u64, String> {
     const MODELS: [&str; 6] = [
         "iPhone 11",
         "iPhone 12",
@@ -232,17 +252,23 @@ fn inject_exif(path: &Path, rng: &mut Rng) -> Result<(), String> {
     if payload.len() + 2 > u16::MAX as usize {
         return Err("EXIF data is too large".into());
     }
-    let bytes = fs::read(path).map_err(|error| error.to_string())?;
     if !bytes.starts_with(&[0xff, 0xd8]) {
         return Err("Variant is not a JPEG".into());
     }
-    let mut output = Vec::with_capacity(bytes.len() + payload.len() + 4);
-    output.extend_from_slice(&bytes[..2]);
-    output.extend_from_slice(&[0xff, 0xe1]);
-    output.extend_from_slice(&((payload.len() + 2) as u16).to_be_bytes());
-    output.extend_from_slice(&payload);
-    output.extend_from_slice(&bytes[2..]);
-    fs::write(path, output).map_err(|error| error.to_string())
+    let mut output = BufWriter::new(fs::File::create(path).map_err(|_| "Could not write variant")?);
+    for part in [
+        &bytes[..2],
+        &[0xff, 0xe1],
+        &((payload.len() + 2) as u16).to_be_bytes(),
+        &payload,
+        &bytes[2..],
+    ] {
+        output
+            .write_all(part)
+            .map_err(|_| "Could not write variant")?;
+    }
+    output.flush().map_err(|_| "Could not write variant")?;
+    Ok((bytes.len() + payload.len() + 4) as u64)
 }
 
 fn chrono_date(seconds: u64) -> String {
@@ -333,45 +359,41 @@ pub fn generate(
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    let mut seen = HashSet::new();
-    let mut outputs = Vec::new();
+    let mut seen = HashSet::with_capacity(copies);
+    let mut outputs = Vec::with_capacity(copies);
     let mut failures = Vec::new();
+    let mut pixels = RgbImage::new(source.width(), source.height());
+    let mut encoded = Vec::new();
     for index in 1..=copies {
         let name = format!("image_{index:03}.jpg");
         let output = output_dir.join(&name);
         let mut failure = "Could not make a unique image".to_string();
         for attempt in 1..=48 {
             let mut rng = Rng::new(&format!("{seed}:{index}:{attempt}"));
-            let encoded = match make_variant(&source, &mut rng, attempt) {
-                Ok(bytes) => bytes,
+            if let Err(error) = make_variant(&source, &mut rng, attempt, &mut pixels, &mut encoded)
+            {
+                failure = error;
+                break;
+            }
+            let hash = match verify_pixels(&encoded, &mut pixels) {
+                Ok(hash) => hash,
                 Err(error) => {
                     failure = error;
                     break;
                 }
             };
-            let decoded =
-                match image::load_from_memory_with_format(&encoded, image::ImageFormat::Jpeg) {
-                    Ok(image) => image.into_rgb8(),
-                    Err(_) => {
-                        failure = "Could not verify variant pixels".to_string();
-                        break;
-                    }
-                };
-            let hash = pixel_fingerprint(&decoded);
-            drop(decoded);
             if hash == source_hash || seen.contains(&hash) {
                 let _ = fs::remove_file(&output);
                 continue;
             }
-            fs::write(&output, encoded).map_err(|_| "Could not write variant")?;
-            if let Err(error) = inject_exif(&output, &mut rng) {
-                failure = error;
-                break;
-            }
+            let size = match write_variant(&output, &encoded, &mut rng) {
+                Ok(size) => size,
+                Err(error) => {
+                    failure = error;
+                    break;
+                }
+            };
             seen.insert(hash);
-            let size = fs::metadata(&output)
-                .map_err(|error| error.to_string())?
-                .len();
             outputs.push(Variant {
                 index,
                 name,
@@ -418,14 +440,41 @@ mod tests {
         assert!(check_dimensions(63, 64).is_err());
     }
     #[test]
+    fn invalid_verification_data_and_dimensions_are_rejected() {
+        let mut pixels = RgbImage::new(96, 64);
+        assert_eq!(
+            verify_pixels(b"invalid JPEG", &mut pixels).unwrap_err(),
+            "Could not verify variant pixels"
+        );
+        let source = RgbImage::from_pixel(64, 64, Rgb([127, 127, 127]));
+        let mut encoded = Vec::new();
+        Encoder::new(&mut encoded, 95)
+            .encode(source.as_raw(), 64, 64, ColorType::Rgb)
+            .unwrap();
+        assert_eq!(
+            verify_pixels(&encoded, &mut pixels).unwrap_err(),
+            "Could not verify variant pixels"
+        );
+    }
+    #[test]
     fn decoded_variants_are_unique_and_keep_dimensions() {
         let source = RgbImage::from_fn(96, 64, |x, y| Rgb([x as u8, (y * 3) as u8, (x + y) as u8]));
         let mut seen = HashSet::new();
+        let mut pixels = RgbImage::new(source.width(), source.height());
+        let mut bytes = Vec::new();
         for seed in 0..50 {
-            let bytes = make_variant(&source, &mut Rng::new(&seed.to_string()), 1).unwrap();
+            make_variant(
+                &source,
+                &mut Rng::new(&seed.to_string()),
+                1,
+                &mut pixels,
+                &mut bytes,
+            )
+            .unwrap();
             let decoded = image::load_from_memory(&bytes).unwrap().into_rgb8();
             assert_eq!(decoded.dimensions(), source.dimensions());
             let hash = pixel_fingerprint(&decoded);
+            assert_eq!(verify_pixels(&bytes, &mut pixels).unwrap(), hash);
             assert_ne!(hash, pixel_fingerprint(&source));
             assert!(seen.insert(hash));
         }

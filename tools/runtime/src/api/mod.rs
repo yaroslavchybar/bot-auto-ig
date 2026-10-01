@@ -38,17 +38,16 @@ pub fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-#[derive(Clone)]
 pub struct Api {
-    pub auth: auth::Auth,
+    pub auth: Arc<auth::Auth>,
     pub client: reqwest::Client,
     pub worker_url: String,
     pub key: String,
     pub convex_url: String,
     slots: Arc<Semaphore>,
     pub sockets: Arc<Semaphore>,
-    limits: Arc<Mutex<HashMap<String, (u64, usize)>>>,
-    origins: Arc<Vec<String>>,
+    limits: Mutex<HashMap<String, (u64, usize)>>,
+    origins: Vec<String>,
 }
 
 impl Api {
@@ -62,23 +61,21 @@ impl Api {
             .build()?;
         let cloud = env("CONVEX_URL", &env("VITE_CONVEX_URL", ""));
         Ok(Self {
-            auth: auth::Auth::from_env(client.clone()),
+            auth: Arc::new(auth::Auth::from_env(client.clone())),
             client,
             worker_url: format!("http://127.0.0.1:{}", env("WORKER_PORT", "3005")),
             key: env("INTERNAL_API_KEY", ""),
             convex_url: cloud.replace(".convex.cloud", ".convex.site"),
             slots: Arc::new(Semaphore::new(64)),
             sockets: Arc::new(Semaphore::new(128)),
-            limits: Arc::new(Mutex::new(HashMap::new())),
-            origins: Arc::new(
-                env(
-                    "ALLOWED_ORIGINS",
-                    "http://localhost:5173,http://localhost:3000",
-                )
-                .split(',')
-                .map(|value| value.trim().into())
-                .collect(),
-            ),
+            limits: Mutex::new(HashMap::new()),
+            origins: env(
+                "ALLOWED_ORIGINS",
+                "http://localhost:5173,http://localhost:3000",
+            )
+            .split(',')
+            .map(|value| value.trim().into())
+            .collect(),
         })
     }
     pub async fn convex(
@@ -125,7 +122,7 @@ impl Api {
     }
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Operation {
     id: String,
@@ -136,10 +133,10 @@ struct Operation {
     image_read: bool,
 }
 
-pub fn router(state: Api) -> Router {
+pub fn router(state: Arc<Api>) -> Router {
     let definitions: Vec<Operation> =
         serde_json::from_str(include_str!("worker-routes.json")).expect("Static worker routes");
-    let mut routes: Router<Api> = Router::new();
+    let mut routes: Router<Arc<Api>> = Router::new();
     for operation in definitions {
         let path = operation
             .path
@@ -162,9 +159,10 @@ pub fn router(state: Api) -> Router {
             _ => panic!("Unknown worker route method"),
         };
         let max_body = operation.max_body;
+        let operation = Arc::new(operation);
         let handler = on(
             filter,
-            move |State(state): State<Api>,
+            move |State(state): State<Arc<Api>>,
                   Path(params): Path<HashMap<String, String>>,
                   request: Request| {
                 invoke(state, operation.clone(), params, request)
@@ -186,7 +184,7 @@ pub fn router(state: Api) -> Router {
         )
         .route("/ws", get(events::upgrade).with_state(state.clone()))
         .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024))
-        .layer(middleware::from_fn_with_state(state.clone(), policy))
+        .layer(middleware::from_fn_with_state(state, policy))
         .layer(middleware::from_fn(ig_service_common::request_log))
 }
 
@@ -204,8 +202,9 @@ fn client_ip(request: &Request) -> String {
         .get("x-forwarded-for")
         .and_then(|value| value.to_str().ok());
     if let Some(header) = forwarded {
-        let parts: Vec<_> = header.split(',').map(str::trim).collect();
-        let selected = parts.get(parts.len().saturating_sub(2));
+        let mut parts = header.rsplit(',').map(str::trim);
+        let last = parts.next();
+        let selected = parts.next().or(last);
         if let Some(ip) = selected.and_then(|value| value.parse::<std::net::IpAddr>().ok()) {
             return ip.to_string();
         }
@@ -217,7 +216,7 @@ fn client_ip(request: &Request) -> String {
         .unwrap_or_else(|| "unknown".into())
 }
 
-async fn policy(State(state): State<Api>, request: Request, next: Next) -> Response {
+async fn policy(State(state): State<Arc<Api>>, request: Request, next: Next) -> Response {
     let permit = state.slots.clone().try_acquire_owned();
     let origin = request.headers().get(header::ORIGIN).cloned();
     let origin_allowed = !state.auth.production
@@ -321,7 +320,7 @@ async fn policy(State(state): State<Api>, request: Request, next: Next) -> Respo
     response
 }
 
-async fn health(State(state): State<Api>) -> Response {
+async fn health(State(state): State<Arc<Api>>) -> Response {
     let ready = state
         .client
         .get(format!("{}/health", state.worker_url))
@@ -341,7 +340,7 @@ async fn health(State(state): State<Api>) -> Response {
 }
 
 async fn lead_list(
-    State(state): State<Api>,
+    State(state): State<Arc<Api>>,
     Path(operation): Path<String>,
     Json(body): Json<Value>,
 ) -> Response {
@@ -378,8 +377,8 @@ async fn lead_list(
 }
 
 async fn invoke(
-    state: Api,
-    operation: Operation,
+    state: Arc<Api>,
+    operation: Arc<Operation>,
     params: HashMap<String, String>,
     request: Request,
 ) -> Response {
@@ -551,7 +550,19 @@ pub async fn bounded_json(
     mut response: reqwest::Response,
     limit: usize,
 ) -> Result<Value, &'static str> {
-    let mut bytes = Vec::new();
+    if response
+        .content_length()
+        .is_some_and(|size| size > limit as u64)
+    {
+        return Err("Response too large");
+    }
+    // Small reservations avoid trusting a large advertised length from an upstream.
+    let capacity = response
+        .content_length()
+        .unwrap_or(0)
+        .min(limit as u64)
+        .min(64 * 1024);
+    let mut bytes = Vec::with_capacity(capacity as usize);
     while let Some(chunk) = response
         .chunk()
         .await
@@ -562,8 +573,26 @@ pub async fn bounded_json(
         }
         bytes.extend_from_slice(&chunk);
     }
-    serde_json::from_slice(bytes.strip_prefix(b"for (;;);").unwrap_or(&bytes))
-        .map_err(|_| "Invalid JSON response")
+    fn parse(bytes: &[u8]) -> Result<Value, &'static str> {
+        serde_json::from_slice(bytes.strip_prefix(b"for (;;);").unwrap_or(bytes))
+            .map_err(|_| "Invalid JSON response")
+    }
+    if bytes.len() > 64 * 1024 {
+        // Hold capacity inside the blocking task, even if its caller disconnects.
+        static PARSERS: Semaphore = Semaphore::const_new(2);
+        let permit = PARSERS
+            .acquire()
+            .await
+            .map_err(|_| "Could not parse response")?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            parse(&bytes)
+        })
+        .await
+        .map_err(|_| "Could not parse response")?
+    } else {
+        parse(&bytes)
+    }
 }
 
 use uuid::Uuid;

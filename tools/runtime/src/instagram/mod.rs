@@ -21,7 +21,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{Arc, LazyLock},
+};
 use tokio::sync::Mutex;
 pub use transport::client as transport_client;
 use transport::{Mobile, Session};
@@ -79,15 +82,16 @@ impl Error {
             status,
             retry_after_ms: retry,
         };
-        let body = data.to_string().to_lowercase();
-        if path.contains("edit_profile")
-            && body.contains("username")
-            && ["taken", "exists", "unavailable", "not available"]
-                .iter()
-                .any(|v| body.contains(v))
-        {
-            error.message = "Instagram username is unavailable".into();
-            error.name = "UsernameUnavailable".into();
+        if path.contains("edit_profile") {
+            let body = data.to_string().to_lowercase();
+            if body.contains("username")
+                && ["taken", "exists", "unavailable", "not available"]
+                    .iter()
+                    .any(|v| body.contains(v))
+            {
+                error.message = "Instagram username is unavailable".into();
+                error.name = "UsernameUnavailable".into();
+            }
         }
         error
     }
@@ -134,7 +138,7 @@ pub fn retry_after(headers: &HeaderMap) -> u64 {
 }
 
 // Per-profile serialization prevents logout, login and session saves from racing.
-// Idle entries are evicted; active entries are never replaced by a second lock.
+// Only idle entries without a live login cooldown may be evicted.
 #[derive(Default)]
 struct Entry {
     proxy: String,
@@ -142,14 +146,14 @@ struct Entry {
     login_retry_at_ms: u64,
 }
 pub struct Service {
-    pub api: Api,
+    pub api: Arc<Api>,
     pub uploads: Arc<Uploads>,
     locks: Mutex<HashMap<String, Arc<Mutex<Entry>>>>,
     #[cfg(test)]
     pub base: Option<String>,
 }
 impl Service {
-    pub fn new(api: Api, uploads: Arc<Uploads>) -> Arc<Self> {
+    pub fn new(api: Arc<Api>, uploads: Arc<Uploads>) -> Arc<Self> {
         Arc::new(Self {
             api,
             uploads,
@@ -164,14 +168,21 @@ impl Service {
             return Ok(entry.clone());
         }
         if locks.len() >= 32 {
+            let now = api::now_ms();
             if let Some(id) = locks
                 .iter()
-                .find(|(_, v)| Arc::strong_count(v) == 1)
+                .find(|(_, v)| {
+                    Arc::strong_count(v) == 1
+                        && v.try_lock()
+                            .is_ok_and(|entry| entry.login_retry_at_ms <= now)
+                })
                 .map(|(k, _)| k.clone())
             {
                 locks.remove(&id);
             } else {
-                return Err(Error::new("Too many active Instagram profiles"));
+                return Err(Error::new(
+                    "Too many active or cooling down Instagram profiles",
+                ));
             }
         }
         let entry = Arc::new(Mutex::new(Entry::default()));
@@ -207,9 +218,14 @@ impl Service {
                 .await
                 .map_err(Error::new);
         }
+        let read_path = if action == "load" {
+            session_path
+        } else {
+            format!("/api/chat/context?{}", query.query().unwrap())
+        };
         let saved = self
             .api
-            .convex(Method::GET, &session_path, None)
+            .convex(Method::GET, &read_path, None)
             .await
             .map_err(Error::new)?;
         if action != "login" && saved["connected"] != true {
@@ -249,12 +265,7 @@ impl Service {
             }
             return Ok(json!({"token":token,"viewerId":viewer}));
         }
-        let profile_path = format!("/api/profiles/by-id?{}", query.query().unwrap());
-        let profile = self
-            .api
-            .convex(Method::GET, &profile_path, None)
-            .await
-            .map_err(Error::new)?;
+        let profile = &saved["profile"];
         if profile.is_null() {
             return Err(Error::new("Profile not found"));
         }
@@ -263,7 +274,7 @@ impl Service {
             entry.client = Some(transport::client(&proxy)?);
             entry.proxy = proxy;
         }
-        let previous = string(&saved["state"]);
+        let previous = saved["state"].as_str().unwrap_or("");
         let mut mobile = Mobile {
             state,
             client: entry.client.clone().unwrap(),
@@ -379,15 +390,16 @@ async fn command(
 pub(crate) fn new_session(profile_id: &str, username: &str) -> Session {
     use sha2::{Digest, Sha256};
     let (uuid, phone_id, device_id) = device::identifiers(&format!("{username}:{profile_id}"));
-    let personas: Vec<&str> = include_str!("devices.txt").lines().collect();
+    static PERSONAS: LazyLock<Vec<&str>> =
+        LazyLock::new(|| include_str!("devices.txt").lines().collect());
     let selector = Sha256::digest(profile_id);
-    let index = u32::from_be_bytes(selector[..4].try_into().unwrap()) as usize % personas.len();
+    let index = u32::from_be_bytes(selector[..4].try_into().unwrap()) as usize % PERSONAS.len();
     Session {
         version: 1,
         uuid,
         phone_id,
         device_id,
-        device: personas[index].into(),
+        device: PERSONAS[index].into(),
         cookies: Default::default(),
         authorization: String::new(),
         claim: String::new(),
@@ -406,10 +418,11 @@ pub fn normalize_proxy(raw: &str, protocol: &str) -> Result<String> {
     } else {
         protocol
     };
-    let legacy =
+    static LEGACY: LazyLock<regex::Regex> = LazyLock::new(|| {
         regex::Regex::new(r"(?i)^(?:(https?|socks5)://)?(\[[^\]]+\]|[^:@/]+):(\d+):([^:]+):(.+)$")
-            .unwrap();
-    let mut url = if let Some(parts) = legacy.captures(raw) {
+            .expect("Static proxy pattern")
+    });
+    let mut url = if let Some(parts) = LEGACY.captures(raw) {
         let mut url: reqwest::Url = format!(
             "{}://{}:{}",
             parts.get(1).map(|v| v.as_str()).unwrap_or(scheme),

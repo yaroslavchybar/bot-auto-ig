@@ -11,6 +11,7 @@ use axum::{extract::State, http::Method, routing::post, Json, Router};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
+    borrow::Cow,
     collections::HashSet,
     sync::Arc,
     time::{Duration, Instant},
@@ -61,7 +62,7 @@ pub struct Work {
     enrichment_key: Option<String>,
 }
 pub struct Scraper {
-    api: Api,
+    api: Arc<Api>,
     mobile: Arc<Service>,
     openrouter_key: String,
     apify_key: String,
@@ -83,7 +84,7 @@ struct Job {
     post_index: Option<usize>,
 }
 impl Scraper {
-    pub fn start(api: Api, mobile: Arc<Service>) -> Arc<Self> {
+    pub fn start(api: Arc<Api>, mobile: Arc<Service>) -> Arc<Self> {
         let (work, _) = watch::channel((0, Work::default()));
         let service = Arc::new(Self {
             api,
@@ -202,13 +203,13 @@ impl Scraper {
     }
     async fn checkpoint(&self, job: &Job, extra: Value) -> Result<Value> {
         let mut body = json!({"jobId":job.id,"runId":job.run_id});
-        if let Some(extra) = extra.as_object() {
-            body.as_object_mut().unwrap().extend(extra.clone());
+        if let Value::Object(extra) = extra {
+            body.as_object_mut().unwrap().extend(extra);
         }
         self.request("checkpoint", body).await
     }
     async fn run_job(&self, job: &Job) -> Result<()> {
-        if self.openrouter_key.clone().is_empty() {
+        if self.openrouter_key.is_empty() {
             return Err(Error::failed(
                 "OPENROUTER_API_KEY is missing from the server environment",
             ));
@@ -234,8 +235,8 @@ impl Scraper {
         let web = instagram::Web::new(&profile)?;
         #[cfg(test)]
         let web = web.with_base(self.provider_url.clone());
-        let posts = if let Some(posts) = &job.posts {
-            posts.clone()
+        let posts: Cow<'_, [Value]> = if let Some(posts) = &job.posts {
+            Cow::Borrowed(posts)
         } else {
             let args = json!({"username":job.username,"sinceDate":job.since_date,"postLimit":job.post_limit,"jobId":job.id,"runId":job.run_id});
             let command = Command {
@@ -244,13 +245,8 @@ impl Scraper {
                 args,
             };
             let (posts, apify) = match self.mobile.invoke("posts", &command).await {
-                Ok(value) => (
-                    value
-                        .as_array()
-                        .cloned()
-                        .ok_or_else(|| Error::failed("Instagram returned invalid posts"))?,
-                    false,
-                ),
+                Ok(Value::Array(posts)) => (posts, false),
+                Ok(_) => return Err(Error::failed("Instagram returned invalid posts")),
                 Err(error) if error.status == 429 => return Err(Error::mobile(error)),
                 Err(_) => (
                     self.apify_posts(&job.username, job.since_date, job.post_limit)
@@ -260,7 +256,7 @@ impl Scraper {
             };
             self.checkpoint(job, json!({"posts":posts,"postsFromApify":apify}))
                 .await?;
-            posts
+            Cow::Owned(posts)
         };
         let mut seen = HashSet::new();
         for (index, post) in posts.iter().enumerate().skip(job.post_index.unwrap_or(0)) {
@@ -304,7 +300,7 @@ impl Scraper {
         Ok(())
     }
     async fn enrich_pending(&self) -> Result<()> {
-        let key = self.openrouter_key.clone();
+        let key = &self.openrouter_key;
         if key.is_empty() {
             return Ok(());
         }
@@ -313,7 +309,7 @@ impl Scraper {
             .as_array()
             .ok_or_else(|| Error::failed("Invalid enrichment queue"))?;
         for row in rows.iter().take(10) {
-            if let Err(error) = self.enrich(row, &key).await {
+            if let Err(error) = self.enrich(row, key).await {
                 ig_service_common::service_error("scraper.lead_enrichment_failed", &error.message);
                 self.request("enrichment-error", json!({"leadId":row["_id"]}))
                     .await?;

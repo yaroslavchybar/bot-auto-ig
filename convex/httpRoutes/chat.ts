@@ -16,7 +16,27 @@ const profileIdFrom = (value: unknown): Id<'profiles'> => {
 }
 
 export function registerChatRoutes(http: HttpRouter): void {
-  registerPreflight(http, ['/api/chat/session', '/api/chat/count'])
+  registerPreflight(http, ['/api/chat/session', '/api/chat/context', '/api/chat/count'])
+  http.route({
+    path: '/api/chat/context',
+    method: 'GET',
+    handler: withErrorHandling(async (ctx, request) => {
+      const profileId = profileIdFrom(new URL(request.url).searchParams.get('profileId'))
+      const { profile, session } = await ctx.runQuery(
+        internal.profiles.queries.getChatContextInternal,
+        { profileId },
+      )
+      if (!profile || !session) return jsonResponse({ connected: false, profile })
+      const blob = await ctx.storage.get(session.storageId)
+      if (!blob) throw new Error('Chat session file is missing')
+      return jsonResponse({
+        connected: true,
+        state: await blob.text(),
+        token: session.token,
+        profile,
+      })
+    }),
+  })
   http.route({
     path: '/api/chat/count',
     method: 'POST',

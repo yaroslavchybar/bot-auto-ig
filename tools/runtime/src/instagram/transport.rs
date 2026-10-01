@@ -2,10 +2,13 @@ use super::{crypto, Error, Result};
 use crate::api::{bounded_json, now_ms};
 use cookie_store::CookieStore;
 use rand::Rng;
-use reqwest::{header::HeaderMap, Client, Method};
+use reqwest::{
+    header::{HeaderMap, HeaderValue},
+    Client, Method,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, sync::LazyLock, time::Duration};
 
 pub const BLOKS_VERSION: &str = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
 pub const APP_ID: &str = "567067343352427";
@@ -48,8 +51,13 @@ fn serialize_cookies<S: serde::Serializer>(
 }
 impl Session {
     pub fn cookie(&self, name: &str) -> String {
+        static ORIGIN: LazyLock<reqwest::Url> = LazyLock::new(|| {
+            "https://i.instagram.com/"
+                .parse()
+                .expect("Static Instagram origin")
+        });
         self.cookies
-            .get_request_values(&"https://i.instagram.com/".parse().unwrap())
+            .get_request_values(&ORIGIN)
             .find(|(key, _)| *key == name)
             .map(|(_, value)| value.into())
             .unwrap_or_default()
@@ -119,77 +127,104 @@ impl Mobile {
     }
     pub fn headers(&self, url: &reqwest::Url) -> Result<HeaderMap> {
         let state = &self.state;
-        let mut fields = Fields::from([
-            ("user-agent".into(), state.user_agent()),
-            ("x-ads-opt-out".into(), "0".into()),
-            ("x-cm-bandwidth-kbps".into(), "-1.000".into()),
-            ("x-cm-latency".into(), "-1.000".into()),
-            ("x-ig-app-locale".into(), "en_US".into()),
-            ("x-ig-device-locale".into(), "en_US".into()),
+        // Fixed values share their backing bytes; only request-specific values are built.
+        static DEFAULTS: LazyLock<HeaderMap> = LazyLock::new(|| {
+            [
+                ("x-ads-opt-out", "0"),
+                ("x-cm-bandwidth-kbps", "-1.000"),
+                ("x-cm-latency", "-1.000"),
+                ("x-ig-app-locale", "en_US"),
+                ("x-ig-device-locale", "en_US"),
+                ("accept-encoding", "gzip"),
+                ("x-ig-bandwidth-speed-kbps", "-1.000"),
+                ("x-ig-bandwidth-totalbytes-b", "0"),
+                ("x-ig-bandwidth-totaltime-ms", "0"),
+                ("x-ig-extended-cdn-thumbnail-cache-busting-value", "1000"),
+                ("x-bloks-version-id", BLOKS_VERSION),
+                ("x-bloks-is-layout-rtl", "false"),
+                ("x-ig-connection-type", "WIFI"),
+                ("x-ig-capabilities", "3brTv10="),
+                ("x-ig-app-id", APP_ID),
+                ("accept-language", "en-US"),
+                ("x-fb-http-engine", "Tigon/MNS/TCP"),
+                ("x-tigon-is-retry", "False"),
+                ("x-zero-balance", "INIT"),
+                ("x-zero-state", "unknown"),
+            ]
+            .into_iter()
+            .map(|(name, value)| {
+                (
+                    reqwest::header::HeaderName::from_static(name),
+                    HeaderValue::from_static(value),
+                )
+            })
+            .collect()
+        });
+        let mut headers = DEFAULTS.clone();
+        fn insert(
+            headers: &mut HeaderMap,
+            name: &'static str,
+            value: impl TryInto<HeaderValue>,
+        ) -> Result<()> {
+            headers.insert(
+                name,
+                value
+                    .try_into()
+                    .map_err(|_| Error::new("Invalid Instagram session header"))?,
+            );
+            Ok(())
+        }
+        let now = now_ms();
+        insert(&mut headers, "user-agent", state.user_agent())?;
+        insert(
+            &mut headers,
+            "x-pigeon-session-id",
+            super::device::pigeon_session(&state.device_id, now),
+        )?;
+        insert(
+            &mut headers,
+            "x-pigeon-rawclienttime",
+            format!("{:.3}", now as f64 / 1000.0),
+        )?;
+        insert(
+            &mut headers,
+            "x-ig-connection-speed",
+            format!("{}kbps", rand::thread_rng().gen_range(1000..=3700)),
+        )?;
+        let mid = state.cookie("mid");
+        for (name, value) in [
+            ("x-mid", mid.as_str()),
             (
-                "x-pigeon-session-id".into(),
-                super::device::pigeon_session(&state.device_id, now_ms()),
-            ),
-            (
-                "x-pigeon-rawclienttime".into(),
-                format!("{:.3}", now_ms() as f64 / 1000.0),
-            ),
-            (
-                "x-ig-connection-speed".into(),
-                format!("{}kbps", rand::thread_rng().gen_range(1000..=3700)),
-            ),
-            ("accept-encoding".into(), "gzip".into()),
-            ("x-ig-bandwidth-speed-kbps".into(), "-1.000".into()),
-            ("x-ig-bandwidth-totalbytes-b".into(), "0".into()),
-            ("x-ig-bandwidth-totaltime-ms".into(), "0".into()),
-            (
-                "x-ig-extended-cdn-thumbnail-cache-busting-value".into(),
-                "1000".into(),
-            ),
-            ("x-bloks-version-id".into(), BLOKS_VERSION.into()),
-            ("x-bloks-is-layout-rtl".into(), "false".into()),
-            ("x-mid".into(), state.cookie("mid")),
-            (
-                "x-ig-www-claim".into(),
+                "x-ig-www-claim",
                 if state.claim.is_empty() {
-                    "0".into()
+                    "0"
                 } else {
-                    state.claim.clone()
+                    &state.claim
                 },
             ),
-            ("x-ig-connection-type".into(), "WIFI".into()),
-            ("x-ig-capabilities".into(), "3brTv10=".into()),
-            ("x-ig-app-id".into(), APP_ID.into()),
-            ("x-ig-device-id".into(), state.uuid.clone()),
-            ("x-ig-family-device-id".into(), state.phone_id.clone()),
-            ("x-ig-android-id".into(), state.device_id.clone()),
-            ("accept-language".into(), "en-US".into()),
-            ("x-fb-http-engine".into(), "Tigon/MNS/TCP".into()),
-            ("x-tigon-is-retry".into(), "False".into()),
-            ("x-zero-balance".into(), "INIT".into()),
-            ("x-zero-state".into(), "unknown".into()),
-            ("authorization".into(), state.authorization.clone()),
-        ]);
-        let cookie = state
-            .cookies
-            .get_request_values(url)
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join("; ");
-        fields.insert("cookie".into(), cookie);
-        if let Some(identity) = &state.usdid {
-            fields.insert("x-meta-usdid".into(), identity.header()?);
-        }
-        let mut headers = HeaderMap::new();
-        for (key, value) in fields {
+            ("x-ig-device-id", &state.uuid),
+            ("x-ig-family-device-id", &state.phone_id),
+            ("x-ig-android-id", &state.device_id),
+            ("authorization", &state.authorization),
+        ] {
             if !value.is_empty() {
-                headers.insert(
-                    reqwest::header::HeaderName::from_bytes(key.as_bytes()).unwrap(),
-                    value
-                        .parse()
-                        .map_err(|_| Error::new("Invalid Instagram session header"))?,
-                );
+                insert(&mut headers, name, value)?;
             }
+        }
+        let mut cookie = String::new();
+        for (name, value) in state.cookies.get_request_values(url) {
+            if !cookie.is_empty() {
+                cookie.push_str("; ");
+            }
+            cookie.push_str(name);
+            cookie.push('=');
+            cookie.push_str(value);
+        }
+        if !cookie.is_empty() {
+            insert(&mut headers, "cookie", cookie)?;
+        }
+        if let Some(identity) = &state.usdid {
+            insert(&mut headers, "x-meta-usdid", identity.header()?)?;
         }
         Ok(headers)
     }

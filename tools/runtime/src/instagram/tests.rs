@@ -9,6 +9,45 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use transport::{Fields, Mobile};
 
 #[test]
+fn mobile_headers_keep_profile_identity_cookie_scope_and_reject_invalid_values() {
+    let mut first = mobile(None);
+    let mut second = mobile(None);
+    first.state.cookies = Default::default();
+    second.state.cookies = Default::default();
+    let origin = "https://i.instagram.com/".parse().unwrap();
+    first.state.authorization = "Bearer first".into();
+    second.state.authorization = "Bearer second".into();
+    second.state.uuid = "second-device".into();
+    first
+        .state
+        .set_cookie("mid=first-mid; Domain=.instagram.com; Path=/", &origin);
+    first.state.set_cookie(
+        "restricted=hidden; Domain=.instagram.com; Path=/private",
+        &origin,
+    );
+    let mut first_headers = first.headers(&origin).unwrap();
+    let second_headers = second.headers(&origin).unwrap();
+    assert_eq!(first_headers["authorization"], "Bearer first");
+    assert_eq!(second_headers["authorization"], "Bearer second");
+    assert_eq!(second_headers["x-ig-device-id"], "second-device");
+    assert_eq!(first_headers["cookie"], "mid=first-mid");
+    assert_eq!(first_headers["x-mid"], "first-mid");
+    assert_eq!(second_headers["x-ig-www-claim"], "0");
+    assert!(!second_headers.contains_key("x-mid"));
+    assert!(!second_headers.contains_key("cookie"));
+    first_headers.remove("x-ig-app-id");
+    assert_eq!(
+        first.headers(&origin).unwrap()["x-ig-app-id"],
+        transport::APP_ID
+    );
+    first.state.authorization = "Bearer invalid\nheader".into();
+    assert_eq!(
+        first.headers(&origin).unwrap_err().message,
+        "Invalid Instagram session header"
+    );
+}
+
+#[test]
 fn unchanged_sessions_serialize_identically_after_reload() {
     let mut client = mobile(None);
     let url = "https://i.instagram.com/".parse().unwrap();
@@ -144,17 +183,18 @@ async fn non_json_errors_preserve_status_and_login_rate_limits_stop_repeated_req
     let convex = Fixture::start(move |request| {
         let observed = observed.clone();
         async move {
+            assert_eq!(request.uri().path(), "/api/chat/context");
             if request.method() == Method::POST {
                 observed.fetch_add(1, Ordering::SeqCst);
             }
-            Json(json!({"id":"profile","proxy":""})).into_response()
+            Json(json!({"connected":false,"profile":{"proxy":"","proxyType":""}})).into_response()
         }
     })
     .await;
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(api, uploads());
+    let mut service = Service::new(Arc::new(api), uploads());
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let command = Command {
         profile_id: "profile".into(),
@@ -172,6 +212,104 @@ async fn non_json_errors_preserve_status_and_login_rate_limits_stop_repeated_req
     assert!(second.retry_after_ms > 0 && second.retry_after_ms <= 60_000);
     assert_eq!(requests.load(Ordering::SeqCst), request_count);
     assert_eq!(saves.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cache_eviction_preserves_live_cooldowns_and_reclaims_expired_ones() {
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    let cooling = service.entry("cooling").await.unwrap();
+    cooling.lock().await.login_retry_at_ms = api::now_ms() + 60_000;
+    let original = Arc::downgrade(&cooling);
+    drop(cooling);
+    let mut active = Vec::new();
+    for id in 0..31 {
+        active.push(service.entry(&format!("active-{id}")).await.unwrap());
+    }
+    assert!(service.entry("extra").await.is_err());
+
+    // An unrelated idle entry is evicted while the cooldown's lock stays intact.
+    drop(active.pop());
+    active.push(service.entry("extra").await.unwrap());
+    let request = Command {
+        profile_id: "cooling".into(),
+        token: None,
+        args: json!({}),
+    };
+    let error = service.invoke("login", &request).await.unwrap_err();
+    assert_eq!(error.status, 429);
+    assert!(error.retry_after_ms > 0 && error.retry_after_ms <= 60_000);
+    let cooling = service.entry("cooling").await.unwrap();
+    assert!(Arc::ptr_eq(&cooling, &original.upgrade().unwrap()));
+    assert_eq!(service.locks.lock().await.len(), 32);
+
+    // Once expired, that entry is the only idle candidate and can be reclaimed.
+    cooling.lock().await.login_retry_at_ms = api::now_ms().saturating_sub(1);
+    drop(cooling);
+    let _extra = service.entry("after-expiry").await.unwrap();
+    assert!(original.upgrade().is_none());
+    assert_eq!(service.locks.lock().await.len(), 32);
+}
+
+#[tokio::test]
+async fn combined_context_uses_one_read_and_observes_proxy_token_and_profile_changes() {
+    let mode = Arc::new(AtomicUsize::new(0));
+    let reads = Arc::new(AtomicUsize::new(0));
+    let observed = reads.clone();
+    let changes = mode.clone();
+    let state = serde_json::to_string(&mobile(None).state).unwrap();
+    let convex = Fixture::start(move |request| {
+        let reads = observed.clone();
+        let mode = changes.load(Ordering::SeqCst);
+        let state = state.clone();
+        async move {
+            assert_eq!(request.method(), Method::GET);
+            assert_eq!(request.uri().path(), "/api/chat/context");
+            assert_eq!(request.uri().query(), Some("profileId=profile"));
+            assert_eq!(request.headers()["authorization"], "Bearer fixture");
+            reads.fetch_add(1, Ordering::SeqCst);
+            Json(json!({
+                "connected": true, "state": state,
+                "token": if mode == 2 { "changed-token" } else { "saved-token" },
+                "profile": if mode == 3 { Value::Null } else {
+                    json!({"proxy":if mode == 1 {"unsupported://proxy"} else {""},"proxyType":""})
+                }
+            }))
+            .into_response()
+        }
+    })
+    .await;
+    let hits = Arc::new(AtomicUsize::new(0));
+    let observed = hits.clone();
+    let upstream = Fixture::start(move |_| {
+        observed.fetch_add(1, Ordering::SeqCst);
+        async { Json(json!({"inbox":{"threads":[]}})).into_response() }
+    })
+    .await;
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = convex.url.clone();
+    api.key = "fixture".into();
+    let mut service = Service::new(Arc::new(api), uploads());
+    Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
+    let request = Command {
+        profile_id: "profile".into(),
+        token: Some("saved-token".into()),
+        args: json!({}),
+    };
+    service.invoke("inbox", &request).await.unwrap();
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+    for (next_mode, message) in [
+        (1, "Invalid proxy protocol or URL"),
+        (2, "Chat session was logged out"),
+        (3, "Profile not found"),
+    ] {
+        mode.store(next_mode, Ordering::SeqCst);
+        assert_eq!(
+            service.invoke("inbox", &request).await.unwrap_err().message,
+            message
+        );
+        assert_eq!(reads.load(Ordering::SeqCst), next_mode + 1);
+    }
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -298,7 +436,7 @@ async fn profile_edits_avatar_and_signed_video_preserve_native_contracts() {
             kind: "video".into(),
         }),
     );
-    let service = Service::new(Api::from_env().unwrap(), uploads);
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads);
     let mut mobile = mobile(Some(fixture.url.clone()));
     operations::invoke(
         &service,
@@ -384,7 +522,7 @@ async fn attachments_stream_native_owned_files_and_validate_resume_offsets() {
             }),
         );
     }
-    let service = Service::new(Api::from_env().unwrap(), uploads);
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads);
     let mobile = mobile(Some(fixture.url.clone()));
     for kind in ["photo", "voice"] {
         let result = attachments::upload(&service, &mobile, kind, &json!({"uploadId":kind}))
@@ -724,6 +862,32 @@ async fn mobile_transport_persists_response_headers_and_sanitizes_errors() {
     assert!(!format!("{error:?}").contains("secret"));
 }
 #[tokio::test]
+async fn malformed_inboxes_return_errors_without_panicking() {
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    for response in [
+        Value::Null,
+        json!([]),
+        json!({}),
+        json!({"inbox":[]}),
+        json!({"inbox":{"threads":false}}),
+    ] {
+        let fixture = Fixture::start(move |_| {
+            let response = response.clone();
+            async move { Json(response).into_response() }
+        })
+        .await;
+        let mut mobile = mobile(Some(fixture.url.clone()));
+        assert_eq!(
+            operations::invoke(&service, &mut mobile, "inbox", &json!({}))
+                .await
+                .unwrap_err()
+                .message,
+            "Instagram returned no DM inbox"
+        );
+    }
+}
+
+#[tokio::test]
 async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
     let fixture=Fixture::start(|request|async move{
         let query=reqwest::Url::parse(&format!("http://local{}",request.uri())).unwrap();let query:HashMap<_,_>=query.query_pairs().into_owned().collect();let path=request.uri().path();
@@ -732,7 +896,7 @@ async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
         let first=!query.contains_key("max_id");let items=if first{json!([{"pk":"1","code":"old_pinned","taken_at":10,"timeline_pinned_user_ids":["123"]},{"pk":"2","code":"two","taken_at":300}])}else{json!([{"pk":"2","code":"two","taken_at":300},{"pk":"3","code":"three","taken_at":200},{"pk":"4","code":"old","taken_at":10}])};Json(json!({"items":items,"next_max_id":"next","more_available":true})).into_response()
     }).await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    let service = Service::new(Api::from_env().unwrap(), uploads());
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
     let inbox = operations::invoke(&service, &mut mobile, "inbox", &json!({}))
         .await
         .unwrap();
@@ -788,7 +952,7 @@ async fn native_replies_reactions_and_unsend_preserve_request_fields() {
     })
     .await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    let service = Service::new(Api::from_env().unwrap(), uploads());
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
     let context = uuid::Uuid::new_v4().to_string();
     operations::invoke(
         &service,
@@ -830,9 +994,7 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
         let store = observed.clone();
         let d = d.clone();
         async move {
-            if request.uri().path() == "/api/profiles/by-id" {
-                return Json(json!({"id":"profile","proxy":""})).into_response();
-            }
+            assert_eq!(request.uri().path(), "/api/chat/session");
             match *request.method() {
                 Method::GET => Json(
                     store
@@ -855,7 +1017,7 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
     let mut api = Api::from_env().unwrap();
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
-    let service = Service::new(api, uploads());
+    let service = Service::new(Arc::new(api), uploads());
     let request = Command {
         profile_id: "profile".into(),
         token: Some(token),
@@ -929,9 +1091,8 @@ async fn typescript_session_is_reused_without_login_and_reconnect_preserves_its_
         let saved = observed.clone();
         let writes = writes.clone();
         async move {
-            if request.uri().path() == "/api/profiles/by-id" {
-                return Json(json!({"id":"profile","proxy":""})).into_response();
-            }
+            let context = request.uri().path() == "/api/chat/context";
+            assert!(context || request.uri().path() == "/api/chat/session");
             if request.method() == Method::POST {
                 let body = test_support::body(request).await;
                 let mut current = saved.lock().await;
@@ -939,7 +1100,11 @@ async fn typescript_session_is_reused_without_login_and_reconnect_preserves_its_
                 *current = json!({"connected":true,"state":body["state"],"token":body["token"]});
                 writes.fetch_add(1, Ordering::SeqCst);
             }
-            Json(saved.lock().await.clone()).into_response()
+            let mut response = saved.lock().await.clone();
+            if context {
+                response["profile"] = json!({"proxy":"","proxyType":""});
+            }
+            Json(response).into_response()
         }
     })
     .await;
@@ -969,7 +1134,7 @@ async fn typescript_session_is_reused_without_login_and_reconnect_preserves_its_
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(api, uploads());
+    let mut service = Service::new(Arc::new(api), uploads());
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let command = Command {
         profile_id: "profile".into(),
@@ -1012,9 +1177,8 @@ async fn rejected_sessions_require_reconnect_without_discarding_the_saved_device
         let store = store.clone();
         let writes = observed.clone();
         async move {
-            if request.uri().path() == "/api/profiles/by-id" {
-                return Json(json!({"id":"profile","proxy":""})).into_response();
-            }
+            let context = request.uri().path() == "/api/chat/context";
+            assert!(context || request.uri().path() == "/api/chat/session");
             if request.method() == Method::POST {
                 let body = test_support::body(request).await;
                 let mut saved = store.lock().await;
@@ -1023,7 +1187,11 @@ async fn rejected_sessions_require_reconnect_without_discarding_the_saved_device
                 saved["reconnectRequired"] = body["reconnectRequired"].clone();
                 writes.fetch_add(1, Ordering::SeqCst);
             }
-            Json(store.lock().await.clone()).into_response()
+            let mut response = store.lock().await.clone();
+            if context {
+                response["profile"] = json!({"proxy":"","proxyType":""});
+            }
+            Json(response).into_response()
         }
     })
     .await;
@@ -1044,7 +1212,7 @@ async fn rejected_sessions_require_reconnect_without_discarding_the_saved_device
     let mut api = Api::from_env().unwrap();
     api.convex_url = convex.url.clone();
     api.key = "fixture".into();
-    let mut service = Service::new(api, uploads());
+    let mut service = Service::new(Arc::new(api), uploads());
     Arc::get_mut(&mut service).unwrap().base = Some(upstream.url.clone());
     let request = Command {
         profile_id: "profile".into(),

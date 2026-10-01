@@ -7,11 +7,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures_util::{SinkExt, StreamExt};
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio_tungstenite::tungstenite::{self, client::IntoClientRequest};
 
 pub async fn upgrade(
-    State(state): State<Api>,
+    State(state): State<Arc<Api>>,
     Query(query): Query<HashMap<String, String>>,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -53,14 +53,24 @@ pub async fn upgrade(
     );
     let worker = match tokio::time::timeout(
         Duration::from_secs(5),
-        tokio_tungstenite::connect_async(request),
+        tokio_tungstenite::connect_async_with_config(
+            request,
+            Some(
+                tungstenite::protocol::WebSocketConfig::default()
+                    .read_buffer_size(16 * 1024)
+                    .max_message_size(Some(1024 * 1024))
+                    .max_frame_size(Some(1024 * 1024)),
+            ),
+            false,
+        ),
     )
     .await
     {
         Ok(Ok((worker, _))) => worker,
         _ => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    ws.max_message_size(1024 * 1024)
+    ws.read_buffer_size(16 * 1024)
+        .max_message_size(1024 * 1024)
         .max_frame_size(1024 * 1024)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
@@ -69,7 +79,11 @@ pub async fn upgrade(
             let to_client = async {
                 while let Some(Ok(message)) = worker_read.next().await {
                     let message = match message {
-                        tungstenite::Message::Text(value) => Message::Text(value.as_str().into()),
+                        tungstenite::Message::Text(value) => Message::Text(
+                            axum::body::Bytes::from(value)
+                                .try_into()
+                                .expect("Validated WebSocket text"),
+                        ),
                         tungstenite::Message::Binary(value) => Message::Binary(value),
                         tungstenite::Message::Ping(value) => Message::Ping(value),
                         tungstenite::Message::Pong(value) => Message::Pong(value),
@@ -87,7 +101,11 @@ pub async fn upgrade(
             let to_worker = async {
                 while let Some(Ok(message)) = client_read.next().await {
                     let message = match message {
-                        Message::Text(value) => tungstenite::Message::Text(value.as_str().into()),
+                        Message::Text(value) => tungstenite::Message::Text(
+                            axum::body::Bytes::from(value)
+                                .try_into()
+                                .expect("Validated WebSocket text"),
+                        ),
                         Message::Binary(value) => tungstenite::Message::Binary(value),
                         Message::Ping(value) => tungstenite::Message::Ping(value),
                         Message::Pong(value) => tungstenite::Message::Pong(value),

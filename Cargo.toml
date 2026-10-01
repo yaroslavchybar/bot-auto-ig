@@ -2,7 +2,11 @@
 members = ["tools/spoofer", "tools/runtime", "tools/service-common"]
 resolver = "2"
 
+[workspace.lints.clippy]
+redundant_clone = "warn"
+large_futures = "warn"
+await_holding_lock = "warn"
+
 [profile.release]
 lto = "thin"
 strip = true
-

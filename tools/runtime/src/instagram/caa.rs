@@ -5,12 +5,14 @@ use super::{
 };
 use reqwest::Method;
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 // Current CAA request bodies, kept as data so app-version changes are easy to review.
 fn params(action: &str, mobile: &Mobile, values: &[(&str, Value)]) -> Result<Value> {
-    let templates: Value = serde_json::from_str(include_str!("caa-params.json")).unwrap();
-    let mut value = templates
+    static TEMPLATES: LazyLock<Value> = LazyLock::new(|| {
+        serde_json::from_str(include_str!("caa-params.json")).expect("Static CAA templates")
+    });
+    let mut value = TEMPLATES
         .get(action)
         .cloned()
         .ok_or_else(|| Error::new("Unknown login action"))?;
@@ -30,7 +32,7 @@ fn params(action: &str, mobile: &Mobile, values: &[(&str, Value)]) -> Result<Val
                     *value = replacement.clone();
                 } else {
                     for (key, val) in vars {
-                        if let Some(val) = val.as_str() {
+                        if let Some(val) = val.as_str().filter(|_| text.contains(key)) {
                             *text = text.replace(key, val);
                         }
                     }
@@ -166,12 +168,7 @@ pub fn extract_context(value: &Value) -> String {
         {
             return text.into();
         }
-        let children: Vec<&Value> = match value {
-            Value::Object(v) => v.values().collect(),
-            Value::Array(v) => v.iter().collect(),
-            _ => vec![],
-        };
-        for child in children {
+        let visit = |child: &Value| {
             let found = if let Some(text) = child.as_str().filter(|v| v.starts_with('{')) {
                 serde_json::from_str(text)
                     .ok()
@@ -180,11 +177,14 @@ pub fn extract_context(value: &Value) -> String {
             } else {
                 direct(child, depth + 1)
             };
-            if !found.is_empty() {
-                return found;
-            }
+            (!found.is_empty()).then_some(found)
+        };
+        match value {
+            Value::Object(v) => v.values().find_map(visit),
+            Value::Array(v) => v.iter().find_map(visit),
+            _ => None,
         }
-        String::new()
+        .unwrap_or_default()
     }
     let found = direct(value, 0);
     if !found.is_empty() {

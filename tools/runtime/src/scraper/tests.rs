@@ -69,6 +69,7 @@ async fn jobs_preserve_sources_resume_checkpoints_daily_limits_and_mobile_429s()
         let path=request.uri().path().to_string();
         if path=="/api/profiles/by-id"{return Json(json!({"id":"profile","sessionId":"fixture-browser-cookie","using":false})).into_response();}
         if path=="/api/chat/session" {return Json(json!({"connected":true,"state":state,"token":"11111111-1111-4111-8111-111111111111"})).into_response();}
+        if path=="/api/chat/context" {return Json(json!({"connected":true,"state":state,"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();}
         if path=="/api/v1/users/search/"{
             mr.fetch_add(1,Ordering::SeqCst);
             if mode==1{return (StatusCode::BAD_GATEWAY,Json(json!({"status":"fail"}))).into_response();}
@@ -78,7 +79,7 @@ async fn jobs_preserve_sources_resume_checkpoints_daily_limits_and_mobile_429s()
         if path.starts_with("/api/v1/feed/user/"){return Json(json!({"items":[{"pk":"1","code":"one","taken_at":300}],"more_available":false})).into_response();}
         if path.starts_with("/v2/actors/"){ar.fetch_add(1,Ordering::SeqCst);return Json(json!([{"id":"1","code":"one","timestamp":"2026-01-01T00:00:00Z"}])).into_response();}
         if path.contains("/likers/"){lr.fetch_add(1,Ordering::SeqCst);return Json(json!({"users":[{"pk":"11","username":"lead","is_private":false}]})).into_response();}
-        let data=body(request).await;calls.lock().unwrap().push((path.clone(),data.clone()));
+        let data=body(request).await;calls.lock().unwrap().push((path.clone(),data));
         if path=="/api/scraper/batch"{return Json(json!({"added":1,"processed":if mode==4{0}else{1},"limitExhausted":mode==2||mode==3||mode==4})).into_response();}
         if path=="/api/scraper/checkpoint"{return Json(json!({"limitExhausted":false})).into_response();}
         panic!("Unexpected fixture request {path}")
@@ -90,6 +91,7 @@ async fn jobs_preserve_sources_resume_checkpoints_daily_limits_and_mobile_429s()
         entries: tokio::sync::Mutex::new(HashMap::new()),
         slots: Arc::new(tokio::sync::Semaphore::new(4)),
     });
+    let api = Arc::new(api);
     let mut mobile = Service::new(api.clone(), uploads);
     Arc::get_mut(&mut mobile).unwrap().base = Some(fixture.url.clone());
     let (work, _) = watch::channel((0, Work::default()));

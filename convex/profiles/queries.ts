@@ -170,6 +170,24 @@ export const getChatSessionInternal = internalQuery({
       .first(),
 })
 
+/** Read session metadata and its proxy configuration in the same database snapshot. */
+export const getChatContextInternal = internalQuery({
+  args: { profileId: v.id('profiles') },
+  handler: async (ctx, { profileId }) => {
+    const [profile, session] = await Promise.all([
+      ctx.db.get(profileId),
+      ctx.db
+        .query('chatSessions')
+        .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+        .first(),
+    ])
+    return {
+      profile: profile ? { proxy: profile.proxy ?? '', proxyType: profile.proxyType ?? '' } : null,
+      session,
+    }
+  },
+})
+
 export const getAvailableForListsInternal = internalQuery({
   args: {
     listIds: v.array(v.string()),

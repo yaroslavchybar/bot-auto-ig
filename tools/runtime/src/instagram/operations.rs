@@ -5,14 +5,23 @@ use super::{
 };
 use reqwest::Method;
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::LazyLock};
 
 fn fields(value: Value) -> Fields {
-    value
-        .as_object()
-        .unwrap()
-        .iter()
-        .map(|(k, v)| (k.clone(), super::string(v)))
+    let Value::Object(object) = value else {
+        panic!("Static fields must be an object")
+    };
+    object
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                match v {
+                    Value::String(v) => v,
+                    _ => super::string(&v),
+                },
+            )
+        })
         .collect()
 }
 fn id(args: &Value, key: &str) -> Result<String> {
@@ -71,8 +80,10 @@ pub async fn invoke(
                 .ok_or_else(|| Error::new("Reply must contain 1 to 1000 characters"))?;
             let token = token(args)?;
             let mut body = send_fields(mobile, &thread, &token);
-            let regex = regex::Regex::new(r"https?://[^\s]+").unwrap();
-            let links: Vec<_> = regex.find_iter(text).map(|m| m.as_str()).collect();
+            static LINKS: LazyLock<regex::Regex> = LazyLock::new(|| {
+                regex::Regex::new(r"https?://[^\s]+").expect("Static link pattern")
+            });
+            let links: Vec<_> = LINKS.find_iter(text).map(|m| m.as_str()).collect();
             let kind = if links.is_empty() {
                 body.insert("text".into(), text.into());
                 "text"
@@ -199,7 +210,7 @@ pub async fn invoke(
             let bytes = base64::engine::general_purpose::STANDARD
                 .decode(args["image"].as_str().unwrap_or(""))
                 .map_err(|_| Error::new("Invalid profile photo"))?;
-            attachments::profile_picture(mobile, &bytes).await?;
+            attachments::profile_picture(mobile, bytes).await?;
             Ok(json!({"ok":true}))
         }
         "posts" => recent_posts(service, mobile, args).await,
@@ -225,7 +236,7 @@ fn confirmed(value: &Value, message: &str) -> Result<()> {
 }
 async fn inbox(mobile: &mut Mobile, unread: bool) -> Result<Value> {
     let limit = if unread { 200 } else { 30 };
-    let mut threads = Vec::new();
+    let mut threads = Vec::with_capacity(limit);
     let mut ids = HashSet::new();
     let mut cursors = HashSet::new();
     let mut cursor = String::new();
@@ -240,25 +251,31 @@ async fn inbox(mobile: &mut Mobile, unread: bool) -> Result<Value> {
             query.insert("cursor".into(), cursor.clone());
             query.insert("direction".into(), "older".into());
         }
-        let result = mobile
+        let mut result = mobile
             .mobile(Method::GET, "direct_v2/inbox/", None, &query)
             .await?;
-        let inbox = &result["inbox"];
-        let rows = inbox["threads"]
-            .as_array()
+        let inbox = result
+            .get_mut("inbox")
             .ok_or_else(|| Error::new("Instagram returned no DM inbox"))?;
+        let rows = inbox
+            .get_mut("threads")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| Error::new("Instagram returned no DM inbox"))?;
+        let rows = std::mem::take(rows);
         let before = threads.len();
-        for row in rows {
+        for mut row in rows {
             let id = super::string(row.get("thread_id").unwrap_or(&row["thread_v2_id"]));
             if !id.is_empty() && ids.insert(id) {
-                let mut row = row.clone();
-                if let Some(items) = row["items"].as_array_mut() {
-                    items.sort_by_key(|v| {
+                if let Some(items) = row.get_mut("items").and_then(Value::as_array_mut) {
+                    let latest = std::mem::take(items).into_iter().min_by_key(|v| {
                         std::cmp::Reverse(
-                            super::string(&v["timestamp"]).parse::<u64>().unwrap_or(0),
+                            v["timestamp"]
+                                .as_u64()
+                                .or_else(|| v["timestamp"].as_str().and_then(|v| v.parse().ok()))
+                                .unwrap_or(0),
                         )
                     });
-                    items.truncate(1);
+                    items.extend(latest);
                 }
                 threads.push(row);
             }

@@ -5,6 +5,66 @@ import { createConvexTest, seedProfile } from './helpers'
 const headers = { authorization: 'Bearer test-key', 'content-type': 'application/json' }
 afterEach(() => vi.unstubAllEnvs())
 
+test('Chat context reads the current session and only proxy settings with server authentication', async () => {
+  const t = createConvexTest()
+  const profile = (await seedProfile(t, { proxy: '127.0.0.1:8080', proxyType: 'http' }))!
+  const profileId = profile._id
+  vi.stubEnv('INTERNAL_API_KEY', 'test-key')
+  const path = `/api/chat/context?profileId=${profileId}`
+  expect((await t.fetch(path)).status).toBe(401)
+  expect((await t.fetch('/api/chat/context', { headers })).status).toBe(400)
+  const read = () => t.fetch(path, { headers }).then((r) => r.json())
+  expect(await read()).toEqual({
+    connected: false,
+    profile: { proxy: profile.proxy, proxyType: profile.proxyType },
+  })
+  const token = '11111111-1111-4111-8111-111111111111'
+  const state = JSON.stringify({ version: 1, deviceId: 'same-device' })
+  expect(
+    (
+      await t.fetch('/api/chat/session', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ profileId, state, token, reconnectRequired: true }),
+      })
+    ).status,
+  ).toBe(200)
+  expect(await read()).toEqual({
+    connected: true,
+    state,
+    token,
+    profile: { proxy: profile.proxy, proxyType: profile.proxyType },
+  })
+  const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
+    oldName: profile.name,
+    name: profile.name,
+    proxy: '127.0.0.1:8081',
+    proxyType: 'socks5',
+  })
+  expect((await read()).profile).toEqual({ proxy: updated.proxy, proxyType: updated.proxyType })
+  await t.fetch(`/api/chat/session?profileId=${profileId}`, { method: 'DELETE', headers })
+  expect(await read()).toEqual({
+    connected: false,
+    profile: { proxy: updated.proxy, proxyType: updated.proxyType },
+  })
+  await t.run((ctx) => ctx.db.delete(profileId))
+  expect(await read()).toEqual({ connected: false, profile: null })
+})
+
+test('Chat context reports a missing session file rather than silently losing the device', async () => {
+  const t = createConvexTest()
+  const profileId = (await seedProfile(t))!._id
+  vi.stubEnv('INTERNAL_API_KEY', 'test-key')
+  const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['saved device'])))
+  await t.mutation(internal.profiles.mutations.saveChatSessionInternal, {
+    profileId,
+    storageId,
+    token: '11111111-1111-4111-8111-111111111111',
+  })
+  await t.run((ctx) => ctx.storage.delete(storageId))
+  expect((await t.fetch(`/api/chat/context?profileId=${profileId}`, { headers })).status).toBe(500)
+})
+
 test('saved TypeScript sessions stay connected and only expired or missing sessions need reconnect', async () => {
   const t = createConvexTest()
   const profileId = (await seedProfile(t))!._id

@@ -44,6 +44,7 @@ pub async fn upgrade(
     };
     let _ = tcp.set_nodelay(true);
     ws.protocols(["binary"])
+        .read_buffer_size(16 * 1024)
         .max_message_size(1024 * 1024)
         .max_frame_size(1024 * 1024)
         .on_upgrade(move |socket| async move {
@@ -74,7 +75,7 @@ async fn relay(socket: WebSocket, tcp: TcpStream) {
         }
     };
     let to_websocket = async {
-        let mut buffer = [0u8; 64 * 1024];
+        let mut buffer = vec![0u8; 64 * 1024];
         let mut heartbeat = tokio::time::interval(Duration::from_secs(20));
         loop {
             let message = tokio::select! {

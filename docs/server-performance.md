@@ -51,6 +51,67 @@ Image output is intentionally changed, so the two encoders are not bit-identical
 - Routine workers: at most `AUTOMATION_MAX_CONCURRENCY`, default three. Convex
   subscriptions wake changed accounts; Rust timers wake resting accounts.
 
+## Rust allocation and async review (October 1, 2026)
+
+The spoofer reuses its RGB working frame for decoded JPEG verification and keeps
+the encoded buffer across variants. EXIF and JPEG bytes go into one buffered file
+write. This removes repeated full-frame allocations, JPEG rereads, and file rewrites.
+Decoded-pixel uniqueness and source orientation still have regression coverage.
+
+The API shares its configuration, authentication state, and route definitions through
+`Arc`. Instagram form fields, inbox rows,
+and avatar bodies move into their destination instead of being cloned. Resumed
+scraper jobs borrow saved posts with `Cow`; checkpoint fields move into the payload.
+Fixed proxy/link regexes, CAA templates, default headers, and device lists initialize
+once through `LazyLock`, following the [regex performance guidance](https://docs.rs/regex/latest/regex/#avoid-re-compiling-regexes-especially-in-a-loop).
+
+Upstream JSON still has byte limits, including chunked responses. Advertised
+oversized bodies are rejected before reading. Bodies over 64 KiB parse through
+`spawn_blocking`, with a semaphore limiting parsing to two active tasks. The
+permit stays inside each blocking task if the HTTP caller disconnects, following
+[Tokio's CPU-work guidance](https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html).
+HTTP clients already reuse their connection pools, as recommended by
+[reqwest](https://docs.rs/reqwest/latest/reqwest/struct.Client.html).
+
+Mobile commands fetch the saved session and current proxy configuration together
+through the authenticated `/api/chat/context` endpoint. One Convex query reads both
+records in the same snapshot, and the response includes only the proxy fields needed
+by the transport. Session load/status/logout keep their existing single-request paths.
+The existing deployment workflow updates Convex before starting the new runtime.
+
+The 32-entry mobile cache never evicts an active profile or one with a live reconnect
+cooldown. Expired cooldowns are eligible for eviction. If every entry is active or
+cooling down, requests for new profiles are rejected until capacity becomes available; the cache remains
+bounded. Cooldowns remain local to the process and do not survive a runtime restart.
+
+WebSocket read buffers are 16 KiB on VNC and both event-relay connections. Event
+text transfers its owned bytes between Axum and Tungstenite without a new string
+allocation. Both event connections have 1 MiB frame/message caps; awaited writes
+provide backpressure. The VNC read buffer stays off the async future's inline storage.
+
+Workspace Clippy settings flag redundant clones, large futures, and locks held
+across awaits. Run `cargo fmt --all -- --check`,
+`cargo clippy --workspace --all-targets --locked -- -D warnings`, and
+`cargo test --workspace --locked` when changing native code.
+
+### Image buffer comparison
+
+Windows release builds with Rust 1.98.1, comparing the pre-review binary with the
+updated binary. Inputs are RGB PNG gradients: `r = x % 256`, `g = y % 256`,
+`b = (x + y) % 256`. Before/after runs alternate; one warmup per binary is excluded,
+then three runs per binary produce the medians. Peak RSS comes from Bun's subprocess
+resource usage. Each run checks successful output counts; the native pipeline
+validates decoded-pixel uniqueness.
+
+| Fixture                 | Before time | After time | Before peak RSS | After peak RSS |
+| ----------------------- | ----------: | ---------: | --------------: | -------------: |
+| 1024 × 768, 10 variants |      546 ms |     469 ms |       10.20 MiB |       9.98 MiB |
+| 4000 × 3000, 5 variants |     3601 ms |    3494 ms |       80.18 MiB |      81.08 MiB |
+
+The smaller fixture took about 14% less time; the larger one took about 3% less.
+Peak RSS differences were small and mixed. Fewer allocations and file operations
+are verified by the implementation; VPS throughput and memory need separate measurements.
+
 ## API and mobile migration validation
 
 Compatibility fixtures exercise CAA login and TOTP, cookie persistence, authenticated

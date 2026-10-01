@@ -4,6 +4,64 @@ use axum::extract::ws::{Message, WebSocketUpgrade};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test]
+async fn bounded_json_handles_large_prefixed_data_and_rejects_oversized_bodies() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let expected = json!({"text":"Привіт 🚀".repeat(16_384)});
+    let encoded = Arc::new(format!("for (;;);{expected}"));
+    let fixture = Fixture::start(move |request| {
+        let encoded = encoded.clone();
+        async move {
+            match request.uri().path() {
+                "/large" => encoded.as_str().to_owned().into_response(),
+                "/invalid" => "invalid JSON".into_response(),
+                "/declared" => Response::builder()
+                    .header(header::CONTENT_LENGTH, "1000")
+                    .body(Body::from_stream(futures_util::stream::pending::<
+                        Result<axum::body::Bytes, std::io::Error>,
+                    >()))
+                    .unwrap(),
+                _ => Body::from_stream(futures_util::stream::iter([
+                    Ok::<_, std::io::Error>("{\"text\":"),
+                    Ok("\"too large\"}"),
+                ]))
+                .into_response(),
+            }
+        }
+    })
+    .await;
+    let client = reqwest::Client::new();
+    let response = client
+        .get(format!("{}/large", fixture.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bounded_json(response, 1_000_000).await.unwrap(), expected);
+    let response = client
+        .get(format!("{}/invalid", fixture.url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        bounded_json(response, 100).await.unwrap_err(),
+        "Invalid JSON response"
+    );
+    for path in ["declared", "chunked"] {
+        let response = client
+            .get(format!("{}/{path}", fixture.url))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), bounded_json(response, 10))
+                .await
+                .unwrap()
+                .unwrap_err(),
+            "Response too large"
+        );
+    }
+}
+
+#[tokio::test]
 async fn streamed_body_limit_returns_413_and_releases_capacity() {
     let worker = Fixture::start(|request| async {
         match axum::body::to_bytes(request.into_body(), 100).await {
@@ -13,22 +71,23 @@ async fn streamed_body_limit_returns_413_and_releases_capacity() {
     })
     .await;
     let mut state = Api::from_env().unwrap();
-    state.auth.bypass = true;
+    Arc::get_mut(&mut state.auth).unwrap().bypass = true;
     state.worker_url = worker.url.clone();
     state.slots = Arc::new(Semaphore::new(1));
     let slots = state.slots.clone();
-    let operation = Operation {
+    let state = Arc::new(state);
+    let operation = Arc::new(Operation {
         id: "fixture".into(),
         method: "POST".into(),
         path: "/upload".into(),
         body: "stream".into(),
         max_body: 8,
         image_read: false,
-    };
+    });
     let router = Router::new()
         .route(
             "/upload",
-            axum::routing::post(move |State(state): State<Api>, request: Request| {
+            axum::routing::post(move |State(state): State<Arc<Api>>, request: Request| {
                 invoke(state, operation.clone(), HashMap::new(), request)
             })
             .layer(RequestBodyLimitLayer::new(8)),
@@ -109,11 +168,11 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
         Json(json!([{"id":"profile","cookiesJson":"private-cookies","sessionId":"private-session","name":"Profile"}])).into_response()
     }).await;
     let mut state = Api::from_env().unwrap();
-    state.auth.bypass = true;
+    Arc::get_mut(&mut state.auth).unwrap().bypass = true;
     state.worker_url = worker.url.clone();
     state.key = "worker-key".into();
     state.convex_url = convex.url.clone();
-    let public = Fixture::router(router(state)).await;
+    let public = Fixture::router(router(Arc::new(state))).await;
     let client = reqwest::Client::new();
     let start = client
         .post(format!("{}/api/profiles/Profile%20A/start", public.url))
@@ -226,10 +285,10 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
 async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
     let worker = Fixture::start(|_| async { Json(json!({"ok":true})).into_response() }).await;
     let mut state = Api::from_env().unwrap();
-    state.auth.bypass = true;
+    Arc::get_mut(&mut state.auth).unwrap().bypass = true;
     state.worker_url = worker.url.clone();
     state.key = "fixture".into();
-    let public = Fixture::router(router(state)).await;
+    let public = Fixture::router(router(Arc::new(state))).await;
     let client = reqwest::Client::new();
     for _ in 0..120 {
         assert_eq!(
@@ -266,11 +325,11 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
         StatusCode::TOO_MANY_REQUESTS
     );
     let mut state = Api::from_env().unwrap();
-    state.auth.bypass = false;
-    state.auth.production = true;
+    Arc::get_mut(&mut state.auth).unwrap().bypass = false;
+    Arc::get_mut(&mut state.auth).unwrap().production = true;
     state.worker_url = worker.url.clone();
     state.key = "fixture".into();
-    let public = Fixture::router(router(state)).await;
+    let public = Fixture::router(router(Arc::new(state))).await;
     assert_eq!(
         client
             .get(format!("{}/api/ig-accounts/warmup", public.url))
@@ -326,10 +385,10 @@ async fn public_events_relay_topics_through_authenticated_private_websocket() {
     ))
     .await;
     let mut state = Api::from_env().unwrap();
-    state.auth.bypass = true;
+    Arc::get_mut(&mut state.auth).unwrap().bypass = true;
     state.key = "fixture".into();
     state.worker_url = worker.url.clone();
-    let public = Fixture::router(router(state)).await;
+    let public = Fixture::router(router(Arc::new(state))).await;
     let (mut socket, _) = tokio_tungstenite::connect_async(format!(
         "{}/ws?topic=chat",
         public.url.replace("http://", "ws://")
@@ -341,15 +400,16 @@ async fn public_events_relay_topics_through_authenticated_private_websocket() {
         socket.next().await.unwrap().unwrap().into_text().unwrap(),
         "fixture-event"
     );
+    let payload = "client-event:Привіт 🚀".repeat(4096);
     socket
         .send(tokio_tungstenite::tungstenite::Message::Text(
-            "client-event".into(),
+            payload.clone().into(),
         ))
         .await
         .unwrap();
     assert_eq!(
         socket.next().await.unwrap().unwrap().into_text().unwrap(),
-        "client-event"
+        payload
     );
 }
 

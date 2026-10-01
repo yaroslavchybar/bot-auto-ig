@@ -249,7 +249,7 @@ fn valid_token(token: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-pub fn router(auth: Auth) -> Router {
+pub fn router(auth: Arc<Auth>) -> Router {
     Router::new()
         .route("/api/auth/config", get(config))
         .route("/api/auth/me", get(me))
@@ -260,10 +260,10 @@ pub fn router(auth: Auth) -> Router {
         .route("/api/auth/tg-webhook", post(tg_webhook))
         .with_state(auth)
 }
-async fn config(State(auth): State<Auth>) -> Json<Value> {
+async fn config(State(auth): State<Arc<Auth>>) -> Json<Value> {
     Json(auth.config())
 }
-async fn me(State(auth): State<Auth>, headers: HeaderMap) -> Json<Value> {
+async fn me(State(auth): State<Arc<Auth>>, headers: HeaderMap) -> Json<Value> {
     if let Some(user) = auth.verify(session_token(&headers)) {
         let full_name = format!("{} {}", user.first_name, user.last_name)
             .trim()
@@ -278,7 +278,7 @@ async fn me(State(auth): State<Auth>, headers: HeaderMap) -> Json<Value> {
         Json(value)
     }
 }
-async fn dev_login(State(auth): State<Auth>) -> Response {
+async fn dev_login(State(auth): State<Arc<Auth>>) -> Response {
     if auth.production {
         return error(StatusCode::FORBIDDEN, "Dev login is disabled");
     }
@@ -294,7 +294,7 @@ async fn dev_login(State(auth): State<Auth>) -> Response {
         photo_url: "".into(),
     })
 }
-async fn logout(State(auth): State<Auth>) -> Response {
+async fn logout(State(auth): State<Arc<Auth>>) -> Response {
     let mut response = Json(json!({ "success": true })).into_response();
     let cookie = format!("app_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT{}",
         if auth.production { "; Secure" } else { "" });
@@ -303,7 +303,7 @@ async fn logout(State(auth): State<Auth>) -> Response {
         .insert(header::SET_COOKIE, cookie.parse().unwrap());
     response
 }
-async fn tg_link(State(auth): State<Auth>) -> Response {
+async fn tg_link(State(auth): State<Arc<Auth>>) -> Response {
     if !auth.configured() {
         return error(
             StatusCode::BAD_REQUEST,
@@ -336,7 +336,7 @@ async fn tg_link(State(auth): State<Auth>) -> Response {
     Json(json!({ "token": token, "bot": auth.bot_username, "url": format!("https://t.me/{}?start={token}", auth.bot_username) })).into_response()
 }
 async fn tg_poll(
-    State(auth): State<Auth>,
+    State(auth): State<Arc<Auth>>,
     Query(query): Query<HashMap<String, String>>,
 ) -> Response {
     let token = query.get("token").map(String::as_str).unwrap_or("");
@@ -362,7 +362,7 @@ async fn tg_poll(
     auth.session(user)
 }
 async fn tg_webhook(
-    State(auth): State<Auth>,
+    State(auth): State<Arc<Auth>>,
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Response {
@@ -490,7 +490,7 @@ mod tests {
         auth.bot_base = Some(bot.url.clone());
         auth.webhook_ready.store(true, Ordering::Relaxed);
         let secret = auth.webhook_secret.clone();
-        let public = Fixture::router(router(auth.clone())).await;
+        let public = Fixture::router(router(Arc::new(auth.clone()))).await;
         let link: Value = client
             .post(format!("{}/api/auth/tg-link", public.url))
             .send()

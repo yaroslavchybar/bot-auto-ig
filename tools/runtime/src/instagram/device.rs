@@ -6,12 +6,16 @@ struct Seeded {
 }
 impl Seeded {
     fn new(seed: &str) -> Self {
-        let chars: Vec<_> = seed.encode_utf16().collect();
-        let hash = chars.iter().fold(0u32, |hash, ch| {
-            hash.wrapping_mul(65_599).wrapping_add(*ch as u32)
-        });
+        let (hash, length) = seed
+            .encode_utf16()
+            .fold((0u32, 0u32), |(hash, length), ch| {
+                (
+                    hash.wrapping_mul(65_599).wrapping_add(u32::from(ch)),
+                    length.wrapping_add(1),
+                )
+            });
         let mut words = [0; 624];
-        words[0] = hash.wrapping_mul(chars.len() as u32);
+        words[0] = hash.wrapping_mul(length);
         for i in 1..624 {
             words[i] = (words[i - 1] ^ (words[i - 1] >> 30))
                 .wrapping_mul(1_812_433_253)

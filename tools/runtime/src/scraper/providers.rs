@@ -44,7 +44,7 @@ impl Scraper {
         since: u64,
         limit: u64,
     ) -> Result<Vec<Value>> {
-        let key = self.apify_key.clone();
+        let key = &self.apify_key;
         if key.is_empty() {
             return Err(Error::failed(
                 "APIFY_API_KEY is missing from the server environment",
@@ -53,7 +53,7 @@ impl Scraper {
         let since_date = chrono::DateTime::from_timestamp_millis(since as i64)
             .ok_or_else(|| Error::failed("Invalid scraper start date"))?
             .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-        let data=self.provider("https://api.apify.com/v2/actors/apify~instagram-post-scraper/run-sync-get-dataset-items",&key,&json!({"username":[format!("https://www.instagram.com/{username}/")],"resultsLimit":limit,"onlyPostsNewerThan":since_date,"dataDetailLevel":"basicData"}),310).await?;
+        let data=self.provider("https://api.apify.com/v2/actors/apify~instagram-post-scraper/run-sync-get-dataset-items",key,&json!({"username":[format!("https://www.instagram.com/{username}/")],"resultsLimit":limit,"onlyPostsNewerThan":since_date,"dataDetailLevel":"basicData"}),310).await?;
         apify_dataset(&data, since, limit as usize)
     }
     pub(super) async fn describe_picture(&self, url: &str, key: &str) -> Result<String> {
