@@ -14,7 +14,8 @@ test('public content, chat, displays, and automation status work without a Bun c
     if (route === '/api/lists') response.end(JSON.stringify([{ id: 'model-1' }]))
     else if (route === '/api/profiles/by-id')
       response.end(JSON.stringify({ id: 'p', name: 'test', igLoggedIn: true }))
-    else if (route === '/api/chat/session') response.end(JSON.stringify({ connected: false }))
+    else if (route === '/api/chat/session' || route === '/api/chat/context')
+      response.end(JSON.stringify({ connected: false }))
     else if (route === '/api/chat/archives') {
       if (request.method === 'POST') {
         let body = ''

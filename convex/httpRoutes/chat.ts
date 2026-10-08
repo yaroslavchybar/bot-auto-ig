@@ -60,6 +60,8 @@ export function registerChatRoutes(http: HttpRouter): void {
         connected: true,
         state: await blob.text(),
         token: session.token,
+        storageId: session.storageId,
+        reconnectRequired: session.reconnectRequired === true,
         profile,
       })
     }),
@@ -138,7 +140,7 @@ export function registerChatRoutes(http: HttpRouter): void {
           sessionVersion,
           reconnectRequired: body.reconnectRequired === true,
         })
-        return jsonResponse({ connected: true })
+        return jsonResponse({ connected: true, storageId })
       } catch (error) {
         await ctx.storage.delete(storageId)
         throw error

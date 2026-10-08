@@ -54,6 +54,16 @@ each with an inbox snapshot and up to 100 conversation freshness markers.
 Conversation histories live in SQLite. Background inbox checks run every
 15 minutes, also when no device is open, and skip unchanged writes.
 
+Rust keeps saved Instagram sessions in memory for at most 32 profiles. A
+server-authenticated Convex subscription supplies only session file revisions,
+connection tokens, reconnect flags, eligibility, and proxies. Unchanged sessions
+need no periodic Convex HTTP reads. New sessions and changed revisions reload
+the private session file; proxy changes take effect without downloading it.
+Only changed cookies or unread counts are written back. Subscription outages
+disable reuse and fall back to authenticated HTTP reads. Reconnection uses a
+fresh subscription before allowing cached sessions again. The 15-minute sync
+continues even when Chat is closed.
+
 Active browser pages poll the inbox every minute and the selected conversation
 every 30 seconds. After a minute without keyboard or pointer activity, those
 intervals slow to three minutes and two minutes. Hidden tabs stop polling and

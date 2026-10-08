@@ -1,5 +1,6 @@
 mod attachments;
 mod caa;
+mod context;
 mod crypto;
 mod device;
 mod operations;
@@ -19,6 +20,7 @@ use axum::{
     routing::post,
     Json, Router,
 };
+pub use context::SessionContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
@@ -162,11 +164,13 @@ struct Entry {
     proxy: String,
     client: Option<reqwest::Client>,
     login_retry_at_ms: u64,
+    saved: Option<Value>,
 }
 pub struct Service {
     pub api: Arc<Api>,
     pub uploads: Arc<Uploads>,
     locks: Mutex<HashMap<String, Arc<Mutex<Entry>>>>,
+    contexts: std::sync::RwLock<Option<context::ContextSnapshot>>,
     #[cfg(test)]
     pub base: Option<String>,
 }
@@ -192,6 +196,7 @@ impl Service {
             api,
             uploads,
             locks: Mutex::new(HashMap::new()),
+            contexts: Default::default(),
             #[cfg(test)]
             base: None,
         })
@@ -239,30 +244,44 @@ impl Service {
                 .unwrap();
         let session_path = format!("/api/chat/session?{}", query.query().unwrap());
         if action == "logout" {
-            return self
+            let result = self
                 .api
                 .convex(Method::DELETE, &session_path, None)
                 .await
-                .map_err(Error::new);
+                .map_err(Error::new)?;
+            self.invalidate_saved_context(&request.profile_id, &mut entry);
+            return Ok(result);
         }
         if action == "has" {
+            if let Some(status) = self.cached_status(&request.profile_id) {
+                return Ok(status);
+            }
             return self
                 .api
                 .convex(Method::GET, &format!("{session_path}&status=1"), None)
                 .await
                 .map_err(Error::new);
         }
-        let read_path = if action == "load" {
-            session_path
-        } else {
-            format!("/api/chat/context?{}", query.query().unwrap())
+        let saved = match (action != "login")
+            .then(|| self.cached_context(&request.profile_id, &entry))
+            .flatten()
+        {
+            Some(saved) => saved,
+            None => {
+                let saved = self
+                    .api
+                    .convex(
+                        Method::GET,
+                        &format!("/api/chat/context?{}", query.query().unwrap()),
+                        None,
+                    )
+                    .await
+                    .map_err(Error::new)?;
+                entry.saved = Some(saved.clone());
+                saved
+            }
         };
-        let saved = self
-            .api
-            .convex(Method::GET, &read_path, None)
-            .await
-            .map_err(Error::new)?;
-        if action != "login" && saved["connected"] != true {
+        if action != "login" && (saved["connected"] != true || saved["reconnectRequired"] == true) {
             return Err(Error::new("Connect this profile to Instagram Chat first"));
         }
         let token = if action == "login" {
@@ -292,10 +311,20 @@ impl Service {
                 .is_some_and(|v| v["version"] != 1)
             {
                 let body = json!({"profileId":request.profile_id,"state":serde_json::to_string(&state).unwrap(),"token":token,"expectedToken":token});
-                self.api
+                let result = self
+                    .api
                     .convex(Method::POST, "/api/chat/session", Some(&body))
                     .await
                     .map_err(Error::new)?;
+                let state = serde_json::to_string(&state).unwrap();
+                self.checkpoint(
+                    &request.profile_id,
+                    &mut entry,
+                    &saved,
+                    &state,
+                    &token,
+                    &result,
+                );
             }
             return Ok(json!({"token":token,"viewerId":viewer}));
         }
@@ -349,6 +378,7 @@ impl Service {
                             .api
                             .convex(Method::POST, "/api/chat/session", Some(&body))
                             .await;
+                        self.invalidate_saved_context(&request.profile_id, &mut entry);
                     }
                     return Err(error);
                 }
@@ -368,7 +398,18 @@ impl Service {
                 .api
                 .convex(Method::POST, "/api/chat/session", Some(&body))
                 .await;
+            if let Ok(result) = &save {
+                self.checkpoint(
+                    &request.profile_id,
+                    &mut entry,
+                    &saved,
+                    &state,
+                    &token,
+                    result,
+                );
+            }
             if let Err(message) = save {
+                self.invalidate_saved_context(&request.profile_id, &mut entry);
                 // Accepted sends must not be reported as failed and retried by the caller.
                 if ["reply", "attachment", "unsend"].contains(&action) {
                     ig_service_common::service_error("instagram.session_save_failed", message);

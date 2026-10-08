@@ -444,7 +444,7 @@ async fn pruning_preserves_active_sessions_and_load_repairs_missing_storage() {
     let fixture = Fixture::start(move |request| {
         let state = state.clone();
         async move {
-            assert_eq!(request.uri().path(), "/api/chat/session");
+            assert_eq!(request.uri().path(), "/api/chat/context");
             Json(json!({"connected":true,"token":"token","state":state})).into_response()
         }
     })

@@ -96,11 +96,19 @@ impl Coordination {
         Err(Failure::unavailable("Scraper subscription ended"))
     }
     async fn chat(&self) -> Result<()> {
+        let _cache_guard = ChatContexts(self.chat.clone());
+        let mut epoch = self.subscriptions.connection_epoch();
         let mut subscription = self
             .subscriptions
-            .subscribe("profiles/queries:chatWorkerProfiles", json!({}))
+            .subscribe(
+                "profiles/queries:chatWorkerContexts",
+                json!({"subscriptionId": uuid::Uuid::new_v4().to_string()}),
+            )
             .await?;
-        let mut ids: Vec<String> = Vec::new();
+        let mut ids: HashMap<String, String> = HashMap::new();
+        let mut pending = std::collections::BTreeSet::new();
+        let mut rounds = tokio::task::JoinSet::new();
+        let mut reconnects = tokio::task::JoinSet::new();
         #[cfg(test)]
         let interval = self.chat_interval;
         #[cfg(not(test))]
@@ -109,28 +117,70 @@ impl Coordination {
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
-                update = subscription.next() => {
-                    let Some(update) = update else { return Err(Failure::unavailable("Chat profile subscription ended")); };
-                    let value = match subscriptions::value(update) { Ok(value) => value, Err(error) => { ig_service_common::service_error("chat.subscription_failed", &error.message); continue; } };
-                    ids = serde_json::from_value(value)?;
-                    self.chat.retain(ids.clone()).await?;
+                biased;
+                _ = epoch.changed() => {
+                    self.chat.clear_contexts();
+                    reconnects.abort_all();
+                    let subscriptions = self.subscriptions.clone();
+                    // A unique query avoids reusing the SDK's old result after reconnect.
+                    reconnects.spawn(async move {
+                        subscriptions.subscribe("profiles/queries:chatWorkerContexts", json!({"subscriptionId":uuid::Uuid::new_v4().to_string()})).await
+                    });
                 }
-                _ = timer.tick() => {},
-            }
-            use futures_util::stream;
-            let mut work = stream::iter(ids.clone().into_iter().map(|id| {
-                let chat = self.chat.clone();
-                async move {
-                    if let Err(error) = chat.inbox(&id, true).await {
-                        ig_service_common::service_error(
-                            "chat.background_sync_failed",
-                            &error.message,
-                        );
+                result = reconnects.join_next(), if !reconnects.is_empty() => {
+                    match result {
+                        Some(Ok(Ok(next))) => subscription = next,
+                        Some(Err(error)) if error.is_cancelled() => {},
+                        _ => return Err(Failure::unavailable("Chat subscription reconnect failed")),
                     }
                 }
-            }))
-            .buffer_unordered(4);
-            while work.next().await.is_some() {}
+                update = subscription.next(), if reconnects.is_empty() => {
+                    let Some(update) = update else { return Err(Failure::unavailable("Chat profile subscription ended")); };
+                    let value = match subscriptions::value(update) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            self.chat.clear_contexts();
+                            ig_service_common::service_error("chat.subscription_failed", &error.message);
+                            continue;
+                        }
+                    };
+                    let contexts: Vec<crate::instagram::SessionContext> = match serde_json::from_value(value) {
+                        Ok(contexts) => contexts,
+                        Err(error) => {
+                            self.chat.clear_contexts();
+                            ig_service_common::service_error("chat.subscription_failed", &error.to_string());
+                            continue;
+                        }
+                    };
+                    let next: HashMap<_,_> = contexts.iter().filter(|v| v.enabled).map(|v| (v.profile_id.clone(), v.token.clone())).collect();
+                    pending.extend(next.iter().filter(|(id, token)| ids.get(*id) != Some(*token)).map(|(id,_)| id.clone()));
+                    pending.retain(|id| next.contains_key(id));
+                    self.chat.update_contexts(contexts, self.subscriptions.clone());
+                    ids = next;
+                    self.chat.retain(ids.keys().cloned().collect()).await?;
+                }
+                _ = timer.tick() => pending.extend(ids.keys().cloned()),
+                _ = rounds.join_next(), if !rounds.is_empty() => {},
+            }
+            if rounds.is_empty() && !pending.is_empty() {
+                let work = std::mem::take(&mut pending);
+                let chat = self.chat.clone();
+                rounds.spawn(async move {
+                    let mut work = futures_util::stream::iter(work.into_iter().map(|id| {
+                        let chat = chat.clone();
+                        async move {
+                            if let Err(error) = chat.inbox(&id, true).await {
+                                ig_service_common::service_error(
+                                    "chat.background_sync_failed",
+                                    &error.message,
+                                );
+                            }
+                        }
+                    }))
+                    .buffer_unordered(4);
+                    while work.next().await.is_some() {}
+                });
+            }
         }
     }
     async fn routines(&self) -> Result<()> {
@@ -252,6 +302,12 @@ impl Coordination {
         snapshot["warmups"] = json!(warmups.into_values().collect::<Vec<_>>());
         snapshot["progress"] = json!(progress.into_values().collect::<Vec<_>>());
         Ok(due_at(&snapshot, api::now_ms()))
+    }
+}
+struct ChatContexts(Arc<Chat>);
+impl Drop for ChatContexts {
+    fn drop(&mut self) {
+        self.0.clear_contexts();
     }
 }
 struct Watcher {

@@ -994,7 +994,10 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
         let store = observed.clone();
         let d = d.clone();
         async move {
-            assert_eq!(request.uri().path(), "/api/chat/session");
+            assert!(matches!(
+                request.uri().path(),
+                "/api/chat/session" | "/api/chat/context"
+            ));
             match *request.method() {
                 Method::GET => Json(
                     store

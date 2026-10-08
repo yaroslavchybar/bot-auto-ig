@@ -40,6 +40,16 @@ pub struct Chat {
     picture_slots: Arc<tokio::sync::Semaphore>,
 }
 impl Chat {
+    pub fn update_contexts(
+        &self,
+        contexts: Vec<instagram::SessionContext>,
+        connection: Arc<super::subscriptions::Subscriptions>,
+    ) {
+        self.mobile.update_contexts(contexts, connection);
+    }
+    pub fn clear_contexts(&self) {
+        self.mobile.clear_contexts();
+    }
     pub fn new(api: Arc<Api>, mobile: Arc<Mobile>, file: &Path) -> Result<Arc<Self>> {
         Ok(Arc::new(Self {
             api,

@@ -90,34 +90,4 @@ test('maintenance includes only deleting and renaming profiles', async () => {
     await ctx.db.patch(renaming, { renameFrom: undefined })
   })
   expect(await t.query(api.profiles.queries.maintenanceWork, args)).toEqual([])
-  expect(await t.query(api.profiles.queries.chatWorkerProfiles, args)).toEqual([])
-})
-
-test('Chat work includes only connected logged-in profiles and reacts to eligibility changes', async () => {
-  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
-  const t = createConvexTest()
-  const args = { bridgeToken: 'test-bridge' }
-  const active = await t.run(async (ctx) => {
-    let active
-    for (const [name, igLoggedIn, status] of [
-      ['active', true, 'idle'],
-      ['offline', false, 'idle'],
-      ['deleting', true, 'deleting'],
-    ] as const) {
-      const profileId = await ctx.db.insert('profiles', {
-        name,
-        igLoggedIn,
-        status,
-        using: false,
-        mode: 'direct',
-        createdAt: 0,
-      })
-      await ctx.db.insert('chatMemberships', { profileId })
-      if (name === 'active') active = profileId
-    }
-    return active!
-  })
-  expect(await t.query(api.profiles.queries.chatWorkerProfiles, args)).toEqual([active])
-  await t.run((ctx) => ctx.db.patch(active, { igLoggedIn: false }))
-  expect(await t.query(api.profiles.queries.chatWorkerProfiles, args)).toEqual([])
 })

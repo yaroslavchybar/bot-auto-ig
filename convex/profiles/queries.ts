@@ -102,17 +102,37 @@ export const maintenanceWork = query({
   },
 })
 
-/** Subscribe to eligible connected accounts without sending browser configuration. */
-export const chatWorkerProfiles = query({
-  args: { bridgeToken: v.string() },
+/** Server-only revisions: session bytes stay in storage and are fetched only after changes. */
+export const chatWorkerContexts = query({
+  args: { bridgeToken: v.string(), subscriptionId: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
-    const memberships = await ctx.db.query('chatMemberships').collect()
-    const profiles = await Promise.all(memberships.map(({ profileId }) => ctx.db.get(profileId)))
-    return profiles
-      .filter((profile) => profile?.igLoggedIn && profile.status !== 'deleting')
-      .map((profile) => profile!._id)
-      .sort()
+    const memberships = await ctx.db.query('chatMemberships').take(1001)
+    if (memberships.length > 1000) throw new Error('Too many connected Chat accounts')
+    const contexts = await Promise.all(
+      memberships.map(async ({ profileId }) => {
+        const [profile, session] = await Promise.all([
+          ctx.db.get(profileId),
+          ctx.db
+            .query('chatSessions')
+            .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+            .first(),
+        ])
+        if (!profile || profile.status === 'deleting' || !session) return null
+        return {
+          profileId,
+          token: session.token,
+          storageId: session.storageId,
+          reconnectRequired: session.reconnectRequired === true,
+          enabled: profile.igLoggedIn === true && session.reconnectRequired !== true,
+          proxy: profile.proxy ?? '',
+          proxyType: profile.proxyType ?? '',
+        }
+      }),
+    )
+    return contexts
+      .filter((context) => context !== null)
+      .sort((a, b) => a.profileId.localeCompare(b.profileId))
   },
 })
 import {

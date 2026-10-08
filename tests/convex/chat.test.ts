@@ -33,6 +33,8 @@ test('Chat context reads the current session and only proxy settings with server
     connected: true,
     state,
     token,
+    storageId: expect.any(String),
+    reconnectRequired: true,
     profile: { proxy: profile.proxy, proxyType: profile.proxyType },
   })
   const updated = await t.mutation(internal.profiles.mutations.updateByNameInternal, {
