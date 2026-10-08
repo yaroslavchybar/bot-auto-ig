@@ -1,7 +1,41 @@
 use super::*;
 use crate::test_support::{body, Fixture};
-use axum::extract::ws::{Message, WebSocketUpgrade};
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[tokio::test]
+async fn convex_retry_only_replays_transient_failures_for_explicit_safe_calls() {
+    for (status, method, safe, expected) in [
+        (StatusCode::TOO_MANY_REQUESTS, Method::POST, true, 2),
+        (StatusCode::SERVICE_UNAVAILABLE, Method::POST, true, 2),
+        (StatusCode::BAD_REQUEST, Method::POST, true, 1),
+        (StatusCode::SERVICE_UNAVAILABLE, Method::POST, false, 1),
+        (StatusCode::OK, Method::POST, true, 1),
+        (StatusCode::SERVICE_UNAVAILABLE, Method::GET, false, 2),
+    ] {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let seen = attempts.clone();
+        let fixture = Fixture::start(move |_| {
+            let seen = seen.clone();
+            async move {
+                if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+                    return (status, "invalid response").into_response();
+                }
+                Json(json!({"saved":true})).into_response()
+            }
+        })
+        .await;
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let result = if safe {
+            api.convex_retry(method, "/status", Some(&json!({}))).await
+        } else {
+            api.convex(method, "/claim", Some(&json!({}))).await
+        };
+        assert_eq!(result.is_ok(), expected == 2);
+        assert_eq!(attempts.load(Ordering::SeqCst), expected);
+    }
+}
 
 #[tokio::test]
 async fn bounded_json_handles_large_prefixed_data_and_rejects_oversized_bodies() {
@@ -410,55 +444,37 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
 }
 
 #[tokio::test]
-async fn public_events_relay_topics_through_authenticated_private_websocket() {
-    let worker = Fixture::router(Router::new().route(
-        "/events",
-        get(
-            |headers: axum::http::HeaderMap,
-             axum::extract::Query(query): axum::extract::Query<HashMap<String, String>>,
-             ws: WebSocketUpgrade| async move {
-                assert_eq!(headers["authorization"], "Bearer fixture");
-                assert_eq!(query["topic"], "chat");
-                ws.on_upgrade(|mut socket| async move {
-                    socket
-                        .send(Message::Text("fixture-event".into()))
-                        .await
-                        .unwrap();
-                    if let Some(Ok(Message::Text(value))) = socket.recv().await {
-                        socket.send(Message::Text(value)).await.unwrap();
-                    }
-                })
-            },
-        ),
-    ))
-    .await;
+async fn public_events_are_native_and_filter_topics_without_a_bun_worker() {
     let mut state = Api::from_env().unwrap();
     Arc::get_mut(&mut state.auth).unwrap().bypass = true;
-    state.key = "fixture".into();
-    state.worker_url = worker.url.clone();
-    let public = Fixture::router(router(Arc::new(state))).await;
+    state.worker_url = "http://127.0.0.1:1".into();
+    let state = Arc::new(state);
+    let public = Fixture::router(router(state.clone())).await;
     let (mut socket, _) = tokio_tungstenite::connect_async(format!(
         "{}/ws?topic=chat",
         public.url.replace("http://", "ws://")
     ))
     .await
     .unwrap();
-    use futures_util::{SinkExt, StreamExt};
-    assert_eq!(
-        socket.next().await.unwrap().unwrap().into_text().unwrap(),
-        "fixture-event"
-    );
-    let payload = "client-event:Привіт 🚀".repeat(4096);
-    socket
-        .send(tokio_tungstenite::tungstenite::Message::Text(
-            payload.clone().into(),
-        ))
-        .await
+    state
+        .events
+        .send(json!({"type":"display_allocated"}))
         .unwrap();
-    assert_eq!(
-        socket.next().await.unwrap().unwrap().into_text().unwrap(),
-        payload
-    );
+    let payload = json!({"type":"chat_changed","profileId":"p"});
+    state.events.send(payload.clone()).unwrap();
+    use futures_util::StreamExt;
+    let received = tokio::time::timeout(Duration::from_secs(1), async {
+        while let Some(Ok(message)) = socket.next().await {
+            if message.is_text() {
+                return serde_json::from_str::<Value>(&message.into_text().unwrap()).unwrap();
+            }
+        }
+        panic!("Native event feed ended")
+    })
+    .await
+    .unwrap();
+    assert_eq!(received, payload);
+    socket.close(None).await.unwrap();
 }
 
 #[test]

@@ -44,3 +44,17 @@ regex = "1"
 cookie_store = { version = "0.22", features = ["serde_json"] }
 tokio-util = { version = "0.7", features = ["io"] }
 http-body-util = "0.1"
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+convex = { version = "0.10.4", default-features = false, features = ["rustls-tls-webpki-roots"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
+chrono-tz = "0.10.4"
+jpeg-encoder = { version = "0.7", features = ["simd"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "0.14.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

@@ -1,18 +1,21 @@
 import '../env.js'
+import WebSocket from 'ws'
+import { runtimeUrl, runtimeHeaders } from './runtime.js'
 
-import { ConvexClient } from 'convex/browser'
-import { anyApi } from 'convex/server'
-
-const convexUrl = (process.env.CONVEX_URL?.trim() || process.env.VITE_CONVEX_URL?.trim() || '')
-  .replace('.convex.site', '.convex.cloud')
-const bridgeToken = process.env.INTERNAL_API_KEY?.trim() || ''
-
-type Unsubscribe = (() => void) & {
-  unsubscribe?: () => void
+export type RuntimeWarmup = {
+  profileId: string
+  nextRunAt?: number
+  date?: string
+  todayMinutes?: number
+  minutesUsedToday?: number
+  activeRun?: boolean
 }
-
-export type RuntimeWarmup = { profileId: string; nextRunAt?: number; date?: string; todayMinutes?: number; minutesUsedToday?: number; activeRun?: boolean }
-export type RuntimeProgress = { profileId: string; nextRunAt?: number; paused?: boolean; issue?: string }
+export type RuntimeProgress = {
+  profileId: string
+  nextRunAt?: number
+  paused?: boolean
+  issue?: string
+}
 export type RuntimeSnapshot = {
   automation: Record<string, any>
   profiles: Array<Record<string, any>>
@@ -20,122 +23,93 @@ export type RuntimeSnapshot = {
   progress?: RuntimeProgress[]
   truncated?: boolean
 } | null
+const subscriptions = new Set<() => void>()
 
-let client: ConvexClient | undefined
-
-export type ScraperWork = { jobAt: number | null; jobKey: string | null; enrichmentKey: string | null }
-
-export function watchScraperWork(onUpdate: (value: ScraperWork) => void, onError: (error: Error) => void) {
-  return subscribeToConvexQuery<ScraperWork>(anyApi.scraper.work, { bridgeToken }, onUpdate, onError)
-}
-
-export function watchProfileMaintenance(onUpdate: (value: string[]) => void, onError: (error: Error) => void) {
-  return subscribeToConvexQuery<string[]>(anyApi.profiles.queries.maintenanceWork, { bridgeToken }, onUpdate, onError)
-}
-
-export function watchChatProfiles(onUpdate: (value: string[]) => void, onError: (error: Error) => void) {
-  return subscribeToConvexQuery<string[]>(anyApi.profiles.queries.chatWorkerProfiles, { bridgeToken }, onUpdate, onError)
-}
-
-export type IgLoginWork = Array<{ profileId: string; retryAfter: number }>
-
-export function watchIgLoginWork(onUpdate: (value: IgLoginWork) => void, onError: (error: Error) => void) {
-  return subscribeToConvexQuery<IgLoginWork>(anyApi.igAccounts.loginWork, { bridgeToken }, onUpdate, onError)
-}
-
-function getClient(): ConvexClient {
-  if (!convexUrl) throw new Error('Convex config missing. Set CONVEX_URL.')
-  if (!bridgeToken) throw new Error('Convex config missing. Set INTERNAL_API_KEY.')
-  return client ??= new ConvexClient(convexUrl, { logger: false })
-}
-
-function dispose(unsubscribe: Unsubscribe): void {
-  (unsubscribe as unknown as () => void)()
-}
-
-/** Subscribe to a public Convex query and expose its first value as a promise. */
+/** Rust owns Convex connections; browser actions receive updates over local sockets. */
 export function subscribeToConvexQuery<T>(
-  query: any,
+  name: string,
   args: Record<string, unknown>,
   onUpdate: (value: T) => void,
   onError: (error: Error) => void,
 ): { initial: Promise<T>; unsubscribe: () => void } {
-  let resolveInitial!: (value: T) => void
-  let rejectInitial!: (error: Error) => void
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
   let initialized = false
-  const initial = new Promise<T>((resolve, reject) => {
-    resolveInitial = resolve
-    rejectInitial = reject
+  let stopped = false
+  let socket: WebSocket | undefined
+  let retry: ReturnType<typeof setTimeout> | undefined
+  const initial = new Promise<T>((yes, no) => {
+    resolve = yes
+    reject = no
   })
-
-  const subscription = getClient().onUpdate(
-    query,
-    args,
-    (value: T) => {
-      if (!initialized) {
-        initialized = true
-        resolveInitial(value)
-      }
-      onUpdate(value)
-    },
-    (error: Error) => {
-      if (!initialized) {
-        initialized = true
-        rejectInitial(error)
-      }
-      onError(error)
-    },
-  ) as Unsubscribe
-
-  return {
-    initial,
-    unsubscribe: () => dispose(subscription),
+  const fail = (error: Error) => {
+    if (stopped) return
+    if (!initialized) {
+      initialized = true
+      reject(error)
+    }
+    onError(error)
   }
+  const connect = () => {
+    if (stopped) return
+    const current = (socket = new WebSocket(
+      runtimeUrl().replace(/^http/, 'ws') + '/subscriptions',
+      { headers: runtimeHeaders(), maxPayload: 1024 * 1024 },
+    ))
+    current.on('open', () => current.send(JSON.stringify({ name, args })))
+    current.on('message', (data) => {
+      try {
+        const message = JSON.parse(data.toString())
+        if (message.error) {
+          fail(new Error(String(message.error)))
+          return
+        }
+        if (!Object.hasOwn(message, 'value')) return
+        if (!initialized) {
+          initialized = true
+          resolve(message.value as T)
+        }
+        onUpdate(message.value as T)
+      } catch {
+        fail(new Error('Invalid subscription update'))
+      }
+    })
+    current.on('error', () => fail(new Error('Rust subscription connection failed')))
+    current.on('close', () => {
+      if (stopped) return
+      fail(new Error('Rust subscription connection closed'))
+      retry = setTimeout(connect, 1000)
+      retry.unref()
+    })
+  }
+  const unsubscribe = () => {
+    if (stopped) return
+    stopped = true
+    if (retry) clearTimeout(retry)
+    socket?.terminate()
+    subscriptions.delete(unsubscribe)
+    if (!initialized) {
+      initialized = true
+      reject(new Error('Subscription cancelled'))
+    }
+  }
+  subscriptions.add(unsubscribe)
+  connect()
+  return { initial, unsubscribe }
 }
 
-export function watchRoutineRuntime(
-  automationId: string,
+export const watchRoutineRuntime = (
+  id: string,
   listIds: string[],
-  onUpdate: (value: RuntimeSnapshot) => void,
-  onError: (error: Error) => void,
-) {
-  return subscribeToConvexQuery<RuntimeSnapshot>(
-    anyApi.automations.queries.runtimeSnapshot,
-    { bridgeToken, id: automationId, listIds },
-    onUpdate,
-    onError,
-  )
-}
-
-export function watchRoutineAccess(
+  update: (value: RuntimeSnapshot) => void,
+  error: (error: Error) => void,
+) => subscribeToConvexQuery('automations/queries:runtimeSnapshot', { id, listIds }, update, error)
+export const watchRoutineAccess = (
   automationId: string,
   profileId: string,
-  onUpdate: (value: boolean) => void,
-  onError: (error: Error) => void,
-) {
-  return subscribeToConvexQuery<boolean>(
-    anyApi.routines.access,
-    { bridgeToken, automationId, profileId },
-    onUpdate,
-    onError,
-  )
-}
-
-export function watchActiveRoutines(
-  onUpdate: (value: Array<Record<string, any>>) => void,
-  onError: (error: Error) => void,
-) {
-  return subscribeToConvexQuery<Array<Record<string, any>>>(
-    anyApi.automations.queries.listRoutinesForScheduler,
-    { bridgeToken },
-    onUpdate,
-    onError,
-  )
-}
-
+  update: (value: boolean) => void,
+  error: (error: Error) => void,
+) => subscribeToConvexQuery('routines:access', { automationId, profileId }, update, error)
 export async function closeConvexRealtime(): Promise<void> {
-  if (!client) return
-  const current = client
-  client = undefined
-  await current.close()
+  for (const close of subscriptions) close()
 }

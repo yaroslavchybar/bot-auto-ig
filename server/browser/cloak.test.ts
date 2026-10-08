@@ -3,7 +3,11 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 
 test('missing and pending profiles cannot recreate folders and always release their lock', () => {
-  execFileSync('bun', ['--eval', `
+  execFileSync(
+    'bun',
+    [
+      '--eval',
+      `
     import { mock } from 'bun:test'
     import assert from 'node:assert/strict'
     import fs from 'node:fs'
@@ -11,6 +15,16 @@ test('missing and pending profiles cannot recreate folders and always release th
     import path from 'node:path'
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-launch-'))
     let row
+    const heldLocks = new Set()
+    const lockProfile = (name) => {
+      if (heldLocks.has(name)) throw new Error('Profile is already open')
+      heldLocks.add(name)
+      return () => heldLocks.delete(name)
+    }
+    mock.module('./server/profiles/paths.ts', () => ({
+      profileDirectory: name => path.join(root, 'data/profiles', name),
+      acquireProfileLock: async name => lockProfile(name),
+    }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => row,
@@ -21,7 +35,7 @@ test('missing and pending profiles cannot recreate folders and always release th
       launchPersistentContext: async () => { throw new Error('Must not launch') },
     }))
     const { openBrowserSession } = await import('./server/browser/cloak.ts')
-    const { lockProfile } = await import('./server/profiles/paths.ts')
+
     try {
       for (const value of [null, { name: 'test', status: 'deleting' }, { name: 'test', renameFrom: 'old' }]) {
         row = value
@@ -33,13 +47,38 @@ test('missing and pending profiles cannot recreate folders and always release th
       assert.equal(path.dirname(root), path.resolve(os.tmpdir()))
       fs.rmSync(root, { recursive: true, force: true })
     }
-  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
+  `,
+    ],
+    { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 },
+  )
 })
 
-for (const scenario of ['stop', 'manual inspection', 'stop during inspector startup', 'crash', 'startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'cleanup failure', 'save failure', 'clear cookies', 'replace cookies', 'seed persistence retry', 'seed persistence failure']) {
-test(`browser cleanup: ${scenario}`, () => {
-  // Isolate module mocks and process signal handlers from other tests.
-  const output = execFileSync('bun', ['--eval', `
+for (const scenario of [
+  'stop',
+  'manual inspection',
+  'stop during inspector startup',
+  'crash',
+  'startup failure',
+  'stop during launch',
+  'stop during navigation',
+  'cancel during budget',
+  'cancel during launch',
+  'cancel during navigation',
+  'budget lost during launch',
+  'cleanup failure',
+  'save failure',
+  'clear cookies',
+  'replace cookies',
+  'seed persistence retry',
+  'seed persistence failure',
+]) {
+  test(`browser cleanup: ${scenario}`, () => {
+    // Isolate module mocks and process signal handlers from other tests.
+    const output = execFileSync(
+      'bun',
+      [
+        '--eval',
+        `
     import { mock } from 'bun:test'
     import assert from 'node:assert/strict'
     import fs from 'node:fs'
@@ -48,6 +87,7 @@ test(`browser cleanup: ${scenario}`, () => {
     import { EventEmitter } from 'node:events'
 
     const scenario = ${JSON.stringify(scenario)}
+    const cancellation = new AbortController()
     const inspect = ['manual inspection', 'stop during inspector startup'].includes(scenario)
     mock.module('./server/browser/filePicker.ts', () => ({ pickerSocket: () => 'test', startFilePicker: async () => () => {} }))
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-shutdown-'))
@@ -75,12 +115,13 @@ test(`browser cleanup: ${scenario}`, () => {
     let closed = false
     let launchOptions
     context.pages = () => [{
-      url: () => ['startup failure', 'stop during navigation'].includes(scenario) ? 'about:blank' : 'https://www.instagram.com/',
+      url: () => ['startup failure', 'stop during navigation', 'cancel during navigation'].includes(scenario) ? 'about:blank' : 'https://www.instagram.com/',
       goto: async () => {
-        if (scenario === 'stop during navigation') {
+        if (['stop during navigation', 'cancel during navigation'].includes(scenario)) {
           await new Promise(resolve => {
             context.once('close', resolve)
-            process.emit('SIGTERM')
+            if (scenario === 'cancel during navigation') cancellation.abort(new Error('Login cancelled'))
+            else process.emit('SIGTERM')
           })
         }
         throw new Error('Navigation failed')
@@ -118,6 +159,7 @@ test(`browser cleanup: ${scenario}`, () => {
       if (inspect) fs.writeFileSync(devToolsPortFile, '45678')
       assert.throws(() => lockProfile('test'), /already open/)
       if (scenario === 'stop during launch') process.emit('SIGTERM')
+      if (scenario === 'cancel during launch') cancellation.abort(new Error('Login cancelled'))
       if (scenario === 'budget lost during launch') loseBudget()
       // Model Playwright's default competing shutdown handler.
       for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -126,6 +168,16 @@ test(`browser cleanup: ${scenario}`, () => {
       }
       return context
     } }))
+    const heldLocks = new Set()
+    const lockProfile = (name) => {
+      if (heldLocks.has(name)) throw new Error('Profile is already open')
+      heldLocks.add(name)
+      return () => heldLocks.delete(name)
+    }
+    mock.module('./server/profiles/paths.ts', () => ({
+      profileDirectory: name => path.join(root, 'data/profiles', name),
+      acquireProfileLock: async name => lockProfile(name),
+    }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
       profilesGetByName: async () => ({ name: 'test', cookiesJson: scenario === 'replace cookies' ? JSON.stringify(cookies) : undefined }),
@@ -145,7 +197,11 @@ test(`browser cleanup: ${scenario}`, () => {
         events.push('saved')
       },
     }))
-    mock.module('./server/browser/budget.ts', () => ({ acquireBrowserSlot: async (_signal, _address, onLost) => {
+    mock.module('./server/browser/budget.ts', () => ({ acquireBrowserSlot: async (_signal, onLost) => {
+      if (scenario === 'cancel during budget') {
+        cancellation.abort(new Error('Login cancelled'))
+        _signal.throwIfAborted()
+      }
       loseBudget = onLost
       return () => {
         lockProfile('test')()
@@ -158,7 +214,7 @@ test(`browser cleanup: ${scenario}`, () => {
         if (scenario === 'cleanup failure') throw new Error('Display cleanup failed')
       },
     }) }))
-    const { lockProfile } = await import('./server/profiles/paths.ts')
+
     try {
       const { openBrowserSession } = await import('./server/browser/cloak.ts')
       if (scenario === 'stop during inspector startup') {
@@ -166,12 +222,13 @@ test(`browser cleanup: ${scenario}`, () => {
         assert.equal(inspectorClosed, true, 'late inspector is closed after shutdown')
         assert.equal(fs.existsSync(inspectorPath), false)
         assert.equal(fs.existsSync(devToolsPortFile), false)
-      } else if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'seed persistence failure'].includes(scenario)) {
+      } else if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'seed persistence failure', 'cancel during budget', 'cancel during launch', 'cancel during navigation'].includes(scenario)) {
         const expected = scenario === 'seed persistence failure' ? /Database unavailable/
-          : ['startup failure', 'stop during navigation'].includes(scenario) ? /Navigation failed/
+          : ['startup failure', 'stop during navigation', 'cancel during navigation'].includes(scenario) ? /Navigation failed/
+          : scenario.startsWith('cancel') ? /Login cancelled/
           : scenario === 'stop during launch' ? /Browser worker stopped/ : /budget disconnected/
-        await assert.rejects(openBrowserSession('test'), expected)
-        assert.deepEqual(events, scenario === 'seed persistence failure' ? ['display', 'slot'] : ['close', 'display', 'slot'])
+        await assert.rejects(openBrowserSession('test', { signal: cancellation.signal }), expected)
+        assert.deepEqual(events, scenario === 'cancel during budget' ? [] : scenario === 'seed persistence failure' ? ['display', 'slot'] : ['close', 'display', 'slot'])
       } else {
         const session = await openBrowserSession('test', { inspect })
         assert.equal(fs.existsSync(inspectorPath), inspect, 'only manual sessions expose a DOM port')
@@ -213,13 +270,20 @@ test(`browser cleanup: ${scenario}`, () => {
       assert.equal(path.dirname(root), path.resolve(os.tmpdir()))
       fs.rmSync(root, { recursive: true, force: true })
     }
-  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
-  assert.match(output, /shutdown order verified/)
-})
+  `,
+      ],
+      { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 },
+    )
+    assert.match(output, /shutdown order verified/)
+  })
 }
 
 test('cloak seed is stable per profile and platform', () => {
-  const output = execFileSync('bun', ['--eval', `
+  const output = execFileSync(
+    'bun',
+    [
+      '--eval',
+      `
     import { mock } from 'bun:test'
     import assert from 'node:assert/strict'
     import fs from 'node:fs'
@@ -229,7 +293,17 @@ test('cloak seed is stable per profile and platform', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cloak-seed-'))
     try {
       mock.module('cloakbrowser', () => ({ binaryInfo: () => ({ tier: 'test', version: 'test' }), launchPersistentContext: async () => { throw new Error('no launch') } }))
-      mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
+      const heldLocks = new Set()
+    const lockProfile = (name) => {
+      if (heldLocks.has(name)) throw new Error('Profile is already open')
+      heldLocks.add(name)
+      return () => heldLocks.delete(name)
+    }
+    mock.module('./server/profiles/paths.ts', () => ({
+      profileDirectory: name => path.join(root, 'data/profiles', name),
+      acquireProfileLock: async name => lockProfile(name),
+    }))
+    mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
       mock.module('./server/shared/convexClient.ts', () => ({
         profilesGetByName: async () => undefined,
         profilesUpdateByName: async () => undefined,
@@ -271,6 +345,9 @@ test('cloak seed is stable per profile and platform', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
-  `], { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 })
+  `,
+    ],
+    { cwd: new URL('../../', import.meta.url), encoding: 'utf8', timeout: 15_000 },
+  )
   assert.match(output, /seed stable verified/)
 })

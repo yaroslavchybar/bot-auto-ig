@@ -7,8 +7,8 @@ Instagram credentials and account proxies stay on the server.
   most 100 conversations per user, 30 recent messages per conversation, and
   pending sends for 24 hours. Cached conversations expire after 30 days.
 - A SQLite file at `data/chat-cache/cache.sqlite` shares fetched messages between
-  devices and survives server restarts. The existing Docker data mount covers
-  this directory. SQLite uses WAL, a 2 MiB page-cache budget, and at most 200
+  devices and survives server restarts. Rust owns this file and runs storage work
+  outside the async executor. SQLite uses WAL, a 2 MiB page-cache budget, and at most 200
   conversations per profile with 30 recent messages each. Media bytes are not
   stored here. Unsent-message tombstones are bounded to 100 IDs per conversation.
 - Convex keeps the login session file, connection membership, and one small
@@ -38,8 +38,9 @@ Tags survive cache eviction, logout, and reconnect. Deleting a profile removes i
 
 The shared inbox and open conversation have 60-second and 20-second server
 freshness windows, respectively. In-flight Instagram requests are shared and
-failures back off for two minutes. The server keeps at most 32 inbox snapshots
-and 100 conversation snapshots in memory. Background inbox checks run every
+failures back off for two minutes. The server keeps at most 32 profile entries,
+each with an inbox snapshot and up to 100 conversation freshness markers.
+Conversation histories live in SQLite. Background inbox checks run every
 15 minutes, also when no device is open, and skip unchanged writes.
 
 Active browser pages poll the inbox every minute and the selected conversation
@@ -66,7 +67,10 @@ authorization, and device identity in Convex when state changes. Operations shar
 a per-profile lock, and saves use the current connection token to prevent an old
 client from restoring a disconnected session. Existing TypeScript SDK sessions
 are imported into Rust with their cookies, authorization, and device identity;
-the format change does not require login. Message caching remains in Bun/SQLite.
+the format change does not require login. Message caching, synchronization, send
+handlers, background checks, and chat socket events are owned by Rust. Successful
+sends return before background refresh; refresh failures do not turn a sent message
+into a failed send.
 
 ## Rollout
 
@@ -93,6 +97,14 @@ No deployment or production cleanup was performed during implementation.
 
 ## Validation
 
+Native regression tests cover durable cache/session isolation, bounded history,
+unchanged-write suppression, transactions, reply watermarks, cross-profile unsend,
+stale-preview reconciliation, disconnected throttling, and successful sends during
+refresh failures. The shared Convex connection is exercised against a local protocol
+fixture. No deployment or production cleanup was performed for the Rust migration.
+
+The checks below describe the earlier browser-cache rollout:
+
 Type checks, lint, both builds, 276 server tests, 128 Convex tests, and 33 UI tests
 passed. Two existing browser integration tests were skipped. A real Chrome check
 also verified cross-tab deduplication, IndexedDB persistence, user isolation,
@@ -106,7 +118,7 @@ These checks verify behavior locally. Production savings must be measured after
 deployment; the implementation did not change production usage or data.
 
 References: [Convex best practices](https://docs.convex.dev/understanding/best-practices),
-[Bun SQLite](https://bun.com/docs/runtime/sqlite),
+[rusqlite](https://docs.rs/rusqlite/latest/rusqlite/),
 [Web Locks](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API),
 [BroadcastChannel](https://developer.mozilla.org/en-US/docs/Web/API/Broadcast_Channel_API),
 [browser storage eviction](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria).

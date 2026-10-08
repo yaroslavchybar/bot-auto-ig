@@ -27,13 +27,21 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
   `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Axum handles the public API.
-- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, upload staging, scheduling, custom Instagram mobile client, and scraper HTTP/batching/enrichment.
+- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|chat|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, upload staging, custom Instagram mobile client, and scraper HTTP/batching/enrichment.
+  `src/native/` owns model content and assignments, chat SQLite caching and synchronization,
+  worker supervision, browser slots, display lifecycles, native X11/JPEG previews,
+  routine scheduling, profile locks and folder maintenance, account services, login/model
+  setup coordination, proxy probing, clipboard ownership and file-picker forwarding.
+  All server-side Convex subscriptions use one shared connection.
   Requests are limited to 64 in flight. Normal authenticated requests use 100/min per IP;
   model images use 600/min, Telegram links 10/min, and login polling 120/min.
   `/api/automations` also accepts `INTERNAL_API_KEY`.
 - `server/`: private named worker commands on loopback, authenticated with `INTERNAL_API_KEY`.
-  Browser control, business validation, chat SQLite caching, Convex subscriptions,
-  and Bun/CloakBrowser subprocess orchestration remain TypeScript.
+  Playwright browser actions, browser login, and browser posting remain TypeScript.
+  Rust owns the surrounding validation, retries and durable model setup state.
+  Browser workers receive subscription updates and resource leases
+  over authenticated local Rust sockets; they do not open Convex subscription connections.
+  React and Convex functions remain TypeScript.
 - `server/browser/`: CloakBrowser sessions, profile persistence, and login/manual
   browser entrypoints.
 - `server/automation/`: Bun workers and TypeScript Instagram actions
@@ -191,16 +199,22 @@ overridden. See the [Vite+ migration rules](https://viteplus.dev/guide/migrate-r
 
 ## Local Ports & Docker
 
-On container shutdown, the Rust controller sends SIGTERM directly to the server and
-allows 60 seconds for in-flight operations and worker cleanup. The server asks
-workers to close browsers, waits up to 10 seconds, then force-stops stragglers
-(with up to 5 more seconds for SIGTERM on Linux). Display services stop after
-the workers. Both Compose configurations allow 90 seconds before Docker forces
-the container to exit. These are maximum waits; clean shutdowns finish sooner.
+On shutdown, new browser logins are blocked and active inline logins are cancelled.
+Rust waits for Bun to acknowledge browser cleanup before draining account jobs;
+Bun also drains logins before its own exit. Rust then stops subscription coordination and asks browser workers to stop
+over stdin. It waits up to 20 seconds before killing their process trees, then allows
+up to 15 seconds for final cleanup. Windows Job Objects and Linux process groups
+keep browser descendants under their worker's ownership. Ownership is released only
+after final status/checkpoint writes. Displays end when their owner's lease closes.
+The managed controller then signals the private Bun server and allows up to 60 seconds
+for it to finish. These are maximum waits; clean shutdowns finish sooner.
+Convex reads and idempotent worker status saves retry transient failures up to
+three times. Action claims remain single attempts. Worker completion logs include
+bounded, redacted stdout/stderr diagnostics; malformed control frames are diagnostics too.
 
 `frontend` 5173, `server` 3001, Rust spoofer 3002, Rust VNC gateway 3003.
 The server's Rust controller hosts the VNC gateway on port 3003 and the helper
-on loopback port 3004. Bun worker commands and internal event sockets use
+on loopback port 3004. Bun worker commands use
 loopback port 3005; only the Rust API on 3001 is public. Browser workers, TigerVNC, and Fluxbox stay in the server
 container. Desktops are created only when needed; RFB ports 5901–5950 bind only
 to loopback. The gateway maps `/vnc/6081/websockify`
@@ -211,9 +225,9 @@ or server tests. `bun run build` also builds release Rust binaries. Outside Dock
 the Bun worker starts the Rust API, helper, and VNC gateway automatically. The local gateway
 binds to loopback; in Docker nginx connects to `server:3003`.
 
-Routine browser workers exit after draining their ready profiles. The API watches
-Convex readiness; Rust stores wakeup deadlines, then the API launches a new Bun
-worker. Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
+Routine browser workers exit after draining their ready profiles. Rust watches
+Convex readiness, calculates wakeup deadlines, and launches the next Bun worker.
+Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
 The custom Rust mobile client keeps at most 32 profile transport entries and
 serializes operations per profile. Four mobile HTTP commands may run at once.
 Sessions are persisted in Convex; existing SDK sessions are imported with the
@@ -246,6 +260,8 @@ Secrets live in `.env.local`, never committed. Key vars: `VITE_CONVEX_URL`
 `INTERNAL_API_KEY` (server→Convex calls).
 The scraper uses an existing Instagram Chat mobile session to get recent posts.
 `APIFY_API_KEY` enables fallback when mobile post discovery is unavailable.
+The scraper calls Apify's HTTP endpoint directly with `reqwest`; it does not use
+`apify-client-rust`.
 The UI accepts a number of days and a maximum post count per profile; each source
 job stores the post limit and fixes the date cutoff when queued.
 Active jobs use an indexed key to prevent duplicate queued work. Leads are stored
@@ -269,12 +285,13 @@ workers launched by one server, including manual/login sessions. Workers must be
 launched through the server so they share its resource budget; waiting is cancellable.
 `DISABLE_AUTH=true` bypasses auth in local dev only. High-risk edit
 areas: `tools/runtime/src/api/`, `tools/runtime/src/instagram/`,
-`server/worker/`, `server/websocket.ts`, and `convex/http.ts`.
+`tools/runtime/src/native/`, `server/worker/`, and `convex/http.ts`.
 
 ## Automation & Quality Gates
 
 - Automation checkpoints are separate from UI events. Pending database snapshots
-  coalesce, and slow WebSocket clients are disconnected at a 1 MiB outbound buffer.
+  coalesce in Rust. Event sockets have a 1 MiB message limit and five-second send
+  timeouts; lagging clients disconnect when the bounded broadcast queue overflows.
 
 - Live VNC streams disconnect while the tab or viewer is hidden/off-screen and
   reconnect when visible. Failed connections back off to a 30-second retry delay.

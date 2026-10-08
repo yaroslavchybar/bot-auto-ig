@@ -21,8 +21,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   # Virtual display and window manager for headless=false
   fluxbox \
   tigervnc-standalone-server \
-  # Remote clipboard read/write (xclip on the session DISPLAY)
-  xclip \
   # Font discovery for the browser + cloak's Windows-font check
   fontconfig \
   # X11 dependencies for browsers

@@ -17,9 +17,15 @@ async function freePort(): Promise<number> {
 
 async function start(name: string, mode: string, env: Record<string, string>) {
   const binary = path.resolve('target/debug', name + (process.platform === 'win32' ? '.exe' : ''))
+  const root = await fs.mkdtemp(path.join(tmpdir(), 'ig-native-test-'))
+  const headers = { Authorization: 'Bearer fixture-key' }
   const proc = spawn(binary, [mode], {
     env: {
       ...process.env,
+      PROJECT_ROOT: root,
+      INTERNAL_API_KEY: 'fixture-key',
+      CONVEX_URL: '',
+      VITE_CONVEX_URL: '',
       TELEGRAM_BOT_TOKEN: '',
       TELEGRAM_BOT_USERNAME: '',
       SERVER_PORT: '0',
@@ -44,16 +50,16 @@ async function start(name: string, mode: string, env: Record<string, string>) {
   })
   const url = `http://127.0.0.1:${env.RUNTIME_PORT || env.SPOOFER_PORT}`
   async function stop() {
-    if (proc.exitCode !== null || proc.signalCode || !proc.pid) return
-    const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()))
-    if (mode === 'helper') proc.stdin.end('stop\n')
-    else proc.kill()
-    const timer = setTimeout(() => proc.kill(), 3000)
-    try {
+    if (proc.exitCode === null && !proc.signalCode && proc.pid) {
+      const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()))
+      if (mode === 'helper') proc.stdin.end('stop\n')
+      else proc.kill()
+      const timer = setTimeout(() => proc.kill(), 3000)
       await exited
-    } finally {
       clearTimeout(timer)
     }
+    if (path.dirname(path.resolve(root)) !== path.resolve(tmpdir())) throw new Error('Invalid test root')
+    await fs.rm(root, { recursive: true, force: true })
   }
   try {
     for (let attempt = 0; attempt < 100; attempt++) {
@@ -61,7 +67,7 @@ async function start(name: string, mode: string, env: Record<string, string>) {
       try {
         if ((await fetch(`${url}/health`)).ok)
           return {
-            url,
+            url, headers,
             logs: () =>
               output
                 .split('\n')
@@ -136,26 +142,21 @@ test('native spoofer preserves responses, EXIF, pixel uniqueness and safe correl
   }
 }, 60_000)
 
-test('native helper wakes and cancels jobs, stages uploads and deletes their files', async () => {
+test('native helper stages uploads and deletes their files', async () => {
   const service = await start('ig-runtime', 'helper', { RUNTIME_PORT: String(await freePort()) })
   const post = (route: string, body: BodyInit, json = false) =>
     fetch(service.url + route, {
       method: 'POST',
-      headers: json ? { 'Content-Type': 'application/json' } : {},
+      headers: { ...service.headers, ...(json ? { 'Content-Type': 'application/json' } : {}) },
       body,
     })
   try {
-    await post('/schedules/cancelled', JSON.stringify({ dueAt: Date.now() + 60_000 }), true)
-    await fetch(service.url + '/schedules/cancelled', { method: 'DELETE' })
-    const due = fetch(service.url + '/schedules/due')
-    await post('/schedules/ready', JSON.stringify({ dueAt: Date.now() + 30 }), true)
-    expect(await (await due).json()).toEqual(['ready'])
     const response = await post('/uploads?kind=photo', new Uint8Array([255, 216, 255, 217]))
     const file = (await response.json()) as { id: string; path: string; size: number }
     expect(response.status).toBe(200)
     expect(file.size).toBe(4)
     expect(await fs.readFile(file.path)).toEqual(Buffer.from([255, 216, 255, 217]))
-    await fetch(service.url + '/uploads/' + file.id, { method: 'DELETE' })
+    await fetch(service.url + '/uploads/' + file.id, { method: 'DELETE', headers: service.headers })
     expect(await fs.stat(file.path).catch(() => null)).toBeNull()
     expect((await post('/uploads?kind=photo', 'invalid')).status).toBe(422)
     expect((await post('/uploads?kind=video', new Uint8Array(25_000_001))).status).toBe(413)
@@ -182,7 +183,7 @@ test('native helper wakes and cancels jobs, stages uploads and deletes their fil
       }
       expect(voice.voiceConverted).toBe(true)
       expect((await fs.readFile(voice.path)).toString('ascii', 4, 8)).toBe('ftyp')
-      await fetch(service.url + '/uploads/' + voice.id, { method: 'DELETE' })
+      await fetch(service.url + '/uploads/' + voice.id, { method: 'DELETE', headers: service.headers })
     }
   } finally {
     await service.stop()

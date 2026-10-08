@@ -3,7 +3,12 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { launchPersistentContext, binaryInfo } from 'cloakbrowser'
-import { parseProxy, describeProxyLaunchError, BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
+import {
+  parseProxy,
+  describeProxyLaunchError,
+  BROWSER_WINDOW_WIDTH,
+  BROWSER_WINDOW_HEIGHT,
+} from './config.js'
 import { shutdownSignal, sleep } from './lifecycle.js'
 import { focusPageContent } from './focus.js'
 import { acquireBrowserSlot } from './budget.js'
@@ -17,7 +22,7 @@ import {
 import { startFilePicker, pickerSocket } from './filePicker.js'
 import { DISK_CACHE_BYTES, pruneProfileCache } from './profileCache.js'
 import { startDomInspector } from './domInspector.js'
-import { lockProfile, profileDirectory } from '../profiles/paths.js'
+import { acquireProfileLock, profileDirectory } from '../profiles/paths.js'
 
 export type BrowserSession = {
   context: BrowserContext
@@ -55,10 +60,13 @@ export function clearSavedWindowPlacement(profileDir: string): void {
     if (!('window_placement' in prefs.browser)) return
     delete prefs.browser.window_placement
     fs.writeFileSync(prefsPath, JSON.stringify(prefs))
-  } catch { /* keep the launch going; worst case the position persists */ }
+  } catch {
+    /* keep the launch going; worst case the position persists */
+  }
 }
 
-export function migrateFirefoxProfile(profileDir: string): void {  if (fs.existsSync(path.join(profileDir, 'cloak-seed.json'))) return
+export function migrateFirefoxProfile(profileDir: string): void {
+  if (fs.existsSync(path.join(profileDir, 'cloak-seed.json'))) return
   if (!FIREFOX_MARKERS.some((file) => fs.existsSync(path.join(profileDir, file)))) return
   for (const entry of fs.readdirSync(profileDir)) {
     // The caller holds worker.lock; never sweep it with migrated contents.
@@ -78,10 +86,7 @@ function storedCookies(profile: DbProfileRow): Cookie[] {
   }
 }
 
-async function saveSession(
-  profile: DbProfileRow,
-  context: BrowserContext,
-): Promise<void> {
+async function saveSession(profile: DbProfileRow, context: BrowserContext): Promise<void> {
   let stage = 'read cookies from browser'
   try {
     const cookies = await context.cookies()
@@ -96,16 +101,30 @@ async function saveSession(
   } catch (error) {
     // Browser shutdown must not hide the original action error, but a lost
     // cookie save must not report success either: the DB would keep stale auth.
-    logger.error({ event: 'browser.cookies_save', profileId: profile.id, profileName: profile.name, stage, error })
+    logger.error({
+      event: 'browser.cookies_save',
+      profileId: profile.id,
+      profileName: profile.name,
+      stage,
+      error,
+    })
     throw error
   }
 }
 
-type SessionOptions = { headless?: boolean; display?: string; proxyOverride?: string; inspect?: boolean }
+type SessionOptions = {
+  signal?: AbortSignal
+  headless?: boolean
+  display?: string
+  proxyOverride?: string
+  inspect?: boolean
+}
 
 /** Cloak platform persona. mac stays mac, everything else runs as Windows. */
 export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
-  const os = String(fingerprintOs || '').trim().toLowerCase()
+  const os = String(fingerprintOs || '')
+    .trim()
+    .toLowerCase()
   return os === 'mac' || os === 'macos' ? 'macos' : 'windows'
 }
 
@@ -113,7 +132,11 @@ export function cloakPlatform(fingerprintOs: unknown): 'windows' | 'macos' {
  * Deterministic fingerprint seed per profile + platform. Same seed returns
  * as a returning visitor; a random seed every launch looks like a new device.
  */
-export function cloakSeed(profileDir: string, platform: string, persistedSeed?: unknown): { seed: number; isNew: boolean } {
+export function cloakSeed(
+  profileDir: string,
+  platform: string,
+  persistedSeed?: unknown,
+): { seed: number; isNew: boolean } {
   const seedPath = path.join(profileDir, 'cloak-seed.json')
   let cachedSeed: number | undefined
   let cachedPlatform: unknown
@@ -127,7 +150,8 @@ export function cloakSeed(profileDir: string, platform: string, persistedSeed?: 
     // A missing or corrupt seed file regenerates below. Anything with a
     // filesystem error code other than ENOENT (EACCES, EPERM, ...) is real
     // and propagates.
-    if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT')
+      throw error
   }
   if (Number.isSafeInteger(persistedSeed)) {
     const seed = persistedSeed as number
@@ -143,7 +167,10 @@ export function cloakSeed(profileDir: string, platform: string, persistedSeed?: 
 }
 
 async function persistSeed(profile: DbProfileRow, seed: number): Promise<void> {
-  const updated = await profilesUpdateByName(profile.name, { name: profile.name, fingerprintSeed: seed })
+  const updated = await profilesUpdateByName(profile.name, {
+    name: profile.name,
+    fingerprintSeed: seed,
+  })
   if (updated === null) throw new Error('Profile was not found while saving fingerprint seed')
   profile.fingerprintSeed = seed
 }
@@ -154,7 +181,10 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
   // Retry a previous failed Convex write whenever disk has the seed but the
   // profile row does not. Wait for persistence before making the session usable.
   if (profile.fingerprintSeed !== seed) await persistSeed(profile, seed)
-  const proxy = parseProxy(options.proxyOverride ?? profile.proxy, options.proxyOverride ? undefined : profile.proxyType)
+  const proxy = parseProxy(
+    options.proxyOverride ?? profile.proxy,
+    options.proxyOverride ? undefined : profile.proxyType,
+  )
   return {
     userDataDir: profileDir,
     headless: options.headless ?? false,
@@ -169,10 +199,9 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
       `--fingerprint-screen-width=${BROWSER_WINDOW_WIDTH}`,
       `--fingerprint-screen-height=${BROWSER_WINDOW_HEIGHT}`,
       // Manual sessions can expose DevTools without changing automation launches.
-      ...(options.inspect ? [
-        '--remote-debugging-port=0',
-        '--remote-debugging-address=127.0.0.1',
-      ] : []),
+      ...(options.inspect
+        ? ['--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1']
+        : []),
     ],
     proxy,
     geoip: Boolean(proxy),
@@ -201,7 +230,9 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
  *  seat yet, so timing out is always safe. */
 const LAUNCH_TIMEOUT_MS = 90_000
 
-function withLaunchTimeout<T extends { close?: () => Promise<unknown> }>(promise: Promise<T>): Promise<T> {
+function withLaunchTimeout<T extends { close?: () => Promise<unknown> }>(
+  promise: Promise<T>,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
   let timedOut = false
   const timeout = new Promise<never>((_, reject) => {
@@ -215,7 +246,11 @@ function withLaunchTimeout<T extends { close?: () => Promise<unknown> }>(promise
   void promise.then(
     async (result) => {
       if (!timedOut) return
-      try { await result?.close?.() } catch { /* orphan already gone */ }
+      try {
+        await result?.close?.()
+      } catch {
+        /* orphan already gone */
+      }
     },
     () => undefined,
   )
@@ -236,7 +271,9 @@ export function cloakBinaryNote(): string {
     const info = typeof binaryInfo === 'function' ? binaryInfo() : undefined
     if (info && typeof info.tier === 'string') tier = info.tier
     if (info && typeof info.version === 'string') version = info.version
-  } catch { /* fall through with unknown tier */ }
+  } catch {
+    /* fall through with unknown tier */
+  }
   const key = (process.env.CLOAKBROWSER_LICENSE_KEY || '').trim() ? 'set' : 'missing'
   const label = `Cloak binary: ${tier}${version ? ` ${version}` : ''} (license key ${key})`
   if (tier !== 'pro' && tier !== 'unknown')
@@ -248,17 +285,24 @@ export async function openBrowserSession(
   profileName: string,
   options: SessionOptions = {},
 ): Promise<BrowserSession> {
-  shutdownSignal.throwIfAborted()
+  const signal = options.signal ? AbortSignal.any([shutdownSignal, options.signal]) : shutdownSignal
+  signal.throwIfAborted()
   const profileDir = profileDirectory(profileName)
   const devToolsPortFile = path.join(profileDir, 'DevToolsActivePort')
-  const releaseLock = lockProfile(profileName)
+  let profileLockLost = false
+  let closeAfterLockLoss = () => {}
+  const releaseLock = await acquireProfileLock(profileName, signal, () => {
+    profileLockLost = true
+    closeAfterLockLoss()
+  })
   let profile: DbProfileRow | undefined
   try {
     // Check under the deletion lock, before creating any directories.
-    profile = await profilesGetByName(profileName) ?? undefined
+    profile = (await profilesGetByName(profileName)) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
     if (profile.status === 'deleting' || profile.renameFrom)
       throw new Error('Profile maintenance is in progress')
+    if (profileLockLost) throw new Error('Profile lock disconnected')
     fs.mkdirSync(profileDir, { recursive: true })
     migrateFirefoxProfile(profileDir)
     fs.rmSync(devToolsPortFile, { force: true })
@@ -290,48 +334,58 @@ export async function openBrowserSession(
   const close = (): Promise<void> => {
     // Defer work so reentrant browser events see the same shutdown promise.
     closing ??= Promise.resolve().then(async () => {
-      shutdownSignal.removeEventListener('abort', requestClose)
+      signal.removeEventListener('abort', requestClose)
       const errors: unknown[] = []
       const steps = [
         () => stopDomInspector?.(),
         () => stopFilePicker?.(),
-        () => ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
-        () => !browserClosed ? context?.close() : undefined,
+        () =>
+          ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
+        () => (!browserClosed ? context?.close() : undefined),
         () => fs.rmSync(devToolsPortFile, { force: true }),
         () => display?.close(),
         releaseLock,
         () => releaseSlot?.(),
       ]
       for (const step of steps) {
-        try { await step() } catch (error) { errors.push(error) }
+        try {
+          await step()
+        } catch (error) {
+          errors.push(error)
+        }
       }
       if (errors.length) throw new AggregateError(errors, 'Browser cleanup failed')
     })
     closing.then(resolveClosed, rejectClosed)
     return closing
   }
-  const requestClose = () => { void close().catch(() => undefined) }
+  const requestClose = () => {
+    void close().catch(() => undefined)
+  }
+  closeAfterLockLoss = requestClose
   const checkStartup = () => {
-    shutdownSignal.throwIfAborted()
+    if (profileLockLost) throw new Error('Profile lock disconnected')
+    signal.throwIfAborted()
     if (budgetLost) throw new Error('Browser resource budget disconnected')
     if (browserClosed) throw new Error('Browser closed during startup')
   }
 
   try {
-    releaseSlot = await acquireBrowserSlot(shutdownSignal, undefined, () => {
+    releaseSlot = await acquireBrowserSlot(signal, () => {
       budgetLost = true
       if (context) requestClose()
     })
     checkStartup()
-    profile = await profilesGetByName(profileName) ?? undefined
+    profile = (await profilesGetByName(profileName)) ?? undefined
     if (!profile) throw new Error(`Profile not found: ${profileName}`)
     if (profile.status === 'deleting' || profile.renameFrom)
       throw new Error('Profile maintenance is in progress')
     checkStartup()
-    display = options.headless ? undefined : await allocateDisplay()
+    display = options.headless ? undefined : await allocateDisplay(profileName)
     checkStartup()
     const launchOptions = await browserOptions(profile, profileDir, {
-      ...options, display: display?.display ?? options.display,
+      ...options,
+      display: display?.display ?? options.display,
     })
     checkStartup()
     // The license seat can lag a few seconds behind a clean close. Retry a
@@ -361,7 +415,7 @@ export async function openBrowserSession(
       requestClose()
     })
     // All resources are acquired; shutdown can now interrupt page initialization.
-    shutdownSignal.addEventListener('abort', requestClose, { once: true })
+    signal.addEventListener('abort', requestClose, { once: true })
     checkStartup()
     const cookies = storedCookies(profile)
     // The saved jar replaces the persistent browser jar, including removals.
@@ -399,7 +453,11 @@ export async function openBrowserSession(
     return { context, page, profile, display, close, closed }
   } catch (error) {
     // Complete partial startup cleanup without replacing the startup error.
-    await close().catch(() => undefined)
+    try {
+      await close()
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Browser startup and cleanup failed')
+    }
     throw error
   }
 }

@@ -39,6 +39,8 @@ pub fn now_ms() -> u64 {
 }
 
 pub struct Api {
+    pub native: std::sync::OnceLock<Arc<crate::native::Native>>,
+    pub events: tokio::sync::broadcast::Sender<Value>,
     pub auth: Arc<auth::Auth>,
     pub client: reqwest::Client,
     pub worker_url: String,
@@ -61,6 +63,8 @@ impl Api {
             .build()?;
         let cloud = env("CONVEX_URL", &env("VITE_CONVEX_URL", ""));
         Ok(Self {
+            native: Default::default(),
+            events: tokio::sync::broadcast::channel(256).0,
             auth: Arc::new(auth::Auth::from_env(client.clone())),
             client,
             worker_url: format!("http://127.0.0.1:{}", env("WORKER_PORT", "3005")),
@@ -84,22 +88,60 @@ impl Api {
         path: &str,
         body: Option<&Value>,
     ) -> Result<Value, &'static str> {
+        let retries = if method == Method::GET { 3 } else { 0 };
+        self.convex_request(method, path, body, retries).await
+    }
+    /// Only idempotent writes opt in: retrying an action claim can duplicate its effects.
+    pub async fn convex_retry(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, &'static str> {
+        self.convex_request(method, path, body, 3).await
+    }
+    async fn convex_request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        retries: u32,
+    ) -> Result<Value, &'static str> {
         if self.convex_url.is_empty() || self.key.is_empty() {
             return Err("Convex is not configured");
         }
-        let mut request = self
-            .client
-            .request(method, format!("{}{path}", self.convex_url))
-            .bearer_auth(&self.key)
-            .timeout(Duration::from_secs(30));
-        if let Some(body) = body {
-            request = request.json(body);
+        for attempt in 0..=retries {
+            let mut request = self
+                .client
+                .request(method.clone(), format!("{}{path}", self.convex_url))
+                .bearer_auth(&self.key)
+                .timeout(Duration::from_secs(30));
+            if let Some(body) = body {
+                request = request.json(body);
+            }
+            match request.send().await {
+                Ok(response) => {
+                    let status = response.status();
+                    if status.is_success() {
+                        // A malformed successful response is not safe to retry.
+                        return bounded_json(response, 10 * 1024 * 1024).await;
+                    }
+                    if attempt == retries || !(status.as_u16() == 429 || status.is_server_error()) {
+                        return Err("Convex rejected the request");
+                    }
+                }
+                Err(error) => {
+                    if attempt == retries || error.is_builder() {
+                        return Err("Convex request failed");
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(
+                1000 * (1 << attempt) + rand::random::<u64>() % 1000,
+            ))
+            .await;
         }
-        let response = request.send().await.map_err(|_| "Convex request failed")?;
-        if !response.status().is_success() {
-            return Err("Convex rejected the request");
-        }
-        bounded_json(response, 10 * 1024 * 1024).await
+        unreachable!("Convex attempts always return a response or error")
     }
     fn allow(&self, key: String, limit: usize) -> bool {
         let now = now_ms();
@@ -382,6 +424,11 @@ async fn invoke(
     params: HashMap<String, String>,
     request: Request,
 ) -> Response {
+    if crate::native::Native::handles(&operation.id) {
+        if let Some(native) = state.native.get() {
+            return native.invoke(&operation.id, &params, request).await;
+        }
+    }
     if operation.id == "profiles.get.list" || operation.id == "profiles.get.by-id" {
         let path = if operation.id == "profiles.get.list" {
             "/api/profiles".into()

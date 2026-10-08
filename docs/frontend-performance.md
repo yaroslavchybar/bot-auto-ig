@@ -8,7 +8,7 @@ The sidebar and header stay mounted during protected-page navigation. Hashed Jav
 
 - Profiles, proxies, and Instagram accounts load up to 50 rows at a time. Server-side searches stop after five batches and return a continuation cursor, so sparse searches can yield a partial or empty page with more pages available. Profile/proxy batches also limit bytes read; filtered proxy batches limit scanned rows. Proxy usage includes records outside the current page. Available account counts are exact through 100, then display 100+; profile creation supports batches of at most 100.
 - Profile lists omit cookies and browser sessions. Editing loads the full selected profile.
-- Images load near the viewport, use disk-cached 512px thumbnails, and release image blobs off screen or in hidden tabs. Original uploads are unchanged. Thumbnail decoding is serialized with a small Sharp cache.
+- Images load near the viewport, use disk-cached 512px thumbnails, and release image blobs off screen or in hidden tabs. Original uploads are unchanged. Rust serializes thumbnail decoding and bounds decoder memory.
 - VNC header and page share their sessions request and poller. Off-screen previews release their images and stop polling.
 - Shared clocks and chat polling pause in hidden tabs. Database connections close when the protected UI unmounts.
 - Model cards and dialogs share content metadata while the models page is open. Updates reload the affected model only. Detail tabs mount on first use and retain unsaved drafts; hidden profile tabs stop their query.

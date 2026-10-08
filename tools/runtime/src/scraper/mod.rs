@@ -84,6 +84,14 @@ struct Job {
     post_index: Option<usize>,
 }
 impl Scraper {
+    pub async fn update(&self, value: Value) -> crate::native::Result<()> {
+        let value: Work = serde_json::from_value(value)?;
+        self.work.send_modify(|(revision, state)| {
+            *revision += 1;
+            *state = value;
+        });
+        Ok(())
+    }
     pub fn start(api: Arc<Api>, mobile: Arc<Service>) -> Arc<Self> {
         let (work, _) = watch::channel((0, Work::default()));
         let service = Arc::new(Self {

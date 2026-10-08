@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { ApiError, apiFetch } from '@/lib/api'
 
 // Server-side clipboard (option 2): the API reads/writes the X CLIPBOARD
-// selection on the session DISPLAY via xclip. Local access still needs a
+// selection on the session DISPLAY through Rust. Local access still needs a
 // user click. This panel is the fallback when viewer clipboard sync is blocked.
 
 function clipboardErrorMessage(e: unknown, fallback: string): string {

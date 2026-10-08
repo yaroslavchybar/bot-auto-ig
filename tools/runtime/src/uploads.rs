@@ -65,7 +65,7 @@ pub async fn cleanup_orphans(root: &std::path::Path, minimum_age: Duration) -> s
 }
 #[derive(Deserialize)]
 pub struct Kind {
-    kind: String,
+    pub kind: String,
 }
 
 pub fn valid_header(kind: &str, header: &[u8]) -> bool {

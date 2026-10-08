@@ -1,64 +1,56 @@
-import { test } from 'node:test'
-import assert from 'node:assert/strict'
-import { once } from 'node:events'
-import net from 'node:net'
-import os from 'node:os'
-import path from 'node:path'
-import { randomUUID } from 'node:crypto'
-import { spawn } from 'node:child_process'
-import { acquireBrowserSlot, createBrowserBudget } from './budget.js'
+import { test, expect } from 'bun:test'
+import WebSocket from 'ws'
+import { acquireBrowserSlot } from './budget.js'
+import { nativeFixture } from '../shared/native-fixture.testing.js'
 
-test('shared budget queues clients, cancels waiters, and reclaims disconnected slots', { timeout: 5000 }, async () => {
-  const name = `ig-budget-test-${randomUUID()}`
-  const endpoint = process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : path.join(os.tmpdir(), name)
-  const server = createBrowserBudget(endpoint, 1)
-  await once(server, 'listening')
-  const owner = net.connect(endpoint)
+test('Rust budget queues clients, cancels waiters, and releases disconnected slots', async () => {
+  const native = await nativeFixture({ BROWSER_MAX_CONCURRENCY: '1' })
+  const previous = process.env.RUNTIME_URL,
+    previousKey = process.env.INTERNAL_API_KEY
+  process.env.RUNTIME_URL = native.url
+  process.env.INTERNAL_API_KEY = 'fixture-key'
+  const controller = new AbortController()
+  const owner = new WebSocket(native.url.replace(/^http/, 'ws') + '/browser/lease', {
+    headers: native.headers,
+  })
   let release: (() => void) | undefined
   try {
-    await once(owner, 'data')
+    await new Promise<void>((resolve, reject) => {
+      owner.once('message', () => resolve())
+      owner.once('error', reject)
+    })
     let granted = false
-    const queued = acquireBrowserSlot(new AbortController().signal, endpoint).then(value => { granted = true; return value })
-    await once(server, 'connection')
-    assert.equal(granted, false)
-    const cancelled = new AbortController()
-    const waiter = acquireBrowserSlot(cancelled.signal, endpoint)
-    await once(server, 'connection')
-    cancelled.abort(new Error('cancelled'))
-    await assert.rejects(waiter, /cancelled/)
-    owner.destroy()
+    const queued = acquireBrowserSlot(controller.signal).then((value) => {
+      granted = true
+      return value
+    })
+    await Bun.sleep(30)
+    expect(granted).toBe(false)
+    const cancel = new AbortController()
+    const waiter = acquireBrowserSlot(cancel.signal)
+    const rejected = waiter.catch((error) => error)
+    cancel.abort(new Error('cancelled'))
+    expect((await rejected).message).toBe('cancelled')
+    owner.terminate()
     release = await queued
-    assert.equal(granted, true)
+    expect(granted).toBe(true)
+    controller.abort(new Error('stop after grant'))
+    let nextGranted = false
+    const next = acquireBrowserSlot(new AbortController().signal).then((value) => {
+      nextGranted = true
+      return value
+    })
+    await Bun.sleep(30)
+    expect(nextGranted).toBe(false)
     release()
-    release = await acquireBrowserSlot(new AbortController().signal, endpoint)
+    release = await next
   } finally {
-    owner.destroy()
+    owner.terminate()
     release?.()
-    await new Promise<void>(resolve => server.close(() => resolve()))
+    await native.stop()
+    if (previous === undefined) delete process.env.RUNTIME_URL
+    else process.env.RUNTIME_URL = previous
+    if (previousKey === undefined) delete process.env.INTERNAL_API_KEY
+    else process.env.INTERNAL_API_KEY = previousKey
   }
-})
-
-test('a killed worker releases its budget slot for another worker', { timeout: 5000 }, async () => {
-  const name = `ig-budget-process-${randomUUID()}`
-  const endpoint = process.platform === 'win32' ? `\\\\.\\pipe\\${name}` : path.join(os.tmpdir(), name)
-  const server = createBrowserBudget(endpoint, 1)
-  await once(server, 'listening')
-  const child = spawn(process.execPath, ['-e',
-    "const net = require('node:net'); const socket = net.connect(process.env.TEST_BUDGET_PIPE); socket.on('data', () => process.stdout.write('ready'));"],
-    { env: { ...process.env, TEST_BUDGET_PIPE: endpoint }, stdio: ['ignore', 'pipe', 'pipe'] })
-  let release: (() => void) | undefined
-  try {
-    await once(child.stdout!, 'data')
-    const pending = acquireBrowserSlot(new AbortController().signal, endpoint)
-    await once(server, 'connection')
-    const exited = once(child, 'exit')
-    child.kill()
-    await exited
-    release = await pending
-    assert.equal(typeof release, 'function')
-  } finally {
-    child.kill()
-    release?.()
-    await new Promise<void>(resolve => server.close(() => resolve()))
-  }
-})
+}, 10000)

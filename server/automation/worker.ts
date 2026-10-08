@@ -283,7 +283,6 @@ async function withProfile(
       if (!session || closed) return
       await session.close()
       closed = true
-      if (session.display) await event('display_released', { automationId: automationId, profileName: profile.name })
     }
     try {
       session = await (options.openSession ?? openBrowserSession)(profile.name, {
@@ -296,13 +295,6 @@ async function withProfile(
         profileId: profile.id,
         automationId: automationId,
       })
-      if (session.display)
-        await event('display_allocated', {
-          automationId: automationId,
-          profileName: profile.name,
-          displayNum: session.display.displayNum,
-          vncPort: session.display.vncPort,
-        })
       addLogContext({ displayNum: session.display?.displayNum, vncPort: session.display?.vncPort })
       await run(session, { close })
       if (shouldStop()) addLogContext({ outcome: 'cancelled' })

@@ -6,9 +6,11 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use futures_util::{SinkExt, StreamExt};
-use std::{collections::HashMap, sync::Arc, time::Duration};
-use tokio_tungstenite::tungstenite::{self, client::IntoClientRequest};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 pub async fn upgrade(
     State(state): State<Arc<Api>>,
@@ -38,88 +40,66 @@ pub async fn upgrade(
     };
     let topic = query
         .get("topic")
-        .filter(|topic| ["displays", "chat"].contains(&topic.as_str()))
-        .map(String::as_str)
-        .unwrap_or("all");
-    let mut request = format!(
-        "{}/events?topic={topic}",
-        state.worker_url.replace("http://", "ws://")
-    )
-    .into_client_request()
-    .unwrap();
-    request.headers_mut().insert(
-        "authorization",
-        format!("Bearer {}", state.key).parse().unwrap(),
-    );
-    let worker = match tokio::time::timeout(
-        Duration::from_secs(5),
-        tokio_tungstenite::connect_async_with_config(
-            request,
-            Some(
-                tungstenite::protocol::WebSocketConfig::default()
-                    .read_buffer_size(16 * 1024)
-                    .max_message_size(Some(1024 * 1024))
-                    .max_frame_size(Some(1024 * 1024)),
-            ),
-            false,
-        ),
-    )
-    .await
-    {
-        Ok(Ok((worker, _))) => worker,
-        _ => return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(),
-    };
-    ws.read_buffer_size(16 * 1024)
-        .max_message_size(1024 * 1024)
-        .max_frame_size(1024 * 1024)
-        .on_upgrade(move |socket| async move {
-            let _permit = permit;
-            let (mut client_write, mut client_read) = socket.split();
-            let (mut worker_write, mut worker_read) = worker.split();
-            let to_client = async {
-                while let Some(Ok(message)) = worker_read.next().await {
-                    let message = match message {
-                        tungstenite::Message::Text(value) => Message::Text(
-                            axum::body::Bytes::from(value)
-                                .try_into()
-                                .expect("Validated WebSocket text"),
-                        ),
-                        tungstenite::Message::Binary(value) => Message::Binary(value),
-                        tungstenite::Message::Ping(value) => Message::Ping(value),
-                        tungstenite::Message::Pong(value) => Message::Pong(value),
-                        _ => break,
-                    };
-                    if !matches!(
-                        tokio::time::timeout(Duration::from_secs(10), client_write.send(message))
-                            .await,
-                        Ok(Ok(()))
-                    ) {
-                        break;
-                    }
+        .filter(|s| ["chat", "displays"].contains(&s.as_str()))
+        .cloned()
+        .unwrap_or_else(|| "all".into());
+    let mut events = state.events.subscribe();
+    ws.read_buffer_size(16*1024).max_message_size(1024*1024).max_frame_size(1024*1024).on_upgrade(move |mut socket| async move {
+        let _permit=permit;
+        let mut heartbeat=tokio::time::interval(Duration::from_secs(20)); let mut alive=Instant::now();
+        loop {
+            tokio::select! {
+                event=events.recv() => {
+                    let Ok(event)=event else { break; };
+                    if !matches_topic(&event,&topic) { continue; }
+                    if !matches!(tokio::time::timeout(Duration::from_secs(5),socket.send(Message::Text(event.to_string().into()))).await,Ok(Ok(()))) { break; }
+                },
+                incoming=socket.recv() => match incoming {
+                    Some(Ok(Message::Pong(_))) => { alive=Instant::now(); },
+                    Some(Ok(Message::Ping(bytes))) => {
+                        alive=Instant::now();
+                        if !matches!(tokio::time::timeout(Duration::from_secs(5), socket.send(Message::Pong(bytes))).await, Ok(Ok(()))) { break; }
+                    },
+                    Some(Ok(Message::Text(_))) => {}, // The public event feed is read-only.
+                    _=>break,
+                },
+                _=heartbeat.tick() => {
+                    if alive.elapsed()>Duration::from_secs(60) || !matches!(tokio::time::timeout(Duration::from_secs(5),socket.send(Message::Ping(vec![].into()))).await,Ok(Ok(()))) { break; }
                 }
-            };
-            let to_worker = async {
-                while let Some(Ok(message)) = client_read.next().await {
-                    let message = match message {
-                        Message::Text(value) => tungstenite::Message::Text(
-                            axum::body::Bytes::from(value)
-                                .try_into()
-                                .expect("Validated WebSocket text"),
-                        ),
-                        Message::Binary(value) => tungstenite::Message::Binary(value),
-                        Message::Ping(value) => tungstenite::Message::Ping(value),
-                        Message::Pong(value) => tungstenite::Message::Pong(value),
-                        _ => break,
-                    };
-                    if !matches!(
-                        tokio::time::timeout(Duration::from_secs(10), worker_write.send(message))
-                            .await,
-                        Ok(Ok(()))
-                    ) {
-                        break;
-                    }
-                }
-            };
-            tokio::select! { _ = to_client => {}, _ = to_worker => {} }
-        })
+            }
+        }
+    })
+}
+fn matches_topic(value: &serde_json::Value, topic: &str) -> bool {
+    let kind = value["type"].as_str().unwrap_or("");
+    topic == "all"
+        || topic == "chat" && kind == "chat_changed"
+        || topic == "displays"
+            && matches!(
+                kind,
+                "display_allocated"
+                    | "display_released"
+                    | "profile_completed"
+                    | "automation_status"
+            )
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn topics_filter_private_events() {
+        for kind in [
+            "display_allocated",
+            "display_released",
+            "profile_completed",
+            "automation_status",
+        ] {
+            assert!(matches_topic(&json!({"type":kind}), "displays"));
+            assert!(!matches_topic(&json!({"type":kind}), "chat"));
+        }
+        assert!(matches_topic(&json!({"type":"chat_changed"}), "chat"));
+        assert!(!matches_topic(&json!({"type":"task_started"}), "displays"));
+        assert!(matches_topic(&json!({"type":"task_started"}), "all"));
+    }
 }

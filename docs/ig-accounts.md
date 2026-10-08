@@ -4,6 +4,9 @@
 are kept. Each model can hold a base full name, desired usernames, and separate
 post and avatar banks. The bank generates 50 variants per uploaded image using
 the vendored `spoof` command.
+Rust owns the content bank, manifest writes, generation tracking, thumbnails, and
+variant assignments. Browser actions allocate content through the native controller,
+so API requests and workers share one manifest owner.
 The Models page shows a gallery of model cards. Open a card to upload and view
 that model's post images and avatars, switch to Usernames & full names to manage
 name pools, or view and assign its profiles. Imported full names are used in order for groups of four
@@ -12,7 +15,7 @@ The Edit model action opens this same popup on the names tab, where the model
 name can also be changed.
 
 The **IG Accounts** page imports one `username:password:base32-2FA-key` per line.
-The server encrypts each credential with `IG_CREDENTIALS_KEY` (64 hex characters)
+Rust encrypts each credential with `IG_CREDENTIALS_KEY` (64 hex characters)
 before saving it to the Convex `igAccounts` table. Convex stores ciphertext and a
 keyed username lookup hash; the key stays in the server environment. Keep that
 key stable: losing it makes imported credentials unreadable. Mobile Chat
@@ -39,6 +42,11 @@ The **Create Profile** dialog selects a model and a count. It uses unused
 credentials and saved **Work** proxies, respecting each proxy's profile limit.
 Import login proxies manually from TXT on the Proxies page. The import popup
 sets HTTP or SOCKS5, Work or Login, and the country for the imported batch.
+Rust owns account endpoints, imports, assignments, reconnect, proxy checks and
+the proxy blacklist. It keeps the existing AES-256-GCM credential format and keyed
+username lookup, so saved credentials use the same key.
+Rust consumes login-work subscriptions and owns retries, proxy claims and cooldowns.
+The private Bun callback runs only Playwright browser login and saves browser cookies.
 Login runs in the background. The app checks the Work proxy's actual exit
 country through `ipwho.is`, then tries distinct, non-blacklisted Login proxy
 IPs in that country. Two Instagram login rejections on different IPs flag the
@@ -56,6 +64,14 @@ through the profile's saved Work proxy. Username and full name are separate
 updates; the full-name update waits until the model has a full name configured.
 Profiles already marked Logged in skip browser login and connect the mobile
 session through their Work proxy after warmup.
+
+Rust owns model enrollment, Kyiv calendar dates, name generation, mobile setup
+and reconciliation. Playwright posting stays in TypeScript. A native socket lease
+holds the account action lock until the browser result is saved. A disconnected
+browser or uncertain Instagram result leaves pending work for operator review;
+the scheduler cannot repeat it automatically.
+If the posting lease disconnects or times out, the browser action observes
+cancellation and the caller waits for it to finish before reusing the page.
 
 Required production secrets:
 

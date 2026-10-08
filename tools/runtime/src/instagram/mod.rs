@@ -153,6 +153,22 @@ pub struct Service {
     pub base: Option<String>,
 }
 impl Service {
+    #[cfg(test)]
+    pub(crate) fn fixture(api: Arc<Api>, uploads: Arc<Uploads>, base: String) -> Arc<Self> {
+        let mut service = Self::new(api, uploads);
+        Arc::get_mut(&mut service).unwrap().base = Some(base);
+        service
+    }
+    #[cfg(test)]
+    pub(crate) fn fixture_session() -> String {
+        let mut state = new_session("fixture", "example");
+        state.set_cookie(
+            "ds_user_id=123; Domain=.instagram.com; Path=/",
+            &"https://i.instagram.com/".parse().unwrap(),
+        );
+        state.authorization = "Bearer fixture".into();
+        serde_json::to_string(&state).unwrap()
+    }
     pub fn new(api: Arc<Api>, uploads: Arc<Uploads>) -> Arc<Self> {
         Arc::new(Self {
             api,

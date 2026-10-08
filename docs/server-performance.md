@@ -1,7 +1,8 @@
 # Server memory changes
 
 The Rust VNC gateway runs inside the server's native controller alongside
-Bun browser workers, Chromium, TigerVNC and Fluxbox. RFB listens only on loopback.
+Bun browser workers, Chromium, TigerVNC and Fluxbox. Rust owns their worker/display
+lifecycles and the shared browser-slot budget. RFB listens only on loopback.
 The default desktop, Python websockify
 and Supervisor were removed. A Rust controller supervises Bun and owns local
 wakeup deadlines and temporary uploads. Routine workers exit between runs.
@@ -41,15 +42,25 @@ Image output is intentionally changed, so the two encoders are not bit-identical
   Session cookies and authorization persist in Convex. Existing SDK sessions
   are reused without login; reconnect preserves their saved device identity.
 - Scraper: Rust HTTP, source discovery, batches of 25, resume checkpoints,
-  cooldowns, OpenRouter descriptions, and Jev classification. Convex subscriptions
-  in the Bun worker wake native jobs; there is no idle native polling.
+  cooldowns, OpenRouter descriptions, and Jev classification. Rust-owned Convex
+  subscriptions wake native jobs; there is no idle work polling.
 - Uploads: four active receivers, 32 pending files, 15-minute expiry. Photo and
   voice inputs: 10 MB; videos: 25 MB. The API receives file descriptors and
   streams each file through the selected account's proxy.
 - VNC: 64 connections, 1 MiB maximum incoming WebSocket messages, 64 KiB RFB
   read buffers and awaited writes with timeouts.
 - Routine workers: at most `AUTOMATION_MAX_CONCURRENCY`, default three. Convex
-  subscriptions wake changed accounts; Rust timers wake resting accounts.
+  subscriptions and readiness calculations are native; Rust timers wake resting accounts.
+- Chat: Rust owns SQLite, inbox/thread handlers, reconciliation, background checks,
+  and events. Four chat commands run at once, with one lock per profile. Durable
+  cache bounds and freshness windows are described in [chat-caching.md](chat-caching.md).
+- Content: one native manifest owner serializes assignments from API and browser
+  workers. Writes replace manifests atomically; repeated allocations reuse their
+  existing assignment. Thumbnail decoding is serialized and cached on disk.
+- Previews: direct X11 capture and native JPEG encoding, with at most two captures
+  running and an eight-second per-display cache. No FFmpeg process is launched.
+- Subscriptions: one shared Rust Convex client multiplexes server queries. Browser
+  workers use authenticated local sockets; closing a socket drops its subscription.
 
 ## Rust allocation and async review (October 1, 2026)
 
@@ -84,10 +95,10 @@ cooldown. Expired cooldowns are eligible for eviction. If every entry is active 
 cooling down, requests for new profiles are rejected until capacity becomes available; the cache remains
 bounded. Cooldowns remain local to the process and do not survive a runtime restart.
 
-WebSocket read buffers are 16 KiB on VNC and both event-relay connections. Event
-text transfers its owned bytes between Axum and Tungstenite without a new string
-allocation. Both event connections have 1 MiB frame/message caps; awaited writes
-provide backpressure. The VNC read buffer stays off the async future's inline storage.
+WebSocket read buffers are 16 KiB on VNC and public event connections. Public
+events originate in Rust; there is no Bun event relay. Event connections have
+1 MiB frame/message caps; awaited writes provide backpressure. The VNC read buffer
+stays off the async future's inline storage.
 
 Workspace Clippy settings flag redundant clones, large futures, and locks held
 across awaits. Run `cargo fmt --all -- --check`,
@@ -118,4 +129,36 @@ Compatibility fixtures exercise CAA login and TOTP, cookie persistence, authenti
 SOCKS connections and remote DNS, messaging, profile edits, streaming uploads,
 scraper fallbacks/checkpoints, Telegram sessions, and public HTTP/WebSocket routing.
 Live Instagram behavior and VPS memory have not been measured for this migration.
-Browser automation, chat-cache/business commands, and Convex functions remain TypeScript.
+React, Convex functions and Playwright browser actions remain TypeScript.
+Content, chat, worker supervision, desktop previews, profile/account services,
+login/model coordination, proxy checks, clipboard and upload forwarding run in Rust.
+Portable tests and Linux
+cross-compilation cover the migration; live Linux desktop capture still requires
+verification on a host running TigerVNC and Fluxbox. Docker was not used to validate
+this migration.
+
+The October 5 migration preserves the existing credential encryption format.
+Profile leases hold SQLite OS locks across browser cleanup; folder maintenance
+and worker startup share the native process gate. Pending rename/deletion work
+retries from Convex state after a restart.
+
+Account coordination limits login and mobile setup to four concurrent operations.
+Proxy probes are limited to eight; the Work proxy exit cache holds at most 1,000
+entries for six hours. Login proxy probes always bypass that cache.
+Browser login attempts have unique IDs and explicit cancellation acknowledgements.
+Rust releases proxy claims after browser cleanup; unconfirmed cancellation keeps
+the exit IP quarantined until the runtime restarts.
+Clipboard selections live in a native X11 event loop with bounded transfers.
+File picker uploads stream over Unix sockets or Windows named pipes; the browser
+worker still owns the Playwright chooser. Ownership is checked before upload EOF.
+
+Model posts hold a native action lease until the browser result is saved.
+Disconnects and uncertain results retain pending state for operator review.
+Confirmed posts with a failed database save remain pending too.
+Live Linux clipboard behavior still needs verification on a desktop host.
+
+October 5 checks: 85 Rust tests, 192 server tests, 162 Convex tests and 51 UI tests
+passed. Type checks, lint, Windows debug/release builds and Linux Clippy with all
+targets passed. The optional native clipboard test needs a disposable Linux
+display in `NATIVE_CLIPBOARD_TEST_DISPLAY`; it covers Unicode, large incremental
+transfers and ownership changes. No Docker, commits or deployments were used.

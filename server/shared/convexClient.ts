@@ -194,20 +194,6 @@ async function convexFetch<T>(
   throw lastError
 }
 
-/** Server-only tag access; the browser never receives the Convex bridge key. */
-export function chatTagsRequest<T>(body?: Record<string, unknown>): Promise<T> {
-  return convexFetch('/api/chat/tags', body ? { method: 'POST', body, maxRetries: 0 } : undefined)
-}
-
-/** Authenticated calls from the scraper worker to Convex internal functions. */
-export function scraperRequest<T>(
-  operation: string,
-  body: Record<string, unknown> = {},
-): Promise<T> {
-  if (!/^[a-z-]+$/.test(operation)) throw new Error('Invalid scraper operation')
-  return convexFetch<T>(`/api/scraper/${operation}`, { method: 'POST', body })
-}
-
 export function leadListRequest(
   operation: 'rename' | 'delete',
   body: Record<string, unknown>,
@@ -287,22 +273,6 @@ export async function profilesGetByName(name: string): Promise<DbProfileRow | nu
   )
 }
 
-export async function profilesCreate(profile: ProfileInput): Promise<DbProfileRow | null> {
-  const name = String(profile?.name || '').trim()
-  if (!name) throw new Error('name is required')
-  return convexFetch<DbProfileRow | null>('/api/profiles', {
-    method: 'POST',
-    body: {
-      name,
-      proxy: profile.proxy,
-      proxyType: profile.proxyType,
-      fingerprintOs: profile.fingerprintOs,
-      fingerprintSeed: profile.fingerprintSeed,
-      cookiesJson: profile.cookiesJson,
-    },
-  })
-}
-
 export async function profilesUpdateByName(
   oldName: string,
   profile: ProfileInput,
@@ -325,16 +295,6 @@ export async function profilesUpdateByName(
   })
 }
 
-export async function profilesDeleteByName(name: string): Promise<true> {
-  const cleaned = String(name || '').trim()
-  if (!cleaned) throw new Error('name is required')
-  await convexFetch<any>('/api/profiles/delete-by-name', {
-    method: 'POST',
-    body: { name: cleaned },
-  })
-  return true
-}
-
 export async function profilesSyncStatus(
   name: string,
   status: string,
@@ -348,17 +308,6 @@ export async function profilesSyncStatus(
     body: { name: cleanedName, status: cleanedStatus, using },
   })
   return true
-}
-
-export function profilesCreateForModel(
-  modelId: string,
-  accounts: Array<{ id: string; username: string }>,
-): Promise<Array<{ profileId: string; username: string }>> {
-  return convexFetch('/api/profiles/create-for-model', {
-    method: 'POST',
-    body: { modelId, accounts },
-    maxRetries: 0,
-  })
 }
 
 export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): Promise<void> {
@@ -375,18 +324,6 @@ export function profilesSetOutreachReady(profileId: string): Promise<void> {
     body: { profileId, outreachReady: true },
     maxRetries: 0,
   })
-}
-
-export function chatUnreadSave(
-  profileId: string,
-  token: string,
-  unreadCount: number,
-): Promise<void> {
-  return convexFetch('/api/chat/count', {
-    method: 'POST',
-    maxRetries: 0,
-    body: { profileId, token, unreadCount },
-  }).then(() => {})
 }
 
 // ==================== AUTOMATIONS ====================
@@ -591,18 +528,6 @@ export const routineFinishSend = (
     method: 'POST',
     body: { profileId, leadId, date, sent, blocked },
   })
-
-export function profilesBeginDelete(name: string): Promise<DbProfileRow | null> {
-  return convexFetch('/api/profiles/begin-delete', { method: 'POST', body: { name } })
-}
-
-export function profilesFinishDelete(profileId: string): Promise<{ ok: true }> {
-  return convexFetch('/api/profiles/finish-delete', { method: 'POST', body: { profileId } })
-}
-
-export function profilesFinishRename(profileId: string): Promise<{ ok: true }> {
-  return convexFetch('/api/profiles/finish-rename', { method: 'POST', body: { profileId } })
-}
 
 export async function warmupFinishRun(input: {
   profileId: string

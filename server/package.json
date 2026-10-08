@@ -13,14 +13,10 @@
     "dependencies": {
         "@sentry/node": "^11.1.0",
         "cloakbrowser": "^0.5.11",
-        "convex": "^1.46.0",
         "dotenv": "^18.0.4",
-        "https-proxy-agent": "^9.1.0",
         "mmdb-lib": "^3.0.3",
         "pino": "^10.3.1",
         "playwright-core": "1.63.0",
-        "sharp": "^0.35.5",
-        "socks-proxy-agent": "^10.1.0",
         "ws": "^8.22.0"
     },
     "devDependencies": {

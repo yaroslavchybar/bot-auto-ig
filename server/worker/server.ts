@@ -13,7 +13,7 @@ export function isWorkerAuthorized(request: IncomingMessage): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected)
 }
 
-/** Loopback-only browser/business command transport. Axum owns public HTTP policy. */
+/** Loopback-only browser action transport. Axum owns public HTTP policy. */
 export function createWorkerServer(groups: Commands[]) {
   const operations = new Map(
     groups.flatMap((group) => group.operations).map((operation) => [operation.id, operation]),

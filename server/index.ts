@@ -3,40 +3,58 @@ import './env.js'
 // SDK/browser exceptions still reach Sentry from the worker.
 import './shared/sentry.js'
 
-import { initWebSocket } from './websocket.js'
-
 import { captureConsole } from './logs/console.js'
-import { profilesRouter } from './profiles/index.js'
-import { automationsRouter } from './automations/index.js'
-import displaysRouter from './displays/routes.js'
-import chatRouter from './chat/routes.js'
-import igAccountsRouter from './ig-accounts/routes.js'
-import { startIgAccountWorker } from './ig-accounts/login.js'
-import { startModelWarmupWorker } from './ig-accounts/warmup.js'
-import { startChatWorker } from './chat/worker.js'
 import { registerShutdownHandlers } from './automation/shutdown.js'
-import { profileManager } from './profiles/index.js'
 import { pruneOldCloakBrowsers } from './browser/cloakCache.js'
 import { backfillLocalCloakSeeds } from './browser/seedBackfill.js'
-import { retryProfileMaintenance, startProfileMaintenance } from './profiles/maintenance.js'
-import { getActiveRuntimeProfileNames } from './shared/store.js'
-import logger, { logOperation, addLogContext } from './shared/logger.js'
+import logger, { logOperation, addLogContext, redactLogValues } from './shared/logger.js'
 import { automationsReconcileInterrupted } from './shared/convexClient.js'
-import { cleanupOrphanedProcesses } from './shared/ProcessService.js'
-import { startScraperWorker } from './scraper/worker.js'
-import { startRuntime } from './shared/runtime.js'
+import { startRuntime, stopRuntime, runtimeRequest } from './shared/runtime.js'
+import { Commands } from './worker/commands.js'
+
+import { cancelBrowserLogin, runBrowserLogin, shutdownBrowserLogins } from './ig-accounts/login.js'
+import { ValidationError } from './shared/errors.js'
 
 import { createWorkerServer } from './worker/server.js'
 
 captureConsole()
-const server = createWorkerServer([
-  profilesRouter,
-  automationsRouter,
-  displaysRouter,
-  chatRouter,
-  igAccountsRouter,
-])
-const wss = initWebSocket(server)
+const callbacks = new Commands()
+callbacks.register('browser.shutdown', 'POST', '/', async (_req, res) => {
+  await shutdownBrowserLogins()
+  res.json({ stopped: true })
+})
+callbacks.register('browser.login', 'POST', '/', async (req, res) => {
+  const { attemptId, profileName, proxy, account } = req.body ?? {}
+  if (
+    typeof attemptId !== 'string' ||
+    !/^[\da-f-]{36}$/.test(attemptId) ||
+    typeof profileName !== 'string' ||
+    typeof proxy !== 'string' ||
+    typeof account?.username !== 'string' ||
+    typeof account?.password !== 'string' ||
+    typeof account?.authenticatorKey !== 'string'
+  )
+    throw new ValidationError('Invalid browser login')
+  redactLogValues(account.password, account.authenticatorKey, proxy)
+  const disconnected = () => {
+    void cancelBrowserLogin(attemptId).catch(() => undefined)
+  }
+  const action = runBrowserLogin(attemptId, profileName, proxy, account)
+  res.once('close', disconnected)
+  try {
+    res.json(await action)
+  } finally {
+    res.off('close', disconnected)
+  }
+})
+callbacks.register('browser.cancel-login', 'POST', '/', async (req, res) => {
+  const { attemptId } = req.body ?? {}
+  if (typeof attemptId !== 'string' || !/^[\da-f-]{36}$/.test(attemptId))
+    throw new ValidationError('Invalid browser login attempt')
+  await cancelBrowserLogin(attemptId)
+  res.json({ cancelled: true })
+})
+const server = createWorkerServer([callbacks])
 const PORT = process.env.WORKER_PORT || 3005
 
 const STARTUP_RETRY_ATTEMPTS = 10
@@ -63,11 +81,8 @@ async function retryStartup<T>(step: () => Promise<T>, label: string): Promise<T
 async function startServer(): Promise<void> {
   return logOperation('server.startup', { port: PORT }, async () => {
     // Register graceful shutdown handlers (SIGTERM/SIGINT)
-    registerShutdownHandlers({ httpServer: server, wss })
+    registerShutdownHandlers({ httpServer: server })
 
-    // Kill stale automation processes left behind by a crash. Detached
-    // children survive restarts, so reconcile them before touching flags.
-    await cleanupOrphanedProcesses()
     await startRuntime()
     const prunedBinaries = pruneOldCloakBrowsers()
     addLogContext({ prunedBinaryCount: prunedBinaries.length })
@@ -78,8 +93,10 @@ async function startServer(): Promise<void> {
         message: 'Pruned superseded Cloak browser binaries',
       })
     }
-    await retryProfileMaintenance()
-    server.once('close', startProfileMaintenance())
+    await retryStartup(
+      () => runtimeRequest('/profiles/maintenance', { method: 'POST', body: '{}' }),
+      'profile maintenance',
+    )
 
     // Convex dev deploys alongside the server, so the reconcile endpoint
     // may 404 until the new functions are live. Retry instead of crashing.
@@ -92,7 +109,10 @@ async function startServer(): Promise<void> {
     })
 
     // Reset stale profile runtime flags left behind by unexpected restarts.
-    const reconciled = await profileManager.reconcileRuntimeStatuses(getActiveRuntimeProfileNames())
+    const reconciled = await runtimeRequest<{ cleared: number; errors: string[] }>(
+      '/profiles/reconcile',
+      { method: 'POST', body: '{}' },
+    )
     addLogContext({
       reconciledProfileCount: reconciled.cleared,
       reconciliationErrorCount: reconciled.errors.length,
@@ -120,21 +140,15 @@ async function startServer(): Promise<void> {
       server.listen(Number(PORT), '127.0.0.1', () => {
         server.off('error', reject)
         resolve()
-        startIgAccountWorker()
-        startModelWarmupWorker()
-        const stopRoutineScheduler = startRoutineScheduler()
-        server.once('close', stopRoutineScheduler)
-        const stopScraperWorker = startScraperWorker()
-        server.once('close', stopScraperWorker)
-        server.once('close', startChatWorker())
-        addLogContext({ listening: true, websocketEnabled: true })
+        addLogContext({ listening: true })
       })
     })
+    await runtimeRequest('/coordination/start', { method: 'POST', body: '{}' })
   })
 }
 
-startServer().catch(() => {
+startServer().catch(async () => {
   // Startup emits its completion event before rejecting.
+  await stopRuntime()
   process.exit(1)
 })
-import { startRoutineScheduler } from './automations/scheduler.js'

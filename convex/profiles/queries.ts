@@ -102,13 +102,17 @@ export const maintenanceWork = query({
   },
 })
 
-/** Only connected Chat accounts need periodic Instagram inbox refreshes. */
+/** Subscribe to eligible connected accounts without sending browser configuration. */
 export const chatWorkerProfiles = query({
   args: { bridgeToken: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
     const memberships = await ctx.db.query('chatMemberships').collect()
-    return memberships.map((membership) => membership.profileId).sort()
+    const profiles = await Promise.all(memberships.map(({ profileId }) => ctx.db.get(profileId)))
+    return profiles
+      .filter((profile) => profile?.igLoggedIn && profile.status !== 'deleting')
+      .map((profile) => profile!._id)
+      .sort()
   },
 })
 import {

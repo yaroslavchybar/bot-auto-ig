@@ -1,7 +1,7 @@
 #![recursion_limit = "256"]
 mod api;
 mod instagram;
-mod schedules;
+mod native;
 mod scraper;
 #[cfg(test)]
 mod test_support;
@@ -68,6 +68,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         });
         let mobile = instagram::Service::new(api_state.clone(), uploads.clone());
         let scraper = scraper::Scraper::start(api_state.clone(), mobile.clone());
+        let native = native::Native::new(api_state.clone(), mobile.clone(), scraper.clone())?;
+        native.processes.cleanup_orphans().await?;
+        api_state
+            .native
+            .set(native.clone())
+            .ok()
+            .expect("Native services initialize once");
         let cleanup = uploads.clone();
         tokio::spawn(async move {
             let mut timer = tokio::time::interval(Duration::from_secs(60));
@@ -81,17 +88,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
         Router::new()
+            .merge(native::router(native))
             .merge(instagram::router(mobile))
             .merge(scraper::router(scraper))
-            .merge(
-                Router::new()
-                    .route(
-                        "/schedules/{id}",
-                        post(schedules::set).delete(schedules::remove),
-                    )
-                    .route("/schedules/due", get(schedules::due))
-                    .with_state(Arc::new(schedules::Schedules::default())),
-            )
             .merge(
                 Router::new()
                     .route("/uploads", post(uploads::stage))
@@ -104,6 +103,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let app = app
         .route("/health", get(|| async { Json(json!({"ok": true})) }))
         .layer(DefaultBodyLimit::max(15 * 1024 * 1024))
+        .layer(middleware::from_fn_with_state(
+            api_state.clone(),
+            |axum::extract::State(api): axum::extract::State<Arc<api::Api>>,
+             request: axum::extract::Request,
+             next: axum::middleware::Next| async move {
+                use axum::response::IntoResponse;
+                if request.uri().path() != "/health"
+                    && (api.key.is_empty()
+                        || request
+                            .headers()
+                            .get("authorization")
+                            .and_then(|v| v.to_str().ok())
+                            != Some(format!("Bearer {}", api.key).as_str()))
+                {
+                    return axum::http::StatusCode::UNAUTHORIZED.into_response();
+                }
+                next.run(request).await
+            },
+        ))
         .layer(middleware::from_fn(ig_service_common::request_log));
     let port = std::env::var("RUNTIME_PORT").unwrap_or_else(|_| "3004".into());
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}")).await?;
@@ -113,7 +131,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             connections: Arc::new(Semaphore::new(64)),
         })
         .layer(middleware::from_fn(ig_service_common::request_log));
-    // Docker nginx reaches the gateway, while RFB and helper endpoints stay local.
+    // The reverse proxy reaches the gateway; RFB and helper endpoints stay local.
     let gateway_host = if mode == "supervise" {
         "0.0.0.0"
     } else {
@@ -165,8 +183,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     });
     if mode == "helper" {
         tokio::select! {
-            result = &mut server => { result??; },
+            result = &mut server => {
+                if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
+                result??;
+            },
             _ = helper_shutdown() => {
+                if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
                 let _ = stop.send(true);
                 if let Ok(result) = tokio::time::timeout(Duration::from_secs(5), server).await { result??; }
             }
@@ -189,10 +211,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let result = tokio::select! {
         result = child.wait() => result,
         _ = &mut server => {
+            if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
             child.kill().await?;
             return Err("Native runtime stopped unexpectedly".into());
         },
         _ = shutdown() => {
+            if let Some(native) = api_state.native.get() { native.accounts.shutdown().await; native.coordination.shutdown().await; native.processes.shutdown().await?; }
             #[cfg(unix)]
             if let Some(pid) = child.id() { unsafe { libc::kill(pid as i32, libc::SIGTERM); } }
             match tokio::time::timeout(Duration::from_secs(60), child.wait()).await {
@@ -201,6 +225,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }?;
+    if let Some(native) = api_state.native.get() {
+        native.accounts.shutdown().await;
+        native.coordination.shutdown().await;
+        native.processes.shutdown().await?;
+    }
     let _ = stop.send(true);
     let _ = tokio::time::timeout(Duration::from_secs(5), server).await;
     if !result.success() {

@@ -1,12 +1,18 @@
-import { activeDisplays, type ActiveDisplaySession } from '../shared/store.js'
-import { NotFoundError, ValidationError } from '../shared/errors.js'
+import { runtimeRequest } from '../shared/runtime.js'
+import { ValidationError } from '../shared/errors.js'
 
-export function resolveDisplay(vncPortRaw: unknown): ActiveDisplaySession {
-  const vncPort = Number(vncPortRaw)
-  if (!Number.isSafeInteger(vncPort) || vncPort <= 0 || vncPort > 65535)
+export type ActiveDisplaySession = {
+  id: string
+  automationId: string
+  profileName: string
+  vncPort: number
+  displayNum: number
+  status: 'active'
+  agentActive: boolean
+}
+export async function resolveDisplay(raw: unknown): Promise<ActiveDisplaySession> {
+  const port = Number(raw)
+  if (!Number.isSafeInteger(port) || port <= 0 || port > 65535)
     throw new ValidationError('Invalid display port')
-  for (const session of activeDisplays.values()) {
-    if (session.vncPort === vncPort) return session
-  }
-  throw new NotFoundError('Display session not found')
+  return runtimeRequest('/displays/' + port)
 }
