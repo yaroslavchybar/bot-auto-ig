@@ -19,22 +19,33 @@ Instagram credentials and account proxies stay on the server.
 The Chat profile selector fetches only eligible profile IDs, names, and status,
 without browser configuration or cookie payloads.
 
-## Chat tags and filters
+Contact pictures in the inbox and conversation header are cached as image blobs
+in the device's IndexedDB, with up to 200 pictures per user for 30 days. Opening
+Chat reuses pictures fetched within the last 24 hours and refreshes older ones.
+There is no picture refresh timer. The cached picture stays visible during refresh
+and when offline; failed refreshes do not reset its age. Rust refreshes inbox picture
+URLs daily, including quiet contacts, and forwards small thumbnails from
+Instagram through the account proxy; it does not store picture bytes on the server.
+Only visible avatars load pictures. Missing pictures and group chats show initials.
 
-Open a conversation and use **Tags** to create a tag, reuse an existing one,
-or remove a tag. Each chat supports up to 10 tags, with 40 characters per tag.
-Names are trimmed, spaces collapsed, and stored in lowercase to avoid duplicates.
+## Chat archives and filters
 
-Use **All tags** above the conversation list to filter by tag. Combine it with
-the profile selector and search. The tag and profile filters stay in the page URL.
-Tags apply to a profile/conversation pair, so matching Instagram thread IDs in
-different profiles remain independent.
+Use **Archive** in a conversation header to move it out of the default **Inbox**.
+Choose **Archived** to view archived conversations, or **Inbox** for active chats.
+Use **Move to inbox** to restore a chat. New messages leave archived chats archived.
+You can also right-click a conversation in the list to archive it or move it to Inbox.
+Archiving does not delete messages or change Instagram's inbox.
 
-Convex stores only the tag metadata in `chatTags`. Reads and writes use internal
-functions behind the authenticated API and server-only Convex HTTP bridge key.
-The sole app admin can access all existing profiles; deleting profiles are excluded.
-Authenticated chat socket notifications refresh tags on other devices.
-Tags survive cache eviction, logout, and reconnect. Deleting a profile removes its tags.
+Folder filters combine with the profile selector and search, and stay in the URL.
+Archive status belongs to a profile/conversation pair, so identical thread IDs in
+other profiles remain independent. The open conversation and draft stay available
+when it is archived, even though it disappears from the Inbox list.
+
+Convex stores durable archive records in `chatArchives`, separate from message
+caches. Internal functions and the authenticated Rust API use a server-only
+Convex HTTP bridge key. Socket notifications refresh archive status on other devices.
+Archive status survives cache eviction, logout, and reconnect. Deleting a profile
+removes its archive records.
 
 The shared inbox and open conversation have 60-second and 20-second server
 freshness windows, respectively. In-flight Instagram requests are shared and

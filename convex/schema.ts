@@ -200,10 +200,9 @@ export default defineSchema({
     unreadCount: v.number(),
     enabled: v.boolean(),
   }).index('by_profile', ['profileId']),
-  chatTags: defineTable({
+  chatArchives: defineTable({
     profileId: v.id('profiles'),
     threadId: v.string(),
-    tags: v.array(v.string()),
   }).index('by_profile_thread', ['profileId', 'threadId']),
 
   scrapeJobs: defineTable({

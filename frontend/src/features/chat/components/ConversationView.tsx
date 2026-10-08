@@ -17,23 +17,23 @@ import {
   Trash2,
   Video,
 } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import { ChatTags } from './ChatTags'
+import { ChatArchiveAction } from './ChatArchiveAction'
+import { ChatAvatar } from './ChatAvatar'
 import type { ChatMessage, ChatThread } from '../types'
 import {
   attachmentLabel,
   formatClock,
   formatDayLabel,
   groupMessages,
-  initials,
   messageText,
 } from '../utils/chat'
 
 type ConversationViewProps = {
+  profileId: string
   conversation: ChatThread | null
   selectedThread: ChatThread | undefined
   selectedThreadId: string
@@ -55,13 +55,13 @@ type ConversationViewProps = {
   onError: (message: string) => void
   replyMaxLength: number
   onBack: () => void
-  tags: string[]
-  availableTags: string[]
-  tagsLoading: boolean
-  onTagChange: (tag: string, enabled: boolean) => Promise<void>
+  archived: boolean
+  archiveDisabled: boolean
+  onArchiveChange: (archived: boolean) => Promise<void>
 }
 
 export function ConversationView({
+  profileId,
   conversation,
   selectedThread,
   selectedThreadId,
@@ -83,10 +83,9 @@ export function ConversationView({
   onError,
   replyMaxLength,
   onBack,
-  tags,
-  availableTags,
-  tagsLoading,
-  onTagChange,
+  archived,
+  archiveDisabled,
+  onArchiveChange,
 }: ConversationViewProps) {
   const title = selectedThread?.title || conversation?.title || ''
   const users = selectedThread?.users.length ? selectedThread.users : (conversation?.users ?? [])
@@ -281,15 +280,16 @@ export function ConversationView({
         >
           <ArrowLeft />
         </Button>
-        <Avatar className="size-8 shrink-0 border brand-avatar">
-          <AvatarFallback className="bg-panel-strong text-[11px] font-semibold text-copy">
-            {initials(title)}
-          </AvatarFallback>
-        </Avatar>
+        <ChatAvatar profileId={profileId} viewerId={viewerId} users={users} title={title} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-semibold">{title || 'Conversation'}</p>
           <ConversationSubtitle users={users} profileName={selectedThread?.profileName} />
         </div>
+        <ChatArchiveAction
+          archived={archived}
+          disabled={archiveDisabled}
+          onChange={onArchiveChange}
+        />
         {instagramUsername && (
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <a
@@ -304,13 +304,6 @@ export function ConversationView({
           </Button>
         )}
       </div>
-
-      <ChatTags
-        tags={tags}
-        availableTags={availableTags}
-        loading={tagsLoading}
-        onChange={onTagChange}
-      />
 
       <div className="relative min-h-0 flex-1">
         <div

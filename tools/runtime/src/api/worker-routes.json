@@ -96,17 +96,25 @@
     "imageRead": false
   },
   {
-    "id": "chat.get.tags",
+    "id": "chat.get.archives",
     "method": "GET",
-    "path": "/api/chat/tags",
+    "path": "/api/chat/archives",
     "body": "json",
     "maxBody": 1048576,
     "imageRead": false
   },
   {
-    "id": "chat.post.profileId_tags",
+    "id": "chat.get.profileId_avatars_userId_image",
+    "method": "GET",
+    "path": "/api/chat/:profileId/avatars/:userId/image",
+    "body": "raw",
+    "maxBody": 1048576,
+    "imageRead": true
+  },
+  {
+    "id": "chat.post.profileId_archive",
     "method": "POST",
-    "path": "/api/chat/:profileId/tags",
+    "path": "/api/chat/:profileId/archive",
     "body": "json",
     "maxBody": 1048576,
     "imageRead": false

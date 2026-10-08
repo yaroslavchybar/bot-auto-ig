@@ -37,7 +37,8 @@ import type {
   ChatMessage,
   ChatSession,
   ChatThread,
-  ChatTagRecord,
+  ChatArchiveRecord,
+  ChatFolder,
   OlderChatPage,
 } from '../types'
 
@@ -69,19 +70,24 @@ export function useChatPage() {
   const navigate = useNavigate()
   const selection = new URLSearchParams(search)
   const profileId = selection.get('profile') || 'all'
-  const tagFilter = selection.get('tag') || ''
-  const [tagSnapshot, setTagSnapshot] = useState<{ userId: string; rows: ChatTagRecord[] } | null>(
-    null,
-  )
-  const tagRows = tagSnapshot?.userId === userId ? tagSnapshot.rows : undefined
-  const [tagRefresh, setTagRefresh] = useState(0)
-  const tagsByThread = useMemo(
-    () => new Map((tagRows ?? []).map((row) => [`${row.profileId}:${row.threadId}`, row.tags])),
-    [tagRows],
-  )
-  const availableTags = useMemo(
-    () => [...new Set((tagRows ?? []).flatMap((row) => row.tags))].sort(),
-    [tagRows],
+  const folderParam = selection.get('folder')
+  const folder: ChatFolder = folderParam === 'archived' ? 'archived' : 'inbox'
+  const [archiveSnapshot, setArchiveSnapshot] = useState<{
+    userId: string
+    rows: ChatArchiveRecord[]
+  } | null>(null)
+  const archiveRows = archiveSnapshot?.userId === userId ? archiveSnapshot.rows : undefined
+  const [archiveRefresh, setArchiveRefresh] = useState(0)
+  const [savingArchive, setSavingArchive] = useState(false)
+  const archiveSave = useRef(false)
+  const archiveVersion = useRef(0)
+  const currentUser = useRef(userId)
+  useLayoutEffect(() => {
+    currentUser.current = userId
+  }, [userId])
+  const archivedThreads = useMemo(
+    () => new Set((archiveRows ?? []).map((row) => `${row.profileId}:${row.threadId}`)),
+    [archiveRows],
   )
   const rawThreadId = selection.get('thread') || ''
   const selectedThreadId = (profileId === 'all'
@@ -143,17 +149,20 @@ export function useChatPage() {
   const now = useNow()
   const visible = useDocumentVisibility()
   useEffect(() => {
-    if (!userId || !visible) return
+    if (!userId || !visible || archiveSave.current) return
     const controller = new AbortController()
-    void apiFetch<ChatTagRecord[]>('/api/chat/tags', { signal: controller.signal })
+    const version = ++archiveVersion.current
+    void apiFetch<ChatArchiveRecord[]>('/api/chat/archives', { signal: controller.signal })
       .then((rows) => {
-        if (!controller.signal.aborted) setTagSnapshot({ userId, rows })
+        if (!controller.signal.aborted && version === archiveVersion.current)
+          setArchiveSnapshot({ userId, rows })
       })
       .catch((error) => {
-        if (!controller.signal.aborted) setError(errorText(error))
+        if (!controller.signal.aborted && version === archiveVersion.current)
+          setError(errorText(error))
       })
     return () => controller.abort()
-  }, [userId, visible, inboxRefresh, tagRefresh])
+  }, [userId, visible, inboxRefresh, archiveRefresh, savingArchive])
   const changeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingChange = useRef({ invalidate: false, thread: false })
   const queueChatRefresh = useCallback(
@@ -182,8 +191,8 @@ export function useChatPage() {
     eventsOnly: true,
     topic: 'chat',
     onEvent: (event) => {
-      if (event.type === 'chat_changed' && event.tagsChanged === true) {
-        setTagRefresh((value) => value + 1)
+      if (event.type === 'chat_changed' && event.archivesChanged === true) {
+        setArchiveRefresh((value) => value + 1)
         return
       }
       if (
@@ -284,11 +293,11 @@ export function useChatPage() {
   const loadingThread =
     canLoadChat && Boolean(selectedThreadId) && completedThreadRequest !== threadRequestKey
 
-  function updateSelection(nextProfileId: string, nextThreadId = '', nextTag = tagFilter) {
+  function updateSelection(nextProfileId: string, nextThreadId = '', nextFolder = folder) {
     const next = new URLSearchParams()
     if (nextProfileId !== 'all') next.set('profile', nextProfileId)
     if (nextThreadId) next.set('thread', nextThreadId)
-    if (nextTag) next.set('tag', nextTag)
+    if (nextFolder !== 'inbox') next.set('folder', nextFolder)
     const query = next.toString()
     navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
   }
@@ -554,19 +563,19 @@ export function useChatPage() {
             .sort((a, b) => b.message.timestamp - a.message.timestamp)[0]?.message
           return {
             ...thread,
-            tags: tagsByThread.get(key) ?? [],
+            archived: archivedThreads.has(key),
             ...(latest && latest.timestamp >= (thread.messages[0]?.timestamp ?? 0)
               ? { messages: [latest] }
               : {}),
           }
         }),
       ),
-    [inbox, activeProfileId, outgoingReplies, tagsByThread],
+    [inbox, activeProfileId, outgoingReplies, archivedThreads],
   )
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const visibleThreads = useMemo(
-    () => filterThreads(threads, deferredSearchQuery, tagFilter),
-    [threads, deferredSearchQuery, tagFilter],
+    () => (archiveRows === undefined ? [] : filterThreads(threads, deferredSearchQuery, folder)),
+    [threads, deferredSearchQuery, folder, archiveRows],
   )
   const selectedThread = useMemo(
     () =>
@@ -581,7 +590,7 @@ export function useChatPage() {
       ? selectedThreadId
       : `${activeProfileId}:${selectedThreadId}`
     : ''
-  const selectedTags = tagsByThread.get(selectedReplyKey) ?? []
+  const selectedArchived = archivedThreads.has(selectedReplyKey)
   useLayoutEffect(() => {
     activeThreadKey.current = selectedReplyKey
     return () => {
@@ -715,32 +724,34 @@ export function useChatPage() {
     updateSelection(activeProfileId, id)
   }
 
-  function selectTagFilter(tag: string) {
-    updateSelection(activeProfileId, selectedThreadId, tag)
+  function selectFolder(value: ChatFolder) {
+    updateSelection(activeProfileId, selectedThreadId, value)
   }
 
-  async function changeTag(tag: string, enabled: boolean) {
-    if (!selectedThreadId) return
-    const targetProfileId =
-      activeProfileId === 'all' ? selectedThreadId.split(':')[0] : activeProfileId
-    const targetThreadId =
-      activeProfileId === 'all' ? selectedThreadId.split(':')[1] : selectedThreadId
+  async function changeArchive(archived: boolean, threadKey = selectedThreadId) {
+    if (!threadKey || !userId || archiveRows === undefined || archiveSave.current) return
+    const targetProfileId = activeProfileId === 'all' ? threadKey.split(':')[0] : activeProfileId
+    const targetThreadId = activeProfileId === 'all' ? threadKey.split(':')[1] : threadKey
     if (!targetProfileId || !targetThreadId) return
+    archiveSave.current = true
+    ++archiveVersion.current // Ignore reads started before this write.
+    setSavingArchive(true)
     setError('')
     try {
-      const rows = await apiFetch<ChatTagRecord[]>(
-        `/api/chat/${encodeURIComponent(targetProfileId)}/tags`,
+      const rows = await apiFetch<ChatArchiveRecord[]>(
+        `/api/chat/${encodeURIComponent(targetProfileId)}/archive`,
         {
           method: 'POST',
-          body: { threadId: targetThreadId, tag, enabled },
+          body: { threadId: targetThreadId, archived },
           maxRetries: 0,
         },
       )
-      setTagSnapshot((current) => (current?.userId !== userId ? current : { userId, rows }))
+      if (currentUser.current === userId) setArchiveSnapshot({ userId, rows })
     } catch (error) {
-      setError(errorText(error))
-      // The tag editor catches this and keeps its input for a retry.
-      throw error
+      if (currentUser.current === userId) setError(errorText(error))
+    } finally {
+      archiveSave.current = false
+      setSavingArchive(false)
     }
   }
 
@@ -1124,12 +1135,13 @@ export function useChatPage() {
     inboxErrors,
     threads,
     visibleThreads,
-    availableTags,
-    selectedTags,
-    tagsLoading: tagRows === undefined,
-    tagFilter,
-    selectTagFilter,
-    changeTag,
+    folderCount: filterThreads(threads, '', folder).length,
+    selectedArchived,
+    archivesLoading: archiveRows === undefined,
+    savingArchive,
+    folder,
+    selectFolder,
+    changeArchive,
     selectedThread,
     conversation: displayedConversation,
     hasOlder:

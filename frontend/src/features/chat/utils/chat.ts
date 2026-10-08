@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatThread } from '../types'
+import type { ChatFolder, ChatMessage, ChatThread } from '../types'
 
 // Backend returns microsecond timestamps divided by 1000 (ms epoch),
 // but guard against second-epoch values so labels never show 1970.
@@ -60,11 +60,14 @@ export function sortThreadsByLatest(threads: ChatThread[]): ChatThread[] {
   return [...threads].sort((a, b) => threadTime(b) - threadTime(a))
 }
 
-export function filterThreads(threads: ChatThread[], query: string, tag = ''): ChatThread[] {
+export function filterThreads(
+  threads: ChatThread[],
+  query: string,
+  folder: ChatFolder = 'inbox',
+): ChatThread[] {
   const needle = query.trim().toLowerCase()
-  if (!needle && !tag) return threads
   return threads.filter((thread) => {
-    if (tag && !thread.tags?.includes(tag)) return false
+    if (Boolean(thread.archived) !== (folder === 'archived')) return false
     if (!needle) return true
     const haystacks = [
       thread.title,
@@ -153,16 +156,9 @@ export function groupMessages(messages: ChatMessage[]): MessageGroup[] {
     const gap =
       current && message.timestamp && current.messages.length
         ? normalizeTimestamp(message.timestamp) -
-          normalizeTimestamp(
-            current.messages[current.messages.length - 1].timestamp,
-          )
+          normalizeTimestamp(current.messages[current.messages.length - 1].timestamp)
         : Number.POSITIVE_INFINITY
-    if (
-      current &&
-      !dayChanged &&
-      current.senderId === message.senderId &&
-      gap < 5 * 60_000
-    ) {
+    if (current && !dayChanged && current.senderId === message.senderId && gap < 5 * 60_000) {
       current.messages.push(message)
     } else {
       groups.push({

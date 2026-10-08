@@ -1,4 +1,5 @@
-export type ChatTagRecord = { profileId: string; threadId: string; tags: string[] }
+export type ChatArchiveRecord = { profileId: string; threadId: string }
+export type ChatFolder = 'inbox' | 'archived'
 
 export type ChatMessage = {
   id: string
@@ -15,14 +16,14 @@ export type ChatMessage = {
 
 export type ChatThread = {
   id: string
-  tags?: string[]
+  archived?: boolean
   unread?: boolean
   confirmedMessageIds?: string[]
   profileId?: string
   profileName?: string
   viewerId?: string
   title: string
-  users: { id: string; username: string }[]
+  users: { id: string; username: string; profilePicUrl?: string }[]
   messages: ChatMessage[]
   lastSeenAt: { userId: string; timestamp: number }[]
 }

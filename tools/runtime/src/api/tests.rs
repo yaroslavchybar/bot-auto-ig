@@ -185,17 +185,17 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
                 )
                     .into_response();
             }
-            if path == "/commands/chat.get.tags" {
+            if path == "/commands/chat.get.archives" {
                 assert_eq!(params, json!({}));
-                return Json(json!([{"threadId":"123", "tags":["customer"]}])).into_response();
+                return Json(json!([{"profileId":"profile", "threadId":"123"}])).into_response();
             }
-            if path == "/commands/chat.post.profileId_tags" {
+            if path == "/commands/chat.post.profileId_archive" {
                 assert_eq!(params["profileId"], "profile");
                 assert_eq!(
                     body(request).await,
-                    json!({"threadId":"123", "tag":"customer", "enabled":true})
+                    json!({"threadId":"123", "archived":true})
                 );
-                return Json(json!([{"threadId":"123", "tags":["customer"]}])).into_response();
+                return Json(json!([{"profileId":"profile", "threadId":"123"}])).into_response();
             }
             if path.contains("file-picker") {
                 assert_eq!(request.headers()["x-worker-method"], "POST");
@@ -240,23 +240,23 @@ async fn api_preserves_parameters_streams_images_profiles_and_body_limits() {
     assert_eq!(reconnect.headers()["retry-after"], "60");
     for method in [Method::GET, Method::POST] {
         let path = if method == Method::GET {
-            "/api/chat/tags"
+            "/api/chat/archives"
         } else {
-            "/api/chat/profile/tags"
+            "/api/chat/profile/archive"
         };
         let mut request = client
             .request(method.clone(), format!("{}{path}", public.url))
             .header("x-request-id", "fixture-request-123");
         if method == Method::POST {
             request = request.json(&json!({
-                "threadId":"123", "tag":"customer", "enabled":true
+                "threadId":"123", "archived":true
             }));
         }
         let response = request.send().await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(
             response.json::<Value>().await.unwrap(),
-            json!([{"threadId":"123", "tags":["customer"]}])
+            json!([{"profileId":"profile", "threadId":"123"}])
         );
     }
     let profiles: Value = client
@@ -398,8 +398,9 @@ async fn gallery_quota_is_separate_and_internal_key_is_limited_to_automation() {
     state.key = "fixture".into();
     let public = Fixture::router(router(Arc::new(state))).await;
     for (method, path) in [
-        (Method::GET, "/api/chat/tags"),
-        (Method::POST, "/api/chat/profile/tags"),
+        (Method::GET, "/api/chat/archives"),
+        (Method::GET, "/api/chat/profile/avatars/42/image"),
+        (Method::POST, "/api/chat/profile/archive"),
     ] {
         for token in [None, Some("invalid-session"), Some("fixture")] {
             let mut request = client.request(method.clone(), format!("{}{path}", public.url));

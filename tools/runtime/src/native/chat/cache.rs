@@ -15,6 +15,8 @@ struct Session {
     viewer_id: String,
     ids: Vec<String>,
     synced_at: u64,
+    #[serde(default)]
+    picture_urls_synced_at: u64,
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,6 +86,7 @@ impl Cache {
                     token: token.into(),
                     viewer_id: viewer.into(),
                     ids: vec![],
+                    picture_urls_synced_at: 0,
                     synced_at: 0,
                 }
             };
@@ -162,6 +165,23 @@ impl Cache {
     pub fn thread(&self, id: &str, thread: &str) -> Result<Option<Thread>> {
         Ok(self.row(id, thread)?.map(public))
     }
+    pub fn picture_url(&self, profile: &str, user: &str) -> Result<Option<String>> {
+        Ok(self.db.query_row(
+            "SELECT json_extract(user.value, '$.profilePicUrl') FROM threads, json_each(threads.value, '$.users') AS user
+             WHERE profileId=? AND json_extract(user.value, '$.id')=? AND json_type(user.value, '$.profilePicUrl')='text'
+             ORDER BY updatedAt DESC LIMIT 1",
+            params![profile, user], |row| row.get(0),
+        ).optional()?)
+    }
+    pub fn needs_picture_urls(&self, profile: &str) -> Result<bool> {
+        self.picture_urls_due(profile, crate::api::now_ms())
+    }
+    pub fn picture_urls_due(&self, profile: &str, now: u64) -> Result<bool> {
+        Ok(self.session(profile)?.is_some_and(|session| {
+            session.picture_urls_synced_at == 0
+                || now.saturating_sub(session.picture_urls_synced_at) >= 24 * 60 * 60 * 1000
+        }))
+    }
     pub fn unread_count(&self, id: &str) -> Result<u64> {
         Ok(self.db.query_row(
             "SELECT COUNT(*) FROM threads WHERE profileId=? AND json_extract(value, '$.unread')=1",
@@ -213,6 +233,9 @@ impl Cache {
             ids.truncate(MAX_THREADS);
             session.ids = ids;
             session.viewer_id = viewer.into();
+            if !unread {
+                session.picture_urls_synced_at = now;
+            }
             this.save_session(id, &session)?;
             let next = this.inbox(id)?;
             if previous.threads != next.threads
@@ -460,6 +483,39 @@ fn public(mut row: Row) -> Thread {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn picture_url_refresh_is_daily_and_unread_polls_do_not_postpone_it() {
+        let mut cache = Cache::open(Path::new(":memory:")).unwrap();
+        cache.connect("one", "token", "viewer").unwrap();
+        cache
+            .save_inbox("one", "token", "viewer", vec![], true)
+            .unwrap();
+        assert!(cache.needs_picture_urls("one").unwrap());
+        cache
+            .save_inbox("one", "token", "viewer", vec![], false)
+            .unwrap();
+        let fetched = cache
+            .session("one")
+            .unwrap()
+            .unwrap()
+            .picture_urls_synced_at;
+        let day = 24 * 60 * 60 * 1000;
+        assert!(!cache.picture_urls_due("one", fetched + day - 1).unwrap());
+        assert!(cache.picture_urls_due("one", fetched + day).unwrap());
+        cache
+            .save_inbox("one", "token", "viewer", vec![], true)
+            .unwrap();
+        assert_eq!(
+            cache
+                .session("one")
+                .unwrap()
+                .unwrap()
+                .picture_urls_synced_at,
+            fetched
+        );
+        assert!(cache.picture_urls_due("one", fetched + day).unwrap());
+    }
     #[cfg(unix)]
     #[test]
     fn file_backed_databases_are_owner_only() {

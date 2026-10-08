@@ -1,5 +1,6 @@
 mod cache;
 pub mod model;
+mod pictures;
 #[cfg(test)]
 mod tests;
 
@@ -36,6 +37,7 @@ pub struct Chat {
     db: Arc<std::sync::Mutex<Cache>>,
     profiles: Mutex<HashMap<String, Arc<Mutex<Entry>>>>,
     commands: Arc<tokio::sync::Semaphore>,
+    picture_slots: Arc<tokio::sync::Semaphore>,
 }
 impl Chat {
     pub fn new(api: Arc<Api>, mobile: Arc<Mobile>, file: &Path) -> Result<Arc<Self>> {
@@ -45,6 +47,7 @@ impl Chat {
             db: Arc::new(std::sync::Mutex::new(Cache::open(file)?)),
             profiles: Default::default(),
             commands: Arc::new(tokio::sync::Semaphore::new(4)),
+            picture_slots: Arc::new(tokio::sync::Semaphore::new(4)),
         }))
     }
     async fn db<T: Send + 'static>(
@@ -179,7 +182,11 @@ impl Chat {
             self.db(move |db| db.inbox(&id)).await?
         };
         entry.inbox = Some(old.clone());
+        // Refresh all picture URLs daily; unread-only snapshots miss quiet contacts.
+        let profile = id.to_owned();
+        let needs_pictures = self.db(move |db| db.needs_picture_urls(&profile)).await?;
         if !force
+            && !needs_pictures
             && old.synced_at != 0
             && now.saturating_sub(entry.checked.max(old.synced_at)) < 60_000
         {
@@ -199,7 +206,7 @@ impl Chat {
                 };
             }
         }
-        let unread = old.synced_at > 0;
+        let unread = old.synced_at > 0 && !needs_pictures;
         let fetched = self
             .mobile(
                 "inbox",
@@ -375,10 +382,13 @@ impl Chat {
         let query = super::query(request.uri().query().unwrap_or(""));
         let id = params.get("profileId").map(String::as_str).unwrap_or("");
         let thread = params.get("threadId").map(String::as_str).unwrap_or("");
-        if operation == "chat.get.tags" {
-            return Ok(
-                Json(self.api.convex(Method::GET, "/api/chat/tags", None).await?).into_response(),
-            );
+        if operation == "chat.get.archives" {
+            return Ok(Json(
+                self.api
+                    .convex(Method::GET, "/api/chat/archives", None)
+                    .await?,
+            )
+            .into_response());
         }
         if operation == "chat.get.threads" {
             let profiles = self.api.convex(Method::GET, "/api/profiles", None).await?;
@@ -423,6 +433,15 @@ impl Chat {
             return Ok(Json(json!({"threads": threads, "errors": errors})).into_response());
         }
         let profile = self.profile(id).await?;
+        if operation == "chat.get.profileId_avatars_userId_image" {
+            return self
+                .picture(
+                    id,
+                    params.get("userId").map(String::as_str).unwrap_or(""),
+                    &profile,
+                )
+                .await;
+        }
         if !thread.is_empty() {
             valid_id(thread)?;
         }
@@ -517,20 +536,24 @@ impl Chat {
         } else {
             serde_json::from_slice(&bytes)?
         };
-        if operation == "chat.post.profileId_tags" {
-            let tag = body["tag"]
-                .as_str()
-                .ok_or_else(|| Failure::invalid("Invalid chat tag"))?;
-            let enabled = body["enabled"]
+        if operation == "chat.post.profileId_archive" {
+            let archived = body["archived"]
                 .as_bool()
-                .ok_or_else(|| Failure::invalid("Invalid chat tag"))?;
+                .ok_or_else(|| Failure::invalid("Invalid archive status"))?;
             let thread = body["threadId"].as_str().unwrap_or("");
             valid_id(thread)?;
-            let rows = self.api.convex(Method::POST, "/api/chat/tags", Some(&json!({"profileId": id, "threadId": thread, "tag": tag, "enabled": enabled}))).await?;
+            let rows = self
+                .api
+                .convex(
+                    Method::POST,
+                    "/api/chat/archives",
+                    Some(&json!({"profileId": id, "threadId": thread, "archived": archived})),
+                )
+                .await?;
             let _ = self
                 .api
                 .events
-                .send(json!({"type": "chat_changed", "profileId": id, "tagsChanged": true}));
+                .send(json!({"type": "chat_changed", "profileId": id, "threadId": thread, "archivesChanged": true}));
             return Ok(Json(rows).into_response());
         }
         let lock = self.entry(id).await?;

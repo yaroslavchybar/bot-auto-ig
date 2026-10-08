@@ -78,10 +78,12 @@ export function ChatPage() {
               )}
             >
               <ThreadList
+                profileId={chat.activeProfileId}
+                viewerId={chat.inbox?.viewerId ?? ''}
                 threads={chat.visibleThreads}
-                totalCount={chat.threads.length}
+                totalCount={chat.folderCount}
                 selectedThreadId={chat.selectedThreadId}
-                loading={chat.loadingInbox}
+                loading={chat.loadingInbox || chat.archivesLoading}
                 disabled={!chat.connected}
                 emptyDescription={
                   chat.activeProfileId === 'all'
@@ -94,10 +96,10 @@ export function ChatPage() {
                 onSearchChange={chat.setSearchQuery}
                 onSelect={chat.selectThread}
                 now={chat.now}
-                tagFilter={chat.tagFilter}
-                availableTags={chat.availableTags}
-                tagsLoading={chat.tagsLoading}
-                onTagFilterChange={chat.selectTagFilter}
+                folder={chat.folder}
+                onFolderChange={chat.selectFolder}
+                archiveDisabled={chat.archivesLoading || chat.savingArchive}
+                onArchiveChange={(key, archived) => chat.changeArchive(archived, key)}
               />
             </div>
 
@@ -114,6 +116,11 @@ export function ChatPage() {
                 />
               ) : (
                 <ConversationView
+                  profileId={
+                    chat.activeProfileId === 'all'
+                      ? chat.selectedThreadId.split(':')[0]
+                      : chat.activeProfileId
+                  }
                   key={`${chat.activeProfileId}:${chat.selectedThreadId}`}
                   conversation={chat.conversation}
                   selectedThread={chat.selectedThread}
@@ -136,10 +143,9 @@ export function ChatPage() {
                   onError={chat.setError}
                   replyMaxLength={chat.replyMaxLength}
                   onBack={() => chat.selectThread('')}
-                  tags={chat.selectedTags}
-                  availableTags={chat.availableTags}
-                  tagsLoading={chat.tagsLoading}
-                  onTagChange={chat.changeTag}
+                  archived={chat.selectedArchived}
+                  archiveDisabled={chat.archivesLoading || chat.savingArchive}
+                  onArchiveChange={chat.changeArchive}
                 />
               )}
             </div>

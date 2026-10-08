@@ -28,6 +28,180 @@ fn setup() -> Cache {
     cache.connect("one", "token", "viewer").unwrap();
     cache
 }
+
+#[test]
+fn picture_sources_persist_with_messages_and_remain_scoped_to_the_profile() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("cache.sqlite");
+    let mut cache = Cache::open(&file).unwrap();
+    cache.connect("one", "token", "viewer").unwrap();
+    cache.connect("two", "token", "viewer").unwrap();
+    assert!(cache.needs_picture_urls("one").unwrap());
+    let mut item = thread(vec![], "123");
+    item.users.push(User {
+        id: "42".into(),
+        username: "friend".into(),
+        profile_pic_url: Some("https://scontent.cdninstagram.com/first.jpg".into()),
+    });
+    cache
+        .save_inbox("one", "token", "viewer", vec![item.clone()], false)
+        .unwrap();
+    assert!(!cache.needs_picture_urls("one").unwrap());
+    assert!(cache.picture_url("two", "42").unwrap().is_none());
+    drop(cache);
+    let mut cache = Cache::open(&file).unwrap();
+    assert_eq!(
+        cache.picture_url("one", "42").unwrap().as_deref(),
+        Some("https://scontent.cdninstagram.com/first.jpg")
+    );
+    item.users[0].profile_pic_url = Some("https://scontent.cdninstagram.com/new.jpg".into());
+    cache
+        .save_inbox("one", "token", "viewer", vec![item], false)
+        .unwrap();
+    assert_eq!(
+        cache.picture_url("one", "42").unwrap().as_deref(),
+        Some("https://scontent.cdninstagram.com/new.jpg")
+    );
+    cache.clear("one").unwrap();
+    assert!(cache.picture_url("one", "42").unwrap().is_none());
+}
+
+#[test]
+fn untrusted_picture_urls_are_not_retained_in_chat_users() {
+    for url in [
+        "http://cdninstagram.com/a",
+        "https://cdninstagram.com.evil.test/a",
+        "https://127.0.0.1/a",
+        "https://user:password@cdninstagram.com/a",
+        "https://cdninstagram.com:444/a",
+    ] {
+        let raw = json!({"thread_id":"1","users":[{"pk":"42","username":"friend","profile_pic_url":url}]});
+        assert!(model::thread(&raw, true).users[0].profile_pic_url.is_none());
+    }
+}
+
+#[tokio::test]
+async fn archives_use_convex_without_a_mobile_session_and_notify_only_after_success() {
+    let archived = Arc::new(std::sync::Mutex::new(false));
+    let stored = archived.clone();
+    let fixture = Fixture::start(move |request| {
+        let stored = stored.clone();
+        async move {
+            assert_eq!(request.headers()["authorization"], "Bearer fixture");
+            match request.uri().path() {
+                "/api/profiles/by-id" => Json(json!({"id":"p","igLoggedIn":false})).into_response(),
+                "/api/chat/archives" => {
+                    if request.method() == Method::POST {
+                        let data = body(request).await;
+                        assert_eq!(data["profileId"], "p");
+                        if data["threadId"] == "999" {
+                            return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                        }
+                        assert_eq!(data["threadId"], "123");
+                        *stored.lock().unwrap() = data["archived"].as_bool().unwrap();
+                    }
+                    Json(if *stored.lock().unwrap() {
+                        json!([{"profileId":"p","threadId":"123"}])
+                    } else {
+                        json!([])
+                    })
+                    .into_response()
+                }
+                path => panic!("Archive operation unexpectedly requested {path}"),
+            }
+        }
+    })
+    .await;
+    let mobile_calls = Arc::new(AtomicUsize::new(0));
+    let calls = mobile_calls.clone();
+    let mobile_fixture = Fixture::start(move |_| {
+        let calls = calls.clone();
+        async move {
+            calls.fetch_add(1, Ordering::Relaxed);
+            StatusCode::SERVICE_UNAVAILABLE.into_response()
+        }
+    })
+    .await;
+    let mut api = Api::from_env().unwrap();
+    api.key = "fixture".into();
+    api.convex_url = fixture.url.clone();
+    let api = Arc::new(api);
+    let mut events = api.events.subscribe();
+    let uploads = Arc::new(crate::uploads::Uploads {
+        entries: Default::default(),
+        slots: Arc::new(tokio::sync::Semaphore::new(4)),
+    });
+    let mobile = Mobile::fixture(api.clone(), uploads, mobile_fixture.url.clone());
+    let chat = Chat::new(api, mobile, Path::new(":memory:")).unwrap();
+    let params = HashMap::from([("profileId".into(), "p".into())]);
+    for archived in [true, false] {
+        let request = HttpRequest::builder()
+            .method("POST")
+            .body(Body::from(
+                json!({"threadId":"123","archived":archived}).to_string(),
+            ))
+            .unwrap();
+        let response = chat
+            .public("chat.post.profileId_archive", &params, request)
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            events.try_recv().unwrap(),
+            json!({
+                "type":"chat_changed","profileId":"p","threadId":"123","archivesChanged":true
+            })
+        );
+        let response = chat
+            .public(
+                "chat.get.archives",
+                &HashMap::new(),
+                HttpRequest::builder().body(Body::empty()).unwrap(),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let data: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(
+            data,
+            if archived {
+                json!([{"profileId":"p","threadId":"123"}])
+            } else {
+                json!([])
+            }
+        );
+    }
+    for data in [
+        json!({"threadId":"bad","archived":true}),
+        json!({"threadId":"123","archived":"true"}),
+    ] {
+        let response = chat
+            .public(
+                "chat.post.profileId_archive",
+                &params,
+                HttpRequest::builder()
+                    .method("POST")
+                    .body(Body::from(data.to_string()))
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    let response = chat
+        .public(
+            "chat.post.profileId_archive",
+            &params,
+            HttpRequest::builder()
+                .method("POST")
+                .body(Body::from(
+                    json!({"threadId":"999","archived":true}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await;
+    assert!(!response.status().is_success());
+    assert!(events.try_recv().is_err());
+    assert_eq!(mobile_calls.load(Ordering::Relaxed), 0);
+}
 fn save(cache: &mut Cache, items: Vec<Message>) -> Thread {
     cache
         .save_thread(
@@ -242,11 +416,19 @@ fn unsend_reaches_both_connected_sides_and_stale_sync_cannot_restore_it() {
 
 #[test]
 fn parses_preview_order_receipts_reactions_and_only_https_media() {
-    let raw = json!({"thread_id":"123", "users":[{"pk":42,"username":"friend"}], "last_seen_at":{"42":{"timestamp":"200000"}},
+    let raw = json!({"thread_id":"123", "users":[{"pk":42,"username":"friend","profile_pic_url":"https://scontent.cdninstagram.com/avatar.jpg"}], "last_seen_at":{"42":{"timestamp":"200000"}},
         "items":[{"item_id":"1", "timestamp":"100000", "user_id":42}, {"item_id":"2", "timestamp":200000,
         "item_type":"voice_media", "voice_media":{"media":{"audio":{"audio_src":"https://example.com/voice"}}}, "reactions":{"emojis":[{"sender_id":1,"emoji":"❤️"}]}}]});
     let parsed = super::model::thread(&raw, true);
     assert_eq!(parsed.title, "friend");
+    assert_eq!(
+        parsed.users[0].profile_pic_url.as_deref(),
+        Some("https://scontent.cdninstagram.com/avatar.jpg")
+    );
+    assert_eq!(
+        serde_json::to_value(&parsed).unwrap()["users"][0]["profilePicUrl"],
+        "https://scontent.cdninstagram.com/avatar.jpg"
+    );
     assert_eq!(parsed.messages.len(), 1);
     assert_eq!(parsed.messages[0].id, "2");
     assert_eq!(parsed.messages[0].timestamp, 200.0);

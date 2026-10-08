@@ -26,9 +26,12 @@ pub struct Reaction {
     pub emoji: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct User {
     pub id: String,
     pub username: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_pic_url: Option<String>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,6 +140,9 @@ pub fn thread(raw: &Value, preview: bool) -> Thread {
         .map(|v| User {
             id: string(present(&v["pk"], &v["id"])),
             username: string(&v["username"]),
+            profile_pic_url: crate::instagram::picture_url(
+                v["profile_pic_url"].as_str().unwrap_or(""),
+            ),
         })
         .collect();
     let title = raw["thread_title"]

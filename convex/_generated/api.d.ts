@@ -11,8 +11,8 @@
 import type * as automations_helpers from "../automations/helpers.js";
 import type * as automations_mutations from "../automations/mutations.js";
 import type * as automations_queries from "../automations/queries.js";
+import type * as chatArchives from "../chatArchives.js";
 import type * as chatCache from "../chatCache.js";
-import type * as chatTags from "../chatTags.js";
 import type * as crons from "../crons.js";
 import type * as errors from "../errors.js";
 import type * as http from "../http.js";
@@ -57,8 +57,8 @@ declare const fullApi: ApiFromModules<{
   "automations/helpers": typeof automations_helpers;
   "automations/mutations": typeof automations_mutations;
   "automations/queries": typeof automations_queries;
+  chatArchives: typeof chatArchives;
   chatCache: typeof chatCache;
-  chatTags: typeof chatTags;
   crons: typeof crons;
   errors: typeof errors;
   http: typeof http;

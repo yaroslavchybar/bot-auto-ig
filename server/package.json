@@ -5,7 +5,7 @@
     "main": "dist/index.js",
     "scripts": {
         "build": "tsc -p tsconfig.json",
-        "dev": "bun --hot index.ts",
+        "dev": "cargo build --manifest-path ../Cargo.toml --workspace --locked && bun --hot index.ts",
         "start": "bun dist/index.js",
         "typecheck": "tsc -p tsconfig.json --noEmit",
         "lint": "vp lint ."

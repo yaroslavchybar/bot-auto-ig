@@ -20,33 +20,28 @@ export function registerChatRoutes(http: HttpRouter): void {
     '/api/chat/session',
     '/api/chat/context',
     '/api/chat/count',
-    '/api/chat/tags',
+    '/api/chat/archives',
   ])
   http.route({
-    path: '/api/chat/tags',
+    path: '/api/chat/archives',
     method: 'GET',
     handler: withErrorHandling(async (ctx) =>
-      jsonResponse(await ctx.runQuery(internal.chatTags.list, {})),
+      jsonResponse(await ctx.runQuery(internal.chatArchives.list, {})),
     ),
   })
   http.route({
-    path: '/api/chat/tags',
+    path: '/api/chat/archives',
     method: 'POST',
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request)
-      if (
-        typeof body.threadId !== 'string' ||
-        typeof body.tag !== 'string' ||
-        typeof body.enabled !== 'boolean'
-      )
-        throw new ValidationError('Invalid chat tag')
-      await ctx.runMutation(internal.chatTags.toggle, {
+      if (typeof body.threadId !== 'string' || typeof body.archived !== 'boolean')
+        throw new ValidationError('Invalid archive status')
+      await ctx.runMutation(internal.chatArchives.setArchived, {
         profileId: profileIdFrom(body.profileId),
         threadId: body.threadId,
-        tag: body.tag,
-        enabled: body.enabled,
+        archived: body.archived,
       })
-      return jsonResponse(await ctx.runQuery(internal.chatTags.list, {}))
+      return jsonResponse(await ctx.runQuery(internal.chatArchives.list, {}))
     }),
   })
   http.route({

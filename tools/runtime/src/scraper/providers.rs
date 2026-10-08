@@ -124,15 +124,7 @@ pub fn classification(data: &Value) -> Result<String> {
     }
 }
 pub fn picture_url(raw: &str) -> Option<String> {
-    let url: reqwest::Url = raw.parse().ok()?;
-    let host = url.host_str()?;
-    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
-        return None;
-    }
-    ["fbcdn.net", "cdninstagram.com", "instagram.com"]
-        .iter()
-        .any(|base| host == *base || host.ends_with(&format!(".{base}")))
-        .then(|| url.to_string())
+    crate::instagram::picture_url(raw)
 }
 pub fn apify_dataset(data: &Value, since: u64, limit: usize) -> Result<Vec<Value>> {
     let rows = data

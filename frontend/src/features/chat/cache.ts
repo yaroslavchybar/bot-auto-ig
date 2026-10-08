@@ -5,6 +5,9 @@ const STORE = 'snapshots'
 const MAX_AGE_MS = 30 * 24 * 60 * 60_000
 const PENDING_AGE_MS = 24 * 60 * 60_000
 const MAX_THREADS_PER_USER = 100
+const MAX_AVATARS_PER_USER = 200
+const MAX_AVATAR_BYTES = 256 * 1024
+export const AVATAR_REFRESH_MS = 24 * 60 * 60_000
 const CLEANUP_INTERVAL_MS = 60 * 60_000
 let dbPromise: Promise<IDBDatabase | null> | undefined
 const lastCleanup = new Map<string, number>()
@@ -81,19 +84,21 @@ async function write(
       const store = transaction.objectStore(STORE)
       if (replaceKey && replaceKey !== key) store.delete(replaceKey)
       store.put({ value, updatedAt: Date.now() } satisfies Snapshot<unknown>, key)
-      if (key.startsWith(`${userId}:request:`)) {
-        const prefix = `${userId}:request:`
+      if (key.startsWith(`${userId}:request:`) || key.startsWith(`${userId}:avatar:`)) {
+        const avatar = key.startsWith(`${userId}:avatar:`)
+        const prefix = `${userId}:${avatar ? 'avatar' : 'request'}:`
         const records: { key: IDBValidKey; updatedAt: number }[] = []
         const cursorRequest = store.openCursor(IDBKeyRange.bound(prefix, `${prefix}\uffff`))
         cursorRequest.onsuccess = () => {
           const cursor = cursorRequest.result
           if (!cursor) {
             records.sort((a, b) => b.updatedAt - a.updatedAt)
-            for (const old of records.slice(20)) store.delete(old.key)
+            for (const old of records.slice(avatar ? MAX_AVATARS_PER_USER : 20))
+              store.delete(old.key)
             return
           }
           const updatedAt = (cursor.value as Snapshot<unknown>).updatedAt
-          if (Date.now() - updatedAt >= 60_000) cursor.delete()
+          if (Date.now() - updatedAt >= (avatar ? MAX_AGE_MS : 60_000)) cursor.delete()
           else records.push({ key: cursor.key, updatedAt })
           cursor.continue()
         }
@@ -109,6 +114,35 @@ async function write(
 }
 
 const inboxKey = (userId: string, profileId: string) => `${userId}:inbox:${profileId}`
+const avatarKey = (userId: string, profileId: string, instagramId: string) =>
+  `${userId}:avatar:${profileId}:${instagramId}`
+
+export async function readChatAvatar(
+  userId: string,
+  profileId: string,
+  instagramId: string,
+  maxAge = MAX_AGE_MS,
+): Promise<Blob | null> {
+  const value = await read<{ blob: Blob }>(
+    userId,
+    avatarKey(userId, profileId, instagramId),
+    maxAge,
+  )
+  return value?.blob instanceof Blob && value.blob.size > 0 && value.blob.size <= MAX_AVATAR_BYTES
+    ? value.blob
+    : null
+}
+
+export function saveChatAvatar(
+  userId: string,
+  profileId: string,
+  instagramId: string,
+  blob: Blob,
+): Promise<void> {
+  if (!blob.type.startsWith('image/') || !blob.size || blob.size > MAX_AVATAR_BYTES)
+    return Promise.resolve()
+  return write(userId, avatarKey(userId, profileId, instagramId), { blob })
+}
 const threadKey = (userId: string, profileId: string, threadId: string) =>
   `${userId}:thread:${profileId}:${threadId}`
 const pendingPrefix = (userId: string, profileId: string, threadId: string) =>
@@ -218,12 +252,15 @@ async function cleanupUser(userId: string): Promise<void> {
       const transaction = db.transaction(STORE, 'readwrite')
       const store = transaction.objectStore(STORE)
       const threads: { key: string; updatedAt: number }[] = []
+      const avatars: { key: string; updatedAt: number }[] = []
       const request = store.openCursor()
       request.onsuccess = () => {
         const cursor = request.result
         if (!cursor) {
           threads.sort((a, b) => b.updatedAt - a.updatedAt)
           for (const old of threads.slice(MAX_THREADS_PER_USER)) store.delete(old.key)
+          avatars.sort((a, b) => b.updatedAt - a.updatedAt)
+          for (const old of avatars.slice(MAX_AVATARS_PER_USER)) store.delete(old.key)
           return
         }
         if (typeof cursor.key === 'string' && cursor.key.startsWith(`${userId}:`)) {
@@ -236,6 +273,8 @@ async function cleanupUser(userId: string): Promise<void> {
           if (!Number.isFinite(updatedAt) || Date.now() - updatedAt >= maxAge) cursor.delete()
           else if (cursor.key.startsWith(`${userId}:thread:`))
             threads.push({ key: cursor.key, updatedAt })
+          else if (cursor.key.startsWith(`${userId}:avatar:`))
+            avatars.push({ key: cursor.key, updatedAt })
         }
         cursor.continue()
       }
@@ -278,6 +317,7 @@ export const clearProfileChatCache = (userId: string, profileId: string) =>
       key === inboxKey(userId, profileId) ||
       key.startsWith(`${userId}:thread:${profileId}:`) ||
       key.startsWith(`${userId}:pending:${profileId}:`) ||
+      key.startsWith(`${userId}:avatar:${profileId}:`) ||
       key.startsWith(`${userId}:request:`),
   )
 

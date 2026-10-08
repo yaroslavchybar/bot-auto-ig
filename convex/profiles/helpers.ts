@@ -1,6 +1,6 @@
 import { DomainError } from '../errors';
 import { clearChatCounter } from '../chatCache'
-import { clearProfileChatTags } from '../chatTags'
+import { clearProfileChatArchives } from '../chatArchives'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 
 function assertProfileEditable(profile: any) {
@@ -334,7 +334,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
     .collect())
     await ctx.db.delete(assignment._id)
   await clearChatCounter(ctx, existing._id)
-  await clearProfileChatTags(ctx, existing._id)
+  await clearProfileChatArchives(ctx, existing._id)
   const chat = await ctx.db
     .query('chatSessions')
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
@@ -369,7 +369,7 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
     .collect())
     await ctx.db.delete(assignment._id)
   await clearChatCounter(ctx, profileId)
-  await clearProfileChatTags(ctx, profileId)
+  await clearProfileChatArchives(ctx, profileId)
   const chat = await ctx.db
     .query('chatSessions')
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))

@@ -27,6 +27,24 @@ use std::{
 };
 use tokio::sync::Mutex;
 pub use transport::client as transport_client;
+
+/// Only public Instagram image hosts may be used for picture downloads.
+pub fn picture_url(raw: &str) -> Option<String> {
+    let url: reqwest::Url = raw.parse().ok()?;
+    let host = url.host_str()?;
+    if raw.len() > 8192
+        || url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return None;
+    }
+    ["fbcdn.net", "cdninstagram.com", "instagram.com"]
+        .iter()
+        .any(|base| host == *base || host.ends_with(&format!(".{base}")))
+        .then(|| url.to_string())
+}
 use transport::{Mobile, Session};
 pub type Result<T> = std::result::Result<T, Error>;
 

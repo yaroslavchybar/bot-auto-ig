@@ -9,9 +9,12 @@ const mocks = vi.hoisted(() => ({
   search: '?profile=profile&thread=1',
   apiFetch: vi.fn(),
   navigate: vi.fn(),
-  onEvent: null as null | ((event: { type: string; profileId?: string; tagsChanged?: boolean }) => void),
-  tagRows: [] as { profileId: string; threadId: string; tags: string[] }[],
-  toggleTag: vi.fn<(args: Record<string, unknown>) => Promise<void>>(() => Promise.resolve()),
+  onEvent: null as
+    | null
+    | ((event: { type: string; profileId?: string; archivesChanged?: boolean }) => void),
+  readArchives: vi.fn<() => Promise<{ profileId: string; threadId: string }[]>>(),
+  archiveRows: [] as { profileId: string; threadId: string }[],
+  setArchive: vi.fn<(args: Record<string, unknown>) => Promise<void>>(() => Promise.resolve()),
   clearPending: vi.fn(() => Promise.resolve()),
   readPending: vi.fn<() => Promise<ChatMessage[]>>(() => Promise.resolve([])),
   profiles: [{ id: 'profile', name: 'Profile', igLoggedIn: true, status: 'idle' }],
@@ -25,15 +28,19 @@ vi.mock('@/lib/router', () => ({
 vi.mock('@/features/chat/hooks/useChatProfiles', () => ({
   useChatProfiles: () => ({ profiles: mocks.profiles, loading: false }),
 }))
-vi.mock('@/hooks/useWebSocket', () => ({ useWebSocket: (options: { onEvent: typeof mocks.onEvent }) => {
-  mocks.onEvent = options.onEvent
-  return { connected: true }
-} }))
+vi.mock('@/hooks/useWebSocket', () => ({
+  useWebSocket: (options: { onEvent: typeof mocks.onEvent }) => {
+    mocks.onEvent = options.onEvent
+    return { connected: true }
+  },
+}))
 vi.mock('@/lib/api', () => ({
   apiFetch: (path: string, options?: { body?: Record<string, unknown> }) => {
-    if (path === '/api/chat/tags') return Promise.resolve(mocks.tagRows)
-    if (path.endsWith('/tags')) {
-      return mocks.toggleTag({ profileId: path.split('/')[3], ...options?.body }).then(() => mocks.tagRows)
+    if (path === '/api/chat/archives') return mocks.readArchives()
+    if (path.endsWith('/archive')) {
+      return mocks
+        .setArchive({ profileId: path.split('/')[3], ...options?.body })
+        .then(() => mocks.archiveRows)
     }
     return mocks.apiFetch(path, options)
   },
@@ -88,7 +95,15 @@ function conversation(id: string): ChatThread {
 beforeEach(() => {
   mocks.userId = 'user'
   mocks.search = '?profile=profile&thread=1'
-  mocks.tagRows = []
+  mocks.archiveRows = []
+  mocks.readArchives.mockImplementation(async () => mocks.archiveRows)
+  mocks.setArchive.mockImplementation(async ({ profileId, threadId, archived }) => {
+    mocks.archiveRows = mocks.archiveRows.filter(
+      (row) => row.profileId !== profileId || row.threadId !== threadId,
+    )
+    if (archived)
+      mocks.archiveRows.push({ profileId: String(profileId), threadId: String(threadId) })
+  })
   mocks.readPending.mockResolvedValue([])
   mocks.apiFetch.mockImplementation(async (path: string) => {
     if (path.endsWith('/session')) return { connected: true }
@@ -108,37 +123,48 @@ test.each([
   { scope: 'inbox', active: false, interval: 60_000, threshold: 180_000 },
   { scope: 'thread', active: true, interval: 30_000, threshold: 30_000 },
   { scope: 'thread', active: false, interval: 30_000, threshold: 120_000 },
-])('$scope polling tolerates clock drift (active: $active)', async ({ scope, active, interval, threshold }) => {
-  vi.useFakeTimers()
-  let now = Date.now()
-  const startedAt = now
-  vi.spyOn(Date, 'now').mockImplementation(() => now)
-  const timers = vi.spyOn(globalThis, 'setInterval')
-  view = mount()
-  await view.render(<Probe />)
-  const callback = timers.mock.calls.filter(([, delay]) => delay === interval).at(-1)?.[0]
-  if (typeof callback !== 'function') throw new Error('Missing polling timer')
-  const path = scope === 'inbox' ? '/api/chat/profile/threads' : '/api/chat/profile/threads/1'
-  const polls = () => mocks.apiFetch.mock.calls.filter(([url]) => url === path).length
-  const initialPolls = polls()
-  now = startedAt + threshold - 101
-  if (active) document.dispatchEvent(new Event('keydown'))
-  await act(async () => { callback() })
-  expect(polls()).toBe(initialPolls)
+])(
+  '$scope polling tolerates clock drift (active: $active)',
+  async ({ scope, active, interval, threshold }) => {
+    vi.useFakeTimers()
+    let now = Date.now()
+    const startedAt = now
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const timers = vi.spyOn(globalThis, 'setInterval')
+    view = mount()
+    await view.render(<Probe />)
+    const callback = timers.mock.calls.filter(([, delay]) => delay === interval).at(-1)?.[0]
+    if (typeof callback !== 'function') throw new Error('Missing polling timer')
+    const path = scope === 'inbox' ? '/api/chat/profile/threads' : '/api/chat/profile/threads/1'
+    const polls = () => mocks.apiFetch.mock.calls.filter(([url]) => url === path).length
+    const initialPolls = polls()
+    now = startedAt + threshold - 101
+    if (active) document.dispatchEvent(new Event('keydown'))
+    await act(async () => {
+      callback()
+    })
+    expect(polls()).toBe(initialPolls)
 
-  now = startedAt + threshold - 1
-  const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
-  await act(async () => { callback() })
-  expect(polls()).toBe(initialPolls)
-  visibility.mockRestore()
-  mocks.apiFetch.mockImplementation(() => new Promise(() => {}))
-  await act(async () => { callback() })
-  expect(polls()).toBe(initialPolls + 1)
+    now = startedAt + threshold - 1
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+    await act(async () => {
+      callback()
+    })
+    expect(polls()).toBe(initialPolls)
+    visibility.mockRestore()
+    mocks.apiFetch.mockImplementation(() => new Promise(() => {}))
+    await act(async () => {
+      callback()
+    })
+    expect(polls()).toBe(initialPolls + 1)
 
-  now += threshold
-  await act(async () => { callback() })
-  expect(polls()).toBe(initialPolls + 1) // An outstanding request still blocks polling.
-})
+    now += threshold
+    await act(async () => {
+      callback()
+    })
+    expect(polls()).toBe(initialPolls + 1) // An outstanding request still blocks polling.
+  },
+)
 
 test('thread changes immediately reset drafts, conversation, and older-message pagination', async () => {
   view = mount()
@@ -274,11 +300,11 @@ test('confirmed replies leave persistent pending storage and do not appear twice
   )
 })
 
-test('tag and search filters combine with the selected profile, without losing chat selection', async () => {
-  mocks.search = '?profile=profile&thread=1&tag=customer'
-  mocks.tagRows = [
-    { profileId: 'profile', threadId: '1', tags: ['customer'] },
-    { profileId: 'other', threadId: '2', tags: ['customer'] },
+test('folder and search filters combine with the profile while preserving chat selection', async () => {
+  mocks.search = '?profile=profile&thread=1&folder=archived'
+  mocks.archiveRows = [
+    { profileId: 'profile', threadId: '1' },
+    { profileId: 'other', threadId: '2' },
   ]
   mocks.apiFetch.mockImplementation(async (path: string) => {
     if (path.endsWith('/session')) return { connected: true }
@@ -289,26 +315,65 @@ test('tag and search filters combine with the selected profile, without losing c
   view = mount()
   await view.render(<Probe />)
   expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['1'])
-  expect(chat.selectedTags).toEqual(['customer'])
+  expect(chat.selectedArchived).toBe(true)
   await act(async () => chat.setSearchQuery('Thread 2'))
   expect(chat.visibleThreads).toEqual([])
   await act(async () => chat.setSearchQuery('Thread 1'))
   expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['1'])
-  await act(async () => chat.selectTagFilter('hot lead'))
-  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?profile=profile&thread=1&tag=hot+lead', {
+  await act(async () => chat.selectFolder('inbox'))
+  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?profile=profile&thread=1', {
     replace: true,
   })
   await act(async () => chat.selectThread('2'))
-  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?profile=profile&thread=2&tag=customer', {
-    replace: true,
-  })
+  expect(mocks.navigate).toHaveBeenLastCalledWith(
+    '/chat?profile=profile&thread=2&folder=archived',
+    { replace: true },
+  )
   await act(async () => chat.selectProfile('all'))
-  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?tag=customer', { replace: true })
+  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat?folder=archived', { replace: true })
 })
 
-test('all-profile tags and mutations use the profile/thread pair, even with identical thread IDs', async () => {
-  mocks.search = '?thread=profile%3A1&tag=customer'
-  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer'] }]
+test('Inbox is the default; archiving preserves the draft and new messages stay archived', async () => {
+  let incoming = conversation('1')
+  mocks.apiFetch.mockImplementation(async (path: string) => {
+    if (path.endsWith('/session')) return { connected: true }
+    if (path.endsWith('/threads'))
+      return { viewerId: 'viewer', threads: [incoming, conversation('2')] }
+    return incoming
+  })
+  view = mount()
+  await view.render(<Probe />)
+  expect(chat.folder).toBe('inbox')
+  expect(chat.visibleThreads).toHaveLength(2)
+  await act(async () => chat.setDraft('Unsent reply'))
+  await act(async () => chat.changeArchive(true))
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['2'])
+  expect(chat.selectedThreadId).toBe('1')
+  expect(chat.draft).toBe('Unsent reply')
+  incoming = {
+    ...incoming,
+    messages: [
+      { ...incoming.messages[0], id: '501', text: 'New message', timestamp: Date.now() },
+      ...incoming.messages,
+    ],
+  }
+  await act(async () => mocks.onEvent?.({ type: 'chat_changed', profileId: 'profile' }))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+  })
+  expect(chat.selectedArchived).toBe(true)
+  expect(chat.conversation?.messages[0].text).toBe('New message')
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['2'])
+  mocks.search = '?profile=profile&thread=1&folder=archived'
+  await view.render(<Probe />)
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['1'])
+  await act(async () => chat.changeArchive(false))
+  expect(chat.selectedArchived).toBe(false)
+  expect(chat.visibleThreads).toEqual([])
+})
+
+test('all-profile archive writes use the profile/thread pair with identical thread IDs', async () => {
+  mocks.search = '?thread=profile%3A1'
   mocks.apiFetch.mockImplementation(async (path: string) => {
     if (path === '/api/chat/threads')
       return {
@@ -322,58 +387,158 @@ test('all-profile tags and mutations use the profile/thread pair, even with iden
   })
   view = mount()
   await view.render(<Probe />)
-  expect(chat.visibleThreads.map((thread) => thread.profileId)).toEqual(['profile'])
-  await act(async () => chat.changeTag('customer', false))
-  expect(mocks.toggleTag).toHaveBeenLastCalledWith({
+  await act(async () => chat.changeArchive(true))
+  expect(mocks.setArchive).toHaveBeenLastCalledWith({
     profileId: 'profile',
     threadId: '1',
-    tag: 'customer',
-    enabled: false,
+    archived: true,
   })
-  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['hot lead'] }]
-  await act(async () => chat.changeTag('hot lead', true))
-  expect(chat.selectedTags).toEqual(['hot lead'])
-  expect(chat.visibleThreads).toEqual([])
+  expect(chat.visibleThreads.map((thread) => thread.profileId)).toEqual(['other'])
+  expect(chat.selectedArchived).toBe(true)
+  await act(async () => chat.changeArchive(false))
+  expect(chat.visibleThreads).toHaveLength(2)
 })
 
-test('tag notifications refresh the shared catalog without reloading messages, and changing users hides old tags', async () => {
-  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer'] }]
+test.each([
+  {
+    search: '?profile=profile&thread=1',
+    target: '2',
+    profileId: 'profile',
+    threadId: '2',
+    selected: '1',
+  },
+  {
+    search: '?thread=profile%3A1',
+    target: 'other:1',
+    profileId: 'other',
+    threadId: '1',
+    selected: 'profile:1',
+  },
+  { search: '?profile=profile', target: '2', profileId: 'profile', threadId: '2', selected: '' },
+])(
+  'archiving a list row preserves selection and draft: $search',
+  async ({ search, target, profileId, threadId, selected }) => {
+    mocks.search = search
+    mocks.apiFetch.mockImplementation(async (path: string) => {
+      if (path.endsWith('/session')) return { connected: true }
+      if (path === '/api/chat/threads')
+        return {
+          errors: [],
+          threads: [
+            { ...conversation('1'), profileId: 'profile' },
+            { ...conversation('1'), profileId: 'other' },
+          ],
+        }
+      if (path.endsWith('/threads'))
+        return { viewerId: 'viewer', threads: [conversation('1'), conversation('2')] }
+      return conversation('1')
+    })
+    view = mount()
+    await view.render(<Probe />)
+    await act(async () => chat.setDraft('Unsent reply'))
+    await act(async () => chat.changeArchive(true, target))
+    expect(mocks.setArchive).toHaveBeenCalledExactlyOnceWith({
+      profileId,
+      threadId,
+      archived: true,
+    })
+    expect(chat.selectedThreadId).toBe(selected)
+    expect(chat.selectedArchived).toBe(false)
+    expect(chat.draft).toBe('Unsent reply')
+    expect(chat.visibleThreads).toHaveLength(1)
+    expect(mocks.navigate).not.toHaveBeenCalled()
+  },
+)
+
+test('archive notifications update other devices without reloading messages, and user changes hide metadata', async () => {
+  mocks.archiveRows = [{ profileId: 'profile', threadId: '1' }]
   view = mount()
   await view.render(<Probe />)
-  expect(chat.availableTags).toEqual(['customer'])
+  expect(chat.selectedArchived).toBe(true)
   const messageRequests = mocks.apiFetch.mock.calls.length
-  mocks.tagRows = [{ profileId: 'other', threadId: '2', tags: ['hot lead'] }]
-  await act(async () => mocks.onEvent?.({ type: 'chat_changed', profileId: 'other', tagsChanged: true }))
-  expect(chat.availableTags).toEqual(['hot lead'])
+  mocks.archiveRows = [{ profileId: 'other', threadId: '2' }]
+  await act(async () =>
+    mocks.onEvent?.({ type: 'chat_changed', profileId: 'other', archivesChanged: true }),
+  )
+  expect(chat.selectedArchived).toBe(false)
   expect(mocks.apiFetch.mock.calls).toHaveLength(messageRequests)
   mocks.userId = ''
   await view.render(<Probe />)
-  expect(chat.availableTags).toEqual([])
-  expect(chat.selectedTags).toEqual([])
+  expect(chat.archivesLoading).toBe(true)
+  expect(chat.selectedArchived).toBe(false)
 })
 
-test('tag saves clear old errors, report failures, and preserve the previous tags on failure', async () => {
-  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer'] }]
+test('failed saves preserve status and allow retry; duplicate clicks cannot submit concurrent saves', async () => {
   view = mount()
   await view.render(<Probe />)
   await act(async () => chat.setError('Previous error'))
   let rejectSave!: (error: Error) => void
-  mocks.toggleTag.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject }))
+  mocks.setArchive.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectSave = reject
+      }),
+  )
   let pending!: Promise<void>
   await act(async () => {
-    pending = chat.changeTag('hot lead', true)
-    void pending.catch(() => {}) // The editor attaches the same rejection handler.
+    pending = chat.changeArchive(true)
+    void chat.changeArchive(true)
   })
+  expect(mocks.setArchive).toHaveBeenCalledTimes(1)
   expect(chat.error).toBe('')
-  expect(chat.selectedTags).toEqual(['customer'])
+  expect(chat.savingArchive).toBe(true)
+  expect(chat.selectedArchived).toBe(false)
   await act(async () => {
-    rejectSave(new Error(JSON.stringify({ error: { message: 'Could not save tag' } })))
-    await expect(pending).rejects.toThrow('Could not save tag')
+    rejectSave(new Error(JSON.stringify({ error: { message: 'Could not archive chat' } })))
+    await pending
   })
-  expect(chat.error).toBe('Could not save tag')
-  expect(chat.selectedTags).toEqual(['customer'])
-  mocks.tagRows = [{ profileId: 'profile', threadId: '1', tags: ['customer', 'hot lead'] }]
-  await act(async () => chat.changeTag('hot lead', true))
+  expect(chat.error).toBe('Could not archive chat')
+  expect(chat.selectedArchived).toBe(false)
+  expect(chat.savingArchive).toBe(false)
+  await act(async () => chat.changeArchive(true))
   expect(chat.error).toBe('')
-  expect(chat.selectedTags).toEqual(['customer', 'hot lead'])
+  expect(chat.selectedArchived).toBe(true)
+})
+
+test('a stale metadata read cannot overwrite a completed archive save', async () => {
+  view = mount()
+  await view.render(<Probe />)
+  let resolveRead!: (rows: { profileId: string; threadId: string }[]) => void
+  mocks.readArchives.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveRead = resolve
+      }),
+  )
+  await act(async () => mocks.onEvent?.({ type: 'chat_changed', archivesChanged: true }))
+  await act(async () => chat.changeArchive(true))
+  expect(chat.selectedArchived).toBe(true)
+  await act(async () => resolveRead([]))
+  expect(chat.selectedArchived).toBe(true)
+})
+
+test('late archive saves do not expose the previous user metadata', async () => {
+  view = mount()
+  await view.render(<Probe />)
+  let resolveSave!: () => void
+  mocks.setArchive.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveSave = resolve
+      }),
+  )
+  let pending!: Promise<void>
+  await act(async () => {
+    pending = chat.changeArchive(true)
+  })
+  mocks.userId = 'another-user'
+  await view.render(<Probe />)
+  // The old request returns its old-user catalog, then the new user gets a fresh read.
+  mocks.archiveRows = [{ profileId: 'profile', threadId: '1' }]
+  mocks.readArchives.mockResolvedValue([])
+  await act(async () => {
+    resolveSave()
+    await pending
+  })
+  expect(chat.selectedArchived).toBe(false)
 })

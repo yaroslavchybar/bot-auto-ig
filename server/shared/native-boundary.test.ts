@@ -6,6 +6,7 @@ import sharp from 'sharp'
 import { nativeFixture } from './native-fixture.testing.js'
 
 test('public content, chat, displays, and automation status work without a Bun command server', async () => {
+  let archived = false
   const convex = createServer((request, response) => {
     expect(request.headers.authorization).toBe('Bearer fixture-key')
     const route = new URL(request.url!, 'http://local').pathname
@@ -14,7 +15,20 @@ test('public content, chat, displays, and automation status work without a Bun c
     else if (route === '/api/profiles/by-id')
       response.end(JSON.stringify({ id: 'p', name: 'test', igLoggedIn: true }))
     else if (route === '/api/chat/session') response.end(JSON.stringify({ connected: false }))
-    else {
+    else if (route === '/api/chat/archives') {
+      if (request.method === 'POST') {
+        let body = ''
+        request.on('data', (chunk) => {
+          body += chunk
+        })
+        request.on('end', () => {
+          const data = JSON.parse(body)
+          expect(data).toMatchObject({ profileId: 'p', threadId: '123' })
+          archived = data.archived
+          response.end(JSON.stringify(archived ? [{ profileId: 'p', threadId: '123' }] : []))
+        })
+      } else response.end(JSON.stringify(archived ? [{ profileId: 'p', threadId: '123' }] : []))
+    } else {
       response.statusCode = 404
       response.end('{}')
     }
@@ -84,6 +98,24 @@ test('public content, chat, displays, and automation status work without a Bun c
     expect(await (await get('/api/chat/p/session')).json()).toEqual({ connected: false })
     expect((await get('/api/chat/p/threads')).status).toBe(400)
     expect((await get('/api/chat/p/threads/invalid')).status).toBe(400)
+    expect((await get('/api/chat/p/avatars/invalid/image')).status).toBe(400)
+    const missingPicture = await get('/api/chat/p/avatars/42/image')
+    expect(missingPicture.status).toBe(404)
+    expect(await missingPicture.json()).toMatchObject({
+      error: { message: 'Profile picture unavailable' },
+    })
+    expect(await (await get('/api/chat/archives')).json()).toEqual([])
+    for (const archived of [true, false]) {
+      const response = await fetch(native.publicUrl + '/api/chat/p/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threadId: '123', archived }),
+      })
+      expect(response.status).toBe(200)
+      const expected = archived ? [{ profileId: 'p', threadId: '123' }] : []
+      expect(await response.json()).toEqual(expected)
+      expect(await (await get('/api/chat/archives')).json()).toEqual(expected)
+    }
     expect(await (await get('/api/displays')).json()).toEqual([])
     expect(await (await get('/api/automations/status')).json()).toMatchObject({
       running: false,

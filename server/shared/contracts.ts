@@ -65,7 +65,7 @@ type EventFields = {
   profileName?: string
   profileId?: string
   threadId?: string
-  tagsChanged?: boolean
+  archivesChanged?: boolean
   messageId?: string
   taskId?: string
   task?: string
