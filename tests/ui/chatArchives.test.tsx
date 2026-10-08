@@ -6,6 +6,7 @@ import type { ChatFolder } from '@/features/chat/types'
 import { mount } from './mount'
 
 vi.mock('@/lib/auth', () => ({ useAppUser: () => null }))
+vi.mock('@/lib/api', () => ({ apiFetchBlob: vi.fn() }))
 
 let view: ReturnType<typeof mount> | undefined
 afterEach(async () => {
