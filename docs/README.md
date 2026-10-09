@@ -244,6 +244,19 @@ Images: `oven/bun:1.4.2-*` for the server; `node:24.21.0-bookworm-slim` with Bun
 for the frontend build and `nginx:alpine` for its runtime. Production frontend builds require `VITE_API_URL`,
 `VITE_CONVEX_URL` as build args.
 
+CI checks and image builds run in parallel. Production Convex deployment waits
+for both, then the VPS pulls immutable image tags for that commit. Push checks
+build debug Rust for tests; release binaries are built once in the production
+Bookworm builders. PR checks still validate release builds.
+
+Images with unchanged build inputs are reused from GHCR and tagged for the new
+commit. The cache key includes tracked source and build configuration, frontend
+URLs, and current base-image digests. Registry misses or reuse failures fall
+back to a normal build. When Rust source changes, `cargo-chef` 0.1.78 preserves
+compiled dependencies in a separate cached layer. Runtime source changes no
+longer invalidate the spoofer's final compile. The first build fills these caches;
+later builds benefit from them.
+
 ## Authentication
 
 Telegram deep-link login via the ig-bot bot (same flow as igscrape): the

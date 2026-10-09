@@ -1,9 +1,8 @@
 # Sole deploy path: push to main. Nothing is deployed by hand —
 # not Convex (`convex deploy`), not the VPS. PRs only run checks.
 #
-# Order per push to main: checks -> Convex prod -> images (built here,
-# pushed to GHCR) -> VPS (pull + up + Caddy reload). Each step runs only
-# if the previous one succeeded.
+# Checks and images run together. Convex prod waits for both, then the VPS
+# pulls the exact commit's images. Unchanged images are retagged from GHCR.
 #
 # Required GitHub secrets: CONVEX_DEPLOY_KEY, VPS_SSH_KEY, VPS_KNOWN_HOSTS,
 # CONVEX_URL, INTERNAL_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME,
@@ -43,6 +42,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint
+      - run: bun test ./.github/scripts/image-cache.test.ts
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.1
@@ -55,7 +55,11 @@ jobs:
       - run: bun test server
       - run: bun run test:convex
       - run: bun run --filter frontend test:ui
-      - run: bun run build
+      # Push builds compile release Rust in the production Bookworm images.
+      # PRs have no image job, so keep their release build check here.
+      - run: bun run build:rust
+        if: github.event_name == 'pull_request'
+      - run: bun run --filter anti-server build
       - run: bun run typecheck
       - run: bun run --filter frontend build
       - name: Validate log pipeline
@@ -79,7 +83,7 @@ jobs:
             timberio/vector:0.58.0-debian test /etc/vector/vector.toml
 
   deploy-convex:
-    needs: verify
+    needs: [verify, build-images]
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
@@ -93,7 +97,6 @@ jobs:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 
   build-images:
-    needs: [verify, deploy-convex]
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     permissions:
@@ -115,6 +118,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
+      - uses: oven-sh/setup-bun@v2
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -125,8 +130,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      - name: Reuse unchanged image
+        id: image-cache
+        run: bun .github/scripts/image-cache.ts
+        env:
+          SERVICE: ${{ matrix.service }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+
       - name: Build and push server
-        if: matrix.service == 'server'
+        if: matrix.service == 'server' && steps.image-cache.outputs.reused != 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./server
@@ -138,7 +152,9 @@ jobs:
           push: true
           # Immutable per-commit tag: deploy-vps pulls this exact revision,
           # so a queued run can never mix or replace these images.
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+            ${{ steps.image-cache.outputs.cache-tag }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           # Pro browser binary: the key is a secret mount, never baked in.
@@ -146,7 +162,7 @@ jobs:
             cloak_key=${{ secrets.CLOAKBROWSER_LICENSE_KEY }}
 
       - name: Build and push frontend
-        if: matrix.service == 'frontend'
+        if: matrix.service == 'frontend' && steps.image-cache.outputs.reused != 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
@@ -157,7 +173,9 @@ jobs:
             convex_src=./convex
           pull: true
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+            ${{ steps.image-cache.outputs.cache-tag }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
           build-args: |
@@ -165,7 +183,7 @@ jobs:
             VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
 
       - name: Build and push spoofer
-        if: matrix.service == 'spoofer'
+        if: matrix.service == 'spoofer' && steps.image-cache.outputs.reused != 'true'
         uses: docker/build-push-action@v7
         with:
           context: ./tools/spoofer
@@ -174,7 +192,9 @@ jobs:
             repo_root=.
           pull: true
           push: true
-          tags: ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ matrix.tag }}-${{ github.sha }}
+            ${{ steps.image-cache.outputs.cache-tag }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 

@@ -1,11 +1,22 @@
 # syntax=docker/dockerfile:1.7
-FROM rust:1.98.1-bookworm AS rust-build
+FROM rust:1.98.1-bookworm AS chef
 WORKDIR /build
+RUN cargo install cargo-chef --version 0.1.78 --locked
+
+FROM chef AS rust-planner
 COPY --from=repo_root Cargo.toml Cargo.lock ./
 COPY --from=repo_root tools ./tools
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-  --mount=type=cache,target=/usr/local/cargo/git \
-  cargo build --release --locked -p ig-runtime
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS rust-build
+COPY --from=rust-planner /build/recipe.json recipe.json
+# Compiled dependencies live in a reusable layer, not an ephemeral cache mount.
+RUN cargo chef cook --release --locked --package ig-runtime --recipe-path recipe.json
+COPY --from=repo_root Cargo.toml Cargo.lock ./
+COPY --from=repo_root tools/spoofer/Cargo.toml ./tools/spoofer/Cargo.toml
+COPY --from=repo_root tools/runtime ./tools/runtime
+COPY --from=repo_root tools/service-common ./tools/service-common
+RUN cargo build --release --locked -p ig-runtime
 
 FROM oven/bun:1.4.2-debian AS system-base
 
