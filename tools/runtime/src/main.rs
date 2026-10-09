@@ -68,7 +68,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             slots: Arc::new(Semaphore::new(4)),
         });
         let mobile = instagram::Service::new(api_state.clone(), uploads.clone());
-        let scraper = scraper::Scraper::start(api_state.clone(), mobile.clone());
+        let scraper = scraper::Scraper::start(api_state.clone(), mobile.clone())?;
         let native = native::Native::new(api_state.clone(), mobile.clone(), scraper.clone())?;
         native.processes.cleanup_orphans().await?;
         api_state

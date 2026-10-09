@@ -281,14 +281,29 @@ The scraper uses an existing Instagram Chat mobile session to get recent posts.
 `APIFY_API_KEY` enables fallback when mobile post discovery is unavailable.
 The scraper calls Apify's HTTP endpoint directly with `reqwest`; it does not use
 `apify-client-rust`.
-The UI accepts a number of days and a maximum post count per profile; each source
-job stores the post limit and fixes the date cutoff when queued.
-The UI subscribes only to active tab data and skips the closed job dialog's
-list query. Lead searches wait 300 ms after typing and pause obsolete page
-loads. Job progress sends post counts instead of the saved post arrays.
+The Sources tab attaches Instagram URLs or usernames to a lead list. Each list
+sets a rolling "posts from the last X days" range (default 90 days). Sources
+discover posts daily and scrape each qualifying post once. When the profile's
+average likes across all returned posts in that range exceeds 100, recent posts
+start with 1–2 hour checks, then adapt between 15 minutes and 6 hours based on
+new liker IDs and like-count growth. Monitoring has no age expiry, including after
+a post leaves the discovery range. It stops when the latest 10 successful checks
+average fewer than 3 new IDs per check and less than 1 new like per hour. The first
+scrape sets the baseline; failures and quota pauses do not count. Daily discovery
+does not restart stopped posts. Hidden like counts prevent an automatic
+low-traffic stop; new IDs still adjust frequency. Missing counts do not qualify a profile for new
+monitoring. Discovery is capped at
+5,000 posts per profile. Sources can be paused, resumed, checked now, or removed;
+removing a source keeps its collected leads.
+The UI subscribes only to active tab data and the selected list. Post details use
+explicitly opened, paginated queries. Lead searches wait 300 ms after typing and
+pause obsolete page loads. Range and monitoring settings save explicitly.
 Daily limit edits write only changed values after an explicit Save.
-Active jobs use an indexed key to prevent duplicate queued work. Leads are stored
-once by Instagram ID, with indexed rows linking them to target lists.
+Persisted due times drive Rust timers through a compact Convex subscription;
+there is no periodic idle claim polling. Fenced leases recover interrupted work
+and reject stale writes after settings changes, pauses, or deletion. A local
+SQLite cache remembers acknowledged list memberships and skips repeated writes.
+Leads are stored once by Instagram ID, with indexed rows linking them to lists.
 Post likers use the saved mobile Chat session first, matching the local
 instagrapi `media_likers` request and full media ID normalization. Browser session
 cookies are loaded only as a fallback when mobile scraping fails or is unavailable.
@@ -305,7 +320,7 @@ with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies l
 so a classification retry does not repeat the picture call. Profiles default to
 a daily scraping limit of 1,000, including profiles without a saved limit.
 Clearing the daily limit explicitly removes its cap. Saved likers and completed mobile-discovered posts
-share that quota; repeated post checkpoints do not add usage. The quota is
+share that quota; repeated list memberships and stale completions do not add usage. The quota is
 separate from Instagram's
 request limits. A 429 cools down that account for at least 30 minutes, with
 longer waits after repeated 429s or when Instagram sends `Retry-After`.

@@ -1,14 +1,13 @@
 export const SCRAPER_TABS = [
-  { id: 'jobs', label: 'Jobs' },
+  { id: 'sources', label: 'Sources' },
   { id: 'accounts', label: 'Scrapers' },
   { id: 'saved', label: 'Leads' },
-  { id: 'lists', label: 'Lists' },
 ] as const
 
 export type ScraperTabId = (typeof SCRAPER_TABS)[number]['id']
 
 export function parseScraperTab(value: string | null): ScraperTabId {
-  return value === 'accounts' || value === 'saved' || value === 'lists' ? value : 'jobs'
+  return value === 'accounts' || value === 'saved' ? value : 'sources'
 }
 
 export function scraperTabHref(tab: ScraperTabId) {

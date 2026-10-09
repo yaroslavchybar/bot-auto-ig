@@ -8,6 +8,14 @@ export const lists = query({
   args: {},
   handler: (ctx) => ctx.db.query("leadLists").collect(),
 });
+/** Detail screens read one list rather than subscribing to every list. */
+export const getList = query({
+  args: { listId: v.string() },
+  handler: async (ctx, { listId }) => {
+    const id = ctx.db.normalizeId('leadLists', listId);
+    return id ? ctx.db.get(id) : null;
+  },
+});
 export const listPage = query({
   args: {
     paginationOpts: paginationOptsValidator,
@@ -79,6 +87,7 @@ export const deleteList = internalMutation({
     if (!(await ctx.db.get(listId))) return;
     await ctx.db.delete(listId);
     await ctx.scheduler.runAfter(0, internal.leads.cleanupDeletedList, { listId });
+    await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanupList, { listId });
   },
 });
 

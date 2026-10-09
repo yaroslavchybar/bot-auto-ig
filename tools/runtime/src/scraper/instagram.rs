@@ -61,7 +61,7 @@ impl Web {
         self.base = base;
         self
     }
-    pub async fn likers(&self, post: &Value) -> Result<Vec<Value>> {
+    pub async fn likers(&self, post: &Value) -> Result<Likers> {
         let id = instagram::string(&post["id"]);
         let code = instagram::string(&post["code"]);
         if !instagram::digits(&id)
@@ -113,7 +113,7 @@ impl Web {
                                 last = Error::failed("Instagram API request failed");
                                 continue;
                             }
-                            return parse_likers(&data);
+                            return snapshot(&data);
                         }
                         Err(message) => last = Error::failed(message),
                     }
@@ -122,6 +122,31 @@ impl Web {
         }
         Err(last)
     }
+}
+#[derive(Debug)]
+pub struct Likers {
+    pub rows: Vec<Value>,
+    pub ids: Vec<String>,
+    pub like_count: Option<u64>,
+}
+pub fn snapshot(data: &Value) -> Result<Likers> {
+    let rows = parse_likers(data)?;
+    let mut seen = std::collections::HashSet::new();
+    let ids = data["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .take(100)
+        .filter_map(|row| {
+            let id = instagram::string(row.get("pk").unwrap_or(&row["id"]));
+            (instagram::digits(&id) && seen.insert(id.clone())).then_some(id)
+        })
+        .collect();
+    Ok(Likers {
+        rows,
+        ids,
+        like_count: data["likeCount"].as_u64(),
+    })
 }
 pub fn parse_likers(data: &Value) -> Result<Vec<Value>> {
     let rows = data["users"]

@@ -7,6 +7,218 @@ use std::sync::{
     Mutex,
 };
 
+fn scraper_fixture(fixture: &Fixture) -> Scraper {
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let api = Arc::new(api);
+    let uploads = Arc::new(crate::uploads::Uploads {
+        entries: tokio::sync::Mutex::new(HashMap::new()),
+        slots: Arc::new(tokio::sync::Semaphore::new(4)),
+    });
+    let mobile = Service::fixture(api.clone(), uploads, fixture.url.clone());
+    let (work, _) = watch::channel((0, Work::default()));
+    Scraper {
+        api,
+        mobile,
+        work,
+        cache: Mutex::new(cache::Cache::open(std::path::Path::new(":memory:")).unwrap()),
+        openrouter_key: String::new(),
+        apify_key: "fixture".into(),
+        provider_url: Some(fixture.url.clone()),
+    }
+}
+
+fn task(kind: TaskKind) -> Task {
+    Task {
+        id: "source".into(),
+        username: "source".into(),
+        profile_id: "profile".into(),
+        run_id: "run".into(),
+        since_date: 100_000,
+        post_limit: 5000,
+        list_id: "list".into(),
+        kind,
+        post: Some(json!({"id":"1","code":"one"})),
+    }
+}
+
+#[tokio::test]
+async fn source_discovery_preserves_range_counts_batches_and_rate_limits() {
+    let mode = Arc::new(AtomicUsize::new(0));
+    let batches = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let apify_reads = Arc::new(AtomicUsize::new(0));
+    let m = mode.clone();
+    let b = batches.clone();
+    let a = apify_reads.clone();
+    let fixture = Fixture::start(move |request| {
+        let m = m.clone(); let b = b.clone(); let a = a.clone();
+        async move {
+            let path = request.uri().path().to_string();
+            if path == "/api/chat/context" {
+                return Json(json!({"connected":true,"state":Service::fixture_session(),"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();
+            }
+            if path == "/api/scraper/heartbeat" { return Json(json!({})).into_response(); }
+            if path == "/api/scraper/posts" {
+                let data = body(request).await;
+                b.lock().unwrap().push(data);
+                return Json(json!({})).into_response();
+            }
+            if path.contains("run-sync-get-dataset-items") {
+                a.fetch_add(1, Ordering::SeqCst);
+                let input = body(request).await;
+                assert_eq!(input["resultsLimit"], 5000);
+                return Json(json!([{"id":"77","shortCode":"fallback","timestamp":"2026-01-01T00:00:00Z","likesCount":123}])).into_response();
+            }
+            if path.ends_with("users/search/") {
+                return Json(json!({"users":[{"pk":"123","username":"source"}]})).into_response();
+            }
+            assert!(path.ends_with("/feed/user/123/"), "Unexpected {path}");
+            match m.load(Ordering::SeqCst) {
+                2 => (StatusCode::BAD_GATEWAY, Json(json!({"status":"fail"}))).into_response(),
+                3 => (StatusCode::TOO_MANY_REQUESTS, Json(json!({"status":"fail"}))).into_response(),
+                mode => Json(json!({"items":(1..=26).map(|id| {
+                    let mut post = json!({"pk":id.to_string(),"code":format!("post{id}"),"taken_at":300,"like_count":100 + id});
+                    if mode == 1 && id == 26 { post.as_object_mut().unwrap().remove("like_count"); }
+                    post
+                }).chain([json!({"pk":"99","code":"old","taken_at":10,"like_count":10000})]).collect::<Vec<_>>(),"more_available":false})).into_response(),
+            }
+        }
+    }).await;
+    let scraper = scraper_fixture(&fixture);
+    for (mode_value, expected_average) in [(0, json!(113.5)), (1, Value::Null)] {
+        mode.store(mode_value, Ordering::SeqCst);
+        scraper.run_task(&task(TaskKind::Posts)).await.unwrap();
+        let rows = std::mem::take(&mut *batches.lock().unwrap());
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["posts"].as_array().unwrap().len(), 25);
+        assert_eq!(rows[1]["posts"].as_array().unwrap().len(), 1);
+        assert_eq!(rows[0]["postCount"], 26);
+        assert_eq!(rows[0]["averageLikes"], expected_average);
+        assert_eq!(rows[0]["posts"][0]["takenAt"], 300000);
+        assert_eq!(rows[0]["postsFromApify"], false);
+    }
+    mode.store(2, Ordering::SeqCst);
+    scraper.run_task(&task(TaskKind::Posts)).await.unwrap();
+    assert_eq!(batches.lock().unwrap()[0]["postsFromApify"], true);
+    assert_eq!(batches.lock().unwrap()[0]["averageLikes"], 123.0);
+    mode.store(3, Ordering::SeqCst);
+    assert!(
+        scraper
+            .run_task(&task(TaskKind::Posts))
+            .await
+            .unwrap_err()
+            .paused
+    );
+    assert_eq!(apify_reads.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() {
+    let calls = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let observed = calls.clone();
+    let fixture = Fixture::start(move |request| {
+        let observed = observed.clone();
+        async move {
+            let path = request.uri().path().to_string();
+            if path == "/api/chat/context" {
+                return Json(json!({"connected":true,"state":Service::fixture_session(),"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();
+            }
+            if path == "/api/scraper/heartbeat" { return Json(json!({})).into_response(); }
+            if path.ends_with("/info/") { return Json(json!({"items":[{"user":{"pk":"123"},"like_count":200}]})).into_response(); }
+            if path.ends_with("/likers/") {
+                return Json(json!({"users":[
+                    {"pk":"10","username":"one","is_private":false},
+                    {"pk":"10","username":"one","is_private":false},
+                    {"pk":"20","username":"two","is_private":false},
+                    {"pk":"30","username":"private","is_private":true}
+                ]})).into_response();
+            }
+            assert_eq!(path, "/api/scraper/batch");
+            let data = body(request).await;
+            let length = data["likers"].as_array().unwrap().len();
+            let mut calls = observed.lock().unwrap();
+            let processed = if calls.is_empty() { 1 } else { length };
+            calls.push(data);
+            Json(json!({"processed":processed,"limitExhausted":processed < length})).into_response()
+        }
+    }).await;
+    let scraper = scraper_fixture(&fixture);
+    let mut job = task(TaskKind::Likers);
+    assert!(scraper.run_task(&job).await.unwrap_err().paused);
+    assert!(scraper
+        .cache
+        .lock()
+        .unwrap()
+        .contains("list", "10")
+        .unwrap());
+    assert!(!scraper
+        .cache
+        .lock()
+        .unwrap()
+        .contains("list", "20")
+        .unwrap());
+    let activity = scraper.run_task(&job).await.unwrap().unwrap();
+    assert_eq!(activity.new_ids, 3); // Private IDs describe traffic but never become leads.
+    assert_eq!(activity.like_count, Some(200));
+    assert_eq!(calls.lock().unwrap()[1]["likers"][0]["igId"], "20");
+    job.run_id = "next-check".into();
+    assert_eq!(scraper.run_task(&job).await.unwrap().unwrap().new_ids, 0);
+    assert_eq!(calls.lock().unwrap().len(), 2);
+    job.list_id = "another-list".into();
+    job.id = "another-source".into();
+    assert_eq!(scraper.run_task(&job).await.unwrap().unwrap().new_ids, 3);
+    assert_eq!(
+        calls.lock().unwrap()[2]["likers"].as_array().unwrap().len(),
+        2
+    );
+}
+
+#[test]
+fn acknowledged_memberships_survive_cache_reopen() {
+    let dir = std::env::temp_dir().join(format!("scraper-cache-{}", uuid::Uuid::new_v4()));
+    let file = dir.join("cache.sqlite");
+    {
+        let mut cache = cache::Cache::open(&file).unwrap();
+        cache.acknowledge("list", &["10".into()]).unwrap();
+        assert_eq!(
+            cache
+                .observe("source:post", "first", &["10".into(), "20".into()])
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            cache
+                .observe("source:post", "first", &["10".into(), "20".into()])
+                .unwrap(),
+            2
+        );
+    }
+    {
+        let mut cache = cache::Cache::open(&file).unwrap();
+        assert!(cache.contains("list", "10").unwrap());
+        assert!(!cache.contains("another", "10").unwrap());
+        assert!(!cache.contains("list", "20").unwrap());
+        assert_eq!(
+            cache
+                .observe(
+                    "source:post",
+                    "next",
+                    &["10".into(), "20".into(), "30".into()]
+                )
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            cache
+                .observe("another:post", "next", &["10".into(), "20".into()])
+                .unwrap(),
+            2
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[tokio::test]
 async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limits() {
     let mode = Arc::new(AtomicUsize::new(0));
@@ -82,23 +294,29 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
         api,
         mobile,
         work,
+        cache: Mutex::new(cache::Cache::open(std::path::Path::new(":memory:")).unwrap()),
         openrouter_key: "fixture".into(),
         apify_key: "fixture".into(),
         provider_url: Some(fixture.url.clone()),
     };
-    let job = Job {
+    let job = Task {
         id: "job".into(),
         username: "source".into(),
         profile_id: "profile".into(),
         run_id: "run".into(),
         since_date: 0,
         post_limit: 1,
-        posts: None,
-        post_index: None,
+        list_id: "list".into(),
+        kind: TaskKind::Likers,
+        post: None,
     };
     let post = json!({"id":"1","code":"one"});
     let mut fallback = None;
-    let rows = scraper.likers(&job, &post, &mut fallback).await.unwrap();
+    let rows = scraper
+        .likers(&job, &post, &mut fallback)
+        .await
+        .unwrap()
+        .rows;
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0]["igId"], "9007199254740993");
     assert_eq!(profile_reads.load(Ordering::SeqCst), 0);
@@ -113,6 +331,7 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
                 .likers(&job, &post, &mut fallback)
                 .await
                 .unwrap()
+                .rows
                 .len(),
             1
         );
@@ -122,6 +341,7 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
                 .likers(&job, &post, &mut fallback)
                 .await
                 .unwrap()
+                .rows
                 .len(),
             1
         );
@@ -144,6 +364,7 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
         .likers(&job, &post, &mut fallback)
         .await
         .unwrap()
+        .rows
         .is_empty());
     assert_eq!(web_reads.load(Ordering::SeqCst), 4);
 
@@ -154,6 +375,7 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
             .likers(&job, &post, &mut fallback)
             .await
             .unwrap()
+            .rows
             .len(),
         1
     );
@@ -199,7 +421,9 @@ fn apify_and_likers_keep_lossless_ids_dates_deduplication_and_public_filter() {
     let data = json!([{"id":"9007199254740993_123","shortCode":"one","timestamp":"2026-01-01T00:00:00.000Z"},{"pk":"9007199254740993","code":"one","timestamp":"2026-01-01T00:00:00Z"},{"id":"2","shortcode":"old","timestamp":"2024-01-01T00:00:00Z"}]);
     assert_eq!(
         providers::apify_dataset(&data, 1_735_689_600_000, 5000).unwrap(),
-        vec![json!({"id":"9007199254740993","code":"one"})]
+        vec![
+            json!({"id":"9007199254740993","code":"one","takenAt":1767225600000i64,"likeCount":null})
+        ]
     );
     assert!(providers::apify_dataset(
         &json!([{"error":"blocked","requestErrorMessages":["429"]}]),
@@ -212,143 +436,4 @@ fn apify_and_likers_keep_lossless_ids_dates_deduplication_and_public_filter() {
     assert_eq!(likers.len(), 1);
     assert_eq!(likers[0]["igId"], "9007199254740993");
     assert!(instagram::parse_likers(&json!({})).is_err());
-}
-
-#[tokio::test]
-async fn jobs_preserve_sources_resume_checkpoints_daily_limits_and_mobile_429s() {
-    let calls = Arc::new(Mutex::new(Vec::<(String, Value)>::new()));
-    let mode = Arc::new(AtomicUsize::new(0));
-    let mobile_reads = Arc::new(AtomicUsize::new(0));
-    let apify_reads = Arc::new(AtomicUsize::new(0));
-    let liker_reads = Arc::new(AtomicUsize::new(0));
-    let observed = calls.clone();
-    let m = mode.clone();
-    let mr = mobile_reads.clone();
-    let ar = apify_reads.clone();
-    let lr = liker_reads.clone();
-    let state = serde_json::to_string(&crate::instagram::new_session("profile", "source")).unwrap();
-    let fixture=Fixture::start(move|request|{let calls=observed.clone();let mode=m.load(Ordering::SeqCst);let mr=mr.clone();let ar=ar.clone();let lr=lr.clone();let state=state.clone();async move{
-        let path=request.uri().path().to_string();
-        if path=="/api/profiles/by-id"{return Json(json!({"id":"profile","sessionId":"fixture-browser-cookie","using":false})).into_response();}
-        if path=="/api/chat/session" {return Json(json!({"connected":true,"state":state,"token":"11111111-1111-4111-8111-111111111111"})).into_response();}
-        if path=="/api/chat/context" {return Json(json!({"connected":true,"state":state,"token":"11111111-1111-4111-8111-111111111111","profile":{"proxy":"","proxyType":""}})).into_response();}
-        if path=="/api/v1/users/search/"{
-            mr.fetch_add(1,Ordering::SeqCst);
-            if mode==1{return (StatusCode::BAD_GATEWAY,Json(json!({"status":"fail"}))).into_response();}
-            if mode==5{return (StatusCode::TOO_MANY_REQUESTS,[("retry-after","3600")],Json(json!({"status":"fail","error_type":"secret-cookie-value"}))).into_response();}
-            return Json(json!({"users":[{"pk":"123","username":"source"}]})).into_response();
-        }
-        if path.starts_with("/api/v1/feed/user/"){return Json(json!({"items":[{"pk":"1","code":"one","taken_at":300}],"more_available":false})).into_response();}
-        if path.ends_with("/info/"){return Json(json!({"items":[{"user":{"pk":"123"}}]})).into_response();}
-        if path.starts_with("/v2/actors/"){ar.fetch_add(1,Ordering::SeqCst);return Json(json!([{"id":"1","code":"one","timestamp":"2026-01-01T00:00:00Z"}])).into_response();}
-        if path.contains("/likers/"){lr.fetch_add(1,Ordering::SeqCst);return Json(json!({"users":[{"pk":"11","username":"lead","is_private":false}]})).into_response();}
-        let data=body(request).await;calls.lock().unwrap().push((path.clone(),data));
-        if path=="/api/scraper/batch"{return Json(json!({"added":1,"processed":if mode==4{0}else{1},"limitExhausted":mode==2||mode==3||mode==4})).into_response();}
-        if path=="/api/scraper/checkpoint"{return Json(json!({"limitExhausted":false})).into_response();}
-        panic!("Unexpected fixture request {path}")
-    }}).await;
-    let mut api = Api::from_env().unwrap();
-    api.convex_url = fixture.url.clone();
-    api.key = "fixture".into();
-    let uploads = Arc::new(crate::uploads::Uploads {
-        entries: tokio::sync::Mutex::new(HashMap::new()),
-        slots: Arc::new(tokio::sync::Semaphore::new(4)),
-    });
-    let api = Arc::new(api);
-    let mut mobile = Service::new(api.clone(), uploads);
-    Arc::get_mut(&mut mobile).unwrap().base = Some(fixture.url.clone());
-    let (work, _) = watch::channel((0, Work::default()));
-    let scraper = Scraper {
-        api,
-        mobile,
-        work,
-        openrouter_key: "fixture".into(),
-        apify_key: "fixture".into(),
-        provider_url: Some(fixture.url.clone()),
-    };
-    let job = |posts| Job {
-        id: "job".into(),
-        username: "source".into(),
-        profile_id: "profile".into(),
-        run_id: "run".into(),
-        since_date: 0,
-        post_limit: 2,
-        posts,
-        post_index: None,
-    };
-    // Mobile source has a heartbeat before each feed request and is checkpointed as mobile.
-    scraper
-        .run_job(&job(None))
-        .await
-        .unwrap_or_else(|e| panic!("{}", e.message));
-    assert_eq!(apify_reads.load(Ordering::SeqCst), 0);
-    assert!(calls
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|(_, v)| v["postsFromApify"] == false));
-    mode.store(1, Ordering::SeqCst);
-    calls.lock().unwrap().clear();
-    scraper
-        .run_job(&job(None))
-        .await
-        .unwrap_or_else(|e| panic!("{}", e.message));
-    assert_eq!(apify_reads.load(Ordering::SeqCst), 1);
-    assert!(calls
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|(_, v)| v["postsFromApify"] == true));
-    let saved = vec![json!({"id":"1","code":"one"})];
-    let before = mobile_reads.load(Ordering::SeqCst);
-    scraper
-        .run_job(&job(Some(saved.clone())))
-        .await
-        .unwrap_or_else(|e| panic!("{}", e.message));
-    assert_eq!(mobile_reads.load(Ordering::SeqCst), before);
-    assert_eq!(apify_reads.load(Ordering::SeqCst), 1);
-    mode.store(2, Ordering::SeqCst);
-    calls.lock().unwrap().clear();
-    let error = scraper
-        .run_job(&job(Some(vec![
-            saved[0].clone(),
-            json!({"id":"2","code":"two"}),
-        ])))
-        .await
-        .err()
-        .unwrap();
-    assert!(error.paused);
-    assert!(calls
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|(_, v)| v["postIndex"] == 1));
-    mode.store(3, Ordering::SeqCst);
-    scraper
-        .run_job(&job(Some(saved.clone())))
-        .await
-        .unwrap_or_else(|e| panic!("{}", e.message));
-    mode.store(4, Ordering::SeqCst);
-    calls.lock().unwrap().clear();
-    assert!(
-        scraper
-            .run_job(&job(Some(saved)))
-            .await
-            .err()
-            .unwrap()
-            .paused
-    );
-    assert!(!calls
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|(_, v)| v.get("postIndex").is_some()));
-    mode.store(5, Ordering::SeqCst);
-    let before = liker_reads.load(Ordering::SeqCst);
-    let error = scraper.run_job(&job(None)).await.err().unwrap();
-    assert!(error.paused);
-    assert_eq!(error.retry_after_ms, Some(3_600_000));
-    assert_eq!(apify_reads.load(Ordering::SeqCst), 1);
-    assert_eq!(liker_reads.load(Ordering::SeqCst), before);
-    assert!(!error.message.contains("secret"));
 }

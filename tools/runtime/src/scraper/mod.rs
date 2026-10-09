@@ -1,3 +1,4 @@
+mod cache;
 mod instagram;
 mod providers;
 #[cfg(test)]
@@ -8,12 +9,11 @@ use crate::{
     instagram::{Command, Service},
 };
 use axum::{extract::State, http::Method, routing::post, Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    borrow::Cow,
     collections::HashSet,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tokio::sync::watch;
@@ -57,8 +57,8 @@ impl Error {
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Work {
-    job_at: Option<u64>,
-    job_key: Option<String>,
+    task_at: Option<u64>,
+    task_key: Option<String>,
     enrichment_key: Option<String>,
 }
 pub struct Scraper {
@@ -67,12 +67,13 @@ pub struct Scraper {
     openrouter_key: String,
     apify_key: String,
     work: watch::Sender<(u64, Work)>,
+    cache: Mutex<cache::Cache>,
     #[cfg(test)]
     provider_url: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Job {
+struct Task {
     #[serde(rename = "_id")]
     id: String,
     username: String,
@@ -80,8 +81,21 @@ struct Job {
     run_id: String,
     since_date: u64,
     post_limit: u64,
-    posts: Option<Vec<Value>>,
-    post_index: Option<usize>,
+    list_id: String,
+    kind: TaskKind,
+    post: Option<Value>,
+}
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase")]
+enum TaskKind {
+    Posts,
+    Likers,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Activity {
+    new_ids: u64,
+    like_count: Option<u64>,
 }
 impl Scraper {
     pub async fn update(&self, value: Value) -> crate::native::Result<()> {
@@ -92,12 +106,18 @@ impl Scraper {
         });
         Ok(())
     }
-    pub fn start(api: Arc<Api>, mobile: Arc<Service>) -> Arc<Self> {
+    pub fn start(api: Arc<Api>, mobile: Arc<Service>) -> crate::native::Result<Arc<Self>> {
+        #[cfg(not(test))]
+        let file = crate::native::project_root().join("data/scraper-cache/cache.sqlite");
+        #[cfg(test)]
+        let file = std::path::PathBuf::from(":memory:");
+        let cache = cache::Cache::open(&file)?;
         let (work, _) = watch::channel((0, Work::default()));
         let service = Arc::new(Self {
             api,
             mobile,
             work,
+            cache: Mutex::new(cache),
             openrouter_key: api::env("OPENROUTER_API_KEY", ""),
             apify_key: api::env("APIFY_API_KEY", ""),
             #[cfg(test)]
@@ -109,7 +129,7 @@ impl Scraper {
                 service.run_loop(enrichment).await;
             });
         }
-        service
+        Ok(service)
     }
     async fn request(&self, operation: &str, body: Value) -> Result<Value> {
         self.api
@@ -123,10 +143,9 @@ impl Scraper {
     }
     async fn run_loop(self: Arc<Self>, enrichment: bool) {
         let mut work = self.work.subscribe();
-        let mut previous = 0;
         let mut retry_at = Instant::now();
         loop {
-            let (revision, state) = work.borrow_and_update().clone();
+            let (_, state) = work.borrow_and_update().clone();
             let due = if enrichment {
                 if state.enrichment_key.is_some() && !self.openrouter_key.is_empty() {
                     Some(0)
@@ -134,7 +153,7 @@ impl Scraper {
                     None
                 }
             } else {
-                state.job_key.as_ref().and(state.job_at)
+                state.task_key.as_ref().and(state.task_at)
             };
             let Some(due) = due else {
                 if work.changed().await.is_err() {
@@ -144,19 +163,14 @@ impl Scraper {
             };
             let due_at = Instant::now()
                 + Duration::from_millis(due.saturating_sub(api::now_ms()).min(24 * 60 * 60 * 1000));
-            let ready = if revision == previous {
-                due_at.max(retry_at)
-            } else {
-                due_at
-            };
+            let ready = due_at.max(retry_at);
             tokio::select! { _=tokio::time::sleep_until(ready.into())=>{}, result=work.changed()=>{if result.is_err(){break;}continue;} }
-            previous = revision;
             let result = if enrichment {
                 self.enrich_pending().await
             } else {
-                self.job_tick().await
+                self.task_tick().await
             };
-            if let Err(error) = result {
+            if let Err(error) = &result {
                 ig_service_common::service_error(
                     if enrichment {
                         "scraper.enrichment_failed"
@@ -166,20 +180,25 @@ impl Scraper {
                     &error.message,
                 );
             }
-            retry_at = Instant::now() + Duration::from_secs(30);
+            let delay = if enrichment || result.is_err() {
+                30_000
+            } else {
+                10_000 + rand::random::<u16>() as u64 % 10_000
+            };
+            retry_at = Instant::now() + Duration::from_millis(delay);
         }
     }
-    async fn job_tick(&self) -> Result<()> {
+    async fn task_tick(&self) -> Result<()> {
         let claimed = self.request("claim", json!({})).await?;
         if claimed.is_null() {
             return Ok(());
         }
-        let job: Job = serde_json::from_value(claimed)
-            .map_err(|_| Error::failed("Invalid claimed scraper job"))?;
+        let job: Task = serde_json::from_value(claimed)
+            .map_err(|_| Error::failed("Invalid claimed scraper task"))?;
         let start = Instant::now();
-        let result = self.run_job(&job).await;
-        let (status, message) = match result {
-            Ok(()) => ("completed", None),
+        let result = self.run_task(&job).await;
+        let (status, message, activity) = match result {
+            Ok(activity) => ("completed", None, activity),
             Err(error) => {
                 if let Some(ms) = error.retry_after_ms {
                     if let Err(error) = self
@@ -195,45 +214,31 @@ impl Scraper {
                 (
                     if error.paused { "paused" } else { "failed" },
                     Some(error.message),
+                    None,
                 )
             }
         };
-        let mut body = json!({"jobId":job.id,"runId":job.run_id,"status":status});
+        let mut body = json!({"sourceId":job.id,"runId":job.run_id,"status":status});
         if let Some(message) = &message {
             body["error"] = json!(message);
+        }
+        if let Some(activity) = &activity {
+            body["newIds"] = json!(activity.new_ids);
+            body["likeCount"] = json!(activity.like_count);
         }
         self.request("finish", body).await?;
         println!(
             "{}",
-            json!({"id":uuid::Uuid::new_v4().to_string(),"ts":api::now_ms(),"event":"scraper.job","message":"scraper job finished","source":"runtime","requestId":job.run_id,"level":if status=="failed"{"error"}else{"info"},"outcome":if status=="completed"{"success"}else if status=="paused"{"paused"}else{"error"},"durationMs":start.elapsed().as_millis() as u64,"context":{"jobId":job.id,"profileId":job.profile_id,"status":status,"reason":message},"environment":{"service":"runtime","runtime":"rust","commitHash":api::env("COMMIT_SHA","unknown")}})
+            json!({"id":uuid::Uuid::new_v4().to_string(),"ts":api::now_ms(),"event":"scraper.source","message":"scraper source check finished","source":"runtime","requestId":job.run_id,"level":if status=="failed"{"error"}else{"info"},"outcome":if status=="completed"{"success"}else if status=="paused"{"paused"}else{"error"},"durationMs":start.elapsed().as_millis() as u64,"context":{"sourceId":job.id,"profileId":job.profile_id,"listId":job.list_id,"kind":job.kind,"postId":job.post.as_ref().map(|p| &p["id"]),"status":status,"reason":message},"environment":{"service":"runtime","runtime":"rust","commitHash":api::env("COMMIT_SHA","unknown")}})
         );
         Ok(())
     }
-    async fn checkpoint(&self, job: &Job, extra: Value) -> Result<Value> {
-        let mut body = json!({"jobId":job.id,"runId":job.run_id});
-        if let Value::Object(extra) = extra {
-            body.as_object_mut().unwrap().extend(extra);
-        }
-        self.request("checkpoint", body).await
-    }
-    async fn run_job(&self, job: &Job) -> Result<()> {
-        if self.openrouter_key.is_empty() {
-            return Err(Error::failed(
-                "OPENROUTER_API_KEY is missing from the server environment",
-            ));
-        }
-        if job.post_limit == 0 || job.post_limit > 5000 {
-            return Err(Error::failed("Invalid scraper post limit"));
-        }
-        let mut web = None;
-        let posts: Cow<'_, [Value]> = if let Some(posts) = &job.posts {
-            Cow::Borrowed(posts)
-        } else {
-            let args = json!({"username":job.username,"sinceDate":job.since_date,"postLimit":job.post_limit,"jobId":job.id,"runId":job.run_id});
+    async fn run_task(&self, job: &Task) -> Result<Option<Activity>> {
+        if job.kind == TaskKind::Posts {
             let command = Command {
                 profile_id: job.profile_id.clone(),
                 token: None,
-                args,
+                args: json!({"username":job.username,"sinceDate":job.since_date,"postLimit":job.post_limit,"sourceId":job.id,"runId":job.run_id}),
             };
             let (posts, apify) = match self.mobile.invoke("posts", &command).await {
                 Ok(Value::Array(posts)) => (posts, false),
@@ -245,57 +250,97 @@ impl Scraper {
                     true,
                 ),
             };
-            self.checkpoint(job, json!({"posts":posts,"postsFromApify":apify}))
+            // Hidden/missing like counts cannot safely qualify a profile for monitoring.
+            let counts: Option<Vec<u64>> = posts.iter().map(|p| p["likeCount"].as_u64()).collect();
+            let average = counts
+                .filter(|v| !v.is_empty())
+                .map(|v| v.iter().map(|n| *n as f64).sum::<f64>() / v.len() as f64);
+            let mut chunks: Vec<_> = posts.chunks(25).collect();
+            if chunks.is_empty() {
+                chunks.push(&[]);
+            }
+            for chunk in chunks {
+                self.request(
+                    "posts",
+                    json!({"sourceId":job.id,"runId":job.run_id,"posts":chunk,
+                    "averageLikes":average,"postCount":posts.len(),"postsFromApify":apify}),
+                )
                 .await?;
-            Cow::Owned(posts)
-        };
+            }
+            return Ok(None);
+        }
+        let post = job
+            .post
+            .as_ref()
+            .ok_or_else(|| Error::failed("Missing post to scrape"))?;
+        self.request("heartbeat", json!({"sourceId":job.id,"runId":job.run_id}))
+            .await?;
+        let snapshot = self.likers(job, post, &mut None).await?;
         let mut seen = HashSet::new();
-        for (index, post) in posts.iter().enumerate().skip(job.post_index.unwrap_or(0)) {
-            let fresh: Vec<_> = self
-                .likers(job, post, &mut web)
-                .await?
-                .into_iter()
-                .filter(|row| seen.insert(crate::instagram::string(&row["igId"])))
-                .collect();
-            for (chunk_index, chunk) in fresh.chunks(25).enumerate() {
-                let result = self
-                    .request(
-                        "batch",
-                        json!({"jobId":job.id,"runId":job.run_id,"likers":chunk}),
-                    )
-                    .await?;
-                let processed = result["processed"]
-                    .as_u64()
-                    .ok_or_else(|| Error::failed("Invalid scraper batch result"))?
-                    as usize;
-                if result["limitExhausted"] == true {
-                    if processed < chunk.len() || (chunk_index + 1) * 25 < fresh.len() {
-                        return Err(Error::daily_limit());
-                    }
-                    self.checkpoint(job, json!({"postIndex":index+1})).await?;
-                    if index + 1 < posts.len() {
-                        return Err(Error::daily_limit());
-                    }
-                    return Ok(());
+        let mut fresh = Vec::new();
+        {
+            let cache = self
+                .cache
+                .lock()
+                .map_err(|_| Error::failed("Scraper cache unavailable"))?;
+            for row in snapshot.rows {
+                let id = crate::instagram::string(&row["igId"]);
+                if seen.insert(id.clone())
+                    && !cache
+                        .contains(&job.list_id, &id)
+                        .map_err(|_| Error::failed("Scraper cache unavailable"))?
+                {
+                    fresh.push(row);
                 }
             }
-            let state = self.checkpoint(job, json!({"postIndex":index+1})).await?;
-            if state["limitExhausted"] == true && index + 1 < posts.len() {
+        }
+        for chunk in fresh.chunks(25) {
+            let result = self
+                .request(
+                    "batch",
+                    json!({"sourceId":job.id,"runId":job.run_id,"likers":chunk}),
+                )
+                .await?;
+            let processed = result["processed"]
+                .as_u64()
+                .filter(|v| *v <= chunk.len() as u64)
+                .ok_or_else(|| Error::failed("Invalid scraper batch result"))?
+                as usize;
+            let ids: Vec<_> = chunk
+                .iter()
+                .take(processed)
+                .map(|r| crate::instagram::string(&r["igId"]))
+                .collect();
+            self.cache
+                .lock()
+                .map_err(|_| Error::failed("Scraper cache unavailable"))?
+                .acknowledge(&job.list_id, &ids)
+                .map_err(|_| Error::failed("Scraper cache unavailable"))?;
+            if processed < chunk.len() {
                 return Err(Error::daily_limit());
             }
-            if index + 1 < posts.len() {
-                let ms = 10_000 + rand::random::<u16>() as u64 % 10_000;
-                tokio::time::sleep(Duration::from_millis(ms)).await;
-            }
         }
-        Ok(())
+        let new_ids = self
+            .cache
+            .lock()
+            .map_err(|_| Error::failed("Scraper cache unavailable"))?
+            .observe(
+                &format!("{}:{}", job.id, crate::instagram::string(&post["id"])),
+                &job.run_id,
+                &snapshot.ids,
+            )
+            .map_err(|_| Error::failed("Scraper cache unavailable"))?;
+        Ok(Some(Activity {
+            new_ids,
+            like_count: snapshot.like_count,
+        }))
     }
     async fn likers(
         &self,
-        job: &Job,
+        job: &Task,
         post: &Value,
         web: &mut Option<instagram::Web>,
-    ) -> Result<Vec<Value>> {
+    ) -> Result<instagram::Likers> {
         let command = Command {
             profile_id: job.profile_id.clone(),
             token: None,
@@ -303,7 +348,7 @@ impl Scraper {
         };
         match self.mobile.invoke("likers", &command).await {
             Ok(data) => {
-                if let Ok(rows) = instagram::parse_likers(&data) {
+                if let Ok(rows) = instagram::snapshot(&data) {
                     return Ok(rows);
                 }
             }

@@ -109,7 +109,7 @@ async fn yielded_routines_reload_all_runtime_pages_without_subscription_changes(
         Subscriptions::new(api.clone()),
         processes.clone(),
         chat,
-        scraper::Scraper::start(api, mobile),
+        scraper::Scraper::start(api, mobile).unwrap(),
     );
     let run = coordination.clone();
     let task = tokio::spawn(async move { run.routines().await });
@@ -222,7 +222,7 @@ async fn subscriptions_and_deadlines_start_routines_retry_capacity_and_stop_disa
         Subscriptions::new(api.clone()),
         processes.clone(),
         chat,
-        scraper::Scraper::start(api, mobile),
+        scraper::Scraper::start(api, mobile).unwrap(),
     );
     let run = coordination.clone();
     let task = tokio::spawn(async move { run.routines().await });

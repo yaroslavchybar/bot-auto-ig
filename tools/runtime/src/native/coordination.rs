@@ -90,7 +90,7 @@ impl Coordination {
             .await?;
         while let Some(update) = subscription.next().await {
             let value = subscriptions::value(update)
-                .unwrap_or(json!({"jobAt": null, "jobKey": null, "enrichmentKey": null}));
+                .unwrap_or(json!({"taskAt": null, "taskKey": null, "enrichmentKey": null}));
             self.scraper.update(value).await?;
         }
         Err(Failure::unavailable("Scraper subscription ended"))

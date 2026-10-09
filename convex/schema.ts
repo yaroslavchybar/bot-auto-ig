@@ -3,7 +3,12 @@ import { v } from 'convex/values'
 import { routineValidator } from './routinePolicy'
 
 export default defineSchema({
-  leadLists: defineTable({ name: v.string(), createdAt: v.number() }),
+  leadLists: defineTable({
+    name: v.string(),
+    createdAt: v.number(),
+    scrapeLookbackDays: v.optional(v.number()),
+    scrapeMonitor: v.optional(v.boolean()),
+  }),
   leads: defineTable({
     igId: v.optional(v.string()),
     username: v.string(),
@@ -209,32 +214,58 @@ export default defineSchema({
     threadId: v.string(),
   }).index('by_profile_thread', ['profileId', 'threadId']),
 
-  scrapeJobs: defineTable({
+  scrapeSources: defineTable({
     username: v.string(),
     listId: v.id('leadLists'),
-    sinceDate: v.number(),
-    postLimit: v.number(),
-    activeKey: v.optional(v.string()),
-    status: v.union(
-      v.literal('queued'),
-      v.literal('running'),
-      v.literal('completed'),
-      v.literal('failed'),
-      v.literal('paused'),
-    ),
+    enabled: v.boolean(),
+    deleting: v.optional(v.boolean()),
+    running: v.boolean(),
+    nextCheckAt: v.number(),
+    lastCheckAt: v.optional(v.number()),
+    averageLikes: v.optional(v.number()),
+    postCount: v.number(),
+    discovered: v.number(),
+    error: v.optional(v.string()),
     profileId: v.optional(v.id('profiles')),
     runId: v.optional(v.string()),
     leaseUntil: v.optional(v.number()),
-    postIndex: v.optional(v.number()),
-    posts: v.optional(v.array(v.object({ id: v.string(), code: v.string() }))),
+    kind: v.optional(v.union(v.literal('posts'), v.literal('likers'))),
+    currentPostId: v.optional(v.id('scrapePosts')),
     postsFromApify: v.optional(v.boolean()),
-    discovered: v.number(),
-    error: v.optional(v.string()),
     createdAt: v.number(),
-    updatedAt: v.number(),
   })
-    .index('by_status_lease', ['status', 'leaseUntil'])
-    .index('by_active_key', ['activeKey']),
+    .index('by_list_username', ['listId', 'username'])
+    .index('by_due', ['enabled', 'running', 'nextCheckAt'])
+    .index('by_lease', ['running', 'leaseUntil']),
+  scrapePosts: defineTable({
+    sourceId: v.id('scrapeSources'),
+    mediaId: v.string(),
+    code: v.string(),
+    takenAt: v.number(),
+    likeCount: v.optional(v.number()),
+    scheduled: v.boolean(),
+    monitoring: v.boolean(),
+    nextCheckAt: v.number(),
+    monitorEligible: v.optional(v.boolean()),
+    monitorStoppedAt: v.optional(v.number()),
+    observedLikeCount: v.optional(v.number()),
+    checks: v.optional(
+      v.array(
+        v.object({
+          at: v.number(),
+          elapsedMs: v.number(),
+          newIds: v.number(),
+          likesGained: v.optional(v.number()),
+        }),
+      ),
+    ),
+    lastScrapedAt: v.optional(v.number()),
+    error: v.optional(v.string()),
+  })
+    .index('by_source_media', ['sourceId', 'mediaId'])
+    .index('by_source_date', ['sourceId', 'takenAt'])
+    .index('by_source_scheduled', ['sourceId', 'scheduled'])
+    .index('by_due', ['scheduled', 'monitoring', 'nextCheckAt']),
 
   // One row per profile/list membership so runtime workers can query only
   // profiles assigned to their lists instead of scanning the whole table.

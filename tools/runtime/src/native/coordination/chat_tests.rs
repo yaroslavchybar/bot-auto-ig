@@ -101,7 +101,7 @@ async fn chat_background_is_idle_without_accounts_limits_concurrency_and_stops_c
         subscriptions.clone(),
         processes,
         chat,
-        scraper::Scraper::start(api, mobile.clone()),
+        scraper::Scraper::start(api, mobile.clone()).unwrap(),
     );
     Arc::get_mut(&mut coordination).unwrap().chat_interval = Duration::from_millis(100);
     let runner = coordination.clone();

@@ -169,7 +169,7 @@ pub fn apify_dataset(data: &Value, since: u64, limit: usize) -> Result<Vec<Value
         if date.unwrap() < (since as i64) || !seen.insert(id.to_string()) {
             continue;
         }
-        posts.push(json!({"id":id,"code":code}));
+        posts.push(json!({"id":id,"code":code,"takenAt":date.unwrap(),"likeCount":row["likesCount"].as_u64()}));
         if posts.len() >= limit {
             break;
         }

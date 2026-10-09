@@ -232,6 +232,7 @@ async fn media_likers(mobile: &mut Mobile, args: &Value) -> Result<Value> {
     {
         return Err(Error::new("Invalid Instagram media ID"));
     }
+    let mut like_count = None;
     let media_id = if parts.len() == 2 {
         media_id
     } else {
@@ -243,6 +244,10 @@ async fn media_likers(mobile: &mut Mobile, args: &Value) -> Result<Value> {
                 &Fields::new(),
             )
             .await?;
+        like_count = info["items"]
+            .as_array()
+            .and_then(|items| items.last())
+            .and_then(|item| item["like_count"].as_u64());
         let owner = info["items"]
             .as_array()
             .and_then(|items| items.last())
@@ -253,14 +258,21 @@ async fn media_likers(mobile: &mut Mobile, args: &Value) -> Result<Value> {
         }
         format!("{media_id}_{owner}")
     };
-    mobile
+    let mut result = mobile
         .mobile(
             Method::GET,
             &format!("media/{media_id}/likers/"),
             None,
             &Fields::new(),
         )
-        .await
+        .await?;
+    if let Some(count) = like_count {
+        result
+            .as_object_mut()
+            .ok_or_else(|| Error::new("Instagram returned invalid likers"))?
+            .insert("likeCount".into(), json!(count));
+    }
+    Ok(result)
 }
 fn string_arg(args: &Value, key: &str, max: usize) -> Result<String> {
     args[key]
@@ -380,7 +392,7 @@ pub fn collect_posts(
             ));
         }
         if seen.insert(id.into()) {
-            posts.push(json!({"id":id,"code":code}));
+            posts.push(json!({"id":id,"code":code,"takenAt":date as u64,"likeCount":item["like_count"].as_u64()}));
         }
         if posts.len() >= limit {
             break;
@@ -418,13 +430,13 @@ async fn recent_posts(service: &Service, mobile: &mut Mobile, args: &Value) -> R
     let mut cursors = HashSet::new();
     let mut cursor = String::new();
     loop {
-        if args["jobId"].is_string() && args["runId"].is_string() {
+        if args["sourceId"].is_string() && args["runId"].is_string() {
             service
                 .api
                 .convex(
                     Method::POST,
-                    "/api/scraper/checkpoint",
-                    Some(&json!({"jobId":args["jobId"],"runId":args["runId"]})),
+                    "/api/scraper/heartbeat",
+                    Some(&json!({"sourceId":args["sourceId"],"runId":args["runId"]})),
                 )
                 .await
                 .map_err(Error::new)?;

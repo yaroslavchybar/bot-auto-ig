@@ -975,7 +975,7 @@ async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
     .unwrap();
     assert_eq!(
         posts,
-        json!([{"id":"2","code":"two"},{"id":"3","code":"three"}])
+        json!([{"id":"2","code":"two","takenAt":300000,"likeCount":null},{"id":"3","code":"three","takenAt":200000,"likeCount":null}])
     );
     let posts = operations::invoke(
         &service,
@@ -985,7 +985,10 @@ async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
     )
     .await
     .unwrap();
-    assert_eq!(posts, json!([{"id":"2","code":"two"}]));
+    assert_eq!(
+        posts,
+        json!([{"id":"2","code":"two","takenAt":300000,"likeCount":null}])
+    );
 }
 #[tokio::test]
 async fn native_replies_reactions_and_unsend_preserve_request_fields() {
