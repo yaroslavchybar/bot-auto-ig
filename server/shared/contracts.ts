@@ -16,7 +16,7 @@ export type ProfileRecord = {
   fingerprintSeed?: number
   cookiesJson?: string
   sessionId?: string
-  scraperDailyLimit?: number
+  scraperDailyLimit?: number | null
   scraperUsageDate?: string
   scraperUsageCount?: number
   listIds?: string[]

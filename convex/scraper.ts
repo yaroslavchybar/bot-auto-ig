@@ -3,7 +3,7 @@ import { internalMutation, internalQuery, mutation, query } from './_generated/s
 import type { Doc, Id } from './_generated/dataModel';
 import { normalizeUsername } from './instagramUsername';
 import { addMembership, leadAvailable, setLeadAvailability } from './leadMemberships';
-import { jobKey, lookbackMs } from './scraperKeys';
+import { DEFAULT_SCRAPER_DAILY_LIMIT, jobKey, lookbackMs } from './scraperKeys';
 import { requireServerBridgeAuth } from './serverBridgeAuth';
 
 /** No clock reads: clients wake at these timestamps, and writes wake subscriptions. */
@@ -36,7 +36,9 @@ export const work = query({
 });
 
 const day = () => new Date().toISOString().slice(0, 10);
-const limitFor = (profile: Doc<'profiles'>) => profile.scraperDailyLimit;
+// Missing limits use the default; null is an explicit unlimited choice.
+const limitFor = (profile: Doc<'profiles'>) => profile.scraperDailyLimit === null
+  ? undefined : profile.scraperDailyLimit ?? DEFAULT_SCRAPER_DAILY_LIMIT;
 const usedToday = (profile: Doc<'profiles'>) => profile.scraperUsageDate === day() ? (profile.scraperUsageCount ?? 0) : 0;
 
 export const jobs = query({
@@ -48,7 +50,7 @@ export const accounts = query({
   args: {},
   handler: async (ctx) => (await ctx.db.query('profiles').collect()).map(p => ({
     id: p._id, name: p.name, ready: !!p.sessionId,
-    dailyLimit: p.scraperDailyLimit, used: usedToday(p), cooldownUntil: p.scraperCooldownUntil,
+    dailyLimit: limitFor(p), used: usedToday(p), cooldownUntil: p.scraperCooldownUntil,
   })),
 });
 
@@ -73,7 +75,7 @@ export const setDailyLimit = mutation({
     if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100000))
       throw new Error('Limit must be from 1 to 100000');
     if (!await ctx.db.get(profileId)) throw new Error('Profile not found');
-    await ctx.db.patch(profileId, { scraperDailyLimit: limit });
+    await ctx.db.patch(profileId, { scraperDailyLimit: limit ?? null });
   },
 });
 

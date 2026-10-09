@@ -1,4 +1,5 @@
 import { DomainError } from '../errors';
+import { DEFAULT_SCRAPER_DAILY_LIMIT } from '../scraperKeys';
 import { clearChatCounter } from '../chatCache'
 import { clearProfileChatArchives } from '../chatArchives'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
@@ -195,7 +196,7 @@ export async function insertProfileRow(ctx: any, args: any) {
 		mode: computeProfileMode(args.proxy),
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
 		sessionId: sessionIdFromCookies(cookiesJsonRaw),
-		scraperDailyLimit: 1000,
+		scraperDailyLimit: DEFAULT_SCRAPER_DAILY_LIMIT,
 		using: false,
 		fingerprintOs: args.fingerprintOs,
 		fingerprintSeed: args.fingerprintSeed,

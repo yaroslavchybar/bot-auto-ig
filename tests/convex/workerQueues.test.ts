@@ -3,7 +3,7 @@ import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 afterEach(() => vi.unstubAllEnvs())
 
-test('scraper is idle without work and exposes capacity reset and lease expiry', async () => {
+test.each([10, undefined])('scraper exposes capacity reset and lease expiry with limit %s', async (limit) => {
   vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
   const t = createConvexTest()
   const args = { bridgeToken: 'test-bridge' }
@@ -20,8 +20,8 @@ test('scraper is idle without work and exposes capacity reset and lease expiry',
       mode: 'direct',
       createdAt: 0,
       sessionId: 'test',
-      scraperDailyLimit: 10,
-      scraperUsageCount: 10,
+      scraperDailyLimit: limit,
+      scraperUsageCount: limit ?? 1000,
       scraperUsageDate: '2026-09-24',
     })
     const list = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })

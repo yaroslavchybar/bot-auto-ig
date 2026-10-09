@@ -2,7 +2,7 @@ import { expect, test } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
 import { createConvexTest, seedProfile } from './helpers';
 
-async function runningJob(options: { limit?: number; used?: number; fromApify?: boolean } = {}) {
+async function runningJob(options: { limit?: number | null; used?: number; fromApify?: boolean } = {}) {
   const t = createConvexTest();
   const ids = await t.run(async ctx => {
     const profileId = await ctx.db.insert('profiles', {
@@ -85,12 +85,28 @@ test('daily limits can be set and cleared while preserving the new-profile defau
   expect((await t.query(api.scraper.accounts, {}))[0]?.dailyLimit).toBe(5);
   await t.mutation(api.scraper.setDailyLimit, { profileId: profile._id });
   expect((await t.query(api.scraper.accounts, {}))[0]?.dailyLimit).toBeUndefined();
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.scraperDailyLimit).toBeNull();
   await expect(t.mutation(api.scraper.setDailyLimit, { profileId: profile._id, limit: 0 }))
     .rejects.toThrow('Limit must');
 });
 
-test('unlimited profiles can save batches and claim work after high usage', async () => {
-  const { t, profileId, jobId, checkpoint } = await runningJob({ used: 100000, fromApify: false });
+test('accounts without a saved limit display and enforce the 1000 daily default', async () => {
+  const { t, profileId, checkpoint } = await runningJob({ used: 999, fromApify: false });
+  expect((await t.query(api.scraper.accounts, {}))[0]?.dailyLimit).toBe(1000);
+  expect(await t.mutation(internal.scraper.saveBatch, {
+    ...checkpoint, likers: [{ igId: '11', username: 'first' }, { igId: '12', username: 'second' }],
+  })).toEqual({ added: 1, processed: 1, limitExhausted: true });
+  expect(await t.mutation(internal.scraper.checkpoint, { ...checkpoint, postIndex: 1 }))
+    .toEqual({ limitExhausted: true });
+  expect((await t.run(ctx => ctx.db.get(profileId)))?.scraperUsageCount).toBe(1000);
+  await t.mutation(internal.scraper.finish, { ...checkpoint, status: 'paused' });
+  expect(await t.mutation(internal.scraper.claimNext, {})).toBeNull();
+  await t.run(ctx => ctx.db.patch(profileId, { scraperUsageDate: '2000-01-01' }));
+  expect(await t.mutation(internal.scraper.claimNext, {})).toMatchObject({ profileId });
+});
+
+test('explicitly unlimited profiles can save batches and claim work after high usage', async () => {
+  const { t, profileId, jobId, checkpoint } = await runningJob({ limit: null, used: 100000, fromApify: false });
   const result = await t.mutation(internal.scraper.saveBatch, {
     ...checkpoint, likers: [{ igId: '11', username: 'first' }],
   });

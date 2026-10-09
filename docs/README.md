@@ -292,8 +292,9 @@ Liker collection makes one request for up to 100 accounts per post, saves them
 in Convex batches of 25, and waits 10–20 seconds between posts.
 Profile pictures are described through regular OpenRouter GPT-6 Luna calls
 with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies leads,
-so a classification retry does not repeat the picture call. Clearing a profile's
-daily limit removes its cap. Saved likers and completed mobile-discovered posts
+so a classification retry does not repeat the picture call. Profiles default to
+a daily scraping limit of 1,000, including profiles without a saved limit.
+Clearing the daily limit explicitly removes its cap. Saved likers and completed mobile-discovered posts
 share that quota; repeated post checkpoints do not add usage. The quota is
 separate from Instagram's
 request limits. A 429 cools down that account for at least 30 minutes, with
