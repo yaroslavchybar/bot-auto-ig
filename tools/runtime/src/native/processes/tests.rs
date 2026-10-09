@@ -69,7 +69,7 @@ async fn automation_uses_started_snapshot_saves_final_checkpoint_and_yields_capa
 let input = ''; process.stdin.on('data', data => { input += data.toString(); if (!input.includes('\n')) return;
 const payload = JSON.parse(input.split('\n')[0]); if (payload.automation.currentNodeId !== null) process.exit(2);
 console.log('__EVENT__'+JSON.stringify({type:'checkpoint',nodeId:'new',nodeStates:{new:'done'}})+'__EVENT__');
-console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:Date.now()+60000})+'__EVENT__'); process.exit(0); });
+console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:2000000000000.25})+'__EVENT__'); process.exit(0); });
 "#).await.unwrap();
     let states = Arc::new(Mutex::new(Vec::new()));
     let observed = states.clone();
@@ -103,7 +103,7 @@ console.log('__EVENT__'+JSON.stringify({type:'worker_waiting',dueAt:Date.now()+6
         .unwrap()
         .unwrap();
     assert_eq!(id, "a");
-    assert!(due.is_some());
+    assert_eq!(due, Some(2_000_000_000_001));
     let states = states.lock().await;
     let final_state = states.last().unwrap();
     assert_eq!(final_state["status"], "pending");

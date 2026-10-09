@@ -261,7 +261,7 @@ export const recordSession = internalMutation({
         (dailyCompleted && state.lastActivityDate !== date ? 1 : 0),
       ...(dailyCompleted ? { lastActivityDate: date } : {}),
       ...(args.issue ? { issue: args.issue } : {}),
-      nextRunAt: warmup?.nextRunAt ?? Date.now() + 60 * 60_000,
+      nextRunAt: Math.ceil(warmup?.nextRunAt ?? Date.now() + 60 * 60_000),
       updatedAt: Date.now(),
     });
     if (args.issue && /login|challenge|checkpoint/i.test(args.issue))

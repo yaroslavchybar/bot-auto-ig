@@ -81,7 +81,7 @@ async fn yielded_routines_reload_all_runtime_pages_without_subscription_changes(
                         Json(json!({"profiles":[],"warmups":[],"progress":[],"isDone":false,"nextCursor":"tail"})).into_response()
                     } else {
                         assert_eq!(query["cursor"], "tail");
-                        Json(json!({"profiles":[{"id":"p201","igLoggedIn":true}],"warmups":[],"progress":[{"profileId":"p201","nextRunAt":api::now_ms()+200}],"isDone":true,"nextCursor":""})).into_response()
+                        Json(json!({"profiles":[{"id":"p201","igLoggedIn":true}],"warmups":[],"progress":[{"profileId":"p201","nextRunAt":api::now_ms() as f64 + 200.25}],"isDone":true,"nextCursor":""})).into_response()
                     }
                 }
                 _ => Json(json!({"isActive":true,"routine":{}})).into_response(),
@@ -155,7 +155,7 @@ async fn subscriptions_and_deadlines_start_routines_retry_capacity_and_stop_disa
                                 let value = if path.ends_with(":listRoutinesForScheduler") {
                                     json!(*rows.borrow_and_update())
                                 } else {
-                                    json!({"automation":{"isActive":true},"profiles":[{"id":"p","igLoggedIn":true}],"progress":[{"profileId":"p","nextRunAt":api::now_ms()+200}]})
+                                    json!({"automation":{"isActive":true},"profiles":[{"id":"p","igLoggedIn":true}],"progress":[{"profileId":"p","nextRunAt":api::now_ms() as f64 + 200.25}]})
                                 };
                                 queries.insert(id,path);
                                 changes.push(json!({"type":"QueryUpdated","queryId":id,"value":value,"logLines":[],"journal":null}));

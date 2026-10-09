@@ -70,7 +70,7 @@ export const finishRunInternal = internalMutation({
     const minutes = Math.min(args.minutes, state.activeRun.minutes)
     await ctx.db.patch(state._id, {
       activeRun: undefined,
-      nextRunAt: Date.now() + state.activeRun.restMinutes * 60_000,
+      nextRunAt: Math.ceil(Date.now() + state.activeRun.restMinutes * 60_000),
       minutesUsedToday: Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + minutes),
       runsToday: state.runsToday + (minutes > 0 ? 1 : 0),
       recentRunIds: [...(state.recentRunIds ?? []), args.runId].slice(-20),

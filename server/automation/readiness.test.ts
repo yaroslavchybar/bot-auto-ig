@@ -2,6 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { routineDueAt } from './readiness.js'
 
+test('fractional stored deadlines yield integer wakeups without shortening rest', () => {
+  const now = Date.parse('2026-10-09T12:00:00Z')
+  const snapshot = {
+    automation: { isActive: true },
+    profiles: [{ id: 'p', igLoggedIn: true, using: false }],
+    progress: [{ profileId: 'p', nextRunAt: now + 30_000.25 }],
+    warmups: [{ profileId: 'p', nextRunAt: now + 30_000.75 }],
+  }
+  assert.equal(routineDueAt(snapshot, now), now + 30_001)
+})
+
 test('routine wakeups honor rest, login, daily budgets and paused profiles', () => {
   const now = Date.parse('2026-09-30T23:55:00Z')
   const automation = { isActive: true }

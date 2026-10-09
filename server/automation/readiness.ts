@@ -21,7 +21,7 @@ export function routineDueAt(snapshot: RuntimeSnapshot, now = Date.now()): numbe
       at = Math.max(at, midnight)
     earliest = Math.min(earliest, at)
   }
-  return earliest
+  return Math.ceil(earliest)
 }
 
 /**

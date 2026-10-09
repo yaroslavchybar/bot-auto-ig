@@ -449,6 +449,18 @@ test("one automation owns each model; moving a profile changes its automation", 
   expect(moved?.listIds?.map(String)).toEqual([String(secondList._id)]);
 });
 
+test('session progress preserves fractional stored rest deadlines as integer milliseconds', async () => {
+  const { t, args, profile } = await setup();
+  const nextRunAt = Date.now() + 60_000.25;
+  await t.run(ctx => ctx.db.insert('warmupStates', {
+    profileId: profile._id, day: 1, date: dayKey(), runsToday: 1,
+    todayMinutes: 30, minutesUsedToday: 5, nextRunAt, updatedAt: Date.now(),
+  }));
+  await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
+  const state = await t.run(ctx => ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique());
+  expect(state?.nextRunAt).toBe(Math.ceil(nextRunAt));
+});
+
 test("completed daily browsing advances once; removing and readding profiles preserves progress", async () => {
   const { t, args, profile, list, loggedIn } = await setup();
   await loggedIn();

@@ -45,6 +45,35 @@ test('a zero-duration run releases the reservation without counting a run', asyn
   expect((await begin('two')).minutes).toBe(40)
 })
 
+test('fractional rest durations produce integer deadlines without permitting early runs', async () => {
+  vi.useFakeTimers()
+  const now = Date.parse('2026-10-09T12:00:00Z')
+  vi.setSystemTime(now)
+  const { begin, finish, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
+  const plan = await begin()
+  await finish(plan.date, 5)
+  const deadline = now + 60_001
+  expect((await state())?.nextRunAt).toBe(deadline)
+  vi.setSystemTime(deadline - 1)
+  expect((await begin('two')).minutes).toBe(0)
+  vi.setSystemTime(deadline)
+  expect((await begin('two')).minutes).toBe(35)
+})
+
+test('restart recovery rounds rest deadlines and preserves a later stored deadline', async () => {
+  vi.useFakeTimers()
+  const now = Date.parse('2026-10-09T12:00:00Z')
+  vi.setSystemTime(now)
+  for (const previous of [0, now + 120_000.25]) {
+    const { t, begin, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
+    await begin()
+    const row = (await t.run(ctx => ctx.db.query('warmupStates').collect()))[0]
+    await t.run(ctx => ctx.db.patch(row._id, { nextRunAt: previous }))
+    await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
+    expect((await state())?.nextRunAt).toBe(previous ? now + 120_001 : now + 60_001)
+  }
+})
+
 test('rolls over on demand and ignores late finishes from yesterday', async () => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date('2026-09-19T23:59:00Z'))

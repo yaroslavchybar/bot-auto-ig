@@ -336,7 +336,7 @@ export const reconcileInterruptedInternal = internalMutation({
       if (!state.activeRun) continue;
       await ctx.db.patch(state._id, {
         minutesUsedToday: Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + state.activeRun.minutes),
-        nextRunAt: Math.max(state.nextRunAt ?? 0, now + state.activeRun.restMinutes * 60_000),
+        nextRunAt: Math.ceil(Math.max(state.nextRunAt ?? 0, now + state.activeRun.restMinutes * 60_000)),
         activeRun: undefined,
       });
     }

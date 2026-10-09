@@ -2,6 +2,33 @@ use super::*;
 use crate::test_support::{body, Fixture};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+#[test]
+fn timestamps_accept_integer_and_fractional_numbers_but_reject_invalid_values() {
+    assert_eq!(
+        timestamp_ms(&json!(1_791_572_361_635u64)),
+        Some(1_791_572_361_635)
+    );
+    assert_eq!(
+        timestamp_ms(&json!(1_791_572_361_635.0)),
+        Some(1_791_572_361_635)
+    );
+    assert_eq!(
+        timestamp_ms(&json!(1_791_572_361_635.119_4)),
+        Some(1_791_572_361_636)
+    );
+    assert_eq!(timestamp_ms(&json!(0)), Some(0));
+    for invalid in [
+        Value::Null,
+        json!(-1),
+        json!(-0.25),
+        json!("1791572361635"),
+        json!(true),
+        json!(1e30),
+    ] {
+        assert_eq!(timestamp_ms(&invalid), None);
+    }
+}
+
 #[tokio::test]
 async fn convex_retry_only_replays_transient_failures_for_explicit_safe_calls() {
     for (status, method, safe, expected) in [

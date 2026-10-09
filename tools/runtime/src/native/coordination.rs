@@ -359,7 +359,7 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
         }
         if let Some(status) = profile["igAccountStatus"].as_str() {
             if status != "connected" {
-                let login = profile["browserLoggedInAt"].as_u64().unwrap_or(0);
+                let login = api::timestamp_ms(&profile["browserLoggedInAt"]).unwrap_or(0);
                 if status != "assigned"
                     || login == 0
                     || now <= login
@@ -383,8 +383,8 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
             continue;
         }
         let mut at = now
-            .max(state["nextRunAt"].as_u64().unwrap_or(0))
-            .max(warmup["nextRunAt"].as_u64().unwrap_or(0));
+            .max(api::timestamp_ms(&state["nextRunAt"]).unwrap_or(0))
+            .max(api::timestamp_ms(&warmup["nextRunAt"]).unwrap_or(0));
         if warmup["date"].as_str() == Some(today.to_string().as_str())
             && (warmup["activeRun"] == true
                 || warmup["minutesUsedToday"].as_f64().unwrap_or(0.0)
@@ -403,6 +403,19 @@ mod tests;
 #[cfg(test)]
 mod readiness_tests {
     use super::*;
+    #[test]
+    fn fractional_rest_deadlines_do_not_start_a_worker_early() {
+        let now = 1_790_812_500_000u64;
+        for (progress, warmup) in [(30_000.25, 0.0), (0.0, 30_000.75), (20_000.5, 30_000.75)] {
+            let snapshot = json!({
+                "automation": {"isActive": true},
+                "profiles": [{"id": "p", "igLoggedIn": true}],
+                "progress": [{"profileId": "p", "nextRunAt": now as f64 + progress}],
+                "warmups": [{"profileId": "p", "nextRunAt": now as f64 + warmup}]
+            });
+            assert_eq!(due_at(&snapshot, now), now + 30_001);
+        }
+    }
     #[test]
     fn readiness_respects_rest_account_dates_and_midnight() {
         let now = 1_790_812_500_000u64;

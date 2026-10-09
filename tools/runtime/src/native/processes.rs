@@ -588,7 +588,7 @@ impl Processes {
                 }
                 match kind.as_str() {
                     "worker_waiting" => {
-                        progress.due_at = data["dueAt"].as_u64();
+                        progress.due_at = api::timestamp_ms(&data["dueAt"]);
                     }
                     "profile_started" => {
                         if let Some(name) = data["profileName"].as_str() {
