@@ -12,7 +12,7 @@ Instagram credentials and account proxies stay on the server.
   conversations per profile with 30 recent messages each. Media bytes are not
   stored here. Unsent-message tombstones are bounded to 100 IDs per conversation.
 - Convex keeps the login session file, connection membership, and one small
-  unread counter per profile. Chat histories and previews are no longer read or
+  unread summary per profile, including up to 200 conversation IDs. Chat histories and previews are no longer read or
   written there. The sidebar counter has no dependency on profile cookies or
   login-session checkpoints.
 
@@ -33,7 +33,14 @@ Only visible avatars load pictures. Missing pictures and group chats show initia
 Use **Archive** in a conversation header to move it out of the default **Inbox**.
 Choose **Archived** to view archived conversations, or **Inbox** for active chats.
 Use **Move to inbox** to restore a chat. New messages leave archived chats archived.
+The sidebar badge counts only unread Inbox chats. Archiving removes a chat from
+the badge immediately; restoring it counts it again if it still awaits a reply.
+Archive changes update the badge through Convex without fetching messages again.
 You can also right-click a conversation in the list to archive it or move it to Inbox.
+
+The scraped-list filter beside Inbox/Archived defaults to **All lists**. Choose a scraped list or **Unassigned** and combine it with the profile, folder, and search filters. Changing lists keeps the open conversation and draft and does not trigger an Instagram refresh.
+
+Chat subscribes to small batches of list metadata for contacts already in the inbox. It matches Instagram IDs first, using usernames only when the stored identity does not conflict. Confirmed outreach uses its saved source list for the sending profile, even if scraped membership later changes. Older or incoming conversations use current scraped memberships; group chats match any recipient’s list. Deleted lists no longer appear in the filter. Messages and media stay in their existing local caches.
 Archiving does not delete messages or change Instagram's inbox.
 
 Folder filters combine with the profile selector and search, and stay in the URL.

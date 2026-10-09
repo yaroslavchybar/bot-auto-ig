@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   clearPending: vi.fn(() => Promise.resolve()),
   readPending: vi.fn<() => Promise<ChatMessage[]>>(() => Promise.resolve([])),
   profiles: [{ id: 'profile', name: 'Profile', igLoggedIn: true, status: 'idle' }],
+  lists: [] as { _id: string; name: string }[],
+  threadLists: new Map<string, Set<string>>(),
+  listsLoading: false,
+  contactsLoading: false,
 }))
 
 vi.mock('@/lib/auth', () => ({ useAppUser: () => ({ id: mocks.userId }) }))
@@ -27,6 +31,14 @@ vi.mock('@/lib/router', () => ({
 }))
 vi.mock('@/features/chat/hooks/useChatProfiles', () => ({
   useChatProfiles: () => ({ profiles: mocks.profiles, loading: false }),
+}))
+vi.mock('@/features/chat/hooks/useChatLists', () => ({
+  useChatLists: () => ({
+    lists: mocks.lists,
+    threadLists: mocks.threadLists,
+    listsLoading: mocks.listsLoading,
+    loading: mocks.listsLoading || mocks.contactsLoading,
+  }),
 }))
 vi.mock('@/hooks/useWebSocket', () => ({
   useWebSocket: (options: { onEvent: typeof mocks.onEvent }) => {
@@ -95,6 +107,10 @@ function conversation(id: string): ChatThread {
 beforeEach(() => {
   mocks.userId = 'user'
   mocks.search = '?profile=profile&thread=1'
+  mocks.lists = []
+  mocks.threadLists = new Map()
+  mocks.listsLoading = false
+  mocks.contactsLoading = false
   mocks.archiveRows = []
   mocks.readArchives.mockImplementation(async () => mocks.archiveRows)
   mocks.setArchive.mockImplementation(async ({ profileId, threadId, archived }) => {
@@ -116,6 +132,85 @@ afterEach(async () => {
   await view?.unmount()
   view = undefined
   vi.useRealTimers()
+})
+
+test('scraped-list filtering preserves the open conversation and draft without fetching chats again', async () => {
+  mocks.lists = [{ _id: 'purpose', name: 'Purpose' }]
+  mocks.threadLists = new Map([['profile:1', new Set(['purpose'])]])
+  mocks.apiFetch.mockImplementation(async (path: string) => {
+    if (path.endsWith('/session')) return { connected: true }
+    if (path.endsWith('/threads'))
+      return { viewerId: 'viewer', threads: [conversation('1'), conversation('2')] }
+    return conversation('1')
+  })
+  view = mount()
+  await view.render(<Probe />)
+  await act(async () => chat.setDraft('Keep this reply'))
+  const requests = mocks.apiFetch.mock.calls.length
+  await act(async () => chat.selectList('unassigned'))
+  expect(mocks.navigate).toHaveBeenLastCalledWith(
+    '/chat?profile=profile&thread=1&list=unassigned',
+    { replace: true },
+  )
+  mocks.search = '?profile=profile&thread=1&list=unassigned'
+  await view.render(<Probe />)
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['2'])
+  expect(chat.conversation?.id).toBe('1')
+  expect(chat.draft).toBe('Keep this reply')
+  expect(mocks.apiFetch.mock.calls.length).toBe(requests)
+  await act(async () => chat.selectFolder('archived'))
+  expect(mocks.navigate).toHaveBeenLastCalledWith(
+    '/chat?profile=profile&thread=1&folder=archived&list=unassigned',
+    { replace: true },
+  )
+  mocks.search = '?profile=profile&thread=1&list=purpose'
+  await view.render(<Probe />)
+  expect(chat.visibleThreads.map((thread) => thread.id)).toEqual(['1'])
+  await act(async () => chat.setSearchQuery('Thread 2'))
+  expect(chat.visibleThreads).toEqual([])
+})
+
+test('all-profile list filtering intersects archives using the profile/thread pair', async () => {
+  mocks.search = '?thread=profile%3A1&list=purpose&folder=archived'
+  mocks.lists = [{ _id: 'purpose', name: 'Purpose' }]
+  mocks.threadLists = new Map([
+    ['profile:1', new Set(['purpose'])],
+    ['other:1', new Set(['other-purpose'])],
+  ])
+  mocks.archiveRows = [
+    { profileId: 'profile', threadId: '1' },
+    { profileId: 'other', threadId: '1' },
+  ]
+  mocks.apiFetch.mockImplementation(async (path) =>
+    path === '/api/chat/threads'
+      ? {
+          errors: [],
+          threads: [
+            { ...conversation('1'), profileId: 'profile' },
+            { ...conversation('1'), profileId: 'other' },
+          ],
+        }
+      : conversation('1'),
+  )
+  view = mount()
+  await view.render(<Probe />)
+  expect(chat.visibleThreads.map((thread) => thread.profileId)).toEqual(['profile'])
+  expect(chat.folderCount).toBe(1)
+})
+
+test('unknown list URLs reset only the list filter, and loading metadata does not label chats unassigned', async () => {
+  mocks.search = '?profile=profile&thread=1&folder=archived&list=deleted'
+  view = mount()
+  await view.render(<Probe />)
+  expect(mocks.navigate).toHaveBeenLastCalledWith(
+    '/chat?profile=profile&thread=1&folder=archived',
+    { replace: true },
+  )
+  mocks.search = '?profile=profile&thread=1&list=unassigned'
+  mocks.contactsLoading = true
+  await view.render(<Probe />)
+  expect(chat.listFilterLoading).toBe(true)
+  expect(chat.visibleThreads).toEqual([])
 })
 
 test.each([

@@ -182,12 +182,12 @@ impl Cache {
                 || now.saturating_sub(session.picture_urls_synced_at) >= 24 * 60 * 60 * 1000
         }))
     }
-    pub fn unread_count(&self, id: &str) -> Result<u64> {
-        Ok(self.db.query_row(
-            "SELECT COUNT(*) FROM threads WHERE profileId=? AND json_extract(value, '$.unread')=1",
-            [id],
-            |r| r.get::<_, i64>(0),
-        )? as u64)
+    pub fn unread_thread_ids(&self, id: &str) -> Result<Vec<String>> {
+        let mut query = self.db.prepare(
+            "SELECT threadId FROM threads WHERE profileId=? AND json_extract(value, '$.unread')=1 ORDER BY threadId",
+        )?;
+        let rows = query.query_map([id], |row| row.get(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<String>>>()?)
     }
     pub fn save_inbox(
         &mut self,

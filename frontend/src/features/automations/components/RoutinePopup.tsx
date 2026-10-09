@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
   defaultRoutine,
+  outreachRoutes,
   validateRoutine,
   type RoutinePolicy,
 } from '../../../../../convex/routinePolicy'
@@ -22,7 +23,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -33,6 +33,7 @@ import {
 import { GroupedInputs } from '../activity-ui/GroupedInputs'
 import { MinMaxField } from '../activity-ui/MinMaxField'
 import { browseFeed } from '../activities/browsing/browse-feed'
+import { OutreachAssignments } from './OutreachAssignments'
 import { cn } from '@/lib/utils'
 
 const tabs = ['General', 'Warm-up & activity', 'Outreach', 'Profiles'] as const
@@ -60,11 +61,20 @@ export function RoutinePopup({
   const [tab, setTab] = useState<(typeof tabs)[number]>('General')
   const [name, setName] = useState(automation?.name ?? '')
   const [listIds, setListIds] = useState<Id<'lists'>[]>(automation?.listIds ?? [])
-  const [policy, setPolicy] = useState<RoutinePolicy>(automation?.routine ?? defaultRoutine)
+  const [policy, setPolicy] = useState<RoutinePolicy>(() => {
+    const initial = automation?.routine ?? defaultRoutine
+    return {
+      ...initial,
+      leadListId: undefined,
+      message: '',
+      outreachRoutes: outreachRoutes(initial),
+    }
+  })
   const [saving, setSaving] = useState(false)
   const lists = useQuery(api.lists.list, {})
   const automations = useQuery(api.automations.queries.list, {})
   const leadLists = useQuery(api.leads.lists, {})
+  const profiles = useQuery(api.profiles.queries.modelOptions, {})
   const create = useMutation(api.automations.mutations.create)
   const update = useMutation(api.automations.mutations.update)
   const locked =
@@ -105,12 +115,20 @@ export function RoutinePopup({
       <MinMaxField
         unit={unit}
         minInput={{
-          name: minKey, label: `Minimum ${label.toLowerCase()}`,
-          type: 'number', min: 1, max: limit, step: 1,
+          name: minKey,
+          label: `Minimum ${label.toLowerCase()}`,
+          type: 'number',
+          min: 1,
+          max: limit,
+          step: 1,
         }}
         maxInput={{
-          name: maxKey, label: `Maximum ${label.toLowerCase()}`,
-          type: 'number', min: 1, max: limit, step: 1,
+          name: maxKey,
+          label: `Maximum ${label.toLowerCase()}`,
+          type: 'number',
+          min: 1,
+          max: limit,
+          step: 1,
         }}
         minValue={policy[minKey] ?? fallback}
         maxValue={policy[maxKey] ?? fallback}
@@ -223,7 +241,14 @@ export function RoutinePopup({
                     ) : (
                       <Select
                         value={listIds[0] ?? ''}
-                        onValueChange={(id) => setListIds([id as Id<'lists'>])}
+                        disabled={locked || saving}
+                        onValueChange={(id) => {
+                          setListIds([id as Id<'lists'>])
+                          change(
+                            'outreachRoutes',
+                            policy.outreachRoutes?.map((route) => ({ ...route, profileIds: [] })),
+                          )
+                        }}
                       >
                         <SelectTrigger className="border-line bg-field">
                           <SelectValue placeholder="Choose a model" />
@@ -276,9 +301,9 @@ export function RoutinePopup({
                   </p>
                   {rangeField('warmupMinPosts', 'warmupMaxPosts', 'Warm-up posts', 'posts', 100, 9)}
                   <p className="text-xs text-subtle-copy">
-                    Each account gets a random total from this range. Changing the range assigns
-                    new targets to unfinished accounts, keeping their existing posts. Completed
-                    accounts stay ready.
+                    Each account gets a random total from this range. Changing the range assigns new
+                    targets to unfinished accounts, keeping their existing posts. Completed accounts
+                    stay ready.
                   </p>
                   <GroupedInputs
                     inputs={browseFeed.inputs}
@@ -310,10 +335,17 @@ export function RoutinePopup({
                     {numberField('initialDms', 'Initial daily target', 1, 35)}
                     {numberField('maxDms', 'Maximum DMs per day', 1, 35)}
                   </div>
-                  {rangeField('unfollowMinDays', 'unfollowMaxDays', 'Unfollow after', 'days', 365, 7)}
+                  {rangeField(
+                    'unfollowMinDays',
+                    'unfollowMaxDays',
+                    'Unfollow after',
+                    'days',
+                    365,
+                    7,
+                  )}
                   <p className="text-xs text-subtle-copy">
-                    Follow each recipient before messaging. Each new follow gets a random delay
-                    from this range. Existing scheduled unfollows keep their dates.
+                    Follow each recipient before messaging. Each new follow gets a random delay from
+                    this range. Existing scheduled unfollows keep their dates.
                   </p>
                   <p className="text-xs text-subtle-copy">
                     The daily target increases by a random 1–4 after each day with a confirmed DM,
@@ -321,44 +353,17 @@ export function RoutinePopup({
                     sending, and 30–90 second DM pauses share the daily time budget. Delivery
                     problems or insufficient time can leave the target incomplete.
                   </p>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="routine-lead-list">Recipient lead list</Label>
-                    <Select
-                      value={policy.leadListId ?? 'none'}
-                      onValueChange={(v) =>
-                        change('leadListId', v === 'none' ? undefined : (v as Id<'leadLists'>))
-                      }
-                    >
-                      <SelectTrigger id="routine-lead-list" className="border-line bg-field">
-                        <SelectValue placeholder="Select lead list" />
-                      </SelectTrigger>
-                      <SelectContent className="panel-dropdown">
-                        <SelectItem value="none">No lead list</SelectItem>
-                        {leadLists?.map((l) => (
-                          <SelectItem key={l._id} value={l._id}>
-                            {l.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-1.5">
-                    <div className="flex items-baseline justify-between">
-                      <Label htmlFor="routine-message">Message</Label>
-                      <span className="font-mono text-[11px] text-subtle-copy">
-                        {policy.message.length}/1000
-                      </span>
-                    </div>
-                    <Textarea
-                      id="routine-message"
-                      rows={5}
-                      maxLength={1000}
-                      value={policy.message}
-                      onChange={(e) => change('message', e.target.value)}
-                      placeholder="Hi {{username}} ..."
-                      className="border-line bg-field"
-                    />
-                  </div>
+                  <OutreachAssignments
+                    routes={policy.outreachRoutes ?? []}
+                    lists={leadLists ?? []}
+                    profiles={(profiles ?? []).filter(
+                      (profile) =>
+                        profile.status !== 'deleting' && profile.listIds?.includes(listIds[0]!),
+                    )}
+                    loading={leadLists === undefined || profiles === undefined}
+                    disabled={locked || saving}
+                    onChange={(routes) => change('outreachRoutes', routes)}
+                  />
                   <p className="text-sm text-subtle-copy">
                     Use {'{{username}}'} for the recipient. Claimed, messaged, or followed leads are
                     skipped for new sessions. A lead followed in the current session still receives

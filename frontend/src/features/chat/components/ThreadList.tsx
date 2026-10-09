@@ -1,4 +1,5 @@
 import { Archive, ArchiveRestore, MessageSquare, Search, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import {
   ContextMenu,
@@ -28,6 +29,8 @@ type ThreadListProps = {
   onFolderChange: (folder: ChatFolder) => void
   archiveDisabled: boolean
   onArchiveChange: (key: string, archived: boolean) => Promise<void>
+  filters?: ReactNode
+  listFiltered?: boolean
 }
 
 export function ThreadList({
@@ -47,6 +50,8 @@ export function ThreadList({
   onFolderChange,
   archiveDisabled,
   onArchiveChange,
+  filters,
+  listFiltered = false,
 }: ThreadListProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -72,28 +77,31 @@ export function ThreadList({
             </button>
           )}
         </div>
-        <div role="group" aria-label="Conversation folder" className="mt-3 flex flex-wrap gap-2">
-          {(
-            [
-              ['inbox', 'Inbox'],
-              ['archived', 'Archived'],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={folder === value}
-              onClick={() => onFolderChange(value)}
-              className={cn(
-                'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2',
-                folder === value
-                  ? 'brand-button'
-                  : 'bg-panel-subtle text-muted-copy hover:bg-panel-muted hover:text-ink',
-              )}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Conversation folder" className="flex shrink-0 gap-2">
+            {(
+              [
+                ['inbox', 'Inbox'],
+                ['archived', 'Archived'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={folder === value}
+                onClick={() => onFolderChange(value)}
+                className={cn(
+                  'rounded-full px-3 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2',
+                  folder === value
+                    ? 'brand-button'
+                    : 'bg-panel-subtle text-muted-copy hover:bg-panel-muted hover:text-ink',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {filters}
         </div>
       </div>
 
@@ -107,11 +115,19 @@ export function ThreadList({
         )}
         {!loading && !disabled && threads.length === 0 && totalCount === 0 && (
           <ThreadEmpty
-            title={folder === 'archived' ? 'No archived chats' : 'Inbox is empty'}
+            title={
+              listFiltered
+                ? 'No matching chats'
+                : folder === 'archived'
+                  ? 'No archived chats'
+                  : 'Inbox is empty'
+            }
             description={
-              folder === 'archived'
-                ? 'Archived conversations will appear here.'
-                : (emptyDescription ?? 'No DM threads found in this inbox.')
+              listFiltered
+                ? 'Try another scraped list, profile, or conversation folder.'
+                : folder === 'archived'
+                  ? 'Archived conversations will appear here.'
+                  : (emptyDescription ?? 'No DM threads found in this inbox.')
             }
           />
         )}

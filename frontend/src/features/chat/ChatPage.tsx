@@ -8,6 +8,7 @@ import {
   ChatStatusActions,
 } from './components/ChatHeaderControls'
 import { ConnectDialog } from './components/ConnectDialog'
+import { ChatListFilter } from './components/ChatListFilter'
 import { ConversationView } from './components/ConversationView'
 import { ThreadList } from './components/ThreadList'
 import { useChatPage } from './hooks/useChatPage'
@@ -83,7 +84,11 @@ export function ChatPage() {
                 threads={chat.visibleThreads}
                 totalCount={chat.folderCount}
                 selectedThreadId={chat.selectedThreadId}
-                loading={chat.loadingInbox || chat.archivesLoading}
+                loading={
+                  chat.loadingInbox ||
+                  chat.archivesLoading ||
+                  (chat.listId !== 'all' && chat.listFilterLoading)
+                }
                 disabled={!chat.connected}
                 emptyDescription={
                   chat.activeProfileId === 'all'
@@ -100,6 +105,15 @@ export function ChatPage() {
                 onFolderChange={chat.selectFolder}
                 archiveDisabled={chat.archivesLoading || chat.savingArchive}
                 onArchiveChange={(key, archived) => chat.changeArchive(archived, key)}
+                listFiltered={chat.listId !== 'all'}
+                filters={
+                  <ChatListFilter
+                    value={chat.listId}
+                    lists={chat.lists}
+                    loading={chat.listFilterLoading}
+                    onChange={chat.selectList}
+                  />
+                }
               />
             </div>
 

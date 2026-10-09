@@ -16,6 +16,7 @@ import { fetchChatSnapshot, subscribeChatResponses } from '../requests'
 import { useAppUser } from '@/lib/auth'
 import { useLocation, useNavigate } from '@/lib/router'
 import { useChatProfiles } from './useChatProfiles'
+import { useChatLists } from './useChatLists'
 import { errorText, filterThreads, sortThreadsByLatest } from '../utils/chat'
 import { preparePhoto, videoMetadata } from '../utils/media'
 import {
@@ -72,6 +73,7 @@ export function useChatPage() {
   const profileId = selection.get('profile') || 'all'
   const folderParam = selection.get('folder')
   const folder: ChatFolder = folderParam === 'archived' ? 'archived' : 'inbox'
+  const listParam = selection.get('list') || 'all'
   const [archiveSnapshot, setArchiveSnapshot] = useState<{
     userId: string
     rows: ChatArchiveRecord[]
@@ -293,18 +295,32 @@ export function useChatPage() {
   const loadingThread =
     canLoadChat && Boolean(selectedThreadId) && completedThreadRequest !== threadRequestKey
 
-  function updateSelection(nextProfileId: string, nextThreadId = '', nextFolder = folder) {
+  function updateSelection(
+    nextProfileId: string,
+    nextThreadId = '',
+    nextFolder = folder,
+    nextListId = listParam,
+  ) {
     const next = new URLSearchParams()
     if (nextProfileId !== 'all') next.set('profile', nextProfileId)
     if (nextThreadId) next.set('thread', nextThreadId)
     if (nextFolder !== 'inbox') next.set('folder', nextFolder)
+    if (nextListId !== 'all') next.set('list', nextListId)
     const query = next.toString()
     navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
   }
 
   useEffect(() => {
-    if (!profilesLoading && profileId !== activeProfileId) navigate('/chat', { replace: true })
-  }, [profilesLoading, profileId, activeProfileId, navigate])
+    const profileChanged = !profilesLoading && profileId !== activeProfileId
+    if (!profileChanged) return
+    const next = new URLSearchParams(search)
+    if (profileChanged) {
+      next.delete('profile')
+      next.delete('thread')
+    }
+    const query = next.toString()
+    navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
+  }, [profilesLoading, profileId, activeProfileId, search, navigate])
 
   useEffect(() => {
     if (!connected || !visible) return
@@ -573,9 +589,38 @@ export function useChatPage() {
     [inbox, activeProfileId, outgoingReplies, archivedThreads],
   )
   const deferredSearchQuery = useDeferredValue(searchQuery)
+  const {
+    lists,
+    threadLists,
+    loading: listFilterLoading,
+    listsLoading,
+  } = useChatLists(threads, activeProfileId, inbox?.viewerId ?? '')
+  const listId =
+    listsLoading ||
+    listParam === 'all' ||
+    listParam === 'unassigned' ||
+    lists.some((list) => list._id === listParam)
+      ? listParam
+      : 'all'
+  useEffect(() => {
+    if (listParam === listId) return
+    const next = new URLSearchParams(search)
+    next.delete('list')
+    const query = next.toString()
+    navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
+  }, [listParam, listId, search, navigate])
+  const listThreads = useMemo(() => {
+    if (listId === 'all') return threads
+    if (listFilterLoading) return []
+    return threads.filter((thread) => {
+      const ids = threadLists.get(`${thread.profileId ?? activeProfileId}:${thread.id}`)
+      return listId === 'unassigned' ? !ids?.size : ids?.has(listId)
+    })
+  }, [threads, listId, listFilterLoading, threadLists, activeProfileId])
   const visibleThreads = useMemo(
-    () => (archiveRows === undefined ? [] : filterThreads(threads, deferredSearchQuery, folder)),
-    [threads, deferredSearchQuery, folder, archiveRows],
+    () =>
+      archiveRows === undefined ? [] : filterThreads(listThreads, deferredSearchQuery, folder),
+    [listThreads, deferredSearchQuery, folder, archiveRows],
   )
   const selectedThread = useMemo(
     () =>
@@ -726,6 +771,10 @@ export function useChatPage() {
 
   function selectFolder(value: ChatFolder) {
     updateSelection(activeProfileId, selectedThreadId, value)
+  }
+
+  function selectList(id: string) {
+    updateSelection(activeProfileId, selectedThreadId, folder, id)
   }
 
   async function changeArchive(archived: boolean, threadKey = selectedThreadId) {
@@ -1135,7 +1184,11 @@ export function useChatPage() {
     inboxErrors,
     threads,
     visibleThreads,
-    folderCount: filterThreads(threads, '', folder).length,
+    folderCount: filterThreads(listThreads, '', folder).length,
+    lists,
+    listFilterLoading,
+    listId,
+    selectList,
     selectedArchived,
     archivesLoading: archiveRows === undefined,
     savingArchive,

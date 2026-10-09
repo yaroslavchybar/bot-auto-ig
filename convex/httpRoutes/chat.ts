@@ -74,15 +74,18 @@ export function registerChatRoutes(http: HttpRouter): void {
       const profileId = profileIdFrom(body.profileId)
       if (
         typeof body.token !== 'string' ||
-        !Number.isSafeInteger(body.unreadCount) ||
-        body.unreadCount < 0 ||
-        body.unreadCount > 200
+        !Array.isArray(body.unreadThreadIds) ||
+        body.unreadThreadIds.length > 200 ||
+        body.unreadThreadIds.some(
+          (id: unknown) => typeof id !== 'string' || !/^\d{1,40}$/.test(id),
+        ) ||
+        new Set(body.unreadThreadIds).size !== body.unreadThreadIds.length
       )
-        throw new ValidationError('Invalid unread count')
+        throw new ValidationError('Invalid unread conversation IDs')
       await ctx.runMutation(internal.chatCache.saveUnreadCount, {
         profileId,
         token: body.token,
-        unreadCount: body.unreadCount,
+        unreadThreadIds: body.unreadThreadIds,
       })
       return jsonResponse({ saved: true })
     }),

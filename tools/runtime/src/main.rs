@@ -47,15 +47,16 @@ async fn helper_shutdown() {
         use std::io::BufRead;
         for line in std::io::stdin().lock().lines() {
             if matches!(line.as_deref(), Ok("stop")) {
-                let _ = stop.send(());
                 break;
             }
             if line.is_err() {
                 break;
             }
         }
+        // Closing the owner's pipe (including an abrupt Bun exit) stops the helper too.
+        let _ = stop.send(());
     });
-    tokio::select! { _ = shutdown() => {}, _ = async { if stopped.await.is_err() { std::future::pending::<()>().await; } } => {} }
+    tokio::select! { _ = shutdown() => {}, _ = stopped => {} }
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {

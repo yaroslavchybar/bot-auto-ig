@@ -1,5 +1,5 @@
 import { DomainError } from '../errors';
-import { routineValidator, validateRoutine, warmupPostRange } from '../routinePolicy';
+import { routineValidator, validateRoutine, warmupPostRange, outreachRoutes, type RoutinePolicy } from '../routinePolicy';
 import { updateWarmupPostTargets } from '../modelSetupPolicy';
 import { assertAssignments } from '../routines';
 import { v } from "convex/values";
@@ -25,6 +25,17 @@ async function assertModelAvailable(ctx: MutationCtx, modelIds: Id<'lists'>[], e
   if (other) throw new DomainError('CONFLICT', 'This model already has an automation');
 }
 
+async function assertOutreachRoutes(ctx: MutationCtx, policy: RoutinePolicy, modelIds: Id<'lists'>[]) {
+  for (const route of outreachRoutes(policy)) {
+    if (!await ctx.db.get(route.leadListId)) throw new DomainError('VALIDATION', 'Scraped list not found');
+    for (const profileId of route.profileIds) {
+      const profile = await ctx.db.get(profileId);
+      if (!profile || profile.status === 'deleting' || !profile.listIds?.some(id => modelIds.includes(id)))
+        throw new DomainError('VALIDATION', 'Assigned profiles must belong to this automation’s model');
+    }
+  }
+}
+
 export const create = mutation({
 	args: {
 		name: v.string(),
@@ -42,6 +53,7 @@ export const create = mutation({
 		if (args.routine) validateRoutine(args.routine);
 		const listIds = normalizeListIds(args.listIds);
 		if (args.routine) await assertModelAvailable(ctx, listIds);
+		if (args.routine) await assertOutreachRoutes(ctx, args.routine, listIds);
 		const id = await ctx.db.insert("automations", {
 			name: cleaned,
 			routine: args.routine,
@@ -82,6 +94,7 @@ export const update = mutation({
 		}
 		if (updates.routine || existing.routine) {
 			await assertModelAvailable(ctx, normalizeListIds(updates.listIds ?? existing.listIds), id);
+			await assertOutreachRoutes(ctx, updates.routine ?? existing.routine!, normalizeListIds(updates.listIds ?? existing.listIds));
 		}
 
 		const patch: Record<string, any> = { updatedAt: Date.now() };

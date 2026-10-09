@@ -8,7 +8,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { dmAllowance, dayKey, routineLists, randomInRange, unfollowRange } from "./routinePolicy";
+import { dmAllowance, dayKey, routineLists, randomInRange, unfollowRange, profileOutreachRoutes } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
 
@@ -173,7 +173,7 @@ export const accounts = query({
           sent: state?.date === date ? state.sentToday ?? 0 : 0,
           budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
           allowance:
-            a.routine && p.outreachReady && (!p.igAccountId || igAccount?.status === 'connected')
+            a.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (!p.igAccountId || igAccount?.status === 'connected')
               ? state?.date === date
                 ? state.allowance
                 : dmAllowance(
@@ -195,7 +195,7 @@ export const target = internalQuery({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
-      !e.profile.outreachReady || !e.policy.outreachEnabled) return { target: 0, remaining: 0, sent: 0 };
+      !e.profile.outreachReady || !e.policy.outreachEnabled || !profileOutreachRoutes(e.policy, args.profileId).length) return { target: 0, remaining: 0, sent: 0 };
     const today = dayKey();
     const s = e.state;
     const allowance = Math.min(e.policy.maxDms, s?.date === today ? s.allowance
@@ -275,8 +275,9 @@ export const reserve = internalMutation({
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
-      !e.profile.outreachReady || !e.policy.outreachEnabled || !e.policy.leadListId) return null;
-    if (!await ctx.db.get(e.policy.leadListId)) return null;
+      !e.profile.outreachReady || !e.policy.outreachEnabled) return null;
+    const routes = profileOutreachRoutes(e.policy, args.profileId);
+    if (!routes.length) return null;
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
     const used = state.date === date ? state.used : 0;
@@ -284,18 +285,24 @@ export const reserve = internalMutation({
     const allowance = Math.min(e.policy.maxDms, state.date === date ? state.allowance : dmAllowance(e.policy, activeBeforeToday, state.dmIncrease ?? 0));
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
-    for await (const membership of ctx.db.query('leadMemberships')
-      .withIndex('by_list_available', q => q.eq('listId', e.policy.leadListId!).eq('available', true))) {
-      const candidate = await ctx.db.get(membership.leadId);
-      if (candidate && leadAvailable(candidate)) { lead = candidate; break; }
-      await ctx.db.patch(membership._id, { available: false });
+    let selected: typeof routes[number] | undefined;
+    const start = (routes.findIndex(route => route.leadListId === state.lastLeadListId) + 1) % routes.length;
+    for (let offset = 0; offset < routes.length && !lead; offset++) {
+      const route = routes[(start + offset) % routes.length];
+      if (!await ctx.db.get(route.leadListId)) continue;
+      for await (const membership of ctx.db.query('leadMemberships')
+        .withIndex('by_list_available', q => q.eq('listId', route.leadListId).eq('available', true))) {
+        const candidate = await ctx.db.get(membership.leadId);
+        if (candidate && leadAvailable(candidate)) { lead = candidate; selected = route; break; }
+        await ctx.db.patch(membership._id, { available: false });
+      }
     }
-    if (!lead) return null;
-    await ctx.db.patch(lead._id, { senderId: args.profileId, unfollowDays: randomInRange(unfollowRange(e.policy)) });
+    if (!lead || !selected) return null;
+    await ctx.db.patch(lead._id, { senderId: args.profileId, outreachListId: selected.leadListId, outreachAutomationId: args.automationId, unfollowDays: randomInRange(unfollowRange(e.policy)) });
     await setLeadAvailability(ctx, lead._id, false);
-    await ctx.db.patch(state._id, { date, used: used + 1, allowance,
+    await ctx.db.patch(state._id, { date, used: used + 1, allowance, lastLeadListId: selected.leadListId,
       sentToday: state.date === date ? state.sentToday ?? 0 : 0, updatedAt: Date.now() });
-    return { leadId: lead._id, username: lead.username, message: e.policy.message.replaceAll('{{username}}', lead.username), date };
+    return { leadId: lead._id, username: lead.username, message: selected.message.replaceAll('{{username}}', lead.username), date };
   },
 });
 
@@ -307,7 +314,8 @@ export const beginSend = internalQuery({
     const today = dayKey(args.now ?? Date.now());
     return !!(lead && lead.senderId === args.profileId && !lead.dmSent && !lead.dmBlocked &&
       e && (!e.profile.igAccountId || e.igAccount?.status === 'connected') &&
-      e.profile.outreachReady && e.policy.outreachEnabled && today === args.date);
+      e.profile.outreachReady && e.policy.outreachEnabled && today === args.date &&
+      (!lead.outreachListId || (await ctx.db.get(lead.outreachListId) && lead.outreachAutomationId === args.automationId && profileOutreachRoutes(e.policy, args.profileId).some(route => route.leadListId === lead.outreachListId))));
   },
 });
 

@@ -29,6 +29,96 @@ fn setup() -> Cache {
     cache
 }
 
+#[tokio::test]
+async fn badge_publication_tracks_unread_ids_even_when_the_total_is_unchanged() {
+    let publications = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let stored = publications.clone();
+    let fixture = Fixture::start(move |request| {
+        let stored = stored.clone();
+        async move {
+            assert_eq!(request.uri().path(), "/api/chat/count");
+            let data = body(request).await;
+            stored.lock().unwrap().push(data);
+            Json(json!({"saved": true})).into_response()
+        }
+    })
+    .await;
+    let mut api = Api::from_env().unwrap();
+    api.key = "fixture".into();
+    api.convex_url = fixture.url.clone();
+    let api = Arc::new(api);
+    let uploads = Arc::new(crate::uploads::Uploads {
+        entries: Default::default(),
+        slots: Arc::new(tokio::sync::Semaphore::new(4)),
+    });
+    let mobile = Mobile::fixture(api.clone(), uploads, fixture.url.clone());
+    let chat = Chat::new(api, mobile, Path::new(":memory:")).unwrap();
+    let mut entry = Entry {
+        token: "token".into(),
+        ..Default::default()
+    };
+    chat.db(|db| {
+        db.connect("p", "token", "viewer")?;
+        db.save_inbox(
+            "p",
+            "token",
+            "viewer",
+            vec![thread(vec![message("1", 100.0, "other")], "123")],
+            false,
+        )?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+    chat.publish("p", &mut entry).await.unwrap();
+    chat.publish("p", &mut entry).await.unwrap();
+    assert_eq!(publications.lock().unwrap().len(), 1);
+    assert_eq!(
+        publications.lock().unwrap()[0],
+        json!({"profileId":"p", "token":"token", "unreadThreadIds":["123"]})
+    );
+    chat.db(|db| {
+        db.save_thread(
+            "p",
+            "token",
+            thread(vec![message("2", 200.0, "viewer")], "123"),
+            200,
+        )?;
+        db.save_inbox(
+            "p",
+            "token",
+            "viewer",
+            vec![thread(vec![message("3", 300.0, "other")], "456")],
+            false,
+        )?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+    chat.publish("p", &mut entry).await.unwrap();
+    assert_eq!(publications.lock().unwrap().len(), 2);
+    assert_eq!(
+        publications.lock().unwrap()[1]["unreadThreadIds"],
+        json!(["456"])
+    );
+    chat.db(|db| {
+        db.save_thread(
+            "p",
+            "token",
+            thread(vec![message("4", 400.0, "viewer")], "456"),
+            400,
+        )?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+    chat.publish("p", &mut entry).await.unwrap();
+    assert_eq!(
+        publications.lock().unwrap()[2]["unreadThreadIds"],
+        json!([])
+    );
+}
+
 #[test]
 fn picture_sources_persist_with_messages_and_remain_scoped_to_the_profile() {
     let dir = tempfile::tempdir().unwrap();
@@ -269,12 +359,12 @@ fn receipts_do_not_answer_chats_and_unsent_replies_restore_unanswered_state() {
         timestamp: 200.0,
     });
     cache.save_thread("one", "token", read, 0).unwrap();
-    assert_eq!(cache.unread_count("one").unwrap(), 1);
+    assert_eq!(cache.unread_thread_ids("one").unwrap().len(), 1);
     let items = vec![message("2", 200.0, "viewer"), incoming];
     save(&mut cache, items.clone());
-    assert_eq!(cache.unread_count("one").unwrap(), 0);
+    assert_eq!(cache.unread_thread_ids("one").unwrap().len(), 0);
     cache.unsend("one", "token", "123", "2").unwrap();
-    assert_eq!(cache.unread_count("one").unwrap(), 1);
+    assert_eq!(cache.unread_thread_ids("one").unwrap().len(), 1);
     assert_eq!(
         save(&mut cache, items)
             .messages
@@ -283,7 +373,7 @@ fn receipts_do_not_answer_chats_and_unsent_replies_restore_unanswered_state() {
             .collect::<Vec<_>>(),
         ["1"]
     );
-    assert_eq!(cache.unread_count("one").unwrap(), 1);
+    assert_eq!(cache.unread_thread_ids("one").unwrap().len(), 1);
 }
 
 #[test]
@@ -311,7 +401,7 @@ fn unread_sync_retains_other_chats_and_previews_are_not_confirmations() {
         .save_inbox("one", "token", "viewer", vec![], true)
         .unwrap();
     assert_eq!(cache.inbox("one").unwrap().threads.len(), 2);
-    assert_eq!(cache.unread_count("one").unwrap(), 1);
+    assert_eq!(cache.unread_thread_ids("one").unwrap().len(), 1);
 }
 
 #[test]

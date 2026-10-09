@@ -29,7 +29,7 @@ struct Entry {
     checked: u64,
     threads: HashMap<String, u64>,
     failures: HashMap<String, (u64, String)>,
-    published: Option<(String, u64)>,
+    published: Option<(String, Vec<String>)>,
 }
 pub struct Chat {
     api: Arc<Api>,
@@ -135,8 +135,8 @@ impl Chat {
     }
     async fn publish(&self, id: &str, entry: &mut Entry) -> Result<()> {
         let profile = id.to_owned();
-        let count = self.db(move |db| db.unread_count(&profile)).await?;
-        let key = (entry.token.clone(), count);
+        let unread_thread_ids = self.db(move |db| db.unread_thread_ids(&profile)).await?;
+        let key = (entry.token.clone(), unread_thread_ids.clone());
         if entry.published.as_ref() == Some(&key) {
             return Ok(());
         }
@@ -145,7 +145,7 @@ impl Chat {
             .convex(
                 Method::POST,
                 "/api/chat/count",
-                Some(&json!({"profileId": id, "token": entry.token, "unreadCount": count})),
+                Some(&json!({"profileId": id, "token": entry.token, "unreadThreadIds": unread_thread_ids})),
             )
             .await
             .is_ok()

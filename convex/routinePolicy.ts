@@ -9,6 +9,12 @@ export const routineValidator = v.object({
   outreachEnabled: v.boolean(),
   leadListId: v.optional(v.id("leadLists")),
   message: v.string(),
+  outreachRoutes: v.optional(v.array(v.object({
+    leadListId: v.id('leadLists'),
+    profileIds: v.array(v.id('profiles')),
+    allProfiles: v.optional(v.boolean()),
+    message: v.string(),
+  }))),
   activity: v.record(v.string(), v.union(v.number(), v.boolean())),
   headless: v.boolean(),
   unfollowMinDays: v.optional(v.number()),
@@ -18,6 +24,18 @@ export const routineValidator = v.object({
 });
 
 export type RoutinePolicy = typeof routineValidator.type;
+export type OutreachRoute = NonNullable<RoutinePolicy['outreachRoutes']>[number];
+
+// Existing single-list settings open as one assignment and are saved in the new format.
+export function outreachRoutes(policy: RoutinePolicy): OutreachRoute[] {
+  return policy.outreachRoutes ?? (policy.leadListId
+    ? [{ leadListId: policy.leadListId, profileIds: [], allProfiles: true, message: policy.message }]
+    : []);
+}
+
+export function profileOutreachRoutes(policy: RoutinePolicy, profileId: string): OutreachRoute[] {
+  return outreachRoutes(policy).filter(route => route.allProfiles || route.profileIds.includes(profileId as OutreachRoute['profileIds'][number]));
+}
 export const defaultRoutine: RoutinePolicy = {
   outreachStartDay: 7,
   initialDms: 3,
@@ -79,8 +97,18 @@ export function validateRoutine(p: RoutinePolicy) {
     throw new Error("Initial DMs exceed the maximum");
   if (p.message.length > 1000)
     throw new Error("Message must be at most 1,000 characters");
-  if (p.outreachEnabled && (!p.leadListId || !p.message.trim()))
-    throw new Error("Select a lead list and write a message");
+  const routes = outreachRoutes(p);
+  if (routes.length > 20) throw new Error('Use at most 20 scraped-list assignments');
+  if (new Set(routes.map(route => route.leadListId)).size !== routes.length)
+    throw new Error('Use one assignment per scraped list');
+  for (const route of routes) {
+    if (route.profileIds.length > 1000 || new Set(route.profileIds).size !== route.profileIds.length)
+      throw new Error('Invalid profile selection');
+    if (route.message.length > 1000) throw new Error('Message must be at most 1,000 characters');
+    if (p.outreachEnabled && ((!route.allProfiles && !route.profileIds.length) || !route.message.trim()))
+      throw new Error('Select profiles and write a message for each scraped list');
+  }
+  if (p.outreachEnabled && !routes.length) throw new Error('Add a scraped-list assignment');
 }
 
 export const dayKey = (now = Date.now()) =>

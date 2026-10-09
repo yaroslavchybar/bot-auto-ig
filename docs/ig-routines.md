@@ -1,6 +1,8 @@
 # Daily IG routines
 
-Manage a routine in the automation popup. Select sender profile lists, browsing/session ranges, and optionally enable outreach with a lead list and message. Saving does not enable the routine.
+Manage a routine in the automation popup. Select one model, browsing/session ranges, and optionally enable outreach. In Outreach, add scraped-list assignments, choosing profiles and a message for each list. Saving does not enable the routine.
+
+A profile can be assigned to several scraped lists in the same automation. It rotates through its lists after each claim, skips empty lists, and shares one daily DM target across all of them. Each scraped list has one assignment. “All profiles in this model” includes future model members; individual selections stay explicit. Model membership still determines which profiles the automation can run.
 
 Logged in allows browsing. Ready for outreach allows messaging after the configured activity day. Login and account setup are manual.
 
@@ -16,7 +18,7 @@ Add/remove profiles through Lists Manager. Overlapping lists do not duplicate pr
 
 Add source Instagram profiles in Scraper. The scraper collects recent post likers, deduplicates them by Instagram ID, and saves them to the selected lead list. Only public accounts classified as male and ready for outreach are eligible for DMs.
 
-Leads store their Instagram ID, username, classification, sender assignment, DM and follow state. Lead list membership and outreach availability are indexed separately. There is no separate attempts table or delivery history.
+Leads store their Instagram ID, username, classification, sender assignment, DM and follow state. Claims also save the source scraped list and automation. Lead list membership and outreach availability are indexed separately. There is no separate attempts table or delivery history.
 
 A new interaction requires dmSent=false, followed=false, and no senderId. The server atomically assigns senderId and reserves a slot in the daily target before opening the recipient. Claims are never automatically released, even after failure, restart, list changes, or unfollow. Claim requests are not retried after HTTP failures. This may skip a recipient without sending, but prevents another session or sender from trying again.
 

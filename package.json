@@ -13,7 +13,7 @@
   ],
   "scripts": {
     "build": "bun run build:rust && bun run --filter anti-server build",
-    "dev": "concurrently -n server,frontend,convex -c green,magenta,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bunx convex dev\"",
+    "dev": "concurrently --kill-others-on-fail -n server,frontend,convex -c green,magenta,yellow \"bun run --filter anti-server dev\" \"bun run --filter frontend dev\" \"bunx convex dev\"",
     "dev:server": "bun run --filter anti-server dev",
     "start": "bun run --filter anti-server start",
     "test:convex": "vp test run",

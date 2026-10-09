@@ -36,6 +36,60 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
   t.run(ctx => ctx.db.query('leads').collect());
 
+test('one profile alternates scraped lists with distinct messages and one shared daily target', async () => {
+  const { t, args, loggedIn, profile, automation, leadListId, leads } = await setup();
+  await loggedIn();
+  const other = await t.mutation(api.leads.createList, { name: 'Other purpose' });
+  await t.run(async ctx => {
+    // Shared recipients must remain globally claimed across both lists.
+    for (const lead of leads) await ctx.db.insert('leadMemberships', { leadId: lead._id, listId: other, available: true, leadCreatedAt: lead.createdAt });
+    await ctx.db.patch(automation._id, { routine: { ...automation.routine!, leadListId: undefined, message: '', outreachRoutes: [
+      { leadListId, profileIds: [profile._id], message: 'First {{username}}' },
+      { leadListId: other, profileIds: [profile._id], message: 'Second {{username}}' },
+    ] } });
+  });
+  const first = (await t.mutation(internal.routines.reserve, args))!;
+  const second = (await t.mutation(internal.routines.reserve, args))!;
+  expect(first.message).toBe(`First ${first.username}`);
+  expect(second.message).toBe(`Second ${second.username}`);
+  expect(first.leadId).not.toBe(second.leadId);
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  const claimed = await readLeads(t);
+  expect(claimed.find(lead => lead._id === first.leadId)).toMatchObject({ senderId: profile._id, outreachListId: leadListId, outreachAutomationId: automation._id });
+  expect(claimed.find(lead => lead._id === second.leadId)).toMatchObject({ outreachListId: other });
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 0, sent: 0 });
+});
+
+test('empty scraped lists are skipped; unassigned profiles do not reserve or report DM targets', async () => {
+  const { t, args, loggedIn, profile, automation, leadListId } = await setup();
+  await loggedIn();
+  const empty = await t.mutation(api.leads.createList, { name: 'Empty' });
+  const routine = { ...automation.routine!, leadListId: undefined, outreachRoutes: [
+    { leadListId: empty, profileIds: [profile._id], message: 'Empty' },
+    { leadListId, profileIds: [profile._id], message: 'Available' },
+  ] };
+  await t.run(ctx => ctx.db.patch(automation._id, { routine }));
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  expect(claim.message).toBe('Available');
+  expect(await t.query(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(true);
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...routine, outreachRoutes: routine.outreachRoutes.map(route => ({ ...route, profileIds: [] })) } }));
+  expect(await t.query(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
+  expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(0);
+});
+
+test('assignment validation prevents foreign profiles and duplicate scraped lists', async () => {
+  const { t, automation, profile, leadListId } = await setup();
+  await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
+  const foreign = (await seedProfile(t, { name: 'Outside model' }))!;
+  const routine = { ...automation.routine!, leadListId: undefined, outreachRoutes: [{ leadListId, profileIds: [foreign._id], message: 'Hi' }] };
+  await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine })).rejects.toThrow('Assigned profiles must belong');
+  const route = { leadListId, profileIds: [profile._id], message: 'Hi' };
+  await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreachRoutes: [route, route] } })).rejects.toThrow('Use one assignment per scraped list');
+  await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreachRoutes: [route] } })).resolves.toBeTruthy();
+});
+
 test('confirmed blocked messages release one target slot without permitting a retry', async () => {
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
   const first = (await t.mutation(internal.routines.reserve, args))!;

@@ -5,14 +5,31 @@ import type { Id } from './_generated/dataModel'
 import type { GenericDatabaseWriter, GenericDataModel } from 'convex/server'
 import { DomainError } from './errors'
 
-// Reads only tiny counters; session refreshes and cookies cannot invalidate this query.
+// Reads only badge metadata and archives; session refreshes and cookies cannot invalidate it.
 export const unreadCount = query({
   args: {},
-  handler: async (ctx) =>
-    (await ctx.db.query('chatCounters').collect()).reduce(
-      (count, row) => count + (row.enabled ? row.unreadCount : 0),
-      0,
-    ),
+  handler: async (ctx) => {
+    const counters = await ctx.db.query('chatCounters').collect()
+    const counts = await Promise.all(
+      counters.map(async (row) => {
+        if (!row.enabled || !row.unreadCount) return 0
+        // Existing summaries gain conversation IDs on the next server publication.
+        if (!row.unreadThreadIds) return row.unreadCount
+        const archives = await Promise.all(
+          row.unreadThreadIds.map((threadId) =>
+            ctx.db
+              .query('chatArchives')
+              .withIndex('by_profile_thread', (q) =>
+                q.eq('profileId', row.profileId).eq('threadId', threadId),
+              )
+              .unique(),
+          ),
+        )
+        return archives.filter((archive) => !archive).length
+      }),
+    )
+    return counts.reduce((total, count) => total + count, 0)
+  },
 })
 export async function clearChatCounter(ctx: MutationCtx, profileId: Id<'profiles'>): Promise<void> {
   const row = await ctx.db
@@ -33,10 +50,16 @@ export async function setChatCounterEnabled(
   if (row && row.enabled !== enabled) await ctx.db.patch(row._id, { enabled })
 }
 export const saveUnreadCount = internalMutation({
-  args: { profileId: v.id('profiles'), token: v.string(), unreadCount: v.number() },
-  handler: async (ctx, { profileId, token, unreadCount }) => {
-    if (!Number.isSafeInteger(unreadCount) || unreadCount < 0 || unreadCount > 200)
-      throw new Error('Invalid unread count')
+  args: { profileId: v.id('profiles'), token: v.string(), unreadThreadIds: v.array(v.string()) },
+  handler: async (ctx, { profileId, token, unreadThreadIds }) => {
+    if (
+      unreadThreadIds.length > 200 ||
+      unreadThreadIds.some((id) => !/^\d{1,40}$/.test(id)) ||
+      new Set(unreadThreadIds).size !== unreadThreadIds.length
+    )
+      throw new Error('Invalid unread conversation IDs')
+    unreadThreadIds.sort()
+    const unreadCount = unreadThreadIds.length
     const session = await ctx.db
       .query('chatSessions')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
@@ -47,11 +70,22 @@ export const saveUnreadCount = internalMutation({
       .query('chatCounters')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .unique()
-    if (existing?.token === token && existing.unreadCount === unreadCount) return
+    if (
+      existing?.token === token &&
+      JSON.stringify(existing.unreadThreadIds) === JSON.stringify(unreadThreadIds)
+    )
+      return
     const profile = await ctx.db.get(profileId)
     const enabled = Boolean(profile?.igLoggedIn && profile.status !== 'deleting')
-    if (existing) await ctx.db.patch(existing._id, { token, unreadCount, enabled })
-    else await ctx.db.insert('chatCounters', { profileId, token, unreadCount, enabled })
+    if (existing) await ctx.db.patch(existing._id, { token, unreadCount, unreadThreadIds, enabled })
+    else
+      await ctx.db.insert('chatCounters', {
+        profileId,
+        token,
+        unreadCount,
+        unreadThreadIds,
+        enabled,
+      })
   },
 })
 

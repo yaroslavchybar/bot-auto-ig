@@ -225,6 +225,12 @@ or server tests. `bun run build` also builds release Rust binaries. Outside Dock
 the Bun worker starts the Rust API, helper, and VNC gateway automatically. The local gateway
 binds to loopback; in Docker nginx connects to `server:3003`.
 
+Run only one local dev session at a time. Stop the previous session before running
+`bun dev` again: Windows locks an executable while it runs. The local Rust helper
+shuts down when its Bun owner's stdin pipe closes, including after an abrupt exit.
+If one dev service fails, `bun dev` stops the others so a failed build does not
+leave frontend and Convex watchers running.
+
 Routine browser workers exit after draining their ready profiles. Rust watches
 Convex readiness, calculates wakeup deadlines, and launches the next Bun worker.
 Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
