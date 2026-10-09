@@ -225,24 +225,7 @@ impl Scraper {
         if job.post_limit == 0 || job.post_limit > 5000 {
             return Err(Error::failed("Invalid scraper post limit"));
         }
-        let query =
-            reqwest::Url::parse_with_params("http://local/", [("profileId", &job.profile_id)])
-                .unwrap();
-        let profile = self
-            .api
-            .convex(
-                Method::GET,
-                &format!("/api/profiles/by-id?{}", query.query().unwrap()),
-                None,
-            )
-            .await
-            .map_err(Error::failed)?;
-        if profile.is_null() {
-            return Err(Error::failed("Scraper profile was deleted"));
-        }
-        let web = instagram::Web::new(&profile)?;
-        #[cfg(test)]
-        let web = web.with_base(self.provider_url.clone());
+        let mut web = None;
         let posts: Cow<'_, [Value]> = if let Some(posts) = &job.posts {
             Cow::Borrowed(posts)
         } else {
@@ -268,8 +251,8 @@ impl Scraper {
         };
         let mut seen = HashSet::new();
         for (index, post) in posts.iter().enumerate().skip(job.post_index.unwrap_or(0)) {
-            let fresh: Vec<_> = web
-                .likers(post)
+            let fresh: Vec<_> = self
+                .likers(job, post, &mut web)
                 .await?
                 .into_iter()
                 .filter(|row| seen.insert(crate::instagram::string(&row["igId"])))
@@ -306,6 +289,50 @@ impl Scraper {
             }
         }
         Ok(())
+    }
+    async fn likers(
+        &self,
+        job: &Job,
+        post: &Value,
+        web: &mut Option<instagram::Web>,
+    ) -> Result<Vec<Value>> {
+        let command = Command {
+            profile_id: job.profile_id.clone(),
+            token: None,
+            args: json!({"mediaId":post["id"]}),
+        };
+        match self.mobile.invoke("likers", &command).await {
+            Ok(data) => {
+                if let Ok(rows) = instagram::parse_likers(&data) {
+                    return Ok(rows);
+                }
+            }
+            // A second session must not bypass account/proxy cooldowns.
+            Err(error) if error.status == 429 => return Err(Error::mobile(error)),
+            Err(_) => {}
+        }
+        if web.is_none() {
+            let query =
+                reqwest::Url::parse_with_params("http://local/", [("profileId", &job.profile_id)])
+                    .unwrap();
+            let profile = self
+                .api
+                .convex(
+                    Method::GET,
+                    &format!("/api/profiles/by-id?{}", query.query().unwrap()),
+                    None,
+                )
+                .await
+                .map_err(Error::failed)?;
+            if profile.is_null() {
+                return Err(Error::failed("Scraper profile was deleted"));
+            }
+            let fallback = instagram::Web::new(&profile)?;
+            #[cfg(test)]
+            let fallback = fallback.with_base(self.provider_url.clone());
+            *web = Some(fallback);
+        }
+        web.as_ref().unwrap().likers(post).await
     }
     async fn enrich_pending(&self) -> Result<()> {
         let key = &self.openrouter_key;

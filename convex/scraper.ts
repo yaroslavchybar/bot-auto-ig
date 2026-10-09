@@ -1,10 +1,21 @@
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, mutation, query } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
+import type { QueryCtx } from './_generated/server';
 import { normalizeUsername } from './instagramUsername';
 import { addMembership, leadAvailable, setLeadAvailability } from './leadMemberships';
 import { DEFAULT_SCRAPER_DAILY_LIMIT, jobKey, lookbackMs } from './scraperKeys';
 import { requireServerBridgeAuth } from './serverBridgeAuth';
+
+/** Browser-only accounts keep working; mobile-only accounts need a valid Chat session. */
+async function scraperProfiles(ctx: Pick<QueryCtx, 'db'>) {
+  const profiles = await ctx.db.query('profiles').collect();
+  return Promise.all(profiles.map(async profile => {
+    const session = profile.sessionId ? null : await ctx.db.query('chatSessions')
+      .withIndex('by_profile', q => q.eq('profileId', profile._id)).first();
+    return { ...profile, scraperReady: !!profile.sessionId || (!!session && !session.reconnectRequired) };
+  }));
+}
 
 /** No clock reads: clients wake at these timestamps, and writes wake subscriptions. */
 export const work = query({
@@ -21,8 +32,8 @@ export const work = query({
     let jobAt: number | null = null;
     const job = queued ?? paused ?? running;
     if (job) {
-      const profiles = await ctx.db.query('profiles').collect();
-      const times = profiles.filter(p => p.sessionId && p.status !== 'deleting' && !p.renameFrom).map(p => {
+      const profiles = await scraperProfiles(ctx);
+      const times = profiles.filter(p => p.scraperReady && p.status !== 'deleting' && !p.renameFrom).map(p => {
         const limit = limitFor(p);
         const reset = limit !== undefined && (p.scraperUsageCount ?? 0) >= limit && p.scraperUsageDate
           ? Date.parse(`${p.scraperUsageDate}T00:00:00Z`) + 86_400_000 : 0;
@@ -43,13 +54,18 @@ const usedToday = (profile: Doc<'profiles'>) => profile.scraperUsageDate === day
 
 export const jobs = query({
   args: {},
-  handler: async (ctx) => (await ctx.db.query('scrapeJobs').order('desc').take(100)),
+  // The UI needs progress counts, not the potentially thousands of post IDs.
+  handler: async (ctx) => (await ctx.db.query('scrapeJobs').order('desc').take(100)).map(job => ({
+    _id: job._id, username: job.username, listId: job.listId, status: job.status,
+    discovered: job.discovered, sinceDate: job.sinceDate, postLimit: job.postLimit,
+    error: job.error, postCount: job.posts?.length ?? 0,
+  })),
 });
 
 export const accounts = query({
   args: {},
-  handler: async (ctx) => (await ctx.db.query('profiles').collect()).map(p => ({
-    id: p._id, name: p.name, ready: !!p.sessionId,
+  handler: async (ctx) => (await scraperProfiles(ctx)).map(p => ({
+    id: p._id, name: p.name, ready: p.scraperReady,
     dailyLimit: limitFor(p), used: usedToday(p), cooldownUntil: p.scraperCooldownUntil,
   })),
 });
@@ -141,9 +157,9 @@ export const claimNext = internalMutation({
         error: 'Lead list was deleted', updatedAt: now });
       return null;
     }
-    const profiles = (await ctx.db.query('profiles').collect())
+    const profiles = (await scraperProfiles(ctx))
       .filter(p => {
-        if (!p.sessionId || p.status === 'deleting' || p.renameFrom || (p.scraperCooldownUntil ?? 0) > now) return false;
+        if (!p.scraperReady || p.status === 'deleting' || p.renameFrom || (p.scraperCooldownUntil ?? 0) > now) return false;
         const limit = limitFor(p);
         return limit === undefined || usedToday(p) < limit;
       })

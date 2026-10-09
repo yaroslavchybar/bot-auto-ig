@@ -1,6 +1,63 @@
-import { expect, test } from 'vite-plus/test';
+import { expect, test, vi } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
 import { createConvexTest, seedProfile } from './helpers';
+
+test('the jobs UI receives post counts without large worker checkpoints', async () => {
+  const t = createConvexTest();
+  const ids = await t.run(async ctx => {
+    const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 });
+    const jobId = await ctx.db.insert('scrapeJobs', {
+      username: 'source', listId, status: 'paused', sinceDate: 0, postLimit: 5000,
+      posts: Array.from({ length: 5000 }, (_, i) => ({ id: String(i), code: `post${i}` })),
+      discovered: 42, postIndex: 1000, runId: 'worker-run', error: 'Daily limit reached',
+      createdAt: 0, updatedAt: 0,
+    });
+    return { listId, jobId };
+  });
+  const jobs = await t.query(api.scraper.jobs, {});
+  expect(jobs).toEqual([{
+    _id: ids.jobId, username: 'source', listId: ids.listId, status: 'paused',
+    discovered: 42, sinceDate: 0, postLimit: 5000, error: 'Daily limit reached', postCount: 5000,
+  }]);
+  expect(JSON.stringify(jobs).length).toBeLessThan(1000);
+  expect((await t.run(ctx => ctx.db.get(ids.jobId)))?.posts).toHaveLength(5000);
+});
+
+test('mobile-only scraping accounts are ready and claim jobs until their session needs reconnecting', async () => {
+  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge');
+  try {
+    const t = createConvexTest();
+    const ids = await t.run(async ctx => {
+      const profileId = await ctx.db.insert('profiles', {
+        name: 'mobile-only', using: false, mode: 'direct', createdAt: 0,
+      });
+      const storageId = await ctx.storage.store(new Blob(['{}']));
+      const sessionId = await ctx.db.insert('chatSessions', { profileId, storageId, token: 'mobile-token' });
+      const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 });
+      const jobId = await ctx.db.insert('scrapeJobs', {
+        username: 'source', listId, status: 'queued', sinceDate: 0, postLimit: 1,
+        discovered: 0, createdAt: 0, updatedAt: 0,
+      });
+      return { profileId, sessionId, jobId };
+    });
+    expect((await t.query(api.scraper.accounts, {}))[0]).toMatchObject({ ready: true, dailyLimit: 1000 });
+    expect((await t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).jobAt).toBe(0);
+    expect(await t.mutation(internal.scraper.claimNext, {})).toMatchObject({ profileId: ids.profileId });
+    await t.run(async ctx => {
+      await ctx.db.patch(ids.jobId, { status: 'queued', runId: undefined, leaseUntil: undefined });
+      await ctx.db.patch(ids.sessionId, { reconnectRequired: true });
+    });
+    expect((await t.query(api.scraper.accounts, {}))[0]?.ready).toBe(false);
+    expect((await t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).jobAt).toBeNull();
+    expect(await t.mutation(internal.scraper.claimNext, {})).toBeNull();
+    // Browser cookies remain usable even if the mobile session is disconnected.
+    await t.run(ctx => ctx.db.patch(ids.profileId, { sessionId: 'browser-cookie' }));
+    expect((await t.query(api.scraper.accounts, {}))[0]?.ready).toBe(true);
+    expect(await t.mutation(internal.scraper.claimNext, {})).toMatchObject({ profileId: ids.profileId });
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
 
 async function runningJob(options: { limit?: number | null; used?: number; fromApify?: boolean } = {}) {
   const t = createConvexTest();

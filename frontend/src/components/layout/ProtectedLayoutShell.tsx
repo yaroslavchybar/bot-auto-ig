@@ -101,7 +101,7 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   )
 }
 
-// Center tab switch for the Scraper page (Jobs / Scraping accounts / Saved accounts).
+// Center tab switch for the Scraper page (Jobs / Scrapers / Leads / Lists).
 // State lives in the URL (?tab=...) so the header and page stay in sync.
 function ScraperHeaderTabs() {
   const { search } = useLocation()

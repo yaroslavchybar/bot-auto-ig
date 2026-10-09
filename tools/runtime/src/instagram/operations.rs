@@ -214,9 +214,53 @@ pub async fn invoke(
             Ok(json!({"ok":true}))
         }
         "posts" => recent_posts(service, mobile, args).await,
+        "likers" => media_likers(mobile, args).await,
         "attachment" => send_attachment(service, mobile, args).await,
         _ => Err(Error::new("Unknown Instagram operation")),
     }
+}
+// Match instagrapi's media_likers: normalize PKs to PK_owner before the
+// private mobile request. Full media IDs skip the metadata lookup.
+async fn media_likers(mobile: &mut Mobile, args: &Value) -> Result<Value> {
+    let media_id = super::string(&args["mediaId"]);
+    let parts: Vec<_> = media_id.split('_').collect();
+    if parts.is_empty()
+        || parts.len() > 2
+        || parts
+            .iter()
+            .any(|part| part.len() > 40 || !super::digits(part))
+    {
+        return Err(Error::new("Invalid Instagram media ID"));
+    }
+    let media_id = if parts.len() == 2 {
+        media_id
+    } else {
+        let info = mobile
+            .mobile(
+                Method::GET,
+                &format!("media/{media_id}/info/"),
+                None,
+                &Fields::new(),
+            )
+            .await?;
+        let owner = info["items"]
+            .as_array()
+            .and_then(|items| items.last())
+            .map(|item| super::string(&item["user"]["pk"]))
+            .unwrap_or_default();
+        if owner.len() > 40 || !super::digits(&owner) {
+            return Err(Error::new("Instagram returned no media owner"));
+        }
+        format!("{media_id}_{owner}")
+    };
+    mobile
+        .mobile(
+            Method::GET,
+            &format!("media/{media_id}/likers/"),
+            None,
+            &Fields::new(),
+        )
+        .await
 }
 fn string_arg(args: &Value, key: &str, max: usize) -> Result<String> {
     args[key]

@@ -1,7 +1,7 @@
 export const SCRAPER_TABS = [
   { id: 'jobs', label: 'Jobs' },
-  { id: 'accounts', label: 'Scraping accounts' },
-  { id: 'saved', label: 'Saved accounts' },
+  { id: 'accounts', label: 'Scrapers' },
+  { id: 'saved', label: 'Leads' },
   { id: 'lists', label: 'Lists' },
 ] as const
 

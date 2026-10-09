@@ -283,13 +283,23 @@ The scraper calls Apify's HTTP endpoint directly with `reqwest`; it does not use
 `apify-client-rust`.
 The UI accepts a number of days and a maximum post count per profile; each source
 job stores the post limit and fixes the date cutoff when queued.
+The UI subscribes only to active tab data and skips the closed job dialog's
+list query. Lead searches wait 300 ms after typing and pause obsolete page
+loads. Job progress sends post counts instead of the saved post arrays.
+Daily limit edits write only changed values after an explicit Save.
 Active jobs use an indexed key to prevent duplicate queued work. Leads are stored
 once by Instagram ID, with indexed rows linking them to target lists.
-Saved Instagram sessions collect post likers. Private accounts are discarded
+Post likers use the saved mobile Chat session first, matching the local
+instagrapi `media_likers` request and full media ID normalization. Browser session
+cookies are loaded only as a fallback when mobile scraping fails or is unavailable.
+A mobile or browser 429 pauses the account without trying another session.
+Accounts with a mobile session can scrape without saved browser cookies.
+Private accounts are discarded
 before saving. AI classifies public likers from username, full name, and
 profile picture description; bio is not collected.
-Liker collection makes one request for up to 100 accounts per post, saves them
-in Convex batches of 25, and waits 10–20 seconds between posts.
+Liker collection requests up to 100 accounts per post, saves them in Convex
+batches of 25, and waits 10–20 seconds between posts. Mobile requests resolve
+the post owner through media metadata when only a numeric post PK is available.
 Profile pictures are described through regular OpenRouter GPT-6 Luna calls
 with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies leads,
 so a classification retry does not repeat the picture call. Profiles default to

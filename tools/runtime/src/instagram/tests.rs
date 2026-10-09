@@ -888,6 +888,64 @@ async fn malformed_inboxes_return_errors_without_panicking() {
 }
 
 #[tokio::test]
+async fn mobile_likers_follow_instagrapi_media_id_normalization() {
+    let calls = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let observed = calls.clone();
+    let fixture = Fixture::start(move |request| {
+        let observed = observed.clone();
+        async move {
+            let path = request.uri().path().to_string();
+            assert!(request.uri().query().is_none());
+            assert!(request.headers()["user-agent"]
+                .to_str()
+                .unwrap()
+                .starts_with("Instagram"));
+            observed.lock().await.push(path.clone());
+            if path == "/api/v1/media/9007199254740993/info/" {
+                return Json(json!({"items":[{"user":{"pk":"123"}}]})).into_response();
+            }
+            assert_eq!(path, "/api/v1/media/9007199254740993_123/likers/");
+            Json(json!({"status":"ok","users":[]})).into_response()
+        }
+    })
+    .await;
+    let mut mobile = mobile(Some(fixture.url.clone()));
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    for media_id in ["9007199254740993", "9007199254740993_123"] {
+        assert_eq!(
+            operations::invoke(
+                &service,
+                &mut mobile,
+                "likers",
+                &json!({"mediaId":media_id})
+            )
+            .await
+            .unwrap()["users"],
+            json!([])
+        );
+    }
+    assert_eq!(
+        *calls.lock().await,
+        vec![
+            "/api/v1/media/9007199254740993/info/",
+            "/api/v1/media/9007199254740993_123/likers/",
+            "/api/v1/media/9007199254740993_123/likers/",
+        ]
+    );
+    for media_id in ["", "1_", "1_2_3", "../1", "1/not-an-id"] {
+        assert!(operations::invoke(
+            &service,
+            &mut mobile,
+            "likers",
+            &json!({"mediaId":media_id})
+        )
+        .await
+        .is_err());
+    }
+    assert_eq!(calls.lock().await.len(), 3);
+}
+
+#[tokio::test]
 async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
     let fixture=Fixture::start(|request|async move{
         let query=reqwest::Url::parse(&format!("http://local{}",request.uri())).unwrap();let query:HashMap<_,_>=query.query_pairs().into_owned().collect();let path=request.uri().path();

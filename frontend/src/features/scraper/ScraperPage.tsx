@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { useNow } from '@/hooks/use-now'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { Inbox, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck, X } from 'lucide-react'
+import { Inbox, Pencil, Plus, RotateCcw, Search, Trash2, UserCheck } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
@@ -168,9 +168,11 @@ function ScraperToolbar({
         <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
           {tab === 'lists' && <NewListButton />}
           {tab === 'saved' && <RetryEnrichmentButton />}
-          <Button size="sm" onClick={onNewJob} className="h-8 brand-button font-medium">
-            <Plus className="mr-2 h-3.5 w-3.5" /> New job
-          </Button>
+          {tab === 'jobs' && (
+            <Button size="sm" onClick={onNewJob} className="h-8 brand-button font-medium">
+              <Plus className="mr-2 h-3.5 w-3.5" /> New job
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -220,6 +222,8 @@ type FilterStore = {
   setJobsStatus: (v: string) => void
   accountsQuery: string
   setAccountsQuery: (v: string) => void
+  accountsStatus: string
+  setAccountsStatus: (v: string) => void
   savedQuery: string
   setSavedQuery: (v: string) => void
   savedList: string
@@ -245,6 +249,7 @@ function FilterProvider({ children }: { children: React.ReactNode }) {
   const [jobsQuery, setJobsQuery] = useState('')
   const [jobsStatus, setJobsStatus] = useState('all')
   const [accountsQuery, setAccountsQuery] = useState('')
+  const [accountsStatus, setAccountsStatus] = useState('all')
   const [savedQuery, setSavedQuery] = useState('')
   const [savedList, setSavedList] = useState('all')
   const [savedType, setSavedType] = useState('all')
@@ -258,6 +263,8 @@ function FilterProvider({ children }: { children: React.ReactNode }) {
       setJobsStatus,
       accountsQuery,
       setAccountsQuery,
+      accountsStatus,
+      setAccountsStatus,
       savedQuery,
       setSavedQuery,
       savedList,
@@ -273,6 +280,7 @@ function FilterProvider({ children }: { children: React.ReactNode }) {
       jobsQuery,
       jobsStatus,
       accountsQuery,
+      accountsStatus,
       savedQuery,
       savedList,
       savedType,
@@ -369,12 +377,80 @@ function JobsFilters() {
 function AccountsFilters() {
   const f = useFilters()
   return (
-    <SearchBox
-      value={f.accountsQuery}
-      onChange={f.setAccountsQuery}
-      placeholder="Search accounts..."
-      label="Search scraping accounts"
-    />
+    <>
+      <SearchBox
+        value={f.accountsQuery}
+        onChange={f.setAccountsQuery}
+        placeholder="Search scrapers..."
+        label="Search scraping accounts"
+      />
+      <Select value={f.accountsStatus} onValueChange={f.setAccountsStatus}>
+        <SelectTrigger
+          aria-label="Account status"
+          className="h-8 w-full border-line bg-field text-sm shadow-sm sm:w-[160px]"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="panel-dropdown">
+          <SelectItem value="all">All statuses</SelectItem>
+          <SelectItem value="ready">Ready</SelectItem>
+          <SelectItem value="cooling">Cooling down</SelectItem>
+          <SelectItem value="needs-session">Needs session</SelectItem>
+        </SelectContent>
+      </Select>
+      <AccountsToolbarStats />
+    </>
+  )
+}
+
+function AccountsToolbarStats() {
+  const now = useNow()
+  const accounts = useQuery(api.scraper.accounts, {})
+  const summary = useMemo(() => {
+    let ready = 0
+    let cooling = 0
+    let needsSession = 0
+    let used = 0
+    let capacity = 0
+    for (const a of accounts ?? []) {
+      if (!a.ready) needsSession += 1
+      else if (a.cooldownUntil && a.cooldownUntil > now) cooling += 1
+      else ready += 1
+      used += a.used
+      if (a.dailyLimit !== undefined) capacity += a.dailyLimit
+    }
+    return { ready, cooling, needsSession, used, capacity }
+  }, [accounts, now])
+
+  if (!accounts?.length) return null
+  return (
+    <div className="hidden h-8 items-center gap-3 pl-1 md:flex" aria-label="Scraper capacity">
+      <span className="inline-flex items-baseline gap-1.5 leading-none whitespace-nowrap">
+        <span className="text-sm font-semibold text-ink tabular-nums">{summary.ready}</span>
+        <span className="text-xs text-subtle-copy">ready</span>
+      </span>
+      {summary.cooling > 0 && (
+        <span className="inline-flex items-baseline gap-1.5 leading-none whitespace-nowrap">
+          <span className="text-sm font-semibold text-status-danger tabular-nums">
+            {summary.cooling}
+          </span>
+          <span className="text-xs text-subtle-copy">cooling</span>
+        </span>
+      )}
+      {summary.needsSession > 0 && (
+        <span className="inline-flex items-baseline gap-1.5 leading-none whitespace-nowrap">
+          <span className="text-sm font-semibold text-status-warning tabular-nums">
+            {summary.needsSession}
+          </span>
+          <span className="text-xs text-subtle-copy">need session</span>
+        </span>
+      )}
+      <span className="h-4 w-px bg-line" aria-hidden />
+      <span className="text-xs whitespace-nowrap text-subtle-copy tabular-nums">
+        {summary.used.toLocaleString()}
+        {summary.capacity > 0 ? ` / ${summary.capacity.toLocaleString()} today` : ' today'}
+      </span>
+    </div>
   )
 }
 
@@ -386,8 +462,8 @@ function SavedFilters() {
       <SearchBox
         value={f.savedQuery}
         onChange={f.setSavedQuery}
-        placeholder="Search accounts"
-        label="Search saved accounts"
+        placeholder="Search leads..."
+        label="Search leads"
       />
       <Select value={f.savedList} onValueChange={f.setSavedList}>
         <SelectTrigger
@@ -499,7 +575,7 @@ function JobsView() {
                 <div className="flex justify-between gap-3">
                   <dt>Leads</dt>
                   <dd className="text-copy">
-                    {job.discovered} new · {job.posts?.length ?? 0} posts
+                    {job.discovered} new · {job.postCount} posts
                   </dd>
                 </div>
                 <div className="flex justify-between gap-3">
@@ -571,7 +647,7 @@ function JobsView() {
                     <JobStatusBadge status={job.status} />
                   </TableCell>
                   <TableCell className="text-xs whitespace-nowrap text-copy">
-                    {job.posts?.length ?? 0} posts · {job.discovered} leads
+                    {job.postCount} posts · {job.discovered} leads
                     <span className="text-subtle-copy"> / max {job.postLimit}</span>
                   </TableCell>
                   <TableCell className="max-w-[170px] truncate text-xs text-muted-copy">
@@ -619,19 +695,46 @@ function JobsEmptyState() {
   )
 }
 
-/* ── Scraping accounts view ── */
+/* ── Scrapers view ── */
 
 function AccountsView() {
   const now = useNow()
   const f = useFilters()
   const accounts = useQuery(api.scraper.accounts, {})
+  const setLimit = useMutation(api.scraper.setDailyLimit)
   const mobile = useIsMobile()
+  const [editTarget, setEditTarget] = useState<Account | null>(null)
+  const [editBusy, setEditBusy] = useState(false)
 
   const filtered = useMemo(() => {
     const q = f.accountsQuery.trim().toLowerCase()
-    if (!q) return accounts ?? []
-    return (accounts ?? []).filter((a) => a.name.toLowerCase().includes(q))
-  }, [accounts, f.accountsQuery])
+    return (accounts ?? []).filter((a) => {
+      if (q && !a.name.toLowerCase().includes(q)) return false
+      const cooling = a.ready && a.cooldownUntil !== undefined && a.cooldownUntil > now
+      if (f.accountsStatus === 'ready' && (!a.ready || cooling)) return false
+      if (f.accountsStatus === 'cooling' && !cooling) return false
+      if (f.accountsStatus === 'needs-session' && a.ready) return false
+      return true
+    })
+  }, [accounts, f.accountsQuery, f.accountsStatus, now])
+
+  const saveOne = async (limit: number | undefined) => {
+    if (!editTarget) return
+    setEditBusy(true)
+    try {
+      await setLimit({ profileId: editTarget.id, limit })
+      toast.success(
+        limit === undefined
+          ? `No daily limit for ${editTarget.name}`
+          : `Daily limit for ${editTarget.name}: ${limit.toLocaleString()}`,
+      )
+      setEditTarget(null)
+    } catch (e) {
+      toast.error(String(e))
+    } finally {
+      setEditBusy(false)
+    }
+  }
 
   if (accounts === undefined) {
     return <div className="p-12 text-center text-sm text-muted-foreground">Loading accounts...</div>
@@ -652,12 +755,17 @@ function AccountsView() {
       {!filtered.length ? (
         <div className="rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
           <p className="text-sm font-medium text-ink">No matching accounts</p>
-          <p className="mt-1 text-sm text-subtle-copy">Try a different search term.</p>
+          <p className="mt-1 text-sm text-subtle-copy">Try a different search term or status.</p>
         </div>
       ) : mobile ? (
         <div className="space-y-3">
           {filtered.map((account) => (
-            <AccountCard key={account.id} account={account} now={now} />
+            <AccountCard
+              key={account.id}
+              account={account}
+              now={now}
+              onEdit={() => setEditTarget(account)}
+            />
           ))}
         </div>
       ) : (
@@ -666,22 +774,42 @@ function AccountsView() {
             <TableHeader>
               <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
                 <TableHead className="h-12 pl-4 font-medium text-muted-copy">Account</TableHead>
-                <TableHead className="h-12 w-[220px] font-medium text-muted-copy">
-                  Usage today
-                </TableHead>
-                <TableHead className="h-12 w-[150px] font-medium text-muted-copy">Status</TableHead>
-                <TableHead className="h-12 w-[220px] pr-4 text-right font-medium text-muted-copy">
-                  Daily limit
+                <TableHead className="h-12 w-[130px] font-medium text-muted-copy">Status</TableHead>
+                <TableHead className="h-12 w-[300px] pr-4 font-medium text-muted-copy">
+                  Quota today
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((account) => (
-                <AccountDesktopRow key={account.id} account={account} now={now} />
+                <AccountDesktopRow
+                  key={account.id}
+                  account={account}
+                  now={now}
+                  onEdit={() => setEditTarget(account)}
+                />
               ))}
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {editTarget && (
+        <LimitDialog
+          key={editTarget.id}
+          title={`Daily limit · ${editTarget.name}`}
+          subtitle={
+            editTarget.dailyLimit === undefined
+              ? 'Currently no limit.'
+              : `Currently ${editTarget.dailyLimit.toLocaleString()} per day.`
+          }
+          initialLimit={editTarget.dailyLimit}
+          busy={editBusy}
+          onSave={(limit) => void saveOne(limit)}
+          onClose={() => {
+            if (!editBusy) setEditTarget(null)
+          }}
+        />
       )}
     </div>
   )
@@ -715,7 +843,9 @@ function UsageBar({ used, limit }: { used: number; limit?: number }) {
     <div>
       <div className="flex items-baseline justify-between gap-2 text-xs">
         <span className="font-medium text-copy tabular-nums">
-          {limit ? `${used} / ${limit}` : `${used} · no limit`}
+          {limit
+            ? `${used.toLocaleString()} / ${limit.toLocaleString()}`
+            : `${used.toLocaleString()} · no limit`}
         </span>
         <span className="text-subtle-copy tabular-nums">{limit ? `${pct}%` : ''}</span>
       </div>
@@ -726,117 +856,99 @@ function UsageBar({ used, limit }: { used: number; limit?: number }) {
   )
 }
 
-function DailyLimitEditor({ account, compact }: { account: Account; compact?: boolean }) {
-  const [draft, setDraft] = useState<{ value: string } | null>(null)
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const save = useMutation(api.scraper.setDailyLimit)
-  const pendingSave = useRef<Promise<unknown>>(Promise.resolve())
-  const limit = draft?.value ?? account.dailyLimit?.toString() ?? ''
-
-  const empty = limit.trim() === ''
-  const parsed = Number(limit)
-  const valid = !empty && Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 100000
-
-  useEffect(() => {
-    if (!draft || (!empty && !valid)) return
-    let active = true
-    const timer = setTimeout(() => {
-      // Keep edits ordered, including reverting while an earlier save is in flight.
-      const operation = pendingSave.current
-        .catch(() => {})
-        .then(() => save({ profileId: account.id, limit: empty ? undefined : parsed }))
-      pendingSave.current = operation
-      void operation
-        .then(() => {
-          if (active) {
-            setDraft(null)
-            setStatus('saved')
-          }
-        })
-        .catch((error) => {
-          if (active) {
-            setStatus('error')
-            toast.error(String(error))
-          }
-        })
-    }, 700)
-    return () => {
-      active = false
-      clearTimeout(timer)
-    }
-  }, [draft, empty, valid, parsed, account.id, save])
-
-  const edit = (value: string) => {
-    setDraft({ value })
-    setStatus('saving')
-  }
+function LimitDialog({
+  title,
+  subtitle,
+  initialLimit,
+  busy,
+  onSave,
+  onClose,
+}: {
+  title: string
+  subtitle?: string
+  initialLimit?: number
+  busy: boolean
+  onSave: (limit: number | undefined) => void
+  onClose: () => void
+}) {
+  const [value, setValue] = useState(initialLimit?.toString() ?? '')
+  const empty = value.trim() === ''
+  const parsed = Number(value)
+  const valid = empty || (Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 100000)
+  const unchanged = (empty ? undefined : parsed) === initialLimit
 
   return (
-    <div className={cn('flex items-center gap-2', compact ? 'w-full' : 'justify-end')}>
-      <Input
-        aria-label={`${account.name} daily limit`}
-        type="number"
-        min={1}
-        max={100000}
-        aria-invalid={!empty && !valid}
-        placeholder="No limit"
-        value={limit}
-        onChange={(e) => edit(e.target.value)}
-        className="h-8 w-24 brand-focus border-line bg-field shadow-sm"
-      />
-      {!empty && (
-        <Button
-          size="icon"
-          variant="ghost"
-          title="Clear limit"
-          aria-label={`Clear ${account.name} daily limit`}
-          onClick={() => edit('')}
-          className="h-8 w-8 shrink-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
-      )}
-      {status === 'error' && (
-        <Button size="sm" variant="ghost" onClick={() => edit(limit)} className="h-8">
-          Retry
-        </Button>
-      )}
-      <span aria-live="polite" className="min-w-12 text-xs whitespace-nowrap text-subtle-copy">
-        {!empty && !valid
-          ? '1–100000'
-          : status === 'saving'
-            ? 'Saving…'
-            : status === 'saved'
-              ? 'Saved'
-              : status === 'error'
-                ? 'Failed'
-                : ''}
-      </span>
-    </div>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
+      <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[400px]">
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="page-title-gradient">{title}</DialogTitle>
+        </DialogHeader>
+        {subtitle && <p className="text-sm text-subtle-copy">{subtitle}</p>}
+        <div className="grid gap-2 py-1">
+          <Label htmlFor="scraper-limit-value">Daily limit</Label>
+          <Input
+            id="scraper-limit-value"
+            type="number"
+            min={1}
+            max={100000}
+            placeholder="No limit"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && valid && !busy && !unchanged) onSave(empty ? undefined : parsed)
+            }}
+            className="brand-focus border-line bg-field"
+            autoFocus
+          />
+          <p className="text-xs text-subtle-copy">
+            {valid
+              ? 'Leave empty for no limit.'
+              : 'Enter a whole number from 1 to 100000, or leave empty.'}
+          </p>
+        </div>
+        <DialogFooter className="shrink-0 gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={busy} className="button-ghost">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onSave(empty ? undefined : parsed)}
+            disabled={busy || !valid || unchanged}
+            className="brand-button"
+          >
+            {busy ? 'Saving...' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
-function AccountDesktopRow({ account, now }: { account: Account; now: number }) {
+function AccountDesktopRow({
+  account,
+  now,
+  onEdit,
+}: {
+  account: Account
+  now: number
+  onEdit: () => void
+}) {
   const status = accountStatus(account, now)
   return (
-    <TableRow className="h-14 border-b border-line-soft hover:bg-panel-subtle">
+    <TableRow className="group h-14 border-b border-line-soft hover:bg-panel-subtle">
       <TableCell className="pl-4 font-medium">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-ink">{account.name}</span>
-          {!account.ready && (
-            <span className="text-xs font-normal text-subtle-copy">
-              Open profile to capture session
-            </span>
-          )}
           {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
             <span className="text-xs font-normal text-status-danger">
               Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
             </span>
           )}
         </div>
-      </TableCell>
-      <TableCell>
-        <UsageBar used={account.used} limit={account.dailyLimit} />
       </TableCell>
       <TableCell>
         <span
@@ -850,22 +962,41 @@ function AccountDesktopRow({ account, now }: { account: Account; now: number }) 
         </span>
       </TableCell>
       <TableCell className="pr-4">
-        <DailyLimitEditor account={account} />
+        <div className="flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <UsageBar used={account.used} limit={account.dailyLimit} />
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            title={`Edit ${account.name} daily limit`}
+            aria-label={`Edit ${account.name} daily limit`}
+            onClick={onEdit}
+            className="h-8 w-8 shrink-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   )
 }
 
-function AccountCard({ account, now }: { account: Account; now: number }) {
+function AccountCard({
+  account,
+  now,
+  onEdit,
+}: {
+  account: Account
+  now: number
+  onEdit: () => void
+}) {
   const status = accountStatus(account, now)
   return (
     <div className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-base font-semibold text-ink">{account.name}</h3>
-          {!account.ready && (
-            <p className="mt-0.5 text-xs text-subtle-copy">Open profile to capture session</p>
-          )}
         </div>
         <span
           className={cn(
@@ -886,17 +1017,31 @@ function AccountCard({ account, now }: { account: Account; now: number }) {
         <UsageBar used={account.used} limit={account.dailyLimit} />
       </div>
       <div className="mt-3 border-t border-line pt-3">
-        <DailyLimitEditor account={account} compact />
+        <Button variant="outline" size="sm" className="h-8 w-full font-medium" onClick={onEdit}>
+          <Pencil className="mr-2 h-3.5 w-3.5" /> Edit daily limit
+        </Button>
       </div>
     </div>
   )
 }
 
-/* ── Saved accounts view ── */
+/* ── Leads view ── */
+
+function useDebouncedSearch(value: string) {
+  const [settled, setSettled] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(value), 300)
+    return () => clearTimeout(timer)
+  }, [value])
+  return settled
+}
 
 function SavedView() {
   const f = useFilters()
-  const filterKey = JSON.stringify([f.savedList, f.savedType, f.savedQuery])
+  const searchInput = f.savedQuery.trim().toLowerCase()
+  const search = useDebouncedSearch(searchInput)
+  const searchPending = search !== searchInput
+  const filterKey = JSON.stringify([f.savedList, f.savedType, search])
   const [pagination, setPagination] = useState({ key: filterKey, count: 100 })
   if (pagination.key !== filterKey) {
     setPagination({ key: filterKey, count: 100 })
@@ -912,14 +1057,14 @@ function SavedView() {
       listId: f.savedList === 'all' ? undefined : (f.savedList as Id<'leadLists'>),
       classification:
         f.savedType === 'all' ? undefined : (f.savedType as 'male' | 'female' | 'business'),
-      search: f.savedQuery.trim() || undefined,
+      search: search || undefined,
     },
     { initialNumItems: 100 },
   )
 
   useEffect(() => {
-    if (pageStatus === 'CanLoadMore' && leads.length < visibleCount) loadMore(100)
-  }, [pageStatus, leads.length, visibleCount, loadMore])
+    if (!searchPending && pageStatus === 'CanLoadMore' && leads.length < visibleCount) loadMore(100)
+  }, [searchPending, pageStatus, leads.length, visibleCount, loadMore])
 
   const fillingPage = leads.length < visibleCount && pageStatus !== 'Exhausted'
   const hasMore = leads.length > visibleCount || pageStatus !== 'Exhausted'
@@ -936,7 +1081,7 @@ function SavedView() {
       {hasMore && (
         <Button
           variant="outline"
-          disabled={fillingPage}
+          disabled={searchPending || fillingPage}
           onClick={() => setPagination({ key: filterKey, count: visibleCount + 100 })}
         >
           {fillingPage ? 'Loading accounts...' : 'Load more accounts'}
@@ -1286,7 +1431,7 @@ function NewJobDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const lists = useQuery(api.leads.lists, {})
+  const lists = useQuery(api.leads.lists, open ? {} : 'skip')
   const createJobs = useMutation(api.scraper.createJobs)
   const navigate = useNavigate()
 
