@@ -1,28 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
-import { CircleAlert } from 'lucide-react'
+import { Flame, Send, Settings2, Users } from 'lucide-react'
 import { api } from '../../../../../convex/_generated/api'
-import { apiFetch } from '@/lib/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
   defaultRoutine,
   outreachRoutes,
   validateRoutine,
+  warmupPostRange,
   type RoutinePolicy,
 } from '../../../../../convex/routinePolicy'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -30,27 +23,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { GroupedInputs } from '../activity-ui/GroupedInputs'
-import { MinMaxField } from '../activity-ui/MinMaxField'
+import { Switch } from '@/components/ui/switch'
 import { browseFeed } from '../activities/browsing/browse-feed'
+import type { ActivityInput } from '../activities/types'
+import { getAutomationDisplayStatus, getStatusColor, getStatusLabel } from '../types'
 import { OutreachAssignments } from './OutreachAssignments'
+import { RoutineProfiles } from './RoutineProfiles'
+import {
+  Field,
+  NumberField,
+  PercentField,
+  RangeField,
+  SettingsGroup,
+  ToggleRow,
+  type Limits,
+} from './RoutineFields'
 import { cn } from '@/lib/utils'
 
-const tabs = ['General', 'Warm-up & activity', 'Outreach', 'Profiles'] as const
+// Tabs in display order. Profiles shows live status, so it has no save footer.
+const tabs = [
+  { id: 'general', label: 'General', icon: Settings2 },
+  { id: 'warmup', label: 'Warm-up', icon: Flame },
+  { id: 'outreach', label: 'Outreach', icon: Send },
+  { id: 'profiles', label: 'Profiles', icon: Users },
+] as const
 
-type ModelWarmup = {
-  profileId: string
-  modelId: string
-  startedAt: number
-  nameDone?: boolean
-  fullNameDone?: boolean
-  avatarDone?: boolean
-  postSourceIds: string[]
-  postTarget?: number
-  pending?: { kind: string }
-  error?: string
+type TabId = (typeof tabs)[number]['id']
+
+// Returns a warm-up setting's definition from browse-feed.ts, which holds its bounds and defaults.
+function feedSetting(name: string): ActivityInput {
+  const input = browseFeed.inputs.find((item) => item.name === name)
+  if (!input) throw new Error(`Unknown warm-up setting: ${name}`)
+  return input
 }
 
+// Creates or edits an automation. Settings save together; the Profiles tab updates live on its own.
 export function RoutinePopup({
   automation,
   onClose,
@@ -58,7 +65,7 @@ export function RoutinePopup({
   automation?: Doc<'automations'>
   onClose: () => void
 }) {
-  const [tab, setTab] = useState<(typeof tabs)[number]>('General')
+  const [tab, setTab] = useState<TabId>('general')
   const [name, setName] = useState(automation?.name ?? '')
   const [listIds, setListIds] = useState<Id<'lists'>[]>(automation?.listIds ?? [])
   const [policy, setPolicy] = useState<RoutinePolicy>(() => {
@@ -77,72 +84,126 @@ export function RoutinePopup({
   const profiles = useQuery(api.profiles.queries.modelOptions, {})
   const create = useMutation(api.automations.mutations.create)
   const update = useMutation(api.automations.mutations.update)
+
   const locked =
     automation?.isActive === true ||
     automation?.status === 'running' ||
     automation?.status === 'pending'
+  const formDisabled = locked || saving
+  // Compares the current values with the starting values to detect unsaved changes.
+  const snapshot = JSON.stringify({ name, listIds, policy })
+  const [savedSnapshot] = useState(snapshot)
+  const dirty = snapshot !== savedSnapshot
+  // The first reason the automation cannot be saved yet. The footer shows it next to the disabled button.
+  const blocker = !name.trim()
+    ? 'Add a name'
+    : listIds.length !== 1
+      ? 'Choose a model'
+      : routineProblem(policy)
+  const canSave = !blocker && dirty && !locked && !saving
+  const displayStatus = automation ? getAutomationDisplayStatus(automation) : undefined
+  const footerNote = locked
+    ? automation?.isActive
+      ? 'Turn off to edit'
+      : 'Wait for the run to stop'
+    : blocker || (dirty ? 'Unsaved changes' : '')
+
   const change = <K extends keyof RoutinePolicy>(key: K, value: RoutinePolicy[K]) =>
     setPolicy((p) => ({ ...p, [key]: value }))
-  const numberField = (
-    key: 'outreachStartDay' | 'initialDms' | 'maxDms',
-    label: string,
-    min: number,
-    max: number,
-  ) => (
-    <div className="grid gap-1.5">
-      <Label htmlFor={`routine-${key}`}>{label}</Label>
-      <Input
-        id={`routine-${key}`}
-        type="number"
-        value={Number.isNaN(policy[key]) ? '' : policy[key]}
-        min={min}
-        max={max}
-        onChange={(e) => change(key, e.target.value === '' ? Number.NaN : Number(e.target.value))}
-        className="border-line bg-field"
-      />
-    </div>
+  // Reads an activity setting, falling back to its default when it has never been saved.
+  const num = (key: string) => Number(policy.activity[key] ?? feedSetting(key).default)
+  const flag = (key: string) => Boolean(policy.activity[key] ?? feedSetting(key).default)
+  const setActivity = (patch: Record<string, number | boolean>) =>
+    change('activity', { ...policy.activity, ...patch })
+
+  // Plain-English summaries shown at the top of the Warm-up and Outreach tabs.
+  const [postsMin, postsMax] = warmupPostRange(policy)
+  const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Each profile needs ${span(postsMin, postsMax)} posts before outreach.`
+  const outreachSummary = policy.outreachEnabled
+    ? `Sends from day ${policy.outreachStartDay}: ${policy.initialDms} DMs a day, up to ${policy.maxDms}.`
+    : 'Off. No DMs are sent.'
+
+  // Binds a 0–100 activity setting to a slider.
+  const percentSetting = (label: string, key: string) => (
+    <PercentField
+      id={key}
+      label={label}
+      value={num(key)}
+      onChange={(value) => setActivity({ [key]: value })}
+    />
   )
-  const rangeField = (
-    minKey: 'unfollowMinDays' | 'warmupMinPosts',
-    maxKey: 'unfollowMaxDays' | 'warmupMaxPosts',
+  // Binds one numeric activity setting. Bounds come from browse-feed.ts.
+  const numberSetting = (label: string, key: string, unit?: string) => (
+    <NumberField
+      id={key}
+      label={label}
+      unit={unit}
+      limits={limitsOf(feedSetting(key))}
+      value={num(key)}
+      onChange={(value) => setActivity({ [key]: value })}
+    />
+  )
+  // Binds a min/max activity pair. Bounds come from the two settings' definitions.
+  const rangeSetting = (label: string, minKey: string, maxKey: string, unit?: string) => (
+    <RangeField
+      id={minKey}
+      label={label}
+      unit={unit}
+      limits={{
+        min: feedSetting(minKey).min,
+        max: feedSetting(maxKey).max,
+        step: feedSetting(minKey).step,
+      }}
+      minValue={num(minKey)}
+      maxValue={num(maxKey)}
+      onChange={(min, max) => setActivity({ [minKey]: min, [maxKey]: max })}
+    />
+  )
+  // Binds a min/max pair stored on the routine itself, such as warm-up posts.
+  const routineRange = (
+    id: string,
     label: string,
     unit: string,
+    minKey: 'warmupMinPosts' | 'unfollowMinDays',
+    maxKey: 'warmupMaxPosts' | 'unfollowMaxDays',
     limit: number,
     fallback: number,
   ) => (
-    <div className="grid gap-1.5">
-      <Label>{label}</Label>
-      <MinMaxField
-        unit={unit}
-        minInput={{
-          name: minKey,
-          label: `Minimum ${label.toLowerCase()}`,
-          type: 'number',
-          min: 1,
-          max: limit,
-          step: 1,
-        }}
-        maxInput={{
-          name: maxKey,
-          label: `Maximum ${label.toLowerCase()}`,
-          type: 'number',
-          min: 1,
-          max: limit,
-          step: 1,
-        }}
-        minValue={policy[minKey] ?? fallback}
-        maxValue={policy[maxKey] ?? fallback}
-        onChange={(key, value) => {
-          if (typeof value === 'number' && (key === minKey || key === maxKey)) change(key, value)
-        }}
-      />
-    </div>
+    <RangeField
+      id={id}
+      label={label}
+      unit={unit}
+      limits={{ min: 1, max: limit }}
+      minValue={policy[minKey] ?? fallback}
+      maxValue={policy[maxKey] ?? fallback}
+      onChange={(min, max) => {
+        change(minKey, min)
+        change(maxKey, max)
+      }}
+    />
   )
+  // Binds an integer stored on the routine itself, such as the daily DM cap.
+  const routineNumber = (
+    id: string,
+    label: string,
+    key: 'outreachStartDay' | 'initialDms' | 'maxDms',
+    limits: { min: number; max: number },
+  ) => (
+    <NumberField
+      id={id}
+      label={label}
+      limits={limits}
+      value={policy[key]}
+      onChange={(value) => change(key, value)}
+    />
+  )
+
+  // Validates the routine, then creates or updates the automation and closes the dialog.
   async function save() {
+    if (!canSave) return
     setSaving(true)
     try {
       validateRoutine(policy)
-      if (!name.trim() || listIds.length !== 1) throw new Error('Enter a name and select one model')
       const data = {
         name: name.trim(),
         listIds,
@@ -155,11 +216,20 @@ export function RoutinePopup({
       toast.success('Automation saved')
       onClose()
     } catch (error) {
-      toast.error(String(error))
+      toast.error(error instanceof Error ? error.message : String(error))
     } finally {
       setSaving(false)
     }
   }
+
+  // Cmd/Ctrl+S saves settings; Profiles updates live without saving.
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+      event.preventDefault()
+      if (tab !== 'profiles') void save()
+    }
+  }
+
   return (
     <Dialog
       open
@@ -169,190 +239,218 @@ export function RoutinePopup({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="flex h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-4xl"
+        onKeyDown={handleKeyDown}
+        className="flex h-[min(90dvh,44rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl"
       >
-        <DialogHeader className="shrink-0">
-          <DialogTitle className="page-title-gradient">
-            {automation ? automation.name : 'New automation'}
+        <DialogHeader className="shrink-0 flex-row items-center gap-3 space-y-0 border-b border-line-soft px-6 py-4 pr-12">
+          <DialogTitle className="min-w-0 truncate page-title-gradient">
+            {automation?.name ?? 'New automation'}
           </DialogTitle>
+          {automation && displayStatus && (
+            <Badge variant={getStatusColor(displayStatus)} className="shrink-0">
+              {getStatusLabel(displayStatus)}
+            </Badge>
+          )}
         </DialogHeader>
 
-        <div
-          className="flex shrink-0 flex-wrap gap-2"
-          role="tablist"
-          aria-label="Automation settings"
-        >
-          {tabs.map((t) => (
-            <button
-              key={t}
-              type="button"
-              role="tab"
-              aria-selected={t === tab}
-              onClick={() => setTab(t)}
-              className={cn(
-                'inline-flex h-8 items-center rounded-full border px-3 text-xs font-medium',
-                t === tab
-                  ? 'border-line-strong bg-panel-selected text-ink'
-                  : 'border-line text-muted-copy hover:border-line-strong hover:text-ink',
-              )}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+          <nav
+            aria-label="Automation settings"
+            className="flex shrink-0 gap-1 overflow-x-auto border-b border-line-soft p-2 md:w-44 md:flex-col md:border-r md:border-b-0 md:p-3"
+          >
+            {tabs.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                aria-current={id === tab ? 'page' : undefined}
+                onClick={() => setTab(id)}
+                className={cn(
+                  'inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium transition-colors',
+                  id === tab
+                    ? 'bg-panel-selected text-ink'
+                    : 'text-muted-copy hover:bg-panel-hover hover:text-ink',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </nav>
 
-        {locked && tab !== 'Profiles' && (
-          <div className="flex shrink-0 items-start gap-2 rounded-xl border border-status-info-border bg-status-info-soft px-4 py-2.5 text-xs text-status-info">
-            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Disable and wait for the current session to stop before editing settings. Profiles and
-            model membership can still be managed.
-          </div>
-        )}
-
-        <div className="min-h-0 flex-1 overflow-auto py-2">
-          {tab === 'Profiles' ? (
-            automation ? (
-              <RoutineProfiles automationId={automation._id} modelId={automation.listIds?.[0]} />
-            ) : (
-              <p className="text-sm text-subtle-copy">
-                Save the automation to manage profile setup and progress.
-              </p>
-            )
-          ) : (
-            <fieldset disabled={locked || saving} className="space-y-5 disabled:opacity-60">
-              {tab === 'General' && (
-                <>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="routine-name">Name</Label>
-                    <Input
-                      id="routine-name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="My automation"
-                      className="border-line bg-field"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Model</Label>
-                    {lists === undefined ? (
-                      <p className="text-sm text-subtle-copy">Loading models…</p>
-                    ) : lists.length === 0 ? (
-                      <p className="text-sm text-subtle-copy">Create a model first.</p>
-                    ) : (
-                      <Select
-                        value={listIds[0] ?? ''}
-                        disabled={locked || saving}
-                        onValueChange={(id) => {
-                          setListIds([id as Id<'lists'>])
-                          change(
-                            'outreachRoutes',
-                            policy.outreachRoutes?.map((route) => ({ ...route, profileIds: [] })),
-                          )
-                        }}
-                      >
-                        <SelectTrigger className="border-line bg-field">
-                          <SelectValue placeholder="Choose a model" />
-                        </SelectTrigger>
-                        <SelectContent className="panel-dropdown">
-                          {lists.map((list) => {
-                            const assigned = automations?.some(
-                              (row) =>
-                                row._id !== automation?._id &&
-                                row.routine &&
-                                row.listIds?.includes(list._id),
-                            )
-                            return (
-                              <SelectItem key={list._id} value={list._id} disabled={assigned}>
-                                {list.name}
-                                {assigned ? ' · already has an automation' : ''}
-                              </SelectItem>
-                            )
-                          })}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line-soft bg-panel-subtle/40 px-4 py-3">
-                    <span>
-                      <span className="block text-sm font-medium text-copy">
-                        Run without a visible browser
-                      </span>
-                      <span className="mt-0.5 block text-xs text-subtle-copy">
-                        Headless sessions use fewer resources
-                      </span>
-                    </span>
-                    <Switch
-                      checked={policy.headless}
-                      onCheckedChange={(checked) => change('headless', checked)}
-                      className="shrink-0 brand-switch"
-                    />
-                  </label>
-                </>
-              )}
-              {tab === 'Warm-up & activity' && (
-                <>
-                  <p className="text-sm text-subtle-copy">
-                    Browser login starts model setup. Daily feed browsing starts the next day with
-                    its time budget. On day 3, the mobile session connects through the Work proxy.
-                    Username and full name change separately; the full name waits for a model name.
-                    From day 4, setup can add the avatar and publish one post daily until its chosen
-                    post target is reached. The profile then becomes ready for outreach. Activity
-                    continues during outreach with breaks between sessions.
-                  </p>
-                  {rangeField('warmupMinPosts', 'warmupMaxPosts', 'Warm-up posts', 'posts', 100, 9)}
-                  <p className="text-xs text-subtle-copy">
-                    Each account gets a random total from this range. Changing the range assigns new
-                    targets to unfinished accounts, keeping their existing posts. Completed accounts
-                    stay ready.
-                  </p>
-                  <GroupedInputs
-                    inputs={browseFeed.inputs}
-                    config={policy.activity}
-                    onChange={(key, value) => {
-                      if (typeof value === 'number' || typeof value === 'boolean')
-                        change('activity', { ...policy.activity, [key]: value })
-                    }}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            {tab === 'general' && (
+              <fieldset disabled={formDisabled} className="grid gap-5 sm:grid-cols-2">
+                <Field id="routine-name" label="Name">
+                  <Input
+                    id="routine-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="My automation"
+                    className="h-9 brand-focus border-line bg-field text-ink"
                   />
-                </>
-              )}
-              {tab === 'Outreach' && (
-                <>
-                  <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-line-soft bg-panel-subtle/40 px-4 py-3">
-                    <span>
-                      <span className="block text-sm font-medium text-copy">Enable outreach</span>
-                      <span className="mt-0.5 block text-xs text-subtle-copy">
-                        Work toward the daily DM target within the daily time budget
-                      </span>
-                    </span>
-                    <Switch
-                      checked={policy.outreachEnabled}
-                      onCheckedChange={(checked) => change('outreachEnabled', checked)}
-                      className="shrink-0 brand-switch"
-                    />
-                  </label>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {numberField('outreachStartDay', 'Earliest activity day', 1, 365)}
-                    {numberField('initialDms', 'Initial daily target', 1, 35)}
-                    {numberField('maxDms', 'Maximum DMs per day', 1, 35)}
-                  </div>
-                  {rangeField(
-                    'unfollowMinDays',
-                    'unfollowMaxDays',
-                    'Unfollow after',
-                    'days',
-                    365,
-                    7,
+                </Field>
+                <Field id="routine-model" label="Model">
+                  {lists === undefined ? (
+                    <p className="text-sm text-subtle-copy">Loading…</p>
+                  ) : lists.length === 0 ? (
+                    <p className="text-sm text-subtle-copy">No models yet.</p>
+                  ) : (
+                    <Select
+                      value={listIds[0] ?? ''}
+                      onValueChange={(id) => {
+                        setListIds([id as Id<'lists'>])
+                        change(
+                          'outreachRoutes',
+                          policy.outreachRoutes?.map((route) => ({ ...route, profileIds: [] })),
+                        )
+                      }}
+                    >
+                      <SelectTrigger
+                        id="routine-model"
+                        className="h-9 brand-focus border-line bg-field text-ink"
+                      >
+                        <SelectValue placeholder="Choose a model" />
+                      </SelectTrigger>
+                      <SelectContent className="panel-dropdown">
+                        {lists.map((list) => {
+                          const inUse = automations?.some(
+                            (row) =>
+                              row._id !== automation?._id &&
+                              row.routine &&
+                              row.listIds?.includes(list._id),
+                          )
+                          return (
+                            <SelectItem key={list._id} value={list._id} disabled={inUse}>
+                              {inUse ? `${list.name} (in use)` : list.name}
+                            </SelectItem>
+                          )
+                        })}
+                      </SelectContent>
+                    </Select>
                   )}
-                  <p className="text-xs text-subtle-copy">
-                    Follow each recipient before messaging. Each new follow gets a random delay from
-                    this range. Existing scheduled unfollows keep their dates.
-                  </p>
-                  <p className="text-xs text-subtle-copy">
-                    The daily target increases by a random 1–4 after each day with a confirmed DM,
-                    up to the maximum. Sessions alternate browsing and batches of 1–5 DMs. Browsing,
-                    sending, and 30–90 second DM pauses share the daily time budget. Delivery
-                    problems or insufficient time can leave the target incomplete.
-                  </p>
+                </Field>
+                <ToggleRow
+                  wide
+                  label="Run without visible browser"
+                  checked={policy.headless}
+                  onChange={(checked) => change('headless', checked)}
+                />
+              </fieldset>
+            )}
+
+            {tab === 'warmup' && (
+              <fieldset disabled={formDisabled} className="space-y-6">
+                <p className="rounded-lg bg-panel-muted px-3 py-2 text-[13px] leading-5 text-copy">
+                  {warmupSummary}
+                </p>
+                <SettingsGroup title="Schedule">
+                  {rangeSetting(
+                    'Daily browsing',
+                    'warmup_min_minutes',
+                    'warmup_max_minutes',
+                    'min',
+                  )}
+                  {rangeSetting(
+                    'Session length',
+                    'session_min_minutes',
+                    'session_max_minutes',
+                    'min',
+                  )}
+                  {rangeSetting(
+                    'Rest between sessions',
+                    'rest_min_minutes',
+                    'rest_max_minutes',
+                    'min',
+                  )}
+                  {routineRange(
+                    'warmup-posts',
+                    'Warm-up posts',
+                    'posts',
+                    'warmupMinPosts',
+                    'warmupMaxPosts',
+                    100,
+                    9,
+                  )}
+                </SettingsGroup>
+                <SettingsGroup title="Engagement">
+                  {percentSetting('Like', 'like_chance')}
+                  {percentSetting('Follow', 'follow_chance')}
+                  {percentSetting('Carousel watch', 'carousel_watch_chance')}
+                  {numberSetting('Max carousel slides', 'carousel_max_slides')}
+                </SettingsGroup>
+                <SettingsGroup title="Feed" collapsible defaultOpen={false}>
+                  {percentSetting('Skip post', 'skip_post_chance')}
+                  {numberSetting('Max posts skipped', 'skip_post_max')}
+                  {rangeSetting(
+                    'Post view',
+                    'post_view_min_seconds',
+                    'post_view_max_seconds',
+                    'sec',
+                  )}
+                </SettingsGroup>
+                <SettingsGroup title="Stories" collapsible defaultOpen={false}>
+                  <ToggleRow
+                    wide
+                    label="Watch stories before feed"
+                    checked={flag('watch_stories')}
+                    onChange={(checked) => setActivity({ watch_stories: checked })}
+                  />
+                  {numberSetting('Max stories', 'stories_max')}
+                  {rangeSetting(
+                    'Story view',
+                    'stories_min_view_seconds',
+                    'stories_max_view_seconds',
+                    'sec',
+                  )}
+                </SettingsGroup>
+                <SettingsGroup title="Explore" collapsible defaultOpen={false}>
+                  {percentSetting('Profile visit', 'profile_visit_chance')}
+                  {percentSetting('Visit author after like', 'liked_profile_visit_chance')}
+                  {percentSetting('Own profile', 'own_profile_chance')}
+                  {percentSetting('DM check', 'dm_chance')}
+                  {percentSetting('Reels', 'reels_chance')}
+                  {percentSetting('Reel skip', 'reels_skip_chance')}
+                  {rangeSetting('Reels per session', 'reels_min', 'reels_max')}
+                </SettingsGroup>
+              </fieldset>
+            )}
+
+            {tab === 'outreach' && (
+              <fieldset disabled={formDisabled} className="space-y-6">
+                <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-line-soft bg-panel p-4">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-ink">Enable outreach</span>
+                    <span className="block text-xs text-subtle-copy">{outreachSummary}</span>
+                  </span>
+                  <Switch
+                    checked={policy.outreachEnabled}
+                    onCheckedChange={(checked) => change('outreachEnabled', checked)}
+                    className="shrink-0 brand-switch"
+                  />
+                </label>
+                <div className={cn('space-y-6', !policy.outreachEnabled && 'opacity-60')}>
+                  <SettingsGroup title="Daily DMs">
+                    {routineNumber('outreach-start-day', 'Outreach from day', 'outreachStartDay', {
+                      min: 1,
+                      max: 365,
+                    })}
+                    {routineNumber('initial-dms', 'Initial DMs per day', 'initialDms', {
+                      min: 1,
+                      max: 35,
+                    })}
+                    {routineNumber('max-dms', 'Max DMs per day', 'maxDms', { min: 1, max: 35 })}
+                  </SettingsGroup>
+                  <SettingsGroup title="Unfollow">
+                    {routineRange(
+                      'unfollow-days',
+                      'Unfollow after',
+                      'days',
+                      'unfollowMinDays',
+                      'unfollowMaxDays',
+                      365,
+                      7,
+                    )}
+                  </SettingsGroup>
                   <OutreachAssignments
                     routes={policy.outreachRoutes ?? []}
                     lists={leadLists ?? []}
@@ -361,206 +459,62 @@ export function RoutinePopup({
                         profile.status !== 'deleting' && profile.listIds?.includes(listIds[0]!),
                     )}
                     loading={leadLists === undefined || profiles === undefined}
-                    disabled={locked || saving}
+                    disabled={formDisabled}
                     onChange={(routes) => change('outreachRoutes', routes)}
                   />
-                  <p className="text-sm text-subtle-copy">
-                    Use {'{{username}}'} for the recipient. Claimed, messaged, or followed leads are
-                    skipped for new sessions. A lead followed in the current session still receives
-                    its DM.
-                  </p>
-                </>
-              )}
-            </fieldset>
-          )}
+                </div>
+              </fieldset>
+            )}
+
+            {tab === 'profiles' &&
+              (automation ? (
+                <RoutineProfiles automationId={automation._id} modelId={automation.listIds?.[0]} />
+              ) : (
+                <p className="text-sm text-subtle-copy">Save the automation to see its profiles.</p>
+              ))}
+          </div>
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-line pt-3">
-          <Button variant="ghost" onClick={onClose} disabled={saving} className="button-ghost">
-            Close
-          </Button>
-          <Button onClick={() => void save()} disabled={locked || saving} className="brand-button">
-            {saving ? 'Saving…' : 'Save automation'}
-          </Button>
-        </DialogFooter>
+        {tab !== 'profiles' && (
+          <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-line-soft px-6 py-3">
+            <p className="min-w-0 truncate text-xs text-subtle-copy">{footerNote}</p>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="ghost" size="lg" onClick={onClose} disabled={saving}>
+                Cancel
+              </Button>
+              <Button
+                size="lg"
+                onClick={() => void save()}
+                disabled={!canSave}
+                className="brand-button font-medium"
+              >
+                {saving ? 'Saving…' : automation ? 'Save changes' : 'Create automation'}
+              </Button>
+            </div>
+          </footer>
+        )}
       </DialogContent>
     </Dialog>
   )
 }
 
-function RoutineProfiles({
-  automationId,
-  modelId,
-}: {
-  automationId: Id<'automations'>
-  modelId?: Id<'lists'>
-}) {
-  const rows = useQuery(api.routines.accounts, { automationId })
-  const setAccount = useMutation(api.routines.setAccount)
-  const [warmups, setWarmups] = useState<ModelWarmup[]>([])
-  const [warmupError, setWarmupError] = useState('')
-  const [reviewing, setReviewing] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!modelId) return
-    let active = true
-    const refresh = () => {
-      void apiFetch<ModelWarmup[]>('/api/ig-accounts/warmup')
-        .then((result) => {
-          if (active) {
-            setWarmups(result.filter((item) => item.modelId === modelId))
-            setWarmupError('')
-          }
-        })
-        .catch((error) => {
-          if (active) setWarmupError(error instanceof Error ? error.message : String(error))
-        })
-    }
-    refresh()
-    const timer = window.setInterval(refresh, 30_000)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [modelId])
-  const mutate = async (args: Parameters<typeof setAccount>[0]) => {
-    try {
-      await setAccount(args)
-    } catch (e) {
-      toast.error(String(e))
-    }
-  }
-  const reconcile = async (profileId: string, resolution: 'completed' | 'failed') => {
-    if (
-      resolution === 'failed' &&
-      !window.confirm(
-        'Confirm this action did not succeed in Instagram. Retrying a successful post would publish it twice.',
-      )
-    )
-      return
-    setReviewing(profileId)
-    try {
-      await apiFetch(`/api/ig-accounts/warmup/${profileId}/reconcile`, {
-        method: 'POST',
-        body: { resolution },
-      })
-      const result = await apiFetch<ModelWarmup[]>('/api/ig-accounts/warmup')
-      setWarmups(result.filter((item) => item.modelId === modelId))
-      toast.success(resolution === 'completed' ? 'Action marked complete' : 'Action ready to retry')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : String(error))
-    } finally {
-      setReviewing(null)
-    }
-  }
-  if (!rows) return <p className="text-sm text-subtle-copy">Loading profiles…</p>
-  if (!rows.length)
-    return <p className="text-sm text-subtle-copy">Add profiles to this model to start.</p>
-  return (
-    <div className="space-y-2">
-      {warmupError && (
-        <p role="alert" className="text-xs text-status-danger">
-          Warm-up progress: {warmupError}
-        </p>
-      )}
-      {rows.map((row) => (
-        <div
-          key={row.profileId}
-          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line-soft bg-panel-subtle/40 p-3"
-        >
-          <span className="text-sm font-semibold text-ink">{row.name}</span>
-          <Badge
-            variant="outline"
-            className={cn(
-              'border text-[10px] tracking-[0.18em] uppercase',
-              row.paused
-                ? 'border-line bg-panel-muted text-copy'
-                : row.issue
-                  ? 'border-status-danger-border bg-status-danger-soft text-status-danger'
-                  : 'border-status-success-border bg-status-success-soft text-status-success',
-            )}
-          >
-            {row.paused ? 'Paused' : row.issue ? 'Needs attention' : row.stage}
-          </Badge>
-          <span className="text-xs text-muted-copy">
-            {row.activeDays} active days · DMs {row.sent}/{row.allowance}
-            {row.budgetExhausted && row.sent < row.allowance
-              ? ' · Target incomplete: time budget used'
-              : ''}
-          </span>
-          <ModelSetupStatus
-            progress={warmups.find((item) => item.profileId === row.profileId)}
-            reviewing={reviewing === row.profileId}
-            onReview={(resolution) => void reconcile(String(row.profileId), resolution)}
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8"
-            onClick={() => void mutate({ profileId: row.profileId, paused: !row.paused })}
-          >
-            {row.paused ? 'Resume' : 'Pause'}
-          </Button>
-          {row.issue && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8"
-              onClick={() => void mutate({ profileId: row.profileId, clearIssue: true })}
-            >
-              Issue resolved
-            </Button>
-          )}
-          <span className="ml-auto text-xs text-subtle-copy">
-            Next session:{' '}
-            {row.nextRunAt
-              ? new Date(row.nextRunAt).toLocaleString()
-              : 'When eligible and its rest period ends'}
-          </span>
-          {row.issue && <p className="basis-full text-xs text-status-danger">{row.issue}</p>}
-        </div>
-      ))}
-    </div>
-  )
+// Converts a feed definition's bounds into input limits.
+function limitsOf(input: ActivityInput): Limits {
+  return { min: input.min, max: input.max, step: input.step }
 }
 
-function ModelSetupStatus({
-  progress,
-  reviewing,
-  onReview,
-}: {
-  progress?: ModelWarmup
-  reviewing: boolean
-  onReview: (resolution: 'completed' | 'failed') => void
-}) {
-  return (
-    <div className="basis-full text-xs text-subtle-copy">
-      Setup:{' '}
-      {progress
-        ? `Username ${progress.nameDone ? 'done' : 'waiting'} · Full name ${progress.fullNameDone ? 'done' : 'waiting'} · Avatar ${progress.avatarDone ? 'done' : 'waiting'} · Posts ${progress.postSourceIds.length}/${progress.postTarget ?? 9}${progress.pending ? ` · Review ${progress.pending.kind}` : ''}`
-        : 'Starts after IG connects and this automation is enabled'}
-      {progress?.error && <span className="mt-1 block text-status-danger">{progress.error}</span>}
-      {progress?.pending && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <span>Check Instagram before resolving this {progress.pending.kind} action.</span>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={reviewing}
-            onClick={() => onReview('completed')}
-          >
-            It succeeded
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={reviewing}
-            onClick={() => onReview('failed')}
-          >
-            It failed, retry
-          </Button>
-        </div>
-      )}
-    </div>
-  )
+// Formats a min/max pair for summaries, such as "5–10" or "9". Shows ? while a value is empty.
+function span(min: number, max: number) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return '?'
+  return min === max ? String(min) : `${min}–${max}`
+}
+
+// Returns the first rule the routine breaks, or an empty string when it is valid.
+function routineProblem(policy: RoutinePolicy) {
+  try {
+    validateRoutine(policy)
+    return ''
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
 }

@@ -89,6 +89,7 @@
   --button-positive-foreground: rgb(23 23 23);
   --button-positive-icon: rgb(9 124 79);
   --button-positive-focus: rgb(9 124 79 / 0.24);
+  --button-shadow: 0 1px 2px rgb(17 17 19 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.6);
 
   --button-neutral-bg: rgb(237 237 237);
   --button-neutral-bg-hover: rgb(224 224 224);
@@ -252,6 +253,7 @@
   --button-positive-foreground: rgb(237 237 237);
   --button-positive-icon: rgb(133 224 183);
   --button-positive-focus: rgb(62 207 142 / 0.24);
+  --button-shadow: 0 1px 2px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.06);
 
   --button-neutral-bg: rgb(40 40 40);
   --button-neutral-bg-hover: rgb(50 50 50);

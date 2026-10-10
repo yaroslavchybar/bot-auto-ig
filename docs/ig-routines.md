@@ -6,7 +6,7 @@ A profile can be assigned to several scraped lists in the same automation. It ro
 
 Logged in allows browsing. Ready for outreach allows messaging after the configured activity day. Login and account setup are manual.
 
-Warm-up & activity settings include a total post range (1–100, default 9–9). Each account gets one saved random target and publishes at most one post per day from day 4. Recorded posts and dates must reach that target before setup marks outreach ready. Changing the range assigns new targets to unfinished accounts without removing their posts; completed setups remain ready.
+Warm-up settings include a total post range (1–100, default 9–9). Each account gets one saved random target and publishes at most one post per day from day 4. Recorded posts and dates must reach that target before setup marks outreach ready. Changing the range assigns new targets to unfinished accounts without removing their posts; completed setups remain ready.
 
 Enabled routines run while the server is online, one profile at a time. Each profile gets a configurable 1-100 active minutes daily (30-60 by default), split into 1-60 minute sessions with rest periods. Browsing, cleanup, DM preparation, sending, and DM pauses share this budget. Rest starts after the whole session ends and releases the browser slot.
 

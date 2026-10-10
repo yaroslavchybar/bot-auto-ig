@@ -44,14 +44,14 @@ async function click(text: string) {
 test('assigns the same profile to multiple lists with separate messages and removes assignments', async () => {
   view = mount()
   await view.render(<Editor />)
-  await click('Add assignment')
-  await click('Add assignment')
+  await click('Add list')
+  await click('Add list')
   expect(saved.map((route) => route.leadListId)).toEqual(['first', 'second'])
   expect(document.querySelector<HTMLButtonElement>('button:disabled')?.textContent).toContain(
-    'Add assignment',
+    'Add list',
   )
   for (const group of document.querySelectorAll('[role="group"]')) {
-    await act(async () => group.querySelector<HTMLButtonElement>('[role="checkbox"]')!.click())
+    await act(async () => group.querySelector<HTMLButtonElement>('button')!.click())
   }
   const inputs = document.querySelectorAll('textarea')
   for (const [index, input] of [...inputs].entries())
@@ -67,7 +67,7 @@ test('assigns the same profile to multiple lists with separate messages and remo
     { profiles: ['profile'], message: 'Message 2' },
   ])
   await act(async () =>
-    document.querySelector<HTMLButtonElement>('[aria-label="Remove assignment 1"]')!.click(),
+    document.querySelector<HTMLButtonElement>('[aria-label="Remove scraped list 1"]')!.click(),
   )
   expect(saved).toHaveLength(1)
   expect(saved[0].leadListId).toBe('second')
@@ -76,17 +76,17 @@ test('assigns the same profile to multiple lists with separate messages and remo
 test('all-model assignment clears the explicit selection and disabled settings cannot change routes', async () => {
   view = mount()
   await view.render(<Editor />)
-  await click('Add assignment')
+  await click('Add list')
   await act(async () =>
-    document.querySelector<HTMLButtonElement>('[role="group"] [role="checkbox"]')!.click(),
+    document.querySelector<HTMLButtonElement>('[role="group"] button')!.click(),
   )
   expect(saved[0].profileIds).toEqual(['profile'])
-  await act(async () => document.querySelector<HTMLButtonElement>('[role="checkbox"]')!.click())
+  await click('All profiles')
   expect(saved[0]).toMatchObject({ allProfiles: true, profileIds: [] })
   await view.render(<Editor disabled />)
-  await click('Add assignment')
+  await click('Add list')
   await act(async () =>
-    document.querySelector<HTMLButtonElement>('[aria-label="Remove assignment 1"]')!.click(),
+    document.querySelector<HTMLButtonElement>('[aria-label="Remove scraped list 1"]')!.click(),
   )
   expect(saved).toHaveLength(1)
 })

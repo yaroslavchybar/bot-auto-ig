@@ -4,7 +4,7 @@
   border-color: var(--button-positive-border);
   color: var(--button-positive-foreground);
   background-color: var(--button-positive-bg);
-  box-shadow: none;
+  box-shadow: var(--button-shadow);
 
   & svg {
     color: var(--button-positive-icon);
@@ -29,7 +29,7 @@
   border-color: var(--button-positive-border);
   color: var(--button-positive-foreground);
   background-color: var(--button-positive-bg);
-  box-shadow: none;
+  box-shadow: var(--button-shadow);
 
   & svg {
     color: var(--button-positive-icon);
@@ -54,7 +54,7 @@
   border-color: var(--button-neutral-border);
   color: var(--button-neutral-foreground);
   background-color: var(--button-neutral-bg);
-  box-shadow: none;
+  box-shadow: var(--button-shadow);
 
   & svg {
     color: var(--button-neutral-icon);
@@ -79,7 +79,7 @@
   border-color: var(--button-warning-border);
   color: var(--button-warning-foreground);
   background-color: var(--button-warning-bg);
-  box-shadow: none;
+  box-shadow: var(--button-shadow);
 
   & svg {
     color: var(--button-warning-icon);
@@ -104,7 +104,7 @@
   border-color: var(--button-danger-border);
   color: var(--button-danger-foreground);
   background-color: var(--button-danger-bg);
-  box-shadow: none;
+  box-shadow: var(--button-shadow);
 
   & svg {
     color: var(--button-danger-icon);

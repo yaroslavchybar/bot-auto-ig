@@ -32,6 +32,18 @@ async function setNumber(label: string, value: string) {
   })
 }
 
+test('new automation footer names the first missing requirement', async () => {
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(Object.assign(vi.fn(), {
+    withOptimisticUpdate: () => { throw new Error('Unexpected optimistic update') },
+  }))
+  view = mount()
+  await view.render(<RoutinePopup onClose={() => {}} />)
+  expect(document.querySelector('footer')?.textContent).toContain('Add a name')
+  const create = [...document.querySelectorAll('button')].find(item => item.textContent === 'Create automation')!
+  expect(create.disabled).toBe(true)
+})
+
 test('automation ranges load, reject reversed ranges, and save both min/max pairs', async () => {
   const save = vi.fn().mockResolvedValue(undefined)
   vi.mocked(useQuery).mockReturnValue([])
@@ -45,18 +57,19 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
   } as Doc<'automations'>
   view = mount()
   await view.render(<RoutinePopup automation={automation} onClose={() => {}} />)
-  await click('Warm-up & activity')
-  expect(document.querySelector<HTMLInputElement>('input[aria-label="Minimum warm-up posts"]')?.value).toBe('3')
-  expect(document.querySelector<HTMLInputElement>('input[aria-label="Maximum warm-up posts"]')?.value).toBe('6')
-  await setNumber('Minimum warm-up posts', '8')
-  await click('Save automation')
+  await click('Warm-up')
+  expect(document.querySelector<HTMLInputElement>('input[aria-label="Warm-up posts minimum"]')?.value).toBe('3')
+  expect(document.querySelector<HTMLInputElement>('input[aria-label="Warm-up posts maximum"]')?.value).toBe('6')
+  await setNumber('Warm-up posts minimum', '8')
+  expect(document.querySelector('footer')?.textContent).toContain('min no greater than max')
+  await click('Save changes')
   expect(save).not.toHaveBeenCalled()
-  await setNumber('Minimum warm-up posts', '4')
+  await setNumber('Warm-up posts minimum', '4')
   await click('Outreach')
-  expect(document.querySelector<HTMLInputElement>('input[aria-label="Minimum unfollow after"]')?.value).toBe('7')
-  await setNumber('Minimum unfollow after', '3')
-  await setNumber('Maximum unfollow after', '6')
-  await click('Save automation')
+  expect(document.querySelector<HTMLInputElement>('input[aria-label="Unfollow after minimum"]')?.value).toBe('7')
+  await setNumber('Unfollow after minimum', '3')
+  await setNumber('Unfollow after maximum', '6')
+  await click('Save changes')
   expect(save).toHaveBeenCalledWith(expect.objectContaining({
     id: 'automation', routine: expect.objectContaining({
       warmupMinPosts: 4, warmupMaxPosts: 6, unfollowMinDays: 3, unfollowMaxDays: 6,
