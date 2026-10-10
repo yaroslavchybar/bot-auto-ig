@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vite-plus/test'
+import { api } from '../../convex/_generated/api'
 
 import {
   createConvexTest,
@@ -11,6 +12,25 @@ import {
 function stubEnv(env: Record<string, string>) {
   vi.stubGlobal('process', { env })
 }
+
+test('content cleanup bridge queues only deleted models and acknowledges cleanup', async () => {
+  const t = createConvexTest()
+  stubEnv({ INTERNAL_API_KEY: 'secret-token' })
+  const model = (await seedList(t, 'Cleanup'))!
+  const request = (operation: string, token = 'secret-token') => t.fetch('/api/lists/content-cleanup', {
+    method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ operation, modelId: model._id }),
+  })
+  expect((await request('queue', 'wrong')).status).toBe(401)
+  expect((await request('queue')).status).toBe(200)
+  const work = () => t.query(api.profiles.queries.maintenanceWork, { bridgeToken: 'secret-token' })
+  expect((await work()).modelIds).toEqual([])
+  await t.mutation(api.lists.remove, { id: model._id })
+  expect((await request('queue')).status).toBe(200)
+  expect((await work()).modelIds).toEqual([model._id])
+  expect((await request('finish')).status).toBe(200)
+  expect((await work()).modelIds).toEqual([])
+})
 
 test('rejects unauthorized requests when INTERNAL_API_KEY is configured', async () => {
   const t = createConvexTest()

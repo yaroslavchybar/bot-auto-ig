@@ -461,6 +461,21 @@ test('session progress preserves fractional stored rest deadlines as integer mil
   expect(state?.nextRunAt).toBe(Math.ceil(nextRunAt));
 });
 
+test.each(['Login required', 'Challenge required', 'Checkpoint required', 'Network timeout'])('session issue updates chat eligibility: %s', async issue => {
+  const { t, args, loggedIn, profile } = await setup();
+  await loggedIn();
+  await t.run(ctx => ctx.db.insert('chatCounters', {
+    profileId: profile._id, token: 'session', enabled: true,
+    unreadCount: 2, unreadThreadIds: ['1', '2'],
+  }));
+  await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue });
+  const needsLogin = issue !== 'Network timeout';
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.igLoggedIn).toBe(!needsLogin);
+  expect(await t.query(api.chatCache.unreadCount)).toBe(needsLogin ? 0 : 2);
+  await loggedIn();
+  expect(await t.query(api.chatCache.unreadCount)).toBe(2);
+});
+
 test("completed daily browsing advances once; removing and readding profiles preserves progress", async () => {
   const { t, args, profile, list, loggedIn } = await setup();
   await loggedIn();

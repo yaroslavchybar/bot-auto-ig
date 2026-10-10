@@ -237,6 +237,7 @@ impl Native {
             return Ok(Json(
                 self.content
                     .add(
+                        &self.api,
                         model,
                         kind,
                         query.get("name").map(String::as_str).unwrap_or(""),

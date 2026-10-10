@@ -436,6 +436,8 @@ export async function listUnassignedProfilesRow(ctx: any) {
 export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
 	const nextListIds = listId === null || typeof listId === "undefined" ? [] : [listId];
+	if (listId && !await ctx.db.get(listId)) throw new DomainError('NOT_FOUND', 'Model not found');
+	for (const id of profileIds) await assertProfileModelChange(ctx, await ctx.db.get(id), nextListIds);
 	await Promise.all(profileIds.map((id) => ctx.db.patch(id, buildListPatch(nextListIds))));
 	await Promise.all(profileIds.map((id) => syncProfileListAssignments(ctx, id, nextListIds)));
     await assertAssignments(ctx);
@@ -444,6 +446,7 @@ export async function bulkSetProfileListIdRow(ctx: any, profileIds: any[], listI
 
 export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], listId: any) {
 	if (!Array.isArray(profileIds) || profileIds.length === 0) return true;
+	if (!await ctx.db.get(listId)) throw new DomainError('NOT_FOUND', 'Model not found');
 	// Single-list invariant: a profile lives in at most one list.
 	// Adding to a new list moves it (replaces), it never copies.
 	await Promise.all(
@@ -451,6 +454,7 @@ export async function bulkAddProfilesToListRow(ctx: any, profileIds: any[], list
 			const row = await ctx.db.get(id);
 			if (!row) return;
 			const next = [listId];
+			await assertProfileModelChange(ctx, row, next);
 			await ctx.db.patch(id, buildListPatch(next));
 			await syncProfileListAssignments(ctx, id, next);
 		}),
@@ -466,6 +470,7 @@ export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[],
 			const row = await ctx.db.get(id);
 			if (!row) return;
 			const next = getProfileListIds(row).filter((existingListId) => String(existingListId) !== String(listId));
+			await assertProfileModelChange(ctx, row, next);
 			await ctx.db.patch(id, buildListPatch(next));
 			await syncProfileListAssignments(ctx, id, next);
 		}),
@@ -474,3 +479,16 @@ export async function bulkRemoveProfilesFromListRow(ctx: any, profileIds: any[],
 	return true;
 }
 import { assertAssignments } from '../routines';
+
+// A model move must not discard an action whose Instagram result is still unknown.
+async function assertProfileModelChange(ctx: any, profile: any, next: any[]) {
+  if (!profile) return;
+  const current = getProfileListIds(profile);
+  if (current.length === next.length && current.every(id => next.includes(id))) return;
+  if (profile.using || ['running', 'starting', 'deleting'].includes(profile.status) || profile.renameFrom)
+    throw new DomainError('CONFLICT', 'Stop the profile and wait for maintenance before changing models');
+  const setup = await ctx.db.query('modelSetupStates')
+    .withIndex('by_profile', (q: any) => q.eq('profileId', profile._id)).first();
+  if (setup?.pending)
+    throw new DomainError('CONFLICT', 'Resolve the pending model setup action before changing models');
+}

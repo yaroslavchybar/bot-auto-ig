@@ -1,4 +1,4 @@
-import { openBrowserSession } from '../browser/cloak.js'
+import { BrowserLaunchTimeout, openBrowserSession } from '../browser/cloak.js'
 import { freshAuthenticatorCode, type ChatCredentials } from '../chat/totp.js'
 import type { Page } from 'playwright-core'
 
@@ -114,6 +114,12 @@ export async function runBrowserLogin(
     finish = resolve
   })
   let cleanupFailed = false
+  let pendingCleanup: Promise<void> | undefined
+  const finishAttempt = (cleaned: boolean) => {
+    active.delete(attemptId)
+    if (!cleaned) retired.get(attemptId)!.cleanupFailed = true
+    finish(cleaned)
+  }
   active.set(attemptId, { controller, done })
   try {
     const session = await openBrowserSession(profileName, {
@@ -136,12 +142,13 @@ export async function runBrowserLogin(
       })
     }
   } catch (error) {
+    if (error instanceof BrowserLaunchTimeout) pendingCleanup = error.cleanup
     // Startup reports an aggregate error when its cleanup also failed.
     if (error instanceof AggregateError) cleanupFailed = true
     throw error
   } finally {
-    active.delete(attemptId)
-    if (cleanupFailed) retired.get(attemptId)!.cleanupFailed = true
-    finish(!cleanupFailed)
+    if (pendingCleanup)
+      void pendingCleanup.then(() => finishAttempt(true), () => finishAttempt(false))
+    else finishAttempt(!cleanupFailed)
   }
 }

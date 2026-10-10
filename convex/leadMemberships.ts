@@ -28,4 +28,12 @@ export async function addMembership(
     return;
   }
   await ctx.db.insert('leadMemberships', { leadId, listId, leadCreatedAt, available });
+  const counter = await ctx.db.query('leadListCounts')
+    .withIndex('by_list', q => q.eq('listId', listId)).unique();
+  if (counter?.count !== undefined) {
+    await ctx.db.patch(counter._id, { count: counter.count + 1 });
+  } else if (counter) {
+    // A concurrent insert invalidates an in-progress backfill's snapshot.
+    await ctx.db.patch(counter._id, { revision: (counter.revision ?? 0) + 1 });
+  }
 }

@@ -1,6 +1,166 @@
 use super::*;
 
 #[tokio::test]
+async fn content_recovery_failure_does_not_block_periodic_account_setup() {
+    use crate::test_support::Fixture;
+    use axum::{response::IntoResponse, Json};
+    let operations = Arc::new(Mutex::new(Vec::<String>::new()));
+    let swept = Arc::new(tokio::sync::Notify::new());
+    let observed = operations.clone();
+    let finished = swept.clone();
+    let fixture = Fixture::start(move |request| {
+        let observed = observed.clone();
+        let finished = finished.clone();
+        async move {
+            assert_eq!(request.headers()["authorization"], "Bearer fixture");
+            match request.uri().path() {
+                "/api/lists" => {
+                    observed.lock().await.push("recovery".into());
+                    axum::http::StatusCode::BAD_REQUEST.into_response()
+                }
+                "/api/ig-accounts-store" => {
+                    let body = crate::test_support::body(request).await;
+                    assert_eq!(body["operation"], "connectedNames");
+                    observed.lock().await.push("sync_names".into());
+                    Json(json!({"page":[],"isDone":true})).into_response()
+                }
+                "/api/automations" => {
+                    observed.lock().await.push("sweep_setup".into());
+                    finished.notify_one();
+                    Json(json!([])).into_response()
+                }
+                _ => panic!("Unexpected periodic setup route"),
+            }
+        }
+    })
+    .await;
+    let root = tempfile::tempdir().unwrap();
+    let orphan = root.path().join("content/model-orphan");
+    tokio::fs::create_dir_all(&orphan).await.unwrap();
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let api = Arc::new(api);
+    let profiles = Profiles::new(
+        api.clone(),
+        super::super::processes::Processes::new(api.clone(), root.path().into()),
+        root.path().into(),
+    );
+    let mobile = Service::new(
+        api.clone(),
+        Arc::new(crate::uploads::Uploads {
+            entries: Default::default(),
+            slots: Arc::new(Semaphore::new(4)),
+        }),
+    );
+    let mut accounts = Accounts::new(
+        api.clone(),
+        profiles,
+        mobile,
+        Content::new(root.path().join("content")),
+        Subscriptions::new(api),
+    );
+    Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
+    tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::select! {
+            result = accounts.periodic_setup() => panic!("Periodic setup stopped: {result:?}"),
+            _ = swept.notified() => {}
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        *operations.lock().await,
+        ["recovery", "sync_names", "sweep_setup"]
+    );
+    assert!(
+        orphan.exists(),
+        "Failed recovery must leave orphan data untouched"
+    );
+}
+
+#[tokio::test]
+async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowledgements() {
+    use crate::test_support::Fixture;
+    use axum::{response::IntoResponse, Json};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let queued = Arc::new(Mutex::new(Vec::<String>::new()));
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let observed = queued.clone();
+    let count = acknowledgements.clone();
+    let fixture = Fixture::start(move |request| {
+        let observed = observed.clone();
+        let count = count.clone();
+        async move {
+            assert_eq!(request.headers()["authorization"], "Bearer fixture");
+            match request.uri().path() {
+                "/api/lists" => Json(json!([{"id":"model-live"}])).into_response(),
+                "/api/lists/content-cleanup" => {
+                    let body = crate::test_support::body(request).await;
+                    assert_eq!(body["modelId"], "model-orphan");
+                    if body["operation"] == "queue" {
+                        observed.lock().await.push("model-orphan".into());
+                    } else if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return axum::http::StatusCode::BAD_REQUEST.into_response();
+                    }
+                    Json(json!({"ok":true})).into_response()
+                }
+                _ => panic!("Unexpected cleanup route"),
+            }
+        }
+    })
+    .await;
+    let root = tempfile::tempdir().unwrap();
+    let content = Content::new(root.path().join("content"));
+    for model in ["model-live", "model-orphan"] {
+        let dir = root
+            .path()
+            .join("content")
+            .join(model)
+            .join("posts/image/variants");
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(dir.join("copy.jpg"), b"copy")
+            .await
+            .unwrap();
+    }
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let api = Arc::new(api);
+    let profiles = Profiles::new(
+        api.clone(),
+        super::super::processes::Processes::new(api.clone(), root.path().into()),
+        root.path().into(),
+    );
+    let mobile = Service::new(
+        api.clone(),
+        Arc::new(crate::uploads::Uploads {
+            entries: Default::default(),
+            slots: Arc::new(Semaphore::new(4)),
+        }),
+    );
+    let accounts = Accounts::new(
+        api.clone(),
+        profiles,
+        mobile,
+        content,
+        Subscriptions::new(api),
+    );
+    accounts.recover_content_cleanup().await.unwrap();
+    assert_eq!(*queued.lock().await, vec!["model-orphan"]);
+    let work = json!(["model-orphan"]);
+    accounts.cleanup_content(&work).await;
+    assert!(!root.path().join("content/model-orphan").exists());
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+    accounts.cleanup_content(&work).await;
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 2);
+    assert!(root
+        .path()
+        .join("content/model-live/posts/image/variants/copy.jpg")
+        .exists());
+}
+
+#[tokio::test]
 async fn native_shutdown_drains_inline_browser_logins_before_returning() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};

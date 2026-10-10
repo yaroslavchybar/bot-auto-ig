@@ -10,6 +10,8 @@ for (const scenario of [
   'rejected',
   'cleanup failure',
   'startup cleanup failure',
+  'launch timeout',
+  'launch timeout cleanup failure',
 ]) {
   test(`browser login ownership: ${scenario}`, () => {
     execFileSync(
@@ -28,9 +30,16 @@ for (const scenario of [
       const entered = new Promise(resolve => { started = resolve })
       let finishClose
       const closing = new Promise(resolve => { finishClose = resolve })
-      mock.module('./server/browser/cloak.ts', () => ({ openBrowserSession: async (_name, options) => {
+      class BrowserLaunchTimeout extends Error {
+        constructor(cleanup) { super('Browser launch timed out'); this.cleanup = cleanup }
+      }
+      mock.module('./server/browser/cloak.ts', () => ({ BrowserLaunchTimeout, openBrowserSession: async (_name, options) => {
         opened++
         started()
+        if (scenario.startsWith('launch timeout')) throw new BrowserLaunchTimeout(closing.then(() => {
+          if (scenario.endsWith('cleanup failure')) throw new Error('Browser close failed')
+          cleanupDone = true
+        }))
         if (scenario === 'startup cleanup failure') throw new AggregateError([], 'Startup cleanup failed')
         const signal = options.signal
         if (scenario === 'pending') {
@@ -63,7 +72,22 @@ for (const scenario of [
       } else {
         const result = runBrowserLogin(...args).then(value => ({ value }), error => ({ error }))
         await entered
-        if (['pending','active','duplicate'].includes(scenario)) {
+        if (scenario.startsWith('launch timeout')) {
+          assert.match((await result).error.message, /Browser launch timed out/)
+          let acknowledged = false
+          const cancellation = cancelBrowserLogin(id).then(() => { acknowledged = true }, error => { acknowledged = true; throw error })
+          await new Promise(resolve => setTimeout(resolve, 10))
+          assert.equal(acknowledged, false, 'timeout cancellation waits for late launch cleanup')
+          await assert.rejects(runBrowserLogin(...args), /already ended or started/)
+          finishClose()
+          if (scenario.endsWith('cleanup failure')) {
+            await assert.rejects(cancellation, /cleanup failed/)
+            await assert.rejects(cancelBrowserLogin(id), /cleanup failed/)
+          } else {
+            await cancellation
+            assert.equal(cleanupDone, true)
+          }
+        } else if (['pending','active','duplicate'].includes(scenario)) {
           if (scenario === 'duplicate') await assert.rejects(runBrowserLogin(...args), /already ended or started/)
           let acknowledged = false
           const cancellation = cancelBrowserLogin(id).then(() => { acknowledged = true })

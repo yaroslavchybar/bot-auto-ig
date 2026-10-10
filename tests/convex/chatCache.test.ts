@@ -109,6 +109,20 @@ test('equal totals with different unread chats update the archive-aware summary;
   expect(await t.run((ctx) => ctx.db.query('chatCounters').unique())).toEqual(row)
 })
 
+test('unchanged unread IDs repair stale counter eligibility without losing unread state', async () => {
+  const { t, profileId } = await setup()
+  const summary = { profileId, token, unreadThreadIds: ['1', '2'] }
+  await t.mutation(internal.chatCache.saveUnreadCount, summary)
+  for (const loggedIn of [false, true]) {
+    await t.run((ctx) => ctx.db.patch(profileId, { igLoggedIn: loggedIn }))
+    await t.mutation(internal.chatCache.saveUnreadCount, summary)
+    expect(await t.query(api.chatCache.unreadCount)).toBe(loggedIn ? 2 : 0)
+  }
+  await t.run((ctx) => ctx.db.patch(profileId, { status: 'deleting' }))
+  await t.mutation(internal.chatCache.saveUnreadCount, summary)
+  expect(await t.query(api.chatCache.unreadCount)).toBe(0)
+})
+
 test('session checkpointing and cookie edits do not modify badge counters', async () => {
   const { t, profileId } = await setup()
   await t.mutation(internal.chatCache.saveUnreadCount, {

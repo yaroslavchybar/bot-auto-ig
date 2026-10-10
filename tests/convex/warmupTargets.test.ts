@@ -36,10 +36,10 @@ test('each account draws and retains its own warm-up post target', async () => {
 })
 
 test.each(['confirmed', 'reviewed'])('the saved post target gates %s posts', async mode => {
-  const { t, profile, enroll } = await setup(3, 3)
+  const { t, model, profile, enroll } = await setup(3, 3)
   await enroll()
   const patch = (updates: Record<string, unknown>) => t.mutation(internal.igAccounts.modelSetupPatchInternal, {
-    profileId: profile._id, patch: updates, clear: [],
+    profileId: profile._id, modelId: model._id, patch: updates, clear: [],
   })
   await patch({ postSourceIds: ['p1', 'p2'], postDates: ['2026-09-25', '2026-09-26'] })
   await expect(patch({ outreachReadyMarked: true })).rejects.toThrow('3 recorded posts')
@@ -59,12 +59,12 @@ test.each(['confirmed', 'reviewed'])('the saved post target gates %s posts', asy
 test('changing the range updates unfinished setups and preserves completed accounts and posts', async () => {
   const { t, model, automation, profile, enroll } = await setup(9, 9)
   await enroll()
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id,
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: model._id,
     patch: { postSourceIds: ['p1', 'p2'], postDates: ['2026-09-25', '2026-09-26'] }, clear: [] })
   const done = (await seedProfile(t, { name: 'Done' }))!
   await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [done._id], listId: model._id })
   await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: done._id, modelId: model._id, startedAt: 1 })
-  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: done._id,
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: done._id, modelId: model._id,
     patch: { postSourceIds: Array.from({ length: 9 }, (_, i) => `p${i}`),
       postDates: Array.from({ length: 9 }, (_, i) => `2026-09-${i + 1}`) }, clear: [] })
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0.999)
@@ -97,7 +97,7 @@ test.each([2, 3])('a model-only update applies the existing policy to destinatio
   const postSourceIds = Array.from({ length: postCount }, (_, i) => `p${i}`)
   const postDates = Array.from({ length: postCount }, (_, i) => `2026-09-${i + 1}`)
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
-    profileId: recipient._id, patch: { postSourceIds, postDates }, clear: [],
+    profileId: recipient._id, modelId: destination._id, patch: { postSourceIds, postDates }, clear: [],
   })
   const rng = vi.spyOn(Math, 'random').mockReturnValue(0)
   try {

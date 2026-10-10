@@ -644,6 +644,104 @@ async fn disconnected_checks_are_throttled_force_and_clear_invalidate() {
 }
 
 #[tokio::test]
+async fn regular_and_forced_inbox_refreshes_include_external_replies_and_read_chats() {
+    let state = Mobile::fixture_session();
+    let publications = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
+    let stored = publications.clone();
+    let fixture = Fixture::start(move |request| {
+        let state = state.clone();
+        let stored = stored.clone();
+        async move {
+            if request.uri().path() == "/api/chat/count" {
+                let value = body(request).await;
+                stored.lock().unwrap().push(value);
+                return Json(json!({"saved": true})).into_response();
+            }
+            Json(json!({"connected":true,"token":"token","state":state,"profile":{"id":"p","proxy":""}})).into_response()
+        }
+    }).await;
+    let calls = Arc::new(AtomicUsize::new(0));
+    let observed = calls.clone();
+    let mobile_fixture = Fixture::start(move |request| {
+        let observed = observed.clone();
+        async move {
+            assert_eq!(request.uri().path(), "/api/v1/direct_v2/inbox/");
+            let call = observed.fetch_add(1, Ordering::Relaxed);
+            let unread_only = request.uri().query().unwrap_or("").contains("selected_filter=unread");
+            let threads = if call == 0 {
+                json!([{"thread_id":"123","thread_title":"Friend","items":[{"item_id":"1","user_id":"friend","text":"hello","timestamp":"100000"}]}])
+            } else if unread_only {
+                json!([])
+            } else {
+                json!([
+                    {"thread_id":"123","thread_title":"Friend","items":[{"item_id":"2","user_id":"123","text":"replied elsewhere","timestamp":"200000"}]},
+                    {"thread_id":"456","thread_title":"Read chat","items":[{"item_id":"3","user_id":"123","text":"new conversation","timestamp":"300000"}]}
+                ])
+            };
+            Json(json!({"status":"ok","inbox":{"threads":threads,"has_older":false}})).into_response()
+        }
+    }).await;
+    let mut api = Api::from_env().unwrap();
+    api.key = "fixture".into();
+    api.convex_url = fixture.url.clone();
+    let api = Arc::new(api);
+    let uploads = Arc::new(crate::uploads::Uploads {
+        entries: Default::default(),
+        slots: Arc::new(tokio::sync::Semaphore::new(4)),
+    });
+    let mobile = Mobile::fixture(api.clone(), uploads, mobile_fixture.url.clone());
+    let chat = Chat::new(api, mobile, Path::new(":memory:")).unwrap();
+    assert_eq!(
+        chat.inbox("p", false).await.unwrap().threads[0].unread,
+        Some(true)
+    );
+    let mut cached = chat
+        .db(|db| db.save_inbox("p", "token", "123", vec![thread(vec![], "789")], true))
+        .await
+        .unwrap();
+    cached.synced_at = crate::api::now_ms() - 60_001;
+    {
+        let lock = chat.entry("p").await.unwrap();
+        let mut entry = lock.lock().await;
+        entry.inbox = Some(cached);
+        entry.checked = 0;
+    }
+    let regular = chat.inbox("p", false).await.unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 2);
+    assert_eq!(
+        regular
+            .threads
+            .iter()
+            .find(|t| t.id == "123")
+            .unwrap()
+            .messages[0]
+            .text,
+        "replied elsewhere"
+    );
+    assert_eq!(
+        regular
+            .threads
+            .iter()
+            .find(|t| t.id == "123")
+            .unwrap()
+            .unread,
+        Some(false)
+    );
+    assert!(regular.threads.iter().any(|t| t.id == "456"));
+    assert!(
+        regular.threads.iter().any(|t| t.id == "789"),
+        "Older cached contacts must remain visible"
+    );
+    let forced = chat.inbox("p", true).await.unwrap();
+    assert_eq!(calls.load(Ordering::Relaxed), 3);
+    assert_eq!(forced.threads, regular.threads);
+    assert_eq!(
+        publications.lock().unwrap().last().unwrap()["unreadThreadIds"],
+        json!([])
+    );
+}
+
+#[tokio::test]
 async fn sent_message_stays_successful_when_refresh_and_counter_publication_fail() {
     let state = Mobile::fixture_session();
     let state_clone = state.clone();

@@ -33,7 +33,6 @@ function createEntry(modelId: string) {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
-        loaded = true
         publish({
           ...snapshot,
           loading: false,
@@ -53,7 +52,7 @@ function createEntry(modelId: string) {
     getSnapshot: () => snapshot,
     subscribe: (listener: () => void) => {
       listeners.add(listener)
-      if (!loaded) void load()
+      if (!loaded || snapshot.error) void load()
       return () => {
         listeners.delete(listener)
         if (listeners.size === 0) {

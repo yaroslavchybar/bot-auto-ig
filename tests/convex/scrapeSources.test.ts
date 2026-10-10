@@ -27,6 +27,7 @@ async function setup(options: { limit?: number | null; used?: number; mobileOnly
       await ctx.db.insert('chatSessions', { profileId, storageId, token: 'mobile-token' })
     }
     const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
+    await ctx.db.insert('leadListCounts', { listId, count: 0 })
     return { profileId, listId }
   })
   await t.mutation(api.scrapeSources.add, { listId, links: ['@source'] })
@@ -70,7 +71,7 @@ test('overview counts are compact and unaffected by worker progress', async () =
   await s.t.run((ctx) => ctx.db.patch(s.sourceId, { discovered: 3 }))
   expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual({
     sources: 1,
-    leads: 3,
+    leads: 0,
   })
   await s.t.mutation(api.scrapeSources.remove, { sourceId: s.sourceId })
   expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual({
@@ -516,6 +517,162 @@ test('range changes and pause fence workers; resume discovers posts again', asyn
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
   await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: true })
   expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.kind).toBe('posts')
+})
+
+test('resuming restores older hot posts independently of discovery and preserves check history', async () => {
+  vi.useFakeTimers()
+  const s = await setup()
+  await discover(s, { average: 500, age: 4 * DAY })
+  await s.t.mutation(internal.scrapeSources.finish, {
+    ...(await claimLikers(s)), status: 'completed', newIds: 80, likeCount: 500,
+  })
+  const post = (await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0]
+  await s.t.run(async (ctx) => {
+    await ctx.db.patch(s.listId, { scrapeLookbackDays: 1 })
+    await ctx.db.patch(post._id, { nextCheckAt: Date.now() - 1 })
+  })
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: false })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
+  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
+  expect((await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).taskAt).toBeNull()
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: true })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  await s.t.mutation(internal.scrapeSources.finish, {
+    ...(await claimLikers(s)), status: 'completed', newIds: 5, likeCount: 505,
+  })
+  await discover(s, { count: 0 }) // Discovery excludes the old post.
+  const restored = (await s.t.run((ctx) => ctx.db.get(post._id)))!
+  expect(restored).toMatchObject({ scheduled: true, monitoring: true })
+  expect(restored.checks).toHaveLength(1)
+  vi.setSystemTime(restored.nextCheckAt)
+  await claimLikers(s)
+})
+
+test('turning list monitoring back on restores older hot posts and preserves their history', async () => {
+  vi.useFakeTimers()
+  const s = await setup()
+  await discover(s, { average: 500, age: 4 * DAY })
+  await s.t.mutation(internal.scrapeSources.finish, {
+    ...(await claimLikers(s)), status: 'completed', newIds: 80, likeCount: 500,
+  })
+  const post = (await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0]
+  vi.setSystemTime(post.nextCheckAt)
+  await s.t.mutation(internal.scrapeSources.finish, {
+    ...(await claimLikers(s)), status: 'completed', newIds: 8, likeCount: 508,
+  })
+  const before = (await s.t.run((ctx) => ctx.db.get(post._id)))!
+  await s.t.run((ctx) => ctx.db.patch(post._id, { nextCheckAt: Date.now() - 1 }))
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: false })
+  await discover(s, { count: 0 }) // The disabled monitor is removed from the due queue.
+  expect((await s.t.run((ctx) => ctx.db.get(post._id)))?.scheduled).toBe(false)
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: true })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  const restored = (await s.t.run((ctx) => ctx.db.get(post._id)))!
+  expect(restored).toMatchObject({ monitoring: true, scheduled: true, checks: before.checks })
+  await claimLikers(s)
+})
+
+test('monitor restoration survives discovery while disabled and posts aging outside the range', async () => {
+  vi.useFakeTimers()
+  const s = await setup()
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: true })
+  await discover(s, { average: 500, age: 20 * HOUR })
+  await s.t.mutation(internal.scrapeSources.finish, {
+    ...(await claimLikers(s)), status: 'completed', newIds: 10, likeCount: 500,
+  })
+  const post = (await s.t.run(ctx => ctx.db.query('scrapePosts').collect()))[0]
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: false })
+  await discover(s, { average: 500, age: 20 * HOUR })
+  expect(await s.t.run(ctx => ctx.db.get(post._id))).toMatchObject({
+    monitoring: false, scheduled: false, monitorEligible: true,
+  })
+  vi.setSystemTime(Date.now() + 2 * DAY)
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: true })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect(await s.t.run(ctx => ctx.db.get(post._id))).toMatchObject({
+    monitoring: true, scheduled: true, nextCheckAt: post.nextCheckAt, checks: post.checks,
+  })
+  await claimLikers(s)
+})
+
+test('saved list counts survive source removal and do not count duplicate imports twice', async () => {
+  const s = await setup()
+  await discover(s)
+  const run = await claimLikers(s)
+  const likers = [{ igId: '11', username: 'one' }, { igId: '22', username: 'two' }]
+  await s.t.mutation(internal.scraper.saveBatch, { ...run, likers })
+  await s.t.mutation(internal.scraper.saveBatch, { ...run, likers })
+  expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual({ sources: 1, leads: 2 })
+  await s.t.mutation(api.scrapeSources.remove, { sourceId: s.sourceId })
+  expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual({ sources: 0, leads: 2 })
+  await s.t.mutation(internal.scrapeSources.cleanup, { sourceId: s.sourceId, remove: true })
+  expect(await s.t.query(api.scrapeSources.summary, { listId: s.listId })).toEqual({ sources: 0, leads: 2 })
+  expect((await s.t.query(api.leads.listPage, { listId: s.listId, paginationOpts: { cursor: null, numItems: 100 } })).page).toHaveLength(2)
+})
+
+test('turning list monitoring back on leaves paused sources and stopped posts inactive', async () => {
+  vi.useFakeTimers()
+  const s = await setup()
+  await s.t.mutation(api.scrapeSources.add, { listId: s.listId, links: ['paused'] })
+  const paused = (await s.t.query(api.scrapeSources.sources, { listId: s.listId })).find((p) => p.username === 'paused')!
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: paused._id, enabled: false })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  await s.t.run(async (ctx) => {
+    for (const sourceId of [s.sourceId, paused._id])
+      await ctx.db.insert('scrapePosts', {
+        sourceId, mediaId: String(sourceId), code: 'post',
+        takenAt: Date.now() - 4 * DAY, nextCheckAt: Date.now() - 1,
+        lastScrapedAt: Date.now() - HOUR, scheduled: false,
+        monitoring: true, monitorEligible: true,
+        ...(sourceId === s.sourceId ? { monitorStoppedAt: Date.now() - 1 } : {}),
+      })
+  })
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: false })
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 1, monitor: true })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect((await s.t.run((ctx) => ctx.db.query('scrapePosts').collect())).some((p) => p.scheduled)).toBe(false)
+  expect((await s.t.run((ctx) => ctx.db.get(paused._id)))?.enabled).toBe(false)
+})
+
+test('resume restores monitoring in bounded batches without restarting stopped posts', async () => {
+  vi.useFakeTimers()
+  const s = await setup()
+  await s.t.run(async (ctx) => {
+    for (let i = 0; i < 105; i++)
+      await ctx.db.insert('scrapePosts', {
+        sourceId: s.sourceId, mediaId: String(i), code: `post${i}`,
+        takenAt: Date.now() - 100 * DAY, nextCheckAt: Date.now() - 1,
+        scheduled: true, monitoring: true, monitorEligible: true,
+        lastScrapedAt: Date.now() - HOUR,
+        ...(i === 0 ? { monitorStoppedAt: Date.now() - 1 } : {}),
+      })
+  })
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: false })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect((await s.t.run((ctx) => ctx.db.query('scrapePosts').collect())).some((p) => p.scheduled)).toBe(false)
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: true })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  const posts = await s.t.run((ctx) => ctx.db.query('scrapePosts').collect())
+  expect(posts.filter((p) => p.scheduled)).toHaveLength(104)
+  expect(posts.find((p) => p.mediaId === '0')?.scheduled).toBe(false)
+})
+
+test.each(['pause', 'monitor disabled'] as const)('queued monitor restoration respects %s', async (change) => {
+  vi.useFakeTimers()
+  const s = await setup()
+  await discover(s, { average: 500 })
+  await s.t.mutation(internal.scrapeSources.finish, {
+    ...(await claimLikers(s)), status: 'completed', newIds: 80, likeCount: 500,
+  })
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: false })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: true })
+  if (change === 'pause')
+    await s.t.mutation(api.scrapeSources.setEnabled, { sourceId: s.sourceId, enabled: false })
+  else await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 90, monitor: false })
+  await s.t.finishAllScheduledFunctions(() => vi.runAllTimers())
+  expect((await s.t.run((ctx) => ctx.db.query('scrapePosts').collect()))[0].scheduled).toBe(false)
 })
 
 test('removing sources and lists cancels work and retains collected leads', async () => {

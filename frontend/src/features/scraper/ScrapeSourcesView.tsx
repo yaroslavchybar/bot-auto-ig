@@ -20,6 +20,7 @@ import {
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { Navigate, useLocation, useNavigate } from '@/lib/router'
 import { cn } from '@/lib/utils'
+import { useLeadListSummary } from './useLeadListSummary'
 
 const stamp = (at?: number) => (at ? new Date(at).toLocaleString() : 'Not checked yet')
 
@@ -79,6 +80,7 @@ export function ScrapeSourcesView() {
 
 function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => void }) {
   const sources = useQuery(api.scrapeSources.sources, { listId: list._id })
+  const counts = useLeadListSummary(list._id)
   const settings = useMutation(api.scrapeSources.settings)
   const [addOpen, setAddOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -95,7 +97,7 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
     setDaysText(String(serverDays))
     setMonitor(serverMonitor)
   }
-  const leads = (sources ?? []).reduce((n, s) => n + s.discovered, 0)
+  const leads = counts?.leads
   const days = Number(daysText)
   const valid = Number.isSafeInteger(days) && days >= 1 && days <= 3650
   const changed = valid && (days !== baseline.days || monitor !== baseline.monitor)
@@ -126,7 +128,7 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
         {sources !== undefined && (
           <p className="text-xs text-muted-copy tabular-nums">
             {sources.length} {sources.length === 1 ? 'source' : 'sources'} ·{' '}
-            {leads.toLocaleString()} {leads === 1 ? 'lead' : 'leads'}
+            {leads?.toLocaleString() ?? '…'} {leads === 1 ? 'lead' : 'leads'}
           </p>
         )}
         <div

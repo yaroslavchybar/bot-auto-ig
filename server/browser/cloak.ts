@@ -225,35 +225,25 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
   }
 }
 
-/** Rejects if the launch hangs (proxy stalls, transport wedges) so a stuck
- *  launch can never wedge the runner forever. The hung attempt holds no
- *  seat yet, so timing out is always safe. */
+/** Callers may report the timeout, but cancellation must still await cleanup. */
+export class BrowserLaunchTimeout extends Error {
+  constructor(readonly cleanup: Promise<void>) {
+    super('Browser launch timed out')
+  }
+}
+
 const LAUNCH_TIMEOUT_MS = 90_000
 
-function withLaunchTimeout<T extends { close?: () => Promise<unknown> }>(
+function withLaunchTimeout<T>(
   promise: Promise<T>,
+  close: () => Promise<void>,
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
-  let timedOut = false
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      timedOut = true
-      reject(new Error('Browser launch timed out'))
+      reject(new BrowserLaunchTimeout(close()))
     }, LAUNCH_TIMEOUT_MS)
   })
-  // A launch that resolves after the timeout already lost the race: close the
-  // orphaned browser so it cannot hold the license seat.
-  void promise.then(
-    async (result) => {
-      if (!timedOut) return
-      try {
-        await result?.close?.()
-      } catch {
-        /* orphan already gone */
-      }
-    },
-    () => undefined,
-  )
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
 }
 
@@ -316,11 +306,13 @@ export async function openBrowserSession(
   let releaseSlot: (() => void) | undefined
   let display: Display | undefined
   let context: BrowserContext | undefined
+  let launch: Promise<BrowserContext> | undefined
   let stopFilePicker: (() => void) | undefined
   let stopDomInspector: (() => Promise<void>) | undefined
   let ready = false
   let browserClosed = false
   let budgetLost = false
+  let resourcesAcquired = false
   let closing: Promise<void> | undefined
   let resolveClosed!: () => void
   let rejectClosed!: (error: unknown) => void
@@ -335,6 +327,14 @@ export async function openBrowserSession(
     // Defer work so reentrant browser events see the same shutdown promise.
     closing ??= Promise.resolve().then(async () => {
       signal.removeEventListener('abort', requestClose)
+      // Cloak cannot cancel preparation/launch. Keep every lease until it settles.
+      if (launch) {
+        try {
+          context = await launch
+        } catch {
+          // A failed launch acquired no context; release its remaining resources.
+        }
+      }
       const errors: unknown[] = []
       const steps = [
         () => stopDomInspector?.(),
@@ -360,6 +360,8 @@ export async function openBrowserSession(
     return closing
   }
   const requestClose = () => {
+    // Startup owns cleanup until pending resource acquisitions have settled.
+    if (!resourcesAcquired) return
     void close().catch(() => undefined)
   }
   closeAfterLockLoss = requestClose
@@ -395,10 +397,12 @@ export async function openBrowserSession(
       checkStartup()
       try {
         // Cloak speaks native SOCKS5 with inline credentials, no local relay.
-        context = await withLaunchTimeout(launchPersistentContext(launchOptions))
+        launch = launchPersistentContext(launchOptions)
+        context = await withLaunchTimeout(launch, close)
         launchError = undefined
         break
       } catch (error) {
+        if (error instanceof BrowserLaunchTimeout) throw error
         launchError = error
         const message = error instanceof Error ? error.message : String(error)
         if (!/session limit|concurrent session/i.test(message) || attempt === 3) break
@@ -415,6 +419,7 @@ export async function openBrowserSession(
       requestClose()
     })
     // All resources are acquired; shutdown can now interrupt page initialization.
+    resourcesAcquired = true
     signal.addEventListener('abort', requestClose, { once: true })
     checkStartup()
     const cookies = storedCookies(profile)
@@ -452,6 +457,8 @@ export async function openBrowserSession(
     ready = true
     return { context, page, profile, display, close, closed }
   } catch (error) {
+    // The timeout already started cleanup, which still owns the pending launch.
+    if (error instanceof BrowserLaunchTimeout) throw error
     // Complete partial startup cleanup without replacing the startup error.
     try {
       await close()

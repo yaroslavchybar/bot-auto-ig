@@ -11,6 +11,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { dmAllowance, dayKey, routineLists, randomInRange, unfollowRange, profileOutreachRoutes } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
+import { setChatCounterEnabled } from './chatCache';
 
 const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
   ctx.db
@@ -264,8 +265,10 @@ export const recordSession = internalMutation({
       nextRunAt: Math.ceil(warmup?.nextRunAt ?? Date.now() + 60 * 60_000),
       updatedAt: Date.now(),
     });
-    if (args.issue && /login|challenge|checkpoint/i.test(args.issue))
+    if (args.issue && /login|challenge|checkpoint/i.test(args.issue)) {
       await ctx.db.patch(args.profileId, { igLoggedIn: false });
+      await setChatCounterEnabled(ctx, args.profileId, false);
+    }
   },
 });
 

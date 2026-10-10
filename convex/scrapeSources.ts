@@ -45,7 +45,9 @@ export const summary = query({
         .withIndex('by_list_username', (q) => q.eq('listId', listId))
         .take(100)
     ).filter((s) => !s.deleting)
-    return { sources: rows.length, leads: rows.reduce((sum, source) => sum + source.discovered, 0) }
+    const counter = await ctx.db.query('leadListCounts')
+      .withIndex('by_list', q => q.eq('listId', listId)).unique()
+    return { sources: rows.length, leads: counter?.count ?? null }
   },
 })
 
@@ -130,7 +132,7 @@ export const settings = mutation({
       .withIndex('by_list_username', (q) => q.eq('listId', listId))
       .take(100)
     // Fence in-flight work so changing the range never saves out-of-range leads.
-    for (const source of sources)
+    for (const source of sources) {
       await ctx.db.patch(source._id, {
         running: false,
         runId: undefined,
@@ -140,6 +142,11 @@ export const settings = mutation({
         nextCheckAt: Date.now(),
         error: undefined,
       })
+      if (list.scrapeMonitor === false && monitor && source.enabled && !source.deleting)
+        await ctx.scheduler.runAfter(0, internal.scrapeSources.resumeMonitoring, {
+          sourceId: source._id,
+        })
+    }
   },
 })
 
@@ -160,6 +167,7 @@ export const setEnabled = mutation({
     })
     if (!enabled)
       await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanup, { sourceId, remove: false })
+    else await ctx.scheduler.runAfter(0, internal.scrapeSources.resumeMonitoring, { sourceId })
   },
 })
 
@@ -210,6 +218,30 @@ export const cleanup = internalMutation({
     if (rows.length === 100)
       await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanup, { sourceId, remove })
     else if (remove) await ctx.db.delete(sourceId)
+  },
+})
+
+/** Restore paused monitors outside discovery's lookback, in bounded batches. */
+export const resumeMonitoring = internalMutation({
+  args: { sourceId: v.id('scrapeSources'), cursor: v.optional(v.string()) },
+  handler: async (ctx, { sourceId, cursor }) => {
+    const source = await ctx.db.get(sourceId)
+    if (!source?.enabled || source.deleting) return
+    const list = await ctx.db.get(source.listId)
+    if (!list || list.scrapeMonitor === false) return
+    const batch = await ctx.db
+      .query('scrapePosts')
+      .withIndex('by_source_date', (q) => q.eq('sourceId', sourceId))
+      .paginate({ cursor: cursor ?? null, numItems: 100 })
+    for (const post of batch.page)
+      if (post.lastScrapedAt !== undefined && post.monitorEligible && !post.monitorStoppedAt &&
+        (!post.monitoring || !post.scheduled))
+        await ctx.db.patch(post._id, { monitoring: true, scheduled: true })
+    if (!batch.isDone)
+      await ctx.scheduler.runAfter(0, internal.scrapeSources.resumeMonitoring, {
+        sourceId,
+        cursor: batch.continueCursor,
+      })
   },
 })
 

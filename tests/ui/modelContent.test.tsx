@@ -12,16 +12,32 @@ afterEach(async () => {
 })
 
 function Content({ id }: { id: string }) {
-  const { items, reload } = useModelContent(id)
+  const { items, error, reload } = useModelContent(id)
   return (
     <div>
       <output>
         {id}:{items[0]?.name}
       </output>
       <button onClick={() => void reload()}>Reload {id}</button>
+      {error && <span role="alert">{error}</span>}
     </div>
   )
 }
+
+test('opening a dialog retries a failed card request and keeps successful data cached', async () => {
+  vi.mocked(apiFetch).mockRejectedValueOnce(new Error('Temporary outage'))
+    .mockResolvedValue([{ id: 'image', kind: 'posts', name: 'recovered' }])
+  view = mount()
+  await view.render(<ModelContentProvider><Content id="model-a" /></ModelContentProvider>)
+  expect(view.container.querySelector('[role="alert"]')?.textContent).toBe('Temporary outage')
+  await view.render(<ModelContentProvider><Content id="model-a" /><Content id="model-a" /></ModelContentProvider>)
+  expect(apiFetch).toHaveBeenCalledTimes(2)
+  expect([...view.container.querySelectorAll('output')].map(el => el.textContent))
+    .toEqual(['model-a:recovered', 'model-a:recovered'])
+  expect(view.container.querySelector('[role="alert"]')).toBeNull()
+  await view.render(<ModelContentProvider><Content id="model-a" /></ModelContentProvider>)
+  expect(apiFetch).toHaveBeenCalledTimes(2)
+})
 
 test('cards and dialogs share data and mutations refresh only the affected model', async () => {
   vi.mocked(apiFetch).mockResolvedValue([{ id: 'image', kind: 'posts', name: 'original' }])

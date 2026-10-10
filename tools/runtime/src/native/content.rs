@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::sync::{Mutex, Semaphore};
+use tokio::sync::{Mutex, OwnedMutexGuard, Semaphore};
 use uuid::Uuid;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,7 +26,7 @@ pub struct Item {
 /// All manifest access, including browser-worker allocations, has one native owner.
 pub struct Content {
     root: PathBuf,
-    manifest: Mutex<()>,
+    manifests: std::sync::Mutex<HashMap<String, Arc<Mutex<()>>>>,
     generating: std::sync::Mutex<HashSet<String>>,
     images: Arc<Semaphore>,
     #[cfg(test)]
@@ -37,7 +37,7 @@ impl Content {
     pub fn new(root: PathBuf) -> Arc<Self> {
         Arc::new(Self {
             root,
-            manifest: Mutex::new(()),
+            manifests: Default::default(),
             generating: Default::default(),
             images: Arc::new(Semaphore::new(1)),
             #[cfg(test)]
@@ -61,6 +61,17 @@ impl Content {
             Err(Failure::invalid("Choose posts or avatars"))
         }
     }
+    // Validation, manifest writes and deletion share a lock only within one model.
+    async fn model_lock(&self, model: &str) -> Result<OwnedMutexGuard<()>> {
+        self.directory(model)?;
+        let lock = {
+            let mut locks = self.manifests.lock().unwrap();
+            // Holders and waiters keep their Arc alive; unused locks can be discarded.
+            locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+            locks.entry(model.into()).or_default().clone()
+        };
+        Ok(lock.lock_owned().await)
+    }
     async fn read(&self, model: &str) -> Result<Vec<Item>> {
         match tokio::fs::read(self.directory(model)?.join("manifest.json")).await {
             Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
@@ -74,11 +85,34 @@ impl Content {
         atomic_write(&dir.join("manifest.json"), &serde_json::to_vec(rows)?).await
     }
     pub async fn list(&self, model: &str) -> Result<Value> {
-        let _lock = self.manifest.lock().await;
+        let _lock = self.model_lock(model).await?;
         Ok(Value::Array(self.read(model).await?.into_iter().map(|row| json!({"id": row.id, "kind": row.kind, "name": row.name,
             "variantCount": row.variants.len(), "usedCount": row.assigned.len(), "createdAt": row.created_at})).collect()))
     }
-    pub async fn add(&self, model: &str, kind: &str, name: &str, bytes: &[u8]) -> Result<Value> {
+    pub async fn add(
+        &self,
+        api: &Api,
+        model: &str,
+        kind: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<Value> {
+        let _lock = self.model_lock(model).await?;
+        self.require_model(api, model).await?;
+        self.add_locked(model, kind, name, bytes).await
+    }
+    async fn require_model(&self, api: &Api, model: &str) -> Result<()> {
+        self.directory(model)?;
+        let models = api.convex(reqwest::Method::GET, "/api/lists", None).await?;
+        if !models
+            .as_array()
+            .is_some_and(|rows| rows.iter().any(|row| row["id"] == model))
+        {
+            return Err(Failure::missing("Model not found"));
+        }
+        Ok(())
+    }
+    async fn add_locked(&self, model: &str, kind: &str, name: &str, bytes: &[u8]) -> Result<Value> {
         Self::kind(kind)?;
         if bytes.is_empty() || bytes.len() > 15 * 1024 * 1024 {
             return Err(Failure::invalid("Image must be 1–15 MB"));
@@ -89,7 +123,6 @@ impl Content {
         tokio::fs::create_dir_all(&dir).await?;
         let result = async {
             atomic_write(&dir.join(format!("source{extension}")), bytes).await?;
-            let _lock = self.manifest.lock().await;
             let mut rows = self.read(model).await?;
             rows.push(Item {
                 id: id.clone(),
@@ -117,11 +150,11 @@ impl Content {
             .ok_or_else(|| Failure::missing("Image not found"))
     }
     pub async fn copies(&self, model: &str, kind: &str, id: &str) -> Result<Value> {
-        let _lock = self.manifest.lock().await;
+        let _lock = self.model_lock(model).await?;
         Ok(json!(self.item(model, kind, id).await?.variants))
     }
     pub async fn remove(&self, model: &str, kind: &str, id: &str) -> Result<Value> {
-        let _lock = self.manifest.lock().await;
+        let _lock = self.model_lock(model).await?;
         if self
             .generating
             .lock()
@@ -137,6 +170,43 @@ impl Content {
         tokio::fs::remove_dir_all(self.directory(model)?.join(kind).join(item.id)).await?;
         Ok(json!({"removed": true}))
     }
+    pub async fn remove_model(&self, model: &str) -> Result<()> {
+        let _lock = self.model_lock(model).await?;
+        if self
+            .generating
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|key| key.starts_with(&format!("{model}:")))
+        {
+            return Err(Failure::unavailable("Copy generation is running"));
+        }
+        match tokio::fs::remove_dir_all(self.directory(model)?).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+    pub async fn model_directories(&self) -> Result<Vec<String>> {
+        let mut entries = match tokio::fs::read_dir(&self.root).await {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
+        };
+        let mut models = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.file_type().await?.is_dir() {
+                if let Some(model) = entry
+                    .file_name()
+                    .to_str()
+                    .filter(|model| self.directory(model).is_ok())
+                {
+                    models.push(model.to_owned());
+                }
+            }
+        }
+        Ok(models)
+    }
     pub async fn generate(
         self: &Arc<Self>,
         api: &Api,
@@ -146,7 +216,8 @@ impl Content {
     ) -> Result<Value> {
         let key = format!("{model}:{id}");
         {
-            let _lock = self.manifest.lock().await;
+            let _lock = self.model_lock(model).await?;
+            self.require_model(api, model).await?;
             let item = self.item(model, kind, id).await?;
             if !item.variants.is_empty() {
                 return Err(Failure::invalid("Copies already exist"));
@@ -195,7 +266,7 @@ impl Content {
                     "Spoofer did not produce 50 unique copies",
                 ));
             }
-            let _lock = self.manifest.lock().await;
+            let _lock = self.model_lock(model).await?;
             let mut rows = self.read(model).await?;
             let row = rows
                 .iter_mut()
@@ -223,7 +294,7 @@ impl Content {
         if profile.is_empty() || profile.len() > 128 {
             return Err(Failure::invalid("Profile ID is required"));
         }
-        let _lock = self.manifest.lock().await;
+        let _lock = self.model_lock(model).await?;
         let mut rows = self.read(model).await?;
         let available = |r: &&mut Item| {
             r.kind == kind
@@ -267,7 +338,7 @@ impl Content {
         variant: Option<&str>,
         preview: bool,
     ) -> Result<Response> {
-        let _lock = self.manifest.lock().await;
+        let _lock = self.model_lock(model).await?;
         let item = self.item(model, kind, id).await?;
         let dir = self.directory(model)?.join(kind).join(&item.id);
         let (file, mime) = if let Some(variant) = variant {
@@ -402,6 +473,147 @@ fn thumbnail(file: &Path) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     #[tokio::test]
+    async fn model_cleanup_is_scoped_idempotent_and_waits_for_generation() {
+        let root = tempfile::tempdir().unwrap();
+        let bank = Content::new(root.path().into());
+        let model = root.path().join("model-1");
+        let sibling = root.path().join("model-2");
+        for dir in [&model, &sibling] {
+            tokio::fs::create_dir_all(dir.join("posts/image/variants"))
+                .await
+                .unwrap();
+            tokio::fs::write(dir.join("posts/image/variants/copy.jpg"), b"copy")
+                .await
+                .unwrap();
+            tokio::fs::write(dir.join("manifest.json"), b"[]")
+                .await
+                .unwrap();
+        }
+        bank.generating
+            .lock()
+            .unwrap()
+            .insert("model-1:image".into());
+        assert!(bank.remove_model("model-1").await.is_err());
+        assert!(model.exists());
+        bank.generating.lock().unwrap().clear();
+        assert!(bank.remove_model("../model-2").await.is_err());
+        bank.remove_model("model-1").await.unwrap();
+        bank.remove_model("model-1").await.unwrap();
+        assert!(!model.exists());
+        assert!(sibling.join("posts/image/variants/copy.jpg").exists());
+        assert_eq!(bank.model_directories().await.unwrap(), vec!["model-2"]);
+    }
+    #[tokio::test]
+    async fn uploads_cannot_recreate_a_deleted_model() {
+        use crate::test_support::Fixture;
+        use axum::{response::IntoResponse, Json};
+        let fixture = Fixture::start(move |_| async { Json(json!([])).into_response() }).await;
+        let root = tempfile::tempdir().unwrap();
+        let bank = Content::new(root.path().into());
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        assert!(bank
+            .add(&api, "model-deleted", "posts", "source.jpg", b"image")
+            .await
+            .is_err());
+        assert!(!root.path().join("model-deleted").exists());
+    }
+    #[tokio::test]
+    async fn slow_model_validation_is_isolated_and_serialized_with_deletion() {
+        use crate::test_support::Fixture;
+        use axum::{response::IntoResponse, Json};
+        use std::time::Duration;
+
+        for generate in [false, true] {
+            let entered = Arc::new(tokio::sync::Notify::new());
+            let release = Arc::new(tokio::sync::Notify::new());
+            let arrival = entered.clone();
+            let finish = release.clone();
+            let fixture = Fixture::start(move |request| {
+                let arrival = arrival.clone();
+                let finish = finish.clone();
+                async move {
+                    if request.uri().path() == "/api/lists" {
+                        arrival.notify_one();
+                        finish.notified().await;
+                        return Json(json!([{"id": "model-1"}])).into_response();
+                    }
+                    Json(json!({"outputs": (0..50).map(|n|
+                        json!({"name": format!("copy_{n}.jpg")})).collect::<Vec<_>>()
+                    }))
+                    .into_response()
+                }
+            })
+            .await;
+            let root = tempfile::tempdir().unwrap();
+            let mut bank = Content::new(root.path().into());
+            Arc::get_mut(&mut bank).unwrap().spoofer = Some(fixture.url.clone());
+            let added = bank
+                .add_locked("model-1", "posts", "source.jpg", b"image")
+                .await
+                .unwrap();
+            bank.write(
+                "model-2",
+                &[Item {
+                    id: "source".into(),
+                    kind: "posts".into(),
+                    name: "source.jpg".into(),
+                    variants: vec!["copy.jpg".into()],
+                    assigned: HashMap::new(),
+                    created_at: 0,
+                }],
+            )
+            .await
+            .unwrap();
+            let mut api = Api::from_env().unwrap();
+            api.convex_url = fixture.url.clone();
+            api.key = "fixture".into();
+            let native = bank.clone();
+            let task = tokio::spawn(async move {
+                if generate {
+                    native
+                        .generate(&api, "model-1", "posts", added["id"].as_str().unwrap())
+                        .await
+                } else {
+                    native
+                        .add(&api, "model-1", "posts", "second.jpg", b"image")
+                        .await
+                }
+            });
+            tokio::time::timeout(Duration::from_secs(5), entered.notified())
+                .await
+                .unwrap();
+
+            let deletion = bank.remove_model("model-1");
+            tokio::pin!(deletion);
+            // Poll deletion first so it is queued behind validation. Other models still work.
+            tokio::select! {
+                biased;
+                result = &mut deletion => panic!("Deletion bypassed model validation: {result:?}"),
+                result = tokio::time::timeout(Duration::from_secs(5), async {
+                    assert_eq!(bank.list("model-2").await.unwrap().as_array().unwrap().len(), 1);
+                    assert_eq!(bank.allocate("model-2", "posts", "profile", &[], false)
+                        .await.unwrap()["sourceId"], "source");
+                    bank.remove_model("model-2").await.unwrap();
+                }) => result.unwrap(),
+            }
+            release.notify_one();
+            let (operation, removal) = tokio::time::timeout(Duration::from_secs(5), async {
+                tokio::join!(task, &mut deletion)
+            })
+            .await
+            .unwrap();
+            operation.unwrap().unwrap();
+            if let Err(error) = removal {
+                assert!(generate);
+                assert!(error.message.contains("Copy generation is running"));
+                bank.remove_model("model-1").await.unwrap();
+            }
+            assert!(!root.path().join("model-1").exists());
+        }
+    }
+    #[tokio::test]
     async fn concurrent_allocations_are_unique_and_idempotent() {
         let root = tempfile::tempdir().unwrap();
         let bank = Content::new(root.path().into());
@@ -457,7 +669,7 @@ mod tests {
             .write_to(&mut bytes, image::ImageFormat::Png)
             .unwrap();
         let added = bank
-            .add("model-1", "posts", "original.png", bytes.get_ref())
+            .add_locked("model-1", "posts", "original.png", bytes.get_ref())
             .await
             .unwrap();
         let id = added["id"].as_str().unwrap();
@@ -519,7 +731,7 @@ mod tests {
             .await
             .unwrap();
         assert!(bank
-            .add("model-bad", "posts", "original.jpg", b"image")
+            .add_locked("model-bad", "posts", "original.jpg", b"image")
             .await
             .is_err());
         assert!(tokio::fs::read_dir(root.path().join("model-bad/posts"))
@@ -539,31 +751,36 @@ mod tests {
         let release = Arc::new(tokio::sync::Notify::new());
         let arrival = entered.clone();
         let finish = release.clone();
-        let fixture=Fixture::start(move |_| { let arrival=arrival.clone(); let finish=finish.clone(); async move { arrival.notify_one(); finish.notified().await;
+        let fixture=Fixture::start(move |request| { let arrival=arrival.clone(); let finish=finish.clone(); async move { if request.uri().path()=="/api/lists" { return Json(json!([{"id":"model-1"}])).into_response(); } arrival.notify_one(); finish.notified().await;
             Json(json!({"outputs":(0..50).map(|n|json!({"name":format!("copy_{n}.jpg")})).collect::<Vec<_>>()})).into_response()
         }}).await;
         let mut bank = Content::new(root.path().into());
         Arc::get_mut(&mut bank).unwrap().spoofer = Some(fixture.url.clone());
         let added = bank
-            .add("model-1", "posts", "image.jpg", b"original")
+            .add_locked("model-1", "posts", "image.jpg", b"original")
             .await
             .unwrap();
         let id = added["id"].as_str().unwrap().to_owned();
         let native = bank.clone();
         let item = id.clone();
-        let task = tokio::spawn(async move {
-            native
-                .generate(&Api::from_env().unwrap(), "model-1", "posts", &item)
-                .await
-        });
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let api = Arc::new(api);
+        let task_api = api.clone();
+        let task =
+            tokio::spawn(
+                async move { native.generate(&task_api, "model-1", "posts", &item).await },
+            );
         entered.notified().await;
         assert!(bank
-            .generate(&Api::from_env().unwrap(), "model-1", "posts", &id)
+            .generate(&api, "model-1", "posts", &id)
             .await
             .unwrap_err()
             .message
             .contains("already running"));
         assert!(bank.remove("model-1", "posts", &id).await.is_err());
+        assert!(bank.remove_model("model-1").await.is_err());
         release.notify_one();
         assert_eq!(task.await.unwrap().unwrap()["variantCount"], 50);
         assert_eq!(
@@ -576,7 +793,7 @@ mod tests {
             50
         );
         assert!(bank
-            .generate(&Api::from_env().unwrap(), "model-1", "posts", &id)
+            .generate(&api, "model-1", "posts", &id)
             .await
             .unwrap_err()
             .message
@@ -598,7 +815,8 @@ mod tests {
             vec!["../bad.jpg"; 50],
             vec![],
         ] {
-            let fixture=Fixture::start(move |_| { let names=names.clone(); async move {
+            let fixture=Fixture::start(move |request| { let names=names.clone(); async move {
+                if request.uri().path()=="/api/lists" { return Json(json!([{"id":"model-1"}])).into_response(); }
                 if names.is_empty() { return axum::http::StatusCode::SERVICE_UNAVAILABLE.into_response(); }
                 Json(json!({"outputs":names.into_iter().map(|name|json!({"name":name})).collect::<Vec<_>>()})).into_response()
             }}).await;
@@ -606,19 +824,19 @@ mod tests {
             let mut bank = Content::new(root.path().into());
             Arc::get_mut(&mut bank).unwrap().spoofer = Some(fixture.url.clone());
             let added = bank
-                .add("model-1", "posts", "image.jpg", b"original")
+                .add_locked("model-1", "posts", "image.jpg", b"original")
                 .await
                 .unwrap();
             let id = added["id"].as_str().unwrap();
+            let mut api = Api::from_env().unwrap();
+            api.convex_url = fixture.url.clone();
+            api.key = "fixture".into();
             let partial = root.path().join("model-1/posts").join(id).join("variants");
             tokio::fs::create_dir_all(&partial).await.unwrap();
             tokio::fs::write(partial.join("partial.jpg"), b"partial")
                 .await
                 .unwrap();
-            assert!(bank
-                .generate(&Api::from_env().unwrap(), "model-1", "posts", id)
-                .await
-                .is_err());
+            assert!(bank.generate(&api, "model-1", "posts", id).await.is_err());
             assert!(!partial.exists());
             assert_eq!(
                 bank.allocate("model-1", "posts", "p", &[], false)

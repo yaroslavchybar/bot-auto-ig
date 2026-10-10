@@ -1,6 +1,6 @@
 import { DomainError } from './errors';
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 
 export const list = query({
 	args: {},
@@ -47,6 +47,7 @@ function cleanFullNames(input: string[] | undefined): string[] {
 export const remove = mutation({
 	args: { id: v.id("lists") },
 	handler: async (ctx, args) => {
+		if (!await ctx.db.get(args.id)) return true;
 		const profiles = await ctx.db.query("profiles").collect();
 		const automations = await ctx.db.query("automations").collect();
 		const impacted = profiles.filter((profile: any) => {
@@ -57,6 +58,13 @@ export const remove = mutation({
 			const listIds = Array.isArray(automation.listIds) ? automation.listIds : [];
 			return listIds.some((listId: any) => String(listId) === String(args.id));
 		});
+		const states = await ctx.db.query('modelSetupStates')
+			.withIndex('by_model', q => q.eq('modelId', args.id)).collect();
+		if (states.some(state => state.pending))
+			throw new DomainError('CONFLICT', 'Resolve pending model setup actions before deleting the model');
+		if (impacted.some(profile => profile.using || ['running', 'starting', 'deleting'].includes(profile.status ?? '') || profile.renameFrom) ||
+			impactedAutomations.some(automation => automation.status === 'running' || (automation.routine && automation.isActive)))
+			throw new DomainError('CONFLICT', 'Disable the automation and stop profiles before deleting the model');
 		await Promise.all(
 			impacted.map((profile: any) => {
 				const listIds = Array.isArray(profile.listIds) ? profile.listIds : [];
@@ -83,8 +91,7 @@ export const remove = mutation({
 				});
 			}),
 		);
-		for (const state of await ctx.db.query('modelSetupStates')
-			.withIndex('by_model', q => q.eq('modelId', args.id)).collect()) {
+		for (const state of states) {
 			await ctx.db.delete(state._id);
 		}
 		for (const group of await ctx.db.query('modelSetupGroupNames')
@@ -92,6 +99,28 @@ export const remove = mutation({
 			await ctx.db.delete(group._id);
 		}
 		await ctx.db.delete(args.id);
+		// The native maintenance worker removes files and acknowledges only after success.
+		await ctx.db.insert('modelContentCleanup', { modelId: args.id });
 		return true;
 	},
+});
+
+export const finishContentCleanupInternal = internalMutation({
+  args: { modelId: v.id('lists') },
+  handler: async (ctx, { modelId }) => {
+    for (const row of await ctx.db.query('modelContentCleanup')
+      .withIndex('by_model', q => q.eq('modelId', modelId)).collect())
+      await ctx.db.delete(row._id);
+  },
+});
+
+// Recover directories orphaned before native cleanup was introduced.
+export const queueContentCleanupInternal = internalMutation({
+  args: { modelId: v.id('lists') },
+  handler: async (ctx, { modelId }) => {
+    if (await ctx.db.get(modelId)) return;
+    if (!await ctx.db.query('modelContentCleanup')
+      .withIndex('by_model', q => q.eq('modelId', modelId)).first())
+      await ctx.db.insert('modelContentCleanup', { modelId });
+  },
 });

@@ -87,12 +87,12 @@ test('maintenance includes only deleting and renaming profiles', async () => {
       }),
     ])
   })
-  expect(new Set(await t.query(api.profiles.queries.maintenanceWork, args))).toEqual(
+  expect(new Set((await t.query(api.profiles.queries.maintenanceWork, args)).profileIds)).toEqual(
     new Set([deleting, renaming]),
   )
   await t.run(async (ctx) => {
     await ctx.db.delete(deleting)
     await ctx.db.patch(renaming, { renameFrom: undefined })
   })
-  expect(await t.query(api.profiles.queries.maintenanceWork, args)).toEqual([])
+  expect(await t.query(api.profiles.queries.maintenanceWork, args)).toEqual({ profileIds: [], modelIds: [] })
 })

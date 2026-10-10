@@ -70,13 +70,14 @@ export const saveUnreadCount = internalMutation({
       .query('chatCounters')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .unique()
+    const profile = await ctx.db.get(profileId)
+    const enabled = Boolean(profile?.igLoggedIn && profile.status !== 'deleting')
     if (
       existing?.token === token &&
+      existing.enabled === enabled &&
       JSON.stringify(existing.unreadThreadIds) === JSON.stringify(unreadThreadIds)
     )
       return
-    const profile = await ctx.db.get(profileId)
-    const enabled = Boolean(profile?.igLoggedIn && profile.status !== 'deleting')
     if (existing) await ctx.db.patch(existing._id, { token, unreadCount, unreadThreadIds, enabled })
     else
       await ctx.db.insert('chatCounters', {

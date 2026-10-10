@@ -2,8 +2,10 @@ import { test } from 'node:test'
 import { spawnSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 
-for (const cleanupFails of [false, true]) {
-  test(`shutdown drains browser logins before exit (cleanup failure: ${cleanupFails})`, () => {
+for (const [cleanupFails, launchTimesOut] of [
+  [false, false], [false, true], [true, false], [true, true],
+]) {
+  test(`shutdown drains browser logins before exit (cleanup failure: ${cleanupFails}, launch timeout: ${launchTimesOut})`, () => {
     const result = spawnSync('bun', ['--eval', `
       import { mock } from 'bun:test'
       import assert from 'node:assert/strict'
@@ -11,16 +13,21 @@ for (const cleanupFails of [false, true]) {
       let finishClose, closeStarted
       const closing = new Promise(resolve => { finishClose = resolve })
       const entered = new Promise(resolve => { closeStarted = resolve })
-      mock.module('./server/browser/cloak.ts', () => ({ openBrowserSession: async (_name, {signal}) => {
+      class BrowserLaunchTimeout extends Error {
+        constructor(cleanup) { super('Browser launch timed out'); this.cleanup = cleanup }
+      }
+      mock.module('./server/browser/cloak.ts', () => ({ BrowserLaunchTimeout, openBrowserSession: async (_name, {signal}) => {
         const index = opened++
+        const close = async () => {
+          closeStarted()
+          await closing
+          closed++
+          if (${cleanupFails} && index === 0) throw Error('Fixture cleanup failed')
+        }
+        if (${launchTimesOut}) throw new BrowserLaunchTimeout(close())
         return {
           page: { goto: async () => new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), {once:true})) },
-          close: async () => {
-            closeStarted()
-            await closing
-            closed++
-            if (${cleanupFails} && index === 0) throw Error('Fixture cleanup failed')
-          },
+          close,
         }
       } }))
       mock.module('./server/shared/convexRealtime.ts', () => ({ closeConvexRealtime: async () => {} }))

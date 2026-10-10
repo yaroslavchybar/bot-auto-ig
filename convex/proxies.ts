@@ -289,6 +289,9 @@ export const update = mutation({
       : []
     const purpose = args.purpose ?? proxyPurpose(existing)
     const country = cleanCountry(args.country ?? existing.country, purpose)
+    if ((oldKey !== proxy || purpose !== proxyPurpose(existing)) &&
+        ((existing.loginClaim?.expiresAt ?? 0) > Date.now() || (existing.loginCooldownUntil ?? 0) > Date.now()))
+      throw new DomainError('CONFLICT', 'Wait for the login claim and cooldown to finish before changing this proxy')
     if (purpose === 'login' && assigned.length)
       throw new DomainError('CONFLICT', 'Reassign profiles before marking this proxy for login')
     if (oldKey === proxy && assigned.length > maxProfiles)
@@ -326,6 +329,8 @@ export const remove = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.id)
     if (!existing) return true
+    if ((existing.loginClaim?.expiresAt ?? 0) > Date.now() || (existing.loginCooldownUntil ?? 0) > Date.now())
+      throw new DomainError('CONFLICT', 'Wait for the login claim and cooldown to finish before deleting this proxy')
     const key = proxyKey(existing.proxy, existing.proxyType)
     const profiles = await ctx.db.query('profiles').collect()
     if (key && profiles.some((profile) => proxyKey(profile.proxy, profile.proxyType) === key))

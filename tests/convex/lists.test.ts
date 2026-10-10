@@ -1,6 +1,6 @@
-import { expect, test } from 'vite-plus/test'
+import { expect, test, vi } from 'vite-plus/test'
 
-import { api } from '../../convex/_generated/api'
+import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, insertDoc, seedList, seedProfile } from './helpers'
 
 test('creates, updates, and removes lists while clearing profile links', async () => {
@@ -75,4 +75,27 @@ test('removing one model deletes only its setup progress and shared names', asyn
   }))
   expect(remaining.states.map(row => row.modelId)).toEqual([second._id])
   expect(remaining.groups.map(row => row.modelId)).toEqual([second._id])
+})
+
+test('deleted models queue native cleanup once and keep it until acknowledged', async () => {
+  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
+  try {
+    const t = createConvexTest()
+    const first = (await seedList(t, 'First'))!
+    const second = (await seedList(t, 'Second'))!
+    const live = (await seedList(t, 'Live'))!
+    await t.mutation(api.lists.remove, { id: first._id })
+    await t.mutation(api.lists.remove, { id: first._id })
+    await t.mutation(api.lists.remove, { id: second._id })
+    await t.mutation(internal.lists.queueContentCleanupInternal, { modelId: live._id })
+    await t.mutation(internal.lists.queueContentCleanupInternal, { modelId: first._id })
+    const work = () => t.query(api.profiles.queries.maintenanceWork, { bridgeToken: 'test-bridge' })
+    expect(await work()).toEqual({ profileIds: [], modelIds: [first._id, second._id] })
+    await t.mutation(internal.lists.finishContentCleanupInternal, { modelId: first._id })
+    await t.mutation(internal.lists.finishContentCleanupInternal, { modelId: first._id })
+    expect((await work()).modelIds).toEqual([second._id])
+    expect(await t.query(api.lists.list, {})).toMatchObject([{ _id: live._id }])
+  } finally {
+    vi.unstubAllEnvs()
+  }
 })

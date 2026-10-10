@@ -177,6 +177,8 @@ export const modelSetupEnrollInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .first()
     if (existing?.modelId === modelId) return existing
+    if (existing?.pending)
+      throw new DomainError('CONFLICT', 'Resolve the pending model setup action before changing models')
     const postTarget = randomInRange(warmupPostRange(await modelRoutine(ctx, modelId)))
     const progress = {
       profileId,
@@ -210,8 +212,8 @@ const modelSetupPatchKeys = new Set([
 ])
 
 export const modelSetupPatchInternal = internalMutation({
-  args: { profileId: v.id('profiles'), patch: v.any(), clear: v.array(v.string()) },
-  handler: async (ctx, { profileId, patch, clear }) => {
+  args: { profileId: v.id('profiles'), modelId: v.id('lists'), patch: v.any(), clear: v.array(v.string()) },
+  handler: async (ctx, { profileId, modelId, patch, clear }) => {
     if (
       !patch ||
       typeof patch !== 'object' ||
@@ -237,7 +239,7 @@ export const modelSetupPatchInternal = internalMutation({
       .first()
     if (!state) throw new DomainError('NOT_FOUND', 'Model setup not found')
     const profile = await ctx.db.get(profileId)
-    if (!profile?.listIds?.includes(state.modelId))
+    if (state.modelId !== modelId || !profile?.listIds?.includes(modelId))
       throw new DomainError('CONFLICT', 'Profile moved to another model')
     const postsChanged = patch.postSourceIds !== undefined || patch.postDates !== undefined
     const ready = recordedPostsReady(
@@ -391,12 +393,12 @@ const loginClaimMs = 15 * 60_000
 
 /** A Convex write serializes claims across workers before Instagram is contacted. */
 export const claimLoginProxyInternal = internalMutation({
-  args: { id: v.id('igAccounts'), loginProxyId: v.id('proxies'), token: v.string() },
-  handler: async (ctx, { id, loginProxyId, token }) => {
+  args: { id: v.id('igAccounts'), loginProxyId: v.id('proxies'), proxy: v.string(), token: v.string() },
+  handler: async (ctx, { id, loginProxyId, proxy: expectedProxy, token }) => {
     if (!/^[0-9a-f-]{36}$/i.test(token)) throw new DomainError('VALIDATION', 'Invalid login claim')
     const account = await ctx.db.get(id)
     const proxy = await ctx.db.get(loginProxyId)
-    if (!account || account.status !== 'assigned' || proxy?.purpose !== 'login') return false
+    if (!account || account.status !== 'assigned' || proxy?.purpose !== 'login' || proxy.proxy !== expectedProxy) return false
     const now = Date.now()
     if ((proxy.loginCooldownUntil ?? 0) > now || (proxy.loginClaim?.expiresAt ?? 0) > now)
       return false

@@ -119,6 +119,11 @@ export function ModelContentPanel({ model }: { model: List }) {
         >
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="min-w-0 flex-1 break-words">{error || loadError}</span>
+          {loadError && (
+            <Button size="sm" variant="outline" onClick={() => void reload().catch(() => {})}>
+              Retry
+            </Button>
+          )}
         </div>
       )}
       {loading ? (

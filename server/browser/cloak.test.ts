@@ -65,6 +65,13 @@ for (const scenario of [
   'cancel during launch',
   'cancel during navigation',
   'budget lost during launch',
+  'profile lock lost during budget',
+  'profile lock lost during display',
+  'profile lock lost during launch',
+  'profile lock lost during file picker',
+  'launch timeout resolves',
+  'launch timeout rejects',
+  'launch timeout close fails',
   'cleanup failure',
   'save failure',
   'clear cookies',
@@ -87,9 +94,22 @@ for (const scenario of [
     import { EventEmitter } from 'node:events'
 
     const scenario = ${JSON.stringify(scenario)}
+    const timeoutCase = scenario.startsWith('launch timeout')
+    const originalSetTimeout = globalThis.setTimeout
+    if (timeoutCase) globalThis.setTimeout = (fn, ms, ...args) => originalSetTimeout(fn, ms === 90_000 ? 10 : ms, ...args)
+    let finishLaunch, failLaunch, finishLateClose
+    const pendingLaunch = new Promise((resolve, reject) => { finishLaunch = resolve; failLaunch = reject })
+    const lateClosing = new Promise(resolve => { finishLateClose = resolve })
     const cancellation = new AbortController()
+    let loseProfileLock
     const inspect = ['manual inspection', 'stop during inspector startup'].includes(scenario)
-    mock.module('./server/browser/filePicker.ts', () => ({ pickerSocket: () => 'test', startFilePicker: async () => () => {} }))
+    mock.module('./server/browser/filePicker.ts', () => ({ pickerSocket: () => 'test', startFilePicker: async () => {
+      if (scenario === 'profile lock lost during file picker') {
+        loseProfileLock()
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      return () => { if (scenario === 'profile lock lost during file picker') events.push('picker') }
+    } }))
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cookie-shutdown-'))
     const seedWrites = []
     let seedWriteDone = false
@@ -134,8 +154,13 @@ for (const scenario of [
       return scenario === 'clear cookies' || scenario === 'replace cookies' ? jar : cookies
     }
     context.close = async () => {
+      if (timeoutCase) {
+        events.push('close')
+        await lateClosing
+        if (scenario === 'launch timeout close fails') throw new Error('Browser close failed')
+      }
       closed = true
-      events.push('close')
+      if (!timeoutCase) events.push('close')
       context.emit('close')
     }
     if (scenario === 'stop during inspector startup') {
@@ -161,6 +186,12 @@ for (const scenario of [
       if (scenario === 'stop during launch') process.emit('SIGTERM')
       if (scenario === 'cancel during launch') cancellation.abort(new Error('Login cancelled'))
       if (scenario === 'budget lost during launch') loseBudget()
+      if (scenario === 'profile lock lost during launch') {
+        loseProfileLock()
+        await new Promise(resolve => setTimeout(resolve, 10))
+        assert.throws(() => lockProfile('test'), /already open/, 'keep the profile locked until launch settles')
+      }
+      if (timeoutCase) await pendingLaunch
       // Model Playwright's default competing shutdown handler.
       for (const signal of ['SIGINT', 'SIGTERM']) {
         if (options.launchOptions?.['handle' + signal] !== false)
@@ -176,7 +207,10 @@ for (const scenario of [
     }
     mock.module('./server/profiles/paths.ts', () => ({
       profileDirectory: name => path.join(root, 'data/profiles', name),
-      acquireProfileLock: async name => lockProfile(name),
+      acquireProfileLock: async (name, _signal, onLost) => {
+        loseProfileLock = onLost
+        return lockProfile(name)
+      },
     }))
     mock.module('./server/shared/utils.ts', () => ({ resolveProjectRoot: () => root }))
     mock.module('./server/shared/convexClient.ts', () => ({
@@ -203,25 +237,62 @@ for (const scenario of [
         _signal.throwIfAborted()
       }
       loseBudget = onLost
+      if (scenario === 'profile lock lost during budget') {
+        loseProfileLock()
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
       return () => {
         lockProfile('test')()
         events.push('slot')
       }
     } }))
-    mock.module('./server/browser/display.ts', () => ({ allocateDisplay: async () => ({
+    mock.module('./server/browser/display.ts', () => ({ allocateDisplay: async () => {
+      if (scenario === 'profile lock lost during display') {
+        loseProfileLock()
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+      return {
       display: ':100', close: async () => {
         events.push('display')
         if (scenario === 'cleanup failure') throw new Error('Display cleanup failed')
       },
-    }) }))
+    } } }))
 
     try {
       const { openBrowserSession } = await import('./server/browser/cloak.ts')
-      if (scenario === 'stop during inspector startup') {
+      if (timeoutCase) {
+        const error = await openBrowserSession('test').then(() => assert.fail('startup must time out'), error => error)
+        assert.match(error.message, /Browser launch timed out/)
+        assert.deepEqual(events, [], 'timeout must retain resources while launch is pending')
+        assert.throws(() => lockProfile('test'), /already open/)
+        let settled = false
+        const cleanup = error.cleanup.then(() => { settled = true }, error => { settled = true; throw error })
+        if (scenario === 'launch timeout rejects') failLaunch(new Error('Late launch failure'))
+        else {
+          finishLaunch()
+          await new Promise(resolve => originalSetTimeout(resolve, 10))
+          assert.deepEqual(events, ['close'], 'display and slot remain held until the late browser closes')
+          assert.equal(settled, false)
+          assert.throws(() => lockProfile('test'), /already open/)
+          finishLateClose()
+        }
+        if (scenario === 'launch timeout close fails') await assert.rejects(cleanup, /Browser cleanup failed/)
+        else await cleanup
+        assert.deepEqual(events, scenario === 'launch timeout rejects' ? ['display', 'slot'] : ['close', 'display', 'slot'])
+        lockProfile('test')()
+      } else if (scenario === 'stop during inspector startup') {
         await assert.rejects(openBrowserSession('test', { inspect }), /Browser worker stopped/)
         assert.equal(inspectorClosed, true, 'late inspector is closed after shutdown')
         assert.equal(fs.existsSync(inspectorPath), false)
         assert.equal(fs.existsSync(devToolsPortFile), false)
+      } else if (scenario.startsWith('profile lock lost')) {
+        await assert.rejects(openBrowserSession('test'), /Profile lock disconnected/)
+        const expected = scenario.endsWith('budget') ? ['slot']
+          : scenario.endsWith('display') ? ['display', 'slot']
+          : scenario.endsWith('file picker') ? ['picker', 'close', 'display', 'slot']
+          : ['close', 'display', 'slot']
+        assert.deepEqual(events, expected)
+        lockProfile('test')()
       } else if (['startup failure', 'stop during launch', 'stop during navigation', 'budget lost during launch', 'seed persistence failure', 'cancel during budget', 'cancel during launch', 'cancel during navigation'].includes(scenario)) {
         const expected = scenario === 'seed persistence failure' ? /Database unavailable/
           : ['startup failure', 'stop during navigation', 'cancel during navigation'].includes(scenario) ? /Navigation failed/

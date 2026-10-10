@@ -40,6 +40,7 @@ import { LeadsList } from './LeadsList'
 import { SCRAPER_TABS, parseScraperTab, type ScraperTabId } from './scraperTabs'
 
 import { ScrapeSourcesView } from './ScrapeSourcesView'
+import { useLeadListSummary } from './useLeadListSummary'
 
 type Account = {
   id: Id<'profiles'>
@@ -910,7 +911,7 @@ function SourcesListRow({
 }) {
   const ref = useRef<HTMLTableRowElement>(null)
   const visible = useNearViewport(ref)
-  const counts = useQuery(api.scrapeSources.summary, visible ? { listId: list._id } : 'skip')
+  const counts = useLeadListSummary(list._id, visible)
   return (
     <TableRow
       ref={ref}
@@ -933,7 +934,7 @@ function SourcesListRow({
         {counts === undefined ? '—' : counts.sources}
       </TableCell>
       <TableCell className="text-sm text-copy tabular-nums">
-        {counts === undefined ? '—' : counts.leads.toLocaleString()}
+        {counts?.leads == null ? '—' : counts.leads.toLocaleString()}
       </TableCell>
       <TableCell className="text-xs whitespace-nowrap text-muted-copy">
         {new Date(list.createdAt).toLocaleDateString()}
@@ -979,7 +980,7 @@ function SourcesListCard({
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const visible = useNearViewport(ref)
-  const counts = useQuery(api.scrapeSources.summary, visible ? { listId: list._id } : 'skip')
+  const counts = useLeadListSummary(list._id, visible)
   return (
     <div ref={ref} className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs">
       <div className="flex items-center justify-between gap-3">
@@ -1013,7 +1014,7 @@ function SourcesListCard({
       <p className="mt-1 text-xs text-subtle-copy tabular-nums">
         {counts === undefined
           ? '…'
-          : `${counts.sources} ${counts.sources === 1 ? 'source' : 'sources'} · ${counts.leads.toLocaleString()} ${counts.leads === 1 ? 'lead' : 'leads'}`}{' '}
+          : `${counts.sources} ${counts.sources === 1 ? 'source' : 'sources'} · ${counts.leads?.toLocaleString() ?? '…'} ${counts.leads === 1 ? 'lead' : 'leads'}`}{' '}
         · Created {new Date(list.createdAt).toLocaleDateString()}
       </p>
     </div>

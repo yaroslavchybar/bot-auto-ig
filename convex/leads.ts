@@ -67,10 +67,45 @@ export const createList = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
     if (!name.trim()) throw new Error("List name is required");
-    return ctx.db.insert("leadLists", {
+    const listId = await ctx.db.insert("leadLists", {
       name: name.trim(),
       createdAt: Date.now(),
     });
+    await ctx.db.insert('leadListCounts', { listId, count: 0 });
+    return listId;
+  },
+});
+/** Initialize existing lists once; normal summaries never scan their memberships. */
+export const ensureCount = mutation({
+  args: { listId: v.id('leadLists') },
+  handler: async (ctx, { listId }) => {
+    if (!await ctx.db.get(listId)) return;
+    const counter = await ctx.db.query('leadListCounts').withIndex('by_list', q => q.eq('listId', listId)).unique();
+    if (counter) return;
+    await ctx.db.insert('leadListCounts', { listId, revision: 0 });
+    await ctx.scheduler.runAfter(0, internal.leads.backfillCount, { listId, count: 0, revision: 0 });
+  },
+});
+
+export const backfillCount = internalMutation({
+  args: { listId: v.id('leadLists'), cursor: v.optional(v.string()), count: v.number(), revision: v.number() },
+  handler: async (ctx, args) => {
+    const list = await ctx.db.get(args.listId);
+    const counter = await ctx.db.query('leadListCounts').withIndex('by_list', q => q.eq('listId', args.listId)).unique();
+    if (!list || !counter || counter.count !== undefined) return;
+    const revision = counter.revision ?? 0;
+    const unchanged = args.revision === revision;
+    const batch = await ctx.db.query('leadMemberships')
+      .withIndex('by_list_created', q => q.eq('listId', args.listId))
+      .paginate({ cursor: unchanged ? args.cursor ?? null : null, numItems: 200 });
+    const count = (unchanged ? args.count : 0) + batch.page.length;
+    if (batch.isDone) {
+      await ctx.db.patch(counter._id, { count, revision: undefined });
+    } else {
+      await ctx.scheduler.runAfter(0, internal.leads.backfillCount, {
+        listId: list._id, cursor: batch.continueCursor, count, revision,
+      });
+    }
   },
 });
 export const renameList = internalMutation({
@@ -85,6 +120,8 @@ export const deleteList = internalMutation({
   args: { listId: v.id("leadLists") },
   handler: async (ctx, { listId }) => {
     if (!(await ctx.db.get(listId))) return;
+    const counter = await ctx.db.query('leadListCounts').withIndex('by_list', q => q.eq('listId', listId)).unique();
+    if (counter) await ctx.db.delete(counter._id);
     await ctx.db.delete(listId);
     await ctx.scheduler.runAfter(0, internal.leads.cleanupDeletedList, { listId });
     await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanupList, { listId });

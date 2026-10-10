@@ -62,6 +62,7 @@ export function registerIgAccountRoutes(http: HttpRouter): void {
             await ctx.runMutation(internal.igAccounts.claimLoginProxyInternal, {
               id: body.id,
               loginProxyId: body.loginProxyId,
+              proxy: body.proxy,
               token: body.token,
             }),
           )
@@ -85,6 +86,7 @@ export function registerIgAccountRoutes(http: HttpRouter): void {
         case 'modelSetupPatch':
           await ctx.runMutation(internal.igAccounts.modelSetupPatchInternal, {
             profileId: body.profileId,
+              modelId: body.modelId,
             patch: body.patch,
             clear: body.clear,
           })

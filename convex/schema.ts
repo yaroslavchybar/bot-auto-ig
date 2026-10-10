@@ -9,6 +9,12 @@ export default defineSchema({
     scrapeLookbackDays: v.optional(v.number()),
     scrapeMonitor: v.optional(v.boolean()),
   }),
+  // Keep changing counts separate from list metadata subscriptions used by Chat.
+  leadListCounts: defineTable({
+    listId: v.id('leadLists'),
+    count: v.optional(v.number()),
+    revision: v.optional(v.number()),
+  }).index('by_list', ['listId']),
   leads: defineTable({
     igId: v.optional(v.string()),
     username: v.string(),
@@ -78,6 +84,8 @@ export default defineSchema({
     usernames: v.optional(v.array(v.string())),
     createdAt: v.number(),
   }),
+  modelContentCleanup: defineTable({ modelId: v.id('lists') })
+    .index('by_model', ['modelId']),
 
   proxies: defineTable({
     name: v.string(),

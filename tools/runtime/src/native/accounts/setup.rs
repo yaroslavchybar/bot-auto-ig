@@ -25,10 +25,16 @@ pub fn day(start: u64, now: u64) -> i64 {
     (parse(now) - parse(start)).num_days() + 1
 }
 impl Accounts {
-    pub async fn patch_setup(&self, id: &str, patch: Value, clear: &[&str]) -> Result<()> {
+    pub async fn patch_setup(
+        &self,
+        id: &str,
+        model: &str,
+        patch: Value,
+        clear: &[&str],
+    ) -> Result<()> {
         self.store(
             "modelSetupPatch",
-            json!({"profileId":id,"patch":patch,"clear":clear}),
+            json!({"profileId":id,"modelId":model,"patch":patch,"clear":clear}),
         )
         .await?;
         Ok(())
@@ -147,15 +153,23 @@ impl Accounts {
             .acquire()
             .await
             .map_err(|_| Failure::unavailable("Account service stopped"))?;
-        let result = self.advance_setup_locked(id, automation_id).await;
-        if let Err(error) = &result {
+        let mut model = None;
+        let result = self
+            .advance_setup_locked(id, automation_id, &mut model)
+            .await;
+        if let (Err(error), Some(model)) = (&result, model.as_deref()) {
             let _ = self
-                .patch_setup(id, json!({"error":error.message}), &[])
+                .patch_setup(id, model, json!({"error":error.message}), &[])
                 .await;
         }
         result
     }
-    async fn advance_setup_locked(&self, id: &str, automation_id: &str) -> Result<()> {
+    async fn advance_setup_locked(
+        &self,
+        id: &str,
+        automation_id: &str,
+        selected_model: &mut Option<String>,
+    ) -> Result<()> {
         let url =
             reqwest::Url::parse_with_params("http://local/", [("automationId", automation_id)])
                 .unwrap();
@@ -177,6 +191,7 @@ impl Accounts {
         if automation["isActive"] != true || !automation["routine"].is_object() {
             return Ok(());
         }
+        *selected_model = Some(model_id.to_owned());
         let profiles = self.profiles.list().await?;
         let Some(profile) = profiles
             .as_array()
@@ -319,20 +334,32 @@ impl Accounts {
             };
             self.patch_setup(
                 id,
+                model_id,
                 json!({"pending":{"kind":"fullName","date":date(api::now_ms())},"fullName":name}),
                 &[],
             )
             .await?;
             return self
-                .mobile_step(id, "fullName", json!({"fullName":name}), "fullNameDone")
+                .mobile_step(
+                    id,
+                    model_id,
+                    "fullName",
+                    json!({"fullName":name}),
+                    "fullNameDone",
+                )
                 .await;
         }
         if state["postSourceIds"].as_array().map_or(0, Vec::len)
             >= state["postTarget"].as_u64().unwrap_or(9) as usize
         {
             if state["outreachReadyMarked"] != true {
-                self.patch_setup(id, json!({"outreachReadyMarked":true}), &["error"])
-                    .await?;
+                self.patch_setup(
+                    id,
+                    model_id,
+                    json!({"outreachReadyMarked":true}),
+                    &["error"],
+                )
+                .await?;
             }
             return Ok(());
         }
@@ -349,16 +376,24 @@ impl Accounts {
         // Read before marking pending: a disk failure cannot have touched Instagram.
         use base64::Engine;
         let bytes = tokio::fs::read(profiles::text(&content, "path")).await?;
-        self.patch_setup(id,json!({"pending":{"kind":"avatar","sourceId":content["sourceId"],"date":date(api::now_ms())},"avatarSourceId":content["sourceId"]}),&[]).await?;
+        self.patch_setup(id,model_id,json!({"pending":{"kind":"avatar","sourceId":content["sourceId"],"date":date(api::now_ms())},"avatarSourceId":content["sourceId"]}),&[]).await?;
         self.mobile_step(
             id,
+            model_id,
             "avatar",
             json!({"image":base64::engine::general_purpose::STANDARD.encode(bytes)}),
             "avatarDone",
         )
         .await
     }
-    async fn mobile_step(&self, id: &str, action: &str, args: Value, done: &str) -> Result<()> {
+    async fn mobile_step(
+        &self,
+        id: &str,
+        model: &str,
+        action: &str,
+        args: Value,
+        done: &str,
+    ) -> Result<()> {
         match self
             .mobile
             .invoke(
@@ -374,11 +409,13 @@ impl Accounts {
             Ok(_) => {
                 let mut patch = json!({});
                 patch[done] = json!(true);
-                self.patch_setup(id, patch, &["pending", "error"]).await
+                self.patch_setup(id, model, patch, &["pending", "error"])
+                    .await
             }
             Err(e) => {
                 self.patch_setup(
                     id,
+                    model,
                     json!({"error":format!("{action} update needs review ({})",e.name)}),
                     &[],
                 )
@@ -394,6 +431,7 @@ impl Accounts {
         mut used: HashSet<String>,
     ) -> Result<()> {
         let id = profiles::text(state, "profileId");
+        let model_id = profiles::text(state, "modelId");
         let account = self.account_for_profile(id).await?;
         if account.is_null() {
             return Ok(());
@@ -408,7 +446,7 @@ impl Accounts {
             let name = candidates[attempt].clone();
             attempt += 1;
             used.insert(name.to_lowercase());
-            self.patch_setup(id,json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":name}),&[]).await?;
+            self.patch_setup(id,model_id,json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":name}),&[]).await?;
             match self
                 .mobile
                 .invoke(
@@ -426,6 +464,7 @@ impl Accounts {
                         .await?;
                     self.patch_setup(
                         id,
+                        model_id,
                         json!({"nameDone":true,"targetUsername":name}),
                         &["pending", "error"],
                     )
@@ -435,7 +474,7 @@ impl Accounts {
                         .await;
                 }
                 Err(e) if e.name == "UsernameUnavailable" => {
-                    self.patch_setup(id, json!({}), &["pending", "targetUsername"])
+                    self.patch_setup(id, model_id, json!({}), &["pending", "targetUsername"])
                         .await?;
                     if candidates.len() == 1 {
                         candidates.extend(self.username_candidates(model, index, &used).await?);
@@ -444,6 +483,7 @@ impl Accounts {
                 Err(e) => {
                     self.patch_setup(
                         id,
+                        model_id,
                         json!({"error":format!("Username update needs review ({})",e.name)}),
                         &[],
                     )
@@ -454,6 +494,7 @@ impl Accounts {
         }
         self.patch_setup(
             id,
+            model_id,
             json!({"error":"No available username was accepted"}),
             &["pending"],
         )
@@ -601,15 +642,16 @@ impl Accounts {
         }
         self.patch_setup(
             id,
+            model,
             json!({"pending":{"kind":"post","sourceId":content["sourceId"],"date":today}}),
             &[],
         )
         .await?;
         Ok(content)
     }
-    async fn finish_post(&self, id: &str, result: &str) -> Result<()> {
+    async fn finish_post(&self, id: &str, model: &str, result: &str) -> Result<()> {
         let state = self.setup_state(id).await?;
-        if state["pending"]["kind"] != "post" {
+        if state["modelId"] != model || state["pending"]["kind"] != "post" {
             return Err(profiles::conflict("Post request expired"));
         }
         match result {
@@ -625,11 +667,13 @@ impl Accounts {
                 if sources.len() >= state["postTarget"].as_u64().unwrap_or(9) as usize {
                     patch["outreachReadyMarked"] = json!(true);
                 }
-                self.patch_setup(id, patch, &["pending", "error"]).await
+                self.patch_setup(id, model, patch, &["pending", "error"])
+                    .await
             }
             "failed" => {
                 self.patch_setup(
                     id,
+                    model,
                     json!({"error":"Browser post failed before sharing"}),
                     &["pending"],
                 )
@@ -638,6 +682,7 @@ impl Accounts {
             _ => {
                 self.patch_setup(
                     id,
+                    model,
                     json!({"error":"Post result needs review before retrying"}),
                     &[],
                 )
@@ -701,7 +746,7 @@ pub async fn post_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrade
                     .unwrap_or_default(),
                 _ => String::new(),
             };
-            match state.finish_post(id, &result).await {
+            match state.finish_post(id, model, &result).await {
                 Ok(()) => {
                     let _ = socket
                         .send(Message::Text(json!({"saved":true}).to_string().into()))

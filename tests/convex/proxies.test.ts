@@ -201,3 +201,50 @@ test('edits that keep the current proxy pass even at the limit', async () => {
   })
   expect(updated).toMatchObject({ name: 'Legacy A renamed' })
 })
+
+test('login claims and cooldowns protect the endpoint and deletion while allowing metadata edits', async () => {
+  const t = createConvexTest()
+  const proxy = (await t.mutation(api.proxies.create, {
+    name: 'Login', proxy: 'http://old:8080', proxyType: 'http', purpose: 'login', country: 'us',
+  }))!
+  await t.mutation(internal.igAccounts.importEncryptedInternal, { rows: [
+    { usernameHash: 'a'.repeat(64), ciphertext: 'fixture' },
+  ] })
+  const account = (await t.query(internal.igAccounts.availableInternal, { count: 1 })).page[0]!
+  const profile = (await seedProfile(t))!
+  await t.mutation(internal.igAccounts.assignInternal, { id: account._id, profileId: profile._id })
+  const token = '11111111-1111-4111-8111-111111111111'
+  await t.mutation(internal.igAccounts.claimLoginProxyInternal, {
+    id: account._id, loginProxyId: proxy._id, proxy: proxy.proxy, token,
+  })
+  const edit = { id: proxy._id, name: 'Renamed', proxy: proxy.proxy, proxyType: 'http', purpose: 'login' as const, country: 'us' }
+  for (const phase of ['claim', 'cooldown']) {
+    await t.mutation(api.proxies.update, edit)
+    await expect(t.mutation(api.proxies.update, { ...edit, proxy: 'http://new:8080' })).rejects.toThrow('login claim and cooldown')
+    await expect(t.mutation(api.proxies.update, { ...edit, purpose: 'work' })).rejects.toThrow('login claim and cooldown')
+    await expect(t.mutation(api.proxies.remove, { id: proxy._id })).rejects.toThrow('login claim and cooldown')
+    if (phase === 'claim') await t.mutation(internal.igAccounts.recordBrowserLoginInternal, {
+      id: account._id, loginProxyId: proxy._id, claimToken: token,
+      browserLoggedInAt: Date.now(), cooldownMs: 3 * 86400000,
+    })
+  }
+  await t.run(ctx => ctx.db.patch(proxy._id, { loginCooldownUntil: Date.now() - 1 }))
+  await t.mutation(api.proxies.remove, { id: proxy._id })
+  expect(await t.query(api.proxies.list, {})).toEqual([])
+})
+
+test('a cached login proxy snapshot cannot claim a changed endpoint', async () => {
+  const t = createConvexTest()
+  const proxy = (await t.mutation(api.proxies.create, {
+    name: 'Login', proxy: 'http://old:8080', proxyType: 'http', purpose: 'login', country: 'us',
+  }))!
+  const id = await t.run(ctx => ctx.db.insert('igAccounts', {
+    usernameHash: 'a'.repeat(64), ciphertext: 'fixture', status: 'assigned', createdAt: 1,
+  }))
+  const updated = (await t.mutation(api.proxies.update, {
+    id: proxy._id, name: 'Login', proxy: 'http://new:8080', proxyType: 'http', purpose: 'login', country: 'us',
+  }))!
+  const claim = { id, loginProxyId: proxy._id, token: '11111111-1111-4111-8111-111111111111' }
+  expect(await t.mutation(internal.igAccounts.claimLoginProxyInternal, { ...claim, proxy: proxy.proxy })).toBe(false)
+  expect(await t.mutation(internal.igAccounts.claimLoginProxyInternal, { ...claim, proxy: updated.proxy })).toBe(true)
+})

@@ -687,7 +687,7 @@ impl Accounts {
                 let Some(exit_guard) = self.proxies.claim_exit(&ip).await else { continue; };
                 let token = uuid::Uuid::new_v4().to_string(); let proxy_id = profiles::text(proxy,"_id"); let account_id = profiles::text(&account,"id");
                 context["loginProxyId"] = json!(proxy_id);
-                if self.store("claimLoginProxy",json!({"id":account_id,"loginProxyId":proxy_id,"token":token})).await?!=true { continue; }
+                if self.store("claimLoginProxy",json!({"id":account_id,"loginProxyId":proxy_id,"proxy":proxy["proxy"],"token":token})).await?!=true { continue; }
                 let mut browser_finished = false;
                 let attempt = async {
                     let response = self.api.client.post(format!("{}/commands/browser.login",self.api.worker_url)).bearer_auth(&self.api.key).json(&json!({"attemptId":token,"profileName":profile["name"],"proxy":proxy["proxy"],"account":account})).timeout(Duration::from_secs(300)).send().await.map_err(|_| Failure::unavailable("Browser login worker unavailable"))?;
@@ -862,17 +862,45 @@ impl Accounts {
             .subscriptions
             .subscribe("profiles/queries:maintenanceWork", json!({}))
             .await?;
-        let mut pending = false;
+        let mut work = Value::Null;
         let mut timer = tokio::time::interval(Duration::from_secs(5));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            tokio::select! { update=subscription.next() => { let Some(update)=update else { return Err(Failure::unavailable("Maintenance subscription ended")); }; pending=super::subscriptions::value(update).ok().and_then(|v|v.as_array().map(|v|!v.is_empty())).unwrap_or(false); }, _=timer.tick()=>{} }
-            if pending {
+            tokio::select! { update=subscription.next() => { let Some(update)=update else { return Err(Failure::unavailable("Maintenance subscription ended")); }; work=super::subscriptions::value(update).unwrap_or(Value::Null); }, _=timer.tick()=>{} }
+            if work["profileIds"].as_array().is_some_and(|v| !v.is_empty()) {
                 self.profiles.retry().await?;
+            }
+            self.cleanup_content(&work["modelIds"]).await;
+        }
+    }
+    async fn cleanup_content(&self, models: &Value) {
+        for model in models
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+        {
+            let result = async {
+                self.content.remove_model(model).await?;
+                self.api
+                    .convex(
+                        Method::POST,
+                        "/api/lists/content-cleanup",
+                        Some(&json!({"operation":"finish","modelId":model})),
+                    )
+                    .await?;
+                Ok::<_, Failure>(())
+            }
+            .await;
+            if let Err(error) = result {
+                ig_service_common::service_error("model.content_cleanup_pending", &error.message);
             }
         }
     }
     async fn periodic_setup(&self) -> Result<()> {
+        if let Err(error) = self.recover_content_cleanup().await {
+            ig_service_common::service_error("model.content_recovery_failed", &error.message);
+        }
         let mut timer = tokio::time::interval(Duration::from_secs(900));
         timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -880,6 +908,32 @@ impl Accounts {
             self.sync_names().await?;
             self.sweep_setup().await?;
         }
+    }
+    async fn recover_content_cleanup(&self) -> Result<()> {
+        let directories = self.content.model_directories().await?;
+        if directories.is_empty() {
+            return Ok(());
+        }
+        let models = self.api.convex(Method::GET, "/api/lists", None).await?;
+        let models = models
+            .as_array()
+            .ok_or_else(|| Failure::unavailable("Invalid model list"))?;
+        for model in directories {
+            if !models.iter().any(|row| row["id"] == model) {
+                if let Err(error) = self
+                    .api
+                    .convex_retry(
+                        Method::POST,
+                        "/api/lists/content-cleanup",
+                        Some(&json!({"operation":"queue","modelId":model})),
+                    )
+                    .await
+                {
+                    ig_service_common::service_error("model.content_recovery_failed", error);
+                }
+            }
+        }
+        Ok(())
     }
     async fn sync_names(&self) -> Result<()> {
         let key = self.credential_key()?;

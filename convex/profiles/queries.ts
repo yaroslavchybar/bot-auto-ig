@@ -98,7 +98,11 @@ export const maintenanceWork = query({
         .withIndex('by_rename', (q) => q.gt('renameFrom', undefined))
         .take(100),
     ])
-    return [...new Set([...deleting, ...renaming].map((p) => p._id))]
+    const cleanup = await ctx.db.query('modelContentCleanup').take(100)
+    return {
+      profileIds: [...new Set([...deleting, ...renaming].map((p) => p._id))],
+      modelIds: cleanup.map(row => row.modelId),
+    }
   },
 })
 

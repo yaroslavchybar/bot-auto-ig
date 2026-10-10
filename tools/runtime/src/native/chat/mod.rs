@@ -216,12 +216,14 @@ impl Chat {
                 };
             }
         }
-        let unread = old.synced_at > 0 && !needs_pictures;
+        // Recent snapshots must include read/sent chats. Merge them with older
+        // contacts between daily picture refreshes instead of replacing the inbox.
+        let partial = old.synced_at > 0 && !needs_pictures;
         let fetched = self
             .mobile(
                 "inbox",
                 id,
-                json!({"onlyUnread": unread}),
+                json!({"onlyUnread": false}),
                 Some(&entry.token),
             )
             .await;
@@ -248,7 +250,7 @@ impl Chat {
         let token = entry.token.clone();
         let profile = id.to_owned();
         let saved = self
-            .db(move |db| db.save_inbox(&profile, &token, &viewer, items, unread))
+            .db(move |db| db.save_inbox(&profile, &token, &viewer, items, partial))
             .await?;
         if old.threads != saved.threads {
             self.changed(id, None, None);
