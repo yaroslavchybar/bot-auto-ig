@@ -68,14 +68,14 @@ export function ChatStatusActions({
 
       <div className="ml-auto flex items-center gap-2">
         {chat.connected === false && chat.activeProfile && (
-          <Button size="sm" onClick={() => chat.setConnectOpen(true)} className="h-8 brand-button">
+          <Button onClick={() => chat.setConnectOpen(true)} className="brand-button">
             <KeyRound /> Connect
           </Button>
         )}
         {chat.activeProfile && chat.connected && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" aria-label="Chat options" className="size-8">
+              <Button variant="outline" size="icon" aria-label="Chat options">
                 <MoreVertical />
               </Button>
             </DropdownMenuTrigger>

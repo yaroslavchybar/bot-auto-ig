@@ -38,8 +38,9 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          size="icon"
           variant="ghost"
-          className="relative h-8 w-8 rounded-full border border-line-soft hover:bg-panel-muted data-[state=open]:bg-panel-hover"
+          className="relative rounded-full border border-line-soft hover:bg-panel-muted data-[state=open]:bg-panel-hover"
         >
           <Avatar className="h-8 w-8 text-ink ring-1 ring-line hover:shadow-xs">
             <AvatarImage src={user.photoUrl} alt={user.fullName ?? 'User'} />

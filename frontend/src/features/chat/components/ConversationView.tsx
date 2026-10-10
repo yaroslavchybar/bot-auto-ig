@@ -291,7 +291,7 @@ export function ConversationView({
           onChange={onArchiveChange}
         />
         {instagramUsername && (
-          <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Button asChild variant="outline" className="shrink-0">
             <a
               href={`https://www.instagram.com/${instagramUsername}/`}
               target="_blank"
@@ -314,14 +314,15 @@ export function ConversationView({
           <div ref={contentRef} className="flex min-h-full flex-col">
             {hasOlder && conversation && groups.length > 0 && (
               <div className="mb-2 flex justify-center">
-                <button
+                <Button
+                  variant="ghost"
                   type="button"
                   disabled={loadingOlder}
                   onClick={requestOlder}
-                  className="rounded px-3 py-1 text-xs text-muted-copy hover:bg-panel-muted disabled:opacity-50"
+                  className="text-muted-copy hover:bg-panel-muted disabled:opacity-50"
                 >
                   {loadingOlder ? 'Loading older messages…' : 'Load older messages'}
-                </button>
+                </Button>
               </div>
             )}
             {loading && !conversation && <MessageSkeletons />}
@@ -395,17 +396,19 @@ export function ConversationView({
                             <div className="mt-1 flex flex-wrap gap-1 px-1 text-xs">
                               {message.reactions?.map((reaction) =>
                                 reaction.senderId === viewerId && /^\d{1,40}$/.test(message.id) ? (
-                                  <button
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
                                     key={`${reaction.senderId}:${reaction.emoji}`}
                                     type="button"
                                     disabled={reactingMessageId === message.id}
                                     onClick={() => onReact(message, reaction.emoji)}
                                     aria-label={`Remove your ${reaction.emoji} reaction`}
                                     title="Remove your reaction"
-                                    className="rounded px-1 hover:bg-panel-muted focus-visible:outline"
+                                    className="rounded hover:bg-panel-muted focus-visible:outline"
                                   >
                                     {reaction.emoji}
-                                  </button>
+                                  </Button>
                                 ) : (
                                   <span
                                     key={`${reaction.senderId}:${reaction.emoji}`}
@@ -442,7 +445,9 @@ export function ConversationView({
                               />
                             )}
                             {own && /^\d{1,40}$/.test(message.id) && (
-                              <button
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 type="button"
                                 disabled={unsendingMessageId === message.id}
                                 onClick={() => {
@@ -451,24 +456,26 @@ export function ConversationView({
                                 }}
                                 aria-label="Unsend message"
                                 title="Unsend message"
-                                className="rounded p-0.5 text-status-danger opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                                className="rounded text-status-danger opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                               >
                                 <Trash2 className="size-3" />
-                              </button>
+                              </Button>
                             )}
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="icon"
                               type="button"
                               onClick={() => copyMessage(message)}
                               aria-label="Copy message"
                               title="Copy message"
-                              className="rounded p-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                              className="rounded opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
                             >
                               {copiedId === message.id ? (
                                 <Check className="size-3" />
                               ) : (
                                 <Copy className="size-3" />
                               )}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -481,17 +488,18 @@ export function ConversationView({
           </div>
         </div>
         {!stickToBottom && (
-          <button
+          <Button
+            variant="ghost"
             type="button"
             onClick={() => {
               stickToBottomRef.current = true
               setStickToBottom(true)
               scrollToLatest()
             }}
-            className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-panel-strong px-3 py-1.5 text-xs font-medium text-copy shadow-lg"
+            className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5 border border-line bg-panel-strong font-medium text-copy shadow-lg"
           >
             <ArrowDown className="size-3.5" /> Jump to latest
-          </button>
+          </Button>
         )}
       </div>
 
@@ -510,7 +518,7 @@ export function ConversationView({
               type="button"
               variant="outline"
               size="icon"
-              className="h-10 w-10 shrink-0"
+              className="shrink-0"
               disabled={sending}
               onClick={() => fileRef.current?.click()}
               aria-label="Attach photo, video, or MP3 voice note"
@@ -530,9 +538,8 @@ export function ConversationView({
             />
             <Button
               type="submit"
-              size="sm"
               disabled={!draft.trim() || sending}
-              className="h-10 shrink-0 brand-button px-3.5"
+              className="shrink-0 brand-button"
             >
               <Send /> Send
             </Button>
@@ -588,19 +595,23 @@ function ReactionPicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
+          variant="ghost"
+          size="icon"
           type="button"
           disabled={disabled}
           aria-label="React to message"
           title="React to message"
-          className="rounded p-0.5 opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          className="rounded opacity-100 focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
         >
           <SmilePlus className="size-3" />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent side="top" align="start" className="flex w-auto gap-1 p-1">
         {['❤️', '😂', '🔥', '😍', '👍', '😮'].map((emoji) => (
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             key={emoji}
             type="button"
             aria-label={`React ${emoji}`}
@@ -608,10 +619,10 @@ function ReactionPicker({
               setOpen(false)
               onReact(message, emoji)
             }}
-            className="rounded px-1.5 py-1 text-lg hover:bg-panel-subtle"
+            className="rounded text-lg hover:bg-panel-subtle"
           >
             {emoji}
-          </button>
+          </Button>
         ))}
       </PopoverContent>
     </Popover>

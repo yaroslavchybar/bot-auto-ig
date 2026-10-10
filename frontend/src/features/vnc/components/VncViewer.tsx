@@ -234,7 +234,7 @@ export function VncViewer({
         type="button"
         variant="outline"
         size="icon"
-        className="absolute top-2 right-2 z-10 h-8 w-8"
+        className="absolute top-2 right-2 z-10"
         aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         onClick={(event) => void toggleFullscreen(event.currentTarget)}

@@ -170,7 +170,6 @@ export function RoutineProfiles({
               <div className="ml-auto flex items-center gap-2">
                 {row.issue && (
                   <Button
-                    size="sm"
                     variant="outline"
                     onClick={() => void mutate({ profileId: row.profileId, clearIssue: true })}
                   >
@@ -178,7 +177,6 @@ export function RoutineProfiles({
                   </Button>
                 )}
                 <Button
-                  size="sm"
                   variant="outline"
                   onClick={() => void mutate({ profileId: row.profileId, paused: !row.paused })}
                 >
@@ -281,20 +279,10 @@ function SetupSteps({
             Did this {progress.pending.kind} succeed on Instagram?
           </span>
           <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={reviewing}
-              onClick={() => onReview('completed')}
-            >
+            <Button variant="outline" disabled={reviewing} onClick={() => onReview('completed')}>
               Succeeded
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={reviewing}
-              onClick={() => onReview('failed')}
-            >
+            <Button variant="outline" disabled={reviewing} onClick={() => onReview('failed')}>
               Failed, retry
             </Button>
           </div>

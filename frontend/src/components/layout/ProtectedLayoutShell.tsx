@@ -31,6 +31,7 @@ const PAGE_HEADER_SLOT_IDS: Partial<Record<string, string>> = {
   '/proxies': 'proxies-header-slot',
   '/scraper': 'scraper-header-slot',
   '/automations': 'automations-header-slot',
+  '/lists': 'models-header-slot',
 }
 
 function readSidebarDefaultOpen() {

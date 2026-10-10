@@ -14,7 +14,6 @@ export function ChatArchiveAction({
   return (
     <Button
       variant="outline"
-      size="sm"
       className="shrink-0"
       disabled={disabled}
       aria-label={label}

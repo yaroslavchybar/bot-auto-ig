@@ -93,7 +93,7 @@ function SecretRow({ label, value }: { label: string; value: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-copy hover:text-ink"
+          className="text-muted-copy hover:text-ink"
           title={visible ? 'Hide' : 'Show'}
           onClick={() => setVisible((v) => !v)}
         >
@@ -102,7 +102,7 @@ function SecretRow({ label, value }: { label: string; value: string }) {
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 text-muted-copy hover:text-ink"
+          className="text-muted-copy hover:text-ink"
           title="Copy"
           onClick={() => {
             void copyText(value).then((ok) => {

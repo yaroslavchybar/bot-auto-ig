@@ -35,16 +35,15 @@ export function ConnectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-panel border-line text-ink sm:max-w-[440px]">
+      <DialogContent className="border-line bg-panel text-ink sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle className="page-title-gradient flex items-center gap-2">
-            <KeyRound className="text-copy size-5" />
+          <DialogTitle className="flex items-center gap-2 page-title-gradient">
+            <KeyRound className="size-5 text-copy" />
             Connect Instagram Chat
           </DialogTitle>
           <DialogDescription>
-            Sign in as{' '}
-            <span className="font-medium">{profileName || 'this profile'}</span>{' '}
-            to load its DM inbox. Sessions persist until you log out.
+            Sign in as <span className="font-medium">{profileName || 'this profile'}</span> to load
+            its DM inbox. Sessions persist until you log out.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-4">
@@ -62,24 +61,21 @@ export function ConnectDialog({
                 maxLength={1200}
                 required
                 disabled={connecting}
-                className="bg-field brand-focus pr-10 font-mono text-xs"
+                className="brand-focus bg-field pr-10 font-mono text-xs"
               />
-              <button
+              <Button
+                variant="ghost"
+                size="icon"
                 type="button"
                 onClick={() => setVisible((value) => !value)}
                 aria-label={visible ? 'Hide credentials' : 'Show credentials'}
-                className="text-subtle-copy hover:text-ink absolute top-1/2 right-2 -translate-y-1/2 rounded p-1"
+                className="absolute top-1/2 right-2 -translate-y-1/2 rounded text-subtle-copy hover:text-ink"
               >
-                {visible ? (
-                  <EyeOff className="size-4" />
-                ) : (
-                  <Eye className="size-4" />
-                )}
-              </button>
+                {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </Button>
             </div>
-            <p className="text-muted-copy text-xs">
-              Format: Instagram username, password and authenticator key,
-              separated by colons.
+            <p className="text-xs text-muted-copy">
+              Format: Instagram username, password and authenticator key, separated by colons.
             </p>
           </div>
           <DialogFooter>

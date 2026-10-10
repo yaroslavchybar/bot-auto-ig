@@ -1,3 +1,4 @@
+import { Button } from '@/components/ui/button'
 import { Archive, ArchiveRestore, MessageSquare, Search, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
@@ -67,14 +68,16 @@ export function ThreadList({
             className="h-8 rounded-lg brand-focus bg-field pr-8 pl-9 text-sm shadow-xs"
           />
           {searchQuery && (
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               type="button"
               onClick={() => onSearchChange('')}
               aria-label="Clear search"
-              className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 text-subtle-copy hover:text-ink"
+              className="absolute top-1/2 right-2 -translate-y-1/2 rounded text-subtle-copy hover:text-ink"
             >
               <X className="size-3.5" />
-            </button>
+            </Button>
           )}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">

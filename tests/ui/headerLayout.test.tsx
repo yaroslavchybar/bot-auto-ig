@@ -35,6 +35,7 @@ test.each([
   ['proxies', 'proxies-header-slot'],
   ['scraper', 'scraper-header-slot'],
   ['automations', 'automations-header-slot'],
+  ['lists', 'models-header-slot'],
   ['chat', 'chat-header-slot'],
 ])('header for /%s/ retains its slot and section navigation', async (page, id) => {
   view = mount()

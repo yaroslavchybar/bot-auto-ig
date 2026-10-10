@@ -282,7 +282,7 @@ export function ProxiesPage() {
       </div>
 
       <Dialog open={state.isCreateOpen} onOpenChange={state.setIsCreateOpen}>
-        <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl border-line bg-panel text-ink sm:max-w-[560px]">
           <DialogHeader className="shrink-0">
             <DialogTitle className="page-title-gradient">Add Proxy</DialogTitle>
           </DialogHeader>
@@ -302,7 +302,7 @@ export function ProxiesPage() {
           if (!open) state.handleCloseEdit()
         }}
       >
-        <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] flex-col overflow-hidden rounded-2xl border-line bg-panel text-ink sm:max-w-[560px]">
           <DialogHeader className="shrink-0">
             <DialogTitle className="page-title-gradient">Edit Proxy</DialogTitle>
           </DialogHeader>
@@ -355,20 +355,14 @@ function ProxyActions({
   return (
     <div className={cn('flex shrink-0 gap-2', className)}>
       <Button
-        size="sm"
         variant="outline"
         disabled={importing}
-        className="h-8 button-panel font-medium"
+        className="button-panel font-medium"
         onClick={onImport}
       >
         <Upload className="h-3.5 w-3.5" /> Import TXT
       </Button>
-      <Button
-        size="sm"
-        onClick={onAdd}
-        disabled={addDisabled}
-        className="h-8 brand-button font-medium"
-      >
+      <Button onClick={onAdd} disabled={addDisabled} className="brand-button font-medium">
         <Plus className="mr-2 h-3.5 w-3.5" /> Add Proxy
       </Button>
     </div>

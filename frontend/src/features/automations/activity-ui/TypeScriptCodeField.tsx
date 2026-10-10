@@ -390,8 +390,7 @@ function ModalEditorHeader({
       <div className="flex items-center gap-1.5">
         <Button
           variant="outline"
-          size="sm"
-          className="h-6 gap-1 rounded-[2px] border-neutral-600 bg-neutral-900 px-2.5 text-[10px] font-medium text-status-success hover:bg-neutral-700 dark:text-status-success"
+          className="gap-1 border-neutral-600 bg-neutral-900 font-medium text-status-success hover:bg-neutral-700 dark:text-status-success"
           onClick={onClose}
         >
           <Check className="h-3 w-3" />
@@ -400,7 +399,7 @@ function ModalEditorHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 rounded-[2px] text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
+          className="text-neutral-500 hover:bg-neutral-800 hover:text-neutral-300"
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
@@ -459,7 +458,7 @@ export function TypeScriptCodeField({ input, value, onChange }: TypeScriptCodeFi
           <Button
             variant="outline"
             size="icon"
-            className="h-5 w-5 rounded-[2px] border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:border-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+            className="border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800 dark:border-neutral-600 dark:bg-neutral-800 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
             onClick={() => setModalOpen(true)}
             title="Open in full editor"
           >

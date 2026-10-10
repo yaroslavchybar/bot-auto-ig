@@ -479,11 +479,10 @@ export function RoutinePopup({
           <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-line-soft px-6 py-3">
             <p className="min-w-0 truncate text-xs text-subtle-copy">{footerNote}</p>
             <div className="flex shrink-0 items-center gap-2">
-              <Button variant="ghost" size="lg" onClick={onClose} disabled={saving}>
+              <Button variant="ghost" onClick={onClose} disabled={saving}>
                 Cancel
               </Button>
               <Button
-                size="lg"
                 onClick={() => void save()}
                 disabled={!canSave}
                 className="brand-button font-medium"

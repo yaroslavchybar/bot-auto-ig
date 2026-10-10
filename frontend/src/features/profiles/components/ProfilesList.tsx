@@ -92,8 +92,9 @@ function ProfileActionsMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          size="icon"
           variant="ghost"
-          className="h-8 w-8 p-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
+          className="text-muted-copy hover:bg-panel-muted hover:text-ink"
         >
           <span className="sr-only">Open menu</span>
           <MoreHorizontal className="h-4 w-4" />
@@ -228,9 +229,8 @@ function MobileCardFooter({
 
       <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
         <Button
-          size="sm"
           className={cn(
-            'h-9 rounded-full px-4 text-xs font-semibold tracking-[0.14em]',
+            'font-semibold tracking-[0.14em]',
             profile.using
               ? 'border-status-danger-border bg-status-danger-soft text-status-danger hover:bg-status-danger hover:text-inverse border'
               : 'border-status-success-border bg-status-success-soft text-status-success hover:bg-status-success hover:text-inverse border',
@@ -283,7 +283,7 @@ function ProfileDesktopRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
+              className="text-muted-copy hover:bg-panel-muted hover:text-ink"
               onClick={(e) => {
                 e.stopPropagation()
                 onToggleStatus(profile)

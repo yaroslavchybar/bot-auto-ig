@@ -48,7 +48,6 @@ export function TablePagination({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
           aria-label="Previous page"
           title="Previous page"
           disabled={loading || !hasPrevious}
@@ -59,7 +58,6 @@ export function TablePagination({
         <Button
           variant="outline"
           size="icon"
-          className="h-8 w-8"
           aria-label="Next page"
           title="Next page"
           disabled={loading || !hasNext}

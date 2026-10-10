@@ -95,10 +95,9 @@ function ProfilesToolbar({ s }: { s: ProfilesState }) {
         />
       </div>
       <Button
-        size="icon"
         onClick={s.handleCreate}
         disabled={s.loading || s.saving}
-        className="h-8 w-auto shrink-0 brand-button px-3.5 text-sm"
+        className="shrink-0 brand-button"
       >
         <Plus className="mr-2 h-4 w-4" />
         New Profile

@@ -65,7 +65,7 @@ function AutomationActionsMenu({
           variant="ghost"
           size="icon"
           aria-label={`Actions for ${automation.name}`}
-          className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink data-[state=open]:bg-panel-muted data-[state=open]:text-ink"
+          className="text-muted-copy hover:bg-panel-muted hover:text-ink data-[state=open]:bg-panel-muted data-[state=open]:text-ink"
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>

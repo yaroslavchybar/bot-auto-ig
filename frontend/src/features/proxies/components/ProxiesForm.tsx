@@ -79,8 +79,8 @@ export function ProxiesForm({
   }
 
   return (
-    <div className={cn('flex flex-col p-6', className)}>
-      <div className="grid gap-5 pb-6">
+    <div className={cn('flex min-h-0 flex-1 flex-col', className)}>
+      <div className="-mx-1 grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-1 pt-1 pb-4">
         <div className="grid gap-1.5">
           <Label
             htmlFor="proxy-name"
@@ -230,11 +230,11 @@ export function ProxiesForm({
       </div>
 
       {localError && (
-        <div className="mb-4 rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
+        <div className="mb-4 shrink-0 rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
           {localError}
         </div>
       )}
-      <div className="flex justify-end gap-3">
+      <div className="flex shrink-0 justify-end gap-3 border-t border-line-soft pt-4">
         <Button variant="outline" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>

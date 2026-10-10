@@ -233,11 +233,10 @@ export function ModelIdentityPanel({ model }: { model: List }) {
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <Button variant="ghost" size="lg" onClick={discard} disabled={!changed || saving}>
+          <Button variant="ghost" onClick={discard} disabled={!changed || saving}>
             Discard
           </Button>
           <Button
-            size="lg"
             onClick={() => void save()}
             disabled={!canSave}
             className="brand-button font-medium"
@@ -316,7 +315,6 @@ function ImportButton({ disabled, onFile }: { disabled: boolean; onFile: (file: 
   return (
     <Button
       variant="outline"
-      size="lg"
       asChild
       className={cn('button-panel shrink-0', disabled && 'pointer-events-none opacity-50')}
     >

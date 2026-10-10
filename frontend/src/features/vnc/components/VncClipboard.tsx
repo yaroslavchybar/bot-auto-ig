@@ -17,7 +17,9 @@ function clipboardErrorMessage(e: unknown, fallback: string): string {
       const parsed = JSON.parse(e.message) as { error?: { message?: unknown } }
       const message = parsed?.error?.message
       if (typeof message === 'string' && message.trim()) return message
-    } catch { /* fall through to fallback */ }
+    } catch {
+      /* fall through to fallback */
+    }
     return fallback
   }
   if (e instanceof DOMException && e.name === 'NotAllowedError') {
@@ -37,24 +39,27 @@ export function VncClipboardButton({
   const [remoteText, setRemoteText] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const sendToRemote = useCallback(async (text: string) => {
-    if (!text) {
-      toast.info('Nothing to send')
-      return
-    }
-    setBusy(true)
-    try {
-      await apiFetch(`/api/displays/${vncPort}/clipboard`, {
-        method: 'POST',
-        body: { text },
-      })
-      toast.success('Sent — press Shift+Insert inside the remote browser')
-    } catch (e) {
-      toast.error(clipboardErrorMessage(e, 'Could not send to remote'))
-    } finally {
-      setBusy(false)
-    }
-  }, [vncPort])
+  const sendToRemote = useCallback(
+    async (text: string) => {
+      if (!text) {
+        toast.info('Nothing to send')
+        return
+      }
+      setBusy(true)
+      try {
+        await apiFetch(`/api/displays/${vncPort}/clipboard`, {
+          method: 'POST',
+          body: { text },
+        })
+        toast.success('Sent — press Shift+Insert inside the remote browser')
+      } catch (e) {
+        toast.error(clipboardErrorMessage(e, 'Could not send to remote'))
+      } finally {
+        setBusy(false)
+      }
+    },
+    [vncPort],
+  )
 
   // Must run directly in the click handler — keeps user activation for readText().
   const handlePasteFromPc = useCallback(async () => {
@@ -113,12 +118,7 @@ export function VncClipboardButton({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8"
-          title="Clipboard: send text to / copy from the remote browser"
-        >
+        <Button variant="outline" title="Clipboard: send text to / copy from the remote browser">
           <Clipboard className="mr-2 h-3.5 w-3.5" />
           Clipboard
         </Button>
@@ -126,7 +126,7 @@ export function VncClipboardButton({
       <PopoverContent className="w-80" align="end">
         <p className="mb-2 text-sm font-medium">Clipboard</p>
 
-        <p className="text-subtle-copy mb-1 text-[11px]">To remote</p>
+        <p className="mb-1 text-[11px] text-subtle-copy">To remote</p>
         <Textarea
           value={pasteDraft}
           onChange={(e) => setPasteDraft(e.target.value)}
@@ -137,7 +137,6 @@ export function VncClipboardButton({
         <div className="mb-3 flex gap-2">
           <Button
             variant="outline"
-            size="sm"
             onClick={() => void handlePasteFromPc()}
             disabled={!interactive || busy}
             className="flex-1"
@@ -146,7 +145,6 @@ export function VncClipboardButton({
             {busy ? 'Working…' : 'From my PC'}
           </Button>
           <Button
-            size="sm"
             onClick={() => void sendToRemote(pasteDraft)}
             disabled={!interactive || busy || !pasteDraft}
             className="flex-1"
@@ -155,19 +153,21 @@ export function VncClipboardButton({
           </Button>
         </div>
         {!interactive ? (
-          <p className="text-subtle-copy mb-3 text-[11px]">Take control to paste.</p>
+          <p className="mb-3 text-[11px] text-subtle-copy">Take control to paste.</p>
         ) : (
-          <p className="text-subtle-copy mb-3 text-[11px]">Ctrl+V pastes from your PC. After sending with this panel, use Shift+Insert in the remote.</p>
+          <p className="mb-3 text-[11px] text-subtle-copy">
+            Ctrl+V pastes from your PC. After sending with this panel, use Shift+Insert in the
+            remote.
+          </p>
         )}
 
-        <p className="text-subtle-copy mb-1 text-[11px]">From remote</p>
+        <p className="mb-1 text-[11px] text-subtle-copy">From remote</p>
         {remoteText ? (
           <>
             <Textarea value={remoteText} readOnly rows={3} className="mb-2" />
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => void handleLoadFromRemote()}
                 disabled={busy}
                 className="flex-1"
@@ -176,7 +176,6 @@ export function VncClipboardButton({
               </Button>
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => void handleCopyToPc()}
                 disabled={busy}
                 className="flex-1"
@@ -188,7 +187,6 @@ export function VncClipboardButton({
         ) : (
           <Button
             variant="outline"
-            size="sm"
             onClick={() => void handleLoadFromRemote()}
             disabled={busy}
             className="w-full"

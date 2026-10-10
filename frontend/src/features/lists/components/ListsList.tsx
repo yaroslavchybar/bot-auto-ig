@@ -69,7 +69,7 @@ function ModelCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 shrink-0 text-muted-copy hover:bg-panel-muted"
+                className="shrink-0 text-muted-copy hover:bg-panel-muted"
                 aria-label={`Actions for ${model.name}`}
               >
                 <MoreHorizontal className="h-4 w-4" />

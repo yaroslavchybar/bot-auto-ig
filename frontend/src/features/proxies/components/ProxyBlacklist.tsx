@@ -71,7 +71,7 @@ export function ProxyBlacklist() {
           className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-status-danger-border bg-status-danger-soft px-4 py-2.5 text-sm text-status-danger"
         >
           <span>{error}</span>
-          <Button type="button" size="sm" variant="outline" onClick={retry}>
+          <Button type="button" variant="outline" onClick={retry}>
             Retry
           </Button>
         </div>

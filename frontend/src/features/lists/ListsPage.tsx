@@ -10,6 +10,8 @@ import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useListsPage } from './hooks/useListsPage'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 
 export function ListsPage() {
   return (
@@ -30,7 +32,7 @@ function ListsPageContent() {
     <div className="relative flex h-full flex-col bg-shell text-ink">
       <ListsHeader loading={state.loading} saving={state.saving} onCreate={state.handleCreate} />
 
-      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
+      <div className="relative z-10 flex-1 overflow-auto px-4 pt-2 pb-4 md:px-6 md:pt-3 md:pb-6">
         <div className="mx-auto max-w-[2000px]">
           <ListsList
             lists={state.lists}
@@ -138,20 +140,21 @@ function ListsHeader({
   saving: boolean
   onCreate: () => void
 }) {
-  return (
-    <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
-        <div className="flex items-center gap-3">
-          <Button
-            size="sm"
-            onClick={onCreate}
-            disabled={loading || saving}
-            className="h-8 brand-button font-medium"
-          >
-            <Plus className="mr-2 h-3.5 w-3.5" /> Create Model
-          </Button>
-        </div>
-      </div>
+  const headerSlot = useHeaderToolbarSlot('models-header-slot', 160)
+  const button = (
+    <Button
+      onClick={onCreate}
+      disabled={loading || saving}
+      className="shrink-0 brand-button font-medium"
+    >
+      <Plus className="mr-2 h-3.5 w-3.5" /> Create Model
+    </Button>
+  )
+  return headerSlot ? (
+    createPortal(button, headerSlot)
+  ) : (
+    <div className="relative z-10 flex flex-none justify-end px-4 py-2 md:px-6 md:py-3">
+      {button}
     </div>
   )
 }

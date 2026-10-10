@@ -45,7 +45,6 @@ export function OutreachAssignments({
         <h3 className="text-sm font-semibold text-ink">Scraped lists</h3>
         <Button
           type="button"
-          size="sm"
           variant="outline"
           className="button-panel"
           disabled={disabled || loading || !available.length || routes.length >= 20}
@@ -190,7 +189,6 @@ export function OutreachAssignments({
                     <span>{missing} no longer in this model</span>
                     <Button
                       type="button"
-                      size="sm"
                       variant="outline"
                       disabled={disabled}
                       onClick={() =>

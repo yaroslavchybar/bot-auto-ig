@@ -201,9 +201,8 @@ export function IgAccountsPage() {
             <Button
               type="button"
               variant="outline"
-              size="sm"
               disabled={importing}
-              className="h-8 justify-self-start button-panel font-medium"
+              className="justify-self-start button-panel font-medium"
               asChild
             >
               <label className="cursor-pointer">
@@ -377,12 +376,7 @@ function AccountsToolbar({
           className="h-8 rounded-md brand-focus border-line bg-field pr-8 pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
         />
       </div>
-      <Button
-        size="sm"
-        onClick={onImport}
-        disabled={loading}
-        className="h-8 shrink-0 brand-button font-medium"
-      >
+      <Button onClick={onImport} disabled={loading} className="shrink-0 brand-button font-medium">
         <Plus className="mr-2 h-3.5 w-3.5" /> Import
       </Button>
     </div>

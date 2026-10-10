@@ -114,14 +114,9 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
     }
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pt-2 md:pt-3">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onBack}
-          className="-ml-2 h-7 px-2 text-xs text-muted-copy hover:text-ink"
-        >
+        <Button variant="ghost" onClick={onBack} className="-ml-2 text-muted-copy hover:text-ink">
           <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Lists
         </Button>
         <h2 className="text-lg font-semibold tracking-tight text-ink">{list.name}</h2>
@@ -162,17 +157,12 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
             />
           </div>
           {changed && (
-            <Button
-              size="sm"
-              disabled={busy}
-              onClick={() => void saveSettings()}
-              className="h-6 rounded-full px-2.5 text-xs"
-            >
+            <Button disabled={busy} onClick={() => void saveSettings()}>
               Save
             </Button>
           )}
         </div>
-        <Button size="sm" className="ml-auto brand-button" onClick={() => setAddOpen(true)}>
+        <Button className="ml-auto brand-button" onClick={() => setAddOpen(true)}>
           <Plus className="mr-2 h-3.5 w-3.5" /> Add profiles
         </Button>
       </div>
@@ -296,7 +286,7 @@ function SourceCards({
           <p className="mt-1 text-sm text-subtle-copy">
             Add profiles — their likers will be saved to {list.name}.
           </p>
-          <Button size="sm" className="mt-4 brand-button" onClick={onAdd}>
+          <Button className="mt-4 brand-button" onClick={onAdd}>
             <Plus className="mr-2 h-3.5 w-3.5" /> Add profiles
           </Button>
         </div>
@@ -336,14 +326,12 @@ function SourceCards({
                 <div className="flex flex-wrap items-center gap-1">
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => setExpanded(expanded === source._id ? null : source._id)}
                   >
                     {expanded === source._id ? 'Hide posts' : 'View posts'}
                   </Button>
                   <Button
                     variant="ghost"
-                    size="sm"
                     disabled={busy || !source.enabled || source.running}
                     onClick={() => void run(() => check({ sourceId: source._id }))}
                   >
@@ -352,7 +340,6 @@ function SourceCards({
                   </Button>
                   <Button
                     variant="ghost"
-                    size="sm"
                     disabled={busy}
                     onClick={() =>
                       void run(() => toggle({ sourceId: source._id, enabled: !source.enabled }))
@@ -453,12 +440,7 @@ function SourcePosts({ sourceId }: { sourceId: Id<'scrapeSources'> }) {
         })
       )}
       {status !== 'Exhausted' && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={status !== 'CanLoadMore'}
-          onClick={() => loadMore(50)}
-        >
+        <Button variant="outline" disabled={status !== 'CanLoadMore'} onClick={() => loadMore(50)}>
           Load more posts
         </Button>
       )}

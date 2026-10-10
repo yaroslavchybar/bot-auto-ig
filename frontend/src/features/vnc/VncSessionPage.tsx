@@ -270,7 +270,7 @@ function VncMobileHeader({ session, onBack }: { session: DisplaySession; onBack:
   return (
     <div className="z-10 flex shrink-0 items-center justify-between border-b border-line-soft bg-panel-subtle px-3 py-2 shadow-xs select-none">
       <div className="flex min-w-0 items-center gap-3">
-        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-3.5 w-3.5" />
           Back
         </Button>
@@ -325,9 +325,14 @@ function ControlToggle({ handoff, onBack }: { handoff: ControlHandoff; onBack: (
       {error ? (
         <p className="mb-3 text-xs text-status-danger" role="alert">
           {error}{' '}
-          <button type="button" onClick={handoff.dismissError} className="underline">
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={handoff.dismissError}
+            className="underline"
+          >
             Dismiss
-          </button>
+          </Button>
         </p>
       ) : null}
       <div className="flex gap-2">
@@ -403,7 +408,7 @@ function VncDesktopHeader({
   return (
     <div className="z-10 flex shrink-0 items-center justify-between border-b border-line-soft bg-panel-subtle px-3 py-1.5 shadow-xs select-none">
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={onBack} className="h-8">
+        <Button variant="outline" onClick={onBack}>
           <ArrowLeft className="mr-2 h-3.5 w-3.5" />
           Back to Grid
         </Button>
@@ -519,9 +524,14 @@ function VncControlOverlay({ handoff, onBack }: { handoff: ControlHandoff; onBac
               {error ? (
                 <p className="text-sm text-status-danger" role="alert">
                   {error}{' '}
-                  <button type="button" onClick={handoff.dismissError} className="underline">
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    onClick={handoff.dismissError}
+                    className="underline"
+                  >
                     Dismiss
-                  </button>
+                  </Button>
                 </p>
               ) : null}
             </div>

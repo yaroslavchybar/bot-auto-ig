@@ -87,10 +87,9 @@ export function ModelContentPanel({ model }: { model: List }) {
         {kinds.map(({ kind }) => (
           <Button
             key={kind}
-            size="sm"
             variant="outline"
             disabled={busy}
-            className="h-8 button-panel font-medium"
+            className="button-panel font-medium"
             asChild
           >
             <label className="cursor-pointer focus-within:ring-2 focus-within:ring-ring/60">
@@ -120,7 +119,7 @@ export function ModelContentPanel({ model }: { model: List }) {
           <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <span className="min-w-0 flex-1 break-words">{error || loadError}</span>
           {loadError && (
-            <Button size="sm" variant="outline" onClick={() => void reload().catch(() => {})}>
+            <Button variant="outline" onClick={() => void reload().catch(() => {})}>
               Retry
             </Button>
           )}
@@ -178,22 +177,26 @@ export function ModelContentPanel({ model }: { model: List }) {
                             )}
                             <div className="absolute top-1.5 right-1.5 flex gap-1.5">
                               {!hasCopies && (
-                                <button
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
                                   type="button"
                                   onClick={() => void generateCopies(item)}
                                   disabled={generating || busy}
                                   title="Generate 50 copies"
                                   aria-label={`Generate copies for ${item.name}`}
-                                  className="rounded-lg bg-black/60 p-1.5 text-white hover:bg-black/80 disabled:opacity-50"
+                                  className="rounded-lg bg-black/60 text-white hover:bg-black/80 disabled:opacity-50"
                                 >
                                   {generating ? (
                                     <RefreshCw className="h-4 w-4" />
                                   ) : (
                                     <Layers className="h-4 w-4" />
                                   )}
-                                </button>
+                                </Button>
                               )}
-                              <button
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 type="button"
                                 onClick={() => {
                                   setDeleteError(null)
@@ -202,10 +205,10 @@ export function ModelContentPanel({ model }: { model: List }) {
                                 disabled={busy || generating}
                                 title="Delete image"
                                 aria-label={`Delete ${item.name}`}
-                                className="rounded-lg bg-black/60 p-1.5 text-white hover:bg-black/80 disabled:opacity-50"
+                                className="rounded-lg bg-black/60 text-white hover:bg-black/80 disabled:opacity-50"
                               >
                                 <Trash2 className="h-4 w-4" />
-                              </button>
+                              </Button>
                             </div>
                           </div>
                           <div className="p-2">

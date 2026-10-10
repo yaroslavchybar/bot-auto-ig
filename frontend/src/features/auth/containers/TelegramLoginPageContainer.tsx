@@ -182,7 +182,7 @@ export function TelegramLoginPageContainer() {
             <div className="flex flex-col items-center gap-3">
               <Button
                 type="button"
-                className="h-11 w-full justify-center rounded-xl bg-[#229ED9] text-sm font-semibold text-white hover:bg-[#1d8bc0]"
+                className="w-full justify-center bg-[#229ED9] font-semibold text-white hover:bg-[#1d8bc0]"
                 disabled={submitting}
                 onClick={handleAppLogin}
               >
@@ -209,13 +209,14 @@ export function TelegramLoginPageContainer() {
               >
                 Telegram didn&apos;t open? Click here instead.
               </a>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={cancelAppLogin}
-                className="text-[11px] text-muted-copy underline hover:text-zinc-700 dark:hover:text-zinc-300"
+                className="text-muted-copy underline hover:text-zinc-700 dark:hover:text-zinc-300"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           )}
 
@@ -223,7 +224,7 @@ export function TelegramLoginPageContainer() {
             <Button
               type="button"
               variant="outline"
-              className="h-11 w-full justify-center rounded-xl text-sm font-medium"
+              className="w-full justify-center font-medium"
               disabled={submitting}
               onClick={handleDevLogin}
             >

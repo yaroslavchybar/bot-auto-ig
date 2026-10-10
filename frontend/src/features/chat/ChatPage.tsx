@@ -52,14 +52,16 @@ export function ChatPage() {
           >
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             <p className="min-w-0 flex-1">{chat.error}</p>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               type="button"
               onClick={() => chat.setError('')}
               aria-label="Dismiss error"
-              className="rounded p-0.5 opacity-70 hover:opacity-100"
+              className="rounded opacity-70 hover:opacity-100"
             >
               <X className="size-4" />
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -202,7 +204,7 @@ function DisconnectedState({
           Instagram Chat to load conversations and send replies.
         </p>
       </div>
-      <Button onClick={onConnect} className="h-8 brand-button">
+      <Button onClick={onConnect} className="brand-button">
         <KeyRound /> Connect Chat
       </Button>
     </div>

@@ -44,8 +44,9 @@ function ProxyActionsMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          size="icon"
           variant="ghost"
-          className="h-8 w-8 p-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
+          className="text-muted-copy hover:bg-panel-muted hover:text-ink"
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>
@@ -190,8 +191,7 @@ function ProxyMobileCard({
       <div className="mt-4 border-t border-line pt-3">
         <Button
           variant="ghost"
-          size="sm"
-          className="h-9 rounded-full border border-line px-3 text-ink hover:bg-panel-muted"
+          className="border border-line text-ink hover:bg-panel-muted"
           onClick={(event) => {
             event.stopPropagation()
             onEdit(proxy)
@@ -249,7 +249,7 @@ function ProxyDesktopRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
+            className="text-muted-copy hover:bg-panel-muted hover:text-ink"
             onClick={(e) => {
               e.stopPropagation()
               onEdit(proxy)

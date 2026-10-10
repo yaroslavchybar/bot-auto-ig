@@ -108,7 +108,6 @@ function ReconnectButton({
   return (
     <Button
       variant="outline"
-      size="sm"
       disabled={Boolean(reconnectingId)}
       aria-busy={busy}
       onKeyDown={(event) => event.stopPropagation()}

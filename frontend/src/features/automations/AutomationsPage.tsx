@@ -21,14 +21,13 @@ export function AutomationsPage() {
   const duplicate = useMutation(api.automations.mutations.duplicate)
   const remove = useMutation(api.automations.mutations.remove)
   // Desktop: New Automation moves into the app header. Mobile: it stays above the list.
-  const headerSlot = useHeaderToolbarSlot('automations-header-slot', 180)
+  const headerSlot = useHeaderToolbarSlot('automations-header-slot', 210)
 
   const newAutomationButton = (
     <Button
-      size="icon"
       onClick={() => setEditing('new')}
       disabled={saving}
-      className="h-8 w-auto brand-button px-3.5 text-sm font-medium"
+      className="brand-button font-medium"
     >
       <Plus className="mr-2 h-4 w-4" />
       New Automation

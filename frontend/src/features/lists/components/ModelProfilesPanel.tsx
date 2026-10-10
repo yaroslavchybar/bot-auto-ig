@@ -211,7 +211,6 @@ function ProfileColumn({
       <footer className="flex items-center justify-between gap-3 border-t border-line-soft px-4 py-3">
         <span className="text-xs text-subtle-copy tabular-nums">{selectedIds.length} selected</span>
         <Button
-          size="lg"
           variant={action === 'add' ? 'default' : 'outline'}
           disabled={selectedIds.length === 0 || busy}
           onClick={() => void run()}

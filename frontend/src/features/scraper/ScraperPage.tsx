@@ -161,7 +161,6 @@ function RetryEnrichmentButton() {
           .then((n) => toast.success(`${n} accounts queued for enrichment`))
           .catch((e) => toast.error(String(e)))
       }
-      className="h-8 w-8"
     >
       <RotateCcw className="h-3.5 w-3.5" />
     </Button>
@@ -171,12 +170,7 @@ function RetryEnrichmentButton() {
 function NewListButton() {
   const { setListCreateOpen } = useFilters()
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={() => setListCreateOpen(true)}
-      className="h-8 font-medium"
-    >
+    <Button variant="outline" onClick={() => setListCreateOpen(true)} className="font-medium">
       <Plus className="mr-2 h-3.5 w-3.5" /> New list
     </Button>
   )
@@ -679,7 +673,7 @@ function AccountDesktopRow({
             title={`Edit ${account.name} daily limit`}
             aria-label={`Edit ${account.name} daily limit`}
             onClick={onEdit}
-            className="h-8 w-8 shrink-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
+            className="shrink-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
@@ -724,7 +718,7 @@ function AccountCard({
         <UsageBar used={account.used} limit={account.dailyLimit} />
       </div>
       <div className="mt-3 border-t border-line pt-3">
-        <Button variant="outline" size="sm" className="h-8 w-full font-medium" onClick={onEdit}>
+        <Button variant="outline" className="w-full font-medium" onClick={onEdit}>
           <Pencil className="mr-2 h-3.5 w-3.5" /> Edit daily limit
         </Button>
       </div>
@@ -969,7 +963,7 @@ function SourcesListRow({
             size="icon"
             title="Rename list"
             aria-label={`Rename ${list.name}`}
-            className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
+            className="text-muted-copy hover:bg-panel-muted hover:text-ink"
             onClick={onRename}
           >
             <Pencil className="h-4 w-4" />
@@ -979,7 +973,7 @@ function SourcesListRow({
             size="icon"
             title="Delete list"
             aria-label={`Delete ${list.name}`}
-            className="h-8 w-8 text-status-danger hover:bg-status-danger-soft"
+            className="text-status-danger hover:bg-status-danger-soft"
             onClick={onDelete}
           >
             <Trash2 className="h-4 w-4" />
@@ -1018,7 +1012,7 @@ function SourcesListCard({
             variant="ghost"
             size="icon"
             aria-label={`Rename ${list.name}`}
-            className="h-8 w-8 text-muted-copy hover:bg-panel-muted hover:text-ink"
+            className="text-muted-copy hover:bg-panel-muted hover:text-ink"
             onClick={onRename}
           >
             <Pencil className="h-4 w-4" />
@@ -1027,7 +1021,7 @@ function SourcesListCard({
             variant="ghost"
             size="icon"
             aria-label={`Delete ${list.name}`}
-            className="h-8 w-8 text-status-danger hover:bg-status-danger-soft"
+            className="text-status-danger hover:bg-status-danger-soft"
             onClick={onDelete}
           >
             <Trash2 className="h-4 w-4" />
