@@ -44,6 +44,28 @@ fn task(kind: TaskKind) -> Task {
 }
 
 #[tokio::test]
+async fn scheduler_accepts_fractional_deadlines_and_rejects_invalid_updates_without_losing_work() {
+    let fixture = Fixture::start(|_| async { Json(json!({})).into_response() }).await;
+    let scraper = scraper_fixture(&fixture);
+    scraper
+        .update(json!({"taskAt": 2_000_000_000_000.25, "taskKey": "source"}))
+        .await
+        .unwrap();
+    assert_eq!(scraper.work.borrow().0, 1);
+    assert_eq!(scraper.work.borrow().1.task_at, Some(2_000_000_000_001));
+    assert_eq!(scraper.work.borrow().1.task_key.as_deref(), Some("source"));
+    for invalid in [json!(-1), json!("2000000000000"), json!(true)] {
+        assert!(scraper.update(json!({"taskAt": invalid})).await.is_err());
+        assert_eq!(scraper.work.borrow().0, 1);
+        assert_eq!(scraper.work.borrow().1.task_at, Some(2_000_000_000_001));
+    }
+    for value in [json!({"taskAt": null}), json!({})] {
+        scraper.update(value).await.unwrap();
+        assert_eq!(scraper.work.borrow().1.task_at, None);
+    }
+}
+
+#[tokio::test]
 async fn source_discovery_preserves_range_counts_batches_and_rate_limits() {
     let mode = Arc::new(AtomicUsize::new(0));
     let batches = Arc::new(Mutex::new(Vec::<Value>::new()));

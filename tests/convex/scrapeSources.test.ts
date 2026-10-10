@@ -35,6 +35,25 @@ async function setup(options: { limit?: number | null; used?: number; mobileOnly
 }
 type Setup = Awaited<ReturnType<typeof setup>>
 
+test('fractional scraper cooldowns produce integer scheduler deadlines and prevent early claims', async () => {
+  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
+  vi.useFakeTimers()
+  const now = Date.parse('2026-10-10T12:00:00Z')
+  vi.setSystemTime(now)
+  const s = await setup()
+  await s.t.mutation(internal.scraper.cooldownAccount, {
+    profileId: s.profileId,
+    retryAfterMs: 1_800_000.25,
+  })
+  expect((await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).taskAt).toBe(
+    now + 1_800_001,
+  )
+  vi.setSystemTime(now + 1_800_000)
+  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
+  vi.setSystemTime(now + 1_800_001)
+  expect(await s.t.mutation(internal.scrapeSources.claim, {})).not.toBeNull()
+})
+
 test('overview counts are compact and unaffected by worker progress', async () => {
   const s = await setup()
   const before = await s.t.query(api.scrapeSources.summary, { listId: s.listId })

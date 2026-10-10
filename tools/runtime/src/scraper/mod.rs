@@ -98,7 +98,11 @@ struct Activity {
     like_count: Option<u64>,
 }
 impl Scraper {
-    pub async fn update(&self, value: Value) -> crate::native::Result<()> {
+    pub async fn update(&self, mut value: Value) -> crate::native::Result<()> {
+        if !value["taskAt"].is_null() {
+            value["taskAt"] = json!(api::timestamp_ms(&value["taskAt"])
+                .ok_or_else(|| crate::native::Failure::invalid("Invalid scraper deadline"))?);
+        }
         let value: Work = serde_json::from_value(value)?;
         self.work.send_modify(|(revision, state)| {
             *revision += 1;

@@ -63,8 +63,9 @@ export const cooldownAccount = internalMutation({
       retryAfterMs && Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 0
     await ctx.db.patch(profileId, {
       scraperRateLimitCount: attempts + 1,
-      scraperCooldownUntil:
+      scraperCooldownUntil: Math.ceil(
         Date.now() + Math.min(24 * 60 * 60_000, Math.max(backoffMs, serverWaitMs)),
+      ),
     })
   },
 })

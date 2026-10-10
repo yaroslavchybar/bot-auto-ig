@@ -130,10 +130,10 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    for outcome in ["success", "uncertain", "save failure"] {
+    for outcome in ["success", "uncertain", "save failure", "retry pending"] {
         let root = tempfile::tempdir().unwrap();
         let progress = Arc::new(Mutex::new(
-            json!({"profileId":"p","modelId":"model","startedAt":api::now_ms()-5*86_400_000,"postSourceIds":[],"postDates":[]}),
+            json!({"profileId":"p","modelId":"model","startedAt":api::now_ms() as f64 - 5.0*86_400_000.0 + 0.25,"postSourceIds":[],"postDates":[]}),
         ));
         let attempts = Arc::new(AtomicUsize::new(0));
         let count = attempts.clone();
@@ -169,7 +169,8 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
                             "byProfile"|"byId"=> {
                                 let encrypted=encrypt(&[0xaa;32],&parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap()).unwrap();
                                 let mut value=serde_json::to_value(encrypted).unwrap();
-                                value["_id"]=json!("a"); value["status"]=json!("connected"); value["profileId"]=json!("p"); value["createdAt"]=json!(1); value
+                                value["_id"]=json!("a"); value["status"]=json!(if outcome=="retry pending" {"assigned"} else {"connected"}); value["profileId"]=json!("p"); value["createdAt"]=json!(1);
+                                if outcome=="retry pending" { value["browserLoggedInAt"]=json!(api::now_ms()-5*86_400_000); value["retryAfter"]=json!(api::now_ms() as f64+60_000.25); } value
                             },
                             "modelSetupPatch"=> {
                                 if outcome=="save failure" && body["patch"]["nameDone"]==true { return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(); }
@@ -219,6 +220,11 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
             result.unwrap();
         }
         let state = progress.lock().await.clone();
+        if outcome == "retry pending" {
+            assert_eq!(attempts.load(Ordering::SeqCst), 0);
+            assert!(state["pending"].is_null());
+            continue;
+        }
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
         if outcome == "success" {
             assert_eq!(state["nameDone"], true);
@@ -259,6 +265,7 @@ async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_creden
         let first=Fixture::start(move |_|async move {Json(json!({"success":true,"ip":"203.0.113.11","country_code":if outcome=="wrong country" {"US"} else {"UA"}})).into_response()}).await;
         let second=Fixture::start(move |_|async move {Json(json!({"success":true,"ip":if outcome=="duplicate IP" {"203.0.113.11"} else {"203.0.113.12"},"country_code":if outcome=="wrong country" {"US"} else {"UA"}})).into_response()}).await;
         let proxies = vec![
+            json!({"_id":"resting","proxy":first.url,"country":"ua","loginCooldownUntil":api::now_ms() as f64 + 3_600_000.25}),
             json!({"_id":"proxy1","proxy":first.url,"name":"First","country":"ua"}),
             json!({"_id":"proxy2","proxy":second.url,"name":"Second","country":"ua"}),
         ];
@@ -453,6 +460,7 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};
     let enrolled = Arc::new(Mutex::new(Vec::new()));
+    let login_at = api::now_ms() as f64 - 5.0 * 86_400_000.0 + 0.25;
     let saved = enrolled.clone();
     let fixture=Fixture::start(move |request| {
         let saved=saved.clone(); async move {
@@ -465,9 +473,9 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
                         "modelSetupList"=>json!([]),
                         "byProfile" if body["profileId"]=="bad"=>json!({"ciphertext":"v1.corrupt"}),
                         "byProfile"=> {
-                            let mut row=serde_json::to_value(encrypt(&[0xaa;32],&parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap()).unwrap()).unwrap(); row["_id"]=json!("a");row["status"]=json!("connected");row
+                            let mut row=serde_json::to_value(encrypt(&[0xaa;32],&parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap()).unwrap()).unwrap(); row["_id"]=json!("a");row["status"]=json!("connected");row["browserLoggedInAt"]=json!(login_at);row
                         },
-                        "modelSetupEnroll"=> {saved.lock().await.push(body["profileId"].clone());json!({"ok":true})},
+                        "modelSetupEnroll"=> {saved.lock().await.push(body);json!({"ok":true})},
                         _=>panic!("Unexpected enrollment operation")
                     };Json(value).into_response()
                 },
@@ -501,5 +509,8 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
     );
     Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
     accounts.sweep_setup().await.unwrap();
-    assert_eq!(*enrolled.lock().await, vec![json!("good")]);
+    let enrolled = enrolled.lock().await;
+    assert_eq!(enrolled.len(), 1);
+    assert_eq!(enrolled[0]["profileId"], "good");
+    assert_eq!(enrolled[0]["startedAt"], json!(login_at.ceil() as u64));
 }

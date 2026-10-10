@@ -2,6 +2,60 @@ import { expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedList, seedProfile } from './helpers'
 
+test('login retries and setup starts are rounded up, reject invalid times, and allow retry clearing', async () => {
+  const t = createConvexTest()
+  const list = (await seedList(t, 'Model'))!
+  const profile = (await seedProfile(t))!
+  await t.mutation(api.profiles.mutations.bulkAddToList, {
+    profileIds: [profile._id],
+    listId: list._id,
+  })
+  await t.mutation(internal.igAccounts.importEncryptedInternal, {
+    rows: [{ usernameHash: 'f'.repeat(64), ciphertext: 'encrypted' }],
+  })
+  const account = (await t.query(internal.igAccounts.availableInternal, { count: 1 })).page[0]!
+  await t.mutation(internal.igAccounts.assignInternal, { id: account._id, profileId: profile._id })
+  const timestamp = Date.now() + 60_000.25
+  await t.mutation(internal.igAccounts.setStateInternal, {
+    id: account._id,
+    status: 'assigned',
+    retryAfter: timestamp,
+  })
+  expect((await t.query(internal.igAccounts.byIdInternal, { id: account._id }))?.retryAfter).toBe(
+    Math.ceil(timestamp),
+  )
+  for (const retryAfter of [-1, Number.MAX_SAFE_INTEGER + 1]) {
+    await expect(
+      t.mutation(internal.igAccounts.setStateInternal, {
+        id: account._id,
+        status: 'assigned',
+        retryAfter,
+      }),
+    ).rejects.toThrow('Invalid login retry time')
+  }
+  await t.mutation(internal.igAccounts.setStateInternal, { id: account._id, status: 'assigned' })
+  expect(
+    (await t.query(internal.igAccounts.byIdInternal, { id: account._id }))?.retryAfter,
+  ).toBeUndefined()
+  for (const startedAt of [0, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    await expect(
+      t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+        profileId: profile._id,
+        modelId: list._id,
+        startedAt,
+      }),
+    ).rejects.toThrow('Invalid setup start time')
+  }
+  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+    profileId: profile._id,
+    modelId: list._id,
+    startedAt: timestamp,
+  })
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0].startedAt).toBe(
+    Math.ceil(timestamp),
+  )
+})
+
 test('encrypted IG credentials are deduplicated, assigned, and released with the profile', async () => {
   const t = createConvexTest()
   const encrypted = { usernameHash: 'a'.repeat(64), ciphertext: 'v1.encrypted-only' }

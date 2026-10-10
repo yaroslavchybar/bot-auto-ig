@@ -680,7 +680,7 @@ impl Accounts {
             let mut rejected = 0;
             let mut seen = std::collections::HashSet::new();
             for proxy in proxies.as_array().into_iter().flatten() {
-                if proxy["country"]!=country || proxy["loginCooldownUntil"].as_u64().unwrap_or(0)>api::now_ms() { continue; }
+                if proxy["country"]!=country || api::timestamp_ms(&proxy["loginCooldownUntil"]).unwrap_or(0)>api::now_ms() { continue; }
                 let Ok(exit) = self.proxies.exit(profiles::text(proxy,"proxy"),false).await else { continue; };
                 let ip = profiles::text(&exit,"ip").to_owned();
                 if exit["country"]!=country || blocked.as_array().into_iter().flatten().any(|v| v["ip"]==ip) || !seen.insert(ip.clone()) { continue; }
@@ -841,7 +841,7 @@ impl Accounts {
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter_map(|r| r["retryAfter"].as_u64())
+                .filter_map(|r| api::timestamp_ms(&r["retryAfter"]))
                 .min()
                 .unwrap_or(now + 900_000)
                 .max(now + 1000);
@@ -850,7 +850,7 @@ impl Accounts {
                 _=tokio::time::sleep(Duration::from_millis(at-now)) => {}
             }
             for row in rows.as_array().into_iter().flatten() {
-                if row["retryAfter"].as_u64().unwrap_or(0) <= api::now_ms() {
+                if api::timestamp_ms(&row["retryAfter"]).unwrap_or(0) <= api::now_ms() {
                     self.queue(profiles::text(row, "profileId").into()).await;
                 }
             }

@@ -133,7 +133,7 @@ impl Accounts {
                 }
             };
             if account["browserLoggedInAt"].is_number() || account["status"] == "connected" {
-                self.store("modelSetupEnroll",json!({"profileId":id,"modelId":model,"startedAt":account["browserLoggedInAt"].as_u64().unwrap_or(api::now_ms())})).await?;
+                self.store("modelSetupEnroll",json!({"profileId":id,"modelId":model,"startedAt":api::timestamp_ms(&account["browserLoggedInAt"]).unwrap_or(api::now_ms())})).await?;
             }
         }
         Ok(())
@@ -219,7 +219,7 @@ impl Accounts {
             .flatten()
             .any(|s| s["profileId"] == id && s["modelId"] == model_id)
         {
-            self.store("modelSetupEnroll",json!({"profileId":id,"modelId":model_id,"startedAt":account["browserLoggedInAt"].as_u64().unwrap_or(api::now_ms())})).await?;
+            self.store("modelSetupEnroll",json!({"profileId":id,"modelId":model_id,"startedAt":api::timestamp_ms(&account["browserLoggedInAt"]).unwrap_or(api::now_ms())})).await?;
             snapshot = self.store("modelSetupList", json!({})).await?;
         }
         let Some(state) = snapshot
@@ -234,7 +234,7 @@ impl Accounts {
             return Ok(());
         }
         let today = day(
-            state["startedAt"].as_u64().unwrap_or(api::now_ms()),
+            api::timestamp_ms(&state["startedAt"]).unwrap_or(api::now_ms()),
             api::now_ms(),
         );
         if today < 3 {
@@ -242,7 +242,7 @@ impl Accounts {
         }
         if account["status"] != "connected" {
             if account["browserLoggedInAt"].is_null()
-                || account["retryAfter"].as_u64().unwrap_or(0) > api::now_ms()
+                || api::timestamp_ms(&account["retryAfter"]).unwrap_or(0) > api::now_ms()
             {
                 return Ok(());
             }
@@ -281,7 +281,7 @@ impl Accounts {
                         .is_some_and(|v| v.iter().any(|v| v == model_id))
             })
             .collect();
-        members.sort_by_key(|p| p["createdAt"].as_u64().unwrap_or(0));
+        members.sort_by_key(|p| api::timestamp_ms(&p["createdAt"]).unwrap_or(0));
         let Some(index) = members.iter().position(|p| p["id"] == id) else {
             return Ok(());
         };
@@ -577,7 +577,7 @@ impl Accounts {
             || state["postSourceIds"].as_array().map_or(0, Vec::len)
                 >= state["postTarget"].as_u64().unwrap_or(9) as usize
             || day(
-                state["startedAt"].as_u64().unwrap_or(api::now_ms()),
+                api::timestamp_ms(&state["startedAt"]).unwrap_or(api::now_ms()),
                 api::now_ms(),
             ) < 4
             || state["avatarDone"] != true

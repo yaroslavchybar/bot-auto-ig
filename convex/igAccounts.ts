@@ -167,6 +167,8 @@ export const modelSetupListInternal = internalQuery({
 export const modelSetupEnrollInternal = internalMutation({
   args: { profileId: v.id('profiles'), modelId: v.id('lists'), startedAt: v.number() },
   handler: async (ctx, { profileId, modelId, startedAt }) => {
+    if (startedAt < 1 || !Number.isSafeInteger(Math.ceil(startedAt)))
+      throw new DomainError('VALIDATION', 'Invalid setup start time')
     const profile = await ctx.db.get(profileId)
     if (!profile?.listIds?.includes(modelId) || !(await ctx.db.get(modelId)))
       throw new DomainError('VALIDATION', 'Profile is not assigned to this model')
@@ -176,7 +178,14 @@ export const modelSetupEnrollInternal = internalMutation({
       .first()
     if (existing?.modelId === modelId) return existing
     const postTarget = randomInRange(warmupPostRange(await modelRoutine(ctx, modelId)))
-    const progress = { profileId, modelId, startedAt, postTarget, postSourceIds: [], postDates: [] }
+    const progress = {
+      profileId,
+      modelId,
+      startedAt: Math.ceil(startedAt),
+      postTarget,
+      postSourceIds: [],
+      postDates: [],
+    }
     await ctx.db.patch(profileId, { outreachReady: false })
     if (existing) {
       await ctx.db.replace(existing._id, progress)
@@ -479,6 +488,11 @@ export const setStateInternal = internalMutation({
     retryAfter: v.optional(v.number()),
   },
   handler: async (ctx, { id, status, error, retryAfter }) => {
+    if (retryAfter !== undefined) {
+      if (retryAfter < 0 || !Number.isSafeInteger(Math.ceil(retryAfter)))
+        throw new DomainError('VALIDATION', 'Invalid login retry time')
+      retryAfter = Math.ceil(retryAfter)
+    }
     const account = await ctx.db.get(id)
     if (!account) throw new DomainError('NOT_FOUND', 'Credential not found')
     if (status === 'available')
