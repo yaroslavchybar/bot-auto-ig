@@ -24,16 +24,26 @@ type ProtectedLayoutShellProps = {
   children: ReactNode
 }
 
+// Pages that move their toolbar into the app header on desktop. Each page portals into its slot id.
+const PAGE_HEADER_SLOT_IDS: Partial<Record<string, string>> = {
+  '/profiles': 'profiles-header-slot',
+  '/ig-accounts': 'ig-accounts-header-slot',
+  '/proxies': 'proxies-header-slot',
+  '/scraper': 'scraper-header-slot',
+  '/automations': 'automations-header-slot',
+}
+
 function readSidebarDefaultOpen() {
   if (typeof document === 'undefined') return true
   return parseSidebarOpen(document.cookie)
 }
 
 export function ProtectedLayoutShell(props: ProtectedLayoutShellProps) {
-  const vncActive = props.pathname === '/vnc' || props.pathname.startsWith('/vnc/session/')
+  const pathname = props.pathname.replace(/\/+$/, '') || '/'
+  const vncActive = pathname === '/vnc' || pathname.startsWith('/vnc/session/')
   return (
     <VncSessionsProvider enabled={vncActive}>
-      <LayoutShell {...props} />
+      <LayoutShell {...props} pathname={pathname} />
     </VncSessionsProvider>
   )
 }
@@ -44,6 +54,7 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   const showVncCount = pathname === '/vnc'
   const showScraperTabs = pathname === '/scraper'
   const showProxyTabs = pathname === '/proxies'
+  const pageHeaderSlotId = PAGE_HEADER_SLOT_IDS[pathname]
   const showChatSlot = pathname === '/chat'
 
   if (appChrome === 'immersive') {
@@ -87,6 +98,12 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
             ) : null}
             {showScraperTabs ? <ScraperHeaderTabs /> : null}
             {showProxyTabs ? <ProxyHeaderTabs /> : null}
+            {pageHeaderSlotId ? (
+              <div
+                id={pageHeaderSlotId}
+                className="hidden min-w-0 flex-1 items-center justify-end md:flex"
+              />
+            ) : null}
             <div className="ml-auto flex items-center gap-2 px-4">
               <ThemeToggle />
               <UserMenu />
@@ -101,7 +118,7 @@ function LayoutShell({ routeMeta, pathname, children }: ProtectedLayoutShellProp
   )
 }
 
-// Center tab switch for the Scraper page (Sources / Scrapers / Leads).
+// Tab switch beside the Scraper title (Sources / Scrapers / Leads).
 // State lives in the URL (?tab=...) so the header and page stay in sync.
 function ScraperHeaderTabs() {
   const { search } = useLocation()
@@ -114,10 +131,7 @@ function ScraperHeaderTabs() {
   }
 
   return (
-    <nav
-      aria-label="Scraper sections"
-      className="hidden min-w-0 flex-1 items-center justify-center md:flex"
-    >
+    <nav aria-label="Scraper sections" className="hidden shrink-0 items-center md:flex">
       <div className="flex items-center gap-1 rounded-full button-toolbar-group p-1">
         {SCRAPER_TABS.map((tab) => (
           <button
@@ -150,10 +164,7 @@ function ProxyHeaderTabs() {
   }
 
   return (
-    <nav
-      aria-label="Proxy sections"
-      className="hidden min-w-0 flex-1 items-center justify-center md:flex"
-    >
+    <nav aria-label="Proxy sections" className="hidden shrink-0 items-center md:flex">
       <div className="flex items-center gap-1 rounded-full button-toolbar-group p-1">
         {PROXY_TABS.map((tab) => (
           <button

@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { useNow } from '@/hooks/use-now'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import { toast } from 'sonner'
@@ -65,7 +67,7 @@ export function ScraperPage() {
         <ScraperToolbar tab={tab} onTabChange={setTab} />
 
         <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-          <div className="mx-auto max-w-[2000px] space-y-4">
+          <div className="space-y-4">
             {tab === 'sources' && <SourcesTab />}
             {tab === 'accounts' && <AccountsView />}
             {tab === 'saved' && <SavedView />}
@@ -88,8 +90,32 @@ function ScraperToolbar({
   const { search } = useLocation()
   const listOpen = tab === 'sources' && new URLSearchParams(search).get('listId')
   const showFiltersRow = (tab === 'sources' && !listOpen) || tab === 'accounts' || tab === 'saved'
+  const sourceOverview = tab === 'sources' && !listOpen
+  // Desktop: Sources and Scrapers controls share the app header. Mobile: they stay below the tabs.
+  const headerSlot = useHeaderToolbarSlot('scraper-header-slot', tab === 'accounts' ? 800 : 360)
+  const filtersInHeader = Boolean(headerSlot) && (sourceOverview || tab === 'accounts')
+  const action =
+    tab === 'sources' && !listOpen ? (
+      <NewListButton />
+    ) : tab === 'saved' ? (
+      <RetryEnrichmentButton />
+    ) : null
   return (
-    <div className="relative z-10 flex-none space-y-2 px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+    <div
+      className={cn(
+        'relative z-10 flex-none space-y-2 px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3',
+        (filtersInHeader || !showFiltersRow) && 'md:hidden',
+      )}
+    >
+      {(action || filtersInHeader) && headerSlot
+        ? createPortal(
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+              {filtersInHeader && (sourceOverview ? <ListsFilters /> : <AccountsFilters />)}
+              {action && <div className="shrink-0">{action}</div>}
+            </div>,
+            headerSlot,
+          )
+        : null}
       {/* Header tabs live in the app header on desktop; show a local switch on mobile. */}
       <div className="flex items-center gap-1 rounded-full button-toolbar-group p-1 md:hidden">
         {SCRAPER_TABS.map((t) => (
@@ -108,17 +134,14 @@ function ScraperToolbar({
         ))}
       </div>
 
-      {showFiltersRow && (
+      {showFiltersRow && !filtersInHeader && (
         <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="flex flex-grow items-center gap-2">
+          <div className="flex min-w-0 flex-grow flex-wrap items-center gap-2">
             {tab === 'sources' && !listOpen && <ListsFilters />}
             {tab === 'accounts' && <AccountsFilters />}
             {tab === 'saved' && <SavedFilters />}
           </div>
-          <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
-            {tab === 'sources' && !listOpen && <NewListButton />}
-            {tab === 'saved' && <RetryEnrichmentButton />}
-          </div>
+          {action && !headerSlot && <div className="flex shrink-0 gap-2">{action}</div>}
         </div>
       )}
     </div>
@@ -229,7 +252,7 @@ function SearchBox({
   label: string
 }) {
   return (
-    <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
+    <div className="relative min-w-40 flex-1 sm:w-[280px] sm:flex-initial">
       <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
       <Input
         aria-label={label}
@@ -452,7 +475,7 @@ function AccountsView() {
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
+        <div className="-mx-4 overflow-hidden border border-line-soft bg-panel-subtle shadow-xs md:-mx-6">
           <Table>
             <TableHeader>
               <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
@@ -844,7 +867,7 @@ function ListsTable() {
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
+        <div className="-mx-4 overflow-hidden border border-line-soft bg-panel-subtle shadow-xs md:-mx-6">
           <Table>
             <TableHeader>
               <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">

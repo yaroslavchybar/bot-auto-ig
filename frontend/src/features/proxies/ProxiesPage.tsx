@@ -1,4 +1,6 @@
+import { createPortal } from 'react-dom'
 import { TableCard } from '@/components/shared/TablePagination'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { CheckCircle2, CircleAlert, Plus, Search, Upload } from 'lucide-react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { Button } from '@/components/ui/button'
@@ -32,6 +34,9 @@ export function ProxiesPage() {
     if (next !== tab) navigate(`/proxies?tab=${next}`)
   }
   const state = useProxiesPage(tab === 'proxies')
+  // Desktop: toolbar controls share the app header. Mobile: they stay above the table.
+  const headerSlot = useHeaderToolbarSlot('proxies-header-slot', 480)
+  const toolbarInHeader = Boolean(headerSlot)
   const importMany = useMutation(api.proxies.importMany)
   const [importing, setImporting] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -41,6 +46,12 @@ export function ProxiesPage() {
   const [importCountry, setImportCountry] = useState('')
   const [importNotice, setImportNotice] = useState('')
   const [importError, setImportError] = useState('')
+
+  function openImport() {
+    setImportFile(null)
+    setImportError('')
+    setImportOpen(true)
+  }
 
   async function handleImport() {
     if (!importFile || !importCountry || importing) {
@@ -67,9 +78,41 @@ export function ProxiesPage() {
     }
   }
 
+  const controls = (
+    <>
+      <div className="relative min-w-40 flex-1 sm:w-[280px] sm:flex-initial">
+        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
+        <Input
+          value={state.searchQuery}
+          onChange={(event) => state.setSearchQuery(event.target.value)}
+          aria-label="Search proxies"
+          placeholder="Search..."
+          className="h-8 rounded-md border brand-focus border-line bg-field pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
+        />
+      </div>
+      <ProxyActions
+        importing={importing}
+        addDisabled={state.loading || state.saving}
+        onImport={openImport}
+        onAdd={state.handleCreate}
+      />
+    </>
+  )
+
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
-      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
+      {tab === 'proxies' && toolbarInHeader && headerSlot
+        ? createPortal(
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-3">{controls}</div>,
+            headerSlot,
+          )
+        : null}
+      <div
+        className={cn(
+          'relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3',
+          (toolbarInHeader || tab !== 'proxies') && 'md:hidden',
+        )}
+      >
         <div className="mb-2 flex items-center gap-1 rounded-full button-toolbar-group p-1 md:hidden">
           {PROXY_TABS.map((item) => (
             <button
@@ -86,42 +129,9 @@ export function ProxiesPage() {
             </button>
           ))}
         </div>
-        {tab === 'proxies' && (
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-            <div className="flex flex-grow items-center gap-2">
-              <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
-                <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
-                <Input
-                  value={state.searchQuery}
-                  onChange={(event) => state.setSearchQuery(event.target.value)}
-                  placeholder="Search..."
-                  className="h-8 rounded-md border brand-focus border-line bg-field pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
-                />
-              </div>
-            </div>
-            <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={importing}
-                className="h-8 button-panel font-medium"
-                onClick={() => {
-                  setImportFile(null)
-                  setImportError('')
-                  setImportOpen(true)
-                }}
-              >
-                <Upload className="h-3.5 w-3.5" /> Import TXT
-              </Button>
-              <Button
-                size="sm"
-                onClick={state.handleCreate}
-                disabled={state.loading || state.saving}
-                className="h-8 brand-button font-medium"
-              >
-                <Plus className="mr-2 h-3.5 w-3.5" /> Add Proxy
-              </Button>
-            </div>
+        {tab === 'proxies' && !toolbarInHeader && (
+          <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
+            {controls}
           </div>
         )}
       </div>
@@ -242,12 +252,12 @@ export function ProxiesPage() {
 
       <div
         className={cn(
-          'relative z-10 flex min-h-0 flex-1 flex-col px-4 pt-0 pb-4 md:px-6 md:pb-6',
-          tab === 'proxies' ? '' : 'overflow-auto',
+          'relative z-10 flex min-h-0 flex-1 flex-col px-4 md:px-6',
+          tab === 'proxies' ? '' : 'overflow-auto pb-4 md:pb-6',
         )}
       >
-        <div className="mx-auto flex min-h-0 w-full max-w-[2000px] flex-1 flex-col">
-          {tab === 'proxies' ? (
+        {tab === 'proxies' ? (
+          <div className="-mx-4 flex min-h-0 flex-1 flex-col md:-mx-6">
             <TableCard
               pagination={{
                 ...state.pagination,
@@ -263,10 +273,12 @@ export function ProxiesPage() {
                 onDelete={state.handleDeleteClick}
               />
             </TableCard>
-          ) : (
+          </div>
+        ) : (
+          <div className="mx-auto w-full max-w-[2000px]">
             <ProxyBlacklist />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={state.isCreateOpen} onOpenChange={state.setIsCreateOpen}>
@@ -322,6 +334,43 @@ export function ProxiesPage() {
           onCancel={() => state.setDeleteProxyId(null)}
         />
       ) : null}
+    </div>
+  )
+}
+
+/* Import and Add buttons. Shown in the app header on desktop and above the table on mobile. */
+function ProxyActions({
+  className,
+  importing,
+  addDisabled,
+  onImport,
+  onAdd,
+}: {
+  className?: string
+  importing: boolean
+  addDisabled: boolean
+  onImport: () => void
+  onAdd: () => void
+}) {
+  return (
+    <div className={cn('flex shrink-0 gap-2', className)}>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={importing}
+        className="h-8 button-panel font-medium"
+        onClick={onImport}
+      >
+        <Upload className="h-3.5 w-3.5" /> Import TXT
+      </Button>
+      <Button
+        size="sm"
+        onClick={onAdd}
+        disabled={addDisabled}
+        className="h-8 brand-button font-medium"
+      >
+        <Plus className="mr-2 h-3.5 w-3.5" /> Add Proxy
+      </Button>
     </div>
   )
 }

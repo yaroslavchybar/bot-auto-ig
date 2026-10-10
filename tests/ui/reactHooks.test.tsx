@@ -1,7 +1,8 @@
 import { act, StrictMode } from 'react'
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { useNow } from '@/hooks/use-now'
-import { useHeaderSlot } from '@/features/chat/hooks/useHeaderSlot'
+import { useHeaderSlot, useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
+import { createPortal } from 'react-dom'
 import { useDocumentVisibility } from '@/hooks/use-document-visibility'
 import { mount } from './mount'
 
@@ -13,6 +14,7 @@ afterEach(async () => {
   document.body.replaceChildren()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 test('visibility consumers share one browser listener and release it on unmount', async () => {
@@ -138,4 +140,45 @@ test('header subscription tracks slots appearing, changing identity, and disappe
     slot.remove()
   })
   expect(view.container.textContent).toBe('missing')
+})
+
+test('toolbar moves once between the header and fallback as available space changes', async () => {
+  let resized = () => {}
+  const disconnect = vi.fn()
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        resized = callback
+      }
+      observe() {}
+      disconnect = disconnect
+    },
+  )
+  const slot = document.createElement('div')
+  slot.id = 'toolbar-slot'
+  let width = 900
+  Object.defineProperty(slot, 'clientWidth', { get: () => width })
+  document.body.append(slot)
+  function Toolbar() {
+    const header = useHeaderToolbarSlot('toolbar-slot', 800)
+    const controls = <button>New list</button>
+    return header ? createPortal(controls, header) : <section>{controls}</section>
+  }
+  view = mount()
+  await view.render(<Toolbar />)
+  expect(slot.querySelector('button')?.textContent).toBe('New list')
+  expect(document.querySelectorAll('button')).toHaveLength(1)
+  for (const nextWidth of [500, 0, 800]) {
+    await act(async () => {
+      width = nextWidth
+      resized()
+    })
+    expect(document.querySelectorAll('button')).toHaveLength(1)
+    expect(Boolean(slot.querySelector('button'))).toBe(nextWidth >= 800)
+    expect(Boolean(view.container.querySelector('button'))).toBe(nextWidth < 800)
+  }
+  await view.unmount()
+  view = undefined
+  expect(disconnect).toHaveBeenCalledOnce()
 })

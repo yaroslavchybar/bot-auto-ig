@@ -99,7 +99,7 @@ export function ProxyBlacklist() {
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
+        <div className="overflow-hidden border border-line-soft bg-panel-subtle shadow-xs">
           <Table>
             <TableHeader>
               <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">

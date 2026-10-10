@@ -12,7 +12,7 @@ import { ChatListFilter } from './components/ChatListFilter'
 import { ConversationView } from './components/ConversationView'
 import { ThreadList } from './components/ThreadList'
 import { useChatPage } from './hooks/useChatPage'
-import { useHeaderSlot } from './hooks/useHeaderSlot'
+import { useHeaderSlot } from '@/components/layout/useHeaderSlot'
 
 export function ChatPage() {
   const chat = useChatPage()

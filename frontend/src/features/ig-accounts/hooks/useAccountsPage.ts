@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
-import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
-import {
-  DEFAULT_PAGE_SIZE,
-  type CursorPage,
-  type PageSize,
-} from '../../../../../server/shared/pagination'
+import { useCursorPage, useDebouncedSearch, usePageSize } from '@/hooks/use-cursor-page'
+import { type CursorPage } from '../../../../../server/shared/pagination'
 import type { Account } from '../components/AccountsList'
 
 // Changing the page size resets paging to page 1 because it is part of the cursor key.
 export function useAccountsPage(value: string, profileId?: string, enabled = true) {
   const search = useDebouncedSearch(value)
-  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE)
+  const [pageSize, setPageSize] = usePageSize('ig-accounts')
   const position = useCursorPage(JSON.stringify([search, profileId, pageSize]))
   const [revision, setRevision] = useState(0)
   const params = new URLSearchParams({ search, pageSize: String(pageSize) })

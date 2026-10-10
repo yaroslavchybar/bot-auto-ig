@@ -47,7 +47,7 @@ export function LeadsList({ leads, loading, hasActiveFilter }: { leads: Lead[]; 
     <Username lead={lead} />
     <dl className="mt-3 space-y-2 text-xs">{details(lead).map(([label, value]) => <div key={label} className="flex justify-between gap-3"><dt className="text-subtle-copy">{label}</dt><dd className="truncate">{value}</dd></div>)}</dl>
   </div>)}</div>
-  return <div className="bg-panel-subtle border-line overflow-hidden rounded-2xl border"><Table>
+  return <div className="bg-panel-subtle border-line -mx-4 overflow-hidden border md:-mx-6"><Table>
     <TableHeader><TableRow>{['Username', 'ID', 'Full name', 'Type', 'Picture', 'DM sent', 'Followed', 'Follow date', 'Sender', 'Saved'].map(label => <TableHead key={label}>{label}</TableHead>)}</TableRow></TableHeader>
     <TableBody>{leads.map(lead => <TableRow key={lead._id}><TableCell><Username lead={lead} /></TableCell>{details(lead).map(([label, value]) => <TableCell key={label} title={value} className="max-w-56 truncate text-xs whitespace-nowrap">{value}</TableCell>)}</TableRow>)}</TableBody>
   </Table></div>

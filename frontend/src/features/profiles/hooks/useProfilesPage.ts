@@ -3,8 +3,7 @@ import { useConvex, useMutation, useQuery } from 'convex/react'
 import { apiFetch } from '@/lib/api'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
-import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
-import { DEFAULT_PAGE_SIZE, type PageSize } from '../../../../../server/shared/pagination'
+import { useCursorPage, useDebouncedSearch, usePageSize } from '@/hooks/use-cursor-page'
 import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
 import { getCookieUpdate } from '../utils/cookieJson'
@@ -218,7 +217,7 @@ export function useProfilesPage() {
   const convex = useConvex()
   const [searchQuery, setSearchQuery] = useState('')
   const search = useDebouncedSearch(searchQuery)
-  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE)
+  const [pageSize, setPageSize] = usePageSize('profiles')
   const pagination = useCursorPage(JSON.stringify([search, pageSize]))
   const args = { search, cursor: pagination.cursor, pageSize }
   const data = useQuery(api.profiles.queries.listPage, args)

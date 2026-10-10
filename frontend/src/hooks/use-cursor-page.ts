@@ -1,4 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { DEFAULT_PAGE_SIZE, isPageSize, type PageSize } from '../../../server/shared/pagination'
+
+// Read before the first query so a refresh does not fetch the default page size first.
+export function usePageSize(table: string) {
+  const storageKey = `table-page-size:${table}`
+  const [pageSize, setPageSize] = useState<PageSize>(() => {
+    try {
+      const saved = Number(localStorage.getItem(storageKey))
+      return isPageSize(saved) ? saved : DEFAULT_PAGE_SIZE
+    } catch {
+      return DEFAULT_PAGE_SIZE
+    }
+  })
+  const changePageSize = useCallback(
+    (value: PageSize) => {
+      setPageSize(value)
+      try {
+        localStorage.setItem(storageKey, String(value))
+      } catch {
+        // Keep the table usable when browser storage is unavailable.
+      }
+    },
+    [storageKey],
+  )
+  return [pageSize, changePageSize] as const
+}
 
 export function useDebouncedSearch(value: string) {
   const normalized = value.trim().toLowerCase()

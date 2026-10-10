@@ -18,7 +18,7 @@ const Table = ({
 )
 Table.displayName = 'Table'
 
-// `sticky` keeps the header visible while the table body scrolls inside its container.
+// Sticky headers need an opaque background to cover rows scrolling underneath.
 const TableHeader = ({
   ref,
   className,
@@ -32,7 +32,7 @@ const TableHeader = ({
     ref={ref}
     className={cn(
       '[&_tr]:border-b',
-      sticky && '[&_th]:bg-panel-subtle [&_th]:sticky [&_th]:top-0 [&_th]:z-10',
+      sticky && '[&_th]:bg-table-header [&_th]:sticky [&_th]:top-0 [&_th]:z-10',
       className,
     )}
     {...props}

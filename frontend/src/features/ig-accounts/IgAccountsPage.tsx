@@ -1,4 +1,6 @@
+import { createPortal } from 'react-dom'
 import { TablePagination, TableCard } from '@/components/shared/TablePagination'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { useAccountsPage } from './hooks/useAccountsPage'
 import { useState } from 'react'
 import { CheckCircle2, CircleAlert, Plus, Search, Upload } from 'lucide-react'
@@ -48,8 +50,15 @@ export function IgAccountsPage() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  // Desktop: search and Import move into the app header. Mobile: they stay above the table.
+  const headerSlot = useHeaderToolbarSlot('ig-accounts-header-slot', 300)
 
   const isConnectOpen = Boolean(profileId)
+
+  function openImport() {
+    setError('')
+    setIsImportOpen(true)
+  }
 
   async function importText(value: string, opts?: { closeOnSuccess?: boolean }) {
     if (!value.trim() || importing) return
@@ -114,37 +123,31 @@ export function IgAccountsPage() {
 
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
-      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-          <div className="flex flex-grow items-center gap-2">
-            <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
-              <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search accounts..."
-                className="h-8 rounded-md brand-focus border-line bg-field pr-8 pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
-              />
-            </div>
-          </div>
-          <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
-            <Button
-              size="sm"
-              onClick={() => {
-                setError('')
-                setIsImportOpen(true)
-              }}
-              disabled={loading}
-              className="h-8 brand-button font-medium"
-            >
-              <Plus className="mr-2 h-3.5 w-3.5" /> Import
-            </Button>
-          </div>
-        </div>
-      </div>
+      {headerSlot
+        ? createPortal(
+            <AccountsToolbar
+              search={search}
+              onSearchChange={setSearch}
+              loading={loading}
+              onImport={openImport}
+            />,
+            headerSlot,
+          )
+        : null}
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-4 pt-0 pb-4 md:px-6 md:pb-6">
-        <div className="mx-auto flex min-h-0 w-full max-w-[2000px] flex-1 flex-col gap-4">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+        {!headerSlot && (
+          <div className="px-4 pt-3 pb-3">
+            <AccountsToolbar
+              search={search}
+              onSearchChange={setSearch}
+              loading={loading}
+              onImport={openImport}
+            />
+          </div>
+        )}
+
+        <div className="flex flex-none flex-col gap-3 px-4 pt-3 empty:hidden md:px-6">
           {(error || loadError) && (
             <div
               role="alert"
@@ -163,23 +166,23 @@ export function IgAccountsPage() {
               <span className="min-w-0 flex-1 break-words">{notice}</span>
             </div>
           )}
-
-          <TableCard pagination={{ ...pagination, pageSize, onPageSizeChange: setPageSize }}>
-            <AccountsList
-              accounts={filteredAccounts}
-              loading={loading}
-              onSelect={setDetailsAccount}
-              onReconnect={(account) => void reconnect(account)}
-              reconnectingId={reconnectingId}
-              emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
-              emptyDescription={
-                search.trim()
-                  ? 'Try a different search term or clear the filter.'
-                  : 'Import credentials to get started.'
-              }
-            />
-          </TableCard>
         </div>
+
+        <TableCard pagination={{ ...pagination, pageSize, onPageSizeChange: setPageSize }}>
+          <AccountsList
+            accounts={filteredAccounts}
+            loading={loading}
+            onSelect={setDetailsAccount}
+            onReconnect={(account) => void reconnect(account)}
+            reconnectingId={reconnectingId}
+            emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
+            emptyDescription={
+              search.trim()
+                ? 'Try a different search term or clear the filter.'
+                : 'Import credentials to get started.'
+            }
+          />
+        </TableCard>
       </div>
 
       <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
@@ -346,6 +349,42 @@ export function IgAccountsPage() {
       </Dialog>
 
       <AccountDetailsDialog account={detailsAccount} onClose={() => setDetailsAccount(null)} />
+    </div>
+  )
+}
+
+/* ── Search + Import (header on desktop, above table on mobile) ── */
+
+function AccountsToolbar({
+  search,
+  onSearchChange,
+  loading,
+  onImport,
+}: {
+  search: string
+  onSearchChange: (value: string) => void
+  loading: boolean
+  onImport: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative min-w-0 flex-1 sm:max-w-[280px]">
+        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
+        <Input
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search accounts..."
+          className="h-8 rounded-md brand-focus border-line bg-field pr-8 pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
+        />
+      </div>
+      <Button
+        size="sm"
+        onClick={onImport}
+        disabled={loading}
+        className="h-8 shrink-0 brand-button font-medium"
+      >
+        <Plus className="mr-2 h-3.5 w-3.5" /> Import
+      </Button>
     </div>
   )
 }

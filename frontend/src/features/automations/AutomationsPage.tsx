@@ -1,9 +1,11 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQuery } from 'convex/react'
 import { toast } from 'sonner'
 import { Plus } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { Button } from '@/components/ui/button'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { AutomationsList } from './components/AutomationsList'
@@ -18,6 +20,20 @@ export function AutomationsPage() {
   const toggle = useMutation(api.automations.mutations.setActive)
   const duplicate = useMutation(api.automations.mutations.duplicate)
   const remove = useMutation(api.automations.mutations.remove)
+  // Desktop: New Automation moves into the app header. Mobile: it stays above the list.
+  const headerSlot = useHeaderToolbarSlot('automations-header-slot', 180)
+
+  const newAutomationButton = (
+    <Button
+      size="icon"
+      onClick={() => setEditing('new')}
+      disabled={saving}
+      className="h-8 w-auto brand-button px-3.5 text-sm font-medium"
+    >
+      <Plus className="mr-2 h-4 w-4" />
+      New Automation
+    </Button>
+  )
 
   const selected =
     editing !== null && editing !== 'new' ? (rows?.find((a) => a._id === editing) ?? null) : null
@@ -52,33 +68,18 @@ export function AutomationsPage() {
 
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
-      <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-end">
-          <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
-            <Button
-              size="icon"
-              onClick={() => setEditing('new')}
-              disabled={saving}
-              className="h-8 w-auto brand-button px-3.5 text-sm font-medium"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              New Automation
-            </Button>
-          </div>
-        </div>
-      </div>
+      {headerSlot ? createPortal(newAutomationButton, headerSlot) : null}
 
       <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-        <div className="mx-auto max-w-[2000px]">
-          <AutomationsList
-            automations={rows ?? []}
-            loading={rows === undefined}
-            onToggleActive={handleToggleActive}
-            onManage={(a) => setEditing(a._id)}
-            onDuplicate={handleDuplicate}
-            onDelete={setDeleteTarget}
-          />
-        </div>
+        {!headerSlot && <div className="flex justify-end pt-3 pb-3">{newAutomationButton}</div>}
+        <AutomationsList
+          automations={rows ?? []}
+          loading={rows === undefined}
+          onToggleActive={handleToggleActive}
+          onManage={(a) => setEditing(a._id)}
+          onDuplicate={handleDuplicate}
+          onDelete={setDeleteTarget}
+        />
       </div>
 
       {(editing === 'new' || selected) && (

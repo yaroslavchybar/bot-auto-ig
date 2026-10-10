@@ -298,7 +298,7 @@ export function AutomationsList({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
+    <div className="-mx-4 overflow-hidden border border-line-soft bg-panel-subtle shadow-xs md:-mx-6">
       <Table>
         <TableHeader>
           <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">

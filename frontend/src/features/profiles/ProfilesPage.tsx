@@ -1,4 +1,6 @@
+import { createPortal } from 'react-dom'
 import { TableCard } from '@/components/shared/TablePagination'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { Plus, Search } from 'lucide-react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileForm } from './components/ProfileForm'
@@ -12,16 +14,12 @@ import { useProfilesPage } from './hooks/useProfilesPage'
 
 export function ProfilesPage() {
   const s = useProfilesPage()
+  // Desktop: search and New Profile move into the app header. Mobile: they stay above the table.
+  const headerSlot = useHeaderToolbarSlot('profiles-header-slot', 360)
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
-      <ProfilesHeader
-        searchQuery={s.searchQuery}
-        onSearchChange={s.setSearchQuery}
-        onCreate={s.handleCreate}
-        loading={s.loading}
-        saving={s.saving}
-      />
-      <ProfilesContent s={s} />
+      {headerSlot ? createPortal(<ProfilesToolbar s={s} />, headerSlot) : null}
+      <ProfilesContent s={s} toolbarInHeader={Boolean(headerSlot)} />
       <ProfileFormDialogs
         isCreateOpen={s.isCreateOpen}
         editProfile={s.editProfile}
@@ -45,73 +43,66 @@ export function ProfilesPage() {
   )
 }
 
-function ProfilesContent({ s }: { s: ReturnType<typeof useProfilesPage> }) {
+function ProfilesContent({
+  s,
+  toolbarInHeader,
+}: {
+  s: ReturnType<typeof useProfilesPage>
+  toolbarInHeader: boolean
+}) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-4 pt-0 pb-4 md:px-6 md:pb-6">
-      <div className="mx-auto flex min-h-0 w-full max-w-[2000px] flex-1 flex-col">
-        <TableCard
-          pagination={{ ...s.pagination, pageSize: s.pageSize, onPageSizeChange: s.setPageSize }}
-        >
-          <ProfilesList
-            profiles={s.filteredProfiles}
-            loading={s.loading}
-            onEdit={s.handleEdit}
-            onDelete={s.handleDeleteClick}
-            onToggleStatus={(p) => s.toggleUsing(p)}
-            emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
-            emptyDescription={
-              s.searchQuery.trim()
-                ? 'Try a different search term or clear the filter.'
-                : 'Create a new profile to get started.'
-            }
-          />
-        </TableCard>
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      {!toolbarInHeader && (
+        <div className="px-4 pt-3 pb-3">
+          <ProfilesToolbar s={s} />
+        </div>
+      )}
+      <TableCard
+        pagination={{ ...s.pagination, pageSize: s.pageSize, onPageSizeChange: s.setPageSize }}
+      >
+        <ProfilesList
+          profiles={s.filteredProfiles}
+          loading={s.loading}
+          onEdit={s.handleEdit}
+          onDelete={s.handleDeleteClick}
+          onToggleStatus={(p) => s.toggleUsing(p)}
+          emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
+          emptyDescription={
+            s.searchQuery.trim()
+              ? 'Try a different search term or clear the filter.'
+              : 'Create a new profile to get started.'
+          }
+        />
+      </TableCard>
     </div>
   )
 }
 
-/* ── Header sub-component ── */
+/* ── Search + New Profile (header on desktop, above table on mobile) ── */
 
-function ProfilesHeader({
-  searchQuery,
-  onSearchChange,
-  onCreate,
-  loading,
-  saving,
-}: {
-  searchQuery: string
-  onSearchChange: (value: string) => void
-  onCreate: () => void
-  loading: boolean
-  saving: boolean
-}) {
+type ProfilesState = ReturnType<typeof useProfilesPage>
+
+function ProfilesToolbar({ s }: { s: ProfilesState }) {
   return (
-    <div className="relative z-10 flex-none px-4 pt-2 pb-2 md:px-6 md:pt-3 md:pb-3">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
-        <div className="flex flex-grow items-center gap-2">
-          <div className="relative flex-1 sm:w-[280px] sm:flex-initial">
-            <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
-            <Input
-              value={searchQuery}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search..."
-              className="h-8 rounded-md border brand-focus border-line bg-field pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
-            />
-          </div>
-        </div>
-        <div className="flex shrink-0 gap-2 sm:flex-row md:ml-auto">
-          <Button
-            size="icon"
-            onClick={onCreate}
-            disabled={loading || saving}
-            className="h-8 w-auto brand-button px-3.5 text-sm"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Profile
-          </Button>
-        </div>
+    <div className="flex items-center gap-2">
+      <div className="relative min-w-0 flex-1 sm:max-w-[280px]">
+        <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-copy" />
+        <Input
+          value={s.searchQuery}
+          onChange={(event) => s.setSearchQuery(event.target.value)}
+          placeholder="Search..."
+          className="h-8 rounded-md border brand-focus border-line bg-field pl-9 text-sm leading-5 font-normal text-copy shadow-sm placeholder:text-muted-copy"
+        />
       </div>
+      <Button
+        size="icon"
+        onClick={s.handleCreate}
+        disabled={s.loading || s.saving}
+        className="h-8 w-auto shrink-0 brand-button px-3.5 text-sm"
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        New Profile
+      </Button>
     </div>
   )
 }
