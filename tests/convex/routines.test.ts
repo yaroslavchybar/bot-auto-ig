@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test';
 import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey, validateRoutine } from '../../convex/routinePolicy';
+import { ROUTINE_RETRY_MS } from '../../convex/routineErrors';
 import { createConvexTest, seedList, seedProfile } from './helpers';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -459,6 +460,122 @@ test('session progress preserves fractional stored rest deadlines as integer mil
   await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
   const state = await t.run(ctx => ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique());
   expect(state?.nextRunAt).toBe(Math.ceil(nextRunAt));
+});
+
+test.each([
+  'goto: Timeout 45000ms exceeded.',
+  'Network timeout',
+  'page.goto: net::ERR_PROXY_CONNECTION_FAILED',
+  'page.goto: net::ERR_PROXY_CONNECTION_FAILED at https://www.instagram.com/accounts/login/',
+  'goto: Timeout 45000ms exceeded.\nCall log:\n  - navigating to "https://www.instagram.com/accounts/login/", waiting until "domcontentloaded"',
+  'page.goto: net::ERR_CONNECTION_RESET',
+  'fetch failed',
+])('transient session failure retries after a cooldown: %s', async issue => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-10-10T10:00:00Z'));
+    const { t, args, profile, loggedIn } = await setup();
+    await loggedIn();
+    // A failed browser open must not reuse an expired rest deadline or yesterday's budget.
+    await t.run(ctx => ctx.db.insert('warmupStates', {
+      profileId: profile._id, day: 16, date: '2026-10-08', runsToday: 3,
+      todayMinutes: 25, minutesUsedToday: 25, nextRunAt: Date.now() - 60_000, updatedAt: Date.now() - 60_000,
+    }));
+    const retryAt = Date.now() + ROUTINE_RETRY_MS;
+    await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue });
+    const row = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
+    expect(row.issue).toBeUndefined();
+    expect(row.nextRunAt).toBe(retryAt);
+    expect(await t.query(internal.routines.ready, args)).toBe(false);
+    vi.setSystemTime(retryAt - 1);
+    expect(await t.query(internal.routines.ready, args)).toBe(false);
+    vi.setSystemTime(retryAt);
+    expect(await t.query(internal.routines.ready, args)).toBe(true);
+    expect((await t.run(ctx => ctx.db.get(profile._id)))?.igLoggedIn).toBe(true);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('retry cooldown preserves a longer rest and resets after another failure', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-10-10T10:00:00Z'));
+    const { t, args, profile, loggedIn } = await setup();
+    await loggedIn();
+    const restAt = Date.now() + 60 * 60_000;
+    await t.run(ctx => ctx.db.insert('warmupStates', {
+      profileId: profile._id, day: 1, date: dayKey(), runsToday: 1,
+      todayMinutes: 25, minutesUsedToday: 5, nextRunAt: restAt, updatedAt: Date.now(),
+    }));
+    await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue: 'Network timeout' });
+    expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].nextRunAt).toBe(restAt);
+    vi.setSystemTime(restAt);
+    await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue: 'Network timeout' });
+    expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].nextRunAt).toBe(restAt + ROUTINE_RETRY_MS);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('saved navigation timeouts recover through both HTTP readiness and Rust runtime snapshots', async () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date('2026-10-10T10:00:00Z'));
+    vi.stubGlobal('process', { env: { INTERNAL_API_KEY: 'bridge-secret' } });
+    const { t, args, profile, list, loggedIn } = await setup();
+    await loggedIn();
+    await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
+    const retryAt = Date.now() + ROUTINE_RETRY_MS;
+    await t.run(async ctx => {
+      const state = (await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique())!;
+      await ctx.db.patch(state._id, { issue: 'goto: Timeout 45000ms exceeded.', nextRunAt: Date.now() - 60_000 });
+    });
+    const snapshot = await t.query(api.automations.queries.runtimeSnapshot, {
+      bridgeToken: 'bridge-secret', id: args.automationId, listIds: [String(list._id)],
+    });
+    expect(snapshot?.progress?.[0]).toMatchObject({ nextRunAt: retryAt });
+    expect(snapshot?.progress?.[0].issue).toBeUndefined();
+    expect(await t.query(internal.routines.ready, args)).toBe(false);
+    vi.setSystemTime(retryAt);
+    expect(await t.query(internal.routines.ready, args)).toBe(true);
+    await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false });
+    const saved = await t.run(ctx => ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique());
+    expect(saved?.issue).toBeUndefined();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each([
+  'Login required',
+  'Login required: Network timeout',
+  'Challenge required',
+  'Checkpoint required',
+  'Delivery needs review: Timeout 15000ms exceeded.',
+  'Unexpected application error',
+  'page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://www.instagram.com/',
+  'page.goto: net::ERR_CERT_DATE_INVALID',
+  'page.goto: net::ERR_CERT_COMMON_NAME_INVALID',
+  'page.goto: net::ERR_SSL_PROTOCOL_ERROR',
+])('account, delivery, and unknown issues remain blocked: %s', async issue => {
+  const { t, args, loggedIn } = await setup();
+  await loggedIn();
+  await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue });
+  expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].issue).toBe(issue);
+  expect(await t.query(internal.routines.ready, { ...args, now: Date.now() + 24 * 60 * 60_000 })).toBe(false);
+});
+
+test('session results do not clear or overwrite unconfirmed deliveries', async () => {
+  const { t, args, profile, loggedIn } = await setup();
+  await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
+  for (const issue of ['Network timeout', undefined]) {
+    await t.mutation(internal.routines.recordSession, { ...args, activityCompleted: false, issue });
+    expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0].issue).toContain('Delivery could not be confirmed');
+    expect(await t.query(internal.routines.ready, args)).toBe(false);
+  }
 });
 
 test.each(['Login required', 'Challenge required', 'Checkpoint required', 'Network timeout'])('session issue updates chat eligibility: %s', async issue => {

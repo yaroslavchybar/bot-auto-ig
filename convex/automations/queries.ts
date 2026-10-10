@@ -5,6 +5,7 @@ import type { QueryCtx } from '../_generated/server';
 import { statusValidator, type AutomationStatus } from "./helpers";
 import { requireServerBridgeAuth } from "../serverBridgeAuth";
 import type { Id } from "../_generated/dataModel";
+import { routineRetryState } from '../routineErrors';
 
 function configRevision(routine: unknown, listIds: unknown): string {
 	const input = JSON.stringify({ routine: routine ?? null, listIds: listIds ?? [] });
@@ -153,12 +154,15 @@ async function fetchRuntimeDetails(ctx: QueryCtx, profileIds: string[]) {
         activeRun: Boolean(warmups[index].activeRun),
       } : {}),
 		})),
-		progress: profiles.map((profile: any, index: number) => ({
-			profileId: profile._id,
-			nextRunAt: progresses[index]?.nextRunAt ?? 0,
-      ...(progresses[index]?.paused ? { paused: true } : {}),
-      ...(progresses[index]?.issue ? { issue: progresses[index].issue } : {}),
-		})),
+		progress: profiles.map((profile: any, index: number) => {
+      const state = routineRetryState(progresses[index]);
+      return {
+        profileId: profile._id,
+        nextRunAt: state.nextRunAt,
+        ...(progresses[index]?.paused ? { paused: true } : {}),
+        ...(state.issue ? { issue: state.issue } : {}),
+      };
+    }),
 	};
 }
 

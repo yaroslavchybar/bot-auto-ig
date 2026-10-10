@@ -12,6 +12,7 @@ import { dmAllowance, dayKey, routineLists, randomInRange, unfollowRange, profil
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
 import { setChatCounterEnabled } from './chatCache';
+import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState } from './routineErrors';
 
 const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
   ctx.db
@@ -73,7 +74,8 @@ async function eligibility(
 ) {
   const a = await ctx.db.get(automationId),
     p = await ctx.db.get(profileId),
-    state = await progress(ctx, profileId);
+    savedState = await progress(ctx, profileId);
+  const state = savedState ? { ...savedState, ...routineRetryState(savedState) } : null;
   if (
     !a?.routine ||
     !a.isActive ||
@@ -148,7 +150,8 @@ export const accounts = query({
     );
     return Promise.all(
       profiles.map(async (p) => {
-        const state = await progress(ctx, p._id);
+        const savedState = await progress(ctx, p._id);
+        const state = savedState ? { ...savedState, ...routineRetryState(savedState) } : null;
         const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
         const date = dayKey();
         const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', p._id)).unique();
@@ -256,16 +259,23 @@ export const recordSession = internalMutation({
       args.activityCompleted &&
       !!warmup &&
       (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes;
+    const now = Date.now();
+    const retryable = isRetryableRoutineIssue(args.issue);
+    // A later session result must not erase an uncertain delivery recorded by finishSend.
+    const issue = state.issue && !isRetryableRoutineIssue(state.issue)
+      ? state.issue : retryable ? undefined : args.issue;
     await ctx.db.patch(state._id, {
       activeDays:
         state.activeDays +
         (dailyCompleted && state.lastActivityDate !== date ? 1 : 0),
       ...(dailyCompleted ? { lastActivityDate: date } : {}),
-      ...(args.issue ? { issue: args.issue } : {}),
-      nextRunAt: Math.ceil(warmup?.nextRunAt ?? Date.now() + 60 * 60_000),
-      updatedAt: Date.now(),
+      issue,
+      nextRunAt: Math.ceil(retryable
+        ? Math.max(state.nextRunAt, warmup?.nextRunAt ?? 0, now + ROUTINE_RETRY_MS)
+        : warmup?.nextRunAt ?? now + 60 * 60_000),
+      updatedAt: now,
     });
-    if (args.issue && /login|challenge|checkpoint/i.test(args.issue)) {
+    if (isRoutineLoginIssue(args.issue)) {
       await ctx.db.patch(args.profileId, { igLoggedIn: false });
       await setChatCounterEnabled(ctx, args.profileId, false);
     }
