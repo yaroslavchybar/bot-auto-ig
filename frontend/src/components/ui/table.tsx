@@ -2,24 +2,42 @@ import * as React from 'react'
 
 import { cn } from '@/lib/utils'
 
+// `containerClassName` styles the scroll wrapper, e.g. a flex-1 height inside a fixed-height card.
 const Table = ({
   ref,
   className,
+  containerClassName,
   ...props
-}: React.HTMLAttributes<HTMLTableElement> & { ref?: React.Ref<HTMLTableElement> }) => (
-  <div className="relative w-full overflow-auto">
+}: React.HTMLAttributes<HTMLTableElement> & {
+  ref?: React.Ref<HTMLTableElement>
+  containerClassName?: string
+}) => (
+  <div className={cn('relative w-full overflow-auto', containerClassName)}>
     <table ref={ref} className={cn('w-full caption-bottom text-sm', className)} {...props} />
   </div>
 )
 Table.displayName = 'Table'
 
+// `sticky` keeps the header visible while the table body scrolls inside its container.
 const TableHeader = ({
   ref,
   className,
+  sticky = false,
   ...props
 }: React.HTMLAttributes<HTMLTableSectionElement> & {
   ref?: React.Ref<HTMLTableSectionElement>
-}) => <thead ref={ref} className={cn('[&_tr]:border-b', className)} {...props} />
+  sticky?: boolean
+}) => (
+  <thead
+    ref={ref}
+    className={cn(
+      '[&_tr]:border-b',
+      sticky && '[&_th]:bg-panel-subtle [&_th]:sticky [&_th]:top-0 [&_th]:z-10',
+      className,
+    )}
+    {...props}
+  />
+)
 TableHeader.displayName = 'TableHeader'
 
 const TableBody = ({

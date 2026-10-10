@@ -7,9 +7,11 @@ import type { Doc } from '../_generated/dataModel'
 import {
   scanPage,
   matchesSearch,
+  isPageSize,
   SCAN_BATCH_BYTES,
   type CursorPage,
 } from '../../server/shared/pagination'
+import { DomainError } from '../errors'
 
 export type ProfileListRow = Pick<
   Doc<'profiles'>,
@@ -64,8 +66,13 @@ export const listBatchInternal = internalQuery({
 })
 
 export const listPage = query({
-  args: { search: v.string(), cursor: v.union(v.string(), v.null()) },
-  handler: async (ctx, { search, cursor }): Promise<CursorPage<ProfileListRow>> => {
+  args: {
+    search: v.string(),
+    cursor: v.union(v.string(), v.null()),
+    pageSize: v.number(),
+  },
+  handler: async (ctx, { search, cursor, pageSize }): Promise<CursorPage<ProfileListRow>> => {
+    if (!isPageSize(pageSize)) throw new DomainError('VALIDATION', 'Invalid page size')
     const term = search.trim().toLowerCase()
     return scanPage<ProfileListRow>(
       (next, count) =>
@@ -80,6 +87,7 @@ export const listPage = query({
           row.using ? 'active' : (row.status ?? 'idle'),
         ]),
       cursor,
+      pageSize,
     )
   },
 })

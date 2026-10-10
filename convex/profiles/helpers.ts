@@ -2,6 +2,7 @@ import { DomainError } from '../errors';
 import { DEFAULT_SCRAPER_DAILY_LIMIT } from '../scraperKeys';
 import { clearChatCounter } from '../chatCache'
 import { clearProfileChatArchives } from '../chatArchives'
+import { syncProxyUsage, clearProxyUsage } from '../proxyUsage'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 
 function assertProfileEditable(profile: any) {
@@ -186,7 +187,7 @@ export async function createProfileRow(ctx: any, args: any) {
 /** Insert a profile after its name and proxy capacity have been checked. */
 export async function insertProfileRow(ctx: any, args: any) {
 	const cookiesJsonRaw = typeof args.cookiesJson === "string" ? args.cookiesJson.trim() : "";
-	return ctx.db.insert("profiles", {
+	const id = await ctx.db.insert("profiles", {
 		createdAt: Date.now(),
 		name: args.name,
 		igAccountId: args.igAccountId,
@@ -203,6 +204,8 @@ export async function insertProfileRow(ctx: any, args: any) {
 		listIds: args.listIds ?? [],
 		lastOpenedAt: undefined,
 	});
+	await syncProxyUsage(ctx, { _id: id, name: args.name, proxy: args.proxy, proxyType: args.proxyType });
+	return id;
 }
 
 export async function updateProfileByNameRow(ctx: any, args: any) {
@@ -250,6 +253,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 	}
 	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
     await ctx.db.patch(existing._id, next as any);
+	await syncProxyUsage(ctx, { _id: existing._id, name, proxy: effectiveProxyByName, proxyType: effectiveTypeByName });
 	await ensureProxySaved(
 		ctx,
 		typeof args.proxy === "string" ? args.proxy : existing.proxy,
@@ -298,6 +302,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 	}
 	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
     await ctx.db.patch(args.profileId, next as any);
+	await syncProxyUsage(ctx, { _id: args.profileId, name, proxy: effectiveProxyById, proxyType: effectiveTypeById });
 	await ensureProxySaved(
 		ctx,
 		typeof args.proxy === "string" ? args.proxy : existing.proxy,
@@ -355,6 +360,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
     .first()
   if (setup) await ctx.db.delete(setup._id)
+  await clearProxyUsage(ctx, existing._id)
   await ctx.db.delete(existing._id)
   return true
 }
@@ -390,6 +396,7 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
     .first()
   if (setup) await ctx.db.delete(setup._id)
+  await clearProxyUsage(ctx, profileId)
   await ctx.db.delete(profileId)
   return true
 }

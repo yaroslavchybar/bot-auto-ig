@@ -1,4 +1,16 @@
 export type CursorPage<T> = { page: T[]; continueCursor: string; isDone: boolean }
+
+// Rows per page the table footer offers. Server scans may request any smaller count internally.
+export const PAGE_SIZES = [10, 25, 50, 100] as const
+export type PageSize = (typeof PAGE_SIZES)[number]
+export const DEFAULT_PAGE_SIZE: PageSize = 50
+export const MAX_PAGE_SIZE = 100
+
+/** True when the value is one of the page sizes the footer can request. */
+export function isPageSize(value: number): value is PageSize {
+  return (PAGE_SIZES as readonly number[]).includes(value)
+}
+
 export const SCAN_BATCH_LIMIT = 5
 export const SCAN_BATCH_BYTES = 512 * 1024
 

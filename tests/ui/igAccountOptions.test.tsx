@@ -50,7 +50,7 @@ test('connect options exclude assigned, connected, and invalid credentials, incl
   ).toEqual(['free'])
   expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Next page"]')?.disabled).toBe(false)
   expect(apiFetch).toHaveBeenCalledWith(
-    '/api/ig-accounts/page?search=&profileId=owner',
+    '/api/ig-accounts/page?search=&pageSize=50&profileId=owner',
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   )
 })

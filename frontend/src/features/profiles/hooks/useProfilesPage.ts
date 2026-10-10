@@ -4,6 +4,7 @@ import { apiFetch } from '@/lib/api'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
+import { DEFAULT_PAGE_SIZE, type PageSize } from '../../../../../server/shared/pagination'
 import type { Profile } from '../types'
 import { mapProfileRecord } from '../utils/mapProfile'
 import { getCookieUpdate } from '../utils/cookieJson'
@@ -217,14 +218,19 @@ export function useProfilesPage() {
   const convex = useConvex()
   const [searchQuery, setSearchQuery] = useState('')
   const search = useDebouncedSearch(searchQuery)
-  const pagination = useCursorPage(search)
-  const args = { search, cursor: pagination.cursor }
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE)
+  const pagination = useCursorPage(JSON.stringify([search, pageSize]))
+  const args = { search, cursor: pagination.cursor, pageSize }
   const data = useQuery(api.profiles.queries.listPage, args)
   const profiles = useMemo(() => data?.page.map((row) => mapProfileRecord(row)) ?? [], [data])
   const profilesLoading = data === undefined
   const refreshProfiles = useCallback(async () => {
-    await convex.query(api.profiles.queries.listPage, { search, cursor: pagination.cursor })
-  }, [convex, search, pagination.cursor])
+    await convex.query(api.profiles.queries.listPage, {
+      search,
+      cursor: pagination.cursor,
+      pageSize,
+    })
+  }, [convex, search, pagination.cursor, pageSize])
   const filteredProfiles = profiles
   const { handleError } = useErrorHandler()
 
@@ -248,6 +254,8 @@ export function useProfilesPage() {
     },
     profiles,
     filteredProfiles,
+    pageSize,
+    setPageSize,
     loading: profilesLoading,
     saving: save.saving,
     isCreateOpen: dialogState.isCreateOpen,

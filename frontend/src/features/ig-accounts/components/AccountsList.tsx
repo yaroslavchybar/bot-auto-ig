@@ -253,7 +253,7 @@ export function AccountsList({
 
   if (loading && accounts.length === 0) {
     return (
-      <div className="flex items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
         <RefreshCw className="h-4 w-4 shrink-0" /> Loading accounts...
       </div>
     )
@@ -261,7 +261,7 @@ export function AccountsList({
 
   if (accounts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
         <Users className="mb-4 h-10 w-10 text-subtle-copy" />
         <h3 className="text-lg font-medium text-ink">{emptyTitle}</h3>
         <p className="mt-1 text-sm text-subtle-copy">{emptyDescription}</p>
@@ -271,7 +271,7 @@ export function AccountsList({
 
   if (isMobile) {
     return (
-      <div className="space-y-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
         {accounts.map((account) => (
           <AccountMobileCard
             key={account.id}
@@ -286,29 +286,27 @@ export function AccountsList({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
-            <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">No.</TableHead>
-            <TableHead className="h-12 w-[250px] font-medium text-muted-copy">Account</TableHead>
-            <TableHead className="h-12 w-[200px] font-medium text-muted-copy">Status</TableHead>
-            <TableHead className="h-12 pr-4 font-medium text-muted-copy">Detail</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {accounts.map((account, index) => (
-            <AccountDesktopRow
-              key={account.id}
-              account={account}
-              index={index}
-              onSelect={onSelect}
-              onReconnect={onReconnect}
-              reconnectingId={reconnectingId}
-            />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table containerClassName="min-h-0 flex-1">
+      <TableHeader sticky>
+        <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+          <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">No.</TableHead>
+          <TableHead className="h-12 w-[250px] font-medium text-muted-copy">Account</TableHead>
+          <TableHead className="h-12 w-[200px] font-medium text-muted-copy">Status</TableHead>
+          <TableHead className="h-12 pr-4 font-medium text-muted-copy">Detail</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {accounts.map((account, index) => (
+          <AccountDesktopRow
+            key={account.id}
+            account={account}
+            index={index}
+            onSelect={onSelect}
+            onReconnect={onReconnect}
+            reconnectingId={reconnectingId}
+          />
+        ))}
+      </TableBody>
+    </Table>
   )
 }

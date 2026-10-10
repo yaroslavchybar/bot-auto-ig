@@ -196,6 +196,20 @@ export default defineSchema({
     .index('by_rename', ['renameFrom'])
     .index('by_created', ['createdAt'])
     .index('by_proxy', ['proxy', 'proxyType']),
+  // Proxy tables read this small projection instead of profile cookies and runtime state.
+  proxyProfileAssignments: defineTable({
+    profileId: v.id('profiles'),
+    name: v.string(),
+    proxy: v.string(),
+    proxyType: v.string(),
+  })
+    .index('by_profile', ['profileId'])
+    .index('by_proxy', ['proxy', 'proxyType']),
+  proxyUsageMigration: defineTable({
+    cursor: v.union(v.string(), v.null()),
+    complete: v.boolean(),
+    jobId: v.optional(v.id('_scheduled_functions')),
+  }),
   chatSessions: defineTable({
     profileId: v.id('profiles'),
     storageId: v.id('_storage'),

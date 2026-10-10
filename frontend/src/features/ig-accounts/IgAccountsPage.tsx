@@ -1,4 +1,4 @@
-import { PageControls } from '@/components/shared/PageControls'
+import { TablePagination, TableCard } from '@/components/shared/TablePagination'
 import { useAccountsPage } from './hooks/useAccountsPage'
 import { useState } from 'react'
 import { CheckCircle2, CircleAlert, Plus, Search, Upload } from 'lucide-react'
@@ -33,6 +33,8 @@ export function IgAccountsPage() {
     error: loadError,
     refresh,
     pagination,
+    pageSize,
+    setPageSize,
   } = useAccountsPage(search)
   const options = useAccountsPage(credentialSearch, profileId ?? undefined, Boolean(profileId))
   const connectable = options.accounts.filter((account) => account.status === 'available')
@@ -141,8 +143,8 @@ export function IgAccountsPage() {
         </div>
       </div>
 
-      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-        <div className="mx-auto max-w-[2000px] space-y-4">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col px-4 pt-0 pb-4 md:px-6 md:pb-6">
+        <div className="mx-auto flex min-h-0 w-full max-w-[2000px] flex-1 flex-col gap-4">
           {(error || loadError) && (
             <div
               role="alert"
@@ -162,20 +164,21 @@ export function IgAccountsPage() {
             </div>
           )}
 
-          <AccountsList
-            accounts={filteredAccounts}
-            loading={loading}
-            onSelect={setDetailsAccount}
-            onReconnect={(account) => void reconnect(account)}
-            reconnectingId={reconnectingId}
-            emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
-            emptyDescription={
-              search.trim()
-                ? 'Try a different search term or clear the filter.'
-                : 'Import credentials to get started.'
-            }
-          />
-          <PageControls {...pagination} />
+          <TableCard pagination={{ ...pagination, pageSize, onPageSizeChange: setPageSize }}>
+            <AccountsList
+              accounts={filteredAccounts}
+              loading={loading}
+              onSelect={setDetailsAccount}
+              onReconnect={(account) => void reconnect(account)}
+              reconnectingId={reconnectingId}
+              emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
+              emptyDescription={
+                search.trim()
+                  ? 'Try a different search term or clear the filter.'
+                  : 'Import credentials to get started.'
+              }
+            />
+          </TableCard>
         </div>
       </div>
 
@@ -296,7 +299,7 @@ export function IgAccountsPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <PageControls {...options.pagination} />
+              <TablePagination {...options.pagination} />
               {options.error && (
                 <p role="alert" className="text-sm text-status-danger">
                   {options.error}

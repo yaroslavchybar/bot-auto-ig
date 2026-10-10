@@ -277,7 +277,7 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
 
   if (loading && proxies.length === 0) {
     return (
-      <div className="flex items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
+      <div className="flex flex-1 items-center justify-center gap-2 p-12 text-center text-sm text-muted-foreground">
         <RefreshCw className="h-4 w-4 shrink-0" /> Loading proxies...
       </div>
     )
@@ -285,7 +285,7 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
 
   if (proxies.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-line-soft bg-panel-subtle p-12 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
         <Globe className="mb-4 h-10 w-10 text-subtle-copy" />
         <h3 className="text-lg font-medium text-ink">No proxies</h3>
         <p className="mt-1 text-sm text-subtle-copy">Add a proxy to reuse it across profiles.</p>
@@ -295,7 +295,7 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
 
   if (isMobile) {
     return (
-      <div className="space-y-3">
+      <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
         {proxies.map((proxy) => (
           <ProxyMobileCard
             key={proxy.id}
@@ -311,34 +311,32 @@ export function ProxiesList({ proxies, usage, loading, onEdit, onDelete }: Proxi
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
-            <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">No.</TableHead>
-            <TableHead className="h-12 font-medium text-muted-copy">Name</TableHead>
-            <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Type</TableHead>
-            <TableHead className="h-12 w-full font-medium text-muted-copy">Proxy</TableHead>
-            <TableHead className="h-12 w-[220px] font-medium text-muted-copy">Usage</TableHead>
-            <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
-              Actions
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {proxies.map((proxy, idx) => (
-            <ProxyDesktopRow
-              key={proxy.id}
-              proxy={proxy}
-              now={now}
-              usage={usage[proxy.id] ?? { count: 0, profileNames: [] }}
-              idx={idx}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table containerClassName="min-h-0 flex-1">
+      <TableHeader sticky>
+        <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+          <TableHead className="h-12 w-[80px] pl-4 font-medium text-muted-copy">No.</TableHead>
+          <TableHead className="h-12 font-medium text-muted-copy">Name</TableHead>
+          <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Type</TableHead>
+          <TableHead className="h-12 w-full font-medium text-muted-copy">Proxy</TableHead>
+          <TableHead className="h-12 w-[220px] font-medium text-muted-copy">Usage</TableHead>
+          <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
+            Actions
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {proxies.map((proxy, idx) => (
+          <ProxyDesktopRow
+            key={proxy.id}
+            proxy={proxy}
+            now={now}
+            usage={usage[proxy.id] ?? { count: 0, profileNames: [] }}
+            idx={idx}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        ))}
+      </TableBody>
+    </Table>
   )
 }

@@ -12,6 +12,7 @@ import { DomainError } from './errors'
 import { requireServerBridgeAuth } from './serverBridgeAuth'
 import { modelRoutine, recordedPostsReady } from './modelSetupPolicy'
 import { randomInRange, warmupPostRange } from './routinePolicy'
+import { MAX_PAGE_SIZE, SCAN_BATCH_BYTES } from '../server/shared/pagination'
 
 const status = v.union(
   v.literal('available'),
@@ -47,7 +48,7 @@ export const pageInternal = internalQuery({
     profileId: v.optional(v.id('profiles')),
   },
   handler: async (ctx, { cursor, count, profileId }) => {
-    if (!Number.isInteger(count) || count < 1 || count > 50)
+    if (!Number.isInteger(count) || count < 1 || count > MAX_PAGE_SIZE)
       throw new DomainError('VALIDATION', 'Invalid page size')
     const rows = ctx.db.query('igAccounts').withIndex('by_created')
     const page = await (
@@ -56,7 +57,12 @@ export const pageInternal = internalQuery({
             q.or(q.eq(q.field('status'), 'available'), q.eq(q.field('profileId'), profileId)),
           )
         : rows
-    ).paginate({ cursor, numItems: count })
+    ).paginate({
+      cursor,
+      numItems: count,
+      maximumRowsRead: MAX_PAGE_SIZE,
+      maximumBytesRead: SCAN_BATCH_BYTES,
+    })
     return {
       ...page,
       page: await Promise.all(page.page.map((account) => withConnectionStatus(ctx, account))),

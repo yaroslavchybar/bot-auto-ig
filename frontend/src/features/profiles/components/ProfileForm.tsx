@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useQuery } from 'convex/react'
-import { api } from '../../../../../convex/_generated/api'
+import { useProxyPage } from '../../proxies/hooks/useProxyPage'
 import { proxyUsageKey } from '../../proxies/utils/proxyUsage'
 import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
-import { PageControls } from '@/components/shared/PageControls'
+import { TablePagination } from '@/components/shared/TablePagination'
+import { DEFAULT_PAGE_SIZE } from '../../../../../server/shared/pagination'
 import type { Profile } from '../types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -197,7 +197,12 @@ function SavedProxyPicker({
   const [searchQuery, setSearchQuery] = useState('')
   const search = useDebouncedSearch(searchQuery)
   const position = useCursorPage(search)
-  const data = useQuery(api.proxies.listPage, { search, cursor: position.cursor, purpose: 'work' })
+  const data = useProxyPage({
+    search,
+    cursor: position.cursor,
+    pageSize: DEFAULT_PAGE_SIZE,
+    purpose: 'work',
+  })
   const saved = data?.page ?? []
   const currentKey = proxyUsageKey(currentProxy, currentProxyType)
   const selectedId = saved.find(
@@ -252,7 +257,7 @@ function SavedProxyPicker({
           })}
         </SelectContent>
       </Select>
-      <PageControls
+      <TablePagination
         {...position}
         loading={data === undefined}
         hasNext={Boolean(data && !data.isDone)}

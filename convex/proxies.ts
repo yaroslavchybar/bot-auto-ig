@@ -4,9 +4,11 @@ import { internalQuery, mutation, query } from './_generated/server'
 import { normalizeProxy, proxyKey } from '../server/shared/proxy'
 import { internal } from './_generated/api'
 import type { Doc } from './_generated/dataModel'
+import { syncProxyUsage } from './proxyUsage'
 import {
   scanPage,
   matchesSearch,
+  isPageSize,
   SCAN_BATCH_BYTES,
   type CursorPage,
 } from '../server/shared/pagination'
@@ -79,24 +81,32 @@ export const listPage = query({
   args: {
     search: v.string(),
     cursor: v.union(v.string(), v.null()),
+    pageSize: v.number(),
     purpose: v.optional(purposeValidator),
   },
-  handler: async (ctx, { search, cursor, purpose }): Promise<CursorPage<ProxyPageRow>> => {
+  handler: async (
+    ctx,
+    { search, cursor, pageSize, purpose },
+  ): Promise<CursorPage<ProxyPageRow> & { usageReady: boolean }> => {
+    if (!isPageSize(pageSize)) throw new DomainError('VALIDATION', 'Invalid page size')
     const term = search.trim().toLowerCase()
     const result = await scanPage<ProxyListRow>(
       (next, count) =>
         ctx.runQuery(internal.proxies.listBatchInternal, { cursor: next, count, purpose }),
       (row) => matchesSearch(term, [row.name, row.proxy, row.proxyType, row.purpose, row.country]),
       cursor,
+      pageSize,
     )
+    const usageReady = (await ctx.db.query('proxyUsageMigration').first())?.complete === true
     return {
       ...result,
+      usageReady,
       page: await Promise.all(
         result.page.map(async (row) => {
           const profiles =
             row.purpose === 'work'
               ? await ctx.db
-                  .query('profiles')
+                  .query(usageReady ? 'proxyProfileAssignments' : 'profiles')
                   .withIndex('by_proxy', (q) =>
                     q.eq('proxy', row.proxy).eq('proxyType', row.proxyType),
                   )
@@ -316,8 +326,10 @@ export const update = mutation({
       ).length
       if (targetCount + assigned.length > maxProfiles)
         throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles')
-      for (const profile of assigned)
+      for (const profile of assigned) {
         await ctx.db.patch(profile._id, { proxy, proxyType, mode: 'proxy' })
+        await syncProxyUsage(ctx, { ...profile, proxy, proxyType })
+      }
     }
     await ctx.db.patch(args.id, { name, proxy, proxyType, purpose, country, maxProfiles })
     return await ctx.db.get(args.id)

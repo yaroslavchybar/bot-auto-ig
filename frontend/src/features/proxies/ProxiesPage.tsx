@@ -1,4 +1,4 @@
-import { PageControls } from '@/components/shared/PageControls'
+import { TableCard } from '@/components/shared/TablePagination'
 import { CheckCircle2, CircleAlert, Plus, Search, Upload } from 'lucide-react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,7 @@ export function ProxiesPage() {
   const setTab = (next: ProxyTabId) => {
     if (next !== tab) navigate(`/proxies?tab=${next}`)
   }
-  const state = useProxiesPage()
+  const state = useProxiesPage(tab === 'proxies')
   const importMany = useMutation(api.proxies.importMany)
   const [importing, setImporting] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -240,10 +240,21 @@ export function ProxiesPage() {
         </div>
       )}
 
-      <div className="relative z-10 flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-        <div className="mx-auto max-w-[2000px]">
+      <div
+        className={cn(
+          'relative z-10 flex min-h-0 flex-1 flex-col px-4 pt-0 pb-4 md:px-6 md:pb-6',
+          tab === 'proxies' ? '' : 'overflow-auto',
+        )}
+      >
+        <div className="mx-auto flex min-h-0 w-full max-w-[2000px] flex-1 flex-col">
           {tab === 'proxies' ? (
-            <>
+            <TableCard
+              pagination={{
+                ...state.pagination,
+                pageSize: state.pageSize,
+                onPageSizeChange: state.setPageSize,
+              }}
+            >
               <ProxiesList
                 proxies={state.proxies}
                 usage={state.usage}
@@ -251,8 +262,7 @@ export function ProxiesPage() {
                 onEdit={state.handleEdit}
                 onDelete={state.handleDeleteClick}
               />
-              <PageControls {...state.pagination} />
-            </>
+            </TableCard>
           ) : (
             <ProxyBlacklist />
           )}

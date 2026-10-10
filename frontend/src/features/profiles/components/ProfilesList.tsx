@@ -382,12 +382,16 @@ export function ProfilesList({
   const isMobile = useIsMobile()
 
   if (loading && profiles.length === 0) {
-    return <div className="p-12 text-center text-sm text-muted-foreground">Loading profiles...</div>
+    return (
+      <div className="flex flex-1 items-center justify-center p-12 text-center text-sm text-muted-foreground">
+        Loading profiles...
+      </div>
+    )
   }
 
   if (profiles.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/5 p-12 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center p-12 text-center">
         <Monitor className="mb-4 h-10 w-10 text-muted-foreground/50" />
         <h3 className="text-lg font-medium">{emptyTitle}</h3>
         <p className="mt-1 text-sm text-muted-foreground">{emptyDescription}</p>
@@ -399,7 +403,7 @@ export function ProfilesList({
 
   if (isMobile) {
     return (
-      <div className="space-y-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
         {profiles.map((profile) => (
           <ProfileMobileCard key={profile.id} profile={profile} {...actionProps} />
         ))}
@@ -408,25 +412,23 @@ export function ProfilesList({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-line-soft bg-panel-subtle shadow-xs">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
-            <TableHead className="h-12 w-[300px] pl-4 font-medium text-muted-copy">Name</TableHead>
-            <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Status</TableHead>
-            <TableHead className="h-12 w-[180px] font-medium text-muted-copy">Config</TableHead>
-            <TableHead className="h-12 font-medium text-muted-copy">Proxy</TableHead>
-            <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
-              Actions
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {profiles.map((profile) => (
-            <ProfileDesktopRow key={profile.id} profile={profile} {...actionProps} />
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <Table containerClassName="min-h-0 flex-1">
+      <TableHeader sticky>
+        <TableRow className="border-b border-line-soft bg-transparent hover:bg-transparent">
+          <TableHead className="h-12 w-[300px] pl-4 font-medium text-muted-copy">Name</TableHead>
+          <TableHead className="h-12 w-[120px] font-medium text-muted-copy">Status</TableHead>
+          <TableHead className="h-12 w-[180px] font-medium text-muted-copy">Config</TableHead>
+          <TableHead className="h-12 font-medium text-muted-copy">Proxy</TableHead>
+          <TableHead className="h-12 w-[140px] pr-4 text-right font-medium text-muted-copy">
+            Actions
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {profiles.map((profile) => (
+          <ProfileDesktopRow key={profile.id} profile={profile} {...actionProps} />
+        ))}
+      </TableBody>
+    </Table>
   )
 }

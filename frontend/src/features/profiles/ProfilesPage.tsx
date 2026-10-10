@@ -1,4 +1,4 @@
-import { PageControls } from '@/components/shared/PageControls'
+import { TableCard } from '@/components/shared/TablePagination'
 import { Plus, Search } from 'lucide-react'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { ProfileForm } from './components/ProfileForm'
@@ -47,22 +47,25 @@ export function ProfilesPage() {
 
 function ProfilesContent({ s }: { s: ReturnType<typeof useProfilesPage> }) {
   return (
-    <div className="flex-1 overflow-auto px-4 pt-0 pb-4 md:px-6 md:pb-6">
-      <div className="mx-auto max-w-[2000px] space-y-4">
-        <ProfilesList
-          profiles={s.filteredProfiles}
-          loading={s.loading}
-          onEdit={s.handleEdit}
-          onDelete={s.handleDeleteClick}
-          onToggleStatus={(p) => s.toggleUsing(p)}
-          emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
-          emptyDescription={
-            s.searchQuery.trim()
-              ? 'Try a different search term or clear the filter.'
-              : 'Create a new profile to get started.'
-          }
-        />
-        <PageControls {...s.pagination} />
+    <div className="flex min-h-0 flex-1 flex-col px-4 pt-0 pb-4 md:px-6 md:pb-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-[2000px] flex-1 flex-col">
+        <TableCard
+          pagination={{ ...s.pagination, pageSize: s.pageSize, onPageSizeChange: s.setPageSize }}
+        >
+          <ProfilesList
+            profiles={s.filteredProfiles}
+            loading={s.loading}
+            onEdit={s.handleEdit}
+            onDelete={s.handleDeleteClick}
+            onToggleStatus={(p) => s.toggleUsing(p)}
+            emptyTitle={s.searchQuery.trim() ? 'No matching profiles' : 'No profiles'}
+            emptyDescription={
+              s.searchQuery.trim()
+                ? 'Try a different search term or clear the filter.'
+                : 'Create a new profile to get started.'
+            }
+          />
+        </TableCard>
       </div>
     </div>
   )

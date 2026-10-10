@@ -1,20 +1,27 @@
 import { useCallback, useMemo, useState } from 'react'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useCursorPage, useDebouncedSearch } from '@/hooks/use-cursor-page'
 import type { ProxyFormValues, ProxyItem } from '../types'
 import { normalizeProxy } from '../../../../../server/shared/proxy'
+import { DEFAULT_PAGE_SIZE, type PageSize } from '../../../../../server/shared/pagination'
 import { useErrorHandler } from '@/hooks/useErrorHandler'
+import { useProxyPage } from './useProxyPage'
 
-export function useProxiesPage() {
+export function useProxiesPage(visible = true) {
   const { handleError } = useErrorHandler()
 
   const [searchQuery, setSearchQuery] = useState('')
   const search = useDebouncedSearch(searchQuery)
-  const pagination = useCursorPage(search)
-  const data = useQuery(api.proxies.listPage, { search, cursor: pagination.cursor })
-  const loading = data === undefined
+  const [pageSize, setPageSize] = useState<PageSize>(DEFAULT_PAGE_SIZE)
+  const pagination = useCursorPage(JSON.stringify([search, pageSize]))
+  const data = useProxyPage(visible ? {
+    search,
+    cursor: pagination.cursor,
+    pageSize,
+  } : 'skip')
+  const loading = visible && data === undefined
   const proxies = useMemo<ProxyItem[]>(
     () => data?.page.map((row) => ({ ...row, id: String(row._id) })) ?? [],
     [data],
@@ -116,6 +123,8 @@ export function useProxiesPage() {
     proxies,
     allProxies: proxies,
     usage,
+    pageSize,
+    setPageSize,
     loading,
     saving,
     searchQuery,

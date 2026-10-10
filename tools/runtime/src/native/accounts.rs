@@ -177,6 +177,10 @@ pub fn valid_username(name: &str) -> bool {
             .bytes()
             .all(|c| c.is_ascii_alphanumeric() || c == b'.' || c == b'_')
 }
+// Rows per page for the credentials list. Matches the frontend footer options and the Convex cap.
+const DEFAULT_PAGE_SIZE: usize = 50;
+const MAX_PAGE_SIZE: usize = 100;
+
 pub struct Accounts {
     pub api: Arc<Api>,
     pub profiles: Arc<Profiles>,
@@ -203,10 +207,19 @@ impl Accounts {
         let value = match operation {
             "ig-accounts.get.list" => self.list().await?,
             "ig-accounts.get.page" => {
+                let page_size = match query.get("pageSize") {
+                    None => DEFAULT_PAGE_SIZE,
+                    Some(value) => value
+                        .parse::<usize>()
+                        .ok()
+                        .filter(|size| (1..=MAX_PAGE_SIZE).contains(size))
+                        .ok_or_else(|| Failure::invalid("Invalid page size"))?,
+                };
                 self.page(
                     query.get("search").map(String::as_str).unwrap_or(""),
                     query.get("cursor").map(String::as_str),
                     query.get("profileId").map(String::as_str),
+                    page_size,
                 )
                 .await?
             }
@@ -426,6 +439,7 @@ impl Accounts {
         search: &str,
         cursor: Option<&str>,
         profile: Option<&str>,
+        page_size: usize,
     ) -> Result<Value> {
         if search.len() > 200 {
             return Err(Failure::invalid("Invalid page parameters"));
@@ -438,7 +452,7 @@ impl Accounts {
             let result = self
                 .store(
                     "page",
-                    json!({"cursor":cursor,"count":50-rows.len(),"profileId":profile}),
+                    json!({"cursor":cursor,"count":page_size-rows.len(),"profileId":profile}),
                 )
                 .await?;
             rows.extend(
@@ -449,7 +463,7 @@ impl Accounts {
                     .map(|r| public_row(r, &key))
                     .filter(|r| profiles::text(r, "username").to_lowercase().contains(&term)),
             );
-            if result["isDone"] == true || rows.len() >= 50 || batch == 4 {
+            if result["isDone"] == true || rows.len() >= page_size || batch == 4 {
                 return Ok(
                     json!({"page":rows,"continueCursor":result["continueCursor"],"isDone":result["isDone"]}),
                 );

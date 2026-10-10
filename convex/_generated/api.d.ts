@@ -39,6 +39,7 @@ import type * as profiles_helpers from "../profiles/helpers.js";
 import type * as profiles_mutations from "../profiles/mutations.js";
 import type * as profiles_queries from "../profiles/queries.js";
 import type * as proxies from "../proxies.js";
+import type * as proxyUsage from "../proxyUsage.js";
 import type * as routinePolicy from "../routinePolicy.js";
 import type * as routines from "../routines.js";
 import type * as scrapeMonitoring from "../scrapeMonitoring.js";
@@ -89,6 +90,7 @@ declare const fullApi: ApiFromModules<{
   "profiles/mutations": typeof profiles_mutations;
   "profiles/queries": typeof profiles_queries;
   proxies: typeof proxies;
+  proxyUsage: typeof proxyUsage;
   routinePolicy: typeof routinePolicy;
   routines: typeof routines;
   scrapeMonitoring: typeof scrapeMonitoring;
