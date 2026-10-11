@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
@@ -87,25 +88,29 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
   const [baseline, setBaseline] = useState({
     days: list.scrapeLookbackDays ?? 90,
     monitor: list.scrapeMonitor ?? true,
+    includePrivate: list.scrapeIncludePrivate ?? false,
   })
   const [daysText, setDaysText] = useState(String(list.scrapeLookbackDays ?? 90))
   const [monitor, setMonitor] = useState(list.scrapeMonitor ?? true)
+  const [includePrivate, setIncludePrivate] = useState(list.scrapeIncludePrivate ?? false)
   const serverDays = list.scrapeLookbackDays ?? 90
   const serverMonitor = list.scrapeMonitor ?? true
-  if (baseline.days !== serverDays || baseline.monitor !== serverMonitor) {
-    setBaseline({ days: serverDays, monitor: serverMonitor })
+  const serverIncludePrivate = list.scrapeIncludePrivate ?? false
+  if (baseline.days !== serverDays || baseline.monitor !== serverMonitor || baseline.includePrivate !== serverIncludePrivate) {
+    setBaseline({ days: serverDays, monitor: serverMonitor, includePrivate: serverIncludePrivate })
     setDaysText(String(serverDays))
     setMonitor(serverMonitor)
+    setIncludePrivate(serverIncludePrivate)
   }
   const leads = counts?.leads
   const days = Number(daysText)
   const valid = Number.isSafeInteger(days) && days >= 1 && days <= 3650
-  const changed = valid && (days !== baseline.days || monitor !== baseline.monitor)
+  const changed = valid && (days !== baseline.days || monitor !== baseline.monitor || includePrivate !== baseline.includePrivate)
   const saveSettings = async () => {
     if (busy || !valid || !changed) return
     setBusy(true)
     try {
-      await settings({ listId: list._id, days, monitor })
+      await settings({ listId: list._id, days, monitor, includePrivate })
       toast.success('Scanning settings saved')
     } catch (e) {
       toast.error(String(e))
@@ -128,7 +133,7 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
         )}
         <div
           aria-label="Scanning settings"
-          className="flex items-center gap-x-2.5 rounded-full border border-line-soft bg-panel-subtle py-1 pr-1.5 pl-3 text-[13px]"
+          className="flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-2xl border border-line-soft bg-panel-subtle py-1 pr-1.5 pl-3 text-[13px]"
         >
           <div className="flex items-center gap-1.5">
             <Label htmlFor="source-days" className="text-muted-copy">
@@ -155,6 +160,18 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
               disabled={busy}
               aria-label="Watch hot posts"
             />
+          </div>
+          <span className="h-4 w-px bg-line" aria-hidden />
+          <div className="flex items-center gap-1.5 pr-1">
+            <Checkbox
+              id="source-private-profiles"
+              checked={includePrivate}
+              onCheckedChange={(checked) => setIncludePrivate(checked === true)}
+              disabled={busy}
+            />
+            <Label htmlFor="source-private-profiles" className="cursor-pointer whitespace-nowrap text-copy">
+              Include private profiles
+            </Label>
           </div>
           {changed && (
             <Button disabled={busy} onClick={() => void saveSettings()}>

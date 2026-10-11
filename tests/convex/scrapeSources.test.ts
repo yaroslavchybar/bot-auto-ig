@@ -504,6 +504,28 @@ test('repeated accounts and lost-response retries do not duplicate memberships o
   expect((await s.t.run((ctx) => ctx.db.get(s.sourceId)))?.discovered).toBe(1)
 })
 
+test('private-profile setting persists, reaches workers, and fences old runs without extra writes', async () => {
+  const s = await setup()
+  await discover(s, { average: 200 })
+  const old = (await s.t.mutation(internal.scrapeSources.claim, {}))!
+  expect(old.includePrivate).toBe(false)
+  const settings = { listId: s.listId, days: 90, monitor: true, includePrivate: true }
+  await s.t.mutation(api.scrapeSources.settings, settings)
+  expect((await s.t.query(api.leads.getList, { listId: s.listId }))?.scrapeIncludePrivate).toBe(true)
+  await expect(s.t.mutation(internal.scraper.saveBatch, {
+    sourceId: s.sourceId, runId: old.runId, likers: [],
+  })).rejects.toThrow('no longer active')
+  const next = (await s.t.mutation(internal.scrapeSources.claim, {}))!
+  expect(next.includePrivate).toBe(true)
+  await s.t.mutation(api.scrapeSources.settings, settings)
+  expect((await s.t.run(ctx => ctx.db.get(s.sourceId)))?.runId).toBe(next.runId)
+  // Saving other settings does not accidentally reset this preference.
+  await s.t.mutation(api.scrapeSources.settings, { listId: s.listId, days: 30, monitor: true })
+  expect((await s.t.query(api.leads.getList, { listId: s.listId }))?.scrapeIncludePrivate).toBe(true)
+  await s.t.mutation(api.scrapeSources.settings, { ...settings, includePrivate: false })
+  expect((await s.t.mutation(internal.scrapeSources.claim, {}))?.includePrivate).toBe(false)
+})
+
 test('range changes and pause fence workers; resume discovers posts again', async () => {
   const s = await setup()
   await discover(s, { average: 200, age: 4 * DAY })

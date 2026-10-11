@@ -1,422 +1,178 @@
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import type { Page } from "playwright-core";
-import { runRoutineSession } from "./routine.js";
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import type { Page } from 'playwright-core';
+import { runRoutineSession } from './routine.js';
 
-function setup(relationship: 'Follow' | 'Following' | 'Requested' = 'Following', messageNeedsFollow = false) {
+function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following' | 'Requested' = mode === 'dm' ? 'Following' : 'Follow') {
   const calls: string[] = [];
-  let now = 0;
-  let sent = false,
-    deliveryFailed = false;
-  const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
-    now: () => now,
-    target: async () => ({ target: 1, remaining: sent ? 0 : 1, sent: sent ? 1 : 0 }),
-    sleep: async ms => { now += ms; },
-    random: (min) => min,
-    followTasks: async () => [],
-    recordFollow: async () => { calls.push('record-follow'); },
-    ready: async () => true,
-    warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity) => {
-      await activity!({ deadline: now + 600_000, remainingMinutes: 10, browse: async minutes => {
-        calls.push('browse'); now += minutes * 60_000; return 'finished';
-      } });
-      return { minutes: 10, reason: stopped() ? 'stopped' : 'finished' };
-    },
-    reserve: async () =>
-      calls.includes("reserve")
-        ? null
-        : (calls.push("reserve"),
-          { leadId: "lead", date: "2026-09-21", username: "alice", message: "Hello alice" }),
-    begin: async () => {
-      calls.push("authorize");
-      return true;
-    },
-    finish: async (_, __, ___, value) => {
-      calls.push(value ? "sent" : "uncertain");
-      sent = value;
-      return undefined;
-    },
-    record: async (_, __, completed, issue) => {
-      calls.push(completed ? "record-completed" : "record-incomplete");
-      deliveryFailed = !!issue;
-      return undefined;
-    },
-  };
+  let now = 0, sent = false, issue: string | undefined;
+  const attempt = { leadId: 'lead', date: '2026-09-21', username: 'alice', message: 'Hello alice' };
   const locator = {
-    count: async () => 1,
-    first() {
-      return this;
-    },
-    or() {
-      return this;
-    },
-    getByRole() {
-      return this;
-    },
-    hover: async () => {},
-    isVisible: async () => false,
-    click: async () => {
-      calls.push("message-button");
-    },
-    fill: async (_value: string, _options?: { timeout?: number }) => {
-      calls.push("compose");
-    },
-    press: async (_key: string, _options?: { timeout?: number }) => {
-      calls.push("send");
-    },
-    last() {
-      return this;
-    },
-    nth() {
-      return this;
-    },
-    waitFor: async (_options?: { state?: string; timeout?: number }) => {
-      calls.push("confirm");
-    },
+    first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; },
+    getByRole() { return this; }, count: async () => 1, hover: async () => {}, isVisible: async () => false,
+    click: async () => { calls.push('message-button'); },
+    fill: async () => { calls.push('compose'); },
+    press: async () => { calls.push('send'); },
+    waitFor: async () => { calls.push('confirm'); },
   };
   const page = {
-    locator: () => ({
-      first: () => locator,
-      getByRole: (_role: string, options: { name: string | RegExp }) => {
-        if (options.name === 'Message') return {
-          ...locator,
-          click: async () => {
-            if (messageNeedsFollow) assert.notEqual(relationship, 'Follow');
-            await locator.click();
-          },
-        };
-        const name = options.name as RegExp;
-        return {
-          ...locator,
-          or: () => ({ waitFor: async () => {} }),
-          waitFor: async () => { assert.equal(name.test(relationship), true); },
-          isVisible: async () => name.test(relationship),
-          click: async () => {
-            assert.equal(relationship, 'Follow');
-            relationship = 'Following';
-            calls.push('follow');
-          },
-        };
-      },
-    }),
-    url: () => "https://www.instagram.com/",
-    goto: async () => {},
-    waitForURL: async () => {},
+    locator: () => ({ first: () => locator, getByRole: (_: string, options: { name: string | RegExp }) => {
+      if (options.name === 'Message') return locator;
+      const name = options.name as RegExp;
+      return { ...locator, or: () => ({ waitFor: async () => {} }),
+        waitFor: async () => { assert.equal(name.test(relationship), true); },
+        isVisible: async () => name.test(relationship),
+        click: async () => { assert.equal(relationship, 'Follow'); relationship = 'Following'; calls.push('follow'); },
+      };
+    } }),
+    url: () => 'https://www.instagram.com/',
+    goto: async () => { calls.push('navigate'); },
     getByRole: () => locator,
-    getByText: (text: string | RegExp, options?: { exact?: boolean }) => {
-      if (options?.exact && String(text).startsWith("This account can't receive"))
-        return { ...locator, waitFor: async () => { throw new Error('missing'); } };
-      return locator;
-    },
+    getByText: (text: string | RegExp) => String(text).startsWith("This account can't receive")
+      ? { ...locator, waitFor: async () => { throw new Error('missing'); } } : locator,
   } as unknown as Page;
-  const run = () =>
-    runRoutineSession(
-      {
-        _id: "automation",
-        name: "Daily",
-        nodes: [],
-        edges: [],
-        routine: { headless: true, activity: {} },
-      },
-      "profile",
-      page,
-      () => {},
-      () => false,
-      deps,
-    );
-  return {
-    calls,
-    deps,
-    locator,
-    page,
-    run,
-    result: () => ({ sent, deliveryFailed }),
+  const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    now: () => now, ready: async () => true,
+    target: async () => ({ target: mode === 'follow' ? 1 : 0, remaining: mode === 'follow' && !calls.includes('reserve') ? 1 : 0, sent: 0 }),
+    sleep: async ms => { now += ms; }, random: min => min,
+    followTasks: async () => [],
+    recordFollow: async (_, __, followed) => { calls.push(followed ? 'record-follow' : 'record-unfollow'); },
+    beginFollow: async () => { calls.push('authorize-follow'); return true; },
+    notifications: async () => null,
+    readNotifications: async () => { calls.push('read-notifications'); return ['alice']; },
+    recordNotifications: async () => { calls.push('record-notifications'); },
+    dmTasks: async () => mode === 'dm' ? [attempt] : [],
+    dismissDm: async () => { calls.push('dismiss-dm'); },
+    ownUsername: async () => 'sender',
+    followsUs: async () => { calls.push('verify-follower'); return true; },
+    likeRecentPost: async () => { calls.push('optional-like'); return true; },
+    reserve: async () => { calls.push('reserve'); return attempt; },
+    begin: async () => { calls.push('authorize'); return true; },
+    finish: async (_, __, ___, value, blocked) => { calls.push(value ? 'sent' : blocked ? 'blocked' : 'uncertain'); sent = value; },
+    record: async (_, __, completed, error) => { calls.push(completed ? 'record-completed' : 'record-incomplete'); issue = error; },
+    warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity) => {
+      const result = await activity!({ deadline: now + 600_000, remainingMinutes: 10,
+        browse: async minutes => { calls.push('browse'); now += minutes * 60_000; return 'finished'; } });
+      return { minutes: 10, reason: stopped() || result === 'stopped' ? 'stopped' : 'finished' };
+    },
   };
+  const automation = { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} } };
+  const run = (stopped = () => false) => runRoutineSession(automation, 'profile', page, () => {}, stopped, deps);
+  return { calls, deps, page, locator, run, result: () => ({ sent, issue }) };
 }
 
-test("a routine browses, reserves and authorizes before sending, then confirms delivery", async () => {
-  const s = setup();
-  await s.run();
-  assert.deepEqual(s.calls, [
-    "browse",
-    "reserve",
-    "message-button",
-    "confirm",
-    "compose",
-    "authorize",
-    "send",
-    "confirm",
-    "sent",
-    "browse",
-    "record-completed",
-  ]);
-  assert.deepEqual(s.result(), { sent: true, deliveryFailed: false });
-});
-test("removed membership prevents browsing and outreach", async () => {
-  const s = setup();
-  s.deps.ready = async () => false;
-  await s.run();
-  assert.deepEqual(s.calls, ["record-incomplete"]);
+test('follow-first outreach never opens or sends a DM in the follow action', async () => {
+  const s = setup('follow'); await s.run();
+  assert.deepEqual(s.calls.filter(c => !['browse', 'record-completed'].includes(c)),
+    ['reserve', 'navigate', 'authorize-follow', 'follow', 'record-follow', 'optional-like']);
+  assert.equal(s.result().sent, false);
 });
 
-test("DM attempts wait a random 30–90 seconds before claiming the next lead", async () => {
-  for (const seconds of [30, 90]) {
-    const s = setup();
-    s.deps.target = async () => ({ target: 2, remaining: 2, sent: 0 });
-    s.deps.random = (min) => min === 1 ? 2 : min === 30 ? seconds : min;
-    const sleep = s.deps.sleep;
-    s.deps.sleep = async ms => { assert.equal(ms, 1000); s.calls.push('wait'); await sleep(ms); };
-    let claims = 0;
-    s.deps.reserve = async () => {
-      s.calls.push('claim');
-      return { leadId: `lead-${++claims}`, date: '2026-09-21', username: 'alice', message: 'Hello alice' };
-    };
-    await s.run();
-    assert.equal(s.calls.filter(c => c === 'wait').length, seconds);
-    assert.equal(s.calls.filter(c => c === 'send').length, 2);
-    const firstSent = s.calls.indexOf('sent');
-    assert.deepEqual(s.calls.slice(firstSent + 1, firstSent + 1 + seconds), Array(seconds).fill('wait'));
-    assert.equal(s.calls[firstSent + 1 + seconds], 'claim');
-  }
-});
-
-test("stopping during a DM pause prevents another claim", async () => {
-  const s = setup();
-  s.deps.target = async () => ({ target: 3, remaining: 3, sent: 0 });
-  s.deps.random = min => min === 1 ? 3 : 30;
-  let stopped = false;
-  let waits = 0;
-  let claims = 0;
-  s.deps.reserve = async () => {
-    claims++;
-    s.calls.push('reserve');
-    return { leadId: `lead-${claims}`, date: '2026-09-21', username: 'alice', message: 'Hello alice' };
-  };
-  s.deps.sleep = async () => { waits++; stopped = true; };
-  await runRoutineSession(
-    { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} } },
-    'profile', s.page, () => {}, () => stopped, s.deps,
-  );
-  assert.equal(waits, 1);
-  assert.equal(claims, 1);
-  assert.equal(s.calls.filter(c => c === 'send').length, 1);
-  assert.equal(s.result().deliveryFailed, false);
-});
-test("a refused send authorization never presses Send", async () => {
-  const s = setup();
-  s.deps.begin = async () => false;
-  await s.run();
-  assert.equal(s.calls.includes("send"), false);
-});
-
-test("a failed final target log does not flag a completed session", async () => {
-  const s = setup();
-  s.deps.target = async () => {
-    if (s.calls.includes('sent')) throw new Error('temporary query failure');
-    return { target: 1, remaining: 1, sent: 0 };
-  };
-  await s.run();
+test('a reciprocal recipient is verified and authorized before sending', async () => {
+  const s = setup(); await s.run();
+  assert.deepEqual(s.calls, ['browse', 'navigate', 'verify-follower', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'browse', 'record-completed']);
   assert.equal(s.result().sent, true);
-  assert.equal(s.result().deliveryFailed, false);
-  assert.equal(s.calls.at(-1), 'record-completed');
 });
 
-test("a deadline reached during navigation skips the send without a review issue", async () => {
+test('non-reciprocal recipients are dismissed without composing a DM', async () => {
+  const s = setup(); s.deps.followsUs = async () => false; await s.run();
+  assert.ok(s.calls.includes('dismiss-dm')); assert.ok(!s.calls.includes('message-button')); assert.ok(!s.calls.includes('send'));
+});
+
+test('no longer following a recipient prevents messaging', async () => {
+  const s = setup('dm', 'Follow'); await s.run();
+  assert.ok(s.calls.includes('dismiss-dm')); assert.ok(!s.calls.includes('verify-follower')); assert.ok(!s.calls.includes('send'));
+});
+
+for (const relationship of ['Following', 'Requested'] as const) test(`existing ${relationship} is never claimed as a new follow`, async () => {
+  const s = setup('follow', relationship); await s.run();
+  assert.ok(!s.calls.includes('follow')); assert.ok(!s.calls.includes('record-follow')); assert.ok(!s.calls.includes('send'));
+});
+
+test('private follow requests are recorded and do not send DMs', async () => {
+  const s = setup('follow');
+  const original = s.page.locator;
+  s.page.locator = ((selector: string) => {
+    const controls = original(selector);
+    const getByRole = controls.getByRole;
+    controls.getByRole = ((role: string, options: { name: RegExp }) => {
+      const control = getByRole(role as 'button', options);
+      if (String(options.name).includes('Following')) control.waitFor = async () => { assert.ok(options.name.test('Requested')); };
+      return control;
+    }) as typeof controls.getByRole;
+    return controls;
+  }) as Page['locator'];
+  await s.run(); assert.ok(s.calls.includes('record-follow')); assert.ok(!s.calls.includes('send'));
+});
+
+test('an optional like failure does not undo a successful follow', async () => {
+  const s = setup('follow'); s.deps.likeRecentPost = async () => { throw new Error('Like missing'); }; await s.run();
+  assert.ok(s.calls.includes('record-follow')); assert.equal(s.result().issue, undefined);
+});
+
+test('daily notification evidence is recorded before selecting DMs', async () => {
+  const s = setup(); s.deps.notifications = async () => ({ date: '2026-09-21', since: 0 });
+  const select = s.deps.dmTasks;
+  s.deps.dmTasks = async () => { assert.ok(s.calls.includes('record-notifications')); return select('automation', 'profile'); };
+  await s.run(); assert.ok(s.calls.includes('sent'));
+});
+
+test('an interrupted notification scan is never marked complete', async () => {
+  const s = setup(); s.deps.notifications = async () => ({ date: '2026-09-21', since: 0 }); s.deps.readNotifications = async () => null;
+  await s.run(); assert.ok(!s.calls.includes('record-notifications'));
+});
+
+test('removed membership prevents all outreach and browsing', async () => {
+  const s = setup(); s.deps.ready = async () => false; await s.run(); assert.deepEqual(s.calls, ['record-incomplete']);
+});
+
+for (const mode of ['dm', 'follow'] as const) test(`refused authorization stops ${mode}`, async () => {
+  const s = setup(mode); s.deps.begin = async () => false; s.deps.beginFollow = async () => false; await s.run();
+  assert.ok(!s.calls.includes('send')); assert.ok(!s.calls.includes('follow'));
+});
+
+for (const stage of ['navigation', 'composer', 'authorization', 'cleanup'] as const) test(`deadline during ${stage} skips further actions without a delivery issue`, async () => {
   const s = setup();
-  s.page.goto = (async (_url, options) => {
-    assert.equal(options?.timeout, 30_000);
-    await s.deps.sleep(600_000);
-    throw new Error('navigation timeout');
-  }) as Page['goto'];
-  await s.run();
-  assert.equal(s.calls.includes('authorize'), false);
-  assert.equal(s.calls.includes('send'), false);
-  assert.equal(s.calls.includes('uncertain'), false);
-  assert.equal(s.result().deliveryFailed, false);
+  if (stage === 'navigation' || stage === 'cleanup') s.page.goto = async () => { await s.deps.sleep(600_000); throw new Error('Timeout'); };
+  if (stage === 'cleanup') s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
+  if (stage === 'composer') s.locator.fill = async () => { await s.deps.sleep(600_000); };
+  if (stage === 'authorization') s.deps.begin = async () => { await s.deps.sleep(600_000); return true; };
+  await s.run(); assert.ok(!s.calls.includes('send')); assert.ok(!s.calls.includes('uncertain')); assert.equal(s.result().issue, undefined);
 });
 
-test("a deadline reached during follow cleanup ends the session without an issue", async () => {
-  const s = setup();
-  s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
-  s.page.goto = (async () => {
-    await s.deps.sleep(600_000);
-    throw new Error('navigation timeout');
-  }) as Page['goto'];
-  await s.run();
-  assert.equal(s.calls.includes('reserve'), false);
-  assert.equal(s.result().deliveryFailed, false);
+test('an unconfirmed delivery is recorded once and surfaces an issue', async () => {
+  const s = setup(); let confirms = 0;
+  s.locator.waitFor = async () => { if (++confirms > 1) throw new Error('Timeout'); };
+  await s.run(); assert.equal(s.calls.filter(c => c === 'send').length, 1); assert.ok(s.calls.includes('uncertain')); assert.match(s.result().issue!, /needs review/);
 });
 
-test("a deadline reached after composing skips the send without a review issue", async () => {
-  const s = setup();
-  s.locator.fill = async () => { s.calls.push('compose'); await s.deps.sleep(600_000); };
-  await s.run();
-  assert.equal(s.calls.includes('authorize'), false);
-  assert.equal(s.calls.includes('send'), false);
-  assert.equal(s.calls.includes('uncertain'), false);
-  assert.equal(s.result().deliveryFailed, false);
+test('blocked messages are unsent and never marked delivered', async () => {
+  const s = setup(); s.page.getByText = (() => s.locator) as Page['getByText']; await s.run();
+  assert.ok(s.calls.includes('blocked')); assert.equal(s.result().sent, false); assert.equal(s.result().issue, undefined);
 });
 
-test("a deadline reached during authorization never presses Send or flags delivery", async () => {
-  const s = setup();
-  s.deps.begin = async () => {
-    s.calls.push('authorize');
-    await s.deps.sleep(600_000);
-    return true;
-  };
-  await s.run();
-  assert.equal(s.calls.includes('authorize'), true);
-  assert.equal(s.calls.includes('send'), false);
-  assert.equal(s.calls.includes('uncertain'), false);
-  assert.equal(s.result().deliveryFailed, false);
+test('delivery confirmation can finish after the deadline', async () => {
+  const s = setup(); s.locator.press = async () => { s.calls.push('send'); await s.deps.sleep(600_000); };
+  await s.run(); assert.equal(s.result().sent, true); assert.equal(s.result().issue, undefined);
 });
 
-test("a send started near the deadline keeps fixed press and confirmation timeouts", async () => {
-  const s = setup();
-  let waits = 0;
-  s.locator.press = async (_, options) => {
-    assert.equal(options?.timeout, 10_000);
-    s.calls.push('send');
-    await s.deps.sleep(600_000);
-  };
-  s.locator.waitFor = async options => {
-    waits++;
-    if (waits === 2) assert.equal(options?.timeout, 15_000);
-    s.calls.push('confirm');
-  };
-  await s.run();
-  assert.equal(waits, 2);
-  assert.equal(s.result().sent, true);
-  assert.equal(s.result().deliveryFailed, false);
-});
-test("a delivery timeout is recorded uncertain and never retried", async () => {
-  const s = setup();
-  let waits = 0;
-  s.locator.waitFor = async () => {
-    waits++;
-    if (waits > 1) throw new Error("timeout");
-  };
-  await s.run();
-  assert.equal(s.calls.filter((c) => c === "send").length, 1);
-  assert.equal(s.calls.includes("sent"), false);
-  assert.equal(s.result().deliveryFailed, true);
-});
-test("exhausted feed budget does not create DM-only sessions", async () => {
-  const s = setup();
-  s.deps.warmup = async () => ({ minutes: 0, reason: "skipped" });
-  await s.run();
-  assert.deepEqual(s.calls, ["record-incomplete"]);
-});
-test("login challenges stop before browsing and are reported", async () => {
-  const s = setup();
-  s.page.url = () => "https://www.instagram.com/challenge/";
-  await s.run();
-  assert.deepEqual(s.calls, ["record-incomplete"]);
-  assert.equal(s.result().deliveryFailed, true);
+test('a final logging query failure does not flag a completed session', async () => {
+  const s = setup(); s.deps.target = async () => { if (s.calls.includes('sent')) throw new Error('Network timeout'); return { target: 0, remaining: 0, sent: 0 }; };
+  await s.run(); assert.equal(s.result().issue, undefined); assert.equal(s.calls.at(-1), 'record-completed');
 });
 
-for (const messageNeedsFollow of [false, true]) {
-  test(`follows before sending when Message is ${messageNeedsFollow ? 'missing' : 'already available'}`, async () => {
-    const s = setup('Follow', messageNeedsFollow);
-    s.deps.recordFollow = async (profileId, leadId, followed) => {
-      assert.equal(profileId, 'profile'); assert.equal(leadId, 'lead'); assert.equal(followed, true);
-      s.calls.push('record-follow');
-    };
-    await s.run();
-    assert.deepEqual(s.calls.filter(c => ['authorize', 'follow', 'record-follow', 'message-button', 'send'].includes(c)),
-      ['authorize', 'follow', 'record-follow', 'message-button', 'authorize', 'send']);
-    assert.equal(s.result().sent, true);
-  });
-}
-
-test('refused follow authorization prevents both following and messaging', async () => {
-  const s = setup('Follow');
-  s.deps.begin = async () => false;
-  await s.run();
-  assert.equal(s.calls.includes('follow'), false);
-  assert.equal(s.calls.includes('message-button'), false);
-  assert.equal(s.calls.includes('send'), false);
+test('exhausted browsing budget prevents DM-only, follow-only and cleanup sessions', async () => {
+  const s = setup(); s.deps.warmup = async () => ({ minutes: 0, reason: 'skipped' }); s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
+  await s.run(); assert.deepEqual(s.calls, ['record-incomplete']);
 });
 
-test('a deadline reached during follow authorization skips following and messaging', async () => {
-  const s = setup('Follow');
-  s.deps.begin = async () => {
-    await s.deps.sleep(600_000);
-    return true;
-  };
-  await s.run();
-  assert.equal(s.calls.includes('follow'), false);
-  assert.equal(s.calls.includes('message-button'), false);
-  assert.equal(s.calls.includes('send'), false);
-  assert.equal(s.result().deliveryFailed, false);
+test('a login challenge stops all actions and is reported', async () => {
+  const s = setup(); s.page.url = () => 'https://www.instagram.com/challenge/'; await s.run();
+  assert.deepEqual(s.calls, ['record-incomplete']); assert.match(s.result().issue!, /login or challenge/);
 });
 
-test('an unconfirmed follow prevents messaging and is not recorded', async () => {
-  const s = setup('Follow');
-  const controls = s.page.locator('main header');
-  const getByRole = controls.getByRole;
-  s.page.locator = (() => ({ getByRole: (role: string, options: { name: RegExp }) => {
-    const control = getByRole(role as 'button', options);
-    if (String(options.name).includes('Following')) control.waitFor = async () => { throw new Error('follow not confirmed'); };
-    return control;
-  } })) as unknown as Page['locator'];
-  await s.run();
-  assert.equal(s.calls.includes('follow'), true);
-  assert.equal(s.calls.includes('record-follow'), false);
-  assert.equal(s.calls.includes('message-button'), false);
-  assert.equal(s.calls.includes('send'), false);
-  assert.equal(s.result().deliveryFailed, true);
-});
-
-test('blocked message follows and unsends without marking delivery successful', async () => {
-  const s = setup('Follow');
-  const events: string[] = [];
-  s.page.getByText = ((text: string | RegExp, options?: { exact?: boolean }) => {
-    if (options?.exact && String(text).startsWith("This account can't receive"))
-      return s.locator;
-    return s.locator;
-  }) as unknown as Page['getByText'];
-  s.deps.recordFollow = async (_, __, followed) => {
-    assert.equal(followed, true);
-    events.push('follow');
-  };
-  s.deps.finish = async (_, __, ___, sent, blocked) => {
-    assert.equal(sent, false);
-    assert.equal(blocked, true);
-    events.push('blocked');
-  };
-  await s.run();
-  assert.deepEqual(events, ['follow', 'blocked']);
-  assert.equal(s.calls.filter(c => c === 'follow').length, 1);
-  assert.deepEqual(s.result(), { sent: false, deliveryFailed: false });
-});
-
-for (const relationship of ['Following', 'Requested'] as const) {
-  test(`existing ${relationship} does not click or record a follow`, async () => {
-    const s = setup(relationship);
-    s.deps.recordFollow = async () => { throw new Error('unexpected record'); };
-    await s.run();
-    assert.equal(s.calls.includes('follow'), false);
-    assert.equal(s.calls.filter(c => c === 'authorize').length, 1);
-    assert.equal(s.result().sent, true);
-  });
-}
-
-test('an exhausted daily budget also prevents follow cleanup', async () => {
-  const s = setup();
-  let following = true;
-  const events: string[] = [];
-  const follow = { waitFor: async () => { assert.equal(following, false); } };
-  const relationship = {
-    or: () => ({ waitFor: async () => {} }),
-    isVisible: async () => following,
-    click: async () => { events.push('open-following'); },
-  };
-  s.page.locator = (() => ({ getByRole: (_: string, options: { name: RegExp }) => String(options.name).includes('Following') ? relationship : follow })) as unknown as Page['locator'];
-  s.page.getByRole = (() => ({ waitFor: async () => {}, click: async () => { following = false; events.push('unfollow'); } })) as unknown as Page['getByRole'];
-  s.deps.followTasks = async () => [{ leadId: 'lead', username: 'alice' }];
-  s.deps.recordFollow = async (_, __, followed) => { assert.equal(followed, false); events.push('record'); };
-  s.deps.warmup = async () => { events.push('browse'); return { minutes: 0, reason: 'skipped' }; };
-  await s.run();
-  assert.deepEqual(events, ['browse']);
+test('pending DMs do not need a daily DM allowance', async () => {
+  const s = setup(); s.deps.target = async () => ({ target: 0, remaining: 0, sent: 0 });
+  s.deps.dmTasks = async () => Array.from({ length: 4 }, (_, i) => ({ leadId: `lead-${i}`, date: '2026-09-21', username: 'alice', message: 'Hello alice' }));
+  await s.run(); assert.equal(s.calls.filter(c => c === 'send').length, 4);
 });

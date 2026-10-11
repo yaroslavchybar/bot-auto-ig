@@ -76,3 +76,18 @@ test('automation ranges load, reject reversed ranges, and save both min/max pair
     }),
   }))
 })
+
+test('Outreach settings expose gradual daily follow limits instead of DM limits', async () => {
+  vi.mocked(useQuery).mockReturnValue([])
+  vi.mocked(useMutation).mockReturnValue(Object.assign(vi.fn(), {
+    withOptimisticUpdate: () => { throw new Error('Unexpected optimistic update') },
+  }))
+  view = mount()
+  await view.render(<RoutinePopup onClose={() => {}} />)
+  await click('Outreach')
+  expect(document.body.textContent).toContain('Daily follows')
+  expect(document.body.textContent).toContain('Initial follows per day')
+  expect(document.body.textContent).toContain('Max follows per day')
+  expect(document.body.textContent).toContain('Notifications are checked daily')
+  expect(document.body.textContent).not.toContain('Initial DMs per day')
+})

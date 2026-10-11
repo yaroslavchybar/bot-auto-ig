@@ -119,14 +119,16 @@ export const add = mutation({
 })
 
 export const settings = mutation({
-  args: { listId: v.id('leadLists'), days: v.number(), monitor: v.boolean() },
-  handler: async (ctx, { listId, days, monitor }) => {
+  args: { listId: v.id('leadLists'), days: v.number(), monitor: v.boolean(), includePrivate: v.optional(v.boolean()) },
+  handler: async (ctx, { listId, days, monitor, includePrivate }) => {
     if (!Number.isSafeInteger(days) || days < 1 || days > 3650)
       throw new Error('Days must be from 1 to 3650')
     const list = await ctx.db.get(listId)
     if (!list) throw new Error('Lead list not found')
-    if (lookbackDays(list) === days && (list.scrapeMonitor ?? true) === monitor) return
-    await ctx.db.patch(listId, { scrapeLookbackDays: days, scrapeMonitor: monitor })
+    const privateProfiles = includePrivate ?? list.scrapeIncludePrivate ?? false
+    if (lookbackDays(list) === days && (list.scrapeMonitor ?? true) === monitor &&
+      (list.scrapeIncludePrivate ?? false) === privateProfiles) return
+    await ctx.db.patch(listId, { scrapeLookbackDays: days, scrapeMonitor: monitor, scrapeIncludePrivate: privateProfiles })
     const sources = await ctx.db
       .query('scrapeSources')
       .withIndex('by_list_username', (q) => q.eq('listId', listId))
@@ -442,6 +444,7 @@ export const claim = internalMutation({
       runId,
       sinceDate: Math.max(0, now - lookbackDays(list) * DAY),
       postLimit: 5000,
+      includePrivate: list.scrapeIncludePrivate ?? false,
       post: post ? { id: post.mediaId, code: post.code } : undefined,
     }
   },

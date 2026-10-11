@@ -234,7 +234,7 @@ test('source settings save only explicit changes and posts load only when opened
   await typeInto(days, '7')
   expect(mocks.save).not.toHaveBeenCalled()
   await act(async () => button('Save').click())
-  expect(mocks.save).toHaveBeenCalledWith({ listId: 'list', days: 7, monitor: true })
+  expect(mocks.save).toHaveBeenCalledWith({ listId: 'list', days: 7, monitor: true, includePrivate: false })
   expect(usePaginatedQuery).not.toHaveBeenCalled()
   await act(async () => button('View posts').click())
   expect(vi.mocked(usePaginatedQuery).mock.calls.at(-1)?.[1]).toEqual({ sourceId: 'source' })

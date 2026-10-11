@@ -81,6 +81,8 @@ struct Task {
     run_id: String,
     since_date: u64,
     post_limit: u64,
+    #[serde(default)]
+    include_private: bool,
     list_id: String,
     kind: TaskKind,
     post: Option<Value>,
@@ -352,7 +354,7 @@ impl Scraper {
         };
         match self.mobile.invoke("likers", &command).await {
             Ok(data) => {
-                if let Ok(rows) = instagram::snapshot(&data) {
+                if let Ok(rows) = instagram::snapshot(&data, job.include_private) {
                     return Ok(rows);
                 }
             }
@@ -381,7 +383,10 @@ impl Scraper {
             let fallback = fallback.with_base(self.provider_url.clone());
             *web = Some(fallback);
         }
-        web.as_ref().unwrap().likers(post).await
+        web.as_ref()
+            .unwrap()
+            .likers(post, job.include_private)
+            .await
     }
     async fn enrich_pending(&self) -> Result<()> {
         let key = &self.openrouter_key;

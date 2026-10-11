@@ -187,8 +187,9 @@ export function RoutineProfiles({
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-copy">
               <span className="tabular-nums">{row.activeDays} active days</span>
-              {row.allowance > 0 && <Meter label="DMs" done={row.sent} total={row.allowance} />}
-              {row.budgetExhausted && row.sent < row.allowance && (
+              {row.allowance > 0 && <Meter label="Follows" done={row.followed} total={row.allowance} />}
+              {row.sent > 0 && <span>{row.sent} DMs sent</span>}
+              {row.budgetExhausted && row.followed < row.allowance && (
                 <Badge variant="outline" className="text-[10px] tracking-[0.12em] uppercase">
                   Time budget used
                 </Badge>

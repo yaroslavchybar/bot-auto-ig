@@ -8,11 +8,13 @@ import {
   routineRecordSession,
   routineFollowTasks,
   routineRecordFollow,
+  routineBeginFollow, routineNotifications, routineRecordNotifications, routineDmTasks, routineDismissDm,
   type DbAutomationRow,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
 import { scheduleRoutine } from './routine-schedule.js';
 import { followButton, followingButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
+import { readFollowNotifications, ownUsername, followsUs, likeRecentPost } from './follow-back.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
 
@@ -27,6 +29,15 @@ const dependencies = {
   warmup: runWarmup,
   followTasks: routineFollowTasks,
   recordFollow: routineRecordFollow,
+  beginFollow: routineBeginFollow,
+  notifications: routineNotifications,
+  recordNotifications: routineRecordNotifications,
+  dmTasks: routineDmTasks,
+  dismissDm: routineDismissDm,
+  readNotifications: readFollowNotifications,
+  ownUsername,
+  followsUs,
+  likeRecentPost,
   sleep,
   random,
 };
@@ -71,7 +82,7 @@ export async function runRoutineSession(
     const follow = followButton(page);
     await check();
     if (shouldStop()) throw new Error('Session stopped before following');
-    if (!await deps.begin(automation._id, profileId, leadId, date))
+    if (!await deps.beginFollow(automation._id, profileId, leadId, date))
       throw new Error('Follow was not authorized');
     if (shouldStop()) throw new Error('Session stopped before following');
     await follow.click({ timeout: 10_000 });
@@ -108,12 +119,28 @@ export async function runRoutineSession(
         deadline = session.deadline;
         try {
           await cleanup();
+          if (shouldStop()) return 'stopped';
+          const scan = await deps.notifications(automation._id, profileId);
+          if (scan) {
+            const names = await deps.readNotifications(page, shouldStop, scan.since);
+            if (names && !shouldStop()) {
+              await deps.recordNotifications(automation._id, profileId, scan.date, names);
+              log({ event: 'automation.routine.follow_notifications', followerCount: names.length });
+            }
+          }
         } catch (error) {
           if (shouldStop()) return 'stopped';
           throw error;
         }
+        if (shouldStop()) return 'stopped';
+        const followTarget = await deps.target(automation._id, profileId);
+        const dms = await deps.dmTasks(automation._id, profileId);
+        const username = dms.length ? await deps.ownUsername(page) : '';
+        let followsRemaining = followTarget.remaining;
+        let preferDm = true;
+        // Both activities share session time, but only new follows consume the daily quota.
         return scheduleRoutine(session, {
-          target: () => deps.target(automation._id, profileId),
+          target: async () => ({ target: followsRemaining + dms.length, remaining: followsRemaining + dms.length, sent: 0 }),
           now: deps.now, random: deps.random, sleep: deps.sleep,
           stopped: () => stopped() || !allowed || Boolean(liveAccess && !liveAccess()), log,
           send: async () => {
@@ -121,22 +148,35 @@ export async function runRoutineSession(
             if (/\/accounts\/login|\/challenge|\/checkpoint/.test(page.url()))
               throw new Error('Instagram login or challenge needs attention');
             if (shouldStop()) return 'unavailable';
-            const attempt = await deps.reserve(
-              automation._id,
-              profileId,
-            );
+            const isDm = dms.length > 0 && (preferDm || followsRemaining <= 0);
+            preferDm = !preferDm;
+            const attempt = isDm ? dms.shift()! : await deps.reserve(automation._id, profileId);
+            if (!isDm) followsRemaining = attempt ? Math.max(0, followsRemaining - 1) : 0;
             if (!attempt) {
-              log({ event: 'automation.routine.eligible_recipient_available_for_the', message: 'No eligible recipient available for the remaining DM target' });
-              return 'unavailable';
+              return dms.length ? 'blocked' : 'unavailable';
             }
             // Navigation and composer preparation happen before permission to press Send.
             let sendAttempted = false;
             try {
               await page.goto(`https://www.instagram.com/${attempt.username}/`, {
                 waitUntil: "domcontentloaded",
-                timeout: 30_000,
+                timeout: timeout(30_000),
               });
-              await followIfNeeded(attempt.leadId, attempt.date);
+              if (!isDm) {
+                const followed = await followIfNeeded(attempt.leadId, attempt.date);
+                if (followed && !shouldStop()) {
+                  await deps.likeRecentPost(page, async () => { await check(); return !shouldStop(); })
+                    .catch(error => log({ event: 'automation.routine.optional_like', error, outcome: 'skipped' }));
+                }
+                log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
+                return followed ? 'sent' : 'blocked';
+              }
+              if (!await isFollowing(page) || !await deps.followsUs(page, username)) {
+                await deps.dismissDm(profileId, attempt.leadId);
+                return 'blocked';
+              }
+              await check();
+              if (shouldStop()) return 'unavailable';
               await messageButton(page).click({ timeout: 15_000 });
               // Current Instagram keeps the profile URL and opens the composer in
               // an overlay, so the composer is the navigation-complete signal.
@@ -167,7 +207,7 @@ export async function runRoutineSession(
                 await deps.finish(profileId, attempt.leadId, attempt.date, sent, blocked);
               }
               log({ event: 'automation.dm_result', targetUsername: attempt.username, sent, blocked, message: blocked
-                ? `Message blocked for @${attempt.username}; followed and unsent`
+                ? `Message blocked for @${attempt.username}; unsent`
                 : `Message sent to @${attempt.username}` });
               return sent ? 'sent' : 'blocked';
             } catch (error) {
@@ -186,7 +226,7 @@ export async function runRoutineSession(
     hadActivity = warmup.minutes > 0;
     activityCompleted = hadActivity && warmup.reason === 'finished';
     const target = await deps.target(automation._id, profileId).catch(() => null);
-    if (target && target.target > 0) log({ event: 'automation.daily_dm_target', sentCount: target.sent, targetCount: target.target });
+    if (target && target.target > 0) log({ event: 'automation.daily_follow_target', followedCount: target.sent, targetCount: target.target });
   } catch (error) {
     issue = error instanceof Error ? error.message : String(error);
     log({ event: 'automation.routine_result', error, outcome: 'error' });

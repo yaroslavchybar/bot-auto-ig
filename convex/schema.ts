@@ -8,6 +8,7 @@ export default defineSchema({
     createdAt: v.number(),
     scrapeLookbackDays: v.optional(v.number()),
     scrapeMonitor: v.optional(v.boolean()),
+    scrapeIncludePrivate: v.optional(v.boolean()),
   }),
   // Keep changing counts separate from list metadata subscriptions used by Chat.
   leadListCounts: defineTable({
@@ -40,13 +41,18 @@ export default defineSchema({
     dmSent: v.boolean(),
     followed: v.boolean(),
     followDate: v.optional(v.number()),
+    followStartedAt: v.optional(v.number()),
     unfollowDays: v.optional(v.number()),
     unfollowAt: v.optional(v.number()),
     dmBlocked: v.optional(v.boolean()),
+    dmEligible: v.optional(v.boolean()),
+    dmStartedAt: v.optional(v.number()),
+    dmStartedDate: v.optional(v.string()),
   })
     .index('by_username', ['username'])
     .index('by_ig_id', ['igId'])
     .index('by_classification', ['classification'])
+    .index('by_dm_pending', ['senderId', 'dmEligible', 'dmStartedAt', 'unfollowAt'])
     .index('by_enrichment', ['enrichmentStatus'])
     .index('by_follow_due', ['senderId', 'followed', 'followDate'])
     .index('by_unfollow_due', ['senderId', 'followed', 'unfollowAt']),
@@ -66,7 +72,15 @@ export default defineSchema({
     activeDays: v.number(),
     outreachDays: v.number(),
     dmIncrease: v.optional(v.number()),
+    followIncrease: v.optional(v.number()),
+    followQuotaDate: v.optional(v.string()),
+    lastFollowDate: v.optional(v.string()),
     sentToday: v.optional(v.number()),
+    dmDate: v.optional(v.string()),
+    followedToday: v.optional(v.number()),
+    lastNotificationsDate: v.optional(v.string()),
+    lastNotificationsAt: v.optional(v.number()),
+    outreachStartedAt: v.optional(v.number()),
     lastActivityDate: v.optional(v.string()),
     lastOutreachDate: v.optional(v.string()),
     date: v.string(),

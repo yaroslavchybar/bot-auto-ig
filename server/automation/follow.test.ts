@@ -62,3 +62,27 @@ test('unsendMessage waits for the selected duplicate message to detach', async (
   assert.equal(unsendClicked, true);
   assert.equal(detachedIndex, 1);
 });
+
+test('private request cleanup handles both immediate cancellation and confirmation dialogs', async () => {
+  const { unfollow } = await import('./follow.js');
+  for (const immediate of [false, true]) {
+    let following = true, confirmation = false, confirmed = false;
+    const follow = { isVisible: async () => !following, waitFor: async () => { assert.equal(following, false); } };
+    const relationship = {
+      isVisible: async () => following,
+      or: () => ({ waitFor: async () => {} }),
+      click: async () => { if (immediate) following = false; else confirmation = true; },
+    };
+    const confirm = {
+      or: () => ({ waitFor: async () => { assert.ok(confirmation || !following); } }),
+      click: async () => { confirmed = true; following = false; },
+    };
+    const page = {
+      locator: () => ({ getByRole: (_: string, options: { name: RegExp }) => options.name.test('Requested') ? relationship : follow }),
+      getByRole: () => confirm,
+    } as unknown as Page;
+    assert.equal(await unfollow(page, async () => true), true);
+    assert.equal(following, false);
+    assert.equal(confirmed, !immediate);
+  }
+});

@@ -4,6 +4,35 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
+  for (const [path, endpoint] of [
+    ['/api/routines/notifications', internal.routines.notifications],
+    ['/api/routines/dm-tasks', internal.routines.dmTasks],
+  ] as const) http.route({ path, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    return jsonResponse(await ctx.runQuery(endpoint, {
+      automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
+    }));
+  }) });
+  http.route({ path: '/api/routines/record-notifications', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    await ctx.runMutation(internal.routines.recordNotifications, {
+      automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
+      date: String(b.date), usernames: b.usernames,
+    });
+    return jsonResponse({ ok: true });
+  }) });
+  http.route({ path: '/api/routines/dismiss-dm', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    await ctx.runMutation(internal.routines.dismissDm, { profileId: b.profileId as Id<'profiles'>, leadId: b.leadId as Id<'leads'> });
+    return jsonResponse({ ok: true });
+  }) });
+  http.route({ path: '/api/routines/begin-follow', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const b = await parseBody(request);
+    return jsonResponse(await ctx.runMutation(internal.routines.beginFollow, {
+      automationId: b.automationId as Id<'automations'>, profileId: b.profileId as Id<'profiles'>,
+      leadId: b.leadId as Id<'leads'>, date: String(b.date),
+    }));
+  }) });
   http.route({ path: '/api/routines/target', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
     const b = await parseBody(request);
     return jsonResponse(await ctx.runQuery(internal.routines.target, {
@@ -71,7 +100,7 @@ export function registerRoutineRoutes(http: HttpRouter) {
     handler: withErrorHandling(async (ctx, request) => {
       const b = await parseBody(request);
       return jsonResponse(
-        await ctx.runQuery(internal.routines.beginSend, {
+        await ctx.runMutation(internal.routines.beginSend, {
           automationId: b.automationId as Id<"automations">,
           profileId: b.profileId as Id<"profiles">,
           leadId: b.leadId as Id<"leads">,

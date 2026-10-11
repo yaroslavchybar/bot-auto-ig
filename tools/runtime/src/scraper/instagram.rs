@@ -61,7 +61,7 @@ impl Web {
         self.base = base;
         self
     }
-    pub async fn likers(&self, post: &Value) -> Result<Likers> {
+    pub async fn likers(&self, post: &Value, include_private: bool) -> Result<Likers> {
         let id = instagram::string(&post["id"]);
         let code = instagram::string(&post["code"]);
         if !instagram::digits(&id)
@@ -113,7 +113,7 @@ impl Web {
                                 last = Error::failed("Instagram API request failed");
                                 continue;
                             }
-                            return snapshot(&data);
+                            return snapshot(&data, include_private);
                         }
                         Err(message) => last = Error::failed(message),
                     }
@@ -129,8 +129,8 @@ pub struct Likers {
     pub ids: Vec<String>,
     pub like_count: Option<u64>,
 }
-pub fn snapshot(data: &Value) -> Result<Likers> {
-    let rows = parse_likers(data)?;
+pub fn snapshot(data: &Value, include_private: bool) -> Result<Likers> {
+    let rows = parse_likers(data, include_private)?;
     let mut seen = std::collections::HashSet::new();
     let ids = data["users"]
         .as_array()
@@ -148,12 +148,12 @@ pub fn snapshot(data: &Value) -> Result<Likers> {
         like_count: data["likeCount"].as_u64(),
     })
 }
-pub fn parse_likers(data: &Value) -> Result<Vec<Value>> {
+pub fn parse_likers(data: &Value, include_private: bool) -> Result<Vec<Value>> {
     let rows = data["users"]
         .as_array()
         .ok_or_else(|| Error::failed("Instagram returned an incomplete likers response"))?;
     Ok(rows.iter().take(100).filter_map(|row|{
-        if row["is_private"]!=false{return None;}let id=instagram::string(row.get("pk").unwrap_or(&row["id"]));let username=instagram::string(&row["username"]);
+        if row["is_private"].as_bool()? && !include_private{return None;}let id=instagram::string(row.get("pk").unwrap_or(&row["id"]));let username=instagram::string(&row["username"]);
         if !instagram::digits(&id)||username.is_empty(){return None;}Some(json!({"igId":id,"username":username,"fullName":instagram::string(&row["full_name"]),"profilePicUrl":instagram::string(&row["profile_pic_url"])}))
     }).collect())
 }

@@ -37,6 +37,7 @@ fn task(kind: TaskKind) -> Task {
         run_id: "run".into(),
         since_date: 100_000,
         post_limit: 5000,
+        include_private: false,
         list_id: "list".into(),
         kind,
         post: Some(json!({"id":"1","code":"one"})),
@@ -181,7 +182,7 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
         .contains("list", "20")
         .unwrap());
     let activity = scraper.run_task(&job).await.unwrap().unwrap();
-    assert_eq!(activity.new_ids, 3); // Private IDs describe traffic but never become leads.
+    assert_eq!(activity.new_ids, 3); // Traffic includes private IDs even when lead saving excludes them.
     assert_eq!(activity.like_count, Some(200));
     assert_eq!(calls.lock().unwrap()[1]["likers"][0]["igId"], "20");
     job.run_id = "next-check".into();
@@ -194,6 +195,19 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
         calls.lock().unwrap()[2]["likers"].as_array().unwrap().len(),
         2
     );
+    job.list_id = "list".into();
+    job.include_private = true;
+    scraper.run_task(&job).await.unwrap();
+    assert_eq!(
+        calls.lock().unwrap()[3]["likers"],
+        json!([{"igId":"30","username":"private","fullName":"","profilePicUrl":""}])
+    );
+    assert!(scraper
+        .cache
+        .lock()
+        .unwrap()
+        .contains("list", "30")
+        .unwrap());
 }
 
 #[test]
@@ -321,13 +335,14 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
         apify_key: "fixture".into(),
         provider_url: Some(fixture.url.clone()),
     };
-    let job = Task {
+    let mut job = Task {
         id: "job".into(),
         username: "source".into(),
         profile_id: "profile".into(),
         run_id: "run".into(),
         since_date: 0,
         post_limit: 1,
+        include_private: false,
         list_id: "list".into(),
         kind: TaskKind::Likers,
         post: None,
@@ -411,6 +426,18 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
         .unwrap_err();
     assert!(error.paused);
     assert_eq!(error.retry_after_ms, Some(60_000));
+    job.include_private = true;
+    for mode_value in [0, 5] {
+        mode.store(mode_value, Ordering::SeqCst);
+        let mut fallback = None;
+        let rows = scraper
+            .likers(&job, &post, &mut fallback)
+            .await
+            .unwrap()
+            .rows;
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[1]["igId"], "12");
+    }
 }
 
 #[test]
@@ -454,8 +481,19 @@ fn apify_and_likers_keep_lossless_ids_dates_deduplication_and_public_filter() {
     )
     .is_err());
     assert!(providers::apify_dataset(&json!([{"id":"1","code":"one"}]), 0, 10).is_err());
-    let likers=instagram::parse_likers(&json!({"users":[{"pk":9007199254740993u64,"username":"public","is_private":false},{"pk":"2","username":"private","is_private":true},{"pk":"3","username":"unknown"}]})).unwrap();
+    let likers=instagram::parse_likers(&json!({"users":[{"pk":9007199254740993u64,"username":"public","is_private":false},{"pk":"2","username":"private","is_private":true},{"pk":"3","username":"unknown"}]}), false).unwrap();
     assert_eq!(likers.len(), 1);
     assert_eq!(likers[0]["igId"], "9007199254740993");
-    assert!(instagram::parse_likers(&json!({})).is_err());
+    assert!(instagram::parse_likers(&json!({}), false).is_err());
+    let all = instagram::parse_likers(
+        &json!({"users":[
+            {"pk":"1","username":"public","is_private":false},
+            {"pk":"2","username":"private","is_private":true},
+            {"pk":"3","username":"unknown"}
+        ]}),
+        true,
+    )
+    .unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[1]["igId"], "2");
 }

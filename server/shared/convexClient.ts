@@ -480,6 +480,16 @@ export const routineTarget = (automationId: string, profileId: string) =>
     method: 'POST',
     body: { automationId, profileId },
   })
+export const routineNotifications = (automationId: string, profileId: string) =>
+  convexFetch<{ date: string; since: number } | null>('/api/routines/notifications', { method: 'POST', body: { automationId, profileId } })
+export const routineRecordNotifications = (automationId: string, profileId: string, date: string, usernames: string[]) =>
+  convexFetch('/api/routines/record-notifications', { method: 'POST', body: { automationId, profileId, date, usernames } })
+export const routineDmTasks = (automationId: string, profileId: string) =>
+  convexFetch<Array<{ leadId: string; username: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
+export const routineDismissDm = (profileId: string, leadId: string) =>
+  convexFetch('/api/routines/dismiss-dm', { method: 'POST', body: { profileId, leadId } })
+export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string) =>
+  convexFetch<boolean>('/api/routines/begin-follow', { method: 'POST', body: { automationId, profileId, leadId, date }, maxRetries: 0 })
 export const routineRecordSession = (
   automationId: string,
   profileId: string,

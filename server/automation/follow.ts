@@ -3,7 +3,7 @@ import type { Page } from 'playwright-core';
 // Scope controls to the recipient header; suggested accounts also have Follow buttons.
 export const profileControls = (page: Page) => page.locator('main header');
 export const followButton = (page: Page) => profileControls(page).getByRole('button', { name: /^(Follow|Follow back)$/i });
-export const followingButton = (page: Page) => profileControls(page).getByRole('button', { name: /^(Following|Requested)$/i });
+export const followingButton = (page: Page) => profileControls(page).getByRole('button', { name: /^(Following|Requested)(?: Down chevron icon)?$/i });
 export const messageButton = (page: Page) => profileControls(page).getByRole('button', { name: 'Message', exact: true });
 
 // Instagram currently opens the composer as an overlay on the profile URL.
@@ -62,7 +62,9 @@ export async function unfollow(page: Page, allowed: () => Promise<boolean>) {
   if (!await allowed()) return false;
   await followingButton(page).click({ timeout: 10_000 });
   const confirm = page.getByRole('button', { name: /^(Unfollow|Cancel request)$/i, exact: true });
-  await confirm.waitFor({ state: 'visible', timeout: 10_000 });
+  // Some private-profile layouts cancel a request immediately after clicking Requested.
+  await confirm.or(followButton(page)).waitFor({ state: 'visible', timeout: 10_000 });
+  if (await followButton(page).isVisible()) return true;
   if (!await allowed()) return false;
   await confirm.click({ timeout: 10_000 });
   await followButton(page).waitFor({ state: 'visible', timeout: 15_000 });

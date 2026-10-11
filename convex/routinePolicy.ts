@@ -2,6 +2,7 @@ import { v } from "convex/values";
 
 export const routineValidator = v.object({
   outreachStartDay: v.number(),
+  // Stored names are retained; these settings now limit new follows, not DMs.
   initialDms: v.number(),
   // Accept saved routines from before random growth; this value is no longer used.
   dailyIncrease: v.optional(v.number()),
@@ -87,14 +88,14 @@ export function validateRoutine(p: RoutinePolicy) {
     throw new Error("Rest between sessions must be positive, with min no greater than max");
   for (const [name, value, min, max] of [
     ["Outreach start day", p.outreachStartDay, 1, 365],
-    ["Initial DMs", p.initialDms, 1, 35],
-    ["Maximum DMs", p.maxDms, 1, 35],
+    ["Initial follows", p.initialDms, 1, 35],
+    ["Maximum follows", p.maxDms, 1, 35],
   ] as const) {
     if (!Number.isInteger(value) || value < min || value > max)
       throw new Error(`${name} must be ${min}–${max}`);
   }
   if (p.initialDms > p.maxDms)
-    throw new Error("Initial DMs exceed the maximum");
+    throw new Error("Initial follows exceed the maximum");
   if (p.message.length > 1000)
     throw new Error("Message must be at most 1,000 characters");
   const routes = outreachRoutes(p);
@@ -114,7 +115,7 @@ export function validateRoutine(p: RoutinePolicy) {
 export const dayKey = (now = Date.now()) =>
   new Date(now).toISOString().slice(0, 10);
 
-export function dmAllowance(
+export function followAllowance(
   p: RoutinePolicy,
   activeDays: number,
   accumulatedIncrease: number,

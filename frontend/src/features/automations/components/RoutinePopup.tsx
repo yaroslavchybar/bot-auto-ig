@@ -120,8 +120,8 @@ export function RoutinePopup({
   const [postsMin, postsMax] = warmupPostRange(policy)
   const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Each profile needs ${span(postsMin, postsMax)} posts before outreach.`
   const outreachSummary = policy.outreachEnabled
-    ? `Sends from day ${policy.outreachStartDay}: ${policy.initialDms} DMs a day, up to ${policy.maxDms}.`
-    : 'Off. No DMs are sent.'
+    ? `Follows from day ${policy.outreachStartDay}: ${policy.initialDms} a day, growing up to ${policy.maxDms}. DMs wait for a follow-back.`
+    : 'Off. No outreach follows or DMs.'
 
   // Binds a 0–100 activity setting to a slider.
   const percentSetting = (label: string, key: string) => (
@@ -429,17 +429,18 @@ export function RoutinePopup({
                   />
                 </label>
                 <div className={cn('space-y-6', !policy.outreachEnabled && 'opacity-60')}>
-                  <SettingsGroup title="Daily DMs">
+                  <SettingsGroup title="Daily follows">
                     {routineNumber('outreach-start-day', 'Outreach from day', 'outreachStartDay', {
                       min: 1,
                       max: 365,
                     })}
-                    {routineNumber('initial-dms', 'Initial DMs per day', 'initialDms', {
+                    {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
                       min: 1,
                       max: 35,
                     })}
-                    {routineNumber('max-dms', 'Max DMs per day', 'maxDms', { min: 1, max: 35 })}
+                    {routineNumber('max-follows', 'Max follows per day', 'maxDms', { min: 1, max: 35 })}
                   </SettingsGroup>
+                  <p className="text-sm text-muted-copy">Follow public or private accounts first. Public accounts with posts can receive one like. Notifications are checked daily; DMs start the next day only after a follow-back, before unfollowing. DMs have no separate daily limit and use the existing session time.</p>
                   <SettingsGroup title="Unfollow">
                     {routineRange(
                       'unfollow-days',
