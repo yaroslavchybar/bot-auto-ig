@@ -1,3 +1,4 @@
+import { patchProfile } from './workerMetadata'
 import { DomainError } from './errors'
 import { v } from 'convex/values'
 import { internalQuery, mutation, query } from './_generated/server'
@@ -327,7 +328,7 @@ export const update = mutation({
       if (targetCount + assigned.length > maxProfiles)
         throw new DomainError('VALIDATION', 'Profile limit is too small for the assigned profiles')
       for (const profile of assigned) {
-        await ctx.db.patch(profile._id, { proxy, proxyType, mode: 'proxy' })
+        await patchProfile(ctx, profile._id, { proxy, proxyType, mode: 'proxy' })
         await syncProxyUsage(ctx, { ...profile, proxy, proxyType })
       }
     }

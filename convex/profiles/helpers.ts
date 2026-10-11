@@ -3,6 +3,7 @@ import { DEFAULT_SCRAPER_DAILY_LIMIT } from '../scraperKeys';
 import { clearChatCounter } from '../chatCache'
 import { clearProfileChatArchives } from '../chatArchives'
 import { syncProxyUsage, clearProxyUsage } from '../proxyUsage'
+import { patchProfile, syncWorkerProfile, clearWorkerProfile } from '../workerMetadata'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
 
 function assertProfileEditable(profile: any) {
@@ -205,6 +206,7 @@ export async function insertProfileRow(ctx: any, args: any) {
 		lastOpenedAt: undefined,
 	});
 	await syncProxyUsage(ctx, { _id: id, name: args.name, proxy: args.proxy, proxyType: args.proxyType });
+	await syncWorkerProfile(ctx, (await ctx.db.get(id))!);
 	return id;
 }
 
@@ -252,7 +254,7 @@ export async function updateProfileByNameRow(ctx: any, args: any) {
 		await assertProxyLimit(ctx, effectiveProxyByName, effectiveTypeByName, existing._id);
 	}
 	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
-    await ctx.db.patch(existing._id, next as any);
+    await patchProfile(ctx, existing._id, next as any);
 	await syncProxyUsage(ctx, { _id: existing._id, name, proxy: effectiveProxyByName, proxyType: effectiveTypeByName });
 	await ensureProxySaved(
 		ctx,
@@ -301,7 +303,7 @@ export async function updateProfileByIdRow(ctx: any, args: any) {
 		await assertProxyLimit(ctx, effectiveProxyById, effectiveTypeById, args.profileId);
 	}
 	if (Object.entries(next).some(([key, value]) => existing[key] !== value))
-    await ctx.db.patch(args.profileId, next as any);
+    await patchProfile(ctx, args.profileId, next as any);
 	await syncProxyUsage(ctx, { _id: args.profileId, name, proxy: effectiveProxyById, proxyType: effectiveTypeById });
 	await ensureProxySaved(
 		ctx,
@@ -361,6 +363,7 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
     .first()
   if (setup) await ctx.db.delete(setup._id)
   await clearProxyUsage(ctx, existing._id)
+  await clearWorkerProfile(ctx, existing._id)
   await ctx.db.delete(existing._id)
   return true
 }
@@ -397,6 +400,7 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
     .first()
   if (setup) await ctx.db.delete(setup._id)
   await clearProxyUsage(ctx, profileId)
+  await clearWorkerProfile(ctx, profileId)
   await ctx.db.delete(profileId)
   return true
 }
@@ -416,7 +420,7 @@ export async function syncProfileStatusRow(ctx: any, name: string, status: strin
 	if (cleanedStatus.toLowerCase() === "running") {
 		next.lastOpenedAt = Date.now();
 	}
-	await ctx.db.patch(existing._id, next as any);
+	await patchProfile(ctx, existing._id, next as any);
 	return true;
 }
 

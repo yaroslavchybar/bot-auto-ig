@@ -13,7 +13,6 @@ test.each([10, undefined])(
       taskAt: null,
       blockedProfileIds: [],
       taskKey: null,
-      enrichmentKey: null,
     })
     await expect(t.query(api.scraper.work, { bridgeToken: 'wrong' })).rejects.toThrow(
       'Unauthorized',
@@ -59,9 +58,9 @@ test.each([10, undefined])(
         enrichmentStatus: 'pending',
       }),
     )
-    expect((await t.query(api.scraper.work, args)).enrichmentKey).toBe(lead)
+    expect(await t.query(api.scraper.enrichmentWork, args)).toEqual({ pending: true })
     await t.run((ctx) => ctx.db.patch(lead, { enrichmentStatus: 'ready' }))
-    expect((await t.query(api.scraper.work, args)).enrichmentKey).toBeNull()
+    expect(await t.query(api.scraper.enrichmentWork, args)).toEqual({ pending: false })
   },
 )
 

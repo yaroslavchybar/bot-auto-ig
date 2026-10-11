@@ -119,6 +119,13 @@ export const chatWorkerContexts = query({
   args: { bridgeToken: v.string(), subscriptionId: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
+    const initialized = await ctx.db.query('workerMetadataMigration').unique()
+    if (initialized?.complete) {
+      const rows = await ctx.db.query('chatWorkerMetadata').take(1001)
+      if (rows.length > 1000) throw new Error('Too many connected Chat accounts')
+      return rows.map(({ _id: _rowId, _creationTime: _created, ...context }) => context)
+        .sort((a, b) => a.profileId.localeCompare(b.profileId))
+    }
     const memberships = await ctx.db.query('chatMemberships').take(1001)
     if (memberships.length > 1000) throw new Error('Too many connected Chat accounts')
     const contexts = await Promise.all(

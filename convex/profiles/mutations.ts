@@ -1,3 +1,4 @@
+import { patchProfile, syncWorkerProfile } from '../workerMetadata'
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
@@ -19,7 +20,7 @@ export const setIgState = mutation({
         ([key, value]) => value !== undefined && profile[key as keyof typeof profile] !== value,
       )
     )
-      await ctx.db.patch(profileId, state)
+      await patchProfile(ctx, profileId, state)
     if (state.igLoggedIn !== undefined)
       await setChatCounterEnabled(ctx, profileId, state.igLoggedIn)
   },
@@ -44,7 +45,7 @@ export const setIgStateInternal = internalMutation({
     if (
       Object.entries(patch).some(([key, value]) => profile[key as keyof typeof profile] !== value)
     )
-      await ctx.db.patch(profileId, patch)
+      await patchProfile(ctx, profileId, patch)
     if (igLoggedIn !== undefined) await setChatCounterEnabled(ctx, profileId, igLoggedIn)
   },
 })
@@ -86,6 +87,7 @@ export const saveChatSessionInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .first()
     if (!membership) await ctx.db.insert('chatMemberships', { profileId })
+    await syncWorkerProfile(ctx, profile)
   },
 })
 
@@ -106,6 +108,8 @@ export const deleteChatSessionInternal = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .collect())
       await ctx.db.delete(row._id)
+    const profile = await ctx.db.get(profileId)
+    if (profile) await syncWorkerProfile(ctx, profile)
   },
 })
 
@@ -117,7 +121,7 @@ export const beginDeleteInternal = internalMutation({
       .withIndex('by_name', (q) => q.eq('name', name))
       .first()
     if (!profile) return null
-    await ctx.db.patch(profile._id, { status: 'deleting' })
+    await patchProfile(ctx, profile._id, { status: 'deleting' })
     await setChatCounterEnabled(ctx, profile._id, false)
     return { ...profile, status: 'deleting' }
   },
@@ -129,7 +133,7 @@ export const finishRenameInternal = internalMutation({
 		const profile = await ctx.db.get(profileId);
 		if (!profile) return;
 		if (profile.status === 'deleting') throw new DomainError('CONFLICT', 'Profile is being deleted');
-		await ctx.db.patch(profileId, { renameFrom: undefined });
+		await patchProfile(ctx, profileId, { renameFrom: undefined });
 	},
 });
 import { createProfileRow, insertProfileRow, updateProfileByNameRow, updateProfileByIdRow, removeProfileByNameRow, removeProfileByIdRow, syncProfileStatusRow, bulkSetProfileListIdRow, bulkAddProfilesToListRow, bulkRemoveProfilesFromListRow } from "./helpers";

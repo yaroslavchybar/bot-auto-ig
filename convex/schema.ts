@@ -17,6 +17,7 @@ export default defineSchema({
     listId: v.id('leadLists'),
     count: v.optional(v.number()),
     revision: v.optional(v.number()),
+    sourceCount: v.optional(v.number()),
   }).index('by_list', ['listId']),
   leads: defineTable({
     igId: v.optional(v.string()),
@@ -212,6 +213,34 @@ export default defineSchema({
     .index('by_rename', ['renameFrom'])
     .index('by_created', ['createdAt'])
     .index('by_proxy', ['proxy', 'proxyType']),
+  // Worker subscriptions only depend on these small, independently changing projections.
+  scraperProfiles: defineTable({
+    profileId: v.id('profiles'),
+    name: v.string(),
+    using: v.boolean(),
+    status: v.optional(v.string()),
+    renameFrom: v.optional(v.string()),
+    scraperReady: v.boolean(),
+    scraperDailyLimit: v.optional(v.union(v.number(), v.null())),
+    scraperUsageDate: v.optional(v.string()),
+    scraperUsageCount: v.optional(v.number()),
+    scraperCooldownUntil: v.optional(v.number()),
+  }).index('by_profile', ['profileId']),
+  chatWorkerMetadata: defineTable({
+    profileId: v.id('profiles'),
+    storageId: v.id('_storage'),
+    token: v.string(),
+    reconnectRequired: v.boolean(),
+    enabled: v.boolean(),
+    proxy: v.string(),
+    proxyType: v.string(),
+  }).index('by_profile', ['profileId']),
+  workerMetadataMigration: defineTable({
+    cursor: v.union(v.string(), v.null()),
+    complete: v.boolean(),
+    jobId: v.optional(v.id('_scheduled_functions')),
+  }),
+  enrichmentWork: defineTable({ pending: v.boolean() }),
   // Proxy tables read this small projection instead of profile cookies and runtime state.
   proxyProfileAssignments: defineTable({
     profileId: v.id('profiles'),

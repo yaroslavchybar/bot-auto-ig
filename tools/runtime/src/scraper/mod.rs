@@ -67,7 +67,6 @@ pub struct Work {
     blocked_profile_ids: Vec<String>,
     task_at: Option<u64>,
     task_key: Option<String>,
-    enrichment_key: Option<String>,
 }
 pub struct Scraper {
     api: Arc<Api>,
@@ -75,6 +74,7 @@ pub struct Scraper {
     openrouter_key: String,
     apify_key: String,
     work: watch::Sender<(u64, Work)>,
+    enrichment: watch::Sender<bool>,
     cache: Mutex<cache::Cache>,
     #[cfg(test)]
     provider_url: Option<String>,
@@ -108,6 +108,9 @@ struct Activity {
     like_count: Option<u64>,
 }
 impl Scraper {
+    pub fn update_enrichment(&self, pending: bool) {
+        self.enrichment.send_replace(pending);
+    }
     pub async fn update(&self, mut value: Value) -> crate::native::Result<()> {
         if !value["taskAt"].is_null() {
             value["taskAt"] = json!(api::timestamp_ms(&value["taskAt"])
@@ -129,10 +132,12 @@ impl Scraper {
         let file = std::path::PathBuf::from(":memory:");
         let cache = cache::Cache::open(&file)?;
         let (work, _) = watch::channel((0, Work::default()));
+        let (enrichment, _) = watch::channel(false);
         let service = Arc::new(Self {
             api,
             mobile,
             work,
+            enrichment,
             cache: Mutex::new(cache),
             openrouter_key: api::env("OPENROUTER_API_KEY", ""),
             apify_key: api::env("APIFY_API_KEY", ""),
@@ -159,11 +164,12 @@ impl Scraper {
     }
     async fn run_loop(self: Arc<Self>, enrichment: bool) {
         let mut work = self.work.subscribe();
+        let mut pending = self.enrichment.subscribe();
         let mut retry_at = Instant::now();
         loop {
             let (_, state) = work.borrow_and_update().clone();
             let due = if enrichment {
-                if state.enrichment_key.is_some() && !self.openrouter_key.is_empty() {
+                if *pending.borrow_and_update() && !self.openrouter_key.is_empty() {
                     Some(0)
                 } else {
                     None
@@ -172,7 +178,12 @@ impl Scraper {
                 state.task_key.as_ref().and(state.task_at)
             };
             let Some(due) = due else {
-                if work.changed().await.is_err() {
+                let changed = if enrichment {
+                    pending.changed().await
+                } else {
+                    work.changed().await
+                };
+                if changed.is_err() {
                     break;
                 }
                 continue;
@@ -180,7 +191,11 @@ impl Scraper {
             let due_at = Instant::now()
                 + Duration::from_millis(due.saturating_sub(api::now_ms()).min(24 * 60 * 60 * 1000));
             let ready = due_at.max(retry_at);
-            tokio::select! { _=tokio::time::sleep_until(ready.into())=>{}, result=work.changed()=>{if result.is_err(){break;}continue;} }
+            if enrichment {
+                tokio::select! { _=tokio::time::sleep_until(ready.into())=>{}, result=pending.changed()=>{if result.is_err(){break;}continue;} }
+            } else {
+                tokio::select! { _=tokio::time::sleep_until(ready.into())=>{}, result=work.changed()=>{if result.is_err(){break;}continue;} }
+            }
             let result = if enrichment {
                 self.enrich_pending().await
             } else {
@@ -431,44 +446,66 @@ impl Scraper {
         let rows = pending
             .as_array()
             .ok_or_else(|| Error::failed("Invalid enrichment queue"))?;
+        let mut checkpoints = Vec::new();
+        let mut prepared = Vec::new();
         for row in rows.iter().take(10) {
-            if let Err(error) = self.enrich(row, key).await {
-                ig_service_common::service_error("scraper.lead_enrichment_failed", &error.message);
-                self.request("enrichment-error", json!({"leadId":row["_id"]}))
-                    .await?;
+            let mut description = row["profilePicDescription"]
+                .as_str()
+                .filter(|v| !v.is_empty())
+                .map(String::from);
+            if description.is_none() {
+                if let Some(url) =
+                    providers::picture_url(row["profilePicUrl"].as_str().unwrap_or(""))
+                {
+                    match self.describe_picture(&url, key).await {
+                        Ok(value) => {
+                            checkpoints.push(json!({"leadId":row["_id"],"description":value}));
+                            description = Some(value);
+                        }
+                        Err(error) => {
+                            ig_service_common::service_error(
+                                "scraper.lead_enrichment_failed",
+                                &error.message,
+                            );
+                            checkpoints.push(json!({"leadId":row["_id"],"error":true}));
+                            continue;
+                        }
+                    }
+                }
             }
+            prepared.push((row, description));
         }
-        Ok(())
-    }
-    async fn enrich(&self, row: &Value, key: &str) -> Result<()> {
-        let mut description = row["profilePicDescription"]
-            .as_str()
-            .filter(|v| !v.is_empty())
-            .map(String::from);
-        if description.is_none() {
-            if let Some(url) = providers::picture_url(row["profilePicUrl"].as_str().unwrap_or("")) {
-                let value = self.describe_picture(&url, key).await?;
-                self.request(
-                    "picture-description",
-                    json!({"leadId":row["_id"],"description":value}),
-                )
+        // A classification failure or restart can reuse descriptions already saved in Convex.
+        if !checkpoints.is_empty() {
+            self.request("enrichment-batch", json!({"entries":checkpoints}))
                 .await?;
-                description = Some(value);
-            }
         }
-        let class = self
-            .classify(
-                key,
-                row["username"].as_str().unwrap_or(""),
-                row["fullName"].as_str().unwrap_or(""),
-                description.as_deref(),
-            )
-            .await?;
-        let mut body = json!({"leadId":row["_id"],"classification":class});
-        if let Some(value) = description {
-            body["profilePicDescription"] = json!(value);
+        let mut results = Vec::new();
+        for (row, description) in prepared {
+            let entry = match self
+                .classify(
+                    key,
+                    row["username"].as_str().unwrap_or(""),
+                    row["fullName"].as_str().unwrap_or(""),
+                    description.as_deref(),
+                )
+                .await
+            {
+                Ok(class) => json!({"leadId":row["_id"],"classification":class}),
+                Err(error) => {
+                    ig_service_common::service_error(
+                        "scraper.lead_enrichment_failed",
+                        &error.message,
+                    );
+                    json!({"leadId":row["_id"],"error":true})
+                }
+            };
+            results.push(entry);
         }
-        self.request("enrich", body).await?;
+        if !results.is_empty() {
+            self.request("enrichment-batch", json!({"entries":results}))
+                .await?;
+        }
         Ok(())
     }
 }

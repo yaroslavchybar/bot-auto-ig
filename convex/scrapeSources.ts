@@ -7,6 +7,7 @@ import { internal } from './_generated/api'
 import { normalizeUsername } from './instagramUsername'
 import { capacityAt, DAY, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
 import { DEFAULT_MONITOR_DAYS, DEFAULT_SCRAPE_POST_LIMIT, HOUR, MONITOR_WINDOW, monitorTraffic } from './scrapeMonitoring'
+import { patchProfile, syncSourceCount } from './workerMetadata'
 
 const LEASE = 10 * 60_000
 export const lookbackDays = (list: Doc<'leadLists'>) => list.scrapeLookbackDays ?? 90
@@ -46,14 +47,15 @@ export const sources = query({
 export const summary = query({
   args: { listId: v.id('leadLists') },
   handler: async (ctx, { listId }) => {
+    const counter = await ctx.db.query('leadListCounts')
+      .withIndex('by_list', q => q.eq('listId', listId)).unique()
+    if (counter?.sourceCount !== undefined) return { sources: counter.sourceCount, leads: counter.count ?? null }
     const rows = (
       await ctx.db
         .query('scrapeSources')
         .withIndex('by_list_username', (q) => q.eq('listId', listId))
         .take(100)
     ).filter((s) => !s.deleting)
-    const counter = await ctx.db.query('leadListCounts')
-      .withIndex('by_list', q => q.eq('listId', listId)).unique()
     return { sources: rows.length, leads: counter?.count ?? null }
   },
 })
@@ -121,6 +123,7 @@ export const add = mutation({
         discovered: 0,
         createdAt: now,
       })
+    await syncSourceCount(ctx, listId)
     return { created: fresh.length, duplicates: names.size - fresh.length }
   },
 })
@@ -200,7 +203,8 @@ export const checkNow = mutation({
 export const remove = mutation({
   args: { sourceId: v.id('scrapeSources') },
   handler: async (ctx, { sourceId }) => {
-    if (!(await ctx.db.get(sourceId))) return
+    const source = await ctx.db.get(sourceId)
+    if (!source) return
     await ctx.db.patch(sourceId, {
       enabled: false,
       running: false,
@@ -208,6 +212,7 @@ export const remove = mutation({
       runId: undefined,
       leaseUntil: undefined,
     })
+    await syncSourceCount(ctx, source.listId)
     await ctx.scheduler.runAfter(0, internal.scrapeSources.cleanup, { sourceId, remove: true })
   },
 })
@@ -721,7 +726,7 @@ export const finish = internalMutation({
         if (profile) {
           const limit = limitFor(profile)
           const charge = source.postsFromApify === false ? 1 : 0
-          await ctx.db.patch(profile._id, {
+          await patchProfile(ctx, profile._id, {
             scraperUsageDate: day(),
             scraperUsageCount:
               usedToday(profile) +

@@ -71,7 +71,7 @@ export const createList = mutation({
       name: name.trim(),
       createdAt: Date.now(),
     });
-    await ctx.db.insert('leadListCounts', { listId, count: 0 });
+    await ctx.db.insert('leadListCounts', { listId, count: 0, sourceCount: 0 });
     return listId;
   },
 });
@@ -81,8 +81,9 @@ export const ensureCount = mutation({
   handler: async (ctx, { listId }) => {
     if (!await ctx.db.get(listId)) return;
     const counter = await ctx.db.query('leadListCounts').withIndex('by_list', q => q.eq('listId', listId)).unique();
-    if (counter) return;
-    await ctx.db.insert('leadListCounts', { listId, revision: 0 });
+    if (counter?.count !== undefined || counter?.revision !== undefined) return;
+    if (counter) await ctx.db.patch(counter._id, { revision: 0 });
+    else await ctx.db.insert('leadListCounts', { listId, revision: 0 });
     await ctx.scheduler.runAfter(0, internal.leads.backfillCount, { listId, count: 0, revision: 0 });
   },
 });

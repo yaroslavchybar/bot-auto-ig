@@ -1,3 +1,4 @@
+import { patchProfile } from './workerMetadata'
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -278,7 +279,7 @@ export const recordSession = internalMutation({
       updatedAt: now,
     });
     if (isRoutineLoginIssue(args.issue)) {
-      await ctx.db.patch(args.profileId, { igLoggedIn: false });
+      await patchProfile(ctx, args.profileId, { igLoggedIn: false });
       await setChatCounterEnabled(ctx, args.profileId, false);
     }
   },

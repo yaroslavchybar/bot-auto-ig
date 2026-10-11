@@ -7,23 +7,14 @@ import { requireServerBridgeAuth } from './serverBridgeAuth'
 
 import { capacityAt, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
 import { activeSource, nextWork } from './scrapeSources'
+import { patchProfile, refreshEnrichmentWork } from './workerMetadata'
 
 /** Persisted due times wake Rust timers; this subscription never reads a clock. */
 export const work = query({
   args: { bridgeToken: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
-    const [next, describing, pending] = await Promise.all([
-      nextWork(ctx),
-      ctx.db
-        .query('leads')
-        .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'describing'))
-        .first(),
-      ctx.db
-        .query('leads')
-        .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'pending'))
-        .first(),
-    ])
+    const next = await nextWork(ctx)
     let taskAt: number | null = null
     let blockedProfileIds: Id<'profiles'>[] = []
     if (next) {
@@ -38,8 +29,21 @@ export const work = query({
       taskAt,
       blockedProfileIds,
       taskKey: next?.key ?? null,
-      enrichmentKey: (describing ?? pending)?._id ?? null,
     }
+  },
+})
+
+export const enrichmentWork = query({
+  args: { bridgeToken: v.string() },
+  handler: async (ctx, { bridgeToken }) => {
+    requireServerBridgeAuth(bridgeToken)
+    const state = await ctx.db.query('enrichmentWork').unique()
+    if (state) return { pending: state.pending }
+    const [describing, pending] = await Promise.all([
+      ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'describing')).first(),
+      ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'pending')).first(),
+    ])
+    return { pending: !!(describing || pending) }
   },
 })
 
@@ -65,7 +69,7 @@ export const cooldownAccount = internalMutation({
     const backoffMs = 30 * 60_000 * 2 ** attempts
     const serverWaitMs =
       retryAfterMs && Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 0
-    await ctx.db.patch(profileId, {
+    await patchProfile(ctx, profileId, {
       scraperRateLimitCount: attempts + 1,
       scraperCooldownUntil: Math.ceil(
         Date.now() + Math.min(24 * 60 * 60_000, Math.max(backoffMs, serverWaitMs)),
@@ -80,7 +84,7 @@ export const setDailyLimit = mutation({
     if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100000))
       throw new Error('Limit must be from 1 to 100000')
     if (!(await ctx.db.get(profileId))) throw new Error('Profile not found')
-    await ctx.db.patch(profileId, { scraperDailyLimit: limit ?? null })
+    await patchProfile(ctx, profileId, { scraperDailyLimit: limit ?? null })
   },
 })
 
@@ -190,7 +194,7 @@ export const saveBatch = internalMutation({
     }
     // Retried/repeated accounts already in this list never consume quota twice.
     if (added)
-      await ctx.db.patch(profile._id, {
+      await patchProfile(ctx, profile._id, {
         scraperUsageDate: day(),
         scraperUsageCount: usedToday(profile) + added,
       })
@@ -198,6 +202,7 @@ export const saveBatch = internalMutation({
       ...(added ? { discovered: source.discovered + added } : {}),
       leaseUntil: Date.now() + 10 * 60_000,
     })
+    await refreshEnrichmentWork(ctx)
     return {
       added,
       processed,
@@ -217,7 +222,39 @@ export const pendingLeads = internalQuery({
       .query('leads')
       .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'pending'))
       .take(10 - describing.length)
-    return [...describing, ...pending]
+    return [...describing, ...pending].map(lead => ({
+      _id: lead._id, username: lead.username, fullName: lead.fullName,
+      profilePicUrl: lead.profilePicUrl, profilePicDescription: lead.profilePicDescription,
+    }))
+  },
+})
+
+/** Checkpoints and completions are bounded batches; errors do not discard successful results. */
+export const saveEnrichmentBatch = internalMutation({
+  args: { entries: v.array(v.union(
+    v.object({ leadId: v.id('leads'), description: v.string() }),
+    v.object({ leadId: v.id('leads'), classification: v.union(v.literal('male'), v.literal('female'), v.literal('business')) }),
+    v.object({ leadId: v.id('leads'), error: v.literal(true) }),
+  )) },
+  handler: async (ctx, { entries }) => {
+    if (!entries.length || entries.length > 10 || new Set(entries.map(e => e.leadId)).size !== entries.length)
+      throw new Error('Invalid enrichment batch')
+    for (const entry of entries) {
+      const lead = await ctx.db.get(entry.leadId)
+      if (!lead || !['pending', 'describing'].includes(lead.enrichmentStatus ?? '')) continue
+      if ('description' in entry) {
+        const description = entry.description.slice(0, 500)
+        if (lead.profilePicDescription !== description || lead.enrichmentStatus !== 'pending' || lead.pictureBatchId)
+          await ctx.db.patch(lead._id, { profilePicDescription: description, enrichmentStatus: 'pending', pictureBatchId: undefined })
+      } else if ('classification' in entry) {
+        await ctx.db.patch(lead._id, { classification: entry.classification, enrichmentStatus: 'ready', pictureBatchId: undefined })
+        await setLeadAvailability(ctx, lead._id, entry.classification === 'male' && !lead.senderId && !lead.dmSent && !lead.followed)
+      } else {
+        await ctx.db.patch(lead._id, { enrichmentStatus: 'error', pictureBatchId: undefined })
+        await setLeadAvailability(ctx, lead._id, false)
+      }
+    }
+    await refreshEnrichmentWork(ctx)
   },
 })
 
@@ -254,6 +291,7 @@ export const enrich = internalMutation({
       lead._id,
       args.classification === 'male' && !lead.senderId && !lead.dmSent && !lead.followed,
     )
+    await refreshEnrichmentWork(ctx)
   },
 })
 
@@ -263,6 +301,7 @@ export const enrichmentError = internalMutation({
     if (await ctx.db.get(leadId)) {
       await ctx.db.patch(leadId, { pictureBatchId: undefined, enrichmentStatus: 'error' })
       await setLeadAvailability(ctx, leadId, false)
+      await refreshEnrichmentWork(ctx)
     }
   },
 })
@@ -275,6 +314,7 @@ export const retryEnrichment = mutation({
       .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'error'))
       .take(100)
     await Promise.all(rows.map((row) => ctx.db.patch(row._id, { enrichmentStatus: 'pending' })))
+    await refreshEnrichmentWork(ctx)
     return rows.length
   },
 })

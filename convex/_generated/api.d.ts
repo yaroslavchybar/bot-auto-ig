@@ -40,6 +40,7 @@ import type * as profiles_mutations from "../profiles/mutations.js";
 import type * as profiles_queries from "../profiles/queries.js";
 import type * as proxies from "../proxies.js";
 import type * as proxyUsage from "../proxyUsage.js";
+import type * as routineErrors from "../routineErrors.js";
 import type * as routinePolicy from "../routinePolicy.js";
 import type * as routines from "../routines.js";
 import type * as scrapeMonitoring from "../scrapeMonitoring.js";
@@ -51,6 +52,7 @@ import type * as serverBridgeAuth from "../serverBridgeAuth.js";
 import type * as warmup_helpers from "../warmup/helpers.js";
 import type * as warmup_mutations from "../warmup/mutations.js";
 import type * as warmup_queries from "../warmup/queries.js";
+import type * as workerMetadata from "../workerMetadata.js";
 
 import type {
   ApiFromModules,
@@ -91,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   "profiles/queries": typeof profiles_queries;
   proxies: typeof proxies;
   proxyUsage: typeof proxyUsage;
+  routineErrors: typeof routineErrors;
   routinePolicy: typeof routinePolicy;
   routines: typeof routines;
   scrapeMonitoring: typeof scrapeMonitoring;
@@ -102,6 +105,7 @@ declare const fullApi: ApiFromModules<{
   "warmup/helpers": typeof warmup_helpers;
   "warmup/mutations": typeof warmup_mutations;
   "warmup/queries": typeof warmup_queries;
+  workerMetadata: typeof workerMetadata;
 }>;
 
 /**
