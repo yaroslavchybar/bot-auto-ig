@@ -8,6 +8,8 @@ import { requireServerBridgeAuth } from './serverBridgeAuth'
 import { capacityAt, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
 import { activeSource, nextWork } from './scrapeSources'
 import { patchProfile, refreshEnrichmentWork } from './workerMetadata'
+import { LeadStatsChanges } from './leadStats'
+import { recordActivity } from './analyticsActivity'
 
 /** Persisted due times wake Rust timers; this subscription never reads a clock. */
 export const work = query({
@@ -136,6 +138,7 @@ export const saveBatch = internalMutation({
     const claimedExisting = new Set<Id<'leads'>>()
     let added = 0
     let processed = 0
+    const stats = new LeadStatsChanges()
     for (const [i, p] of incoming.entries()) {
       const nameMatch = byName.get(p.username)
       const existing =
@@ -160,7 +163,7 @@ export const saveBatch = internalMutation({
           existing.fullName !== fullName ||
           existing.profilePicUrl !== profilePicUrl ||
           !existing.enrichmentStatus
-        )
+        ) {
           await ctx.db.patch(existing._id, {
             igId: p.igId,
             username: p.username,
@@ -168,6 +171,8 @@ export const saveBatch = internalMutation({
             profilePicUrl,
             enrichmentStatus: existing.enrichmentStatus ?? 'pending',
           })
+          stats.add(existing, { ...existing, enrichmentStatus: existing.enrichmentStatus ?? 'pending' })
+        }
         await addMembership(
           ctx,
           existing._id,
@@ -177,27 +182,33 @@ export const saveBatch = internalMutation({
         )
       } else {
         const createdAt = Date.now()
-        const leadId = await ctx.db.insert('leads', {
+        const lead = {
           igId: p.igId,
           username: p.username,
           fullName: p.fullName,
           profilePicUrl: p.profilePicUrl,
-          enrichmentStatus: 'pending',
+          enrichmentStatus: 'pending' as const,
           dmSent: false,
           followed: false,
           createdAt,
-        })
+        }
+        const leadId = await ctx.db.insert('leads', lead)
+        stats.add(null, lead)
         await addMembership(ctx, leadId, source.listId, createdAt, false)
       }
       if (!membership) added++
       processed++
     }
+    await stats.flush(ctx)
     // Retried/repeated accounts already in this list never consume quota twice.
-    if (added)
+    if (added) {
       await patchProfile(ctx, profile._id, {
         scraperUsageDate: day(),
         scraperUsageCount: usedToday(profile) + added,
       })
+      await recordActivity(ctx, day(), limit === undefined
+        ? { unlimitedScraperUnits: added } : { scraperUnits: added })
+    }
     await ctx.db.patch(source._id, {
       ...(added ? { discovered: source.discovered + added } : {}),
       leaseUntil: Date.now() + 10 * 60_000,
@@ -239,6 +250,7 @@ export const saveEnrichmentBatch = internalMutation({
   handler: async (ctx, { entries }) => {
     if (!entries.length || entries.length > 10 || new Set(entries.map(e => e.leadId)).size !== entries.length)
       throw new Error('Invalid enrichment batch')
+    const stats = new LeadStatsChanges()
     for (const entry of entries) {
       const lead = await ctx.db.get(entry.leadId)
       if (!lead || !['pending', 'describing'].includes(lead.enrichmentStatus ?? '')) continue
@@ -249,11 +261,14 @@ export const saveEnrichmentBatch = internalMutation({
       } else if ('classification' in entry) {
         await ctx.db.patch(lead._id, { classification: entry.classification, enrichmentStatus: 'ready', pictureBatchId: undefined })
         await setLeadAvailability(ctx, lead._id, entry.classification === 'male' && !lead.senderId && !lead.dmSent && !lead.followed)
+        stats.add(lead, { ...lead, classification: entry.classification, enrichmentStatus: 'ready' })
       } else {
         await ctx.db.patch(lead._id, { enrichmentStatus: 'error', pictureBatchId: undefined })
         await setLeadAvailability(ctx, lead._id, false)
+        stats.add(lead, { ...lead, enrichmentStatus: 'error' })
       }
     }
+    await stats.flush(ctx)
     await refreshEnrichmentWork(ctx)
   },
 })
@@ -280,12 +295,15 @@ export const enrich = internalMutation({
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId)
     if (!lead) return
+    const stats = new LeadStatsChanges()
     await ctx.db.patch(lead._id, {
       profilePicDescription: args.profilePicDescription ?? lead.profilePicDescription,
       pictureBatchId: undefined,
       classification: args.classification,
       enrichmentStatus: 'ready',
     })
+    stats.add(lead, { ...lead, classification: args.classification, enrichmentStatus: 'ready' })
+    await stats.flush(ctx)
     await setLeadAvailability(
       ctx,
       lead._id,
@@ -298,9 +316,13 @@ export const enrich = internalMutation({
 export const enrichmentError = internalMutation({
   args: { leadId: v.id('leads') },
   handler: async (ctx, { leadId }) => {
-    if (await ctx.db.get(leadId)) {
+    const lead = await ctx.db.get(leadId)
+    if (lead) {
       await ctx.db.patch(leadId, { pictureBatchId: undefined, enrichmentStatus: 'error' })
       await setLeadAvailability(ctx, leadId, false)
+      const stats = new LeadStatsChanges()
+      stats.add(lead, { ...lead, enrichmentStatus: 'error' })
+      await stats.flush(ctx)
       await refreshEnrichmentWork(ctx)
     }
   },
@@ -313,7 +335,10 @@ export const retryEnrichment = mutation({
       .query('leads')
       .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'error'))
       .take(100)
+    const stats = new LeadStatsChanges()
+    for (const row of rows) stats.add(row, { ...row, enrichmentStatus: 'pending' })
     await Promise.all(rows.map((row) => ctx.db.patch(row._id, { enrichmentStatus: 'pending' })))
+    await stats.flush(ctx)
     await refreshEnrichmentWork(ctx)
     return rows.length
   },

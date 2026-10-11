@@ -1,4 +1,9 @@
 import { lazy } from 'react'
+const AnalyticsPage = lazy(() =>
+  import('@/features/analytics/AnalyticsPage').then((module) => ({
+    default: module.AnalyticsPage,
+  })),
+)
 const ListsPage = lazy(() =>
   import('@/features/lists/ListsPage').then((module) => ({ default: module.ListsPage })),
 )
@@ -44,6 +49,7 @@ export type RouteMeta = {
 }
 
 export const ROUTE_META: Record<string, RouteMeta> = {
+  '/analytics': { Page: AnalyticsPage, breadcrumb: 'Analytics', navId: 'analytics' },
   '/profiles': { Page: ProfilesPage, breadcrumb: 'Profiles Manager', navId: 'profiles' },
   '/automations': { Page: AutomationsPage, breadcrumb: 'Automations', navId: 'automations' },
   '/scraper': { Page: ScraperPage, breadcrumb: 'Scraper', navId: 'scraper' },

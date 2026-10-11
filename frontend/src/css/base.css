@@ -30,7 +30,7 @@
     overflow-x: hidden;
   }
 
-  /* Keep the app shell still; lists and dialogs own their scrolling. */
+  /* Contain scrolling at the document, while nested table wrappers can pass gestures to their list. */
   html:has([data-app-shell]),
   body:has([data-app-shell]),
   #root:has([data-app-shell]) {
@@ -43,10 +43,6 @@
   body:has([data-app-shell]) {
     position: fixed;
     inset: 0;
-  }
-
-  [data-app-shell] :where(.overflow-auto, .overflow-y-auto, .overflow-x-auto) {
-    overscroll-behavior: none;
   }
 
   ::selection {

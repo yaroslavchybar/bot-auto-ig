@@ -25,7 +25,9 @@ test('assigns one budget, retries the reservation, and blocks competing runs', a
 })
 
 test('records actual time once, and releases unused time for another run', async () => {
-  const { begin, finish, state } = await setup()
+  const { t, begin, finish, state } = await setup()
+  await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
+  await t.mutation(api.analytics.initialize, {})
   const { date } = await begin()
   await finish(date, 5)
   await finish(date, 5)
@@ -35,6 +37,8 @@ test('records actual time once, and releases unused time for another run', async
   await finish(date, 100, 'two')
   expect(await state()).toMatchObject({ minutesUsedToday: 40, runsToday: 2 })
   expect((await begin('three')).minutes).toBe(0)
+  const activity = await t.run(ctx => ctx.db.query('analyticsHistory').unique())
+  expect(activity?.totals.warmupMinutes).toBe(40)
 })
 
 test('a zero-duration run releases the reservation without counting a run', async () => {
@@ -66,11 +70,15 @@ test('restart recovery rounds rest deadlines and preserves a later stored deadli
   vi.setSystemTime(now)
   for (const previous of [0, now + 120_000.25]) {
     const { t, begin, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
+    await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
+    await t.mutation(api.analytics.initialize, {})
     await begin()
     const row = (await t.run(ctx => ctx.db.query('warmupStates').collect()))[0]
     await t.run(ctx => ctx.db.patch(row._id, { nextRunAt: previous }))
     await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
+    await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {})
     expect((await state())?.nextRunAt).toBe(previous ? now + 120_001 : now + 60_001)
+    expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.warmupMinutes).toBe(40)
   }
 })
 

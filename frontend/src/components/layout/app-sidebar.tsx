@@ -2,7 +2,16 @@ import * as React from 'react'
 import { useQuery } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import { Link, useLocation } from '@/lib/router'
-import { Users, List, GitBranch, Monitor, Globe, MessageSquare, KeyRound } from 'lucide-react'
+import {
+  Users,
+  List,
+  GitBranch,
+  Monitor,
+  Globe,
+  MessageSquare,
+  KeyRound,
+  ChartNoAxesCombined,
+} from 'lucide-react'
 
 import {
   Sidebar,
@@ -20,6 +29,7 @@ import {
 } from '@/components/ui/sidebar'
 
 export const NAV_IDS = [
+  'analytics',
   'profiles',
   'automations',
   'scraper',
@@ -33,6 +43,13 @@ export const NAV_IDS = [
 export type NavId = (typeof NAV_IDS)[number]
 
 export const NAV_ITEMS = [
+  {
+    title: 'Analytics',
+    id: 'analytics',
+    to: '/analytics',
+    icon: ChartNoAxesCombined,
+    breadcrumb: 'Analytics',
+  },
   {
     title: 'Profiles Manager',
     id: 'profiles',

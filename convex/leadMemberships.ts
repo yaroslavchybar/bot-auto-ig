@@ -1,7 +1,7 @@
 import type { MutationCtx } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
 
-export const leadAvailable = (lead: Doc<'leads'>) =>
+export const leadAvailable = (lead: Pick<Doc<'leads'>, 'classification' | 'enrichmentStatus' | 'senderId' | 'dmSent' | 'followed'>) =>
   lead.classification === 'male' && lead.enrichmentStatus === 'ready' &&
   !lead.senderId && !lead.dmSent && !lead.followed;
 

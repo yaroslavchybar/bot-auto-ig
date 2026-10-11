@@ -1,0 +1,112 @@
+import { v } from 'convex/values'
+import { mutation, query, type QueryCtx } from './_generated/server'
+import { limitFor } from './scraperPolicy'
+import { addActivity, emptyActivity, type ActivityCounts } from './analyticsActivity'
+
+const periodValidator = v.union(
+  v.literal('today'),
+  v.literal('7days'),
+  v.literal('30days'),
+  v.literal('all'),
+)
+
+async function accountsForAnalytics(ctx: QueryCtx) {
+  const migration = await ctx.db.query('workerMetadataMigration').unique()
+  if (!migration?.complete)
+    throw new Error('Account metadata is initializing. Please refresh shortly.')
+  const profileRows = await ctx.db.query('scraperProfiles').take(1001)
+  if (profileRows.length > 1000)
+    throw new Error(
+      'Analytics snapshot is too large. Narrower reporting is needed for this workspace.',
+    )
+  return profileRows.filter((row) => row.status !== 'deleting')
+}
+
+/** Seed only dates still held by the old daily counters; unavailable history is never invented. */
+export const initialize = mutation({
+  args: {},
+  handler: async (ctx) => {
+    if (await ctx.db.query('analyticsHistory').unique()) return
+    const accounts = await accountsForAnalytics(ctx)
+    const days = new Map<string, ActivityCounts>()
+    const add = (date: string | undefined, delta: Partial<ActivityCounts>) => {
+      if (!date || !Object.values(delta).some((value) => value > 0)) return
+      days.set(date, addActivity(days.get(date) ?? emptyActivity(), delta))
+    }
+    for (const profile of accounts) {
+      const [progress, warmup] = await Promise.all([
+        ctx.db
+          .query('accountProgress')
+          .withIndex('by_profile', (q) => q.eq('profileId', profile.profileId))
+          .unique(),
+        ctx.db
+          .query('warmupStates')
+          .withIndex('by_profile', (q) => q.eq('profileId', profile.profileId))
+          .unique(),
+      ])
+      add(progress?.followQuotaDate, { follows: progress?.followedToday ?? 0 })
+      add(progress?.dmDate, { dms: progress?.sentToday ?? 0 })
+      add(warmup?.date, { warmupMinutes: warmup?.minutesUsedToday ?? 0 })
+      add(
+        profile.scraperUsageDate,
+        limitFor(profile) === undefined
+          ? { unlimitedScraperUnits: profile.scraperUsageCount ?? 0 }
+          : { scraperUnits: profile.scraperUsageCount ?? 0 },
+      )
+    }
+    let totals = emptyActivity()
+    for (const [date, counts] of days) {
+      await ctx.db.insert('analyticsDays', { date, counts })
+      totals = addActivity(totals, counts)
+    }
+    await ctx.db.insert('analyticsHistory', { startedAt: Date.now(), totals })
+  },
+})
+
+/** On-demand totals from small daily counters; lead counts remain a current inventory snapshot. */
+export const overview = query({
+  args: { date: v.string(), period: v.optional(periodValidator) },
+  handler: async (ctx, { date, period = 'today' }) => {
+    const timestamp = Date.parse(`${date}T00:00:00Z`)
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !Number.isFinite(timestamp) ||
+      new Date(timestamp).toISOString().slice(0, 10) !== date
+    )
+      throw new Error('Invalid UTC date')
+    const accounts = await accountsForAnalytics(ctx)
+    const [leadStats, history] = await Promise.all([
+      ctx.db.query('leadStats').unique(),
+      ctx.db.query('analyticsHistory').unique(),
+    ])
+    if (!history) throw new Error('Activity history is initializing. Please refresh shortly.')
+    let counts = history.totals
+    if (period !== 'all') {
+      const days = period === '7days' ? 7 : period === '30days' ? 30 : 1
+      const start = new Date(timestamp - (days - 1) * 86_400_000).toISOString().slice(0, 10)
+      const rows = await ctx.db
+        .query('analyticsDays')
+        .withIndex('by_date', (q) => q.gte('date', start).lte('date', date))
+        .take(days)
+      counts = rows.reduce((sum, row) => addActivity(sum, row.counts), emptyActivity())
+    }
+    const limited = accounts.filter((profile) => limitFor(profile) !== undefined)
+    return {
+      period,
+      historySince: new Date(history.startedAt).toISOString().slice(0, 10),
+      leads: leadStats?.complete ? leadStats.counts : null,
+      totals: {
+        follows: counts.follows,
+        dms: counts.dms,
+        warmupMinutes: counts.warmupMinutes,
+      },
+      quota: {
+        used: counts.scraperUnits,
+        limit: limited.reduce((sum, profile) => sum + (limitFor(profile) ?? 0), 0),
+        limitedAccounts: limited.length,
+        unlimitedAccounts: accounts.length - limited.length,
+        unlimitedUsed: counts.unlimitedScraperUnits,
+      },
+    }
+  },
+})

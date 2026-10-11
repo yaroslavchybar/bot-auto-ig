@@ -1,4 +1,5 @@
 import { DomainError } from '../errors';
+import { recordActivity } from '../analyticsActivity';
 import { routineValidator, validateRoutine, warmupPostRange, outreachRoutes, type RoutinePolicy } from '../routinePolicy';
 import { updateWarmupPostTargets } from '../modelSetupPolicy';
 import { assertAssignments } from '../routines';
@@ -335,8 +336,10 @@ export const reconcileInterruptedInternal = internalMutation({
     const activeWarmups = await ctx.db.query('warmupStates').withIndex('by_active_run', q => q.gt('activeRun.id', undefined)).take(batchSize);
     for (const state of activeWarmups) {
       if (!state.activeRun) continue;
+      const usedMinutes = Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + state.activeRun.minutes);
+      await recordActivity(ctx, state.date, { warmupMinutes: usedMinutes - (state.minutesUsedToday ?? 0) });
       await ctx.db.patch(state._id, {
-        minutesUsedToday: Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + state.activeRun.minutes),
+        minutesUsedToday: usedMinutes,
         nextRunAt: Math.ceil(Math.max(state.nextRunAt ?? 0, now + state.activeRun.restMinutes * 60_000)),
         activeRun: undefined,
       });

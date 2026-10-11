@@ -2,7 +2,33 @@ import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 import { routineValidator } from './routinePolicy'
 
+const activityCounts = v.object({
+  follows: v.number(),
+  dms: v.number(),
+  warmupMinutes: v.number(),
+  scraperUnits: v.number(),
+  unlimitedScraperUnits: v.number(),
+})
+
 export default defineSchema({
+  analyticsDays: defineTable({ date: v.string(), counts: activityCounts })
+    .index('by_date', ['date']),
+  analyticsHistory: defineTable({ startedAt: v.number(), totals: activityCounts }),
+  leadStats: defineTable({
+    counts: v.object({
+      total: v.number(),
+      pending: v.number(),
+      enriched: v.number(),
+      male: v.number(),
+      ready: v.number(),
+      assigned: v.number(),
+    }),
+    revision: v.number(),
+    scanRevision: v.number(),
+    complete: v.boolean(),
+    cursor: v.union(v.string(), v.null()),
+    jobId: v.optional(v.id('_scheduled_functions')),
+  }),
   leadLists: defineTable({
     name: v.string(),
     createdAt: v.number(),

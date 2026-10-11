@@ -38,6 +38,29 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
   t.run(ctx => ctx.db.query('leads').collect());
 
+test('outreach reservations move unique leads from ready to assigned without resetting after a follow', async () => {
+  vi.useFakeTimers();
+  try {
+    const { t, args, loggedIn, profile } = await setup();
+    await loggedIn();
+    await t.mutation(api.leadStats.initialize, {});
+    await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }));
+    await t.mutation(api.analytics.initialize, {});
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const readStats = () => t.run(async ctx => (await ctx.db.query('leadStats').unique())!.counts);
+    expect(await readStats()).toMatchObject({ total: 4, male: 4, ready: 4, assigned: 0 });
+    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    expect(await readStats()).toMatchObject({ total: 4, male: 4, ready: 3, assigned: 1 });
+    await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
+    await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
+    expect(await readStats()).toMatchObject({ ready: 3, assigned: 1 });
+    vi.setSystemTime(Date.now() + 10 * 86_400_000);
+    await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: false });
+    expect(await readStats()).toMatchObject({ ready: 3, assigned: 1 });
+    expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.follows).toBe(1);
+  } finally { vi.useRealTimers(); }
+});
+
 test('saved multi-list routines cannot claim follows or send DMs until corrected', async () => {
   const { t, args, loggedIn, profile, automation, leadListId } = await setup();
   await loggedIn();
@@ -709,6 +732,8 @@ test('daily follow-back discovery enables next-day DMs independently of follow q
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, profile, loggedIn } = await setup(); await loggedIn();
+    await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }));
+    await t.mutation(api.analytics.initialize, {});
     const claims = [];
     for (let i = 0; i < 2; i++) {
       const claim = (await t.mutation(internal.routines.reserve, args))!;
@@ -734,6 +759,9 @@ test('daily follow-back discovery enables next-day DMs independently of follow q
     }
     expect(await t.query(internal.routines.target, args)).toEqual(before);
     expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]).toMatchObject({ followed: 0, sent: 2 });
+    expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals).toMatchObject({ follows: 2, dms: 2 });
+    expect((await t.query(api.analytics.overview, { date: dayKey(), period: 'today' })).totals).toMatchObject({ follows: 0, dms: 2 });
+    expect((await t.query(api.analytics.overview, { date: dayKey(), period: '7days' })).totals).toMatchObject({ follows: 2, dms: 2 });
     expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
   } finally { vi.useRealTimers(); }
 });

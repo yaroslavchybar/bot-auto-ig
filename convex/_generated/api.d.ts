@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as analytics from "../analytics.js";
+import type * as analyticsActivity from "../analyticsActivity.js";
 import type * as automations_helpers from "../automations/helpers.js";
 import type * as automations_mutations from "../automations/mutations.js";
 import type * as automations_queries from "../automations/queries.js";
@@ -31,6 +33,7 @@ import type * as httpRoutes_warmup from "../httpRoutes/warmup.js";
 import type * as igAccounts from "../igAccounts.js";
 import type * as instagramUsername from "../instagramUsername.js";
 import type * as leadMemberships from "../leadMemberships.js";
+import type * as leadStats from "../leadStats.js";
 import type * as leads from "../leads.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
@@ -61,6 +64,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analytics: typeof analytics;
+  analyticsActivity: typeof analyticsActivity;
   "automations/helpers": typeof automations_helpers;
   "automations/mutations": typeof automations_mutations;
   "automations/queries": typeof automations_queries;
@@ -84,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   igAccounts: typeof igAccounts;
   instagramUsername: typeof instagramUsername;
   leadMemberships: typeof leadMemberships;
+  leadStats: typeof leadStats;
   leads: typeof leads;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;

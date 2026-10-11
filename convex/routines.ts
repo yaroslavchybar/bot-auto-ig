@@ -1,4 +1,6 @@
 import { patchProfile } from './workerMetadata'
+import { LeadStatsChanges } from './leadStats'
+import { recordActivity } from './analyticsActivity'
 import { v } from "convex/values";
 import {
   internalMutation,
@@ -315,6 +317,9 @@ export const reserve = internalMutation({
     }
     if (!lead || !selected) return null;
     await ctx.db.patch(lead._id, { senderId: args.profileId, outreachListId: selected.leadListId, outreachAutomationId: args.automationId, unfollowDays: randomInRange(unfollowRange(e.policy)) });
+    const stats = new LeadStatsChanges();
+    stats.add(lead, { ...lead, senderId: args.profileId });
+    await stats.flush(ctx);
     await setLeadAvailability(ctx, lead._id, false);
     await ctx.db.patch(state._id, { date, followQuotaDate: date, used: used + 1, allowance, lastLeadListId: selected.leadListId,
       followedToday: state.followQuotaDate === date ? state.followedToday ?? 0 : 0, updatedAt: Date.now() });
@@ -448,6 +453,7 @@ export const finishSend = internalMutation({
     if (args.sent) {
       await ctx.db.patch(lead._id, { dmSent: true });
       await setLeadAvailability(ctx, lead._id, false);
+      await recordActivity(ctx, args.date, { dms: 1 });
     }
     const state = await progress(ctx, args.profileId);
     if (!state) return;
@@ -502,6 +508,7 @@ export const recordFollow = internalMutation({
       const state = await ensureProgress(ctx, args.profileId);
       const date = dayKey(now);
       const firstFollowToday = state.lastFollowDate !== date;
+      await recordActivity(ctx, date, { follows: 1 });
       await ctx.db.patch(state._id, {
         outreachDays: state.outreachDays + (firstFollowToday ? 1 : 0),
         followIncrease: (state.followIncrease ?? 0) + (firstFollowToday ? 1 + Math.floor(Math.random() * 4) : 0),

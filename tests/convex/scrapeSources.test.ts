@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedProfile } from './helpers'
+import { syncWorkerProfile } from '../../convex/workerMetadata'
 
 const DAY = 86_400_000
 const HOUR = 3_600_000
@@ -633,6 +634,28 @@ test('repeated accounts and lost-response retries do not duplicate memberships o
   expect((await s.t.run((ctx) => ctx.db.get(s.profileId)))?.scraperUsageCount).toBe(1)
   expect(await s.t.run((ctx) => ctx.db.query('leadMemberships').collect())).toHaveLength(1)
   expect((await s.t.run((ctx) => ctx.db.get(s.sourceId)))?.discovered).toBe(1)
+})
+
+test.each([1000, null])('analytics records saved memberships and successful mobile checks once (limit=%s)', async limit => {
+  const s = await setup({ limit })
+  await discover(s, { average: 200 })
+  await s.t.run(async ctx => {
+    await syncWorkerProfile(ctx, (await ctx.db.get(s.profileId))!)
+    await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
+  })
+  await s.t.mutation(api.analytics.initialize, {})
+  const run = await claimLikers(s)
+  const batch = { ...run, likers: [{ igId: '1234', username: 'liker' }] }
+  await s.t.mutation(internal.scraper.saveBatch, batch)
+  await s.t.mutation(internal.scraper.saveBatch, batch)
+  const result = { ...run, status: 'completed' as const, newIds: 1, likeCount: 200 }
+  await s.t.mutation(internal.scrapeSources.finish, result)
+  await s.t.mutation(internal.scrapeSources.finish, result)
+  const history = await s.t.run(ctx => ctx.db.query('analyticsHistory').unique())
+  expect(history?.totals).toMatchObject({
+    scraperUnits: limit === null ? 0 : 2,
+    unlimitedScraperUnits: limit === null ? 2 : 0,
+  })
 })
 
 test('private-profile setting persists, reaches workers, and fences old runs without extra writes', async () => {

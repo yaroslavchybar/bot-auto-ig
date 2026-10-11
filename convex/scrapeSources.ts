@@ -8,6 +8,7 @@ import { normalizeUsername } from './instagramUsername'
 import { capacityAt, DAY, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
 import { DEFAULT_MONITOR_DAYS, DEFAULT_SCRAPE_POST_LIMIT, HOUR, MONITOR_WINDOW, monitorTraffic } from './scrapeMonitoring'
 import { patchProfile, syncSourceCount } from './workerMetadata'
+import { recordActivity } from './analyticsActivity'
 
 const LEASE = 10 * 60_000
 export const lookbackDays = (list: Doc<'leadLists'>) => list.scrapeLookbackDays ?? 90
@@ -726,17 +727,16 @@ export const finish = internalMutation({
         if (profile) {
           const limit = limitFor(profile)
           const charge = source.postsFromApify === false ? 1 : 0
+          const charged = limit === undefined ? charge : Math.min(charge, Math.max(0, limit - usedToday(profile)))
           await patchProfile(ctx, profile._id, {
             scraperUsageDate: day(),
-            scraperUsageCount:
-              usedToday(profile) +
-              (limit === undefined
-                ? charge
-                : Math.min(charge, Math.max(0, limit - usedToday(profile)))),
+            scraperUsageCount: usedToday(profile) + charged,
             ...((profile.scraperCooldownUntil ?? 0) <= now
               ? { scraperRateLimitCount: 0, scraperCooldownUntil: undefined }
               : {}),
           })
+          await recordActivity(ctx, day(), limit === undefined
+            ? { unlimitedScraperUnits: charged } : { scraperUnits: charged })
         }
       }
     }

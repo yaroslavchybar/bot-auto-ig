@@ -26,6 +26,7 @@ type ProtectedLayoutShellProps = {
 
 // Pages that move their toolbar into the app header on desktop. Each page portals into its slot id.
 const PAGE_HEADER_SLOT_IDS: Partial<Record<string, string>> = {
+  '/analytics': 'analytics-header-slot',
   '/profiles': 'profiles-header-slot',
   '/ig-accounts': 'ig-accounts-header-slot',
   '/proxies': 'proxies-header-slot',

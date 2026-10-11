@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { internalMutation } from '../_generated/server'
 import { planFromConfig, randomMinutes, todayDate } from './helpers'
+import { recordActivity } from '../analyticsActivity'
 
 /** Assign today's budget once and reserve one session, capped by remaining time. */
 export const beginRunInternal = internalMutation({
@@ -68,10 +69,12 @@ export const finishRunInternal = internalMutation({
     if (!state || state.date !== args.date || state.recentRunIds?.includes(args.runId)) return
     if (state.activeRun?.id !== args.runId) throw new Error('Warm-up reservation not found')
     const minutes = Math.min(args.minutes, state.activeRun.minutes)
+    const usedMinutes = Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + minutes)
+    await recordActivity(ctx, args.date, { warmupMinutes: usedMinutes - (state.minutesUsedToday ?? 0) })
     await ctx.db.patch(state._id, {
       activeRun: undefined,
       nextRunAt: Math.ceil(Date.now() + state.activeRun.restMinutes * 60_000),
-      minutesUsedToday: Math.min(state.todayMinutes, (state.minutesUsedToday ?? 0) + minutes),
+      minutesUsedToday: usedMinutes,
       runsToday: state.runsToday + (minutes > 0 ? 1 : 0),
       recentRunIds: [...(state.recentRunIds ?? []), args.runId].slice(-20),
       lastRunAt: Date.now(), updatedAt: Date.now(),
