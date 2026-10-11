@@ -1043,7 +1043,7 @@ async fn eviction_cannot_reset_a_live_liker_request_window() {
 
 #[tokio::test]
 async fn liker_waits_allow_chat_and_logout_without_saving_a_stale_session() {
-    for logout in [false, true] {
+    for outcome in ["chat", "logout", "browser"] {
         let saved = Arc::new(std::sync::Mutex::new(json!({
             "connected":true,"state":Service::fixture_session(),"token":"fixture",
             "profile":{"proxy":"","proxyType":""},
@@ -1133,7 +1133,18 @@ async fn liker_waits_allow_chat_and_logout_without_saving_a_stale_session() {
         .await
         .expect("Liker pacing blocked chat")
         .unwrap();
-        if logout {
+        if outcome == "browser" {
+            service.block_scraper_profiles(&["profile".into()]);
+            assert_eq!(
+                likers.await.unwrap().unwrap_err().name,
+                "ScraperProfileBusy"
+            );
+            assert_eq!(liker_calls.load(Ordering::SeqCst), 0);
+            // Other mobile actions remain available while browser work is active.
+            service.invoke("inbox", &request).await.unwrap();
+            service.block_scraper_profiles(&[]);
+            service.check_scraper_available("profile").unwrap();
+        } else if outcome == "logout" {
             tokio::time::timeout(
                 std::time::Duration::from_millis(300),
                 service.invoke("logout", &request),
@@ -1200,6 +1211,43 @@ async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
         posts,
         json!([{"id":"2","code":"two","takenAt":300000,"likeCount":null}])
     );
+}
+
+#[tokio::test]
+async fn latest_post_limit_uses_dates_instead_of_pinned_feed_order() {
+    let pages = Arc::new(AtomicUsize::new(0));
+    let reads = pages.clone();
+    let fixture = Fixture::start(move |request| {
+        let reads = reads.clone();
+        async move {
+            if request.uri().path().ends_with("users/search/") {
+                return Json(json!({"users":[{"pk":"123","username":"source"}]})).into_response();
+            }
+            let page = reads.fetch_add(1, Ordering::SeqCst);
+            Json(if page == 0 {
+                json!({"items":[
+                    {"pk":"1","code":"pinned","taken_at":100,"like_count":200,"timeline_pinned_user_ids":["123"]},
+                    {"pk":"2","code":"newest","taken_at":300,"like_count":200}
+                ],"more_available":true,"next_max_id":"next"})
+            } else {
+                json!({"items":[{"pk":"3","code":"second","taken_at":200,"like_count":200}],"more_available":false})
+            }).into_response()
+        }
+    }).await;
+    let mut mobile = mobile(Some(fixture.url.clone()));
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    let posts = operations::invoke(
+        &service,
+        &mut mobile,
+        "posts",
+        &json!({"username":"source","sinceDate":0,"postLimit":2}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(posts.as_array().unwrap().len(), 2);
+    assert_eq!(posts[0]["code"], "newest");
+    assert_eq!(posts[1]["code"], "second");
+    assert_eq!(pages.load(Ordering::SeqCst), 2);
 }
 #[tokio::test]
 async fn native_replies_reactions_and_unsend_preserve_request_fields() {

@@ -45,6 +45,36 @@ fn task(kind: TaskKind) -> Task {
 }
 
 #[tokio::test]
+async fn browser_ownership_blocks_scraping_without_fallback_and_resumes_when_idle() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let requests = calls.clone();
+    let fixture = Fixture::start(move |_| {
+        let requests = requests.clone();
+        async move {
+            requests.fetch_add(1, Ordering::SeqCst);
+            Json(json!({})).into_response()
+        }
+    })
+    .await;
+    let scraper = scraper_fixture(&fixture);
+    scraper
+        .update(json!({"blockedProfileIds":["profile"]}))
+        .await
+        .unwrap();
+    for kind in [TaskKind::Posts, TaskKind::Likers] {
+        let error = scraper.run_task(&task(kind)).await.unwrap_err();
+        assert!(error.paused);
+        assert!(error.message.contains("busy in the browser"));
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    scraper
+        .update(json!({"blockedProfileIds":[]}))
+        .await
+        .unwrap();
+    scraper.mobile.check_scraper_available("profile").unwrap();
+}
+
+#[tokio::test]
 async fn scheduler_accepts_fractional_deadlines_and_rejects_invalid_updates_without_losing_work() {
     let fixture = Fixture::start(|_| async { Json(json!({})).into_response() }).await;
     let scraper = scraper_fixture(&fixture);

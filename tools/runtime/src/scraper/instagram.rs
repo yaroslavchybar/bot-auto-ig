@@ -61,7 +61,12 @@ impl Web {
         self.base = base;
         self
     }
-    pub async fn likers(&self, post: &Value, include_private: bool) -> Result<Likers> {
+    pub async fn likers(
+        &self,
+        post: &Value,
+        include_private: bool,
+        check_available: &(dyn Fn() -> Result<()> + Sync),
+    ) -> Result<Likers> {
         let id = instagram::string(&post["id"]);
         let code = instagram::string(&post["code"]);
         if !instagram::digits(&id)
@@ -77,6 +82,7 @@ impl Web {
             if attempt > 0 {
                 tokio::time::sleep(Duration::from_millis(attempt * 1500)).await;
             }
+            check_available()?;
             let url = format!("https://www.instagram.com/api/v1/media/{id}/likers/?count=100");
             #[cfg(test)]
             let url = self

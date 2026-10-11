@@ -10,6 +10,8 @@ export const limitFor = (profile: Doc<'profiles'>) =>
     : (profile.scraperDailyLimit ?? DEFAULT_SCRAPER_DAILY_LIMIT)
 export const usedToday = (profile: Doc<'profiles'>) =>
   profile.scraperUsageDate === day() ? (profile.scraperUsageCount ?? 0) : 0
+export const scraperBusy = (profile: Doc<'profiles'>) =>
+  profile.using || profile.status === 'running'
 
 /** Read small session metadata only for accounts without browser cookies. */
 export async function scraperProfiles(ctx: Pick<QueryCtx, 'db'>) {

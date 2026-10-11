@@ -48,7 +48,7 @@ test('private-profile checkbox saves only on Save and restores the list preferen
   expect(mocks.ensure).not.toHaveBeenCalled()
   const save = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'Save')!
   await act(async () => save.click())
-  expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, includePrivate: true })
+  expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, monitorDays: 3, postLimit: 10, includePrivate: true })
   mocks.includePrivate = true
   await view.unmount()
   view = mount()

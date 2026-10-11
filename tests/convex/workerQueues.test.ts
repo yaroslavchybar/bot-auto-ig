@@ -11,6 +11,7 @@ test.each([10, undefined])(
     const args = { bridgeToken: 'test-bridge' }
     expect(await t.query(api.scraper.work, args)).toEqual({
       taskAt: null,
+      blockedProfileIds: [],
       taskKey: null,
       enrichmentKey: null,
     })

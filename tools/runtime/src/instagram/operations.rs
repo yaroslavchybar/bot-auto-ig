@@ -377,8 +377,8 @@ async fn inbox(mobile: &mut Mobile, unread: bool) -> Result<Value> {
     Ok(json!({"viewerId":mobile.state.viewer_id()?,"threads":threads}))
 }
 
-pub fn collect_posts(
-    items: &[Value],
+pub fn collect_posts<'a>(
+    items: impl IntoIterator<Item = &'a Value>,
     since: u64,
     limit: usize,
     posts: &mut Vec<Value>,
@@ -448,10 +448,15 @@ async fn recent_posts(service: &Service, mobile: &mut Mobile, args: &Value) -> R
         return Err(Error::new("Instagram could not find the requested profile"));
     }
     let mut posts = Vec::new();
+    let mut pinned_posts = Vec::new();
+    let mut pinned_seen = HashSet::new();
     let mut seen = HashSet::new();
     let mut cursors = HashSet::new();
     let mut cursor = String::new();
     loop {
+        if let Some(profile_id) = args["profileId"].as_str() {
+            service.check_scraper_available(profile_id)?;
+        }
         if args["sourceId"].is_string() && args["runId"].is_string() {
             service
                 .api
@@ -480,7 +485,26 @@ async fn recent_posts(service: &Service, mobile: &mut Mobile, args: &Value) -> R
             }
             break;
         }
-        let exhausted = collect_posts(items, since, limit, &mut posts, &mut seen)?;
+        let pinned = |item: &&Value| {
+            item["timeline_pinned_user_ids"]
+                .as_array()
+                .is_some_and(|ids| !ids.is_empty())
+        };
+        // Pinned older posts must not displace newer posts on the next feed page.
+        collect_posts(
+            items.iter().filter(pinned),
+            since,
+            limit,
+            &mut pinned_posts,
+            &mut pinned_seen,
+        )?;
+        let exhausted = collect_posts(
+            items.iter().filter(|item| !pinned(item)),
+            since,
+            limit,
+            &mut posts,
+            &mut seen,
+        )?;
         if exhausted || posts.len() >= limit || result["more_available"] != true {
             break;
         }
@@ -491,6 +515,13 @@ async fn recent_posts(service: &Service, mobile: &mut Mobile, args: &Value) -> R
             ));
         }
     }
+    for post in pinned_posts {
+        if seen.insert(super::string(&post["id"])) {
+            posts.push(post);
+        }
+    }
+    posts.sort_by_key(|post| std::cmp::Reverse(post["takenAt"].as_u64().unwrap_or(0)));
+    posts.truncate(limit);
     Ok(json!(posts))
 }
 

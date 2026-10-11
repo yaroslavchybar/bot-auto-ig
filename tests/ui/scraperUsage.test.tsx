@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
     createdAt: number
     scrapeLookbackDays?: number
     scrapeMonitor?: boolean
+    scrapeMonitorDays?: number
+    scrapePostLimit?: number
   }>,
   nearViewport: true,
   sources: [] as Array<{
@@ -25,6 +27,10 @@ const mocks = vi.hoisted(() => ({
     nextCheckAt: number
     postCount: number
     discovered: number
+    kind?: 'posts' | 'likers'
+    currentPostId?: string
+    lastCheckAt?: number
+    lastLikerCheckAt?: number
   }>,
   leads: [],
   pageStatus: 'Exhausted',
@@ -47,10 +53,11 @@ vi.mock('@/hooks/use-now', () => ({ useNow: () => 0 }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 vi.mock('@/hooks/use-near-viewport', () => ({ useNearViewport: () => mocks.nearViewport }))
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children }: { open: boolean; children: ReactNode }) => (open ? children : null),
+  Dialog: ({ open, children, onOpenChange }: { open: boolean; children: ReactNode; onOpenChange: (open: boolean) => void }) => (open ? <div role="dialog">{children}<button onClick={() => onOpenChange(false)}>Close</button></div> : null),
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children: ReactNode }) => <p>{children}</p>,
   DialogFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }))
 
@@ -234,17 +241,59 @@ test('source settings save only explicit changes and posts load only when opened
   await typeInto(days, '7')
   expect(mocks.save).not.toHaveBeenCalled()
   await act(async () => button('Save').click())
-  expect(mocks.save).toHaveBeenCalledWith({ listId: 'list', days: 7, monitor: true, includePrivate: false })
+  expect(mocks.save).toHaveBeenCalledWith({ listId: 'list', days: 7, monitor: true, monitorDays: 3, postLimit: 10, includePrivate: false })
   expect(usePaginatedQuery).not.toHaveBeenCalled()
   await act(async () => button('View posts').click())
+  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain('Posts from @example')
   expect(vi.mocked(usePaginatedQuery).mock.calls.at(-1)?.[1]).toEqual({ sourceId: 'source' })
   expect(vi.mocked(usePaginatedQuery).mock.calls.at(-1)?.[2]).toEqual({ initialNumItems: 50 })
   expect(vi.mocked(useQuery).mock.calls.some(([q]) => getFunctionName(q) === 'leads:lists')).toBe(
     false,
   )
-  await act(async () => button('Hide posts').click())
+  await act(async () => button('Close').click())
+  expect(view.container.querySelector('[role="dialog"]')).toBeNull()
   vi.mocked(usePaginatedQuery).mockClear()
   await typeInto(days, '8')
+  expect(usePaginatedQuery).not.toHaveBeenCalled()
+})
+
+test('monitor age saves separately and live source updates identify the active post', async () => {
+  mocks.search = '?tab=sources&listId=list'
+  mocks.sources = [{ _id: 'source', username: 'example', enabled: true, running: true, kind: 'likers', currentPostId: 'post', nextCheckAt: Date.now() + 86_400_000, lastCheckAt: Date.now() - 1000, postCount: 1, discovered: 3 }]
+  vi.mocked(usePaginatedQuery).mockReturnValue({
+    results: [{ _id: 'post', code: 'one', takenAt: Date.now(), likeCount: 200, monitoring: true, scheduled: true, nextCheckAt: Date.now() + 1000 }],
+    status: 'Exhausted', loadMore: mocks.loadMore, isLoading: false,
+  })
+  view = mount()
+  await view.render(<ScrapeSourcesView />)
+  const button = (text: string) => [...view!.container.querySelectorAll('button')].find(b => b.textContent === text)!
+  const days = view.container.querySelector<HTMLInputElement>('#source-monitor-days')!
+  expect(days.value).toBe('3')
+  expect(view.container.querySelector<HTMLInputElement>('#source-post-limit')!.value).toBe('10')
+  await typeInto(days, '5')
+  expect(mocks.save).not.toHaveBeenCalled()
+  await act(async () => button('Save').click())
+  expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, monitorDays: 5, postLimit: 10, includePrivate: false })
+  await act(async () => button('View posts').click())
+  expect(view.container.textContent).toContain('Checking likers now')
+  expect(view.container.textContent).toContain('Next discovery:')
+  mocks.sources = [{ ...mocks.sources[0], running: false, kind: undefined, currentPostId: undefined, lastLikerCheckAt: Date.now() }]
+  mocks.lists = [{ ...mocks.lists[0] }]
+  await view.render(<ScrapeSourcesView />)
+  expect(view.container.textContent).not.toContain('Checking likers now')
+  expect(view.container.textContent).toContain('Monitoring · Next:')
+  expect(view.container.textContent).toContain(`Last liker check: ${new Date(mocks.sources[0].lastLikerCheckAt!).toLocaleString()}`)
+  mocks.lists = [{ ...mocks.lists[0], scrapeMonitorDays: 5 }]
+  await view.render(<ScrapeSourcesView />)
+  expect(days.value).toBe('5')
+  expect(button('Save')).toBeUndefined()
+  // Removing the source also unmounts its posts subscription.
+  mocks.sources = []
+  mocks.lists = [{ ...mocks.lists[0] }]
+  await view.render(<ScrapeSourcesView />)
+  expect(view.container.querySelector('[role="dialog"]')).toBeNull()
+  vi.mocked(usePaginatedQuery).mockClear()
+  await view.render(<ScrapeSourcesView />)
   expect(usePaginatedQuery).not.toHaveBeenCalled()
 })
 
@@ -274,6 +323,23 @@ test('adding source profiles writes once to the selected list', async () => {
     links: ['https://www.instagram.com/example/', '@another'],
   })
   expect(view.container.querySelector('#source-links')).toBeNull()
+})
+
+test('latest-post count defaults to ten and saves only on explicit Save', async () => {
+  mocks.search = '?tab=sources&listId=list'
+  view = mount()
+  await view.render(<ScrapeSourcesView />)
+  const input = view.container.querySelector<HTMLInputElement>('#source-post-limit')!
+  expect(input.value).toBe('10')
+  await typeInto(input, '6')
+  expect(mocks.save).not.toHaveBeenCalled()
+  const save = [...view.container.querySelectorAll('button')].find(b => b.textContent === 'Save')!
+  await act(async () => save.click())
+  expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, monitorDays: 3, postLimit: 6, includePrivate: false })
+  mocks.lists = [{ ...mocks.lists[0], scrapePostLimit: 6 }]
+  await view.render(<ScrapeSourcesView />)
+  expect(input.value).toBe('6')
+  expect([...view.container.querySelectorAll('button')].some(b => b.textContent === 'Save')).toBe(false)
 })
 
 test('lead search waits for typing to settle and pauses obsolete pagination', async () => {

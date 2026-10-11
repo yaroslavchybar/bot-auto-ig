@@ -1,4 +1,6 @@
 export const HOUR = 3_600_000
+export const DEFAULT_MONITOR_DAYS = 3
+export const DEFAULT_SCRAPE_POST_LIMIT = 10
 export const MONITOR_WINDOW = 10
 export const MIN_NEW_IDS = 3
 

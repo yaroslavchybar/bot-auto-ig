@@ -25,7 +25,7 @@ pub use context::SessionContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{Arc, LazyLock},
 };
 use tokio::sync::Mutex;
@@ -173,6 +173,7 @@ pub struct Service {
     pub uploads: Arc<Uploads>,
     locks: Mutex<HashMap<String, Arc<Mutex<Entry>>>>,
     contexts: std::sync::RwLock<Option<context::ContextSnapshot>>,
+    scraper_blocked: std::sync::RwLock<HashSet<String>>,
     liker_pacing: pacing::Settings,
     #[cfg(test)]
     pub base: Option<String>,
@@ -207,10 +208,33 @@ impl Service {
             uploads,
             locks: Mutex::new(HashMap::new()),
             contexts: Default::default(),
+            scraper_blocked: Default::default(),
             liker_pacing: Default::default(),
             #[cfg(test)]
             base: None,
         })
+    }
+    /// The existing scraper work subscription supplies live browser ownership.
+    pub(crate) fn block_scraper_profiles(&self, ids: &[String]) {
+        *self
+            .scraper_blocked
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = ids.iter().cloned().collect();
+    }
+    pub(crate) fn check_scraper_available(&self, id: &str) -> Result<()> {
+        if self
+            .scraper_blocked
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
+        {
+            return Err(Error {
+                name: "ScraperProfileBusy".into(),
+                status: 409,
+                ..Error::new("Scraper profile is busy in the browser")
+            });
+        }
+        Ok(())
     }
     async fn entry(&self, id: &str) -> Result<Arc<Mutex<Entry>>> {
         let mut locks = self.locks.lock().await;
@@ -388,6 +412,9 @@ impl Service {
         let profile = &saved["profile"];
         if profile.is_null() {
             return Err(Error::new("Profile not found"));
+        }
+        if matches!(action, "posts" | "likers") {
+            self.check_scraper_available(&request.profile_id)?;
         }
         let proxy = normalize_proxy(&string(&profile["proxy"]), &string(&profile["proxyType"]))?;
         if entry.client.is_none() || entry.proxy != proxy {

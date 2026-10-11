@@ -95,6 +95,10 @@ jobs:
       - run: bunx convex deploy --check-build-environment disable
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Trim saved posts and remove expired monitors
+        run: bunx convex run scrapeSources:applyScrapeLimits '{}' --prod --codegen disable
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 
   build-images:
     if: github.event_name == 'push'

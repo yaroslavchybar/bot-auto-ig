@@ -5,7 +5,7 @@ import { normalizeUsername } from './instagramUsername'
 import { addMembership, leadAvailable, setLeadAvailability } from './leadMemberships'
 import { requireServerBridgeAuth } from './serverBridgeAuth'
 
-import { capacityAt, day, limitFor, scraperProfiles, usedToday } from './scraperPolicy'
+import { capacityAt, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
 import { activeSource, nextWork } from './scrapeSources'
 
 /** Persisted due times wake Rust timers; this subscription never reads a clock. */
@@ -25,14 +25,18 @@ export const work = query({
         .first(),
     ])
     let taskAt: number | null = null
+    let blockedProfileIds: Id<'profiles'>[] = []
     if (next) {
-      const times = (await scraperProfiles(ctx))
-        .filter((p) => p.scraperReady && p.status !== 'deleting' && !p.renameFrom)
+      const profiles = await scraperProfiles(ctx)
+      blockedProfileIds = profiles.filter(scraperBusy).map((p) => p._id)
+      const times = profiles
+        .filter((p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom)
         .map(capacityAt)
       if (times.length) taskAt = Math.max(next.at, Math.min(...times))
     }
     return {
       taskAt,
+      blockedProfileIds,
       taskKey: next?.key ?? null,
       enrichmentKey: (describing ?? pending)?._id ?? null,
     }

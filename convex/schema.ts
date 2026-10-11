@@ -8,6 +8,8 @@ export default defineSchema({
     createdAt: v.number(),
     scrapeLookbackDays: v.optional(v.number()),
     scrapeMonitor: v.optional(v.boolean()),
+    scrapeMonitorDays: v.optional(v.number()),
+    scrapePostLimit: v.optional(v.number()),
     scrapeIncludePrivate: v.optional(v.boolean()),
   }),
   // Keep changing counts separate from list metadata subscriptions used by Chat.
@@ -258,6 +260,7 @@ export default defineSchema({
     running: v.boolean(),
     nextCheckAt: v.number(),
     lastCheckAt: v.optional(v.number()),
+    lastLikerCheckAt: v.optional(v.number()),
     averageLikes: v.optional(v.number()),
     postCount: v.number(),
     discovered: v.number(),

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
+import { DEFAULT_MONITOR_DAYS, DEFAULT_SCRAPE_POST_LIMIT } from '../../../../convex/scrapeMonitoring'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -14,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -28,7 +30,7 @@ const stamp = (at?: number) => (at ? new Date(at).toLocaleString() : 'Not checke
 function SourceStatusBadge({
   source,
 }: {
-  source: { enabled: boolean; running?: boolean; error?: string | null }
+  source: { enabled: boolean; running?: boolean; kind?: 'posts' | 'likers'; error?: string | null }
 }) {
   const state = !source.enabled
     ? {
@@ -38,7 +40,7 @@ function SourceStatusBadge({
       }
     : source.running
       ? {
-          label: 'Checking',
+          label: source.kind === 'posts' ? 'Finding posts' : source.kind === 'likers' ? 'Checking likers' : 'Checking',
           className: 'bg-status-info-soft text-status-info border-status-info-border',
           dot: 'bg-status-info',
         }
@@ -88,29 +90,41 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
   const [baseline, setBaseline] = useState({
     days: list.scrapeLookbackDays ?? 90,
     monitor: list.scrapeMonitor ?? true,
+    monitorDays: list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS,
+    postLimit: list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT,
     includePrivate: list.scrapeIncludePrivate ?? false,
   })
   const [daysText, setDaysText] = useState(String(list.scrapeLookbackDays ?? 90))
   const [monitor, setMonitor] = useState(list.scrapeMonitor ?? true)
+  const [monitorDaysText, setMonitorDaysText] = useState(String(list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS))
+  const [postLimitText, setPostLimitText] = useState(String(list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT))
   const [includePrivate, setIncludePrivate] = useState(list.scrapeIncludePrivate ?? false)
   const serverDays = list.scrapeLookbackDays ?? 90
   const serverMonitor = list.scrapeMonitor ?? true
+  const serverMonitorDays = list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS
+  const serverPostLimit = list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT
   const serverIncludePrivate = list.scrapeIncludePrivate ?? false
-  if (baseline.days !== serverDays || baseline.monitor !== serverMonitor || baseline.includePrivate !== serverIncludePrivate) {
-    setBaseline({ days: serverDays, monitor: serverMonitor, includePrivate: serverIncludePrivate })
+  if (baseline.days !== serverDays || baseline.monitor !== serverMonitor || baseline.monitorDays !== serverMonitorDays || baseline.postLimit !== serverPostLimit || baseline.includePrivate !== serverIncludePrivate) {
+    setBaseline({ days: serverDays, monitor: serverMonitor, monitorDays: serverMonitorDays, postLimit: serverPostLimit, includePrivate: serverIncludePrivate })
     setDaysText(String(serverDays))
     setMonitor(serverMonitor)
+    setMonitorDaysText(String(serverMonitorDays))
+    setPostLimitText(String(serverPostLimit))
     setIncludePrivate(serverIncludePrivate)
   }
   const leads = counts?.leads
   const days = Number(daysText)
-  const valid = Number.isSafeInteger(days) && days >= 1 && days <= 3650
-  const changed = valid && (days !== baseline.days || monitor !== baseline.monitor || includePrivate !== baseline.includePrivate)
+  const monitorDays = Number(monitorDaysText)
+  const postLimit = Number(postLimitText)
+  const valid = Number.isSafeInteger(days) && days >= 1 && days <= 3650 &&
+    Number.isSafeInteger(monitorDays) && monitorDays >= 1 && monitorDays <= 3650 &&
+    Number.isSafeInteger(postLimit) && postLimit >= 1 && postLimit <= 5000
+  const changed = valid && (days !== baseline.days || monitor !== baseline.monitor || monitorDays !== baseline.monitorDays || postLimit !== baseline.postLimit || includePrivate !== baseline.includePrivate)
   const saveSettings = async () => {
     if (busy || !valid || !changed) return
     setBusy(true)
     try {
-      await settings({ listId: list._id, days, monitor, includePrivate })
+      await settings({ listId: list._id, days, monitor, monitorDays, postLimit, includePrivate })
       toast.success('Scanning settings saved')
     } catch (e) {
       toast.error(String(e))
@@ -153,6 +167,21 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
           </div>
           <span className="h-4 w-px bg-line" aria-hidden />
           <div className="flex items-center gap-1.5">
+            <Label htmlFor="source-post-limit" className="text-muted-copy">Latest</Label>
+            <Input
+              id="source-post-limit"
+              type="number"
+              min={1}
+              max={5000}
+              value={postLimitText}
+              disabled={busy}
+              onChange={(e) => setPostLimitText(e.target.value)}
+              className="h-6 w-14 rounded-full bg-field text-center tabular-nums"
+            />
+            <span className="text-muted-copy">posts</span>
+          </div>
+          <span className="h-4 w-px bg-line" aria-hidden />
+          <div className="flex items-center gap-1.5">
             <span className="whitespace-nowrap text-copy">Watch hot posts</span>
             <Switch
               checked={monitor}
@@ -160,6 +189,23 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
               disabled={busy}
               aria-label="Watch hot posts"
             />
+          </div>
+          <span className="h-4 w-px bg-line" aria-hidden />
+          <div className="flex items-center gap-1.5">
+            <Label htmlFor="source-monitor-days" className="whitespace-nowrap text-copy">
+              Monitor last
+            </Label>
+            <Input
+              id="source-monitor-days"
+              type="number"
+              min={1}
+              max={3650}
+              value={monitorDaysText}
+              disabled={busy || !monitor}
+              onChange={(e) => setMonitorDaysText(e.target.value)}
+              className="h-6 w-14 rounded-full bg-field text-center tabular-nums"
+            />
+            <span className="text-muted-copy">days</span>
           </div>
           <span className="h-4 w-px bg-line" aria-hidden />
           <div className="flex items-center gap-1.5 pr-1">
@@ -276,7 +322,8 @@ function SourceCards({
   const check = useMutation(api.scrapeSources.checkNow)
   const remove = useMutation(api.scrapeSources.remove)
   const [busy, setBusy] = useState(false)
-  const [expanded, setExpanded] = useState<Id<'scrapeSources'> | null>(null)
+  const [selectedId, setSelectedId] = useState<Id<'scrapeSources'> | null>(null)
+  const selected = sources?.find((source) => source._id === selectedId)
   const [deleteTarget, setDeleteTarget] = useState<{
     _id: Id<'scrapeSources'>
     username: string
@@ -333,8 +380,11 @@ function SourceCards({
                     likes
                   </p>
                   <p className="mt-0.5 text-xs text-subtle-copy">
-                    Last scan: {stamp(source.lastCheckAt)}
-                    {source.enabled ? ` · Next scan: ${stamp(source.nextCheckAt)}` : ''}
+                    Last post discovery: {stamp(source.lastCheckAt)}
+                    {source.enabled ? ` · Next discovery: ${stamp(source.nextCheckAt)}` : ''}
+                  </p>
+                  <p className="mt-0.5 text-xs text-subtle-copy">
+                    Last liker check: {stamp(source.lastLikerCheckAt)}
                   </p>
                   {source.error && (
                     <p className="mt-1 text-xs text-status-danger">{source.error}</p>
@@ -343,9 +393,9 @@ function SourceCards({
                 <div className="flex flex-wrap items-center gap-1">
                   <Button
                     variant="outline"
-                    onClick={() => setExpanded(expanded === source._id ? null : source._id)}
+                    onClick={() => setSelectedId(source._id)}
                   >
-                    {expanded === source._id ? 'Hide posts' : 'View posts'}
+                    View posts
                   </Button>
                   <Button
                     variant="ghost"
@@ -380,10 +430,26 @@ function SourceCards({
                   </Button>
                 </div>
               </div>
-              {expanded === source._id && <SourcePosts sourceId={source._id} />}
             </div>
           ))}
         </div>
+      )}
+      {selected && (
+        <Dialog open onOpenChange={(open) => { if (!open) setSelectedId(null) }}>
+          <DialogContent className="flex max-h-[85vh] w-[calc(100%_-_2rem)] flex-col sm:max-w-4xl">
+            <DialogHeader className="shrink-0 pr-5">
+              <DialogTitle>Posts from @{selected.username}</DialogTitle>
+              <DialogDescription>
+                Liker checks update live. {list.scrapeMonitor === false
+                  ? 'Monitoring is disabled for this list.'
+                  : `Monitoring covers posts from the last ${list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS} days.`}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 overflow-y-auto">
+              <SourcePosts sourceId={selected._id} enabled={selected.enabled} monitor={list.scrapeMonitor !== false} running={selected.enabled && selected.running} currentPostId={selected.currentPostId} />
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
       <ConfirmDeleteDialog
         open={!!deleteTarget}
@@ -413,21 +479,27 @@ function SourceCards({
   )
 }
 
-function SourcePosts({ sourceId }: { sourceId: Id<'scrapeSources'> }) {
+function SourcePosts({ sourceId, enabled, monitor, running, currentPostId }: {
+  sourceId: Id<'scrapeSources'>
+  enabled: boolean
+  monitor: boolean
+  running: boolean
+  currentPostId?: Id<'scrapePosts'>
+}) {
   const { results, status, loadMore } = usePaginatedQuery(
     api.scrapeSources.posts,
     { sourceId },
     { initialNumItems: 50 },
   )
   return (
-    <div className="mt-4 divide-y divide-line-soft border-t border-line-soft pt-1">
+    <div className="divide-y divide-line-soft">
       {status === 'LoadingFirstPage' ? (
         <p className="py-3 text-sm text-muted-copy">Loading posts...</p>
       ) : !results.length ? (
         <p className="py-3 text-sm text-muted-copy">No posts found yet.</p>
       ) : (
         results.map((post) => {
-          const monitoring = post.monitoring && post.scheduled
+          const monitoring = enabled && monitor && post.monitoring && post.scheduled
           return (
             <div key={post._id} className="flex flex-wrap justify-between gap-2 py-2 text-xs">
               <a
@@ -439,7 +511,11 @@ function SourcePosts({ sourceId }: { sourceId: Id<'scrapeSources'> }) {
                 {new Date(post.takenAt).toLocaleDateString()} · {post.likeCount ?? 'Unknown'} likes
               </a>
               <span className="text-muted-copy">
-                {post.error
+                {!enabled
+                  ? 'Paused'
+                  : running && currentPostId === post._id
+                  ? 'Checking likers now'
+                  : post.error
                   ? post.error
                   : monitoring
                     ? `Monitoring · Next: ${stamp(post.nextCheckAt)}`
@@ -448,6 +524,7 @@ function SourcePosts({ sourceId }: { sourceId: Id<'scrapeSources'> }) {
                       : post.lastScrapedAt
                         ? `Scraped ${stamp(post.lastScrapedAt)}`
                         : 'Waiting for first scrape'}
+                {post.lastScrapedAt && monitoring && ` · Last check: ${stamp(post.lastScrapedAt)}`}
                 {post.averageNewIds !== undefined &&
                   ` · ${post.averageNewIds.toFixed(1)} new IDs/check (${post.checkCount}/10)`}
                 {post.likesPerHour !== undefined && ` · ${post.likesPerHour.toFixed(1)} likes/hour`}
