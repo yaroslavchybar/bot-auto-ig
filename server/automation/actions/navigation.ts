@@ -2,6 +2,7 @@ import type { Locator, Page } from 'playwright-core'
 import { StealthDomError } from 'cloakbrowser/human'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
+import { actionLocator } from './action-locator.js'
 
 function isInstagramConsentPage(page: Page): boolean {
   try {
@@ -125,7 +126,7 @@ export async function closeDialog(page: Page, session = new BrowseSession()): Pr
     const scope = (await dialog.isVisible().catch(() => false)) ? dialog : page
     const x = scope.locator('svg[aria-label="Close"]').first()
     if (await x.isVisible().catch(() => false)) {
-      await x.click({ timeout: session.timeout(5_000) })
+      await (await actionLocator(x, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
       await sleep(random(400, 900))
       return
     }

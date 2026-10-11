@@ -2,6 +2,7 @@ import type { Locator, Page } from 'playwright-core'
 import { random } from './shared.js'
 import { clickPointOnScreen } from './guards.js'
 import { BrowseSession } from './session.js'
+import { actionLocator } from './action-locator.js'
 
 export async function clickVisible(
   page: Page | Locator,
@@ -14,7 +15,8 @@ export async function clickVisible(
     const box = await item.boundingBox().catch(() => null)
     const vp = item.page().viewportSize() ?? { width: 1280, height: 800 }
     if (box && clickPointOnScreen(box, vp) && await item.isVisible().catch(() => false)) {
-      await item.click({ timeout: session.timeout(5_000) })
+      const timeout = session.timeout(5_000)
+      await (await actionLocator(item, timeout)).click({ timeout: session.timeout(5_000) })
       return true
     }
   }

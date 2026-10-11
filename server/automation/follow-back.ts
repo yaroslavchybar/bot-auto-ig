@@ -1,13 +1,14 @@
 import type { Page } from 'playwright-core';
 import { profileControls } from './follow.js';
+import { actionLocator } from './actions/action-locator.js';
 
 /** Read only follow events; likes/comments and suggested accounts are not followers. */
 export async function readFollowNotifications(page: Page, stopped: () => boolean, since = 0): Promise<string[] | null> {
-  await page.getByRole('link', { name: 'Notifications', exact: true }).click({ timeout: 10_000 });
+  await (await actionLocator(page.getByRole('link', { name: 'Notifications', exact: true }))).click({ timeout: 10_000 });
   const heading = page.getByRole('heading', { name: 'Notifications', exact: true });
   await heading.waitFor({ state: 'visible', timeout: 15_000 });
   try {
-    await page.getByRole('button', { name: 'Follows', exact: true }).click({ timeout: 10_000 });
+    await (await actionLocator(page.getByRole('button', { name: 'Follows', exact: true }))).click({ timeout: 10_000 });
     const names = new Set<string>();
     let stable = 0, previous = '';
     for (let step = 0; step < 60 && !stopped(); step++) {
@@ -42,7 +43,7 @@ export async function readFollowNotifications(page: Page, stopped: () => boolean
     }
     return null; // An interrupted scan must not suppress the next attempt today.
   } finally {
-    await page.getByRole('button', { name: 'Close', exact: true }).click({ timeout: 5000 });
+    await (await actionLocator(page.getByRole('button', { name: 'Close', exact: true }), 5000)).click({ timeout: 5000 });
   }
 }
 
@@ -73,7 +74,7 @@ export async function ownUsername(page: Page) {
 /** Notifications can be old: verify the current relationship before composing a DM. */
 export async function followsUs(page: Page, username: string) {
   if (await page.getByText(/This (?:account|profile) is private/i, { exact: true }).isVisible()) return false;
-  await profileControls(page).getByRole('link', { name: /^[\d,.\sKMB]+ following$/i }).click({ timeout: 10_000 });
+  await (await actionLocator(profileControls(page).getByRole('link', { name: /^[\d,.\sKMB]+ following$/i }))).click({ timeout: 10_000 });
   const dialog = page.getByRole('dialog');
   try {
     const search = dialog.getByRole('textbox', { name: 'Search input', exact: true });
@@ -81,10 +82,10 @@ export async function followsUs(page: Page, username: string) {
     // Instagram puts our account first when present. Otherwise use its server-side search.
     const own = dialog.getByRole('link', { name: username, exact: true });
     if (await own.isVisible()) return true;
-    await search.fill(username);
+    await (await actionLocator(search)).fill(username);
     return await own.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true, () => false);
   } finally {
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click({ timeout: 5000 });
+    await (await actionLocator(dialog.getByRole('button', { name: 'Close', exact: true }), 5000)).click({ timeout: 5000 });
   }
 }
 
@@ -100,10 +101,10 @@ export async function likeRecentPost(page: Page, allowed: () => Promise<boolean>
     const unlike = article.getByRole('button', { name: 'Unlike', exact: true }).first();
     await like.or(unlike).waitFor({ state: 'visible', timeout: 10_000 });
     if (await unlike.isVisible() || !await allowed()) return false;
-    await like.click({ timeout: 10_000 });
+    await (await actionLocator(like)).click({ timeout: 10_000 });
     await unlike.waitFor({ state: 'visible', timeout: 10_000 });
     return true;
   } finally {
-    await page.getByRole('button', { name: 'Close', exact: true }).click({ timeout: 5000 });
+    await (await actionLocator(page.getByRole('button', { name: 'Close', exact: true }), 5000)).click({ timeout: 5000 });
   }
 }

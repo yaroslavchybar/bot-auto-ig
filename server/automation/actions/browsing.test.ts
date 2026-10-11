@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
+import { Window } from 'happy-dom'
 import { BrowseSession, SessionEnded } from './session.js'
 import { settleOnPost, smoothScroll } from './scroll.js'
 import { likeVisible, clickVisible } from './mouse.js'
@@ -8,7 +9,8 @@ import { detourDelay, postChoices, viewContent, viewVideo } from './viewing.js'
 import { openDMs } from './inbox.js'
 import { openReels } from './reels.js'
 import { backToFeed } from './navigation.js'
-import { openOwnProfile } from './profiles.js'
+import { openAuthorProfile, openOwnProfile } from './profiles.js'
+import { watchStories } from './stories.js'
 
 test('settling checks posts beyond six and ignores fully offscreen posts', async () => {
   const checked: number[] = []
@@ -93,7 +95,11 @@ function likeTarget(alreadyLiked: boolean, confirms: boolean, y = 100) {
   const unlike = { count: async () => Number(liked), first: () => ({ waitFor: async () => {} }) }
   const button = {
     boundingBox: async () => ({ x: 100, y, width: 30, height: 30 }),
-    page: () => ({ viewportSize: () => ({ width: 1280, height: 800 }) }),
+    elementHandle: async () => button,
+    dispose: async () => {},
+    page: () => ({
+      viewportSize: () => ({ width: 1280, height: 800 }),
+    }),
     isVisible: async () => true,
     click: async () => { clicks++; liked = confirms },
   }
@@ -117,4 +123,79 @@ test('visible-in-DOM but offscreen controls are not clicked', async () => {
   const offscreen = likeTarget(false, true, 900)
   assert.equal(await clickVisible(offscreen.target, 'button'), false)
   assert.equal(offscreen.clicks(), 0)
+})
+
+test('opening an author adapts the selected nested link before clicking', async () => {
+  let currentUrl = 'https://www.instagram.com/'
+  const author = {
+    first() { return this },
+    getAttribute: async () => '/alice/',
+    boundingBox: async () => ({ x: 100, y: 100, width: 100, height: 30 }),
+    isVisible: async () => true,
+    elementHandle: async () => ({
+      click: async () => { currentUrl = 'https://www.instagram.com/alice/' },
+      dispose: async () => {},
+    }),
+    page: () => page,
+    click: async () => { throw new Error('Cloak rejects a chained author selector') },
+  }
+  const page = {
+    viewportSize: () => ({ width: 1280, height: 800 }),
+    url: () => currentUrl,
+    locator: () => { throw new Error('Must not resolve the selected author again') },
+  } as unknown as Page
+  const target = { locator: () => author } as unknown as Locator
+  const session = new BrowseSession()
+  session.wait = async () => {}
+  assert.equal(await openAuthorProfile(page, target, session), true)
+  assert.equal(currentUrl, 'https://www.instagram.com/alice/')
+})
+
+test('stories wait for the button tray and honor a stop while it loads', async () => {
+  for (const stopWhileLoading of [false, true]) {
+    let loaded = false, stopped = false, clicks = 0
+    const story = {
+      first() { return this },
+      elementHandle: async () => story,
+      dispose: async () => {},
+      waitFor: async () => { loaded = true; stopped = stopWhileLoading },
+      isVisible: async () => loaded,
+      click: async () => { assert.equal(loaded, true); clicks++ },
+    }
+    const page = {
+      goto: async () => {},
+      url: () => 'https://www.instagram.com/',
+      keyboard: { press: async () => {} },
+      locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
+    } as unknown as Page
+    await watchStories(page, 0, () => {}, () => stopped)
+    assert.equal(clicks, stopWhileLoading ? 0 : 1)
+  }
+})
+
+test('stories skip a hidden first control in either tray layout', async () => {
+  for (const visibleKind of ['button', 'link']) {
+    const window = new Window()
+    try {
+      window.document.body.innerHTML = `<main><div role="button" aria-label="Story by hidden" style="display:none"></div><a href="/stories/hidden/" style="display:none"></a>${visibleKind === 'button'
+        ? '<div id="visible-story" role="button" aria-label="Story by alice"></div>'
+        : '<a id="visible-story" href="/stories/alice/"></a>'}</main>`
+      let clicked = ''
+      const page = {
+        goto: async () => {}, url: () => 'https://www.instagram.com/',
+        keyboard: { press: async () => {} },
+        locator: (selector: string) => {
+          const nodes = [...window.document.querySelectorAll(selector.replaceAll(':visible', ''))]
+            .filter(node => !selector.includes(':visible') || node.getAttribute('style') !== 'display:none')
+          return { count: async () => nodes.length, first: () => ({
+            waitFor: async () => { assert.ok(nodes[0]) },
+            isVisible: async () => !!nodes[0] && nodes[0].getAttribute('style') !== 'display:none',
+            elementHandle: async () => ({ click: async () => { clicked = nodes[0]!.id }, dispose: async () => {} }),
+          }) }
+        },
+      } as unknown as Page
+      await watchStories(page, 0, () => {}, () => false)
+      assert.equal(clicked, 'visible-story')
+    } finally { await window.happyDOM.close() }
+  }
 })

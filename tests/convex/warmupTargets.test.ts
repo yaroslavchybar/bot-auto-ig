@@ -35,6 +35,72 @@ test('each account draws and retains its own warm-up post target', async () => {
   } finally { rng.mockRestore() }
 })
 
+test('returning to the same model restores completed setup without resetting activity', async () => {
+  const { t, model, profile, enroll } = await setup(3, 3)
+  await enroll()
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+    profileId: profile._id, modelId: model._id,
+    patch: { postSourceIds: ['p1', 'p2', 'p3'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
+  })
+  const savedSetup = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]
+  await t.run(async ctx => {
+    await ctx.db.insert('accountProgress', { profileId: profile._id, paused: false, activeDays: 20,
+      outreachDays: 4, date: '', used: 0, allowance: 0, nextRunAt: 0, startedAt: 1, updatedAt: 1 })
+    await ctx.db.insert('warmupStates', { profileId: profile._id, day: 20, date: '2026-09-27',
+      runsToday: 2, todayMinutes: 30, minutesUsedToday: 15, updatedAt: 1 })
+  })
+  const activity = await t.run(async ctx => ({ progress: await ctx.db.query('accountProgress').unique(),
+    warmup: await ctx.db.query('warmupStates').unique() }))
+  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: model._id })
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(false)
+  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id })
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
+  expect(await enroll()).toEqual(savedSetup)
+  expect(await t.run(async ctx => ({ progress: await ctx.db.query('accountProgress').unique(),
+    warmup: await ctx.db.query('warmupStates').unique() }))).toEqual(activity)
+  const other = (await seedList(t, 'Other model'))!
+  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: other._id })
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(false)
+})
+
+test.each(['unfinished', 'invalid posts', 'pending'])('returning to a model does not restore %s setup', async reason => {
+  const { t, model, profile, enroll } = await setup(3, 3)
+  const state = (await enroll())!
+  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: model._id })
+  // An already detached setup may carry stale completion or an uncertain action.
+  await t.run(ctx => ctx.db.patch(state._id, {
+    postSourceIds: ['p1', 'p2', 'p3'],
+    postDates: reason === 'invalid posts' ? [] : ['2026-09-25', '2026-09-26', '2026-09-27'],
+    outreachReadyMarked: reason !== 'unfinished',
+    ...(reason === 'pending' ? { pending: { kind: 'post' as const, sourceId: 'p4', date: '2026-09-28' } } : {}),
+  }))
+  if (reason === 'pending') {
+    // Membership changes correctly reject uncertain actions, preserving the false flag.
+    await expect(t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id }))
+      .rejects.toThrow('Resolve the pending')
+  } else {
+    await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: model._id })
+  }
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(false)
+})
+
+test('reconfirming completed setup repairs a previously cleared readiness flag', async () => {
+  const { t, model, profile, enroll } = await setup(3, 3)
+  await enroll()
+  const args = { profileId: profile._id, modelId: model._id }
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+    patch: { postSourceIds: ['p1', 'p2', 'p3'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
+  })
+  const saved = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]
+  await t.run(ctx => ctx.db.patch(profile._id, { outreachReady: false }))
+  // Native setup repeats this confirmation when the profile flag disagrees with saved setup.
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+    patch: { outreachReadyMarked: true }, clear: ['error'],
+  })
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
+  expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]).toEqual(saved)
+})
+
 test.each(['confirmed', 'reviewed'])('the saved post target gates %s posts', async mode => {
   const { t, model, profile, enroll } = await setup(3, 3)
   await enroll()

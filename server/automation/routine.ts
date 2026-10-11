@@ -189,8 +189,7 @@ export async function runRoutineSession(
               await messageButton(page).click({ timeout: 15_000 });
               // Current Instagram keeps the profile URL and opens the composer in
               // an overlay, so the composer is the navigation-complete signal.
-              const composer = messageComposer(page);
-              await composer.waitFor({ state: 'visible', timeout: 15_000 });
+              const composer = await messageComposer(page);
               await composer.fill(message, { timeout: 15_000 });
               await check(true);
               if (shouldStop()) return 'unavailable';

@@ -5,6 +5,7 @@ import { isUserHref, PROFILE_URL } from './guards.js'
 import { clickVisible } from './mouse.js'
 import { revealForClick, scrollModal, smoothScroll } from './scroll.js'
 import { closeDialog } from './navigation.js'
+import { actionLocator } from './action-locator.js'
 
 // First user link in the post is the author (avatar/username row).
 export async function openAuthorProfile(page: Page, target: Locator, session = new BrowseSession()): Promise<boolean> {
@@ -17,7 +18,7 @@ export async function openAuthorProfile(page: Page, target: Locator, session = n
     // Author row below the fold: glide it into view, then tap it.
     await revealForClick(page, link, session).catch(() => false)
     if (!(await link.isVisible().catch(() => false))) return false
-    await link.click({ timeout: session.timeout(5_000) })
+    await (await actionLocator(link, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
     await sleep(random(1200, 2500))
     return PROFILE_URL.test(page.url())
   } catch {
@@ -52,9 +53,10 @@ async function pickDialogUser(page: Page, session: BrowseSession): Promise<boole
     // Glide the row into view inside the dialog instead of jump-scrolling.
     await revealForClick(page, target, session).catch(() => false)
     await sleep(random(300, 700))
+    const action = await actionLocator(target, session.timeout(5_000))
     await Promise.all([
       page.waitForURL(PROFILE_URL, { timeout: session.timeout(8_000) }).catch(() => undefined),
-      target.click({ timeout: session.timeout(5_000) }).catch(() => undefined),
+      action.click({ timeout: session.timeout(5_000) }).catch(() => undefined),
     ])
     if (PROFILE_URL.test(page.url())) return true
     if (!(await dialog.isVisible().catch(() => false))) {
@@ -74,7 +76,7 @@ async function openLikersProfile(page: Page, target: Locator, session = new Brow
       .locator('span[role="button"]', { hasText: /^[\d\s.,KMB]+$/ })
       .first()
     if (!(await likers.isVisible().catch(() => false))) return false
-    await likers.click({ timeout: session.timeout(5_000) })
+    await (await actionLocator(likers, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
     return await pickDialogUser(page, session)
   } catch {
     await closeDialog(page, session).catch(() => undefined)
@@ -91,7 +93,7 @@ async function openCommentsProfile(page: Page, target: Locator, session = new Br
       .locator('div[role="button"]:has(svg[aria-label="Comment"])')
       .first()
     if (!(await icon.isVisible().catch(() => false))) return false
-    await icon.click({ timeout: session.timeout(5_000) })
+    await (await actionLocator(icon, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
     await sleep(random(2000, 3000))
     if (await page.locator('div[role="dialog"]').first().isVisible().catch(() => false))
       return await pickDialogUser(page, session)

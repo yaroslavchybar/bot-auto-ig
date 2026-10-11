@@ -79,7 +79,9 @@ test('standalone stories use configured viewing times', async () => {
           first: () => ({ isVisible: async () => false, click: async () => {} }),
         }),
         locator: () => ({
-          first: () => ({ isVisible: async () => true, click: async () => {} }),
+          first: () => ({ isVisible: async () => true, click: async () => {},
+            elementHandle: async () => ({ click: async () => {}, dispose: async () => {} }),
+          }),
           count: async () => 0,
           nth: () => ({ isVisible: async () => false, click: async () => {} }),
         }),

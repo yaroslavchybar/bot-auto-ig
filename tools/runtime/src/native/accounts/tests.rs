@@ -290,11 +290,26 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};
     use std::sync::atomic::{AtomicUsize, Ordering};
-    for outcome in ["success", "uncertain", "save failure", "retry pending"] {
+    for outcome in [
+        "success",
+        "uncertain",
+        "save failure",
+        "retry pending",
+        "restore readiness",
+    ] {
         let root = tempfile::tempdir().unwrap();
         let progress = Arc::new(Mutex::new(
             json!({"profileId":"p","modelId":"model","startedAt":api::now_ms() as f64 - 5.0*86_400_000.0 + 0.25,"postSourceIds":[],"postDates":[]}),
         ));
+        if outcome == "restore readiness" {
+            let mut state = progress.lock().await;
+            state["nameDone"] = json!(true);
+            state["postTarget"] = json!(1);
+            state["postSourceIds"] = json!(["post"]);
+            state["postDates"] = json!(["2026-09-25"]);
+            state["outreachReadyMarked"] = json!(true);
+            state["error"] = json!("stale setup error");
+        }
         let attempts = Arc::new(AtomicUsize::new(0));
         let count = attempts.clone();
         let mobile=Fixture::start(move |request| {
@@ -380,6 +395,16 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
             result.unwrap();
         }
         let state = progress.lock().await.clone();
+        if outcome == "restore readiness" {
+            assert_eq!(attempts.load(Ordering::SeqCst), 0);
+            assert_eq!(state["outreachReadyMarked"], true);
+            assert!(
+                state["error"].is_null(),
+                "completed setup must reconfirm readiness when the profile flag is missing"
+            );
+            assert_eq!(state["postSourceIds"], json!(["post"]));
+            continue;
+        }
         if outcome == "retry pending" {
             assert_eq!(attempts.load(Ordering::SeqCst), 0);
             assert!(state["pending"].is_null());

@@ -5,6 +5,9 @@ import { clearProfileChatArchives } from '../chatArchives'
 import { syncProxyUsage, clearProxyUsage } from '../proxyUsage'
 import { patchProfile, syncWorkerProfile, clearWorkerProfile } from '../workerMetadata'
 import { DEFAULT_MAX_PROFILES, proxyKey, resolveMaxProfiles, cleanProxyFields } from '../proxies';
+import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
+import { recordedPostsReady } from '../modelSetupPolicy';
 
 function assertProfileEditable(profile: any) {
 	if (profile.status === 'deleting' || profile.renameFrom)
@@ -44,16 +47,22 @@ export function getProfileListIds(profile: any): any[] {
 }
 
 /** Keep the indexed membership table in sync with the profile's listIds. */
-export async function syncProfileListAssignments(ctx: any, profileId: any, listIds: any[]) {
-	const desired = new Map<string, any>();
+export async function syncProfileListAssignments(ctx: MutationCtx, profileId: Id<'profiles'>, listIds: Id<'lists'>[]) {
+	const desired = new Map<string, Id<'lists'>>();
 	for (const listId of getProfileListIds({ listIds })) desired.set(String(listId), listId);
 	const existing = await ctx.db
 		.query("profileListAssignments")
-		.withIndex("by_profile", (q: any) => q.eq("profileId", profileId))
+		.withIndex("by_profile", (q) => q.eq("profileId", profileId))
 		.collect();
-	const current = new Set(existing.map((row: any) => String(row.listId)));
+	const current = new Set(existing.map((row) => String(row.listId)));
 	if (current.size !== desired.size || [...desired.keys()].some(key => !current.has(key))) {
-		await ctx.db.patch(profileId, { outreachReady: false });
+		const setup = await ctx.db.query('modelSetupStates')
+			.withIndex('by_profile', q => q.eq('profileId', profileId)).first();
+		// Returning to the same model keeps its completed setup; a new model starts fresh.
+		const outreachReady = !!(setup && desired.size === 1 && desired.has(String(setup.modelId)) &&
+			setup.outreachReadyMarked && !setup.pending &&
+			recordedPostsReady(setup.postSourceIds, setup.postDates, setup.postTarget));
+		await ctx.db.patch(profileId, { outreachReady });
 	}
 	for (const row of existing) {
 		if (!desired.has(String(row.listId))) await ctx.db.delete(row._id);

@@ -14,10 +14,26 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
   const previous = globalThis.getComputedStyle;
   globalThis.getComputedStyle = window.getComputedStyle.bind(window) as unknown as typeof getComputedStyle;
   let closed = false, scrolls = 0;
+  const controls = new Map<string, unknown>();
   const page = {
     getByRole: (role: string, opts: { name: string }) => role === 'heading'
       ? { waitFor: async () => {}, evaluate: async (fn: (el: HTMLElement) => unknown) => fn(heading as unknown as HTMLElement) }
-      : { click: async () => { if (opts.name === 'Close') closed = true; } },
+      : {
+        elementHandle: async () => ({
+          click: async () => { if (opts.name === 'Close') closed = true; },
+          dispose: async () => {},
+        }),
+        page: () => page,
+        evaluate: async () => {
+          const xpath = `/*[1]/*[${opts.name === 'Close' ? 3 : opts.name === 'Follows' ? 2 : 1}]`;
+          controls.set(`xpath=${xpath}`, { click: async () => { if (opts.name === 'Close') closed = true; } });
+          return xpath;
+        },
+      },
+    locator: (selector: string) => {
+      assert.ok(controls.has(selector), `Unsupported action selector: ${selector}`);
+      return controls.get(selector);
+    },
     waitForTimeout: async () => { scrolls++; },
   } as unknown as Page;
   try {
@@ -63,16 +79,18 @@ for (const wording of ['This profile is private', 'This account is private']) te
   assert.equal(await likeRecentPost(page, async () => true), false);
 });
 
-test('relationship selectors target only the profile header and support pending requests/chevron labels', () => {
-  const names: RegExp[] = [];
-  const page = { locator: (selector: string) => {
-    assert.equal(selector, 'main header');
-    return { getByRole: (_: string, options: { name: RegExp }) => { names.push(options.name); } };
-  } } as unknown as Page;
+test('relationship selectors support humanized clicks without role or chained engines', () => {
+  const selectors: string[] = [];
+  const page = { locator: (selector: string) => { selectors.push(selector); } } as unknown as Page;
   followButton(page); followingButton(page);
-  assert.ok(names[0].test('Follow')); assert.ok(names[0].test('Follow Back'));
-  assert.ok(names[1].test('Requested')); assert.ok(names[1].test('Following Down chevron icon'));
-  assert.ok(!names[0].test('Unfollow'));
+  for (const selector of selectors) {
+    assert.ok(selector.startsWith('xpath=//main//header/'));
+    assert.ok(!selector.includes('>>'));
+    assert.ok(!selector.includes('internal:role'));
+  }
+  assert.ok(selectors[0].includes('="follow"')); assert.ok(selectors[0].includes('="follow back"'));
+  assert.ok(selectors[1].includes('="requested"')); assert.ok(selectors[1].includes('="following down chevron icon"'));
+  assert.ok(!selectors[0].includes('="unfollow"'));
 });
 
 test('own username comes from the navigation avatar, not the recipient avatar', async () => {
@@ -86,16 +104,25 @@ test('own username comes from the navigation avatar, not the recipient avatar', 
 test('live follow-back verification requires an exact username in the current following dialog', async () => {
   for (const present of [false, true]) {
     let closed = false, searched = '';
+    const controls = new Map<string, unknown>();
+    const actionable = <T extends object>(index: number, methods: T) => {
+      const xpath = `/*[1]/*[${index}]`;
+      const target = { ...methods, elementHandle: async () => ({ ...methods, dispose: async () => {} }) };
+      controls.set(`xpath=${xpath}`, target);
+      return target;
+    };
     const own = { isVisible: async () => false, waitFor: async () => { if (!present) throw new Error('missing'); } };
-    const search = { waitFor: async () => {}, fill: async (value: string) => { searched = value; } };
+    const search = actionable(1, { waitFor: async () => {}, fill: async (value: string) => { searched = value; } });
     const dialog = { getByRole: (role: string, options: { name: string }) => {
       if (role === 'textbox') return search;
       if (role === 'link') { assert.equal(options.name, 'sender'); return own; }
-      return { click: async () => { closed = true; } };
+      return actionable(2, { click: async () => { closed = true; } });
     } };
     const page = {
       getByText: () => ({ isVisible: async () => false }),
-      locator: () => ({ getByRole: () => ({ click: async () => {} }) }),
+      locator: (selector: string) => selector === 'main header'
+        ? { getByRole: () => actionable(3, { click: async () => {} }) }
+        : controls.get(selector),
       getByRole: () => dialog,
     } as unknown as Page;
     assert.equal(await followsUs(page, 'sender'), present);

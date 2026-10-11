@@ -352,7 +352,7 @@ impl Accounts {
         if state["postSourceIds"].as_array().map_or(0, Vec::len)
             >= state["postTarget"].as_u64().unwrap_or(9) as usize
         {
-            if state["outreachReadyMarked"] != true {
+            if state["outreachReadyMarked"] != true || profile["outreachReady"] != true {
                 self.patch_setup(
                     id,
                     model_id,

@@ -8,23 +8,26 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
   let now = 0, sent = false, issue: string | undefined;
   const attempt = { leadId: 'lead', date: '2026-09-21', username: 'alice', message: 'Hello alice' };
   const locator = {
-    first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; },
+    first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
     getByRole() { return this; }, count: async () => 1, hover: async () => {}, isVisible: async () => false,
+    evaluate: async () => '/*[1]', page: () => page,
+    elementHandle: async () => locator, dispose: async () => {},
     click: async () => { calls.push('message-button'); },
     fill: async () => { calls.push('compose'); },
     press: async () => { calls.push('send'); },
     waitFor: async () => { calls.push('confirm'); },
   };
   const page = {
-    locator: () => ({ first: () => locator, getByRole: (_: string, options: { name: string | RegExp }) => {
-      if (options.name === 'Message') return locator;
-      const name = options.name as RegExp;
+    locator: (selector: string) => {
+      if (!selector.startsWith('xpath=') || selector.startsWith('xpath=/*[') || selector.includes('="message"'))
+        return selector.includes('IGDChatTabsRootContentOffMsys') ? { ...locator, isVisible: async () => true } : locator;
+      const name = selector.includes('="following"') ? /^(Following|Requested)(?: Down chevron icon)?$/i : /^(Follow|Follow back)$/i;
       return { ...locator, or: () => ({ waitFor: async () => {} }),
         waitFor: async () => { assert.equal(name.test(relationship), true); },
         isVisible: async () => name.test(relationship),
         click: async () => { assert.equal(relationship, 'Follow'); relationship = 'Following'; calls.push('follow'); },
       };
-    } }),
+    },
     url: () => 'https://www.instagram.com/',
     goto: async () => { calls.push('navigate'); },
     getByRole: () => locator,
@@ -133,12 +136,7 @@ test('private follow requests are recorded and do not send DMs', async () => {
   const original = s.page.locator;
   s.page.locator = ((selector: string) => {
     const controls = original(selector);
-    const getByRole = controls.getByRole;
-    controls.getByRole = ((role: string, options: { name: RegExp }) => {
-      const control = getByRole(role as 'button', options);
-      if (String(options.name).includes('Following')) control.waitFor = async () => { assert.ok(options.name.test('Requested')); };
-      return control;
-    }) as typeof controls.getByRole;
+    if (selector.includes('="following"')) controls.waitFor = async () => {};
     return controls;
   }) as Page['locator'];
   await s.run(); assert.ok(s.calls.includes('record-follow')); assert.ok(!s.calls.includes('send'));
