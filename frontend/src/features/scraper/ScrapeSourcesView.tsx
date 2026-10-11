@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useHeaderToolbarSlot } from '@/components/layout/useHeaderSlot'
 import { useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
 import { toast } from 'sonner'
@@ -82,6 +84,7 @@ export function ScrapeSourcesView() {
 }
 
 function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => void }) {
+  const headerSlot = useHeaderToolbarSlot('scraper-header-slot', 360)
   const sources = useQuery(api.scrapeSources.sources, { listId: list._id })
   const counts = useLeadListSummary(list._id)
   const settings = useMutation(api.scrapeSources.settings)
@@ -132,19 +135,30 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
       setBusy(false)
     }
   }
+  const listSummary = (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <h2 className="truncate text-lg font-semibold tracking-tight text-ink" title={list.name}>
+        {list.name}
+      </h2>
+      {sources !== undefined && (
+        <p className="shrink-0 text-xs whitespace-nowrap text-muted-copy tabular-nums">
+          {sources.length} {sources.length === 1 ? 'source' : 'sources'} ·{' '}
+          {leads?.toLocaleString() ?? '…'} {leads === 1 ? 'lead' : 'leads'}
+        </p>
+      )}
+    </div>
+  )
   return (
     <div className="space-y-4 pt-2 md:pt-3">
+      {headerSlot && createPortal(
+        <div className="flex min-w-0 flex-1 items-center">{listSummary}</div>,
+        headerSlot,
+      )}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
         <Button variant="ghost" onClick={onBack} className="-ml-2 text-muted-copy hover:text-ink">
           <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Lists
         </Button>
-        <h2 className="text-lg font-semibold tracking-tight text-ink">{list.name}</h2>
-        {sources !== undefined && (
-          <p className="text-xs text-muted-copy tabular-nums">
-            {sources.length} {sources.length === 1 ? 'source' : 'sources'} ·{' '}
-            {leads?.toLocaleString() ?? '…'} {leads === 1 ? 'lead' : 'leads'}
-          </p>
-        )}
+        {!headerSlot && listSummary}
         <div
           aria-label="Scanning settings"
           className="flex flex-wrap items-center gap-x-2.5 gap-y-2 rounded-2xl border border-line-soft bg-panel-subtle py-1 pr-1.5 pl-3 text-[13px]"
