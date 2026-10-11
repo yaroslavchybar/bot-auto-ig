@@ -29,6 +29,8 @@ COPY --from=repo_root server/shared/contracts.ts ./server/shared/contracts.ts
 # Runtime parser shared by the frontend, Convex functions, and browser startup.
 COPY --from=repo_root server/shared/proxy.ts ./server/shared/proxy.ts
 COPY --from=repo_root server/shared/pagination.ts ./server/shared/pagination.ts
+# Convex routine settings share message validation with the outreach worker.
+COPY --from=repo_root server/shared/outreachMessage.ts ./server/shared/outreachMessage.ts
 # Convex HTTP routes use the portable logger; frontend typechecking follows it.
 COPY --from=repo_root server/shared/httpLogging.ts \
   server/shared/loggingSanitize.ts server/shared/loggingTypes.ts ./server/shared/
