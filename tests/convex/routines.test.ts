@@ -38,6 +38,31 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
   t.run(ctx => ctx.db.query('leads').collect());
 
+test('DM tasks keep message variations intact and supply the recipient name for sending', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+  const { t, args, loggedIn, profile, automation } = await setup();
+  await loggedIn();
+  const message = '{Hi|Hey} [name], [username]!';
+  await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, message } }));
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.run(ctx => ctx.db.patch(claim.leadId, { fullName: 'Alice Smith' }));
+  await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
+  vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
+  await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), usernames: [claim.username] });
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([
+    { leadId: claim.leadId, username: claim.username, fullName: 'Alice Smith', message, date: dayKey() },
+  ]);
+});
+
+test('routine saves reject broken or possibly empty message variations', () => {
+  for (const message of ['{Hi|Hey', '{{username}', '{Hi| }']) {
+    expect(() => validateRoutine({ ...defaultRoutine, message })).toThrow(/variation|empty/);
+  }
+  const route = { leadListId: 'list' as Id<'leadLists'>, profileIds: [], message: '{Hey|Hi' };
+  expect(() => validateRoutine({ ...defaultRoutine, outreachRoutes: [route] })).toThrow(/variation/);
+});
+
 test('outreach reservations move unique leads from ready to assigned without resetting after a follow', async () => {
   vi.useFakeTimers();
   try {

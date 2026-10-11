@@ -74,6 +74,45 @@ test('a reciprocal recipient is verified and authorized before sending', async (
   assert.equal(s.result().sent, true);
 });
 
+test('message variations are resolved once and confirmation uses the exact composed text', async () => {
+  const s = setup();
+  s.deps.dmTasks = async () => [{ leadId: 'lead', date: '2026-09-21', username: 'alice', fullName: 'Alice Smith', message: '{Hi|Hey} [name], [username]!' }];
+  let composed = '';
+  s.locator.fill = async (text?: string) => { composed = text!; s.calls.push('compose'); };
+  const getByText = s.page.getByText;
+  s.page.getByText = ((text, options) => {
+    if (!String(text).startsWith("This account can't receive")) {
+      assert.equal(text, composed);
+      assert.equal(text, 'Hi Alice, alice!');
+    }
+    return getByText(text, options);
+  }) as Page['getByText'];
+  await s.run();
+  assert.equal(composed, 'Hi Alice, alice!');
+  assert.equal(s.result().sent, true);
+});
+
+for (const message of ['{Hi|Hey', '{|}', 'a'.repeat(990) + '[name]']) {
+  test(`an invalid message is dismissed and the session continues (${message.length} characters)`, async () => {
+    const s = setup();
+    const dismissed: string[] = [], authorized: string[] = [], composed: string[] = [];
+    s.deps.dmTasks = async () => [
+      { leadId: 'invalid', date: '2026-09-21', username: 'alice', fullName: 'a'.repeat(20), message },
+      { leadId: 'valid', date: '2026-09-21', username: 'bob', message: 'Hello [username]' },
+    ];
+    s.deps.dismissDm = async (_, leadId) => { dismissed.push(leadId); };
+    s.deps.begin = async (_, __, leadId) => { authorized.push(leadId); return true; };
+    s.locator.fill = async (text?: string) => { composed.push(text!); };
+    assert.equal(await s.run(), true);
+    assert.deepEqual(dismissed, ['invalid']);
+    assert.deepEqual(authorized, ['valid']);
+    assert.deepEqual(composed, ['Hello bob']);
+    assert.equal(s.calls.filter(call => call === 'send').length, 1);
+    assert.equal(s.result().issue, undefined);
+    assert.equal(s.calls.at(-1), 'record-completed');
+  });
+}
+
 test('non-reciprocal recipients are dismissed without composing a DM', async () => {
   const s = setup(); s.deps.followsUs = async () => false; await s.run();
   assert.ok(s.calls.includes('dismiss-dm')); assert.ok(!s.calls.includes('message-button')); assert.ok(!s.calls.includes('send'));

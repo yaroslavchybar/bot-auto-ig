@@ -408,7 +408,7 @@ export const dmTasks = internalQuery({
       const route = routes.find(route => route.leadListId === lead.outreachListId);
       if (pendingDm(lead, args.profileId, Date.now()) && route && lead.outreachAutomationId === args.automationId && await ctx.db.get(route.leadListId)) {
         tasks.push({ leadId: lead._id, username: lead.username,
-          message: route.message.replaceAll('{{username}}', lead.username), date: dayKey() });
+          fullName: lead.fullName, message: route.message, date: dayKey() });
         if (tasks.length === 50) break; // More than can fit in a single browser session.
       }
     }

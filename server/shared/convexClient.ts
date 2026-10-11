@@ -485,7 +485,7 @@ export const routineNotifications = (automationId: string, profileId: string) =>
 export const routineRecordNotifications = (automationId: string, profileId: string, date: string, usernames: string[]) =>
   convexFetch('/api/routines/record-notifications', { method: 'POST', body: { automationId, profileId, date, usernames } })
 export const routineDmTasks = (automationId: string, profileId: string) =>
-  convexFetch<Array<{ leadId: string; username: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
+  convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
 export const routineDismissDm = (profileId: string, leadId: string) =>
   convexFetch('/api/routines/dismiss-dm', { method: 'POST', body: { profileId, leadId } })
 export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string) =>
@@ -501,7 +501,7 @@ export const routineRecordSession = (
     body: { automationId, profileId, activityCompleted, issue },
   })
 export const routineReserve = (automationId: string, profileId: string) =>
-  convexFetch<{ leadId: string; username: string; message: string; date: string } | null>(
+  convexFetch<{ leadId: string; username: string; fullName?: string; message: string; date: string } | null>(
     '/api/routines/reserve',
     { method: 'POST', body: { automationId, profileId }, maxRetries: 0 },
   )

@@ -14,6 +14,7 @@ import {
 import { runWarmup } from "./warmup.js";
 import { scheduleRoutine } from './routine-schedule.js';
 import { followButton, followingButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
+import { renderOutreachMessage } from '../shared/outreachMessage.js';
 import { readFollowNotifications, ownUsername, followsUs, likeRecentPost } from './follow-back.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
@@ -177,12 +178,20 @@ export async function runRoutineSession(
               }
               await check();
               if (shouldStop()) return 'unavailable';
+              let message: string;
+              try {
+                message = renderOutreachMessage(attempt.message, attempt, () => deps.random(0, 1));
+              } catch (error) {
+                log({ event: 'automation.routine.invalid_message', leadId: attempt.leadId, targetUsername: attempt.username, error, outcome: 'blocked' });
+                await deps.dismissDm(profileId, attempt.leadId);
+                return 'blocked';
+              }
               await messageButton(page).click({ timeout: 15_000 });
               // Current Instagram keeps the profile URL and opens the composer in
               // an overlay, so the composer is the navigation-complete signal.
               const composer = messageComposer(page);
               await composer.waitFor({ state: 'visible', timeout: 15_000 });
-              await composer.fill(attempt.message, { timeout: 15_000 });
+              await composer.fill(message, { timeout: 15_000 });
               await check(true);
               if (shouldStop()) return 'unavailable';
               if (!(await deps.begin(automation._id, profileId, attempt.leadId, attempt.date))) return 'unavailable';
@@ -194,11 +203,11 @@ export async function runRoutineSession(
                 await composer.press("Enter", { timeout: 10_000 });
                 // A cleared composer alone is insufficient: require the outgoing message in the thread.
                 await page
-                  .getByText(attempt.message, { exact: true })
+                  .getByText(message, { exact: true })
                   .last()
                   .waitFor({ state: "visible", timeout: 15_000 });
                 if (await messageWasBlocked(page)) {
-                  await unsendMessage(page, attempt.message);
+                  await unsendMessage(page, message);
                   blocked = true;
                 } else {
                   sent = true;

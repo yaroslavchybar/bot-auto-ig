@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { validateOutreachMessage } from '../server/shared/outreachMessage';
 
 export const routineValidator = v.object({
   outreachStartDay: v.number(),
@@ -101,12 +102,14 @@ export function validateRoutine(p: RoutinePolicy) {
     throw new Error("Initial follows exceed the maximum");
   if (p.message.length > 1000)
     throw new Error("Message must be at most 1,000 characters");
+  validateOutreachMessage(p.message);
   const routes = outreachRoutes(p);
   if (routes.length > 1) throw new Error('Use one scraped list per automation');
   for (const route of routes) {
     if (route.profileIds.length > 1000 || new Set(route.profileIds).size !== route.profileIds.length)
       throw new Error('Invalid profile selection');
     if (route.message.length > 1000) throw new Error('Message must be at most 1,000 characters');
+    validateOutreachMessage(route.message);
     if (p.outreachEnabled && ((!route.allProfiles && !route.profileIds.length) || !route.message.trim()))
       throw new Error('Select profiles and write a message for each scraped list');
   }

@@ -234,9 +234,13 @@ export function OutreachAssignments({
                 maxLength={1000}
                 value={route.message}
                 onChange={(event) => change(index, { message: event.target.value })}
-                placeholder="Hi {{username}}…"
+                placeholder="{Hi|Hey} [name]…"
+                aria-describedby={`assignment-message-help-${index}`}
                 className="brand-focus border-line bg-field text-ink"
               />
+              <p id={`assignment-message-help-${index}`} className="text-xs text-subtle-copy">
+                {'Use {Hi|Hey|Hello} for random variations, [username] for the username, or [name] for the first name (username if missing).'}
+              </p>
             </div>
           </div>
         )
