@@ -946,6 +946,217 @@ async fn mobile_likers_follow_instagrapi_media_id_normalization() {
 }
 
 #[tokio::test]
+async fn liker_pacing_covers_metadata_failures_and_all_posts_but_isolates_other_sessions() {
+    let calls = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = calls.clone();
+    let fixture = Fixture::start(move |request| {
+        let calls = observed.clone();
+        async move {
+            let path = request.uri().path();
+            if path == "/api/chat/context" {
+                return Json(json!({"connected":true,"state":Service::fixture_session(),"token":"fixture","profile":{"proxy":"","proxyType":""}})).into_response();
+            }
+            calls.lock().unwrap().push((path.to_string(), tokio::time::Instant::now()));
+            if path.ends_with("/info/") {
+                return Json(json!({"items":[{"user":{"pk":"123"},"like_count":150}]})).into_response();
+            }
+            if path == "/api/v1/media/3_123/likers/" {
+                return (StatusCode::BAD_GATEWAY, Json(json!({"status":"fail"}))).into_response();
+            }
+            if path == "/api/v1/direct_v2/inbox/" {
+                return Json(json!({"inbox":{"threads":[]}})).into_response();
+            }
+            assert!(path.ends_with("/likers/"), "Unexpected path: {path}");
+            Json(json!({"status":"ok","users":[]})).into_response()
+        }
+    }).await;
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let mut service = Service::fixture(Arc::new(api), uploads(), fixture.url.clone());
+    // Scale real HTTP waits down; virtual-time tests cover the production 60-second window.
+    Arc::get_mut(&mut service).unwrap().liker_pacing = pacing::Settings {
+        min_gap: std::time::Duration::from_millis(30),
+        max_gap: std::time::Duration::from_millis(30),
+        window: std::time::Duration::from_millis(180),
+    };
+    let request = |profile: &str, media: &str| Command {
+        profile_id: profile.into(),
+        token: None,
+        args: json!({"mediaId":media}),
+    };
+    // Scraping and monitoring both invoke likers; different posts share one profile's timer.
+    service
+        .invoke("likers", &request("first", "1"))
+        .await
+        .unwrap();
+    assert_eq!(
+        service
+            .invoke("likers", &request("first", "3_123"))
+            .await
+            .unwrap_err()
+            .status,
+        502
+    );
+    service
+        .invoke("likers", &request("first", "2_123"))
+        .await
+        .unwrap();
+    // A failed request still consumes a slot, but chat reads do not consume liker slots.
+    service
+        .invoke("inbox", &request("first", ""))
+        .await
+        .unwrap();
+    service
+        .invoke("likers", &request("second", "4_123"))
+        .await
+        .unwrap();
+    let calls = calls.lock().unwrap();
+    assert_eq!(calls.len(), 6);
+    assert_eq!(calls[0].0, "/api/v1/media/1/info/");
+    assert_eq!(calls[1].0, "/api/v1/media/1_123/likers/");
+    assert!(calls[1].1 - calls[0].1 >= std::time::Duration::from_millis(25));
+    assert!(calls[2].1 - calls[1].1 >= std::time::Duration::from_millis(25));
+    assert!(calls[3].1 - calls[0].1 >= std::time::Duration::from_millis(175));
+    assert!(calls[5].1 - calls[3].1 < std::time::Duration::from_millis(175));
+}
+
+#[tokio::test(start_paused = true)]
+async fn eviction_cannot_reset_a_live_liker_request_window() {
+    let service = Service::new(Arc::new(Api::from_env().unwrap()), uploads());
+    let cooling = service.entry("cooling").await.unwrap();
+    let pacing = cooling.lock().await.liker_pacing.clone();
+    pacing.wait().await.record();
+    drop(cooling);
+    let mut active = Vec::new();
+    for id in 0..31 {
+        active.push(service.entry(&format!("active-{id}")).await.unwrap());
+    }
+    assert!(service.entry("extra").await.is_err());
+    let same = service.entry("cooling").await.unwrap();
+    assert!(Arc::ptr_eq(&pacing, &same.lock().await.liker_pacing));
+    drop(same);
+    tokio::time::advance(std::time::Duration::from_secs(60)).await;
+    assert!(service.entry("extra").await.is_ok());
+    assert!(!service.locks.lock().await.contains_key("cooling"));
+}
+
+#[tokio::test]
+async fn liker_waits_allow_chat_and_logout_without_saving_a_stale_session() {
+    for logout in [false, true] {
+        let saved = Arc::new(std::sync::Mutex::new(json!({
+            "connected":true,"state":Service::fixture_session(),"token":"fixture",
+            "profile":{"proxy":"","proxyType":""},
+        })));
+        let info_started = Arc::new(tokio::sync::Notify::new());
+        let liker_calls = Arc::new(AtomicUsize::new(0));
+        let session_saves = Arc::new(AtomicUsize::new(0));
+        let state = saved.clone();
+        let started = info_started.clone();
+        let calls = liker_calls.clone();
+        let saves = session_saves.clone();
+        let fixture = Fixture::start(move |request| {
+            let state = state.clone();
+            let started = started.clone();
+            let calls = calls.clone();
+            let saves = saves.clone();
+            async move {
+                let path = request.uri().path();
+                if path == "/api/chat/context" {
+                    return Json(state.lock().unwrap().clone()).into_response();
+                }
+                if path == "/api/chat/session" {
+                    if request.method() == Method::DELETE {
+                        state.lock().unwrap()["connected"] = json!(false);
+                        return Json(json!({"ok":true})).into_response();
+                    }
+                    let body = test_support::body(request).await;
+                    assert!(
+                        state.lock().unwrap()["connected"] == true,
+                        "Session was resurrected after logout"
+                    );
+                    state.lock().unwrap()["state"] = body["state"].clone();
+                    saves.fetch_add(1, Ordering::SeqCst);
+                    return Json(json!({"storageId":"fixture"})).into_response();
+                }
+                if path == "/api/v1/media/1/info/" {
+                    started.notify_one();
+                    return Json(json!({"items":[{"user":{"pk":"123"},"like_count":150}]}))
+                        .into_response();
+                }
+                if path == "/api/v1/direct_v2/inbox/" {
+                    return (
+                        [("ig-set-authorization", "Bearer chat-updated")],
+                        Json(json!({"inbox":{"threads":[]}})),
+                    )
+                        .into_response();
+                }
+                assert_eq!(path, "/api/v1/media/1_123/likers/");
+                assert_eq!(request.headers()["authorization"], "Bearer chat-updated");
+                calls.fetch_add(1, Ordering::SeqCst);
+                Json(json!({"status":"ok","users":[]})).into_response()
+            }
+        })
+        .await;
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let mut service = Service::fixture(Arc::new(api), uploads(), fixture.url.clone());
+        Arc::get_mut(&mut service).unwrap().liker_pacing = pacing::Settings {
+            min_gap: std::time::Duration::from_secs(1),
+            max_gap: std::time::Duration::from_secs(1),
+            window: std::time::Duration::from_secs(3),
+        };
+        let worker = service.clone();
+        let likers = tokio::spawn(async move {
+            worker
+                .invoke(
+                    "likers",
+                    &Command {
+                        profile_id: "profile".into(),
+                        token: None,
+                        args: json!({"mediaId":"1"}),
+                    },
+                )
+                .await
+        });
+        info_started.notified().await;
+        let request = Command {
+            profile_id: "profile".into(),
+            token: None,
+            args: json!({}),
+        };
+        tokio::time::timeout(
+            std::time::Duration::from_millis(300),
+            service.invoke("inbox", &request),
+        )
+        .await
+        .expect("Liker pacing blocked chat")
+        .unwrap();
+        if logout {
+            tokio::time::timeout(
+                std::time::Duration::from_millis(300),
+                service.invoke("logout", &request),
+            )
+            .await
+            .expect("Liker pacing blocked logout")
+            .unwrap();
+            assert!(likers
+                .await
+                .unwrap()
+                .unwrap_err()
+                .message
+                .contains("Connect this profile"));
+            assert_eq!(liker_calls.load(Ordering::SeqCst), 0);
+        } else {
+            assert_eq!(likers.await.unwrap().unwrap()["likeCount"], 150);
+            assert_eq!(liker_calls.load(Ordering::SeqCst), 1);
+        }
+        assert_eq!(session_saves.load(Ordering::SeqCst), 1);
+    }
+}
+
+#[tokio::test]
 async fn native_inbox_and_post_pagination_preserve_limits_and_pinned_posts() {
     let fixture=Fixture::start(|request|async move{
         let query=reqwest::Url::parse(&format!("http://local{}",request.uri())).unwrap();let query:HashMap<_,_>=query.query_pairs().into_owned().collect();let path=request.uri().path();

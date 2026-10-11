@@ -35,7 +35,10 @@ export function outreachRoutes(policy: RoutinePolicy): OutreachRoute[] {
 }
 
 export function profileOutreachRoutes(policy: RoutinePolicy, profileId: string): OutreachRoute[] {
-  return outreachRoutes(policy).filter(route => route.allProfiles || route.profileIds.includes(profileId as OutreachRoute['profileIds'][number]));
+  const routes = outreachRoutes(policy);
+  // Saved multi-list routines must be corrected before outreach can resume.
+  if (routes.length > 1) return [];
+  return routes.filter(route => route.allProfiles || route.profileIds.includes(profileId as OutreachRoute['profileIds'][number]));
 }
 export const defaultRoutine: RoutinePolicy = {
   outreachStartDay: 7,
@@ -99,9 +102,7 @@ export function validateRoutine(p: RoutinePolicy) {
   if (p.message.length > 1000)
     throw new Error("Message must be at most 1,000 characters");
   const routes = outreachRoutes(p);
-  if (routes.length > 20) throw new Error('Use at most 20 scraped-list assignments');
-  if (new Set(routes.map(route => route.leadListId)).size !== routes.length)
-    throw new Error('Use one assignment per scraped list');
+  if (routes.length > 1) throw new Error('Use one scraped list per automation');
   for (const route of routes) {
     if (route.profileIds.length > 1000 || new Set(route.profileIds).size !== route.profileIds.length)
       throw new Error('Invalid profile selection');

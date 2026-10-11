@@ -93,6 +93,7 @@ export const update = mutation({
 			throw new DomainError('CONFLICT', "Disable the automation and wait for the current session to stop before editing");
 		}
 		if (updates.routine || existing.routine) {
+			validateRoutine(updates.routine ?? existing.routine!);
 			await assertModelAvailable(ctx, normalizeListIds(updates.listIds ?? existing.listIds), id);
 			await assertOutreachRoutes(ctx, updates.routine ?? existing.routine!, normalizeListIds(updates.listIds ?? existing.listIds));
 		}
@@ -112,7 +113,6 @@ export const update = mutation({
 
 		await ctx.db.patch(id, patch);
 		if (updates.routine) {
-          validateRoutine(updates.routine);
           await ctx.db.patch(id, { routine: updates.routine });
         }
         const routine = updates.routine ?? existing.routine;
@@ -155,6 +155,7 @@ export const duplicate = mutation({
 		const existing = await ctx.db.get(args.id);
 		if (!existing) throw new DomainError('NOT_FOUND', "Automation not found");
 
+		if (existing.routine) validateRoutine(existing.routine);
 		const now = Date.now();
 		const name = args.newName?.trim() || `${existing.name} (copy)`;
 

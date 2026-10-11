@@ -38,38 +38,37 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
 const readLeads = (t: ReturnType<typeof createConvexTest>) =>
   t.run(ctx => ctx.db.query('leads').collect());
 
-test('one profile alternates scraped lists with distinct messages and one shared daily target', async () => {
-  const { t, args, loggedIn, profile, automation, leadListId, leads } = await setup();
+test('saved multi-list routines cannot claim follows or send DMs until corrected', async () => {
+  const { t, args, loggedIn, profile, automation, leadListId } = await setup();
   await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await authorizeDm(t, args, claim);
+  await t.run(ctx => ctx.db.patch(claim.leadId, { dmStartedAt: undefined, dmStartedDate: undefined, dmEligible: true }));
   const other = await t.mutation(api.leads.createList, { name: 'Other purpose' });
   await t.run(async ctx => {
-    // Shared recipients must remain globally claimed across both lists.
-    for (const lead of leads) await ctx.db.insert('leadMemberships', { leadId: lead._id, listId: other, available: true, leadCreatedAt: lead.createdAt });
     await ctx.db.patch(automation._id, { routine: { ...automation.routine!, leadListId: undefined, message: '', outreachRoutes: [
       { leadListId, profileIds: [profile._id], message: 'First {{username}}' },
       { leadListId: other, profileIds: [profile._id], message: 'Second {{username}}' },
     ] } });
   });
-  const first = (await t.mutation(internal.routines.reserve, args))!;
-  const second = (await t.mutation(internal.routines.reserve, args))!;
-  expect(first.message).toBe(`First ${first.username}`);
-  expect(second.message).toBe(`Second ${second.username}`);
-  expect(first.leadId).not.toBe(second.leadId);
   expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
-  const claimed = await readLeads(t);
-  expect(claimed.find(lead => lead._id === first.leadId)).toMatchObject({ senderId: profile._id, outreachListId: leadListId, outreachAutomationId: automation._id });
-  expect(claimed.find(lead => lead._id === second.leadId)).toMatchObject({ outreachListId: other });
-  expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 0, sent: 0 });
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
+  await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
+  await expect(t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: true })).rejects.toThrow('Use one scraped list per automation');
 });
 
-test('empty scraped lists are skipped; unassigned profiles do not reserve or report DM targets', async () => {
+test('empty lists cannot claim leads; unassigned profiles do not reserve or report targets', async () => {
   const { t, args, loggedIn, profile, automation, leadListId } = await setup();
   await loggedIn();
   const empty = await t.mutation(api.leads.createList, { name: 'Empty' });
   const routine = { ...automation.routine!, leadListId: undefined, outreachRoutes: [
     { leadListId: empty, profileIds: [profile._id], message: 'Empty' },
-    { leadListId, profileIds: [profile._id], message: 'Available' },
   ] };
+  await t.run(ctx => ctx.db.patch(automation._id, { routine }));
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  routine.outreachRoutes = [{ leadListId, profileIds: [profile._id], message: 'Available' }];
   await t.run(ctx => ctx.db.patch(automation._id, { routine }));
   const claim = (await t.mutation(internal.routines.reserve, args))!;
   expect(claim.message).toBe('Available');
@@ -81,14 +80,19 @@ test('empty scraped lists are skipped; unassigned profiles do not reserve or rep
   expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(0);
 });
 
-test('assignment validation prevents foreign profiles and duplicate scraped lists', async () => {
+test('assignment validation prevents foreign profiles and multiple scraped lists', async () => {
   const { t, automation, profile, leadListId } = await setup();
   await t.mutation(api.automations.mutations.setActive, { id: automation._id, isActive: false });
   const foreign = (await seedProfile(t, { name: 'Outside model' }))!;
   const routine = { ...automation.routine!, leadListId: undefined, outreachRoutes: [{ leadListId, profileIds: [foreign._id], message: 'Hi' }] };
   await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine })).rejects.toThrow('Assigned profiles must belong');
   const route = { leadListId, profileIds: [profile._id], message: 'Hi' };
-  await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreachRoutes: [route, route] } })).rejects.toThrow('Use one assignment per scraped list');
+  const other = await t.mutation(api.leads.createList, { name: 'Other purpose' });
+  for (const second of [route, { ...route, leadListId: other }]) {
+    const invalid = { ...routine, outreachRoutes: [route, second] };
+    await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
+    await expect(t.mutation(api.automations.mutations.create, { name: 'Invalid', nodes: [], edges: [], listIds: automation.listIds, routine: invalid })).rejects.toThrow('Use one scraped list per automation');
+  }
   await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...routine, outreachRoutes: [route] } })).resolves.toBeTruthy();
 });
 
@@ -461,6 +465,48 @@ test("one automation owns each model; moving a profile changes its automation", 
   });
   const moved = await t.run(async (ctx) => ctx.db.get(profile._id));
   expect(moved?.listIds?.map(String)).toEqual([String(secondList._id)]);
+});
+
+test('moving between models preserves account progress, warm-up budgets, and follow history', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
+  const { t, args, profile, list, automation, loggedIn } = await setup();
+  await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
+  const restUntil = Date.now() + 60 * 60_000;
+  const ids = await t.run(async ctx => {
+    const progress = (await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique())!;
+    await ctx.db.patch(progress._id, { activeDays: 18, followIncrease: 10, nextRunAt: restUntil, lastNotificationsDate: dayKey(), lastNotificationsAt: Date.now() });
+    const warmup = await ctx.db.insert('warmupStates', {
+      profileId: profile._id, day: 18, date: dayKey(), runsToday: 2,
+      todayMinutes: 30, minutesUsedToday: 12, nextRunAt: restUntil,
+      recentRunIds: ['completed-run'], lastAutomationId: automation._id, updatedAt: Date.now(),
+    });
+    return { progress: progress._id, warmup };
+  });
+  const snapshot = () => t.run(async ctx => ({
+    progress: await ctx.db.get(ids.progress), warmup: await ctx.db.get(ids.warmup), lead: await ctx.db.get(claim.leadId),
+  }));
+  const before = await snapshot();
+  const destination = (await seedList(t, 'Destination model'))!;
+  const next = (await t.mutation(api.automations.mutations.create, {
+    name: 'Destination automation', nodes: [], edges: [], listIds: [destination._id], routine: automation.routine,
+  }))!;
+  await t.mutation(api.automations.mutations.setActive, { id: next._id, isActive: true });
+  await t.mutation(api.profiles.mutations.bulkRemoveFromList, { profileIds: [profile._id], listId: list._id });
+  expect(await snapshot()).toEqual(before);
+  await t.mutation(api.profiles.mutations.bulkAddToList, { profileIds: [profile._id], listId: destination._id });
+  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, { profileId: profile._id, modelId: destination._id, startedAt: Date.now() });
+  expect(await snapshot()).toEqual(before);
+  await loggedIn();
+  const nextArgs = { ...args, automationId: next._id };
+  expect((await t.query(api.routines.accounts, { automationId: next._id }))[0]).toMatchObject({ activeDays: 18, followed: 1, used: 1, allowance: 2, nextRunAt: restUntil });
+  expect(await t.query(internal.routines.ready, nextArgs)).toBe(false);
+  expect(await t.mutation(internal.warmup.mutations.beginRunInternal, {
+    profileId: profile._id, automationId: next._id, runId: 'destination-run', minMinutes: 30, maxMinutes: 30,
+    sessionMinMinutes: 5, sessionMaxMinutes: 5, restMinMinutes: 60, restMaxMinutes: 60,
+  })).toEqual({ date: dayKey(), minutes: 0 });
+  expect(await snapshot()).toEqual(before);
 });
 
 test('session progress preserves fractional stored rest deadlines as integer milliseconds', async () => {

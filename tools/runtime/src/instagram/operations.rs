@@ -222,6 +222,27 @@ pub async fn invoke(
 // Match instagrapi's media_likers: normalize PKs to PK_owner before the
 // private mobile request. Full media IDs skip the metadata lookup.
 async fn media_likers(mobile: &mut Mobile, args: &Value) -> Result<Value> {
+    let media_id = liker_media_id(args)?;
+    let mut like_count = None;
+    let media_id = if media_id.contains('_') {
+        media_id
+    } else {
+        let info = media_info(mobile, args).await?;
+        like_count = media_like_count(&info);
+        media_owner_id(&media_id, &info)?
+    };
+    let result = mobile
+        .mobile(
+            Method::GET,
+            &format!("media/{media_id}/likers/"),
+            None,
+            &Fields::new(),
+        )
+        .await?;
+    liker_count(result, like_count)
+}
+
+pub(super) fn liker_media_id(args: &Value) -> Result<String> {
     let media_id = super::string(&args["mediaId"]);
     let parts: Vec<_> = media_id.split('_').collect();
     if parts.is_empty()
@@ -232,40 +253,41 @@ async fn media_likers(mobile: &mut Mobile, args: &Value) -> Result<Value> {
     {
         return Err(Error::new("Invalid Instagram media ID"));
     }
-    let mut like_count = None;
-    let media_id = if parts.len() == 2 {
-        media_id
-    } else {
-        let info = mobile
-            .mobile(
-                Method::GET,
-                &format!("media/{media_id}/info/"),
-                None,
-                &Fields::new(),
-            )
-            .await?;
-        like_count = info["items"]
-            .as_array()
-            .and_then(|items| items.last())
-            .and_then(|item| item["like_count"].as_u64());
-        let owner = info["items"]
-            .as_array()
-            .and_then(|items| items.last())
-            .map(|item| super::string(&item["user"]["pk"]))
-            .unwrap_or_default();
-        if owner.len() > 40 || !super::digits(&owner) {
-            return Err(Error::new("Instagram returned no media owner"));
-        }
-        format!("{media_id}_{owner}")
-    };
-    let mut result = mobile
+    Ok(media_id)
+}
+
+pub(super) async fn media_info(mobile: &mut Mobile, args: &Value) -> Result<Value> {
+    let media_id = liker_media_id(args)?;
+    mobile
         .mobile(
             Method::GET,
-            &format!("media/{media_id}/likers/"),
+            &format!("media/{media_id}/info/"),
             None,
             &Fields::new(),
         )
-        .await?;
+        .await
+}
+
+pub(super) fn media_like_count(info: &Value) -> Option<u64> {
+    info["items"]
+        .as_array()
+        .and_then(|items| items.last())
+        .and_then(|item| item["like_count"].as_u64())
+}
+
+pub(super) fn media_owner_id(media_id: &str, info: &Value) -> Result<String> {
+    let owner = info["items"]
+        .as_array()
+        .and_then(|items| items.last())
+        .map(|item| super::string(&item["user"]["pk"]))
+        .unwrap_or_default();
+    if owner.len() > 40 || !super::digits(&owner) {
+        return Err(Error::new("Instagram returned no media owner"));
+    }
+    Ok(format!("{media_id}_{owner}"))
+}
+
+pub(super) fn liker_count(mut result: Value, like_count: Option<u64>) -> Result<Value> {
     if let Some(count) = like_count {
         result
             .as_object_mut()

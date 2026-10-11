@@ -1,5 +1,5 @@
 import { act, useEffect, useState } from 'react'
-import { afterEach, expect, test } from 'vite-plus/test'
+import { afterEach, expect, test, vi } from 'vite-plus/test'
 import type { Id } from '../../convex/_generated/dataModel'
 import type { OutreachRoute } from '../../convex/routinePolicy'
 import { OutreachAssignments } from '@/features/automations/components/OutreachAssignments'
@@ -41,15 +41,17 @@ async function click(text: string) {
   await act(async () => button.click())
 }
 
-test('assigns the same profile to multiple lists with separate messages and removes assignments', async () => {
+test('assigns one scraped list, edits its profiles and message, and removes it', async () => {
   view = mount()
   await view.render(<Editor />)
   await click('Add list')
-  await click('Add list')
-  expect(saved.map((route) => route.leadListId)).toEqual(['first', 'second'])
-  expect(document.querySelector<HTMLButtonElement>('button:disabled')?.textContent).toContain(
-    'Add list',
-  )
+  expect(saved.map((route) => route.leadListId)).toEqual(['first'])
+  expect(
+    [...document.querySelectorAll('button')].some((button) =>
+      button.textContent?.includes('Add list'),
+    ),
+  ).toBe(false)
+  expect(document.querySelector('[aria-label="Scraped list 1"]')).not.toBeNull()
   for (const group of document.querySelectorAll('[role="group"]')) {
     await act(async () => group.querySelector<HTMLButtonElement>('button')!.click())
   }
@@ -64,29 +66,56 @@ test('assigns the same profile to multiple lists with separate messages and remo
     })
   expect(saved.map((route) => ({ profiles: route.profileIds, message: route.message }))).toEqual([
     { profiles: ['profile'], message: 'Message 1' },
-    { profiles: ['profile'], message: 'Message 2' },
   ])
   await act(async () =>
     document.querySelector<HTMLButtonElement>('[aria-label="Remove scraped list 1"]')!.click(),
   )
-  expect(saved).toHaveLength(1)
-  expect(saved[0].leadListId).toBe('second')
+  expect(saved).toHaveLength(0)
+  await click('Add list')
+  expect(saved.map((route) => route.leadListId)).toEqual(['first'])
 })
 
 test('all-model assignment clears the explicit selection and disabled settings cannot change routes', async () => {
   view = mount()
   await view.render(<Editor />)
   await click('Add list')
-  await act(async () =>
-    document.querySelector<HTMLButtonElement>('[role="group"] button')!.click(),
-  )
+  await act(async () => document.querySelector<HTMLButtonElement>('[role="group"] button')!.click())
   expect(saved[0].profileIds).toEqual(['profile'])
   await click('All profiles')
   expect(saved[0]).toMatchObject({ allProfiles: true, profileIds: [] })
   await view.render(<Editor disabled />)
-  await click('Add list')
+  await click('Choose profiles')
   await act(async () =>
     document.querySelector<HTMLButtonElement>('[aria-label="Remove scraped list 1"]')!.click(),
   )
   expect(saved).toHaveLength(1)
+  expect(saved[0]).toMatchObject({ allProfiles: true, profileIds: [] })
+})
+
+test('saved multi-list settings allow removing extras but cannot add another list', async () => {
+  const route: OutreachRoute = { leadListId: lists[0]._id, profileIds: [], message: '' }
+  const onChange = vi.fn()
+  view = mount()
+  await view.render(
+    <OutreachAssignments
+      routes={[route, { ...route, leadListId: lists[1]._id }]}
+      lists={lists}
+      profiles={profiles}
+      disabled={false}
+      loading={false}
+      onChange={onChange}
+    />,
+  )
+  expect(view.container.textContent).toContain('Remove the extra lists')
+  expect(
+    [...view.container.querySelectorAll('button')].some((button) =>
+      button.textContent?.includes('Add list'),
+    ),
+  ).toBe(false)
+  await act(async () =>
+    view!.container
+      .querySelector<HTMLButtonElement>('[aria-label="Remove scraped list 2"]')!
+      .click(),
+  )
+  expect(onChange).toHaveBeenLastCalledWith([route])
 })

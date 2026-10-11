@@ -19,7 +19,7 @@ const audiences = [
   { allProfiles: false, label: 'Choose profiles' },
 ] as const
 
-// Maps each scraped list to the profiles and message that handle its outreach.
+// Selects the automation's scraped list, participating profiles, and message.
 export function OutreachAssignments({
   routes,
   lists,
@@ -42,24 +42,33 @@ export function OutreachAssignments({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-ink">Scraped lists</h3>
-        <Button
-          type="button"
-          variant="outline"
-          className="button-panel"
-          disabled={disabled || loading || !available.length || routes.length >= 20}
-          onClick={() => {
-            const list = available[0]
-            if (list) onChange([...routes, { leadListId: list._id, profileIds: [], message: '' }])
-          }}
-        >
-          <Plus /> Add list
-        </Button>
+        <h3 className="text-sm font-semibold text-ink">Scraped list</h3>
+        {routes.length === 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            className="button-panel"
+            disabled={disabled || loading || !available.length}
+            onClick={() => {
+              const list = available[0]
+              if (list && routes.length === 0)
+                onChange([{ leadListId: list._id, profileIds: [], message: '' }])
+            }}
+          >
+            <Plus /> Add list
+          </Button>
+        )}
       </div>
+
+      {routes.length > 1 && (
+        <p className="text-sm text-subtle-copy">
+          Use one scraped list per automation. Remove the extra lists to continue.
+        </p>
+      )}
 
       {routes.length === 0 && (
         <p className="rounded-xl border border-dashed border-line-soft p-6 text-center text-sm text-subtle-copy">
-          Add a scraped list, then choose which profiles DM it.
+          Add a scraped list, then choose which profiles handle its outreach.
         </p>
       )}
 
