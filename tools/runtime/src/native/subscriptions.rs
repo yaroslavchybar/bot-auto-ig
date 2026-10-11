@@ -137,6 +137,7 @@ fn allowed(name: &str) -> bool {
     matches!(
         name,
         "scraper:work"
+            | "scraper:enrichmentWork"
             | "profiles/queries:maintenanceWork"
             | "profiles/queries:chatWorkerContexts"
             | "igAccounts:loginWork"
