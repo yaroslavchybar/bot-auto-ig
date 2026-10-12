@@ -248,8 +248,9 @@ test('automation action failures reject the run and close the browser', async ()
           return {
             page: {
               url: () => 'https://www.instagram.com/',
-              locator: () => ({ count: async () => 1, filter: () => ({ evaluateAll: async () => false }) }),
-              getByRole: () => ({ isVisible: async () => false }),
+              locator: () => ({ count: async () => 1, filter() { return this }, first() { return this },
+                evaluateAll: async () => false, isVisible: async () => false }),
+              getByRole: () => ({ filter() { return this }, first() { return this }, isVisible: async () => false }),
               goto: async () => {
                 throw new Error('Navigation failed')
               },

@@ -1,4 +1,5 @@
 import type { Doc } from './_generated/dataModel';
+import { isTransientDomIssue } from '../server/shared/domErrors';
 
 export const ROUTINE_RETRY_MS = 15 * 60_000;
 
@@ -15,6 +16,7 @@ export function isRoutineLoginIssue(issue: string | undefined): boolean {
 export function isRetryableRoutineIssue(issue: string | undefined): boolean {
   const reason = failureReason(issue);
   if (!reason || isRoutineLoginIssue(reason) || /needs review|could not be confirmed/i.test(reason)) return false;
+  if (isTransientDomIssue(reason)) return true;
   const networkCode = reason.match(/net::(ERR_[A-Z_]+)/i)?.[1];
   if (networkCode) return /^(?:ERR_CONNECTION_(?:CLOSED|RESET|REFUSED|ABORTED|TIMED_OUT)|ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_PROXY_CONNECTION_FAILED|ERR_TUNNEL_CONNECTION_FAILED)$/i.test(networkCode);
   return /timeout|timed out|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|fetch failed|failed to fetch|network error|connection reset/i.test(reason);

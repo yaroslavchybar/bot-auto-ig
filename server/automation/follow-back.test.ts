@@ -14,10 +14,15 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
   const previous = globalThis.getComputedStyle;
   globalThis.getComputedStyle = window.getComputedStyle.bind(window) as unknown as typeof getComputedStyle;
   let closed = false, scrolls = 0;
+  const close = { filter() { return this; }, first() { return this; }, isVisible: async () => !closed,
+    elementHandle: async () => ({ hover: async () => {}, click: async () => { closed = true; }, dispose: async () => {} }) };
+  const title = { filter() { return this; }, first() { return this; }, isVisible: async () => !closed,
+    waitFor: async () => {}, evaluate: async (fn: (el: HTMLElement) => unknown) => fn(heading as unknown as HTMLElement),
+    locator: (selector: string) => { assert.match(selector, /^xpath=ancestor::/); return { getByRole: () => close }; } };
   const controls = new Map<string, unknown>();
   const page = {
     getByRole: (role: string, opts: { name: string }) => role === 'heading'
-      ? { waitFor: async () => {}, evaluate: async (fn: (el: HTMLElement) => unknown) => fn(heading as unknown as HTMLElement) }
+      ? title
       : {
         elementHandle: async () => ({
           hover: async () => {},
@@ -39,7 +44,7 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
   } as unknown as Page;
   try {
     const result = await readFollowNotifications(page, () => options.stopped ?? false, options.since);
-    assert.equal(closed, true);
+    assert.equal(closed, !options.stopped);
     return { result, scrolls };
   } finally { globalThis.getComputedStyle = previous; await window.happyDOM.close(); }
 }

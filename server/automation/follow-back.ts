@@ -1,12 +1,15 @@
 import type { Page } from 'playwright-core';
 import { profileControls } from './follow.js';
 import { actionLocator, clickAction } from './actions/action-locator.js';
+import { closeNotifications, notificationsHeading, openNotifications } from './actions/instagram-state.js';
+import { BrowseSession } from './actions/session.js';
 
 /** Read only follow events; likes/comments and suggested accounts are not followers. */
 export async function readFollowNotifications(page: Page, stopped: () => boolean, since = 0): Promise<string[] | null> {
-  await (await actionLocator(page.getByRole('link', { name: 'Notifications', exact: true }))).click({ timeout: 10_000 });
-  const heading = page.getByRole('heading', { name: 'Notifications', exact: true });
-  await heading.waitFor({ state: 'visible', timeout: 15_000 });
+  if (stopped()) return null;
+  const session = new BrowseSession(Infinity, stopped);
+  if (!await openNotifications(page, session)) return null;
+  const heading = notificationsHeading(page);
   try {
     await (await actionLocator(page.getByRole('button', { name: 'Follows', exact: true }))).click({ timeout: 10_000 });
     const names = new Set<string>();
@@ -43,7 +46,7 @@ export async function readFollowNotifications(page: Page, stopped: () => boolean
     }
     return null; // An interrupted scan must not suppress the next attempt today.
   } finally {
-    await (await actionLocator(page.getByRole('button', { name: 'Close', exact: true }), 5000)).click({ timeout: 5000 });
+    await closeNotifications(page, session);
   }
 }
 

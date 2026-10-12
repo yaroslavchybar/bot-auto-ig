@@ -10,7 +10,7 @@ export async function openDMs(page: Page, log: ActionLogger, session = new Brows
   const sleep = session.wait
   session.check()
   try {
-    const msgs = page.locator('a:has(svg[aria-label="Messages"])').first()
+    const msgs = page.locator('a:has(svg[aria-label="Messages"])').filter({ visible: true }).first()
     if (!(await msgs.isVisible().catch(() => false))) return false
     await clickAction(msgs, session.timeout(5_000))
     await page

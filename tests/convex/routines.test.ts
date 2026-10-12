@@ -636,6 +636,11 @@ test.each([
   'goto: Timeout 45000ms exceeded.\nCall log:\n  - navigating to "https://www.instagram.com/accounts/login/", waiting until "domcontentloaded"',
   'page.goto: net::ERR_CONNECTION_RESET',
   'fetch failed',
+  'Element "<ElementHandle>" failed visible check: element is not visible',
+  'Element "<ElementHandle>" failed attached check: element not found in DOM',
+  'Element "<ElementHandle>" failed pointer_events check: element is covered by <div>',
+  'Element is not attached to the DOM',
+  'Action target is detached or missing',
 ])('transient session failure retries after a cooldown: %s', async issue => {
   vi.useFakeTimers();
   try {
@@ -684,7 +689,8 @@ test('retry cooldown preserves a longer rest and resets after another failure', 
   }
 });
 
-test('saved navigation timeouts recover through both HTTP readiness and Rust runtime snapshots', async () => {
+test.each(['goto: Timeout 45000ms exceeded.', 'Element "<ElementHandle>" failed visible check: element is not visible'])(
+  'saved navigation failures recover through HTTP readiness and runtime snapshots: %s', async issue => {
   vi.useFakeTimers();
   try {
     vi.setSystemTime(new Date('2026-10-10T10:00:00Z'));
@@ -695,7 +701,7 @@ test('saved navigation timeouts recover through both HTTP readiness and Rust run
     const retryAt = Date.now() + ROUTINE_RETRY_MS;
     await t.run(async ctx => {
       const state = (await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique())!;
-      await ctx.db.patch(state._id, { issue: 'goto: Timeout 45000ms exceeded.', nextRunAt: Date.now() - 60_000 });
+      await ctx.db.patch(state._id, { issue, nextRunAt: Date.now() - 60_000 });
     });
     const snapshot = await t.query(api.automations.queries.runtimeSnapshot, {
       bridgeToken: 'bridge-secret', id: args.automationId, listIds: [String(list._id)],
@@ -720,6 +726,8 @@ test.each([
   'Checkpoint required',
   'Delivery needs review: Timeout 15000ms exceeded.',
   'Unexpected application error',
+  'Element "<ElementHandle>" failed enabled check: element is disabled',
+  'Login required: Element "<ElementHandle>" failed visible check: element is not visible',
   'page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://www.instagram.com/',
   'page.goto: net::ERR_CERT_DATE_INVALID',
   'page.goto: net::ERR_CERT_COMMON_NAME_INVALID',

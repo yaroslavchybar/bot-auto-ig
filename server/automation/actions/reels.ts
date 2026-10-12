@@ -26,7 +26,7 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
   const sleep = session.wait
   session.check()
   try {
-    const btn = page.locator('a:has(svg[aria-label="Reels"])').first()
+    const btn = page.locator('a:has(svg[aria-label="Reels"])').filter({ visible: true }).first()
     if (!(await btn.isVisible().catch(() => false))) return false
     await clickAction(btn, session.timeout(5_000)).catch(() => undefined)
     await sleep(random(1500, 2500))

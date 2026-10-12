@@ -142,7 +142,7 @@ async function goHomeViaUi(page: Page, session: BrowseSession): Promise<boolean>
   const sleep = session.wait
   session.check()
   try {
-    const home = page.locator('a:has(svg[aria-label="Home"])').first()
+    const home = page.locator('a:has(svg[aria-label="Home"])').filter({ visible: true }).first()
     if (!(await home.isVisible().catch(() => false))) return false
     await clickAction(home, session.timeout(5_000))
     await page
