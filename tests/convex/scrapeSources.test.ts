@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from 'vite-plus/test'
+import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { sessionWindow } from '../../convex/mobileRequestPolicy'
@@ -6,6 +6,11 @@ import { proxyCountryZones } from '../../convex/proxyCountryZones'
 
 const DAY = 86_400_000
 const HOUR = 3_600_000
+beforeEach(() => {
+  // Time-travel tests must stay in the session's awake window, regardless of the CI clock.
+  vi.useFakeTimers()
+  vi.setSystemTime(Date.parse('2026-10-12T09:00:00Z'))
+})
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.useRealTimers()
@@ -239,7 +244,7 @@ async function discover(
 
 async function claimLikers(s: Setup) {
   const claim = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  expect(claim.kind).toBe('likers')
+  expect(claim?.kind).toBe('likers')
   return { sourceId: s.sourceId, runId: claim.runId }
 }
 
