@@ -22,7 +22,8 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
     using: profile.using,
     status: profile.status,
     renameFrom: profile.renameFrom,
-    scraperReady: !profile.paused && (!!profile.sessionId || (!!session && !session.reconnectRequired)),
+    scraperReady:
+      !profile.paused && (!!profile.sessionId || (!!session && !session.reconnectRequired)),
     scraperCooldownUntil: profile.scraperCooldownUntil,
   }
   if (!scraper) await ctx.db.insert('scraperProfiles', fields)
@@ -91,23 +92,6 @@ export async function clearWorkerProfile(ctx: MutationCtx, profileId: Id<'profil
 }
 
 /** Publish only empty/nonempty transitions, not every enriched lead or description checkpoint. */
-export async function refreshEnrichmentWork(ctx: MutationCtx) {
-  const [describing, pending, state] = await Promise.all([
-    ctx.db
-      .query('leads')
-      .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'describing'))
-      .first(),
-    ctx.db
-      .query('leads')
-      .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'pending'))
-      .first(),
-    ctx.db.query('enrichmentWork').unique(),
-  ])
-  const hasWork = !!(describing || pending)
-  if (!state) await ctx.db.insert('enrichmentWork', { pending: hasWork })
-  else if (state.pending !== hasWork) await ctx.db.patch(state._id, { pending: hasWork })
-}
-
 /** Source totals change only when profiles are added or removed, never on heartbeats. */
 export async function syncSourceCount(ctx: MutationCtx, listId: Id<'leadLists'>) {
   if (!(await ctx.db.get(listId))) return
@@ -130,7 +114,6 @@ export async function syncSourceCount(ctx: MutationCtx, listId: Id<'leadLists'>)
 export const initialize = internalMutation({
   args: {},
   handler: async (ctx) => {
-    await refreshEnrichmentWork(ctx)
     let state = await ctx.db.query('workerMetadataMigration').unique()
     if (state?.complete && state.projectionVersion === 1) return
     if (state?.complete) {

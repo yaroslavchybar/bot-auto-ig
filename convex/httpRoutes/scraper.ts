@@ -5,15 +5,10 @@ import { jsonResponse, parseBody, registerPreflight, withErrorHandling } from '.
 
 const paths = [
   'initialize',
-  'enrichment-batch',
   'claim',
   'heartbeat',
   'posts',
   'batch',
-  'pending',
-  'picture-description',
-  'enrich',
-  'enrichment-error',
   'finish',
   'accounts',
   'cooldown',
@@ -39,15 +34,6 @@ export function registerScraperRoutes(http: HttpRouter): void {
     http,
     paths.map((path) => `/api/scraper/${path}`),
   )
-  http.route({
-    path: '/api/scraper/enrichment-batch',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const body = await parseBody(request)
-      await ctx.runMutation(internal.scraper.saveEnrichmentBatch, { entries: body.entries })
-      return jsonResponse({ ok: true })
-    }),
-  })
   http.route({
     path: '/api/scraper/initialize',
     method: 'POST',
@@ -111,25 +97,6 @@ export function registerScraperRoutes(http: HttpRouter): void {
     }),
   })
   http.route({
-    path: '/api/scraper/pending',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx) =>
-      jsonResponse(await ctx.runQuery(internal.scraper.pendingLeads, {})),
-    ),
-  })
-  http.route({
-    path: '/api/scraper/picture-description',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const b = await parseBody(request)
-      await ctx.runMutation(internal.scraper.savePictureDescription, {
-        leadId: b.leadId as Id<'leads'>,
-        description: b.description,
-      })
-      return jsonResponse({ ok: true })
-    }),
-  })
-  http.route({
     path: '/api/scraper/accounts',
     method: 'POST',
     handler: withErrorHandling(async (ctx) =>
@@ -145,28 +112,6 @@ export function registerScraperRoutes(http: HttpRouter): void {
         profileId: b.profileId as Id<'profiles'>,
         retryAfterMs: b.retryAfterMs,
       })
-      return jsonResponse({ ok: true })
-    }),
-  })
-  http.route({
-    path: '/api/scraper/enrich',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const b = await parseBody(request)
-      await ctx.runMutation(internal.scraper.enrich, {
-        leadId: b.leadId as Id<'leads'>,
-        profilePicDescription: b.profilePicDescription,
-        classification: b.classification,
-      })
-      return jsonResponse({ ok: true })
-    }),
-  })
-  http.route({
-    path: '/api/scraper/enrichment-error',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx, request) => {
-      const b = await parseBody(request)
-      await ctx.runMutation(internal.scraper.enrichmentError, { leadId: b.leadId as Id<'leads'> })
       return jsonResponse({ ok: true })
     }),
   })

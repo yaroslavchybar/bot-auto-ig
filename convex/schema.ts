@@ -52,20 +52,25 @@ export default defineSchema({
     igId: v.optional(v.string()),
     username: v.string(),
     fullName: v.optional(v.string()),
-    profilePicUrl: v.optional(v.string()),
-    profilePicDescription: v.optional(v.string()),
-    pictureBatchId: v.optional(v.string()),
     classification: v.optional(
       v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),
     enrichmentStatus: v.optional(
       v.union(
         v.literal('pending'),
-        v.literal('describing'),
         v.literal('ready'),
         v.literal('error'),
       ),
     ),
+    enrichmentModel: v.optional(v.string()),
+    enrichmentConfidence: v.optional(v.number()),
+    enrichedAt: v.optional(v.number()),
+    screeningToken: v.optional(v.string()),
+    screeningProfileId: v.optional(v.id('profiles')),
+    screeningAutomationId: v.optional(v.id('automations')),
+    screeningListId: v.optional(v.id('leadLists')),
+    screeningUntil: v.optional(v.number()),
+    screeningFailures: v.optional(v.number()),
     senderId: v.optional(v.id('profiles')),
     outreachListId: v.optional(v.id('leadLists')),
     outreachAutomationId: v.optional(v.id('automations')),
@@ -92,11 +97,15 @@ export default defineSchema({
     leadId: v.id('leads'),
     listId: v.id('leadLists'),
     available: v.boolean(),
+    classification: v.optional(
+      v.union(v.literal('male'), v.literal('female'), v.literal('business')),
+    ),
     leadCreatedAt: v.number(),
   })
     .index('by_lead_list', ['leadId', 'listId'])
     .index('by_list_created', ['listId', 'leadCreatedAt'])
-    .index('by_list_available', ['listId', 'available', 'leadCreatedAt']),
+    .index('by_list_available', ['listId', 'available', 'leadCreatedAt'])
+    .index('by_list_category', ['listId', 'available', 'classification', 'leadCreatedAt']),
   accountProgress: defineTable({
     profileId: v.id('profiles'),
     paused: v.boolean(),
@@ -279,7 +288,14 @@ export default defineSchema({
     complete: v.boolean(),
     jobId: v.optional(v.id('_scheduled_functions')),
   }),
-  enrichmentWork: defineTable({ pending: v.boolean() }),
+  leadScreeningMigration: defineTable({
+    cursor: v.union(v.string(), v.null()),
+    complete: v.boolean(),
+    jobId: v.optional(v.id('_scheduled_functions')),
+    processed: v.optional(v.number()),
+    reset: v.optional(v.number()),
+    cleaned: v.optional(v.number()),
+  }),
   // Proxy tables read this small projection instead of profile cookies and runtime state.
   proxyProfileAssignments: defineTable({
     profileId: v.id('profiles'),

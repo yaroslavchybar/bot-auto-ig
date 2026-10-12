@@ -223,7 +223,7 @@ export function AnalyticsPage() {
               <Stat
                 label="Ready to assign"
                 value={data.leads?.ready ?? null}
-                detail="Eligible male leads, still unassigned"
+                detail="Classified leads, still unassigned"
                 icon={<UserPlus className="size-5" />}
               />
               <Stat

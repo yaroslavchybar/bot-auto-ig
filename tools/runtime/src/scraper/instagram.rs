@@ -169,6 +169,6 @@ pub fn parse_likers(data: &Value, include_private: bool) -> Result<Vec<Value>> {
         .ok_or_else(|| Error::failed("Instagram returned an incomplete likers response"))?;
     Ok(rows.iter().take(100).filter_map(|row|{
         if row["is_private"].as_bool()? && !include_private{return None;}let id=instagram::string(row.get("pk").unwrap_or(&row["id"]));let username=instagram::string(&row["username"]);
-        if !instagram::digits(&id)||username.is_empty(){return None;}Some(json!({"igId":id,"username":username,"fullName":instagram::string(&row["full_name"]),"profilePicUrl":instagram::string(&row["profile_pic_url"])}))
+        if !instagram::digits(&id)||username.is_empty(){return None;}Some(json!({"igId":id,"username":username,"fullName":instagram::string(&row["full_name"])}))
     }).collect())
 }

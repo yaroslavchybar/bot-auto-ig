@@ -80,8 +80,8 @@ test('initial backfill counts unique people, classification and outreach eligibi
       await ctx.db.insert('leads', { ...base, username: 'pending', enrichmentStatus: 'pending' })
       await ctx.db.insert('leads', {
         ...base,
-        username: 'describing',
-        enrichmentStatus: 'describing',
+        username: 'another-pending',
+        enrichmentStatus: 'pending',
       })
       const leadId = await ctx.db.insert('leads', {
         ...base,
@@ -139,75 +139,10 @@ test('initial backfill counts unique people, classification and outreach eligibi
     const result = await read(t)
     expect(result).toMatchObject({
       complete: true,
-      counts: { total: 9, pending: 2, enriched: 6, male: 4, ready: 1, assigned: 1 },
+      counts: { total: 9, pending: 2, enriched: 6, male: 4, ready: 3, assigned: 1 },
     })
     await t.mutation(api.leadStats.initialize, {})
     expect(await read(t)).toEqual(result)
-  } finally {
-    vi.useRealTimers()
-  }
-})
-
-test('batched classification, retries and saved checkpoints update counts without duplicate increments', async () => {
-  vi.useFakeTimers()
-  try {
-    const t = createConvexTest()
-    const ids = await t.run(async (ctx) => {
-      const ids = []
-      for (const username of ['male', 'female', 'error', 'description'])
-        ids.push(
-          await ctx.db.insert('leads', {
-            username,
-            createdAt: 0,
-            dmSent: false,
-            followed: false,
-            enrichmentStatus: 'pending',
-          }),
-        )
-      return ids
-    })
-    await t.mutation(api.leadStats.initialize, {})
-    await t.finishAllScheduledFunctions(vi.runAllTimers)
-    const batch = {
-      entries: [
-        { leadId: ids[0], classification: 'male' as const },
-        { leadId: ids[1], classification: 'female' as const },
-        { leadId: ids[2], error: true as const },
-        { leadId: ids[3], description: 'Portrait' },
-      ],
-    }
-    await t.mutation(internal.scraper.saveEnrichmentBatch, batch)
-    expect((await read(t))?.counts).toEqual({
-      total: 4,
-      pending: 1,
-      enriched: 2,
-      male: 1,
-      ready: 1,
-      assigned: 0,
-    })
-    const stable = await read(t)
-    await t.mutation(internal.scraper.saveEnrichmentBatch, batch)
-    expect(await read(t)).toEqual(stable)
-    await t.mutation(internal.scraper.enrichmentError, { leadId: ids[0] })
-    expect((await read(t))?.counts).toEqual({
-      total: 4,
-      pending: 1,
-      enriched: 1,
-      male: 0,
-      ready: 0,
-      assigned: 0,
-    })
-    await t.mutation(api.scraper.retryEnrichment, {})
-    expect((await read(t))?.counts.pending).toBe(3)
-    await t.mutation(internal.scraper.enrich, { leadId: ids[1], classification: 'male' })
-    expect((await read(t))?.counts).toEqual({
-      total: 4,
-      pending: 3,
-      enriched: 1,
-      male: 1,
-      ready: 1,
-      assigned: 0,
-    })
   } finally {
     vi.useRealTimers()
   }
@@ -254,7 +189,7 @@ test('backfill restarts after changes across pages even when a batch has zero ne
     await t.finishAllScheduledFunctions(vi.runAllTimers)
     expect(await read(t)).toMatchObject({
       complete: true,
-      counts: { total: 250, pending: 0, enriched: 250, male: 1, ready: 1, assigned: 0 },
+      counts: { total: 250, pending: 0, enriched: 250, male: 1, ready: 250, assigned: 0 },
     })
   } finally {
     vi.useRealTimers()

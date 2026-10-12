@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -345,13 +346,26 @@ export function RoutinePopup({
                   {warmupSummary}
                 </p>
                 <SettingsGroup title="Browsing">
-                  <ToggleRow wide label="Home feed" checked={flag('browse_home_feed')}
-                    onChange={checked => setActivity({ browse_home_feed: checked })} />
-                  <ToggleRow wide label="Reels scroll" checked={flag('scroll_reels')}
-                    onChange={checked => setActivity({ scroll_reels: checked })} />
+                  <ToggleRow
+                    wide
+                    label="Home feed"
+                    checked={flag('browse_home_feed')}
+                    onChange={(checked) => setActivity({ browse_home_feed: checked })}
+                  />
+                  <ToggleRow
+                    wide
+                    label="Reels scroll"
+                    checked={flag('scroll_reels')}
+                    onChange={(checked) => setActivity({ scroll_reels: checked })}
+                  />
                   <Field id="warmup-topics" label="Topic keywords">
-                    <Input id="warmup-topics" value={String(policy.activity.warmup_topics ?? '')} maxLength={300}
-                      placeholder="fitness, gym, workout" onChange={event => setActivity({ warmup_topics: event.target.value })} />
+                    <Input
+                      id="warmup-topics"
+                      value={String(policy.activity.warmup_topics ?? '')}
+                      maxLength={300}
+                      placeholder="fitness, gym, workout"
+                      onChange={(event) => setActivity({ warmup_topics: event.target.value })}
+                    />
                   </Field>
                 </SettingsGroup>
                 <SettingsGroup title="Schedule">
@@ -433,14 +447,52 @@ export function RoutinePopup({
                   />
                 </label>
                 <div className={cn('space-y-6', !policy.outreachEnabled && 'opacity-60')}>
+                  <SettingsGroup title="Lead categories">
+                    <div className="flex flex-wrap gap-5">
+                      {(['male', 'female', 'business'] as const).map((category) => (
+                        <label
+                          key={category}
+                          className="flex items-center gap-2 text-sm capitalize"
+                        >
+                          <Checkbox
+                            checked={(policy.allowedCategories ?? ['male']).includes(category)}
+                            onCheckedChange={(checked) =>
+                              setPolicy((current) => ({
+                                ...current,
+                                allowedCategories: checked
+                                  ? [
+                                      ...new Set([
+                                        ...(current.allowedCategories ?? ['male']),
+                                        category,
+                                      ]),
+                                    ]
+                                  : (current.allowedCategories ?? ['male']).filter(
+                                      (value) => value !== category,
+                                    ),
+                              }))
+                            }
+                          />
+                          {category}
+                        </label>
+                      ))}
+                    </div>
+                  </SettingsGroup>
                   <SettingsGroup title="Daily follows">
                     {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
                       min: 1,
                       max: 35,
                     })}
-                    {routineNumber('max-follows', 'Max follows per day', 'maxDms', { min: 1, max: 35 })}
+                    {routineNumber('max-follows', 'Max follows per day', 'maxDms', {
+                      min: 1,
+                      max: 35,
+                    })}
                   </SettingsGroup>
-                  <p className="text-sm text-muted-copy">Follow public or private accounts first. Public accounts with posts can receive one like. Notifications are checked daily; DMs start the next day only after a follow-back, before unfollowing. DMs have no separate daily limit and use the existing session time.</p>
+                  <p className="text-sm text-muted-copy">
+                    Follow public or private accounts first. Public accounts with posts can receive
+                    one like. Notifications are checked daily; DMs start the next day only after a
+                    follow-back, before unfollowing. DMs have no separate daily limit and use the
+                    existing session time.
+                  </p>
                   <SettingsGroup title="Unfollow">
                     {routineRange(
                       'unfollow-days',

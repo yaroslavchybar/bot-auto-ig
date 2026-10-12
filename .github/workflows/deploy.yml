@@ -42,7 +42,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: bun run lint
-      - run: bun test ./.github/scripts/image-cache.test.ts
+      - run: bun test ./.github/scripts/image-cache.test.ts ./.github/scripts/deploy-convex.test.ts
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.98.1
@@ -90,9 +90,9 @@ jobs:
       - uses: actions/checkout@v6
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      # Prod Convex (schema, functions, indexes). The key scopes this to
-      # the prod deployment; the flag allows prod deploys from CI runners.
-      - run: bunx convex deploy --check-build-environment disable
+      # One-time lead cleanup runs before deploying the strict production schema.
+      # Remove the helper after cleanup; the key scopes both pushes to production.
+      - run: bun .github/scripts/deploy-convex.ts
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
 

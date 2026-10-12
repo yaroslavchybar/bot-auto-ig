@@ -32,7 +32,7 @@ export const listPage = query({
       const rows = await Promise.all(memberships.page.map(membership => ctx.db.get(membership.leadId)));
       const matches = rows.filter((lead): lead is Doc<'leads'> => !!lead &&
         (!classification || lead.classification === classification) &&
-        (!queryText || [lead.username, lead.fullName, lead.profilePicDescription]
+        (!queryText || [lead.username, lead.fullName]
           .some(value => value?.toLowerCase().includes(queryText))));
       return {
         isDone: memberships.isDone, continueCursor: memberships.continueCursor,
@@ -52,7 +52,7 @@ export const listPage = query({
       numItems: queryText ? Math.min(500, Math.max(100, paginationOpts.numItems)) : paginationOpts.numItems,
     });
     const matches: Doc<'leads'>[] = batch.page.filter(lead =>
-        (!queryText || [lead.username, lead.fullName, lead.profilePicDescription]
+        (!queryText || [lead.username, lead.fullName]
           .some(value => value?.toLowerCase().includes(queryText))));
     return {
       isDone: batch.isDone, continueCursor: batch.continueCursor,

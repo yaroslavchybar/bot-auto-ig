@@ -42,7 +42,7 @@ Image output is intentionally changed, so the two encoders are not bit-identical
   Session cookies and authorization persist in Convex. Existing SDK sessions
   are reused without login; reconnect preserves their saved device identity.
 - Scraper: Rust HTTP, source discovery, batches of 25, resume checkpoints,
-  cooldowns, OpenRouter descriptions, and Jev classification. Rust-owned Convex
+  cooldowns. Lead screenshot classification runs in the active browser worker; Rust-owned Convex
   subscriptions wake native jobs; there is no idle work polling.
 - Uploads: four active receivers, 32 pending files, 15-minute expiry. Photo and
   voice inputs: 10 MB; videos: 25 MB. The API receives file descriptors and

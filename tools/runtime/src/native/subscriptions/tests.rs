@@ -21,7 +21,7 @@ async fn subscriptions_share_one_convex_connection_inject_auth_and_unsubscribe_o
                 for modification in input["modifications"].as_array().unwrap() {
                     if modification["type"]=="Add" {
                         assert_eq!(modification["args"][0]["bridgeToken"],"fixture-key");
-                        let result = if modification["udfPath"] == "scraper:enrichmentWork" { json!({"pending":true}) } else { json!({"at":1_790_000_000_000f64,"fraction":1.5}) };
+                        let result = json!({"at":1_790_000_000_000f64,"fraction":1.5});
                         changes.push(json!({"type":"QueryUpdated","queryId":modification["queryId"],"value":result,"logLines":[],"journal":null}));
                     } else { closed.notify_one(); changes.push(json!({"type":"QueryRemoved","queryId":modification["queryId"]})); }
                 }
@@ -46,15 +46,6 @@ async fn subscriptions_share_one_convex_connection_inject_auth_and_unsubscribe_o
         .subscribe("profiles/queries:maintenanceWork", json!({}))
         .await
         .unwrap();
-    let mut enrichment = owner
-        .subscribe("scraper:enrichmentWork", json!({}))
-        .await
-        .unwrap();
-    let result = tokio::time::timeout(Duration::from_secs(5), enrichment.next())
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(value(result).unwrap(), json!({"pending":true}));
     for subscription in [&mut a, &mut b] {
         let result = tokio::time::timeout(Duration::from_secs(5), subscription.next())
             .await

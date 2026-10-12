@@ -63,18 +63,6 @@ test.each([10, undefined])(
     expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight + 120_001)
     await t.run((ctx) => ctx.db.patch(ids.job, { enabled: false, running: false }))
     expect((await t.query(api.scraper.work, args)).taskAt).toBeNull()
-    const lead = await t.run((ctx) =>
-      ctx.db.insert('leads', {
-        username: 'lead',
-        createdAt: 0,
-        dmSent: false,
-        followed: false,
-        enrichmentStatus: 'pending',
-      }),
-    )
-    expect(await t.query(api.scraper.enrichmentWork, args)).toEqual({ pending: true })
-    await t.run((ctx) => ctx.db.patch(lead, { enrichmentStatus: 'ready' }))
-    expect(await t.query(api.scraper.enrichmentWork, args)).toEqual({ pending: false })
   },
 )
 

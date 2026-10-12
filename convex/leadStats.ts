@@ -5,10 +5,7 @@ import { internalMutation, mutation, type MutationCtx } from './_generated/serve
 import { leadAvailable } from './leadMemberships'
 
 type Counts = Doc<'leadStats'>['counts']
-type Lead = Pick<
-  Doc<'leads'>,
-  'classification' | 'enrichmentStatus' | 'senderId' | 'dmSent' | 'followed'
->
+type Lead = Parameters<typeof leadAvailable>[0]
 const empty = (): Counts => ({ total: 0, pending: 0, enriched: 0, male: 0, ready: 0, assigned: 0 })
 const keys = ['total', 'pending', 'enriched', 'male', 'ready', 'assigned'] as const
 
@@ -17,10 +14,10 @@ function countsFor(lead: Lead | null): Counts {
   const enriched = lead.enrichmentStatus === 'ready'
   return {
     total: 1,
-    pending: Number(lead.enrichmentStatus === 'pending' || lead.enrichmentStatus === 'describing'),
+    pending: Number(lead.enrichmentStatus === 'pending'),
     enriched: Number(enriched),
     male: Number(enriched && lead.classification === 'male'),
-    ready: Number(leadAvailable(lead)),
+    ready: Number(enriched && !!lead.classification && leadAvailable(lead)),
     assigned: Number(!!lead.senderId),
   }
 }

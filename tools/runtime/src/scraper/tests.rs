@@ -18,14 +18,11 @@ fn scraper_fixture(fixture: &Fixture) -> Scraper {
     });
     let mobile = Service::fixture(api.clone(), uploads, fixture.url.clone());
     let (work, _) = watch::channel((0, Work::default()));
-    let (enrichment, _) = watch::channel(false);
     Scraper {
         api,
         mobile,
         work,
-        enrichment,
         cache: Mutex::new(cache::Cache::open(std::path::Path::new(":memory:")).unwrap()),
-        openrouter_key: String::new(),
         apify_key: "fixture".into(),
         provider_url: Some(fixture.url.clone()),
     }
@@ -234,7 +231,7 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
     scraper.run_task(&job).await.unwrap();
     assert_eq!(
         calls.lock().unwrap()[3]["likers"],
-        json!([{"igId":"30","username":"private","fullName":"","profilePicUrl":""}])
+        json!([{"igId":"30","username":"private","fullName":""}])
     );
     assert!(scraper
         .cache
@@ -360,14 +357,11 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
     });
     let mobile = Service::fixture(api.clone(), uploads, fixture.url.clone());
     let (work, _) = watch::channel((0, Work::default()));
-    let (enrichment, _) = watch::channel(false);
     let scraper = Scraper {
         api,
         mobile,
         work,
-        enrichment,
         cache: Mutex::new(cache::Cache::open(std::path::Path::new(":memory:")).unwrap()),
-        openrouter_key: "fixture".into(),
         apify_key: "fixture".into(),
         provider_url: Some(fixture.url.clone()),
     };
@@ -477,113 +471,18 @@ async fn likers_use_mobile_first_and_cookie_fallback_without_bypassing_rate_limi
 }
 
 #[test]
-fn classification_and_picture_validation_keep_existing_contract() {
-    assert_eq!(providers::classification(&json!({"answers":{"account_type":{"type":"choice","choice":"male","probabilities":{"male":0.1,"female":0.2,"business":0.7}}}})).unwrap(),"business");
-    assert_eq!(
-        providers::classification(
-            &json!({"answers":{"account_type":{"type":"choice","choice":"female"}}})
-        )
-        .unwrap(),
-        "female"
-    );
-    assert!(providers::classification(
-        &json!({"answers":{"account_type":{"type":"choice","choice":"other"}}})
-    )
-    .is_err());
-    assert_eq!(providers::classification(&json!({"answers":{"account_type":{"type":"choice","probabilities":{"male":0.3,"female":0.3,"business":0.3}}}})).unwrap(),"male");
-    assert!(providers::picture_url("https://scontent.cdninstagram.com/image").is_some());
+fn picture_validation_keeps_existing_contract() {
+    assert!(crate::instagram::picture_url("https://scontent.cdninstagram.com/image").is_some());
     for url in [
         "http://cdninstagram.com/image",
         "https://cdninstagram.com.attacker.test/image",
         "https://attacker.test/image",
         "https://user:pass@instagram.com/image",
     ] {
-        assert!(providers::picture_url(url).is_none());
+        assert!(crate::instagram::picture_url(url).is_none());
     }
 }
 
-#[tokio::test]
-async fn enrichment_batches_checkpoints_before_classification_and_keeps_successes_on_failure() {
-    let saved = Arc::new(Mutex::new(Vec::<Value>::new()));
-    let descriptions = Arc::new(AtomicUsize::new(0));
-    let batches = saved.clone();
-    let described = descriptions.clone();
-    let fixture = Fixture::start(move |request| {
-        let batches = batches.clone();
-        let described = described.clone();
-        async move {
-            let path = request.uri().path().to_string();
-            if path == "/api/scraper/pending" {
-                return Json(json!([
-                    {"_id":"first","username":"first","profilePicUrl":"https://scontent.cdninstagram.com/first"},
-                    {"_id":"second","username":"second","profilePicUrl":"https://scontent.cdninstagram.com/second","profilePicDescription":"existing description"},
-                    {"_id":"failed","username":"failed"}
-                ])).into_response();
-            }
-            if path == "/api/scraper/enrichment-batch" {
-                let checkpoint = body(request).await;
-                batches.lock().unwrap().push(checkpoint);
-                return Json(json!({"ok":true})).into_response();
-            }
-            if path == "/api/v1/chat/completions" {
-                described.fetch_add(1, Ordering::SeqCst);
-                return Json(json!({"choices":[{"message":{"content":"new description"}}]})).into_response();
-            }
-            assert_eq!(path, "/api/alpha/decisions");
-            assert_eq!(batches.lock().unwrap().len(), 1, "description checkpoint must be durable first");
-            let record = body(request).await;
-            let username = record["state"]["record"]["username"].as_str().unwrap();
-            if username == "failed" {
-                return Json(json!({"answers":{}})).into_response();
-            }
-            assert_eq!(record["state"]["record"]["pictureDescription"],
-                if username == "first" { "new description" } else { "existing description" });
-            Json(json!({"answers":{"account_type":{"type":"choice","choice":"male"}}})).into_response()
-        }
-    }).await;
-    let mut scraper = scraper_fixture(&fixture);
-    scraper.openrouter_key = "fixture".into();
-    scraper.enrich_pending().await.unwrap();
-    assert_eq!(descriptions.load(Ordering::SeqCst), 1);
-    let batches = saved.lock().unwrap();
-    assert_eq!(batches.len(), 2);
-    assert_eq!(
-        batches[0]["entries"],
-        json!([{"leadId":"first","description":"new description"}])
-    );
-    assert_eq!(
-        batches[1]["entries"],
-        json!([
-            {"leadId":"first","classification":"male"},
-            {"leadId":"second","classification":"male"},
-            {"leadId":"failed","error":true}
-        ])
-    );
-}
-
-#[tokio::test]
-async fn enrichment_does_not_classify_when_checkpoint_cannot_be_saved() {
-    let classified = Arc::new(AtomicUsize::new(0));
-    let calls = classified.clone();
-    let fixture = Fixture::start(move |request| {
-        let calls = calls.clone();
-        async move {
-            match request.uri().path() {
-                "/api/scraper/pending" => Json(json!([{"_id":"lead","username":"lead","profilePicUrl":"https://scontent.cdninstagram.com/image"}])).into_response(),
-                "/api/v1/chat/completions" => Json(json!({"choices":[{"message":{"content":"description"}}]})).into_response(),
-                "/api/scraper/enrichment-batch" => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({}))).into_response(),
-                _ => {
-                    calls.fetch_add(1, Ordering::SeqCst);
-                    Json(json!({})).into_response()
-                }
-            }
-        }
-    }).await;
-    let mut scraper = scraper_fixture(&fixture);
-    scraper.openrouter_key = "fixture".into();
-    assert!(scraper.enrich_pending().await.is_err());
-    assert_eq!(classified.load(Ordering::SeqCst), 0);
-}
 #[test]
 fn apify_and_likers_keep_lossless_ids_dates_deduplication_and_public_filter() {
     let data = json!([{"id":"9007199254740993_123","shortCode":"one","timestamp":"2026-01-01T00:00:00.000Z"},{"pk":"9007199254740993","code":"one","timestamp":"2026-01-01T00:00:00Z"},{"id":"2","shortcode":"old","timestamp":"2024-01-01T00:00:00Z"}]);

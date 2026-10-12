@@ -491,15 +491,20 @@ export const routineTarget = (automationId: string, profileId: string) =>
     body: { automationId, profileId },
   })
 export const routineNotifications = (automationId: string, profileId: string) =>
-  convexFetch<{ date: string; since: number } | null>('/api/routines/notifications', { method: 'POST', body: { automationId, profileId } })
-export const routineRecordNotifications = (automationId: string, profileId: string, date: string, usernames: string[]) =>
-  convexFetch('/api/routines/record-notifications', { method: 'POST', body: { automationId, profileId, date, usernames } })
+  convexFetch<{ date: string; since: number } | null>('/api/routines/notifications', { method: 'POST', body: { automationId, profileId },
+  })
+export const routineRecordNotifications = (automationId: string, profileId: string, date: string, usernames: string[],
+) =>
+  convexFetch('/api/routines/record-notifications', { method: 'POST', body: { automationId, profileId, date, usernames },
+  })
 export const routineDmTasks = (automationId: string, profileId: string) =>
   convexFetch<Array<{ leadId: string; username: string; fullName?: string; message: string; date: string }>>('/api/routines/dm-tasks', { method: 'POST', body: { automationId, profileId } })
 export const routineDismissDm = (profileId: string, leadId: string) =>
   convexFetch('/api/routines/dismiss-dm', { method: 'POST', body: { profileId, leadId } })
-export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string) =>
-  convexFetch<boolean>('/api/routines/begin-follow', { method: 'POST', body: { automationId, profileId, leadId, date }, maxRetries: 0 })
+export const routineBeginFollow = (automationId: string, profileId: string, leadId: string, date: string,
+) =>
+  convexFetch<boolean>('/api/routines/begin-follow', { method: 'POST', body: { automationId, profileId, leadId, date }, maxRetries: 0,
+  })
 export const routineRecordSession = (
   automationId: string,
   profileId: string,
@@ -510,11 +515,26 @@ export const routineRecordSession = (
     method: 'POST',
     body: { automationId, profileId, activityCompleted, issue },
   })
+export const routineFinishScreening = (
+  automationId: string,
+  profileId: string,
+  leadId: string,
+  screeningToken: string,
+  date: string,
+  decision?: { category: 'male' | 'female' | 'business' | 'unknown'; confidence: number },
+) =>
+  convexFetch<boolean>('/api/routines/screening', {
+    method: 'POST',
+    body: { automationId, profileId, leadId, screeningToken, date, ...decision },
+    maxRetries: 0,
+  })
 export const routineReserve = (automationId: string, profileId: string) =>
-  convexFetch<{ leadId: string; username: string; fullName?: string; message: string; date: string } | null>(
+  convexFetch<{ leadId: string; username: string; fullName?: string; message: string; date: string
+    screeningToken: string
+  } | null>(
     '/api/routines/reserve',
-    { method: 'POST', body: { automationId, profileId }, maxRetries: 0 },
-  )
+    { method: 'POST', body: { automationId, profileId }, maxRetries: 0,
+  })
 // Never retry authorization to send: a lost response must not cause a duplicate delivery.
 export const routineBeginSend = (
   automationId: string,

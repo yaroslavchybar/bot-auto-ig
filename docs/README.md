@@ -303,15 +303,19 @@ instagrapi `media_likers` request and full media ID normalization. Browser sessi
 cookies are loaded only as a fallback when mobile scraping fails or is unavailable.
 A mobile or browser 429 pauses the account without trying another session.
 Accounts with a mobile session can scrape without saved browser cookies.
-Private accounts are discarded
-before saving. AI classifies public likers from username, full name, and
-profile picture description; bio is not collected.
+Private accounts are included only when enabled in the source settings.
+Scraped likers wait for browser screening during outreach. The worker opens the
+lead profile, captures the viewport, and sends it to `openai/gpt-6-luna-decisions`.
+Each automation selects its allowed categories: male, female, or business.
+Personal gender labels require explicit public self-description, never appearance;
+unclear decisions are saved and skipped. Screenshots stay in memory, not storage.
 Liker collection requests up to 100 accounts per post, saves them in Convex
 batches of 25, and waits 10–20 seconds between posts. Mobile requests resolve
 the post owner through media metadata when only a numeric post PK is available.
-Profile pictures are described through regular OpenRouter GPT-6 Luna calls
-with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies leads,
-so a classification retry does not repeat the picture call. Every mobile session shares a fixed rolling limit of 10 actual Instagram API
+There is no background enrichment or separate profile-picture description call.
+Screening decisions must reach 80% confidence; errors retry after five minutes.
+Only accepted categories receive a sender assignment and consume a follow slot.
+Every mobile session shares a fixed rolling limit of 10 actual Instagram API
 requests per hour across automated login, setup, scraping, metadata, and uploads. User-operated
 Chat calls do not consume this limit or use the sleep window, but still respect profile pause. Failed
 dispatches count; bridge retries do not double-charge. Browser-cookie liker fallback

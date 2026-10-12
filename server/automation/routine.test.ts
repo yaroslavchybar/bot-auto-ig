@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import type { Page } from 'playwright-core';
 import { runRoutineSession } from './routine.js';
 
-function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following' | 'Requested' = mode === 'dm' ? 'Following' : 'Follow') {
+function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following' | 'Requested' = mode === 'dm' ? 'Following' : 'Follow',
+) {
   const calls: string[] = [];
   let now = 0, sent = false, issue: string | undefined;
-  const attempt = { leadId: 'lead', date: '2026-09-21', username: 'alice', message: 'Hello alice' };
+  const attempt = { leadId: 'lead', date: '2026-09-21', username: 'alice', message: 'Hello alice',
+    screeningToken: 'screen',
+  };
   const locator = {
     first() { return this; }, last() { return this; }, nth() { return this; }, or() { return this; }, filter() { return this; },
     getByRole() { return this; }, count: async () => 1, hover: async () => {}, isVisible: async () => false,
@@ -32,22 +35,32 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     goto: async () => { calls.push('navigate'); },
     getByRole: () => locator,
     getByText: (text: string | RegExp) => String(text).startsWith("This account can't receive")
-      ? { ...locator, waitFor: async () => { throw new Error('missing'); } } : locator,
+      ? { ...locator, waitFor: async () => { throw new Error('missing'); },
+          } : locator,
   } as unknown as Page;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
-    follow: async (_page, allowed, click, confirmed) => { if (!await allowed()) return false; await click(); await confirmed(); return true; },
+    screenLead: async () => {
+      calls.push('screen')
+      return { category: 'male', confidence: 1 }
+    },
+    finishScreening: async () => {
+      calls.push('screen-saved')
+      return true
+    },
+    follow: async (_page, allowed, click, confirmed) => { if (!(await allowed())) return false; await click(); await confirmed(); return true; },
     pauseFollows: async () => {},
     instagram: async () => {},
     now: () => now, ready: async () => true,
-    target: async () => ({ target: mode === 'follow' ? 1 : 0, remaining: mode === 'follow' && !calls.includes('reserve') ? 1 : 0, sent: 0 }),
-    sleep: async ms => { now += ms; }, random: min => min,
+    target: async () => ({ target: mode === 'follow' ? 1 : 0, remaining: mode === 'follow' && !calls.includes('reserve') ? 1 : 0, sent: 0,
+    }),
+    sleep: async (ms) => { now += ms; }, random: (min) => min,
     followTasks: async () => [],
     recordFollow: async (_, __, followed) => { calls.push(followed ? 'record-follow' : 'record-unfollow'); },
     beginFollow: async () => { calls.push('authorize-follow'); return true; },
     notifications: async () => null,
     readNotifications: async () => { calls.push('read-notifications'); return ['alice']; },
     recordNotifications: async () => { calls.push('record-notifications'); },
-    dmTasks: async () => mode === 'dm' ? [attempt] : [],
+    dmTasks: async () => (mode === 'dm' ? [attempt] : []),
     dismissDm: async () => { calls.push('dismiss-dm'); },
     ownUsername: async () => 'sender',
     followsUs: async () => { calls.push('verify-follower'); return true; },
@@ -58,27 +71,69 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
     record: async (_, __, completed, error) => { calls.push(completed ? 'record-completed' : 'record-incomplete'); issue = error; },
     warmup: async (_p, _a, _c, _page, _log, stopped, _deps, activity) => {
       const result = await activity!({ deadline: now + 600_000, remainingMinutes: 10,
-        browse: async minutes => { calls.push('browse'); now += minutes * 60_000; return 'finished'; } });
+        browse: async (minutes) => { calls.push('browse'); now += minutes * 60_000; return 'finished'; },
+      });
       return { minutes: 10, reason: stopped() || result === 'stopped' ? 'stopped' : 'finished' };
     },
   };
-  const automation = { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} } };
+  const automation = { _id: 'automation', name: 'Daily', nodes: [], edges: [], routine: { headless: true, activity: {} },
+  };
   const run = (stopped = () => false) => runRoutineSession(automation, 'profile', page, () => {}, stopped, deps);
   return { calls, deps, page, locator, run, result: () => ({ sent, issue }) };
 }
 
 test('follow-first outreach never opens or sends a DM in the follow action', async () => {
   const s = setup('follow'); await s.run();
-  assert.deepEqual(s.calls.filter(c => !['browse', 'record-completed'].includes(c)),
-    ['reserve', 'navigate', 'authorize-follow', 'follow', 'record-follow', 'optional-like']);
+  assert.deepEqual(s.calls.filter((c) => !['browse', 'record-completed'].includes(c)),
+    ['reserve', 'navigate',
+      'screen',
+      'screen-saved',
+      'authorize-follow', 'follow', 'record-follow', 'optional-like',
+    ],
+  );
   assert.equal(s.result().sent, false);
 });
+
+test('a rejected screenshot decision saves enrichment and never follows or likes', async () => {
+  const s = setup('follow')
+  s.deps.screenLead = async () => {
+    s.calls.push('screen')
+    return { category: 'female', confidence: 0.95 }
+  }
+  s.deps.finishScreening = async (_a, _p, _l, _token, _date, decision) => {
+    assert.equal(decision?.category, 'female')
+    s.calls.push('screen-saved')
+    return false
+  }
+  await s.run()
+  assert.ok(s.calls.includes('screen-saved'))
+  assert.ok(!s.calls.includes('authorize-follow'))
+  assert.ok(!s.calls.includes('follow'))
+  assert.ok(!s.calls.includes('optional-like'))
+})
+
+test('a screenshot/provider failure releases its lease without following or stopping the account', async () => {
+  const s = setup('follow')
+  s.deps.screenLead = async () => {
+    throw new Error('Provider unavailable')
+  }
+  s.deps.finishScreening = async (_a, _p, _l, _token, _date, decision) => {
+    assert.equal(decision, undefined)
+    s.calls.push('screen-released')
+    return false
+  }
+  await s.run()
+  assert.ok(s.calls.includes('screen-released'))
+  assert.ok(!s.calls.includes('follow'))
+  assert.equal(s.result().issue, undefined)
+})
 
 test('before maintenance the routine only browses, even when ready lead and DM mocks are available', async () => {
   const s = setup('follow');
   s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
     const result = await activity!({ day: 7, deadline: 600_000, remainingMinutes: 10,
-      browse: async () => { s.calls.push('browse'); return 'finished'; } });
+      browse: async () => { s.calls.push('browse'); return 'finished'; },
+    });
     return { minutes: 10, reason: result === 'finished' ? 'finished' : 'stopped' };
   };
   await s.run();
@@ -96,13 +151,16 @@ test('Instagram warnings stop outreach before reserving or following a lead', as
 
 test('a reciprocal recipient is verified and authorized before sending', async () => {
   const s = setup(); await s.run();
-  assert.deepEqual(s.calls, ['browse', 'navigate', 'verify-follower', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'browse', 'record-completed']);
+  assert.deepEqual(s.calls, ['browse', 'navigate', 'verify-follower', 'message-button', 'confirm', 'compose', 'authorize', 'send', 'confirm', 'sent', 'browse', 'record-completed',
+  ]);
   assert.equal(s.result().sent, true);
 });
 
 test('message variations are resolved once and confirmation uses the exact composed text', async () => {
   const s = setup();
-  s.deps.dmTasks = async () => [{ leadId: 'lead', date: '2026-09-21', username: 'alice', fullName: 'Alice Smith', message: '{Hi|Hey} [name], [username]!' }];
+  s.deps.dmTasks = async () => [{ leadId: 'lead', date: '2026-09-21', username: 'alice', fullName: 'Alice Smith', message: '{Hi|Hey} [name], [username]!',
+    },
+  ];
   let composed = '';
   s.locator.fill = async (text?: string) => { composed = text!; s.calls.push('compose'); };
   const getByText = s.page.getByText;
@@ -123,7 +181,8 @@ for (const message of ['{Hi|Hey', '{|}', 'a'.repeat(990) + '[name]']) {
     const s = setup();
     const dismissed: string[] = [], authorized: string[] = [], composed: string[] = [];
     s.deps.dmTasks = async () => [
-      { leadId: 'invalid', date: '2026-09-21', username: 'alice', fullName: 'a'.repeat(20), message },
+      { leadId: 'invalid', date: '2026-09-21', username: 'alice', fullName: 'a'.repeat(20), message,
+      },
       { leadId: 'valid', date: '2026-09-21', username: 'bob', message: 'Hello [username]' },
     ];
     s.deps.dismissDm = async (_, leadId) => { dismissed.push(leadId); };
@@ -133,7 +192,7 @@ for (const message of ['{Hi|Hey', '{|}', 'a'.repeat(990) + '[name]']) {
     assert.deepEqual(dismissed, ['invalid']);
     assert.deepEqual(authorized, ['valid']);
     assert.deepEqual(composed, ['Hello bob']);
-    assert.equal(s.calls.filter(call => call === 'send').length, 1);
+    assert.equal(s.calls.filter((call) => call === 'send').length, 1);
     assert.equal(s.result().issue, undefined);
     assert.equal(s.calls.at(-1), 'record-completed');
   });
@@ -203,7 +262,7 @@ for (const stage of ['navigation', 'composer', 'authorization', 'cleanup'] as co
 test('an unconfirmed delivery is recorded once and surfaces an issue', async () => {
   const s = setup(); let confirms = 0;
   s.locator.waitFor = async () => { if (++confirms > 1) throw new Error('Timeout'); };
-  await s.run(); assert.equal(s.calls.filter(c => c === 'send').length, 1); assert.ok(s.calls.includes('uncertain')); assert.match(s.result().issue!, /needs review/);
+  await s.run(); assert.equal(s.calls.filter((c) => c === 'send').length, 1); assert.ok(s.calls.includes('uncertain')); assert.match(s.result().issue!, /needs review/);
 });
 
 test('blocked messages are unsent and never marked delivered', async () => {
@@ -233,6 +292,7 @@ test('a login challenge stops all actions and is reported', async () => {
 
 test('pending DMs do not need a daily DM allowance', async () => {
   const s = setup(); s.deps.target = async () => ({ target: 0, remaining: 0, sent: 0 });
-  s.deps.dmTasks = async () => Array.from({ length: 4 }, (_, i) => ({ leadId: `lead-${i}`, date: '2026-09-21', username: 'alice', message: 'Hello alice' }));
-  await s.run(); assert.equal(s.calls.filter(c => c === 'send').length, 4);
-});
+  s.deps.dmTasks = async () => Array.from({ length: 4 }, (_, i) => ({ leadId: `lead-${i}`, date: '2026-09-21', username: 'alice', message: 'Hello alice',
+    }));
+  await s.run(); assert.equal(s.calls.filter((c) => c === 'send').length, 4);
+})

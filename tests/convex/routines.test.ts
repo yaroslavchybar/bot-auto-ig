@@ -18,7 +18,7 @@ test('outreach waits until day eight even when an old saved setting enables day 
   expect(await t.query(api.routines.accounts, { automationId: automation._id }))
     .toMatchObject([{ stage: 'Warm-up', allowance: 0 }]);
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
   await t.run(async ctx => {
     const warmup = await ctx.db.query('warmupStates').unique();
@@ -27,14 +27,14 @@ test('outreach waits until day eight even when an old saved setting enables day 
   expect(await t.query(api.routines.accounts, { automationId: automation._id }))
     .toMatchObject([{ activeDays: 0, stage: 'Outreach', allowance: 2 }]);
   expect(await t.query(internal.routines.target, args)).toMatchObject({ target: 2, remaining: 2 });
-  expect(await t.mutation(internal.routines.reserve, args)).not.toBeNull();
-  expect(await t.mutation(internal.routines.reserve, args)).not.toBeNull();
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).not.toBeNull();
+  expect(await reserveFollow(t, args)).not.toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
 });
 
 test('day-seven outreach rejects existing pending DMs and follow authorization', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.run(async ctx => {
     await ctx.db.patch(claim.leadId, { followed: true, followDate: Date.now() - 86_400_000,
       unfollowAt: Date.now() + 86_400_000, dmEligible: true });
@@ -49,11 +49,11 @@ test('day-seven outreach rejects existing pending DMs and follow authorization',
 
 test('a follow warning stops new follows for the day without stopping browsing readiness', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.warmup.mutations.pauseFollowsInternal,
     { profileId: args.profileId, date: dayKey(), reason: 'Follow stuck loading' });
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
   expect(await t.query(internal.routines.ready, args)).toBe(true);
 });
@@ -63,7 +63,7 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
   const { t, args, loggedIn, profile, automation } = await setup();
   await loggedIn();
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, maxDms: 35 } }));
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   const rng = vi.spyOn(Math, 'random').mockReturnValue(random);
   const finish = { profileId: profile._id, leadId: claim.leadId, followed: true };
   await t.mutation(internal.routines.recordFollow, finish);
@@ -72,18 +72,18 @@ test.each([0, 0.999])('daily growth is saved once and applies next day (random=%
   const read = () => t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
   expect(await read()).toMatchObject({ allowance: 2, followIncrease: increase, outreachDays: 1 });
   await t.mutation(internal.routines.recordFollow, finish);
-  const second = (await t.mutation(internal.routines.reserve, args))!;
+  const second = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, { ...finish, leadId: second.leadId });
   expect(await read()).toMatchObject({ allowance: 2, followIncrease: increase, outreachDays: 1 });
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   vi.setSystemTime(new Date('2026-09-22T10:00:00Z'));
   expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(2 + increase);
-  await t.mutation(internal.routines.reserve, args);
+  await reserveFollow(t, args);
   expect(await read()).toMatchObject({ allowance: 2 + increase, used: 1 });
   // An unsuccessful day does not increase the limit, even across missed days.
   vi.setSystemTime(new Date('2026-09-25T10:00:00Z'));
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, maxDms: 3 } }));
-  await t.mutation(internal.routines.reserve, args);
+  await reserveFollow(t, args);
   expect(await read()).toMatchObject({ allowance: 3, followIncrease: increase, outreachDays: 1 });
 });
 
@@ -97,7 +97,7 @@ test('DM tasks keep message variations intact and supply the recipient name for 
   await loggedIn();
   const message = '{Hi|Hey} [name], [username]!';
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...automation.routine!, message } }));
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.run(ctx => ctx.db.patch(claim.leadId, { fullName: 'Alice Smith' }));
   await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
   vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
@@ -126,7 +126,7 @@ test('outreach reservations move unique leads from ready to assigned without res
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const readStats = () => t.run(async ctx => (await ctx.db.query('leadStats').unique())!.counts);
     expect(await readStats()).toMatchObject({ total: 4, male: 4, ready: 4, assigned: 0 });
-    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    const claim = (await reserveFollow(t, args))!;
     expect(await readStats()).toMatchObject({ total: 4, male: 4, ready: 3, assigned: 1 });
     await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
     await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
@@ -141,7 +141,7 @@ test('outreach reservations move unique leads from ready to assigned without res
 test('saved multi-list routines cannot claim follows or send DMs until corrected', async () => {
   const { t, args, loggedIn, profile, automation, leadListId } = await setup();
   await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await authorizeDm(t, args, claim);
   await t.run(ctx => ctx.db.patch(claim.leadId, { dmStartedAt: undefined, dmStartedDate: undefined, dmEligible: true }));
   const other = await t.mutation(api.leads.createList, { name: 'Other purpose' });
@@ -151,7 +151,7 @@ test('saved multi-list routines cannot claim follows or send DMs until corrected
       { leadListId: other, profileIds: [profile._id], message: 'Second {{username}}' },
     ] } });
   });
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
   expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
@@ -167,15 +167,15 @@ test('empty lists cannot claim leads; unassigned profiles do not reserve or repo
     { leadListId: empty, profileIds: [profile._id], message: 'Empty' },
   ] };
   await t.run(ctx => ctx.db.patch(automation._id, { routine }));
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   routine.outreachRoutes = [{ leadListId, profileIds: [profile._id], message: 'Available' }];
   await t.run(ctx => ctx.db.patch(automation._id, { routine }));
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   expect(claim.message).toBe('Available');
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(true);
   await t.run(ctx => ctx.db.patch(automation._id, { routine: { ...routine, outreachRoutes: routine.outreachRoutes.map(route => ({ ...route, profileIds: [] })) } }));
   expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
   expect((await t.query(api.routines.accounts, { automationId: automation._id }))[0].allowance).toBe(0);
 });
@@ -198,7 +198,7 @@ test('assignment validation prevents foreign profiles and multiple scraped lists
 
 test('blocked DMs do not release follow slots or permit a DM retry', async () => {
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const first = (await t.mutation(internal.routines.reserve, args))!;
+  const first = (await reserveFollow(t, args))!;
   await authorizeDm(t, args, first);
   const blocked = { profileId: profile._id, leadId: first.leadId, date: first.date, sent: false, blocked: true };
   await t.mutation(internal.routines.finishSend, blocked);
@@ -206,7 +206,7 @@ test('blocked DMs do not release follow slots or permit a DM retry', async () =>
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 1, sent: 1 });
   expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: first.leadId, date: first.date })).toBe(false);
   for (let i = 0; i < 1; i++) {
-    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    const claim = (await reserveFollow(t, args))!;
     expect(claim.leadId).not.toBe(first.leadId);
     await authorizeDm(t, args, claim);
     const finish = { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: true };
@@ -214,12 +214,12 @@ test('blocked DMs do not release follow slots or permit a DM retry', async () =>
     await t.mutation(internal.routines.finishSend, finish);
   }
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 0, sent: 2 });
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
 });
 
 test('uncertain sends remain reserved and show as an incomplete target when time is exhausted', async () => {
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await authorizeDm(t, args, claim);
   await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
   await t.run(ctx => putWarmup(ctx, {
@@ -237,7 +237,7 @@ test('saved routines with a fixed daily increase still load and use random growt
   await t.run(ctx => ctx.db.patch(automation._id, {
     routine: { ...automation.routine!, dailyIncrease: 35 },
   }));
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, {
     profileId: profile._id, leadId: claim.leadId, followed: true,
   });
@@ -339,7 +339,7 @@ test('model browsing starts the next Kyiv day while outreach waits for mobile lo
   expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0])
     .toMatchObject({ stage: 'Warm-up', allowance: 0 });
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
 
   const session = await t.mutation(internal.warmup.mutations.beginRunInternal, {
     profileId: profile._id, automationId: String(args.automationId), runId: 'day-two',
@@ -374,12 +374,12 @@ test('a copied model automation needs a different model before enabling', async 
 
 test('classified male leads are claimed exactly once', async () => {
   const { t, args, loggedIn, leadListId } = await setup();
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   await loggedIn();
-  const claims = await Promise.all([t.mutation(internal.routines.reserve, args), t.mutation(internal.routines.reserve, args)]);
+  const claims = await Promise.all([reserveFollow(t, args), reserveFollow(t, args)]);
   expect(claims[0]).not.toBeNull(); expect(claims[1]).not.toBeNull();
   expect(claims[0]!.leadId).not.toBe(claims[1]!.leadId);
-  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await reserveFollow(t, args)).toBeNull();
   const lead = (await readLeads(t)).find(l => l._id === claims[0]!.leadId)!;
   expect(lead).toMatchObject({ senderId: args.profileId, dmSent: false, followed: false });
   const membership = await t.run(ctx => ctx.db.query('leadMemberships')
@@ -390,20 +390,20 @@ test('classified male leads are claimed exactly once', async () => {
 
 test('interrupted claims remain skipped after restart and issue clearing', async () => {
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await authorizeDm(t, args, claim);
   await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
   expect(await t.query(internal.routines.ready, args)).toBe(false);
   await t.mutation(internal.automations.mutations.reconcileInterruptedInternal, {});
   await t.mutation(api.routines.setAccount, { profileId: profile._id, clearIssue: true });
-  const next = (await t.mutation(internal.routines.reserve, args))!;
+  const next = (await reserveFollow(t, args))!;
   expect(next.leadId).not.toBe(claim.leadId);
   expect((await readLeads(t)).find(l => l._id === claim.leadId)).toMatchObject({ dmSent: false, senderId: profile._id });
 });
 
 test('sender, membership and date checks gate interaction; confirmed sends are idempotent', async () => {
   const { t, args, loggedIn, profile, list } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   const check = { ...args, leadId: claim.leadId, date: claim.date };
   expect(await t.mutation(internal.routines.beginSend, check)).toBe(false);
   await authorizeDm(t, args, claim);
@@ -423,7 +423,7 @@ test('sender, membership and date checks gate interaction; confirmed sends are i
 test('follows become due after seven days and unfollowing never requeues the lead', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   const follow = { profileId: profile._id, leadId: claim.leadId, followed: true };
   await t.mutation(internal.routines.recordFollow, follow);
   const followDate = Date.now();
@@ -436,7 +436,7 @@ test('follows become due after seven days and unfollowing never requeues the lea
   await t.mutation(internal.routines.recordFollow, { ...follow, followed: false });
   expect(await t.query(internal.routines.followTasks, args)).toEqual([]);
   expect((await readLeads(t)).find(l => l._id === claim.leadId)).toMatchObject({ followed: false, followDate, senderId: profile._id });
-  expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
+  expect((await reserveFollow(t, args))?.leadId).not.toBe(claim.leadId);
 });
 
 test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=%s)', async random => {
@@ -446,7 +446,7 @@ test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=
     ...automation.routine!, unfollowMinDays: 3, unfollowMaxDays: 10,
   } }));
   const rng = vi.spyOn(Math, 'random').mockReturnValue(random);
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   rng.mockRestore();
   const days = random === 0 ? 3 : 10;
   const follow = { profileId: profile._id, leadId: claim.leadId, followed: true };
@@ -471,7 +471,7 @@ test.each([0, 0.999])('random unfollow deadlines are saved and enforced (random=
 test('existing follows without saved deadlines still become due after seven days', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   const followDate = Date.now();
   await t.run(ctx => ctx.db.patch(claim.leadId, { followed: true, followDate, unfollowDays: undefined }));
   const follow = { profileId: profile._id, leadId: claim.leadId, followed: false };
@@ -495,7 +495,7 @@ test.each([
 test('a followed lead cannot receive a same-day DM and stays claimed after unfollow', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   const check = { ...args, leadId: claim.leadId, date: claim.date };
 
   await t.mutation(internal.routines.recordFollow, {
@@ -511,12 +511,12 @@ test('a followed lead cannot receive a same-day DM and stays claimed after unfol
   });
   const lead = (await readLeads(t)).find(l => l._id === claim.leadId)!;
   expect(lead).toMatchObject({ senderId: profile._id, dmSent: false, followed: false });
-  expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(claim.leadId);
+  expect((await reserveFollow(t, args))?.leadId).not.toBe(claim.leadId);
 });
 
 test('a blocked DM stays unsent without stopping the sender account', async () => {
   const { t, args, loggedIn, profile } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await authorizeDm(t, args, claim);
   await t.mutation(internal.routines.finishSend, {
     profileId: profile._id,
@@ -533,17 +533,17 @@ test('a blocked DM stays unsent without stopping the sender account', async () =
 test('DM and follow flags independently exclude unassigned leads', async () => {
   const { t, args, loggedIn, leads } = await setup(); await loggedIn();
   await t.run(async ctx => { await ctx.db.patch(leads[0]._id, { dmSent: true }); await ctx.db.patch(leads[1]._id, { followed: true }); });
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   expect([leads[0]._id, leads[1]._id]).not.toContain(claim.leadId);
 });
 
 test('daily allowance grows only after confirmed outreach days', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
   const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
   vi.setSystemTime(new Date('2026-09-26T10:00:00Z'));
-  await t.mutation(internal.routines.reserve, args);
+  await reserveFollow(t, args);
   expect((await t.query(api.routines.accounts, { automationId: args.automationId }))[0]).toMatchObject({ used: 1, allowance: 3 });
 });
 test("one automation owns each model; moving a profile changes its automation", async () => {
@@ -579,7 +579,7 @@ test('moving between models preserves account progress, warm-up budgets, and fol
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
   const { t, args, profile, list, automation, loggedIn } = await setup();
   await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
   const restUntil = Date.now() + 60 * 60_000;
   const ids = await t.run(async ctx => {
@@ -736,7 +736,7 @@ test.each([
 test('session results do not clear or overwrite unconfirmed deliveries', async () => {
   const { t, args, profile, loggedIn } = await setup();
   await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await authorizeDm(t, args, claim);
   await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
   for (const issue of ['Network timeout', undefined]) {
@@ -821,7 +821,7 @@ test('daily follow-back discovery enables next-day DMs independently of follow q
     await t.mutation(api.analytics.initialize, {});
     const claims = [];
     for (let i = 0; i < 2; i++) {
-      const claim = (await t.mutation(internal.routines.reserve, args))!;
+      const claim = (await reserveFollow(t, args))!;
       claims.push(claim);
       await t.mutation(internal.routines.recordFollow, { profileId: profile._id, leadId: claim.leadId, followed: true });
     }
@@ -856,7 +856,7 @@ test('daily notification completion is reset next day; stale completion is ignor
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, loggedIn } = await setup(); await loggedIn();
-    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    const claim = (await reserveFollow(t, args))!;
     await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
     vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
     await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), usernames: [] });
@@ -873,7 +873,7 @@ test.each(['expired', 'unfollowed', 'paused', 'route removed', 'automation disab
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, loggedIn, automation } = await setup(); await loggedIn();
-    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    const claim = (await reserveFollow(t, args))!;
     await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
     vi.setSystemTime(new Date('2026-10-12T10:00:00Z'));
     await t.mutation(internal.routines.recordNotifications, { ...args, date: dayKey(), usernames: [claim.username] });
@@ -902,14 +902,14 @@ test('notification events for other senders and non-followed leads do not enable
 
 test('a delivery result cannot be recorded without a one-time authorization', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await expect(t.mutation(internal.routines.finishSend, { profileId: args.profileId, leadId: claim.leadId, date: claim.date, sent: true })).rejects.toThrow('not authorized');
   expect((await readLeads(t)).find(lead => lead._id === claim.leadId)?.dmSent).toBe(false);
 });
 
 test('a recipient that no longer follows us waits for another daily discovery', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   await t.run(ctx => ctx.db.patch(claim.leadId, { followed: true, followDate: Date.now() - 86_400_000, unfollowAt: Date.now() + 86_400_000, dmEligible: true }));
   await t.mutation(internal.routines.dismissDm, { profileId: args.profileId, leadId: claim.leadId });
   expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
@@ -922,7 +922,7 @@ test('a lost follow confirmation retains cleanup intent and is never followed tw
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, loggedIn } = await setup(); await loggedIn();
-    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    const claim = (await reserveFollow(t, args))!;
     const input = { ...args, leadId: claim.leadId, date: claim.date };
     expect(await t.mutation(internal.routines.beginFollow, input)).toBe(true);
     expect(await t.mutation(internal.routines.beginFollow, input)).toBe(false);
@@ -940,7 +940,7 @@ test('follow confirmation is idempotent and retains the deadline saved before th
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, loggedIn } = await setup(); await loggedIn();
-    const claim = (await t.mutation(internal.routines.reserve, args))!;
+    const claim = (await reserveFollow(t, args))!;
     await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date });
     const started = Date.now();
     vi.setSystemTime(started + 5000);
@@ -960,7 +960,7 @@ test('new follow ramp starts small independently of previous DM growth and claim
     await ctx.db.patch(state._id, { dmIncrease: 30, date: dayKey(), used: 30, allowance: 30, lastOutreachDate: dayKey() });
   });
   expect(await t.query(internal.routines.target, args)).toEqual({ target: 2, remaining: 2, sent: 0 });
-  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  const claim = (await reserveFollow(t, args))!;
   expect(claim).not.toBeNull();
   await t.mutation(internal.routines.recordFollow, { profileId: args.profileId, leadId: claim.leadId, followed: true });
   const state = await t.run(async ctx => (await ctx.db.query('accountProgress').collect())[0]);
@@ -968,3 +968,320 @@ test('new follow ramp starts small independently of previous DM growth and claim
   expect(state.followIncrease).toBeLessThanOrEqual(4);
   expect(state.allowance).toBe(2);
 });
+
+// Existing follow/DM tests include the now-required browser-screening approval step.
+async function reserveFollow(
+  t: ReturnType<typeof createConvexTest>,
+  args: { automationId: Id<'automations'>; profileId: Id<'profiles'> },
+) {
+  const claim = await t.mutation(internal.routines.reserve, args)
+  if (!claim) return null
+  const accepted = await t.mutation(internal.leadScreening.finish, {
+    ...args,
+    leadId: claim.leadId,
+    date: claim.date,
+    screeningToken: claim.screeningToken,
+    category: 'male',
+    confidence: 1,
+  })
+  return accepted ? claim : null
+}
+
+test.each(['male', 'female', 'business'] as const)(
+  'pending leads are screened before %s assignment and quota charging',
+  async (category) => {
+    const { t, args, automation, loggedIn, leads } = await setup()
+    await loggedIn()
+    await t.run(async (ctx) => {
+      await ctx.db.patch(automation._id, {
+        routine: { ...automation.routine!, allowedCategories: [category] },
+      })
+      for (const lead of leads)
+        await ctx.db.patch(lead._id, { classification: undefined, enrichmentStatus: 'pending' })
+    })
+    const claim = (await t.mutation(internal.routines.reserve, args))!
+    expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
+    expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
+    expect(
+      await t.mutation(internal.routines.beginFollow, {
+        ...args,
+        leadId: claim.leadId,
+        date: claim.date,
+      }),
+    ).toBe(false)
+    const completion = {
+      ...args,
+      leadId: claim.leadId,
+      date: claim.date,
+      screeningToken: claim.screeningToken,
+      category,
+      confidence: 0.95,
+    }
+    expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(true)
+    expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
+    expect(await t.run((ctx) => ctx.db.get(claim.leadId))).toMatchObject({
+      senderId: args.profileId,
+      classification: category,
+      enrichmentStatus: 'ready',
+      enrichmentModel: 'openai/gpt-6-luna-decisions',
+    })
+    expect((await t.query(internal.routines.target, args)).remaining).toBe(1)
+    expect(
+      await t.mutation(internal.routines.beginFollow, {
+        ...args,
+        leadId: claim.leadId,
+        date: claim.date,
+      }),
+    ).toBe(true)
+  },
+)
+
+test('a disallowed category consumes no quota and can be screened by an automation that allows it', async () => {
+  const { t, args, automation, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  const completion = {
+    ...args,
+    leadId: claim.leadId,
+    date: claim.date,
+    screeningToken: claim.screeningToken,
+    category: 'female' as const,
+    confidence: 0.95,
+  }
+  expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
+  expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
+  await t.run(async (ctx) => {
+    for (const lead of await ctx.db.query('leads').collect())
+      if (lead._id !== claim.leadId) await ctx.db.patch(lead._id, { dmSent: true })
+  })
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
+  await t.run((ctx) =>
+    ctx.db.patch(automation._id, {
+      routine: { ...automation.routine!, allowedCategories: ['female'] },
+    }),
+  )
+  const retry = (await t.mutation(internal.routines.reserve, args))!
+  expect(retry.leadId).toBe(claim.leadId)
+  expect(
+    await t.mutation(internal.leadScreening.finish, {
+      ...completion,
+      screeningToken: retry.screeningToken,
+    }),
+  ).toBe(true)
+})
+
+test('expired screening leases are recoverable and stale results cannot assign a lead', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  await t.run(async (ctx) => {
+    for (const lead of await ctx.db.query('leads').collect())
+      if (lead._id !== claim.leadId) await ctx.db.patch(lead._id, { dmSent: true })
+  })
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
+  vi.setSystemTime(Date.now() + 120_001)
+  const next = (await t.mutation(internal.routines.reserve, args))!
+  expect(next.leadId).toBe(claim.leadId)
+  expect(next.screeningToken).not.toBe(claim.screeningToken)
+  expect(
+    await t.mutation(internal.leadScreening.finish, {
+      ...args,
+      leadId: claim.leadId,
+      date: claim.date,
+      screeningToken: claim.screeningToken,
+      category: 'male',
+      confidence: 1,
+    }),
+  ).toBe(false)
+})
+
+test('unknown decisions and provider failures skip without assignment or quota consumption', async () => {
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  expect(
+    await t.mutation(internal.leadScreening.finish, {
+      ...args,
+      leadId: claim.leadId,
+      date: claim.date,
+      screeningToken: claim.screeningToken,
+      category: 'unknown',
+      confidence: 0.97,
+    }),
+  ).toBe(false)
+  const failed = (await t.mutation(internal.routines.reserve, args))!
+  expect(
+    await t.mutation(internal.leadScreening.finish, {
+      ...args,
+      leadId: failed.leadId,
+      date: failed.date,
+      screeningToken: failed.screeningToken,
+    }),
+  ).toBe(false)
+  expect(await t.run((ctx) => ctx.db.get(failed.leadId))).toMatchObject({
+    enrichmentStatus: 'error',
+  })
+  expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
+  expect((await t.mutation(internal.routines.reserve, args))?.leadId).not.toBe(failed.leadId)
+})
+
+test('screening failures back off, preserve decisions, and stop automatic retries after three failures', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  let claim = (await t.mutation(internal.routines.reserve, args))!
+  const leadId = claim.leadId
+  const decision = { classification: 'male' as const, enrichmentModel: 'openai/gpt-6-luna-decisions', enrichedAt: 123, enrichmentConfidence: 0.95 }
+  await t.run(async ctx => {
+    await ctx.db.patch(leadId, decision)
+    for (const membership of await ctx.db.query('leadMemberships').collect())
+      if (membership.leadId !== leadId) await ctx.db.delete(membership._id)
+    const listId = await ctx.db.insert('leadLists', { name: 'shared', createdAt: 0 })
+    await ctx.db.insert('leadMemberships', { leadId, listId, leadCreatedAt: 0, available: true, classification: 'male' })
+  })
+  await t.mutation(api.leadStats.initialize, {})
+  await t.finishAllScheduledFunctions(vi.runAllTimers)
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const failure = { ...args, leadId, date: claim.date, screeningToken: claim.screeningToken }
+    const failedAt = Date.now()
+    expect(await t.mutation(internal.leadScreening.finish, failure)).toBe(false)
+    expect(await t.mutation(internal.leadScreening.finish, failure)).toBe(false)
+    const lead = (await t.run(ctx => ctx.db.get(leadId)))!
+    expect(lead).toMatchObject({ ...decision, enrichmentStatus: 'error', screeningFailures: attempt })
+    for (const field of ['screeningToken', 'screeningProfileId', 'screeningAutomationId', 'screeningListId', 'senderId'])
+      expect(lead).not.toHaveProperty(field)
+    expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
+    const memberships = await t.run(ctx => ctx.db.query('leadMemberships').withIndex('by_lead_list', q => q.eq('leadId', leadId)).collect())
+    expect(memberships.every(row => row.available === (attempt < 3))).toBe(true)
+    expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
+    if (attempt < 3) {
+      const retryAt = failedAt + 5 * 60_000 * 2 ** (attempt - 1)
+      expect(lead.screeningUntil).toBe(retryAt)
+      vi.setSystemTime(retryAt - 1)
+      expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
+      vi.setSystemTime(retryAt)
+      claim = (await t.mutation(internal.routines.reserve, args))!
+      expect(claim.leadId).toBe(leadId)
+    } else expect(lead).not.toHaveProperty('screeningUntil')
+  }
+  vi.setSystemTime(Date.now() + 60 * 60_000)
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull()
+  expect(await t.run(ctx => ctx.db.query('leadStats').unique())).toMatchObject({ counts: { ready: 3, assigned: 0, enriched: 3 } })
+  expect(await t.mutation(api.scraper.retryEnrichment, {})).toBe(1)
+  const retried = (await t.run(ctx => ctx.db.get(leadId)))!
+  expect(retried).toMatchObject({ ...decision, enrichmentStatus: 'pending' })
+  expect(retried).not.toHaveProperty('screeningFailures')
+  expect(retried).not.toHaveProperty('screeningUntil')
+  expect((await t.mutation(internal.routines.reserve, args))?.leadId).toBe(leadId)
+})
+
+test('a successful screening resets the failure count and replaces the saved decision', async () => {
+  const { t, args, loggedIn } = await setup()
+  await loggedIn()
+  const claim = (await t.mutation(internal.routines.reserve, args))!
+  await t.run(ctx => ctx.db.patch(claim.leadId, { screeningFailures: 2,
+    enrichmentStatus: 'error', enrichmentModel: 'previous-model', enrichedAt: 123, enrichmentConfidence: 0.8 }))
+  expect(await t.mutation(internal.leadScreening.finish, { ...args,
+    leadId: claim.leadId, date: claim.date, screeningToken: claim.screeningToken,
+    category: 'female', confidence: 0.99 })).toBe(false)
+  const lead = (await t.run(ctx => ctx.db.get(claim.leadId)))!
+  expect(lead).toMatchObject({ classification: 'female', enrichmentStatus: 'ready',
+    enrichmentModel: 'openai/gpt-6-luna-decisions', enrichmentConfidence: 0.99 })
+  expect(lead.enrichedAt).not.toBe(123)
+  expect(lead).not.toHaveProperty('screeningFailures')
+  expect(lead).not.toHaveProperty('screeningUntil')
+  expect(lead).not.toHaveProperty('senderId')
+  expect((await t.query(internal.routines.target, args)).remaining).toBe(2)
+})
+
+test('concurrent approvals cannot exceed the daily allowance', async () => {
+  const { t, args, automation, loggedIn } = await setup()
+  await loggedIn()
+  await t.run((ctx) =>
+    ctx.db.patch(automation._id, { routine: { ...automation.routine!, initialDms: 1, maxDms: 1 } }),
+  )
+  const claims = await Promise.all([
+    t.mutation(internal.routines.reserve, args),
+    t.mutation(internal.routines.reserve, args),
+  ])
+  expect(claims[0]?.leadId).not.toBe(claims[1]?.leadId)
+  const accepted = await Promise.all(
+    claims.map((claim) =>
+      t.mutation(internal.leadScreening.finish, {
+        ...args,
+        leadId: claim!.leadId,
+        date: claim!.date,
+        screeningToken: claim!.screeningToken,
+        category: 'male',
+        confidence: 1,
+      }),
+    ),
+  )
+  expect(accepted.filter(Boolean)).toHaveLength(1)
+  expect((await t.query(internal.routines.target, args)).remaining).toBe(0)
+})
+
+test('deployment migration requeues unassigned legacy leads in pages while retaining assigned history', async () => {
+  vi.useFakeTimers();
+  const { t, args, loggedIn, leads, leadListId } = await setup(); await loggedIn();
+  const accepted = (await reserveFollow(t, args))!;
+  await t.run(async ctx => {
+    for (let i = 0; i < 205; i++) {
+      const leadId = await ctx.db.insert('leads', { username: `legacy-${i}`, createdAt: 1,
+        classification: 'female', enrichmentStatus: 'ready', dmSent: false, followed: false });
+      await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, leadCreatedAt: 1, available: false });
+    }
+  });
+  await t.mutation(api.leadStats.initialize, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  await t.mutation(internal.migrations.leadScreening.start, {});
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  expect(await t.run(ctx => ctx.db.get(accepted.leadId))).toMatchObject({ senderId: args.profileId, classification: 'male' });
+  const pending = await t.run(ctx => ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'pending')).collect());
+  expect(pending).toHaveLength(205 + leads.length - 1);
+  const ready = await t.run(ctx => ctx.db.query('leadMemberships').withIndex('by_list_category', q => q.eq('listId', leadListId).eq('available', true).eq('classification', undefined)).collect());
+  expect(ready).toHaveLength(pending.length);
+  expect(await t.run(ctx => ctx.db.query('leadStats').unique())).toMatchObject({ complete: true,
+    counts: { total: 209, pending: 208, enriched: 1, assigned: 1, ready: 0 } });
+});
+
+test.each(['pause', 'categories', 'route', 'disabled'] as const)(
+  'screening approval rechecks %s before assigning',
+  async (change) => {
+    const { t, args, automation, loggedIn } = await setup()
+    await loggedIn()
+    const claim = (await t.mutation(internal.routines.reserve, args))!
+    if (change === 'pause')
+      await t.mutation(api.routines.setAccount, { profileId: args.profileId, paused: true })
+    else
+      await t.run((ctx) =>
+        ctx.db.patch(
+          automation._id,
+          change === 'disabled'
+            ? { isActive: false }
+            : {
+                routine: {
+                  ...automation.routine!,
+                  ...(change === 'categories'
+                    ? { allowedCategories: ['business'] as const as ['business'] }
+                    : { leadListId: undefined }),
+                },
+              },
+        ),
+      )
+    expect(
+      await t.mutation(internal.leadScreening.finish, {
+        ...args,
+        leadId: claim.leadId,
+        date: claim.date,
+        screeningToken: claim.screeningToken,
+        category: 'male',
+        confidence: 1,
+      }),
+    ).toBe(false)
+    expect(await t.run((ctx) => ctx.db.get(claim.leadId))).not.toHaveProperty('senderId')
+  },
+)

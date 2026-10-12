@@ -1,37 +1,29 @@
 # Daily IG routines
 
-Manage a routine in the automation popup. Select one model, browsing/session ranges, and optionally enable outreach. In Outreach, add scraped-list assignments, choosing profiles and a message for each list. Saving does not enable the routine.
+Create one automation per model. Select browsing surfaces, daily time, and session/rest ranges, then optionally enable Outreach. Outreach starts on warm-up day 8 once the account has at least three posts and its mobile login is connected. Posting continues daily to the configured target without blocking outreach.
 
-A profile can be assigned to several scraped lists in the same automation. It rotates through its lists after each claim, skips empty lists, and shares one daily DM target across all of them. Each scraped list has one assignment. “All profiles in this model” includes future model members; individual selections stay explicit. Model membership still determines which profiles the automation can run.
+Warm-up days 1–7 gradually engage topic-related accounts. Maintenance mixes browsing with lead outreach. Each new follow is separated by browsing. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
 
-Logged in allows browsing. Ready for outreach allows messaging after the configured activity day. Login and account setup are manual.
+## Lead screening
 
-Warm-up settings include a total post range (1–100, default 9–9). Each account gets one saved random target and publishes at most one post per day from day 4. Recorded posts and dates must reach that target before setup marks outreach ready. Changing the range assigns new targets to unfinished accounts without removing their posts; completed setups remain ready.
+Choose a scraped list, participating profiles, message, and allowed lead categories in Outreach. Male is the default; female and business can be selected independently. At least one category must be selected.
 
-Enabled routines run while the server is online, one profile at a time. Each profile gets a configurable 1-100 active minutes daily (30-60 by default), split into 1-60 minute sessions with rest periods. Browsing, cleanup, DM preparation, sending, and DM pauses share this budget. Rest starts after the whole session ends and releases the browser slot.
+The scraper saves deduplicated likers as pending leads. There is no background enrichment. During outreach, the worker leases a candidate, opens its Instagram profile, waits for the correct profile header, takes a viewport screenshot, and sends it to openai/gpt-6-luna-decisions through the existing OpenRouter key. Screenshots stay in memory and are not persisted or logged.
 
-An activity day advances after completing the daily budget. Missed days do not advance progress. The daily DM target grows by a random 1-4 after each day with confirmed outreach, up to the cap. The increase is saved once and applies on the next UTC day. Sessions alternate browsing and random batches of 1-5 DMs. Each session aims for a share of the remaining daily target, reserving sending time before allocating browsing time. DM pauses are random 30-90 seconds, shortened within that range when time is tight. Daily counters reset at midnight UTC; sessions stop at the day boundary.
+Business accounts take priority. Male/female labels require explicit public self-description in the target profile text; names, pronouns alone, and appearance cannot establish gender. Insufficient evidence or confidence below 80% becomes unclear and is skipped. Classification, confidence, model, and time are saved in the lead table. The Leads view shows when screening occurred.
 
-Add/remove profiles through Lists Manager. Overlapping lists do not duplicate profiles. Each profile can belong to only one enabled automation. Removing/readding preserves progress.
+A matching category receives a permanent sender assignment and one daily follow slot. Excluded categories and unclear results do not consume quota. A known excluded category is not repeatedly opened by the same category policy; another eligible automation can screen it. Provider failures preserve any saved decision, retry after five then ten minutes, and stop automatic screening after three consecutive failures. A successful decision resets the failure count; explicitly retrying failed enrichment also resets it. A two-minute lease expires after a crashed or interrupted worker. Stale results cannot overwrite a newer lease. Approval rechecks pause, list membership, category settings, day, and daily allowance.
 
-## Leads
+Deployment migrates the existing lead pool in resumable pages of 100. Old unassigned classifications are reset for browser screening. Existing assignments, follows, DM history, and new Luna decisions are preserved. Retired lead picture URLs, descriptions, batch IDs, and the background-enrichment work table are removed. Chat avatar URLs are independent and retained. CI first deploys a compatible schema, waits for cleanup, then deploys the final strict schema; a failed cleanup stops deployment and resumes on retry.
 
-Add source Instagram profiles in Scraper. The scraper collects recent post likers, deduplicates them by Instagram ID, and saves them to the selected lead list. Only public accounts classified as male and ready for outreach are eligible for DMs.
+This is a one-time migration. After successful production deployment, remove `convex/migrations/leadScreening.ts`, its tests, `.github/scripts/deploy-convex.ts` and its tests, and the `leadScreeningMigration` tracking table. Restore the workflow's direct `convex deploy` command. Runtime screening does not depend on the migration.
 
-Leads store their Instagram ID, username, classification, sender assignment, DM and follow state. Claims also save the source scraped list and automation. Lead list membership and outreach availability are indexed separately. There is no separate attempts table or delivery history.
+## Outreach and cleanup
 
-A new interaction requires dmSent=false, followed=false, and no senderId. The server atomically assigns senderId and reserves a slot in the daily target before opening the recipient. Claims are never automatically released, even after failure, restart, list changes, or unfollow. Claim requests are not retried after HTTP failures. This may skip a recipient without sending, but prevents another session or sender from trying again.
+An accepted recipient is followed if it is not already followed or requested. Confirmed follows are recorded for cleanup; public accounts may receive one like. Only confirmed follows advance the follow ramp. Approved claims remain permanent after an interrupted Instagram action, avoiding duplicate outreach.
 
-The current session can follow a claimed recipient and then send its DM. dmSent becomes true only after confirmation. If delivery cannot be confirmed, the profile stops with an issue; check Instagram before clearing it in the automation popup. The recipient remains claimed and skipped.
+Notifications are checked daily. DMs begin on the next day only after a confirmed follow-back, using the message from the selected scraped list. Category settings are rechecked before Send. Message variations and placeholders are rendered once. An uncertain delivery stops that profile for review; it is never blindly resent.
 
-Only confirmed deliveries count toward the displayed target. If preparation reaches the session deadline before Send, the claimed lead is skipped without flagging the profile for review. Confirmed blocked and unsent messages release their target slot once so a different lead can be tried; the original lead remains claimed. Uncertain delivery after Send keeps its slot and stops the profile for review. Missing leads, delivery issues, downtime, or insufficient time can prevent completing the target. The UI shows delivered/target and marks an exhausted budget with an incomplete target.
+Confirmed follows or requests are removed after the configured unfollow delay. Cleanup runs in the same automation sessions and preserves sender history. Browsing, screening, follows, DMs, pauses, and cleanup share the session deadline. Rest releases the browser slot.
 
-## Follows
-
-Before every DM, the routine follows the recipient if not already followed or requested, records followed=true and followDate after confirmation, then opens Message. Existing follows and requests are left alone and are not recorded for automatic cleanup. If following cannot be confirmed, no DM is sent. Private accounts may still require approval; unavailable messaging stops delivery for review.
-
-Outreach settings include an unfollow delay range (1–365 days, default 7–7). Each claimed recipient gets a saved random delay, starting when the follow is confirmed. The same sender unfollows confirmed follows (or cancels confirmed requests) in its next eligible session after that deadline. Changing the range does not move existing deadlines; follows saved before this setting keep seven full days. Cleanup runs before browsing in bounded batches and requires an enabled routine and eligible sender. Outreach need not remain enabled. Unfollow sets followed=false, retaining followDate and senderId; it never requeues the lead.
-
-There is no pending-action recovery. If the process stops between an Instagram action and saving its result, the boolean may remain false. The sender claim prevents repeats. An unrecorded follow has no automatic cleanup date and must be checked manually.
-
-Deploy Convex, server, and frontend together. Browser controls have simulated tests and still require validation against the live Instagram UI before outreach.
+Deploy matching Convex, server, and frontend changes together. No new manual login or API key is needed.

@@ -1,6 +1,5 @@
 import { patchProfile } from './workerMetadata'
 import { setProfilePaused } from './profilePause'
-import { LeadStatsChanges } from './leadStats'
 import { recordActivity } from './analyticsActivity'
 import { v } from "convex/values";
 import {
@@ -12,11 +11,12 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { followAllowance, dayKey, routineLists, randomInRange, unfollowRange, profileOutreachRoutes } from "./routinePolicy";
+import { followAllowance, dayKey, routineLists, profileOutreachRoutes } from "./routinePolicy";
 import { requireServerBridgeAuth } from "./serverBridgeAuth";
 import { leadAvailable, setLeadAvailability } from './leadMemberships';
 import { setChatCounterEnabled } from './chatCache';
-import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState } from './routineErrors';
+import { isRetryableRoutineIssue, isRoutineLoginIssue, ROUTINE_RETRY_MS, routineRetryState,
+} from './routineErrors';
 
 const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
   ctx.db
@@ -26,15 +26,15 @@ const progress = (ctx: QueryCtx, profileId: Id<"profiles">) =>
 
 function kyivDateKey(timestamp: number): string {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Europe/Kyiv',
-    year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(timestamp);
-  const get = (kind: string) => parts.find(part => part.type === kind)?.value ?? '';
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(timestamp);
+  const get = (kind: string) => parts.find((part) => part.type === kind)?.value ?? '';
   return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 export async function assertAssignments(
   ctx: QueryCtx,
-  candidate?: Doc<"automations">,
-) {
+  candidate?: Doc<"automations">) {
   const automations = (await ctx.db.query("automations").collect()).filter(
     (a) => a._id !== candidate?._id,
   );
@@ -43,8 +43,7 @@ export async function assertAssignments(
   for (const profile of await ctx.db.query("profiles").collect()) {
     const matches = active.filter((a) =>
       routineLists(a).some((id) =>
-        profile.listIds?.includes(id as Id<"lists">),
-      ),
+        profile.listIds?.includes(id as Id<"lists">)),
     );
     if (matches.length > 1)
       throw new Error(
@@ -53,7 +52,7 @@ export async function assertAssignments(
   }
 }
 
-async function ensureProgress(ctx: MutationCtx, profileId: Id<"profiles">) {
+export async function ensureProgress(ctx: MutationCtx, profileId: Id<"profiles">) {
   const existing = await progress(ctx, profileId);
   if (existing) return existing;
   const id = await ctx.db.insert("accountProgress", {
@@ -71,7 +70,7 @@ async function ensureProgress(ctx: MutationCtx, profileId: Id<"profiles">) {
   return (await ctx.db.get(id))!;
 }
 
-async function eligibility(
+export async function eligibility(
   ctx: QueryCtx,
   automationId: Id<"automations">,
   profileId: Id<"profiles">,
@@ -90,7 +89,7 @@ async function eligibility(
   )
     return null;
   const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
-  const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', profileId)).unique();
+  const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', (q) => q.eq('profileId', profileId)).unique();
   if (p.igAccountId && igAccount?.status !== 'connected' &&
     !(igAccount?.status === 'assigned' && igAccount.browserLoggedInAt))
     return null;
@@ -164,7 +163,7 @@ export const accounts = query({
         const state = savedState ? { ...savedState, ...routineRetryState(savedState) } : null;
         const igAccount = p.igAccountId ? await ctx.db.get(p.igAccountId) : null;
         const date = dayKey();
-        const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', p._id)).unique();
+        const warmup = await ctx.db.query('warmupStates').withIndex('by_profile', (q) => q.eq('profileId', p._id)).unique();
         return {
           profileId: p._id,
           name: p.name,
@@ -182,8 +181,8 @@ export const accounts = query({
               : "Outreach",
           activeDays: state?.activeDays ?? 0,
           used: state?.followQuotaDate === date ? state.used : 0,
-          sent: state?.dmDate === date ? state.sentToday ?? 0 : 0,
-          followed: state?.followQuotaDate === date ? state.followedToday ?? 0 : 0,
+          sent: state?.dmDate === date ? (state.sentToday ?? 0) : 0,
+          followed: state?.followQuotaDate === date ? (state.followedToday ?? 0) : 0,
           budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
           allowance:
             a.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || igAccount?.status === 'connected')
@@ -191,8 +190,7 @@ export const accounts = query({
                 ? state.allowance
                 : followAllowance(
                     a.routine,
-                    state?.followIncrease ?? 0,
-                  )
+                    state?.followIncrease ?? 0)
               : 0,
           nextRunAt: state?.nextRunAt,
         };
@@ -211,9 +209,11 @@ export const target = internalQuery({
     const today = dayKey();
     const s = e.state;
     const allowance = Math.min(e.policy.maxDms, s?.followQuotaDate === today ? s.allowance
-      : followAllowance(e.policy, s?.followIncrease ?? 0));
+      : followAllowance(e.policy, s?.followIncrease ?? 0),
+    );
     return { target: allowance, remaining: Math.max(0, allowance - (s?.followQuotaDate === today ? s.used : 0)),
-      sent: s?.followQuotaDate === today ? s.followedToday ?? 0 : 0 };
+      sent: s?.followQuotaDate === today ? (s.followedToday ?? 0) : 0,
+    };
   },
 });
 
@@ -277,7 +277,8 @@ export const recordSession = internalMutation({
       issue,
       nextRunAt: Math.ceil(retryable
         ? Math.max(state.nextRunAt, warmup?.nextRunAt ?? 0, now + ROUTINE_RETRY_MS)
-        : warmup?.nextRunAt ?? now + 60 * 60_000),
+        : (warmup?.nextRunAt ?? now + 60 * 60_000),
+      ),
       updatedAt: now,
     });
     if (isRoutineLoginIssue(args.issue)) {
@@ -285,9 +286,9 @@ export const recordSession = internalMutation({
       await setChatCounterEnabled(ctx, args.profileId, false);
     }
   },
-});
+})
 
-/** Claim a new follow once; claimed leads are never returned to another sender. */
+/** Lease a candidate for browser screening; assignment and quota wait for approval. */
 export const reserve = internalMutation({
   args: { automationId: v.id('automations'), profileId: v.id('profiles') },
   handler: async (ctx, args) => {
@@ -299,47 +300,81 @@ export const reserve = internalMutation({
     const date = dayKey();
     const state = await ensureProgress(ctx, args.profileId);
     const used = state.followQuotaDate === date ? state.used : 0;
-    const allowance = Math.min(e.policy.maxDms, state.followQuotaDate === date ? state.allowance : followAllowance(e.policy, state.followIncrease ?? 0));
+    const allowance = Math.min(e.policy.maxDms, state.followQuotaDate === date ? state.allowance : followAllowance(e.policy, state.followIncrease ?? 0),
+    );
     if (used >= allowance) return null;
     let lead: Doc<'leads'> | undefined;
-    let selected: typeof routes[number] | undefined;
-    const start = (routes.findIndex(route => route.leadListId === state.lastLeadListId) + 1) % routes.length;
+    let selected: (typeof routes)[number] | undefined;
+    const start = (routes.findIndex((route) => route.leadListId === state.lastLeadListId) + 1) % routes.length;
     for (let offset = 0; offset < routes.length && !lead; offset++) {
       const route = routes[(start + offset) % routes.length];
-      if (!await ctx.db.get(route.leadListId)) continue;
-      for await (const membership of ctx.db.query('leadMemberships')
-        .withIndex('by_list_available', q => q.eq('listId', route.leadListId).eq('available', true))) {
-        const candidate = await ctx.db.get(membership.leadId);
-        if (candidate && leadAvailable(candidate)) { lead = candidate; selected = route; break; }
-        await ctx.db.patch(membership._id, { available: false });
+      if (!(await ctx.db.get(route.leadListId))) continue;
+      for (const category of [undefined, ...(e.policy.allowedCategories ?? ['male'])]) {
+        const memberships = await ctx.db.query('leadMemberships')
+          .withIndex('by_list_category', q => q.eq('listId', route.leadListId).eq('available', true).eq('classification', category))
+          .take(100);
+        for (const membership of memberships) {
+          const candidate = await ctx.db.get(membership.leadId);
+          if (!candidate || !leadAvailable(candidate)) {
+            await ctx.db.patch(membership._id, { available: false })
+            continue
+          }
+          if ((candidate.screeningUntil ?? 0) > Date.now()) continue
+          if (
+            candidate.enrichmentModel === 'openai/gpt-6-luna-decisions' &&
+            candidate.classification &&
+            !(e.policy.allowedCategories ?? ['male']).includes(candidate.classification)
+          )
+            continue
+          lead = candidate
+          selected = route
+          break
+        }
+        if (lead) break;
       }
     }
-    if (!lead || !selected) return null;
-    await ctx.db.patch(lead._id, { senderId: args.profileId, outreachListId: selected.leadListId, outreachAutomationId: args.automationId, unfollowDays: randomInRange(unfollowRange(e.policy)) });
-    const stats = new LeadStatsChanges();
-    stats.add(lead, { ...lead, senderId: args.profileId });
-    await stats.flush(ctx);
-    await setLeadAvailability(ctx, lead._id, false);
-    await ctx.db.patch(state._id, { date, followQuotaDate: date, used: used + 1, allowance, lastLeadListId: selected.leadListId,
-      followedToday: state.followQuotaDate === date ? state.followedToday ?? 0 : 0, updatedAt: Date.now() });
-    return { leadId: lead._id, username: lead.username, message: selected.message.replaceAll('{{username}}', lead.username), date };
+    if (!lead || !selected) return null
+    const screeningToken = `${Date.now()}:${Math.random().toString(36).slice(2)}`
+    await ctx.db.patch(lead._id, {
+      screeningToken,
+      screeningProfileId: args.profileId,
+      screeningAutomationId: args.automationId,
+      screeningListId: selected.leadListId,
+      screeningUntil: Date.now() + 2 * 60_000,
+    });
+    await ctx.db.patch(state._id, { lastLeadListId: selected.leadListId });
+    return { leadId: lead._id, username: lead.username,
+      fullName: lead.fullName,
+      message: selected.message,
+      date,
+      screeningToken,
+    };
   },
 });
 
 export const beginFollow = internalMutation({
-  args: { automationId: v.id('automations'), profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()) },
+  args: { automationId: v.id('automations'), profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), now: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
     const today = dayKey(args.now ?? Date.now());
-    const allowed = !!(lead && lead.senderId === args.profileId && !lead.followed && lead.followStartedAt === undefined && !lead.dmSent && !lead.dmBlocked &&
-      e && e.maintenance && !e.followsBlocked && (!e.profile.igAccountId || e.igAccount?.status === 'connected') &&
+    const allowed = !!(lead && lead.senderId === args.profileId &&
+      lead.enrichmentModel === 'openai/gpt-6-luna-decisions' &&
+      lead.classification &&
+      e &&
+      (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
+      !lead.followed && lead.followStartedAt === undefined && !lead.dmSent && !lead.dmBlocked &&
+      e.maintenance && !e.followsBlocked && (!e.profile.igAccountId || e.igAccount?.status === 'connected') &&
       e.profile.outreachReady && e.policy.outreachEnabled && today === args.date &&
-      (!lead.outreachListId || (await ctx.db.get(lead.outreachListId) && lead.outreachAutomationId === args.automationId && profileOutreachRoutes(e.policy, args.profileId).some(route => route.leadListId === lead.outreachListId))));
+      (!lead.outreachListId || ((await ctx.db.get(lead.outreachListId)) && lead.outreachAutomationId === args.automationId && profileOutreachRoutes(e.policy, args.profileId).some(
+            (route) => route.leadListId === lead.outreachListId,
+          ))));
     if (!allowed || !lead) return false;
     // Persist cleanup intent before the browser click, including a lost confirmation/restart.
     const now = Date.now();
-    await ctx.db.patch(lead._id, { followStartedAt: now, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000 });
+    await ctx.db.patch(lead._id, { followStartedAt: now, unfollowAt: now + (lead.unfollowDays ?? 7) * 86_400_000,
+    });
     return true;
   },
 });
@@ -347,9 +382,11 @@ export const beginFollow = internalMutation({
 const outreachArgs = { automationId: v.id('automations'), profileId: v.id('profiles') };
 
 function pendingDm(lead: Doc<'leads'>, profileId: Id<'profiles'>, now: number) {
-  return lead.senderId === profileId && lead.followed && !lead.dmSent && !lead.dmBlocked &&
+  return (
+    lead.senderId === profileId && lead.followed && !lead.dmSent && !lead.dmBlocked &&
     lead.dmStartedAt === undefined && lead.followDate !== undefined && dayKey(lead.followDate) < dayKey(now) &&
-    (lead.unfollowAt ?? lead.followDate + followDelay) > now;
+    (lead.unfollowAt ?? lead.followDate + followDelay) > now
+  )
 }
 
 /** Only scan once per day, and only while an outreach follow is awaiting a reply. */
@@ -362,12 +399,17 @@ export const notifications = internalQuery({
       (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
       !profileOutreachRoutes(e.policy, args.profileId).length || e.state?.lastNotificationsDate === date)
       return null;
-    const pending = await ctx.db.query('leads').withIndex('by_unfollow_due', q =>
-      q.eq('senderId', args.profileId).eq('followed', true).gt('unfollowAt', Date.now()))
-      .filter(q => q.and(q.lt(q.field('followDate'), Date.parse(date)), q.eq(q.field('dmSent'), false),
-        q.neq(q.field('dmBlocked'), true), q.eq(q.field('dmStartedAt'), undefined))).first();
+    const pending = await ctx.db.query('leads').withIndex('by_unfollow_due', (q) =>
+      q.eq('senderId', args.profileId).eq('followed', true).gt('unfollowAt', Date.now()),
+      )
+      .filter((q) => q.and(q.lt(q.field('followDate'), Date.parse(date)), q.eq(q.field('dmSent'), false),
+        q.neq(q.field('dmBlocked'), true), q.eq(q.field('dmStartedAt'), undefined),
+        ),
+      ).first();
     return pending ? { date, since: Math.max(e.state?.outreachStartedAt ?? 0,
-      e.state?.lastNotificationsAt ? e.state.lastNotificationsAt - 86_400_000 : 0) } : null;
+      e.state?.lastNotificationsAt ? e.state.lastNotificationsAt - 86_400_000 : 0,
+          ),
+        } : null;
   },
 });
 
@@ -380,11 +422,11 @@ export const recordNotifications = internalMutation({
     if (!e || !e.maintenance || !e.policy.outreachEnabled || args.date !== dayKey()) return;
     const routes = profileOutreachRoutes(e.policy, args.profileId);
     const now = Date.now();
-    for (const username of new Set(args.usernames.map(name => name.toLowerCase()))) {
-      const leads = await ctx.db.query('leads').withIndex('by_username', q => q.eq('username', username)).collect();
+    for (const username of new Set(args.usernames.map((name) => name.toLowerCase()))) {
+      const leads = await ctx.db.query('leads').withIndex('by_username', (q) => q.eq('username', username)).collect();
       for (const lead of leads) {
         if (pendingDm(lead, args.profileId, now) && lead.outreachAutomationId === args.automationId &&
-          routes.some(route => route.leadListId === lead.outreachListId) && !lead.dmEligible)
+          routes.some((route) => route.leadListId === lead.outreachListId) && !lead.dmEligible)
           await ctx.db.patch(lead._id, { dmEligible: true });
       }
     }
@@ -402,12 +444,19 @@ export const dmTasks = internalQuery({
       (e.profile.igAccountId && e.igAccount?.status !== 'connected')) return [];
     const routes = profileOutreachRoutes(e.policy, args.profileId);
     const tasks = [];
-    for await (const lead of ctx.db.query('leads').withIndex('by_dm_pending', q =>
-      q.eq('senderId', args.profileId).eq('dmEligible', true).eq('dmStartedAt', undefined).gt('unfollowAt', Date.now()))) {
-      const route = routes.find(route => route.leadListId === lead.outreachListId);
-      if (pendingDm(lead, args.profileId, Date.now()) && route && lead.outreachAutomationId === args.automationId && await ctx.db.get(route.leadListId)) {
+    for await (const lead of ctx.db.query('leads').withIndex('by_dm_pending', (q) =>
+      q.eq('senderId', args.profileId).eq('dmEligible', true).eq('dmStartedAt', undefined).gt('unfollowAt', Date.now()),
+      )) {
+      const route = routes.find((route) => route.leadListId === lead.outreachListId);
+      if (
+        lead.classification &&
+        (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
+        pendingDm(lead, args.profileId, Date.now()) && route && lead.outreachAutomationId === args.automationId &&
+        (await ctx.db.get(route.leadListId))
+      ) {
         tasks.push({ leadId: lead._id, username: lead.username,
-          fullName: lead.fullName, message: route.message, date: dayKey() });
+          fullName: lead.fullName, message: route.message, date: dayKey(),
+        });
         if (tasks.length === 50) break; // More than can fit in a single browser session.
       }
     }
@@ -422,12 +471,16 @@ export const beginSend = internalMutation({
     const now = args.now ?? Date.now();
     const lead = await ctx.db.get(args.leadId);
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!lead || !e || !e.maintenance || !lead.dmEligible || !pendingDm(lead, args.profileId, now) ||
+    if (!lead || !e || !e.maintenance || !lead.classification ||
+      !(e.policy.allowedCategories ?? ['male']).includes(lead.classification) ||
+      !lead.dmEligible || !pendingDm(lead, args.profileId, now) ||
       dayKey(now) !== args.date || !e.policy.outreachEnabled || !e.profile.outreachReady ||
       (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
       lead.outreachAutomationId !== args.automationId || !lead.outreachListId ||
-      !await ctx.db.get(lead.outreachListId) ||
-      !profileOutreachRoutes(e.policy, args.profileId).some(route => route.leadListId === lead.outreachListId)) return false;
+      !(await ctx.db.get(lead.outreachListId)) ||
+      !profileOutreachRoutes(e.policy, args.profileId).some(
+        (route) => route.leadListId === lead.outreachListId,
+      )) return false;
     await ctx.db.patch(lead._id, { dmStartedAt: now, dmStartedDate: args.date, dmEligible: false });
     return true;
   },
@@ -443,7 +496,8 @@ export const dismissDm = internalMutation({
 });
 
 export const finishSend = internalMutation({
-  args: { profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), sent: v.boolean(), blocked: v.optional(v.boolean()) },
+  args: { profileId: v.id('profiles'), leadId: v.id('leads'), date: v.string(), sent: v.boolean(), blocked: v.optional(v.boolean()),
+  },
   handler: async (ctx, args) => {
     const lead = await ctx.db.get(args.leadId);
     if (!lead || lead.senderId !== args.profileId) throw new Error('Lead belongs to another sender');
@@ -459,7 +513,7 @@ export const finishSend = internalMutation({
     if (args.sent) {
       await ctx.db.patch(state._id, {
         dmDate: args.date,
-        sentToday: (state.dmDate === args.date ? state.sentToday ?? 0 : 0) + 1,
+        sentToday: (state.dmDate === args.date ? (state.sentToday ?? 0) : 0) + 1,
       });
     } else if (args.blocked) {
       // A confirmed blocked/unsent message is never retried.
@@ -474,20 +528,26 @@ export const finishSend = internalMutation({
 
 const followDelay = 7 * 24 * 60 * 60_000;
 export const followTasks = internalQuery({
-  args: { automationId: v.id('automations'), profileId: v.id('profiles'), now: v.optional(v.number()) },
+  args: { automationId: v.id('automations'), profileId: v.id('profiles'), now: v.optional(v.number()),
+  },
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
     if (!e || (e.profile.igAccountId && e.igAccount?.status !== 'connected')) return [];
     const now = args.now ?? Date.now();
-    const due = await ctx.db.query('leads').withIndex('by_unfollow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('unfollowAt', undefined).lte('unfollowAt', now)).take(5);
+    const due = await ctx.db.query('leads').withIndex('by_unfollow_due', (q) => q.eq('senderId', args.profileId).eq('followed', true).gt('unfollowAt', undefined).lte('unfollowAt', now),
+      ).take(5);
     // Existing follows without a saved deadline retain their original seven-day delay.
-    if (due.length < 5) due.push(...await ctx.db.query('leads')
-      .withIndex('by_follow_due', q => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', now - followDelay))
-      .filter(q => q.eq(q.field('unfollowAt'), undefined)).take(5 - due.length));
-    if (due.length < 5) due.push(...await ctx.db.query('leads')
-      .withIndex('by_unfollow_due', q => q.eq('senderId', args.profileId).eq('followed', false).gt('unfollowAt', undefined).lte('unfollowAt', now))
-      .filter(q => q.neq(q.field('followStartedAt'), undefined)).take(5 - due.length));
-    return due.map(lead => ({ leadId: lead._id, username: lead.username }));
+    if (due.length < 5) due.push(...(await ctx.db.query('leads')
+      .withIndex('by_follow_due', (q) => q.eq('senderId', args.profileId).eq('followed', true).gt('followDate', undefined).lte('followDate', now - followDelay),
+          )
+      .filter((q) => q.eq(q.field('unfollowAt'), undefined)).take(5 - due.length)),
+      )
+    if (due.length < 5) due.push(...(await ctx.db.query('leads')
+      .withIndex('by_unfollow_due', (q) => q.eq('senderId', args.profileId).eq('followed', false).gt('unfollowAt', undefined).lte('unfollowAt', now),
+          )
+      .filter((q) => q.neq(q.field('followStartedAt'), undefined)).take(5 - due.length)),
+      )
+    return due.map((lead) => ({ leadId: lead._id, username: lead.username }));
   },
 });
 
@@ -501,7 +561,8 @@ export const recordFollow = internalMutation({
     if (!args.followed && (lead.unfollowAt ?? (lead.followDate ?? Infinity) + followDelay) > now) throw new Error('Follow is not due for removal');
     await ctx.db.patch(lead._id, { followed: args.followed, ...(args.followed ? {
       followDate: lead.followStartedAt ?? now, unfollowAt: lead.unfollowAt ?? now + (lead.unfollowDays ?? 7) * 86_400_000,
-    } : { dmEligible: false, followStartedAt: undefined }) });
+    } : { dmEligible: false, followStartedAt: undefined }),
+    });
     if (args.followed) {
       await setLeadAvailability(ctx, lead._id, false);
       const state = await ensureProgress(ctx, args.profileId);
@@ -517,4 +578,4 @@ export const recordFollow = internalMutation({
       });
     }
   },
-});
+})

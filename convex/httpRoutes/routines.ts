@@ -4,6 +4,25 @@ import { internal } from "../_generated/api";
 import { jsonResponse, parseBody, withErrorHandling } from "./shared";
 
 export function registerRoutineRoutes(http: HttpRouter) {
+  http.route({
+    path: '/api/routines/screening',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const b = await parseBody(request)
+      return jsonResponse(
+        await ctx.runMutation(internal.leadScreening.finish, {
+          automationId: b.automationId,
+          profileId: b.profileId,
+          leadId: b.leadId,
+          screeningToken: b.screeningToken,
+          date: b.date,
+          category: b.category,
+          confidence: b.confidence,
+        }),
+      )
+    }),
+  })
+
   for (const [path, endpoint] of [
     ['/api/routines/notifications', internal.routines.notifications],
     ['/api/routines/dm-tasks', internal.routines.dmTasks],

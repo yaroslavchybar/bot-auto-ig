@@ -2,6 +2,9 @@ import { v } from "convex/values";
 import { validateOutreachMessage } from '../server/shared/outreachMessage';
 
 export const routineValidator = v.object({
+  allowedCategories: v.optional(
+    v.array(v.union(v.literal('male'), v.literal('female'), v.literal('business'))),
+  ),
   // Outreach now starts in maintenance on day 8; saved values are ignored.
   outreachStartDay: v.optional(v.number()),
   // Stored names are retained; these settings now limit new follows, not DMs.
@@ -17,7 +20,9 @@ export const routineValidator = v.object({
     profileIds: v.array(v.id('profiles')),
     allProfiles: v.optional(v.boolean()),
     message: v.string(),
-  }))),
+  }),
+    ),
+  ),
   activity: v.record(v.string(), v.union(v.number(), v.boolean(), v.string())),
   headless: v.boolean(),
   unfollowMinDays: v.optional(v.number()),
@@ -32,21 +37,28 @@ export type OutreachRoute = NonNullable<RoutinePolicy['outreachRoutes']>[number]
 
 // Existing single-list settings open as one assignment and are saved in the new format.
 export function outreachRoutes(policy: RoutinePolicy): OutreachRoute[] {
-  return policy.outreachRoutes ?? (policy.leadListId
-    ? [{ leadListId: policy.leadListId, profileIds: [], allProfiles: true, message: policy.message }]
-    : []);
+  return (
+    policy.outreachRoutes ?? (policy.leadListId
+    ? [{ leadListId: policy.leadListId, profileIds: [], allProfiles: true, message: policy.message,
+          },
+        ]
+    : [])
+  )
 }
 
 export function profileOutreachRoutes(policy: RoutinePolicy, profileId: string): OutreachRoute[] {
   const routes = outreachRoutes(policy);
   // Saved multi-list routines must be corrected before outreach can resume.
   if (routes.length > 1) return [];
-  return routes.filter(route => route.allProfiles || route.profileIds.includes(profileId as OutreachRoute['profileIds'][number]));
+  return routes.filter(
+    (route) => route.allProfiles || route.profileIds.includes(profileId as OutreachRoute['profileIds'][number]),
+  );
 }
 export const defaultRoutine: RoutinePolicy = {
   initialDms: 3,
   maxDms: 30,
   outreachEnabled: false,
+  allowedCategories: ['male'],
   message: "",
   activity: {},
   headless: false,
@@ -64,6 +76,12 @@ export const randomInRange = ([min, max]: readonly [number, number]) =>
   min + Math.floor(Math.random() * (max - min + 1));
 
 export function validateRoutine(p: RoutinePolicy) {
+  if (
+    p.allowedCategories &&
+    (!p.allowedCategories.length ||
+      new Set(p.allowedCategories).size !== p.allowedCategories.length)
+  )
+    throw new Error('Select at least one unique lead category')
   for (const [name, range, limit] of [
     ['Unfollow days', unfollowRange(p), 365],
     ['Post target', warmupPostRange(p), 100],
@@ -124,8 +142,7 @@ export const dayKey = (now = Date.now()) =>
 
 export function followAllowance(
   p: RoutinePolicy,
-  accumulatedIncrease: number,
-) {
+  accumulatedIncrease: number) {
   return p.outreachEnabled
     ? Math.min(p.maxDms, p.initialDms + accumulatedIncrease)
     : 0;

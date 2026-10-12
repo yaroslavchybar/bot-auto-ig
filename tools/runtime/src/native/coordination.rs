@@ -61,12 +61,12 @@ impl Coordination {
         if *self.stop.borrow() {
             return;
         }
-        for kind in ["scraper", "enrichment", "chat", "routines"] {
+        for kind in ["scraper", "chat", "routines"] {
             let state = self.clone();
             let mut stop = self.stop.subscribe();
             tasks.push(tokio::spawn(async move {
                 loop {
-                    let task = async { match kind { "scraper" => state.scraper().await, "enrichment" => state.enrichment().await, "chat" => state.chat().await, _ => state.routines().await } };
+                    let task = async { match kind { "scraper" => state.scraper().await, "chat" => state.chat().await, _ => state.routines().await } };
                     tokio::select! { _ = stop.changed() => break, result = task => { if let Err(error) = result { ig_service_common::service_error("coordination.subscription_failed", &error.message); } } }
                     tokio::select! { _ = stop.changed() => break, _ = tokio::time::sleep(Duration::from_secs(3)) => {} }
                 }
@@ -98,21 +98,6 @@ impl Coordination {
             self.scraper.update(value).await?;
         }
         Err(Failure::unavailable("Scraper subscription ended"))
-    }
-    async fn enrichment(&self) -> Result<()> {
-        let mut subscription = self
-            .subscriptions
-            .subscribe("scraper:enrichmentWork", json!({}))
-            .await?;
-        while let Some(update) = subscription.next().await {
-            let value = subscriptions::value(update)?;
-            self.scraper.update_enrichment(
-                value["pending"]
-                    .as_bool()
-                    .ok_or_else(|| Failure::invalid("Invalid enrichment work"))?,
-            );
-        }
-        Err(Failure::unavailable("Enrichment subscription ended"))
     }
     async fn chat(&self) -> Result<()> {
         let _cache_guard = ChatContexts(self.chat.clone());
