@@ -312,7 +312,8 @@ the post owner through media metadata when only a numeric post PK is available.
 Profile pictures are described through regular OpenRouter GPT-6 Luna calls
 with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies leads,
 so a classification retry does not repeat the picture call. Every mobile session shares a fixed rolling limit of 10 actual Instagram API
-requests per hour across login, Chat, setup, scraping, metadata, and uploads. Failed
+requests per hour across automated login, setup, scraping, metadata, and uploads. User-operated
+Chat calls do not consume this limit or use the sleep window, but still respect profile pause. Failed
 dispatches count; bridge retries do not double-charge. Browser-cookie liker fallback
 shares the same limit. Saving leads consumes no request slots. Usage survives runtime
 restarts and session reconnects. Each session has a stable randomized local wake time

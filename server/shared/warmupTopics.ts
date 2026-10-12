@@ -3,12 +3,6 @@ export function warmupTopics(value: unknown): string[] {
     .map(topic => topic.trim().toLowerCase()).filter(Boolean))] : []
 }
 
-export function matchesWarmupTopic(text: string, topics: readonly string[]): boolean {
-  const lower = text.toLowerCase()
-  const compact = lower.replace(/\s+/g, '')
-  return !topics.length || topics.some(topic => lower.includes(topic) || compact.includes(topic.replace(/\s+/g, '')))
-}
-
 /** Stop before neighboring reels or the page root; never match sidebar/background text. */
 export function reelPostContext(video: Element): Pick<FeedPostContext, 'text' | 'relationship'> {
   let box = video
@@ -63,11 +57,11 @@ export function feedPostContext(article: Element): FeedPostContext {
 }
 
 /** Preserve followed authors (and unknown layouts); filter recommendations by topic. */
-export function feedPostMatches(context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[]): boolean {
-  return context.relationship !== 'not-followed' || matchesWarmupTopic(context.text, topics)
+export function feedPostMatches(context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], related = false): boolean {
+  return context.relationship !== 'not-followed' || !topics.length || related
 }
 
 /** Viewing unknown authors is safe; engagement requires a followed author or explicit topic evidence. */
-export function maintenancePostMatches(context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[]): boolean {
-  return context.relationship === 'followed' || (topics.length > 0 && matchesWarmupTopic(context.text, topics))
+export function maintenancePostMatches(context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], related = false): boolean {
+  return context.relationship === 'followed' || (topics.length > 0 && related)
 }

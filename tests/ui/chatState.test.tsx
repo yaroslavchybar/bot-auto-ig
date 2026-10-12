@@ -105,6 +105,7 @@ function conversation(id: string): ChatThread {
 }
 
 beforeEach(() => {
+  mocks.profiles = [{ id: 'profile', name: 'Profile', igLoggedIn: true, status: 'idle' }]
   mocks.userId = 'user'
   mocks.search = '?profile=profile&thread=1'
   mocks.lists = []
@@ -213,53 +214,55 @@ test('unknown list URLs reset only the list filter, and loading metadata does no
   expect(chat.visibleThreads).toEqual([])
 })
 
-test.each([
-  { scope: 'inbox', active: true, interval: 60_000, threshold: 60_000 },
-  { scope: 'inbox', active: false, interval: 60_000, threshold: 180_000 },
-  { scope: 'thread', active: true, interval: 30_000, threshold: 30_000 },
-  { scope: 'thread', active: false, interval: 30_000, threshold: 120_000 },
-])(
-  '$scope polling tolerates clock drift (active: $active)',
-  async ({ scope, active, interval, threshold }) => {
-    vi.useFakeTimers()
-    let now = Date.now()
-    const startedAt = now
-    vi.spyOn(Date, 'now').mockImplementation(() => now)
-    const timers = vi.spyOn(globalThis, 'setInterval')
-    view = mount()
-    await view.render(<Probe />)
-    const callback = timers.mock.calls.filter(([, delay]) => delay === interval).at(-1)?.[0]
-    if (typeof callback !== 'function') throw new Error('Missing polling timer')
-    const path = scope === 'inbox' ? '/api/chat/profile/threads' : '/api/chat/profile/threads/1'
-    const polls = () => mocks.apiFetch.mock.calls.filter(([url]) => url === path).length
-    const initialPolls = polls()
-    now = startedAt + threshold - 101
-    if (active) document.dispatchEvent(new Event('keydown'))
-    await act(async () => {
-      callback()
-    })
-    expect(polls()).toBe(initialPolls)
+test('Chat fetches on opening without periodic polling, and stops after leaving', async () => {
+  vi.useFakeTimers()
+  view = mount()
+  await view.render(<Probe />)
+  const initial = mocks.apiFetch.mock.calls.length
+  expect(initial).toBeGreaterThan(0)
+  await act(async () => vi.advanceTimersByTimeAsync(20 * 60_000))
+  expect(mocks.apiFetch.mock.calls.length).toBe(initial)
+  await view.unmount()
+  view = undefined
+  await act(async () => vi.advanceTimersByTimeAsync(20 * 60_000))
+  expect(mocks.apiFetch.mock.calls.length).toBe(initial)
+})
 
-    now = startedAt + threshold - 1
-    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
-    await act(async () => {
-      callback()
-    })
-    expect(polls()).toBe(initialPolls)
-    visibility.mockRestore()
-    mocks.apiFetch.mockImplementation(() => new Promise(() => {}))
-    await act(async () => {
-      callback()
-    })
-    expect(polls()).toBe(initialPolls + 1)
-
-    now += threshold
-    await act(async () => {
-      callback()
-    })
-    expect(polls()).toBe(initialPolls + 1) // An outstanding request still blocks polling.
-  },
-)
+test('pausing a profile hides cached threads and errors and closes its selected conversation', async () => {
+  mocks.search = '?thread=profile:1'
+  mocks.profiles = [
+    ...mocks.profiles,
+    { id: 'other', name: 'Other', igLoggedIn: true, status: 'idle' },
+  ]
+  mocks.apiFetch.mockImplementation(async (path: string) =>
+    path === '/api/chat/threads'
+      ? {
+          threads: [
+            { ...conversation('1'), profileId: 'profile' },
+            { ...conversation('2'), profileId: 'other' },
+          ],
+          errors: [{ profileName: 'Profile', message: 'Could not load' }],
+        }
+      : conversation('1'),
+  )
+  view = mount()
+  await view.render(<Probe />)
+  expect(chat.threads).toHaveLength(2)
+  expect(chat.inboxErrors).toEqual(['Profile'])
+  expect(chat.conversation?.id).toBe('1')
+  const previousCalls = mocks.apiFetch.mock.calls.length
+  mocks.profiles = mocks.profiles.filter((profile) => profile.id !== 'profile')
+  await view.render(<Probe />)
+  expect(chat.threads.map((thread) => thread.profileId)).toEqual(['other'])
+  expect(chat.inboxErrors).toEqual([])
+  expect(chat.conversation).toBeNull()
+  expect(mocks.navigate).toHaveBeenLastCalledWith('/chat', { replace: true })
+  expect(
+    mocks.apiFetch.mock.calls
+      .slice(previousCalls)
+      .some(([path]) => path.startsWith('/api/chat/profile/')),
+  ).toBe(false)
+})
 
 test('thread changes immediately reset drafts, conversation, and older-message pagination', async () => {
   view = mount()
@@ -468,6 +471,10 @@ test('Inbox is the default; archiving preserves the draft and new messages stay 
 })
 
 test('all-profile archive writes use the profile/thread pair with identical thread IDs', async () => {
+  mocks.profiles = [
+    ...mocks.profiles,
+    { id: 'other', name: 'Other', igLoggedIn: true, status: 'idle' },
+  ]
   mocks.search = '?thread=profile%3A1'
   mocks.apiFetch.mockImplementation(async (path: string) => {
     if (path === '/api/chat/threads')

@@ -30,6 +30,62 @@ fn setup() -> Cache {
 }
 
 #[tokio::test]
+async fn all_profile_inbox_skips_paused_profiles_and_direct_reads_are_blocked() {
+    let loads = Arc::new(AtomicUsize::new(0));
+    let observed = loads.clone();
+    let fixture = Fixture::start(move |request| {
+        let loads = observed.clone();
+        async move {
+            match request.uri().path() {
+                "/api/profiles" => Json(json!([
+                    {"id":"active","name":"Active","igLoggedIn":true},
+                    {"id":"paused","name":"Paused","igLoggedIn":true,"paused":true}
+                ]))
+                .into_response(),
+                "/api/profiles/by-id" => Json(json!({"id":"paused","paused":true})).into_response(),
+                "/api/chat/context" => {
+                    assert!(request.uri().query().unwrap().contains("profileId=active"));
+                    loads.fetch_add(1, Ordering::Relaxed);
+                    Json(json!({"connected":false})).into_response()
+                }
+                _ => panic!("Unexpected Chat request"),
+            }
+        }
+    })
+    .await;
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let api = Arc::new(api);
+    let uploads = Arc::new(crate::uploads::Uploads {
+        entries: Default::default(),
+        slots: Arc::new(tokio::sync::Semaphore::new(4)),
+    });
+    let mobile = Mobile::fixture(api.clone(), uploads, fixture.url.clone());
+    let chat = Chat::new(api, mobile, Path::new(":memory:")).unwrap();
+    let response = chat
+        .public(
+            "chat.get.threads",
+            &HashMap::new(),
+            HttpRequest::new(Body::empty()),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let data = body(HttpRequest::new(response.into_body())).await;
+    assert_eq!(data, json!({"threads":[],"errors":[]}));
+    assert_eq!(loads.load(Ordering::Relaxed), 1);
+    let response = chat
+        .public(
+            "chat.get.profileId_threads",
+            &HashMap::from([("profileId".into(), "paused".into())]),
+            HttpRequest::new(Body::empty()),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(loads.load(Ordering::Relaxed), 1);
+}
+
+#[tokio::test]
 async fn badge_publication_tracks_unread_ids_even_when_the_total_is_unchanged() {
     let publications = Arc::new(std::sync::Mutex::new(Vec::<Value>::new()));
     let stored = publications.clone();

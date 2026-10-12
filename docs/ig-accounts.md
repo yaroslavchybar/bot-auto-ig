@@ -79,6 +79,15 @@ Required production secrets:
 - `OPENROUTER_API_KEY`: already used by the scraper; GPT-6 Luna generates
   usernames after imported examples and subtle full-name variations.
 
+Warm-up topic filtering uses `openai/gpt-6-luna-decisions` through the same
+OpenRouter key. It judges captions, hashtags, and visible post/profile text by
+meaning, not exact keyword overlap; no images or video frames are sent. A topic
+decision must reach 70% confidence. Followed accounts remain included. Unknown
+author layouts remain viewable, but likes and saves require a confirmed followed
+author or a positive topic decision. Empty text or failed decisions cannot
+qualify an unfollowed account for engagement. Each decision has a four-second limit and is reused when
+the same post is viewed and engaged with.
+
 Create one automation per model and enable it after profiles are browser logged in.
 The automation starts model setup from the browser login date; browsing starts
 on day 2, followed later by outreach. Its Profiles tab

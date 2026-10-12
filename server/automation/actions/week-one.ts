@@ -1,6 +1,6 @@
 import type { Page } from 'playwright-core'
 import { warmupBeginFollow, warmupConfirmFollow, warmupPauseFollows, type WarmupFollowRequest } from '../../shared/convexClient.js'
-import { matchesWarmupTopic, warmupTopics } from '../../shared/warmupTopics.js'
+import { warmupTopics } from '../../shared/warmupTopics.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { followButton, profileControls } from '../follow.js'
 import { likeRecentPost, ownUsername } from '../follow-back.js'
@@ -9,16 +9,18 @@ import { isUserHref } from './guards.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { BrowseSession } from './session.js'
 import { random, type ActionLogger } from './shared.js'
+import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { performProfileFollow } from './follow-safety.js'
 
 const dependencies = { beginFollow: warmupBeginFollow, confirmFollow: warmupConfirmFollow, like: likeRecentPost, ownUsername,
-  follow: performProfileFollow, pauseFollows: warmupPauseFollows }
+  follow: performProfileFollow, pauseFollows: warmupPauseFollows, topic: topicContentMatches }
 
 /** Week-one engagement visits topic search accounts; missing topic evidence always blocks engagement. */
 export async function engageWeekOne(page: Page, keywords: string, budget: WarmupActivityBudget,
-  session: BrowseSession, request: Omit<WarmupFollowRequest, 'username'>, log: ActionLogger, deps = dependencies,
+  session: BrowseSession, request: Omit<WarmupFollowRequest, 'username'>, log: ActionLogger, deps: Omit<typeof dependencies, 'topic'> & { topic?: TopicMatcher } = dependencies,
   interlude?: () => Promise<boolean>): Promise<void> {
   const topics = warmupTopics(keywords)
+  const matchesTopic = deps.topic ?? topicContentMatches
   if (!topics.length || !budget.remaining('profiles') || (!budget.remaining('likes') && !budget.remaining('follows'))) return
   session.check()
   const own = (await deps.ownUsername(page)).toLowerCase()
@@ -45,7 +47,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
     await header.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
     await allowed()
     const text = await header.innerText()
-    if (!matchesWarmupTopic(text, topics)) {
+    if (!await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log)) {
       log({ event: 'automation.warmup.account_off_topic', targetUsername: href.split('/')[1] })
       continue
     }
@@ -53,8 +55,9 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
     if (budget.remaining('likes')) {
       const liked = await deps.like(page, allowed, async () => {
         session.check()
-        const caption = await page.getByRole('dialog').getByRole('article').innerText()
-        return matchesWarmupTopic(caption, topics) && budget.take('likes')
+        const post = page.getByRole('dialog').getByRole('article')
+        const text = await post.innerText()
+        return await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log) && budget.take('likes')
       })
       if (liked) log({ event: 'automation.warmup.topic_like', targetUsername: href.split('/')[1] })
     }

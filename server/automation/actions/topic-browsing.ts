@@ -1,6 +1,6 @@
 import type { Page } from 'playwright-core'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
-import { warmupTopics, feedPostContext } from '../../shared/warmupTopics.js'
+import { warmupTopics, feedPostContext, feedPostMatches } from '../../shared/warmupTopics.js'
 import { actionLocator } from './action-locator.js'
 import { browseFeed } from './feed.js'
 import { isUserHref } from './guards.js'
@@ -11,6 +11,7 @@ import { openReels, watchReels } from './reels.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { random, type ActionLogger, type StopCheck } from './shared.js'
 import { viewContent } from './viewing.js'
+import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
 
 export type TopicBrowseState = { feedViewed: boolean; profilesChecked: boolean; seenPosts: Set<string> }
@@ -49,7 +50,7 @@ export async function visitTopicProfiles(page: Page, topic: string, budget: Warm
 
 /** Keyword grid opens a post dialog; its Next control advances the search results. */
 export async function watchTopicPosts(page: Page, topic: string, count: number, budget: WarmupActivityBudget,
-  seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false): Promise<void> {
+  seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false, matchesTopic: TopicMatcher = topicContentMatches): Promise<void> {
   if (count <= 0 || budget.remaining('reels') <= 0) return
   await page.goto(topicGridUrl(topic), { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
   const tiles = page.locator('main a[href*="/p/"], main a[href*="/reel/"]')
@@ -83,14 +84,17 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
       const sponsored = await article.getByText(/^(?:Sponsored|Ad)$/i).count() > 0
       if (!seen.has(path) && !sponsored) {
         seen.add(path)
-        const hasVideo = await article.locator('video').count() > 0
-        if (hasVideo && !budget.take('reels')) break
-        const viewed = await viewContent(article, (Math.random() > 0.85 ? random(18, 35) : random(6, 16)) * 1000, session)
-        if (viewed && maintenance) {
-          const context = await article.evaluate(feedPostContext)
-          await maintainPost(page, article, context, [topic], budget, session, log)
+        const context = await article.evaluate(feedPostContext)
+        const related = context.relationship === 'not-followed' && await matchesTopic(context, [topic], session, log)
+        if (feedPostMatches(context, [topic], related)) {
+          const hasVideo = await article.locator('video').count() > 0
+          if (hasVideo && !budget.take('reels')) break
+          const viewed = await viewContent(article, (Math.random() > 0.85 ? random(18, 35) : random(6, 16)) * 1000, session)
+          if (viewed && maintenance) {
+            await maintainPost(page, article, context, [topic], budget, session, log, matchesTopic)
+          }
+          if (viewed) { watched++; budget.browsed++ }
         }
-        if (viewed) { watched++; budget.browsed++ }
       }
       if (watched >= count) break
       const next = dialog.locator(TOPIC_NEXT_RESULT)

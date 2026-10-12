@@ -29,6 +29,7 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   const deps: NonNullable<Parameters<typeof engageWeekOne>[6]> = {
     follow: async (_page, allowed, click, confirmed) => { if (!await allowed()) return false; await click(); await confirmed(); return true },
     pauseFollows: async () => {},
+    topic: async context => context.text.toLowerCase().includes('fitness'),
     ownUsername: async () => 'self',
     beginFollow: async () => { calls.push('authorize'); return authorize },
     confirmFollow: async () => { calls.push('confirm-follow') },

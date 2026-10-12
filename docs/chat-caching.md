@@ -58,8 +58,11 @@ The shared inbox and open conversation have 60-second and 20-second server
 freshness windows, respectively. In-flight Instagram requests are shared and
 failures back off for two minutes. The server keeps at most 32 profile entries,
 each with an inbox snapshot and up to 100 conversation freshness markers.
-Conversation histories live in SQLite. Background inbox checks run every
-15 minutes, also when no device is open, and skip unchanged writes.
+Conversation histories live in SQLite. Inboxes load when Chat is opened;
+there are no background inbox checks or periodic browser polling.
+User-operated Chat calls are exempt from the mobile request/sleep limit.
+Paused profiles are hidden from the selector and cached conversations and are
+excluded from all-profile inbox requests. They cannot dispatch mobile calls.
 
 Rust keeps saved Instagram sessions in memory for at most 32 profiles. A
 server-authenticated Convex subscription supplies only session file revisions,
@@ -68,14 +71,14 @@ need no periodic Convex HTTP reads. New sessions and changed revisions reload
 the private session file; proxy changes take effect without downloading it.
 Only changed cookies or unread counts are written back. Subscription outages
 disable reuse and fall back to authenticated HTTP reads. Reconnection uses a
-fresh subscription before allowing cached sessions again. The 15-minute sync
-continues even when Chat is closed.
+fresh subscription before allowing cached sessions again. This subscription updates
+permissions and session metadata without fetching inboxes.
 
-Active browser pages poll the inbox every minute and the selected conversation
-every 30 seconds. After a minute without keyboard or pointer activity, those
-intervals slow to three minutes and two minutes. Hidden tabs stop polling and
-close their chat socket. Small `chat_changed` socket notifications refresh other
-devices; identical messages do not generate notifications.
+Opening or returning to the visible Chat tab loads the inbox and selected conversation.
+Hidden tabs stop fetching and close their chat socket. Small `chat_changed`
+socket notifications refresh open Chat pages after explicit actions such as sends;
+identical messages do not generate notifications. New external messages appear
+when Chat is opened again; the sidebar badge reflects the last fetched inbox.
 
 Web Locks coordinate identical reads between tabs. A ten-second IndexedDB
 response cache lets followers reuse the first tab's result; it holds at most 20
@@ -96,15 +99,15 @@ a per-profile lock, and saves use the current connection token to prevent an old
 client from restoring a disconnected session. Existing TypeScript SDK sessions
 are imported into Rust with their cookies, authorization, and device identity;
 the format change does not require login. Message caching, synchronization, send
-handlers, background checks, and chat socket events are owned by Rust. Successful
+handlers, session metadata, and chat socket events are owned by Rust. Successful
 sends return before background refresh; refresh failures do not turn a sent message
 into a failed send.
 
 ## Rollout
 
 Deploy the matching Convex, server, and frontend changes together. The first
-background check repopulates SQLite from Instagram; no browser device is needed
-to recover cached messages. Counts are bounded by the 200-conversation server
+opening of Chat repopulates SQLite from Instagram.
+Counts are bounded by the 200-conversation server
 cache, rather than unlimited history. SQLite is local to one VPS: a different
 VPS starts with an empty message cache and uses the durable login sessions.
 

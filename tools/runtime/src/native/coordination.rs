@@ -29,8 +29,6 @@ pub struct Coordination {
     started: AtomicBool,
     tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
     stop: watch::Sender<bool>,
-    #[cfg(test)]
-    chat_interval: Duration,
 }
 impl Coordination {
     pub fn new(
@@ -50,8 +48,6 @@ impl Coordination {
             started: AtomicBool::new(false),
             tasks: Default::default(),
             stop,
-            #[cfg(test)]
-            chat_interval: Duration::from_secs(15 * 60),
         })
     }
     pub async fn start(self: &Arc<Self>) {
@@ -128,16 +124,7 @@ impl Coordination {
                 json!({"subscriptionId": uuid::Uuid::new_v4().to_string()}),
             )
             .await?;
-        let mut ids: HashMap<String, String> = HashMap::new();
-        let mut pending = std::collections::BTreeSet::new();
-        let mut rounds = tokio::task::JoinSet::new();
         let mut reconnects = tokio::task::JoinSet::new();
-        #[cfg(test)]
-        let interval = self.chat_interval;
-        #[cfg(not(test))]
-        let interval = Duration::from_secs(15 * 60);
-        let mut timer = tokio::time::interval(interval);
-        timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 biased;
@@ -175,34 +162,10 @@ impl Coordination {
                             continue;
                         }
                     };
-                    let next: HashMap<_,_> = contexts.iter().filter(|v| v.enabled).map(|v| (v.profile_id.clone(), v.token.clone())).collect();
-                    pending.extend(next.iter().filter(|(id, token)| ids.get(*id) != Some(*token)).map(|(id,_)| id.clone()));
-                    pending.retain(|id| next.contains_key(id));
+                    let ids = contexts.iter().filter(|v| v.enabled).map(|v| v.profile_id.clone()).collect();
                     self.chat.update_contexts(contexts, self.subscriptions.clone());
-                    ids = next;
-                    self.chat.retain(ids.keys().cloned().collect()).await?;
+                    self.chat.retain(ids).await?;
                 }
-                _ = timer.tick() => pending.extend(ids.keys().cloned()),
-                _ = rounds.join_next(), if !rounds.is_empty() => {},
-            }
-            if rounds.is_empty() && !pending.is_empty() {
-                let work = std::mem::take(&mut pending);
-                let chat = self.chat.clone();
-                rounds.spawn(async move {
-                    let mut work = futures_util::stream::iter(work.into_iter().map(|id| {
-                        let chat = chat.clone();
-                        async move {
-                            if let Err(error) = chat.inbox(&id, true).await {
-                                ig_service_common::service_error(
-                                    "chat.background_sync_failed",
-                                    &error.message,
-                                );
-                            }
-                        }
-                    }))
-                    .buffer_unordered(4);
-                    while work.next().await.is_some() {}
-                });
             }
         }
     }

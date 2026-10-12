@@ -102,7 +102,7 @@ test('topic results use the outer Next control and never carousel or engagement 
     hover: async () => {},
     click: async () => { url = 'https://www.instagram.com/p/two/'; nextClicks++ }, dispose: async () => {} }),
   }
-  const article = { waitFor: async () => {}, getByText: () => ({ count: async () => 0 }),
+  const article = { evaluate: async () => ({ text: 'Strength exercises', relationship: 'not-followed' as const }), waitFor: async () => {}, getByText: () => ({ count: async () => 0 }),
     locator: (selector: string) => {
       assert.equal(selector, 'video')
       const video = { count: async () => 0, first: () => video }
@@ -131,7 +131,7 @@ test('topic results use the outer Next control and never carousel or engagement 
   session.wait = async () => {}
   const seen = new Set<string>()
   await watchTopicPosts(page, 'fitness', 2, new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 2 }),
-    seen, session, () => {})
+    seen, session, () => {}, false, async () => true)
   assert.equal(nextClicks, 1)
   assert.deepEqual([...seen], ['/p/one/', '/p/two/'])
   assert.equal(closed, true)

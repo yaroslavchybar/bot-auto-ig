@@ -85,12 +85,23 @@ export async function publishSleep(
     })
 }
 
-/** Charge each HTTP dispatch, including failed requests. Bridge retries are idempotent. */
+/** Chat checks pause without charging; other dispatches share the hourly/sleep budget. */
 export const reserve = internalMutation({
-  args: { profileId: v.id('profiles'), requestId: v.string() },
-  handler: async (ctx, { profileId, requestId }) => {
+  args: { profileId: v.id('profiles'), requestId: v.string(), kind: v.optional(v.literal('chat')) },
+  handler: async (ctx, { profileId, requestId, kind }) => {
     if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
     const now = Date.now()
+    if (kind === 'chat') {
+      const metadata = await ctx.db
+        .query('scraperProfiles')
+        .withIndex('by_profile', (q) => q.eq('profileId', profileId))
+        .unique()
+      const profile = metadata ?? (await ctx.db.get(profileId))
+      if (!profile) throw new Error('Profile not found')
+      return profile.paused
+        ? { allowed: false, retryAt: now, reason: 'Profile is paused' }
+        : { allowed: true, retryAt: now }
+    }
     const state = await mobileRequestState(ctx, profileId, now)
     // Resume is controlled by the flag; pausing must not create a one-hour login cooldown.
     if (state.paused) return { allowed: false, retryAt: now, reason: 'Profile is paused' }

@@ -1,6 +1,7 @@
 import type { Locator, Page } from 'playwright-core'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { maintenancePostMatches, type FeedPostContext } from '../../shared/warmupTopics.js'
+import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { actionLocator } from './action-locator.js'
 import { revealForClick, scrollModal } from './scroll.js'
 import { assertInstagramReady } from './instagram-state.js'
@@ -13,8 +14,9 @@ const control = (target: Locator, label: string) => target.locator(
 /** Likes and occasional extras share one daily budget; never use comment or neighboring-post controls. */
 export async function maintainPost(page: Page, target: Locator,
   context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], budget: WarmupActivityBudget,
-  session: BrowseSession, log: ActionLogger): Promise<void> {
-  if (!maintenancePostMatches(context, topics)) return
+  session: BrowseSession, log: ActionLogger, matchesTopic: TopicMatcher = topicContentMatches): Promise<void> {
+  const related = context.relationship !== 'followed' && topics.length > 0 && await matchesTopic(context, topics, session, log)
+  if (!maintenancePostMatches(context, topics, related)) return
   if (budget.remaining('likes') && chance(25) && !await target.locator('svg[aria-label="Unlike"]').count()) {
     const like = control(target, 'Like')
     if (await like.isVisible() && await revealForClick(page, like, session)) {

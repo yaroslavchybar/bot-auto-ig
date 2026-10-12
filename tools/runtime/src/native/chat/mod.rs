@@ -105,7 +105,7 @@ impl Chat {
             .await
             .map_err(|_| Failure::unavailable("Chat stopped"))?;
         self.mobile
-            .invoke(
+            .invoke_chat(
                 action,
                 &Command {
                     profile_id: id.into(),
@@ -370,6 +370,8 @@ impl Chat {
             .await?;
         if profile.is_null() {
             Err(Failure::missing("Profile not found"))
+        } else if profile["paused"] == true {
+            Err(Failure::invalid("Profile is paused"))
         } else {
             Ok(profile)
         }
@@ -408,7 +410,9 @@ impl Chat {
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter(|p| p["igLoggedIn"] == true && p["status"] != "deleting")
+                .filter(|p| {
+                    p["igLoggedIn"] == true && p["paused"] != true && p["status"] != "deleting"
+                })
                 .cloned()
                 .collect();
             let mut threads = Vec::new();

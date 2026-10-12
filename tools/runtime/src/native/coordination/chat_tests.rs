@@ -10,16 +10,14 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use std::sync::atomic::AtomicUsize;
 
 #[tokio::test]
-async fn chat_background_is_idle_without_accounts_limits_concurrency_and_stops_cleanly() {
+async fn chat_context_updates_never_fetch_inboxes_and_reconnect_safely() {
     let (accounts, initial_accounts) = watch::channel(json!([]));
     let (disconnect, disconnected) = watch::channel(false);
     let subscription_ids = Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
     let observed_ids = subscription_ids.clone();
     let loads = Arc::new(AtomicUsize::new(0));
     let status_reads = Arc::new(AtomicUsize::new(0));
-    let release = Arc::new(tokio::sync::Notify::new());
     let count = loads.clone();
-    let unblock = release.clone();
     let status_count = status_reads.clone();
     let fixture = Fixture::router(Router::new().route("/api/sync",get(move |ws:WebSocketUpgrade| {
         let mut accounts = initial_accounts.clone(); let mut disconnected = disconnected.clone(); let observed_ids = observed_ids.clone();
@@ -67,13 +65,13 @@ async fn chat_background_is_idle_without_accounts_limits_concurrency_and_stops_c
             }
         }) }
     })).fallback(move |request:axum::extract::Request| {
-        let count = count.clone(); let unblock = unblock.clone(); let status_count = status_count.clone();
+        let count = count.clone(); let status_count = status_count.clone();
         async move {
             if request.uri().path() == "/api/chat/session" {
                 status_count.fetch_add(1, Ordering::Relaxed);
             } else {
                 assert_eq!(request.uri().path(),"/api/chat/context");
-                if count.fetch_add(1,Ordering::Relaxed) < 4 { unblock.notified().await; }
+                count.fetch_add(1,Ordering::Relaxed);
             }
             Json(json!({"connected":false})).into_response()
         }
@@ -96,28 +94,30 @@ async fn chat_background_is_idle_without_accounts_limits_concurrency_and_stops_c
     .unwrap();
     let processes = Processes::new(api.clone(), root.path().into());
     let subscriptions = Subscriptions::new(api.clone());
-    let mut coordination = Coordination::new(
+    let coordination = Coordination::new(
         api.clone(),
         subscriptions.clone(),
         processes,
-        chat,
+        chat.clone(),
         scraper::Scraper::start(api, mobile.clone()).unwrap(),
     );
-    Arc::get_mut(&mut coordination).unwrap().chat_interval = Duration::from_millis(100);
     let runner = coordination.clone();
     let task = tokio::spawn(async move { runner.chat().await });
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert_eq!(loads.load(Ordering::Relaxed), 0);
     accounts.send_replace(json!((0..6).map(|id| json!({"profileId":id.to_string(),"token":"token","storageId":"file","reconnectRequired":false,"enabled":true,"proxy":"","proxyType":""})).collect::<Vec<_>>()));
-    super::tests::wait_for(async || loads.load(Ordering::Relaxed) == 4).await;
     tokio::time::sleep(Duration::from_millis(250)).await;
     assert_eq!(
         loads.load(Ordering::Relaxed),
-        4,
-        "background rounds cannot overlap"
+        0,
+        "connecting accounts must not fetch inboxes"
     );
-    release.notify_waiters();
-    super::tests::wait_for(async || loads.load(Ordering::Relaxed) >= 12).await;
+    chat.inbox("0", false).await.unwrap();
+    assert_eq!(
+        loads.load(Ordering::Relaxed),
+        1,
+        "an explicit Chat read still fetches"
+    );
     let valid_contexts = accounts.borrow().clone();
     let probe = crate::instagram::Command {
         profile_id: "not-connected".into(),
@@ -142,8 +142,11 @@ async fn chat_background_is_idle_without_accounts_limits_concurrency_and_stops_c
             !task.is_finished(),
             "invalid updates must not terminate the worker"
         );
-        let before = loads.load(Ordering::Relaxed);
-        super::tests::wait_for(async || loads.load(Ordering::Relaxed) >= before + 6).await;
+        assert_eq!(
+            loads.load(Ordering::Relaxed),
+            1,
+            "invalid metadata must not trigger inbox sync"
+        );
         accounts.send_replace(valid_contexts.clone());
         super::tests::wait_for(async || {
             let before = status_reads.load(Ordering::Relaxed);
@@ -154,8 +157,11 @@ async fn chat_background_is_idle_without_accounts_limits_concurrency_and_stops_c
     }
     disconnect.send_replace(true);
     super::tests::wait_for(async || subscriptions.current_epoch().is_none()).await;
-    let offline_loads = loads.load(Ordering::Relaxed);
-    super::tests::wait_for(async || loads.load(Ordering::Relaxed) >= offline_loads + 6).await;
+    assert_eq!(
+        loads.load(Ordering::Relaxed),
+        1,
+        "disconnect must not trigger inbox sync"
+    );
     accounts.send_replace(json!([]));
     disconnect.send_replace(false);
     super::tests::wait_for(async || {

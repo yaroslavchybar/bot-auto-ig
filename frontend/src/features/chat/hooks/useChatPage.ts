@@ -44,7 +44,6 @@ import type {
 } from '../types'
 
 const REPLY_MAX_LENGTH = 1000
-const POLL_TOLERANCE_MS = 100
 type OutgoingReply = { threadKey: string; message: ChatMessage }
 
 function mergeConversation(current: ChatThread | null, incoming: ChatThread): ChatThread {
@@ -92,7 +91,7 @@ export function useChatPage() {
     [archiveRows],
   )
   const rawThreadId = selection.get('thread') || ''
-  const selectedThreadId = (profileId === 'all'
+  const candidateThreadId = (profileId === 'all'
     ? /^[a-z0-9_-]{1,80}:\d{1,40}$/i
     : /^\d{1,40}$/
   ).test(rawThreadId)
@@ -103,6 +102,17 @@ export function useChatPage() {
     () => profiles.filter((profile) => profile.igLoggedIn && profile.status !== 'deleting'),
     [profiles],
   )
+  const eligibleProfileIds = useMemo(
+    () => new Set(eligibleProfiles.map((profile) => profile.id)),
+    [eligibleProfiles],
+  )
+  const eligibleProfileKey = [...eligibleProfileIds].sort().join(',')
+  const selectedThreadId =
+    profileId === 'all' &&
+    !profilesLoading &&
+    !eligibleProfileIds.has(candidateThreadId.split(':')[0])
+      ? ''
+      : candidateThreadId
   const activeProfileId =
     profileId === 'all' ||
     profilesLoading ||
@@ -185,7 +195,7 @@ export function useChatPage() {
         })()
       }, 250)
     },
-    [userId, activeProfileId, selectedThreadId],
+    [userId, activeProfileId, selectedThreadId, setInboxRefresh, setThreadRefresh],
   )
   useWebSocket({
     enabled: Boolean(connected && userId),
@@ -199,6 +209,8 @@ export function useChatPage() {
       }
       if (
         event.type === 'chat_changed' &&
+        typeof event.profileId === 'string' &&
+        eligibleProfileIds.has(event.profileId) &&
         (activeProfileId === 'all' || event.profileId === activeProfileId)
       )
         queueChatRefresh(true, event.threadId)
@@ -209,6 +221,7 @@ export function useChatPage() {
     const unsubscribe = subscribeChatResponses((owner, path) => {
       if (
         owner === userId &&
+        (path === '/api/chat/threads' || eligibleProfileIds.has(path.split('/')[3])) &&
         (activeProfileId === 'all' || path.startsWith('/api/chat/' + activeProfileId + '/'))
       )
         queueChatRefresh(false)
@@ -218,10 +231,14 @@ export function useChatPage() {
       if (changeTimer.current) clearTimeout(changeTimer.current)
       pendingChange.current = { invalidate: false, thread: false }
     }
-  }, [userId, activeProfileId, visible, queueChatRefresh])
+  }, [userId, activeProfileId, visible, queueChatRefresh, eligibleProfileIds])
 
   const connectionKey = JSON.stringify([userId, activeProfileId, profileId, profilesLoading])
-  const inboxScope = JSON.stringify([userId, activeProfileId])
+  const inboxScope = JSON.stringify([
+    userId,
+    activeProfileId,
+    activeProfileId === 'all' ? eligibleProfileKey : '',
+  ])
   const threadScope = JSON.stringify([userId, activeProfileId, selectedThreadId])
   const [previousConnectionKey, setPreviousConnectionKey] = useState(connectionKey)
   const [previousInboxScope, setPreviousInboxScope] = useState(inboxScope)
@@ -241,6 +258,7 @@ export function useChatPage() {
     setConversation(null)
     setOutgoingReplies([])
     setInboxErrors([])
+    setError('')
   }
   if (threadChanged) {
     setPreviousThreadScope(threadScope)
@@ -269,6 +287,7 @@ export function useChatPage() {
 
   const canLoadChat =
     !profilesLoading &&
+    eligibleProfiles.length > 0 &&
     profileId === activeProfileId &&
     Boolean(connected) &&
     connectedProfileId === activeProfileId
@@ -276,7 +295,7 @@ export function useChatPage() {
     inboxScope,
     canLoadChat,
     inboxRefresh,
-    eligibleProfiles.length,
+    eligibleProfileKey,
   ])
   const threadRequestKey = JSON.stringify([threadScope, canLoadChat, threadRefresh])
   const [previousRequestKeys, setPreviousRequestKeys] = useState({
@@ -312,49 +331,29 @@ export function useChatPage() {
 
   useEffect(() => {
     const profileChanged = !profilesLoading && profileId !== activeProfileId
-    if (!profileChanged) return
+    const threadRemoved =
+      !profilesLoading && profileId === 'all' && candidateThreadId !== selectedThreadId
+    if (!profileChanged && !threadRemoved) return
     const next = new URLSearchParams(search)
     if (profileChanged) {
       next.delete('profile')
       next.delete('thread')
     }
+    if (threadRemoved) next.delete('thread')
     const query = next.toString()
     navigate(`/chat${query ? `?${query}` : ''}`, { replace: true })
-  }, [profilesLoading, profileId, activeProfileId, search, navigate])
+  }, [
+    profilesLoading,
+    profileId,
+    activeProfileId,
+    search,
+    navigate,
+    candidateThreadId,
+    selectedThreadId,
+  ])
 
   useEffect(() => {
     if (!connected || !visible) return
-    let lastActivity = Date.now()
-    let lastInboxPoll = Date.now()
-    let lastThreadPoll = Date.now()
-    const onActivity = () => {
-      lastActivity = Date.now()
-    }
-    document.addEventListener('pointerdown', onActivity, { passive: true })
-    document.addEventListener('keydown', onActivity)
-    const inboxTimer = setInterval(() => {
-      if (
-        !inboxPending.current &&
-        document.visibilityState === 'visible' &&
-        Date.now() - lastInboxPoll >=
-          (Date.now() - lastActivity < 60_000 ? 60_000 : 180_000) - POLL_TOLERANCE_MS
-      ) {
-        lastInboxPoll = Date.now()
-        setInboxRefresh((value) => value + 1)
-      }
-    }, 60_000)
-    const threadTimer = setInterval(() => {
-      if (
-        !threadPending.current &&
-        selectedThreadId &&
-        document.visibilityState === 'visible' &&
-        Date.now() - lastThreadPoll >=
-          (Date.now() - lastActivity < 60_000 ? 30_000 : 120_000) - POLL_TOLERANCE_MS
-      ) {
-        lastThreadPoll = Date.now()
-        setThreadRefresh((value) => value + 1)
-      }
-    }, 30_000)
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
       if (!inboxPending.current) setInboxRefresh((value) => value + 1)
@@ -362,11 +361,7 @@ export function useChatPage() {
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
-      clearInterval(inboxTimer)
-      clearInterval(threadTimer)
       document.removeEventListener('visibilitychange', onVisible)
-      document.removeEventListener('pointerdown', onActivity)
-      document.removeEventListener('keydown', onActivity)
     }
   }, [connected, selectedThreadId, visible])
 
@@ -462,6 +457,8 @@ export function useChatPage() {
   useEffect(() => {
     if (
       profilesLoading ||
+      !eligibleProfiles.length ||
+      !visible ||
       profileId !== activeProfileId ||
       !activeProfileId ||
       !connected ||
@@ -514,6 +511,7 @@ export function useChatPage() {
     profilesLoading,
     userId,
     inboxRequestKey,
+    visible,
   ])
 
   useEffect(() => {
@@ -525,6 +523,8 @@ export function useChatPage() {
       profilesLoading ||
       profileId !== activeProfileId ||
       !targetProfileId ||
+      !eligibleProfileIds.has(targetProfileId) ||
+      !visible ||
       !connected ||
       connectedProfileId !== activeProfileId ||
       !targetThreadId
@@ -567,26 +567,30 @@ export function useChatPage() {
     profilesLoading,
     userId,
     threadRequestKey,
+    eligibleProfileIds,
+    visible,
   ])
 
   const threads = useMemo(
     () =>
       sortThreadsByLatest(
-        (inbox?.threads ?? []).map((thread) => {
-          const key = `${thread.profileId ?? activeProfileId}:${thread.id}`
-          const latest = outgoingReplies
-            .filter((reply) => reply.threadKey === key)
-            .sort((a, b) => b.message.timestamp - a.message.timestamp)[0]?.message
-          return {
-            ...thread,
-            archived: archivedThreads.has(key),
-            ...(latest && latest.timestamp >= (thread.messages[0]?.timestamp ?? 0)
-              ? { messages: [latest] }
-              : {}),
-          }
-        }),
+        (inbox?.threads ?? [])
+          .filter((thread) => eligibleProfileIds.has(thread.profileId ?? activeProfileId))
+          .map((thread) => {
+            const key = `${thread.profileId ?? activeProfileId}:${thread.id}`
+            const latest = outgoingReplies
+              .filter((reply) => reply.threadKey === key)
+              .sort((a, b) => b.message.timestamp - a.message.timestamp)[0]?.message
+            return {
+              ...thread,
+              archived: archivedThreads.has(key),
+              ...(latest && latest.timestamp >= (thread.messages[0]?.timestamp ?? 0)
+                ? { messages: [latest] }
+                : {}),
+            }
+          }),
       ),
-    [inbox, activeProfileId, outgoingReplies, archivedThreads],
+    [inbox, activeProfileId, outgoingReplies, archivedThreads, eligibleProfileIds],
   )
   const deferredSearchQuery = useDeferredValue(searchQuery)
   const {
@@ -1181,7 +1185,9 @@ export function useChatPage() {
     activeProfileId,
     activeProfile,
     inbox,
-    inboxErrors,
+    inboxErrors: inboxErrors.filter((name) =>
+      eligibleProfiles.some((profile) => profile.name === name),
+    ),
     threads,
     visibleThreads,
     folderCount: filterThreads(listThreads, '', folder).length,

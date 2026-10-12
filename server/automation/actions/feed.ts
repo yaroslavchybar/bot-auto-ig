@@ -30,6 +30,7 @@ import { openReels, watchReels } from './reels.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { feedPostContext, feedPostMatches, warmupTopics } from '../../shared/warmupTopics.js'
+import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
 
 // Ads get scrolled past, never engaged with. Header labels are checked separately.
@@ -133,6 +134,7 @@ async function browseFeedSession(
   shouldStop: StopCheck,
   session: BrowseSession,
   budget?: WarmupActivityBudget,
+  matchesTopic: TopicMatcher = topicContentMatches,
 ): Promise<'finished' | 'stopped' | 'stalled'> {
   if (!(minutes > 0) || shouldStop()) return 'stopped'
   if (config.browse_home_feed === false) return 'finished'
@@ -208,7 +210,7 @@ async function browseFeedSession(
         const reels = Math.round(random(numeric(config.reels_min, 3), numeric(config.reels_max, 8)))
         if (await openReels(page, log, session)) {
           log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
-          await watchReels(page, reels, config, log, shouldStop, end, session, budget)
+          await watchReels(page, reels, config, log, shouldStop, end, session, budget, matchesTopic)
           await backToFeed(page, log, session)
           session.check()
           await focusPageContent(page)
@@ -280,18 +282,19 @@ async function browseFeedSession(
       continue
     }
 
-    if (!feedPostMatches(context, topics)) {
-      if (targetId) seen.add(targetId)
-      log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a recommended post outside the selected topics' })
-      await advanceFeedPost(page, target, session, budget)
-      continue
-    }
-
     // Inspect each author between bored skips, so batches cannot skip followed accounts.
     if (!preserveFollowed && (skipsRemaining > 0 || chance(config.skip_post_chance))) {
       if (!skipsRemaining) skipsRemaining = Math.round(random(1, skipMax))
       skipsRemaining--
       if (targetId) seen.add(targetId)
+      await advanceFeedPost(page, target, session, budget)
+      continue
+    }
+
+    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log)
+    if (!feedPostMatches(context, topics, related)) {
+      if (targetId) seen.add(targetId)
+      log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a recommended post outside the selected topics' })
       await advanceFeedPost(page, target, session, budget)
       continue
     }
@@ -335,7 +338,7 @@ async function browseFeedSession(
       }
     }
     if (viewed && numeric(config.warmup_day, 1) >= 8 && budget)
-      await maintainPost(page, target, context, topics, budget, session, log)
+      await maintainPost(page, target, context, topics, budget, session, log, matchesTopic)
     session.check()
     await assertInstagramReady(page)
     // Re-read geometry after carousel/reveal scrolling, not before.
@@ -375,7 +378,7 @@ async function browseFeedSession(
       if (await openReels(page, log, session)) {
         openedDetour = true
         log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
-        await watchReels(page, reels, config, log, shouldStop, end, session, budget)
+        await watchReels(page, reels, config, log, shouldStop, end, session, budget, matchesTopic)
       }
     } else if (
       canDetour &&
@@ -431,11 +434,12 @@ export async function browseFeed(
   page: Page, minutes: number, config: Record<string, unknown>,
   log: ActionLogger, shouldStop: StopCheck,
   budget?: WarmupActivityBudget,
+  matchesTopic: TopicMatcher = topicContentMatches,
 ): Promise<'finished' | 'stopped' | 'stalled'> {
   if (!(minutes > 0) || shouldStop()) return 'stopped'
   const session = new BrowseSession(Date.now() + minutes * 60_000, shouldStop)
   try {
-    return await browseFeedSession(page, minutes, config, log, shouldStop, session, budget)
+    return await browseFeedSession(page, minutes, config, log, shouldStop, session, budget, matchesTopic)
   } catch (error) {
     if (error instanceof SessionEnded || session.stopped())
       return shouldStop() ? 'stopped' : 'finished'

@@ -947,7 +947,7 @@ async fn mobile_likers_follow_instagrapi_media_id_normalization() {
 }
 
 #[tokio::test]
-async fn request_budget_covers_metadata_failures_and_chat_and_survives_entry_eviction() {
+async fn request_budget_covers_automation_but_exempts_user_chat_and_survives_entry_eviction() {
     let counts = Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::<
         String,
         usize,
@@ -966,6 +966,9 @@ async fn request_budget_covers_metadata_failures_and_chat_and_survives_entry_evi
             if path == "/api/mobile-requests/reserve" {
                 let bytes = axum::body::to_bytes(request.into_body(), 4096).await.unwrap();
                 let body: Value = serde_json::from_slice(&bytes).unwrap();
+                if body["kind"] == "chat" {
+                    return Json(json!({"allowed":true})).into_response();
+                }
                 let mut counts = counts.lock().await;
                 let count = counts.entry(body["profileId"].as_str().unwrap().into()).or_default();
                 if *count >= 10 {
@@ -1016,6 +1019,15 @@ async fn request_budget_covers_metadata_failures_and_chat_and_survives_entry_evi
             .unwrap();
     }
     assert_eq!(instagram_calls.lock().await.len(), 10);
+    service
+        .invoke_chat("inbox", &request("first", ""))
+        .await
+        .unwrap();
+    assert_eq!(
+        counts.lock().await["first"],
+        10,
+        "Chat must not consume a slot"
+    );
     service.locks.lock().await.clear(); // A new in-memory session cannot reset persisted usage.
     assert_eq!(
         service
@@ -1025,12 +1037,12 @@ async fn request_budget_covers_metadata_failures_and_chat_and_survives_entry_evi
             .name,
         "MobileRequestBudget"
     );
-    assert_eq!(instagram_calls.lock().await.len(), 10);
+    assert_eq!(instagram_calls.lock().await.len(), 11);
     service
         .invoke("inbox", &request("second", ""))
         .await
         .unwrap();
-    assert_eq!(instagram_calls.lock().await.len(), 11);
+    assert_eq!(instagram_calls.lock().await.len(), 12);
     assert_eq!(counts.lock().await["first"], 10);
     assert_eq!(counts.lock().await["second"], 1);
 }

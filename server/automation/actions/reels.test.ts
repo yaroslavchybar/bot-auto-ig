@@ -19,7 +19,7 @@ for (const followed of [false, true]) test(followed
   Date.now = () => now
   try {
     window.document.body.innerHTML = `<main><div><div><a href="/author/reels/">author</a>${followed ? '' : '<button>Follow</button>'}</div>
-      <video></video><p>${followed ? 'Cooking dinner' : 'Fitness workout #gym'}</p></div></main>`
+      <video></video><p>${followed ? 'Cooking dinner' : 'Barbell squats and progressive overload'}</p></div></main>`
     for (const control of window.document.querySelectorAll('button'))
       Object.defineProperty(control, 'getBoundingClientRect', { value: () => ({ width: 50, height: 20 }) })
     const video = window.document.querySelector('video')!
@@ -43,8 +43,14 @@ for (const followed of [false, true]) test(followed
     const session = new BrowseSession(now + 60_000)
     session.wait = async ms => { now += Math.max(1, Math.ceil(ms)); session.check() }
     const budget = new WarmupActivityBudget({ likes: 6, profiles: 2, reels: 1, stories: 0 })
+    let decisions = 0
     await watchReels(page, 1, { soft_warmup: false, warmup_topics: 'fitness', like_chance: 100, reels_skip_chance: followed ? 100 : 0 },
-      () => {}, () => false, session.end, session, budget)
+      () => {}, () => false, session.end, session, budget, async context => {
+        decisions++
+        assert.match(context.text, /Barbell squats/)
+        return true
+      })
+    assert.equal(decisions, followed ? 0 : 1)
     assert.equal(budget.used.likes, 0)
     assert.equal(budget.used.reels, 1)
     assert.ok(now - start >= 6000)

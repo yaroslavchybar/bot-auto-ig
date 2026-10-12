@@ -259,7 +259,12 @@ impl Service {
         Ok(entry)
     }
     pub async fn invoke(&self, action: &str, request: &Command) -> Result<Value> {
-        self.invoke_serialized(action, request).await
+        self.invoke_serialized(action, request, false).await
+    }
+
+    /// User-operated Chat bypasses request quotas, but checks pause before every dispatch.
+    pub async fn invoke_chat(&self, action: &str, request: &Command) -> Result<Value> {
+        self.invoke_serialized(action, request, true).await
     }
 
     pub(crate) fn request_budget(&self, profile_id: &str) -> Option<RequestBudget> {
@@ -270,10 +275,16 @@ impl Service {
         Some(RequestBudget {
             api: self.api.clone(),
             profile_id: profile_id.into(),
+            chat: false,
         })
     }
 
-    async fn invoke_serialized(&self, action: &str, request: &Command) -> Result<Value> {
+    async fn invoke_serialized(
+        &self,
+        action: &str,
+        request: &Command,
+        chat: bool,
+    ) -> Result<Value> {
         if request.profile_id.trim().is_empty() || request.profile_id.len() > 128 {
             return Err(Error::new("Profile ID is required"));
         }
@@ -389,7 +400,10 @@ impl Service {
         let mut mobile = Mobile {
             state,
             client: entry.client.clone().unwrap(),
-            budget: self.request_budget(&request.profile_id),
+            budget: self.request_budget(&request.profile_id).map(|mut budget| {
+                budget.chat = chat;
+                budget
+            }),
             #[cfg(test)]
             base: self.base.clone(),
         };

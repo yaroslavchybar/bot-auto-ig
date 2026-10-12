@@ -4,6 +4,7 @@ import { viewVideo } from './viewing.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
+import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
 import { clickAction } from './action-locator.js'
 import {
@@ -178,6 +179,7 @@ export async function watchReels(
   end: number,
   session = new BrowseSession(end, shouldStop),
   budget?: WarmupActivityBudget,
+  matchesTopic: TopicMatcher = topicContentMatches,
 ): Promise<void> {
   if (config.scroll_reels === false) return
   const sleep = session.wait
@@ -227,7 +229,8 @@ export async function watchReels(
       await sleep(random(1200, 2200))
       continue
     }
-    if (!feedPostMatches(context, topics)) {
+    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log)
+    if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
       await sleep(random(300, 800))
       if (!await advanceReel(page, session)) break
@@ -253,7 +256,7 @@ export async function watchReels(
     if (viewed && budget) budget.browsed++
     if (viewed && numeric(config.warmup_day, 1) >= 8 && budget) {
       const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
-      await maintainPost(page, post, context, topics, budget, session, log)
+      await maintainPost(page, post, context, topics, budget, session, log, matchesTopic)
     }
     await assertInstagramReady(page)
     if (Date.now() >= end || shouldStop()) break
