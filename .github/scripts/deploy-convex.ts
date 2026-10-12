@@ -32,6 +32,11 @@ export function compatibleSchema(source: string) {
 type MigrationStatus = { complete: boolean; processed?: number; reset?: number; cleaned?: number }
 type Runner = (args: string[]) => string
 
+// Convex CLI prints no output when a query returns null.
+function parseStatus(output: string): MigrationStatus | null {
+  return JSON.parse(output.trim() || 'null') as MigrationStatus | null
+}
+
 /** Failed deployments retain the compatible schema; retries resume the saved migration cursor. */
 export async function deployConvex(options: {
   run: Runner
@@ -42,14 +47,14 @@ export async function deployConvex(options: {
 }) {
   const { run } = options
   const deploy = ['deploy', '--check-build-environment', 'disable', '--codegen', 'disable']
-  const state = JSON.parse(
+  const state = parseStatus(
     run([
       'run',
       '--prod',
       '--inline-query',
       'return await ctx.db.query("leadScreeningMigration").unique();',
     ]),
-  ) as MigrationStatus | null
+  )
   if (state?.complete) {
     run(deploy)
     return state
@@ -61,9 +66,9 @@ export async function deployConvex(options: {
     run(['run', '--prod', 'migrations/leadScreening:start', '{}'])
     const deadline = options.now() + 5 * 60_000
     while (options.now() < deadline) {
-      const status = JSON.parse(
+      const status = parseStatus(
         run(['run', '--prod', 'migrations/leadScreening:migrationStatus', '{}']),
-      ) as MigrationStatus | null
+      )
       if (status?.complete) {
         options.writeSchema(schema)
         run(deploy)

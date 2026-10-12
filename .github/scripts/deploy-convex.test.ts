@@ -4,9 +4,18 @@ import { compatibleSchema, deployConvex } from './deploy-convex'
 
 const original = readFileSync('convex/schema.ts', 'utf8')
 
-function fixture(options: { completed?: boolean; fail?: boolean; stalled?: boolean } = {}) {
+function fixture(
+  options: {
+    completed?: boolean
+    fail?: boolean
+    stalled?: boolean
+    initialOutput?: string
+    missingPoll?: boolean
+  } = {},
+) {
   let source = original,
-    time = 0
+    time = 0,
+    polls = 0
   const deployed: string[] = []
   const calls: string[][] = []
   const settings = {
@@ -25,14 +34,17 @@ function fixture(options: { completed?: boolean; fail?: boolean; stalled?: boole
         if (options.fail) throw new Error('Deployment failed')
         return ''
       }
-      if (args.includes('--inline-query')) return options.completed ? '{"complete":true}' : 'null'
-      if (args.includes('migrations/leadScreening:migrationStatus'))
+      if (args.includes('--inline-query'))
+        return options.completed ? '{"complete":true}' : (options.initialOutput ?? '')
+      if (args.includes('migrations/leadScreening:migrationStatus')) {
+        if (polls++ === 0 && options.missingPoll) return ' \n'
         return JSON.stringify({
           complete: !options.stalled,
           processed: 2842,
           reset: 2840,
           cleaned: 2842,
         })
+      }
       return 'null'
     },
   }
@@ -59,6 +71,32 @@ test('completed migrations use a single strict-schema deploy', async () => {
   await deployConvex(f.settings)
   expect(f.deployed).toEqual([original])
   expect(f.calls.some((call) => call.includes('migrations/leadScreening:start'))).toBe(false)
+})
+
+test.each(['', ' \r\n ', 'null'])(
+  'missing migration state from CLI output %j starts cleanup',
+  async (initialOutput) => {
+    const f = fixture({ initialOutput })
+    expect(await deployConvex(f.settings)).toMatchObject({ complete: true })
+    expect(f.deployed).toEqual([compatibleSchema(original), original])
+    expect(f.source()).toBe(original)
+  },
+)
+
+test('empty status output during polling waits for migration completion', async () => {
+  const f = fixture({ missingPoll: true })
+  expect(await deployConvex(f.settings)).toMatchObject({ complete: true })
+  expect(
+    f.calls.filter((call) => call.includes('migrations/leadScreening:migrationStatus')),
+  ).toHaveLength(2)
+  expect(f.deployed).toEqual([compatibleSchema(original), original])
+})
+
+test('malformed CLI output stops deployment', async () => {
+  const f = fixture({ initialOutput: 'invalid json' })
+  await expect(deployConvex(f.settings)).rejects.toThrow()
+  expect(f.deployed).toHaveLength(0)
+  expect(f.source()).toBe(original)
 })
 
 test.each([{ fail: true }, { stalled: true }])(
