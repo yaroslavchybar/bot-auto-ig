@@ -12,6 +12,7 @@ class FakeItem {
   async boundingBox(): Promise<Box | null> { return box() }
   async isVisible(): Promise<boolean> { return this.visible() }
   async click(_options?: unknown): Promise<void> { this.onClick?.() }
+  async hover(): Promise<void> {}
   async elementHandle(): Promise<FakeItem> { return this }
   async dispose(): Promise<void> {}
   async setInputFiles(files: FakePage['files'], _options?: unknown): Promise<void> { this.owner.files = [...files] }
@@ -29,6 +30,7 @@ class FakeLocator {
   async isVisible(): Promise<boolean> { return this.visible() }
   async waitFor(_options?: unknown): Promise<void> { if (!this.visible()) throw new Error('timeout') }
   async click(_options?: unknown): Promise<void> { this.onClick?.() }
+  async elementHandle(): Promise<FakeItem> { return this.first() }
   async getAttribute(_name?: unknown): Promise<null> { return null }
   locator(selector: string): FakeLocator { return this.page.locator(selector) }
 }

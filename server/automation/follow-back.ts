@@ -1,6 +1,6 @@
 import type { Page } from 'playwright-core';
 import { profileControls } from './follow.js';
-import { actionLocator } from './actions/action-locator.js';
+import { actionLocator, clickAction } from './actions/action-locator.js';
 
 /** Read only follow events; likes/comments and suggested accounts are not followers. */
 export async function readFollowNotifications(page: Page, stopped: () => boolean, since = 0): Promise<string[] | null> {
@@ -94,7 +94,7 @@ export async function likeRecentPost(page: Page, allowed: () => Promise<boolean>
   if (await page.getByText(/This (?:account|profile) is private/i, { exact: true }).isVisible()) return false;
   const post = page.locator('main a[href*="/p/"]').first();
   if (!await post.isVisible() || !await allowed()) return false;
-  await post.click({ timeout: 10_000 });
+  await clickAction(post);
   const article = page.getByRole('dialog').getByRole('article');
   try {
     const like = article.getByRole('button', { name: 'Like', exact: true }).first();

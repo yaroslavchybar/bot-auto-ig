@@ -9,8 +9,8 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   let url = 'https://www.instagram.com/', followed = false
   const calls: string[] = []
   const control = { filter() { return this }, first() { return this }, isVisible: async () => true,
-    waitFor: async () => {}, click: async () => {}, fill: async () => {}, dispose: async () => {},
-    elementHandle: async () => control }
+    waitFor: async () => {}, hover: async () => {}, click: async () => {}, fill: async () => {}, dispose: async () => {},
+    elementHandle: async function() { return this } }
   const page = {
     url: () => url,
     goto: async (value: string) => { url = value; followed = false; calls.push('visit') },

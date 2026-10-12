@@ -4,7 +4,7 @@ import { matchesWarmupTopic, warmupTopics } from '../../shared/warmupTopics.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { followButton, profileControls } from '../follow.js'
 import { likeRecentPost, ownUsername } from '../follow-back.js'
-import { actionLocator } from './action-locator.js'
+import { actionLocator, clickAction } from './action-locator.js'
 import { isUserHref } from './guards.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { BrowseSession } from './session.js'
@@ -65,7 +65,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
     budget.take('follows')
     await allowed()
     const followed = await deps.follow(page, allowed,
-      () => followButton(page).click({ timeout: session.timeout(10_000) }),
+      () => clickAction(followButton(page), session.timeout(10_000)),
       () => deps.confirmFollow(followRequest).then(() => {}), async reason => {
         budget.plan.follows = budget.used.follows
         log({ event: 'automation.follow_paused', reason })

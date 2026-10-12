@@ -5,6 +5,7 @@ import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
 import { maintainPost } from './maintenance.js'
+import { clickAction } from './action-locator.js'
 import {
   chance,
   numeric,
@@ -26,7 +27,7 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
   try {
     const btn = page.locator('a:has(svg[aria-label="Reels"])').first()
     if (!(await btn.isVisible().catch(() => false))) return false
-    await btn.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
+    await clickAction(btn, session.timeout(5_000)).catch(() => undefined)
     await sleep(random(1500, 2500))
     // Lands on /reels/ first; the first reel auto-opens right after.
     await page
@@ -34,7 +35,7 @@ export async function openReels(page: Page, log: ActionLogger, session = new Bro
       .catch(() => undefined)
     if (!/\/reels\//.test(page.url())) {
       // Sidebar shifts while the feed loads; one retry clicks the right spot.
-      await btn.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
+      await clickAction(btn, session.timeout(5_000)).catch(() => undefined)
       await page
         .waitForURL(/\/reels\//, { timeout: session.timeout(12_000) })
         .catch(() => undefined)

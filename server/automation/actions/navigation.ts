@@ -2,7 +2,7 @@ import type { Locator, Page } from 'playwright-core'
 import { StealthDomError } from 'cloakbrowser/human'
 import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
-import { actionLocator } from './action-locator.js'
+import { actionLocator, clickAction } from './action-locator.js'
 
 function isInstagramConsentPage(page: Page): boolean {
   try {
@@ -65,7 +65,7 @@ async function dismissConsent(page: Page, session: BrowseSession): Promise<boole
         if (text !== label && !choiceLabel) continue
         session.check()
         try {
-          await button.click({ timeout: session.timeout(2_000) })
+          await clickAction(button, session.timeout(2_000))
         } catch (error) {
           if (error instanceof StealthDomError) throw error
           continue
@@ -102,7 +102,7 @@ export async function dismissPopups(page: Page, session = new BrowseSession(Date
     if (!popup) continue
     try {
       try {
-        await button.click({ timeout: session.timeout(2_000) })
+        await clickAction(button, session.timeout(2_000))
       } catch {
         continue
       }
@@ -144,7 +144,7 @@ async function goHomeViaUi(page: Page, session: BrowseSession): Promise<boolean>
   try {
     const home = page.locator('a:has(svg[aria-label="Home"])').first()
     if (!(await home.isVisible().catch(() => false))) return false
-    await home.click({ timeout: session.timeout(5_000) })
+    await clickAction(home, session.timeout(5_000))
     await page
       .waitForURL(/instagram\.com\/(\?.*)?$/, { timeout: session.timeout(10_000) })
       .catch(() => undefined)

@@ -24,7 +24,7 @@ test('maintenance pins the post controls, shares its cap, and reads comments wit
       isVisible: async () => label === 'Save' ? !saved : true,
       boundingBox: async () => ({ x: 100, y: 100, width: 30, height: 30 }),
       waitFor: async () => { if (label === 'Unlike') assert.ok(liked) },
-      elementHandle: async () => ({ dispose: async () => {}, click: async () => {
+      elementHandle: async () => ({ hover: async () => {}, dispose: async () => {}, click: async () => {
         calls.push(label)
         if (label === 'Like') liked = true
         if (label === 'Save') saved = true

@@ -80,7 +80,7 @@ test('standalone stories use configured viewing times', async () => {
         }),
         locator: () => ({
           first: () => ({ isVisible: async () => true, click: async () => {},
-            elementHandle: async () => ({ click: async () => {}, dispose: async () => {} }),
+            elementHandle: async () => ({ hover: async () => {}, click: async () => {}, dispose: async () => {} }),
           }),
           count: async () => 0,
           nth: () => ({ isVisible: async () => false, click: async () => {} }),

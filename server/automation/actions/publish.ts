@@ -1,7 +1,8 @@
 import type { Page } from 'playwright-core'
+import { clickAction } from './action-locator.js'
 import { BrowseSession } from './session.js'
 import { random, type ActionLogger, type StopCheck } from './shared.js'
-import { clickVisible, driftMouse, hoverPost } from './mouse.js'
+import { clickVisible, driftMouse } from './mouse.js'
 import { revealForClick, scrollModal } from './scroll.js'
 import { closeDialog, dismissPopups } from './navigation.js'
 import { openOwnProfile } from './profiles.js'
@@ -33,14 +34,12 @@ async function dialogVisible(page: Page, text: string, session: BrowseSession, m
 
 async function clickDialogButton(page: Page, label: 'Next' | 'Share' | 'Done', session: BrowseSession): Promise<boolean> {
   session.check()
-  await hoverPost(page, page.locator(dialogButton(label)).first())
   return clickVisible(page, dialogButton(label), session)
 }
 
-// Hover first so the cursor travels like a feed browse before every dialog click.
+// The shared click helper moves the cursor before every dialog click.
 async function clickHuman(page: Page, selector: string, session: BrowseSession): Promise<boolean> {
   session.check()
-  await hoverPost(page, page.locator(selector).first())
   return clickVisible(page, selector, session)
 }
 
@@ -147,9 +146,8 @@ async function likeNewPost(page: Page, log: ActionLogger, session: BrowseSession
   let opened = false
   for (let attempt = 0; attempt < 3 && !opened; attempt++) {
     session.check()
-    await hoverPost(page, link)
     await revealForClick(page, link, session).catch(() => false)
-    await link.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
+    await clickAction(link, session.timeout(5_000)).catch(() => undefined)
     await session.wait(random(1200, 2500))
     opened = await page.locator(DIALOG).first().isVisible().catch(() => false)
   }

@@ -36,7 +36,7 @@ test('login and checkpoint URLs stop before any DOM action', async () => {
 test('notification checks close their own panel instead of a DM composer', async () => {
   const clicks: string[] = []
   const action = (name: string) => ({ isVisible: async () => true,
-    elementHandle: async () => ({ click: async () => { clicks.push(name) }, dispose: async () => {} }) })
+    elementHandle: async () => ({ hover: async () => {}, click: async () => { clicks.push(name) }, dispose: async () => {} }) })
   const close = { ...action('notification-close'), filter() { return this }, first() { return this } }
   const heading = { waitFor: async () => {}, locator: (selector: string) => {
     assert.ok(selector.startsWith('xpath=ancestor::'))

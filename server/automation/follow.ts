@@ -1,5 +1,5 @@
 import type { Page } from 'playwright-core';
-import { actionLocator } from './actions/action-locator.js';
+import { actionLocator, clickAction } from './actions/action-locator.js';
 
 // Scope controls to the recipient header; suggested accounts also have Follow buttons.
 export const profileControls = (page: Page) => page.locator('main header');
@@ -75,7 +75,7 @@ export async function isFollowing(page: Page) {
 export async function unfollow(page: Page, allowed: () => Promise<boolean>) {
   if (!await isFollowing(page)) return true;
   if (!await allowed()) return false;
-  await followingButton(page).click({ timeout: 10_000 });
+  await clickAction(followingButton(page));
   const labels = ['unfollow', 'cancel request'];
   const dialogConfirm = button(page, '//*[@role="dialog"]', labels).filter({ visible: true }).first();
   const fallback = button(page, '', labels).filter({ visible: true }).last();

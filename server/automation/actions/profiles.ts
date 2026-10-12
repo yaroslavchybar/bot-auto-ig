@@ -5,7 +5,7 @@ import { isUserHref, PROFILE_URL } from './guards.js'
 import { clickVisible } from './mouse.js'
 import { revealForClick, scrollModal, smoothScroll } from './scroll.js'
 import { closeDialog } from './navigation.js'
-import { actionLocator } from './action-locator.js'
+import { actionLocator, clickAction } from './action-locator.js'
 
 // First user link in the post is the author (avatar/username row).
 export async function openAuthorProfile(page: Page, target: Locator, session = new BrowseSession()): Promise<boolean> {
@@ -18,7 +18,7 @@ export async function openAuthorProfile(page: Page, target: Locator, session = n
     // Author row below the fold: glide it into view, then tap it.
     await revealForClick(page, link, session).catch(() => false)
     if (!(await link.isVisible().catch(() => false))) return false
-    await (await actionLocator(link, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
+    await clickAction(link, session.timeout(5_000))
     await sleep(random(1200, 2500))
     return PROFILE_URL.test(page.url())
   } catch {
@@ -140,9 +140,8 @@ async function openCommentsProfile(page: Page, target: Locator, session = new Br
       await closeDialog(page, session)
       return false
     }
-    await links
-      .nth(pool[Math.floor(Math.random() * pool.length)])
-      .click({ timeout: session.timeout(5_000) })
+    const link = links.nth(pool[Math.floor(Math.random() * pool.length)])
+    await (await actionLocator(link, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
     await sleep(random(1200, 2500))
     return PROFILE_URL.test(page.url())
   } catch {
@@ -167,7 +166,7 @@ export async function openOwnProfile(page: Page, log: ActionLogger, session = ne
     // Done/share actions reload the page: wait out the reload instead of one glance.
     await own.waitFor({ state: 'visible', timeout: session.timeout(20_000) }).catch(() => undefined)
     if (!(await own.isVisible().catch(() => false))) return false
-    await own.click({ timeout: session.timeout(5_000) })
+    await clickAction(own, session.timeout(5_000))
     await page.waitForURL(PROFILE_URL, { timeout: session.timeout(10_000) }).catch(() => undefined)
     await sleep(random(1200, 2500))
     if (!PROFILE_URL.test(page.url())) return false
@@ -205,7 +204,7 @@ export async function wanderProfile(
     if (Date.now() >= end || shouldStop()) return
     const highlight = hlLinks.nth(idx)
     if (!(await highlight.isVisible().catch(() => false))) continue
-    await highlight.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
+    await clickAction(highlight, session.timeout(5_000)).catch(() => undefined)
     await sleep(random(2500, 5000))
     if (Math.random() < 0.5)
       await clickVisible(page, '[aria-label*="Next"], button:has-text("Next")', session).catch(
@@ -230,7 +229,7 @@ export async function wanderProfile(
       .locator('main a[href^="/p/"], main a[href^="/reel/"]')
       .nth(i)
     if (!(await link.isVisible().catch(() => false))) continue
-    await link.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
+    await clickAction(link, session.timeout(5_000)).catch(() => undefined)
     await sleep(random(1200, 2200))
     if (
       await page

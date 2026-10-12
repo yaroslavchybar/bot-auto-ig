@@ -12,7 +12,7 @@ test('unsendMessage waits for the selected duplicate message to detach', async (
   const actionTargets = new Map<string, unknown>();
   const actionable = <T extends object>(index: number, methods: T) => {
     const xpath = `/*[1]/*[${index}]`;
-    const target = { ...methods, elementHandle: async () => ({ ...methods, dispose: async () => {} }) };
+    const target = { ...methods, elementHandle: async () => ({ hover: async () => {}, ...methods, dispose: async () => {} }) };
     actionTargets.set(`xpath=${xpath}`, target);
     return target;
   };
@@ -115,7 +115,7 @@ test('private request cleanup prefers visible dialog confirmations without block
           assert.equal(clicked, layout === 'dialog' ? 'dialog-confirm' : 'page-confirm');
           complete();
         }
-        async elementHandle() { return { click: () => this.click(), dispose: async () => {} }; }
+        async elementHandle() { return { hover: async () => {}, click: () => this.click(), dispose: async () => {} }; }
       }
       const page = { locator: (selector: string) => {
         if (selector.includes('="unfollow"')) {

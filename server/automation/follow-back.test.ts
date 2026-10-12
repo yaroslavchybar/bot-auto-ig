@@ -20,6 +20,7 @@ async function notifications(html: string, options: { stopped?: boolean; since?:
       ? { waitFor: async () => {}, evaluate: async (fn: (el: HTMLElement) => unknown) => fn(heading as unknown as HTMLElement) }
       : {
         elementHandle: async () => ({
+          hover: async () => {},
           click: async () => { if (opts.name === 'Close') closed = true; },
           dispose: async () => {},
         }),
@@ -107,7 +108,7 @@ test('live follow-back verification requires an exact username in the current fo
     const controls = new Map<string, unknown>();
     const actionable = <T extends object>(index: number, methods: T) => {
       const xpath = `/*[1]/*[${index}]`;
-      const target = { ...methods, elementHandle: async () => ({ ...methods, dispose: async () => {} }) };
+      const target = { ...methods, elementHandle: async () => ({ hover: async () => {}, ...methods, dispose: async () => {} }) };
       controls.set(`xpath=${xpath}`, target);
       return target;
     };

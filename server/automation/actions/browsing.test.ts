@@ -101,6 +101,7 @@ function likeTarget(alreadyLiked: boolean, confirms: boolean, y = 100) {
   const button = {
     boundingBox: async () => ({ x: 100, y, width: 30, height: 30 }),
     elementHandle: async () => button,
+    hover: async () => {},
     dispose: async () => {},
     page: () => ({
       viewportSize: () => ({ width: 1280, height: 800 }),
@@ -138,6 +139,7 @@ test('opening an author adapts the selected nested link before clicking', async 
     boundingBox: async () => ({ x: 100, y: 100, width: 100, height: 30 }),
     isVisible: async () => true,
     elementHandle: async () => ({
+      hover: async () => {},
       click: async () => { currentUrl = 'https://www.instagram.com/alice/' },
       dispose: async () => {},
     }),
@@ -162,6 +164,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
     const story = {
       first() { return this },
       elementHandle: async () => story,
+      hover: async () => {},
       dispose: async () => {},
       waitFor: async () => { loaded = true; stopped = stopWhileLoading },
       isVisible: async () => loaded,
@@ -195,7 +198,7 @@ test('stories skip a hidden first control in either tray layout', async () => {
           return { count: async () => nodes.length, first: () => ({
             waitFor: async () => { assert.ok(nodes[0]) },
             isVisible: async () => !!nodes[0] && nodes[0].getAttribute('style') !== 'display:none',
-            elementHandle: async () => ({ click: async () => { clicked = nodes[0]!.id }, dispose: async () => {} }),
+            elementHandle: async () => ({ hover: async () => {}, click: async () => { clicked = nodes[0]!.id }, dispose: async () => {} }),
           }) }
         },
       } as unknown as Page
@@ -215,9 +218,11 @@ test('stories return zero for missing trays and only completed views after an ea
       boundingBox: async () => ({ x: 100, y: 100, width: 40, height: 40 }),
       page: () => page,
       elementHandle: async () => control, dispose: async () => {},
+      hover: async () => {},
       click: async () => { stopped = mode === 'stop on open' },
     }
     const next = { ...control, elementHandle: async () => ({
+      hover: async () => {},
       click: async () => { stopped = true }, dispose: async () => {},
     }) }
     const page = {

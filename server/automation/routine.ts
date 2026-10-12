@@ -21,6 +21,7 @@ import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
 import { assertInstagramReady } from './actions/instagram-state.js';
 import { performProfileFollow } from './actions/follow-safety.js';
+import { clickAction } from './actions/action-locator.js';
 
 const dependencies = {
   ready: routineReady,
@@ -97,7 +98,7 @@ export async function runRoutineSession(
       throw new Error('Follow was not authorized');
     if (shouldStop()) throw new Error('Session stopped before following');
     return deps.follow(page, async () => { await check(); return !shouldStop(); },
-      () => follow.click({ timeout: timeout(10_000) }),
+      () => clickAction(follow, timeout(10_000)),
       () => deps.recordFollow(profileId, leadId, true).then(() => {}), async reason => {
         log({ event: 'automation.follow_paused', reason });
         await deps.pauseFollows(profileId, date, reason);
@@ -199,7 +200,7 @@ export async function runRoutineSession(
                 await deps.dismissDm(profileId, attempt.leadId);
                 return 'blocked';
               }
-              await messageButton(page).click({ timeout: 15_000 });
+              await clickAction(messageButton(page), 15_000);
               // Current Instagram keeps the profile URL and opens the composer in
               // an overlay, so the composer is the navigation-complete signal.
               const composer = await messageComposer(page);

@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core'
 import { random, type ActionLogger } from './shared.js'
 import { smoothScroll } from './scroll.js'
 import { BrowseSession } from './session.js'
+import { clickAction } from './action-locator.js'
 
 // DMs via the sidebar Messages button. List level only: scroll a little,
 // read, never open a thread (no read receipts).
@@ -11,7 +12,7 @@ export async function openDMs(page: Page, log: ActionLogger, session = new Brows
   try {
     const msgs = page.locator('a:has(svg[aria-label="Messages"])').first()
     if (!(await msgs.isVisible().catch(() => false))) return false
-    await msgs.click({ timeout: session.timeout(5_000) })
+    await clickAction(msgs, session.timeout(5_000))
     await page
       .waitForURL(/instagram\.com\/direct\/inbox\/?/, { timeout: session.timeout(10_000) })
       .catch(() => undefined)

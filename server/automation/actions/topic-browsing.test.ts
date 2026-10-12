@@ -99,6 +99,7 @@ test('Instagram warnings are propagated instead of treated as the end of a topic
 test('topic results use the outer Next control and never carousel or engagement buttons', async () => {
   let url = '', nextClicks = 0, closed = false
   const next = { isVisible: async () => true, elementHandle: async () => ({
+    hover: async () => {},
     click: async () => { url = 'https://www.instagram.com/p/two/'; nextClicks++ }, dispose: async () => {} }),
   }
   const article = { waitFor: async () => {}, getByText: () => ({ count: async () => 0 }),
@@ -112,7 +113,7 @@ test('topic results use the outer Next control and never carousel or engagement 
     assert.equal(role, 'article'); return article
   }, locator: (selector: string) => { assert.equal(selector, TOPIC_NEXT_RESULT); return next } }
   const tile = { getAttribute: async () => '/p/one/', isVisible: async () => true,
-    elementHandle: async () => ({ click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {} }) }
+    elementHandle: async () => ({ hover: async () => {}, click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {} }) }
   const tiles = { first: () => ({ waitFor: async () => {} }), count: async () => 1, nth: () => tile }
   const page = {
     url: () => url, goto: async (value: string) => { url = value },
