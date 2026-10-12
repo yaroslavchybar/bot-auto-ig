@@ -1,6 +1,7 @@
 import { expect, test } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
+import { syncProxyUsage } from '../../convex/proxyUsage'
 
 test('available counts stay exact through 100 and indicate larger totals', async () => {
   const t = createConvexTest()
@@ -135,14 +136,16 @@ test('profile pages honor the chosen page size and reject sizes outside the foot
 test('proxy pages count profiles on every page without leaking login claims', async () => {
   const t = createConvexTest()
   await t.run(async (ctx) => {
-    for (let i = 0; i < 70; i++)
-      await ctx.db.insert('profiles', {
+    for (let i = 0; i < 70; i++) {
+      const profileId = await ctx.db.insert('profiles', {
         name: `profile-${i}`,
         createdAt: i,
         using: false,
         proxy: 'http://proxy.example:8000',
         proxyType: 'http',
       })
+      await syncProxyUsage(ctx, (await ctx.db.get(profileId))!)
+    }
     await ctx.db.insert('proxies', {
       name: 'Shared',
       proxy: 'http://proxy.example:8000',

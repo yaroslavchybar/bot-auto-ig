@@ -14,9 +14,7 @@ Business accounts take priority. Male/female labels require explicit public self
 
 A matching category receives a permanent sender assignment and one daily follow slot. Excluded categories and unclear results do not consume quota. A known excluded category is not repeatedly opened by the same category policy; another eligible automation can screen it. Provider failures preserve any saved decision, retry after five then ten minutes, and stop automatic screening after three consecutive failures. A successful decision resets the failure count; explicitly retrying failed enrichment also resets it. A two-minute lease expires after a crashed or interrupted worker. Stale results cannot overwrite a newer lease. Approval rechecks pause, list membership, category settings, day, and daily allowance.
 
-Deployment migrates the existing lead pool in resumable pages of 100. Old unassigned classifications are reset for browser screening. Existing assignments, follows, DM history, and new Luna decisions are preserved. Retired lead picture URLs, descriptions, batch IDs, and the background-enrichment work table are removed. Chat avatar URLs are independent and retained. CI first deploys a compatible schema, waits for cleanup, then deploys the final strict schema; a failed cleanup stops deployment and resumes on retry.
-
-This is a one-time migration. After successful production deployment, remove `convex/migrations/leadScreening.ts`, its tests, `.github/scripts/deploy-convex.ts` and its tests, and the `leadScreeningMigration` tracking table. Restore the workflow's direct `convex deploy` command. Runtime screening does not depend on the migration.
+The existing lead pool has been reset for browser screening. Assignments and outreach history are preserved. Retired lead picture fields are removed; Chat avatar URLs are independent and retained. Worker metadata and proxy assignments are maintained by ordinary writes, with no migration jobs or startup backfills.
 
 ## Outreach and cleanup
 

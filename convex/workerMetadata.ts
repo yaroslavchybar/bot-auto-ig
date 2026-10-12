@@ -1,6 +1,5 @@
-import { v } from 'convex/values'
 import { internal } from './_generated/api'
-import { internalMutation, type MutationCtx } from './_generated/server'
+import type { MutationCtx } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 
 /** Only writes when worker-visible fields change; cookies and setup progress stay isolated. */
@@ -91,7 +90,6 @@ export async function clearWorkerProfile(ctx: MutationCtx, profileId: Id<'profil
   }
 }
 
-/** Publish only empty/nonempty transitions, not every enriched lead or description checkpoint. */
 /** Source totals change only when profiles are added or removed, never on heartbeats. */
 export async function syncSourceCount(ctx: MutationCtx, listId: Id<'leadLists'>) {
   if (!(await ctx.db.get(listId))) return
@@ -109,67 +107,3 @@ export async function syncSourceCount(ctx: MutationCtx, listId: Id<'leadLists'>)
     await ctx.scheduler.runAfter(0, internal.leads.backfillCount, { listId, count: 0, revision: 0 })
   } else if (counter.sourceCount !== sourceCount) await ctx.db.patch(counter._id, { sourceCount })
 }
-
-/** Startup backfill is resumable and bounded; readers use the original data until it finishes. */
-export const initialize = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    let state = await ctx.db.query('workerMetadataMigration').unique()
-    if (state?.complete && state.projectionVersion === 1) return
-    if (state?.complete) {
-      await ctx.db.patch(state._id, { cursor: null, complete: false, jobId: undefined })
-      state = (await ctx.db.get(state._id))!
-    }
-    if (state?.jobId) {
-      const job = await ctx.db.system.get(state.jobId)
-      if (job?.state.kind === 'pending' || job?.state.kind === 'inProgress') return
-    }
-    if (!state) {
-      const id = await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: false })
-      state = (await ctx.db.get(id))!
-    }
-    const jobId = await ctx.scheduler.runAfter(0, internal.workerMetadata.backfill, {
-      cursor: state.cursor,
-    })
-    await ctx.db.patch(state._id, { jobId })
-  },
-})
-
-export const backfill = internalMutation({
-  args: { cursor: v.union(v.string(), v.null()) },
-  handler: async (ctx, { cursor }) => {
-    const state = await ctx.db.query('workerMetadataMigration').unique()
-    if (!state || state.complete || state.cursor !== cursor) return
-    const page = await ctx.db
-      .query('profiles')
-      .paginate({ cursor, numItems: 100, maximumRowsRead: 100, maximumBytesRead: 1_000_000 })
-    for (const profile of page.page) await syncWorkerProfile(ctx, profile)
-    const jobId = page.isDone
-      ? undefined
-      : await ctx.scheduler.runAfter(0, internal.workerMetadata.backfill, {
-          cursor: page.continueCursor,
-        })
-    await ctx.db.patch(state._id, {
-      cursor: page.continueCursor,
-      complete: page.isDone,
-      jobId,
-      projectionVersion: 1,
-    })
-    if (page.isDone) {
-      await ctx.scheduler.runAfter(0, internal.workerMetadata.backfillSources, {})
-      await ctx.scheduler.runAfter(0, internal.scrapeSources.applyScrapeLimits, {})
-    }
-  },
-})
-
-export const backfillSources = internalMutation({
-  args: { cursor: v.optional(v.string()) },
-  handler: async (ctx, { cursor }) => {
-    const page = await ctx.db.query('leadLists').paginate({ cursor: cursor ?? null, numItems: 10 })
-    for (const list of page.page) await syncSourceCount(ctx, list._id)
-    if (!page.isDone)
-      await ctx.scheduler.runAfter(0, internal.workerMetadata.backfillSources, {
-        cursor: page.continueCursor,
-      })
-  },
-})

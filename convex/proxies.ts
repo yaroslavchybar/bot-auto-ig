@@ -88,7 +88,7 @@ export const listPage = query({
   handler: async (
     ctx,
     { search, cursor, pageSize, purpose },
-  ): Promise<CursorPage<ProxyPageRow> & { usageReady: boolean }> => {
+  ): Promise<CursorPage<ProxyPageRow>> => {
     if (!isPageSize(pageSize)) throw new DomainError('VALIDATION', 'Invalid page size')
     const term = search.trim().toLowerCase()
     const result = await scanPage<ProxyListRow>(
@@ -98,16 +98,14 @@ export const listPage = query({
       cursor,
       pageSize,
     )
-    const usageReady = (await ctx.db.query('proxyUsageMigration').first())?.complete === true
     return {
       ...result,
-      usageReady,
       page: await Promise.all(
         result.page.map(async (row) => {
           const profiles =
             row.purpose === 'work'
               ? await ctx.db
-                  .query(usageReady ? 'proxyProfileAssignments' : 'profiles')
+                  .query('proxyProfileAssignments')
                   .withIndex('by_proxy', (q) =>
                     q.eq('proxy', row.proxy).eq('proxyType', row.proxyType),
                   )
@@ -350,42 +348,5 @@ export const remove = mutation({
       throw new DomainError('CONFLICT', 'Reassign profiles before deleting this proxy')
     await ctx.db.delete(args.id)
     return true
-  },
-})
-
-// One-time backfill: save proxies currently stored on profiles that
-// have no matching row yet. Deduped by proxy value; safe to rerun.
-export const importFromProfiles = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const proxies = await ctx.db.query('proxies').collect()
-    const seen = new Set(proxies.map((p) => proxyKey(p.proxy, p.proxyType)))
-    const taken = new Set(proxies.map((p) => p.name))
-    const profiles = await ctx.db.query('profiles').collect()
-    profiles.sort((a, b) => a.createdAt - b.createdAt)
-    let imported = 0
-    for (const profile of profiles) {
-      const key = proxyKey(profile.proxy, profile.proxyType)
-      if (!key || seen.has(key)) continue
-      const { proxyType } = normalizeProxy(key)
-      const base = String((profile as any).name || '').trim() || key
-      let name = base
-      let n = 2
-      while (taken.has(name)) {
-        name = `${base} ${n++}`
-      }
-      await ctx.db.insert('proxies', {
-        name,
-        proxy: key,
-        proxyType,
-        purpose: 'work',
-        maxProfiles: DEFAULT_MAX_PROFILES,
-        createdAt: Date.now(),
-      })
-      seen.add(key)
-      taken.add(name)
-      imported += 1
-    }
-    return { imported }
   },
 })

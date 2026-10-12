@@ -3,6 +3,7 @@ import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { sessionWindow } from '../../convex/mobileRequestPolicy'
 import { proxyCountryZones } from '../../convex/proxyCountryZones'
+import { patchProfile, syncWorkerProfile } from '../../convex/workerMetadata'
 
 const DAY = 86_400_000
 const HOUR = 3_600_000
@@ -53,6 +54,7 @@ async function setup(
       const storageId = await ctx.storage.store(new Blob(['{}']))
       await ctx.db.insert('chatSessions', { profileId, storageId, token: 'mobile-token' })
     }
+    await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
     const listId = await ctx.db.insert('leadLists', {
       name: 'leads',
       createdAt: 0,
@@ -114,7 +116,7 @@ test('the first successful scrape starts a hard 24-hour cutoff even with an acti
       runId: 'expires',
       leaseUntil: start + DAY + HOUR,
     })
-    await ctx.db.patch(s.profileId, { scraperCooldownUntil: start + 2 * DAY })
+    await patchProfile(ctx, s.profileId, { scraperCooldownUntil: start + 2 * DAY })
   })
   await vi.advanceTimersByTimeAsync(start + DAY - Date.now())
   await s.t.finishInProgressScheduledFunctions()
@@ -308,7 +310,7 @@ test('deployment cleanup trims newest posts in batches and stops expired monitor
     })
     return ids
   })
-  await s.t.mutation(internal.scrapeSources.applyScrapeLimits, {})
+  await s.t.mutation(internal.scrapeSources.trimPosts, { sourceId: s.sourceId })
   await flushImmediate(s.t)
   const posts = await s.t.run((ctx) => ctx.db.query('scrapePosts').collect())
   expect(posts.map((p) => p._id)).toEqual(rows.slice(0, 10))
@@ -332,7 +334,7 @@ test('deployment cleanup trims newest posts in batches and stops expired monitor
   await flushImmediate(s.t)
   expect(await s.t.run((ctx) => ctx.db.query('scrapePosts').collect())).toHaveLength(9)
   expect((await s.t.run((ctx) => ctx.db.get(rows[8])))?.monitoring).toBe(false)
-  await s.t.mutation(internal.scrapeSources.applyScrapeLimits, {})
+  await s.t.mutation(internal.scrapeSources.trimPosts, { sourceId: s.sourceId })
   await flushImmediate(s.t)
   expect((await s.t.run((ctx) => ctx.db.get(rows[8])))?.monitoring).toBe(false)
 })
@@ -372,18 +374,18 @@ test.each([
 ])('busy browser profiles suspend scraper work and resume when idle (%j)', async (busy) => {
   vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
   const s = await setup()
-  await s.t.run((ctx) => ctx.db.patch(s.profileId, busy))
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, busy))
   expect(await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).toMatchObject({
     taskAt: null,
     blockedProfileIds: [s.profileId],
   })
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
-  await s.t.run((ctx) => ctx.db.patch(s.profileId, { using: false, status: 'idle' }))
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { using: false, status: 'idle' }))
   expect(
     (await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).blockedProfileIds,
   ).toEqual([])
   const claim = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  await s.t.run((ctx) => ctx.db.patch(s.profileId, busy))
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, busy))
   await expect(
     s.t.mutation(internal.scrapeSources.heartbeat, { sourceId: s.sourceId, runId: claim.runId }),
   ).rejects.toThrow('busy in the browser')
@@ -503,10 +505,11 @@ test('mobile-only accounts lose capacity on reconnect; browser cookies remain el
       .withIndex('by_profile', (q) => q.eq('profileId', s.profileId))
       .first()
     await ctx.db.patch(session!._id, { reconnectRequired: true })
+    await syncWorkerProfile(ctx, (await ctx.db.get(s.profileId))!)
   })
   expect((await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).taskAt).toBeNull()
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
-  await s.t.run((ctx) => ctx.db.patch(s.profileId, { sessionId: 'browser-cookie' }))
+  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { sessionId: 'browser-cookie' }))
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toMatchObject({
     profileId: s.profileId,
   })

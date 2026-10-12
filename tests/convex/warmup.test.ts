@@ -44,7 +44,6 @@ test.each([true, false])('week-one follows have an independent quota and count o
     const state = await ctx.db.query('warmupStates').unique()
     await ctx.db.patch(state!._id, { day: 3, lastAutomationId: automation!._id,
       activityPlan: { ...plan.activityPlan!, follows: 2 } })
-    await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
   })
   if (initializeBefore) await t.mutation(api.analytics.initialize, {})
   const follow = { profileId: args.profileId, runId: args.runId, date: plan.date, username: 'fitness_one' }
@@ -127,7 +126,6 @@ test('recovery exhausts uncertain activity attempts so a crash cannot repeat eng
 
 test('records actual time once, and releases unused time for another run', async () => {
   const { t, begin, finish, state } = await setup()
-  await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
   await t.mutation(api.analytics.initialize, {})
   const { date } = await begin()
   await finish(date, 5)
@@ -171,7 +169,6 @@ test('restart recovery rounds rest deadlines and preserves a later stored deadli
   vi.setSystemTime(now)
   for (const previous of [0, now + 120_000.25]) {
     const { t, begin, state } = await setup({ restMinMinutes: 1.000001, restMaxMinutes: 1.000001 })
-    await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
     await t.mutation(api.analytics.initialize, {})
     await begin()
     const row = (await t.run(ctx => ctx.db.query('warmupStates').collect()))[0]

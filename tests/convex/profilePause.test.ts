@@ -43,11 +43,6 @@ async function setup() {
     })
     await ctx.db.insert('profileListAssignments', { profileId, listId: modelId })
     await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
-    await ctx.db.insert('workerMetadataMigration', {
-      cursor: null,
-      complete: true,
-      projectionVersion: 1,
-    })
     const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
     const sourceId = await ctx.db.insert('scrapeSources', {
       username: 'source',

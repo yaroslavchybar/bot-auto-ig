@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
+import { patchProfile, syncWorkerProfile } from '../../convex/workerMetadata'
 afterEach(() => {
   vi.unstubAllEnvs()
   vi.useRealTimers()
@@ -35,6 +36,7 @@ test.each([10, undefined])(
         scraperUsageCount: limit ?? 1000,
         scraperUsageDate: '2026-09-24',
       })
+      await syncWorkerProfile(ctx, (await ctx.db.get(profile))!)
       await ctx.db.insert('proxies', {
         name: 'test',
         proxy: 'proxy.test:8000',
@@ -57,7 +59,9 @@ test.each([10, undefined])(
     })
     const midnight = Date.now()
     expect((await t.query(api.scraper.work, args)).taskAt).toBe(0)
-    await t.run((ctx) => ctx.db.patch(ids.profile, { scraperCooldownUntil: midnight + 60_000 }))
+    await t.run((ctx) =>
+      patchProfile(ctx, ids.profile, { scraperCooldownUntil: midnight + 60_000 }),
+    )
     expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight + 60_000)
     await t.run((ctx) => ctx.db.patch(ids.job, { running: true, leaseUntil: midnight + 120_000 }))
     expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight + 120_001)

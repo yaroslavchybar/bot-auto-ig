@@ -80,14 +80,6 @@ impl Coordination {
         }
     }
     async fn scraper(&self) -> Result<()> {
-        self.api
-            .convex(
-                axum::http::Method::POST,
-                "/api/scraper/initialize",
-                Some(&json!({})),
-            )
-            .await
-            .map_err(Failure::unavailable)?;
         let mut subscription = self
             .subscriptions
             .subscribe("scraper:work", json!({}))

@@ -6,7 +6,6 @@ import { emptyActivity, recordActivity } from '../../convex/analyticsActivity'
 test('analytics counts confirmed daily activity, excludes deleted profiles, and does not reuse old lead quotas', async () => {
   const t = createConvexTest()
   await t.run(async (ctx) => {
-    await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
     for (const [name, status, usageDate, limit] of [
       ['active', 'running', '2026-10-11', 1000],
       ['stale', 'idle', '2026-10-10', null],
@@ -79,9 +78,6 @@ test('analytics counts confirmed daily activity, excludes deleted profiles, and 
 
 test('analytics reads initialized unique lead totals from the small counter', async () => {
   const t = createConvexTest()
-  await t.run(async (ctx) => {
-    await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
-  })
   await t.mutation(api.analytics.initialize, {})
   expect((await t.query(api.analytics.overview, { date: '2026-10-11' })).leads).toBeNull()
   await t.mutation(api.leadStats.initialize, {})
@@ -97,9 +93,6 @@ test('analytics reads initialized unique lead totals from the small counter', as
 
 test('date ranges include today, respect UTC boundaries and leave current lead inventory unchanged', async () => {
   const t = createConvexTest()
-  await t.run(async (ctx) => {
-    await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
-  })
   await t.mutation(api.analytics.initialize, {})
   await t.mutation(api.leadStats.initialize, {})
   await t.run(async (ctx) => {
@@ -141,9 +134,6 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
 
 test('zero activity does not write counters and re-initializing preserves existing history', async () => {
   const t = createConvexTest()
-  await t.run(async (ctx) => {
-    await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
-  })
   await t.mutation(api.analytics.initialize, {})
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', emptyActivity()))
   expect(await t.run((ctx) => ctx.db.query('analyticsDays').collect())).toEqual([])
@@ -154,10 +144,10 @@ test('zero activity does not write counters and re-initializing preserves existi
   expect(result.quota).toMatchObject({ unlimitedAccounts: 0, unlimitedUsed: 0, totalRequests: 4 })
 })
 
-test('analytics refuses incomplete account metadata and invalid dates', async () => {
+test('analytics refuses uninitialized activity history and invalid dates', async () => {
   const t = createConvexTest()
   await expect(t.query(api.analytics.overview, { date: '2026-10-11' })).rejects.toThrow(
-    'metadata is initializing',
+    'Activity history is initializing',
   )
   await expect(t.query(api.analytics.overview, { date: '2026-02-30' })).rejects.toThrow(
     'Invalid UTC date',

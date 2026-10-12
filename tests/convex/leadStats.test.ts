@@ -47,7 +47,6 @@ test('new scraper leads count once even when the same liker is saved to another 
     }
     return sources
   })
-  await t.run((ctx) => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
   await t.mutation(api.analytics.initialize, {})
   const likers = [{ igId: '123', username: 'liker' }]
   await t.mutation(internal.scraper.saveBatch, { ...sources[0], likers })

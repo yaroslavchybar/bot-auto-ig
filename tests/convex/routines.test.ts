@@ -121,7 +121,6 @@ test('outreach reservations move unique leads from ready to assigned without res
     const { t, args, loggedIn, profile } = await setup();
     await loggedIn();
     await t.mutation(api.leadStats.initialize, {});
-    await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }));
     await t.mutation(api.analytics.initialize, {});
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     const readStats = () => t.run(async ctx => (await ctx.db.query('leadStats').unique())!.counts);
@@ -817,7 +816,6 @@ test('daily follow-back discovery enables next-day DMs independently of follow q
   try {
     vi.setSystemTime(new Date('2026-10-11T10:00:00Z'));
     const { t, args, profile, loggedIn } = await setup(); await loggedIn();
-    await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }));
     await t.mutation(api.analytics.initialize, {});
     const claims = [];
     for (let i = 0; i < 2; i++) {
@@ -1223,31 +1221,6 @@ test('concurrent approvals cannot exceed the daily allowance', async () => {
   expect(accepted.filter(Boolean)).toHaveLength(1)
   expect((await t.query(internal.routines.target, args)).remaining).toBe(0)
 })
-
-test('deployment migration requeues unassigned legacy leads in pages while retaining assigned history', async () => {
-  vi.useFakeTimers();
-  const { t, args, loggedIn, leads, leadListId } = await setup(); await loggedIn();
-  const accepted = (await reserveFollow(t, args))!;
-  await t.run(async ctx => {
-    for (let i = 0; i < 205; i++) {
-      const leadId = await ctx.db.insert('leads', { username: `legacy-${i}`, createdAt: 1,
-        classification: 'female', enrichmentStatus: 'ready', dmSent: false, followed: false });
-      await ctx.db.insert('leadMemberships', { leadId, listId: leadListId, leadCreatedAt: 1, available: false });
-    }
-  });
-  await t.mutation(api.leadStats.initialize, {});
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
-  await t.mutation(internal.migrations.leadScreening.start, {});
-  await t.finishAllScheduledFunctions(vi.runAllTimers);
-  expect(await t.run(ctx => ctx.db.get(accepted.leadId))).toMatchObject({ senderId: args.profileId, classification: 'male' });
-  const pending = await t.run(ctx => ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'pending')).collect());
-  expect(pending).toHaveLength(205 + leads.length - 1);
-  const ready = await t.run(ctx => ctx.db.query('leadMemberships').withIndex('by_list_category', q => q.eq('listId', leadListId).eq('available', true).eq('classification', undefined)).collect());
-  expect(ready).toHaveLength(pending.length);
-  expect(await t.run(ctx => ctx.db.query('leadStats').unique())).toMatchObject({ complete: true,
-    counts: { total: 209, pending: 208, enriched: 1, assigned: 1, ready: 0 } });
-});
-
 test.each(['pause', 'categories', 'route', 'disabled'] as const)(
   'screening approval rechecks %s before assigning',
   async (change) => {

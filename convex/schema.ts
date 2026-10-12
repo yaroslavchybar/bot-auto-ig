@@ -56,11 +56,7 @@ export default defineSchema({
       v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),
     enrichmentStatus: v.optional(
-      v.union(
-        v.literal('pending'),
-        v.literal('ready'),
-        v.literal('error'),
-      ),
+      v.union(v.literal('pending'), v.literal('ready'), v.literal('error')),
     ),
     enrichmentModel: v.optional(v.string()),
     enrichmentConfidence: v.optional(v.number()),
@@ -282,20 +278,6 @@ export default defineSchema({
     proxy: v.string(),
     proxyType: v.string(),
   }).index('by_profile', ['profileId']),
-  workerMetadataMigration: defineTable({
-    projectionVersion: v.optional(v.number()),
-    cursor: v.union(v.string(), v.null()),
-    complete: v.boolean(),
-    jobId: v.optional(v.id('_scheduled_functions')),
-  }),
-  leadScreeningMigration: defineTable({
-    cursor: v.union(v.string(), v.null()),
-    complete: v.boolean(),
-    jobId: v.optional(v.id('_scheduled_functions')),
-    processed: v.optional(v.number()),
-    reset: v.optional(v.number()),
-    cleaned: v.optional(v.number()),
-  }),
   // Proxy tables read this small projection instead of profile cookies and runtime state.
   proxyProfileAssignments: defineTable({
     profileId: v.id('profiles'),
@@ -305,11 +287,6 @@ export default defineSchema({
   })
     .index('by_profile', ['profileId'])
     .index('by_proxy', ['proxy', 'proxyType']),
-  proxyUsageMigration: defineTable({
-    cursor: v.union(v.string(), v.null()),
-    complete: v.boolean(),
-    jobId: v.optional(v.id('_scheduled_functions')),
-  }),
   chatSessions: defineTable({
     profileId: v.id('profiles'),
     storageId: v.id('_storage'),

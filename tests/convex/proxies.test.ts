@@ -72,35 +72,6 @@ test('updating a profile with a new proxy auto-saves it', async () => {
   })
 })
 
-test('importFromProfiles backfills proxies stored on profiles', async () => {  const t = createConvexTest()
-  // Insert directly to simulate profiles created before auto-save existed.
-  await insertDoc(t, 'profiles', {
-    createdAt: Date.now(),
-    name: 'Legacy A',
-    proxy: 'http://legacy:8080:user:pass',
-    proxyType: 'http',
-    status: 'idle',
-    using: false,
-  })
-  await insertDoc(t, 'profiles', {
-    createdAt: Date.now(),
-    name: 'Legacy B',
-    proxy: 'http://legacy:8080:user:pass',
-    proxyType: 'http',
-    status: 'idle',
-    using: false,
-  })
-
-  const first = await t.mutation(api.proxies.importFromProfiles, {})
-  expect(first.imported).toBe(1)
-
-  const second = await t.mutation(api.proxies.importFromProfiles, {})
-  expect(second.imported).toBe(0)
-
-  const rows = await t.query(api.proxies.list, {})
-  expect(rows).toHaveLength(1)
-  expect(rows[0]).toMatchObject({ name: 'Legacy A' })
-})
 
 test('proxies default to a limit of 3 and accept a custom limit', async () => {
   const t = createConvexTest()

@@ -38,7 +38,6 @@ import type * as leadStats from "../leadStats.js";
 import type * as leads from "../leads.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
-import type * as migrations_leadScreening from "../migrations/leadScreening.js";
 import type * as mobileRequestPolicy from "../mobileRequestPolicy.js";
 import type * as mobileRequests from "../mobileRequests.js";
 import type * as modelSetupPolicy from "../modelSetupPolicy.js";
@@ -99,7 +98,6 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
-  "migrations/leadScreening": typeof migrations_leadScreening;
   mobileRequestPolicy: typeof mobileRequestPolicy;
   mobileRequests: typeof mobileRequests;
   modelSetupPolicy: typeof modelSetupPolicy;

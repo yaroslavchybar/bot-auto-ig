@@ -48,7 +48,6 @@ test('proxy edits atomically update all assigned profiles and retain their usage
     })
   }
   await expect(seedProfile(t, { name: 'C', proxy: 'socks5://user:new@host:1080' })).rejects.toThrow(/limit 2/)
-  expect(await t.mutation(api.proxies.importFromProfiles, {})).toEqual({ imported: 0 })
 })
 
 test('connection changes are rejected while assigned profiles run', async () => {
@@ -64,7 +63,7 @@ test('connection changes are rejected while assigned profiles run', async () => 
   await t.mutation(api.proxies.update, { id: saved._id, name: 'Renamed', ...endpoint })
 })
 
-test('assigned proxies cannot be deleted; unassigned deletion stays deleted after import', async () => {
+test('assigned proxies cannot be deleted; unassigned deletion stays deleted', async () => {
   const t = createConvexTest()
   const saved = await t.mutation(api.proxies.create, { name: 'Solo', ...endpoint, maxProfiles: 1 })
   const p = await seedProfile(t, { name: 'A', ...endpoint })
@@ -72,7 +71,6 @@ test('assigned proxies cannot be deleted; unassigned deletion stays deleted afte
   expect(await t.query(api.proxies.list, {})).toMatchObject([{ name: 'Solo', maxProfiles: 1 }])
   await t.mutation(api.profiles.mutations.updateById, { profileId: p!._id, name: 'A', proxy: '' })
   await t.mutation(api.proxies.remove, { id: saved!._id })
-  await t.mutation(api.proxies.importFromProfiles, {})
   expect(await t.query(api.proxies.list, {})).toHaveLength(0)
 })
 
@@ -86,12 +84,11 @@ test('duplicate endpoints are rejected on both create and edit', async () => {
   await expect(t.mutation(api.proxies.update, { id: second!._id, name: 'Second', ...endpoint })).rejects.toThrow(/Proxy already exists/)
 })
 
-test('explicit SOCKS5 and HTTPS schemes survive auto-save and import without a type field', async () => {
+test('explicit SOCKS5 and HTTPS schemes survive auto-save without a type field', async () => {
   const t = createConvexTest()
   const p = await seedProfile(t, { name: 'Socks', proxy: 'socks5://host:1080' })
   expect(p).toMatchObject({ proxy: 'socks5://host:1080', proxyType: 'socks5' })
-  await insertDoc(t, 'profiles', { name: 'Secure', proxy: 'https://host:8443', using: false, createdAt: 1 })
-  await t.mutation(api.proxies.importFromProfiles, {})
+  await seedProfile(t, { name: 'Secure', proxy: 'https://host:8443' })
   expect(await t.query(api.proxies.list, {})).toEqual(expect.arrayContaining([
     expect.objectContaining({ proxy: 'socks5://host:1080', proxyType: 'socks5' }),
     expect.objectContaining({ proxy: 'https://host:8443', proxyType: 'https' }),

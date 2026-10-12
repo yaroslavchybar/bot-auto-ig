@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedProfile } from './helpers'
+import { patchProfile } from '../../convex/workerMetadata'
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -13,7 +14,7 @@ test('worker contexts authenticate and expose revisions without downloading sess
     t.query(api.profiles.queries.chatWorkerContexts, { ...args, bridgeToken: 'wrong' }),
   ).rejects.toThrow('Unauthorized')
   const profileId = (await seedProfile(t, { proxy: 'localhost:8080', proxyType: 'http' }))!._id
-  await t.run((ctx) => ctx.db.patch(profileId, { igLoggedIn: true }))
+  await t.run((ctx) => patchProfile(ctx, profileId, { igLoggedIn: true }))
   expect(await read()).toEqual([])
   const token = '11111111-1111-4111-8111-111111111111'
   let storageId = await t.run((ctx) => ctx.storage.store(new Blob(['private cookies'])))
@@ -33,7 +34,9 @@ test('worker contexts authenticate and expose revisions without downloading sess
       proxyType: 'http',
     },
   ])
-  await t.run((ctx) => ctx.db.patch(profileId, { proxy: 'localhost:8081', proxyType: 'socks5' }))
+  await t.run((ctx) =>
+    patchProfile(ctx, profileId, { proxy: 'localhost:8081', proxyType: 'socks5' }),
+  )
   expect((await read())[0]).toMatchObject({
     storageId,
     proxy: 'localhost:8081',
@@ -54,11 +57,11 @@ test('worker contexts authenticate and expose revisions without downloading sess
     token,
     expectedToken: token,
   })
-  await t.run((ctx) => ctx.db.patch(profileId, { igLoggedIn: false }))
+  await t.run((ctx) => patchProfile(ctx, profileId, { igLoggedIn: false }))
   expect((await read())[0]).toMatchObject({ enabled: false, reconnectRequired: false })
-  await t.run((ctx) => ctx.db.patch(profileId, { status: 'deleting' }))
+  await t.run((ctx) => patchProfile(ctx, profileId, { status: 'deleting' }))
   expect(await read()).toEqual([])
-  await t.run((ctx) => ctx.db.patch(profileId, { status: 'idle' }))
+  await t.run((ctx) => patchProfile(ctx, profileId, { status: 'idle' }))
   await t.mutation(internal.profiles.mutations.deleteChatSessionInternal, { profileId })
   expect(await read()).toEqual([])
 })

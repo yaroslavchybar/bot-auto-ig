@@ -4,7 +4,6 @@ import { api, internal } from '../_generated/api'
 import { jsonResponse, parseBody, registerPreflight, withErrorHandling } from './shared'
 
 const paths = [
-  'initialize',
   'claim',
   'heartbeat',
   'posts',
@@ -34,14 +33,6 @@ export function registerScraperRoutes(http: HttpRouter): void {
     http,
     paths.map((path) => `/api/scraper/${path}`),
   )
-  http.route({
-    path: '/api/scraper/initialize',
-    method: 'POST',
-    handler: withErrorHandling(async (ctx) => {
-      await ctx.runMutation(internal.workerMetadata.initialize, {})
-      return jsonResponse({ ok: true })
-    }),
-  })
   http.route({
     path: '/api/scraper/claim',
     method: 'POST',

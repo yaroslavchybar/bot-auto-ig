@@ -12,9 +12,6 @@ const periodValidator = v.union(
 )
 
 async function accountsForAnalytics(ctx: QueryCtx) {
-  const migration = await ctx.db.query('workerMetadataMigration').unique()
-  if (!migration?.complete)
-    throw new Error('Account metadata is initializing. Please refresh shortly.')
   const profileRows = await ctx.db.query('scraperProfiles').take(1001)
   if (profileRows.length > 1000)
     throw new Error(

@@ -122,7 +122,6 @@ test('request history starts before opening Analytics and bridge retries count o
   const s = await setup()
   await s.reserve('first')
   await s.reserve('first')
-  await s.t.run((ctx) => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
   await s.t.mutation(api.analytics.initialize, {})
   expect(
     (await s.t.query(api.analytics.overview, { date: '2026-10-12', period: 'all' })).quota

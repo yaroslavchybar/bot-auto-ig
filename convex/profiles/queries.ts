@@ -112,7 +112,7 @@ export const maintenanceWork = query({
     const cleanup = await ctx.db.query('modelContentCleanup').take(100)
     return {
       profileIds: [...new Set([...deleting, ...renaming].map((p) => p._id))],
-      modelIds: cleanup.map(row => row.modelId),
+      modelIds: cleanup.map((row) => row.modelId),
     }
   },
 })
@@ -122,38 +122,10 @@ export const chatWorkerContexts = query({
   args: { bridgeToken: v.string(), subscriptionId: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
-    const initialized = await ctx.db.query('workerMetadataMigration').unique()
-    if (initialized?.complete) {
-      const rows = await ctx.db.query('chatWorkerMetadata').take(1001)
-      if (rows.length > 1000) throw new Error('Too many connected Chat accounts')
-      return rows.map(({ _id: _rowId, _creationTime: _created, ...context }) => context)
-        .sort((a, b) => a.profileId.localeCompare(b.profileId))
-    }
-    const memberships = await ctx.db.query('chatMemberships').take(1001)
-    if (memberships.length > 1000) throw new Error('Too many connected Chat accounts')
-    const contexts = await Promise.all(
-      memberships.map(async ({ profileId }) => {
-        const [profile, session] = await Promise.all([
-          ctx.db.get(profileId),
-          ctx.db
-            .query('chatSessions')
-            .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-            .first(),
-        ])
-        if (!profile || profile.status === 'deleting' || !session) return null
-        return {
-          profileId,
-          token: session.token,
-          storageId: session.storageId,
-          reconnectRequired: session.reconnectRequired === true,
-          enabled: !profile.paused && profile.igLoggedIn === true && session.reconnectRequired !== true,
-          proxy: profile.proxy ?? '',
-          proxyType: profile.proxyType ?? '',
-        }
-      }),
-    )
-    return contexts
-      .filter((context) => context !== null)
+    const rows = await ctx.db.query('chatWorkerMetadata').take(1001)
+    if (rows.length > 1000) throw new Error('Too many connected Chat accounts')
+    return rows
+      .map(({ _id: _rowId, _creationTime: _created, ...context }) => context)
       .sort((a, b) => a.profileId.localeCompare(b.profileId))
   },
 })
@@ -296,6 +268,8 @@ export const automationAccess = query({
   handler: async (ctx, { bridgeToken, profileId }) => {
     requireServerBridgeAuth(bridgeToken)
     const profile = await ctx.db.get(profileId)
-    return Boolean(profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom)
+    return Boolean(
+      profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom,
+    )
   },
 })

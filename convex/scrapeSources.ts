@@ -317,23 +317,6 @@ export const resumeMonitoring = internalMutation({
   },
 })
 
-/** Apply current limits to existing sources after deployment, without Instagram requests. */
-export const applyScrapeLimits = internalMutation({
-  args: { cursor: v.optional(v.string()) },
-  handler: async (ctx, { cursor }) => {
-    const batch = await ctx.db
-      .query('scrapeSources')
-      .paginate({ cursor: cursor ?? null, numItems: 100 })
-    for (const source of batch.page)
-      if (!source.deleting)
-        await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, { sourceId: source._id })
-    if (!batch.isDone)
-      await ctx.scheduler.runAfter(0, internal.scrapeSources.applyScrapeLimits, {
-        cursor: batch.continueCursor,
-      })
-  },
-})
-
 /** Keep the newest selected posts and cancel outdated monitors, in bounded batches. */
 export const trimPosts = internalMutation({
   args: {
