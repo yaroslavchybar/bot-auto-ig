@@ -352,16 +352,15 @@ impl Accounts {
         if state["postSourceIds"].as_array().map_or(0, Vec::len) >= 3
             && state["postSourceIds"].as_array().map_or(0, Vec::len)
                 == state["postDates"].as_array().map_or(0, Vec::len)
+            && (state["outreachReadyMarked"] != true || profile["outreachReady"] != true)
         {
-            if state["outreachReadyMarked"] != true || profile["outreachReady"] != true {
-                self.patch_setup(
-                    id,
-                    model_id,
-                    json!({"outreachReadyMarked":true}),
-                    &["error"],
-                )
-                .await?;
-            }
+            self.patch_setup(
+                id,
+                model_id,
+                json!({"outreachReadyMarked":true}),
+                &["error"],
+            )
+            .await?;
         }
         if today < 4 || state["avatarDone"] == true {
             return Ok(());
