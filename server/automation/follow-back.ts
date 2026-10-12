@@ -90,7 +90,7 @@ export async function followsUs(page: Page, username: string) {
 }
 
 /** Private requests expose no posts. Like at most one visible recent post, never a comment. */
-export async function likeRecentPost(page: Page, allowed: () => Promise<boolean>) {
+export async function likeRecentPost(page: Page, allowed: () => Promise<boolean>, beforeLike: () => Promise<boolean> = async () => true) {
   if (await page.getByText(/This (?:account|profile) is private/i, { exact: true }).isVisible()) return false;
   const post = page.locator('main a[href*="/p/"]').first();
   if (!await post.isVisible() || !await allowed()) return false;
@@ -100,7 +100,7 @@ export async function likeRecentPost(page: Page, allowed: () => Promise<boolean>
     const like = article.getByRole('button', { name: 'Like', exact: true }).first();
     const unlike = article.getByRole('button', { name: 'Unlike', exact: true }).first();
     await like.or(unlike).waitFor({ state: 'visible', timeout: 10_000 });
-    if (await unlike.isVisible() || !await allowed()) return false;
+    if (await unlike.isVisible() || !await allowed() || !await beforeLike()) return false;
     await (await actionLocator(like)).click({ timeout: 10_000 });
     await unlike.waitFor({ state: 'visible', timeout: 10_000 });
     return true;

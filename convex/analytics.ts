@@ -46,7 +46,8 @@ export const initialize = mutation({
       ])
       add(progress?.followQuotaDate, { follows: progress?.followedToday ?? 0 })
       add(progress?.dmDate, { dms: progress?.sentToday ?? 0 })
-      add(warmup?.date, { warmupMinutes: warmup?.minutesUsedToday ?? 0 })
+      add(warmup?.date, { warmupMinutes: warmup?.minutesUsedToday ?? 0,
+        follows: warmup?.followAttempts?.filter(attempt => attempt.confirmed).length ?? 0 })
       add(
         profile.scraperUsageDate,
         limitFor(profile) === undefined

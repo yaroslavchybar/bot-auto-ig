@@ -247,6 +247,9 @@ test('automation action failures reject the run and close the browser', async ()
           assert.equal(name, 'chosen')
           return {
             page: {
+              url: () => 'https://www.instagram.com/',
+              locator: () => ({ count: async () => 1, filter: () => ({ evaluateAll: async () => false }) }),
+              getByRole: () => ({ isVisible: async () => false }),
               goto: async () => {
                 throw new Error('Navigation failed')
               },

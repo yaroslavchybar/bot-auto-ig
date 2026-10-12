@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { StatusBadge, type Account } from './AccountsList'
 import { cn } from '@/lib/utils'
+import { OUTREACH_MIN_POSTS } from '../../../../../convex/routinePolicy'
 
 type Credential = {
   id: string
@@ -214,6 +215,7 @@ function WarmupStages({
     },
     {
       label: 'Outreach ready',
+      detail: `Requires ${OUTREACH_MIN_POSTS} posts; Outreach starts from warm-up day 8`,
       state: progress.outreachReadyMarked ? 'done' : 'waiting',
     },
   ]

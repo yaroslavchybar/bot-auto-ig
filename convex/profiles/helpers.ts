@@ -61,7 +61,7 @@ export async function syncProfileListAssignments(ctx: MutationCtx, profileId: Id
 		// Returning to the same model keeps its completed setup; a new model starts fresh.
 		const outreachReady = !!(setup && desired.size === 1 && desired.has(String(setup.modelId)) &&
 			setup.outreachReadyMarked && !setup.pending &&
-			recordedPostsReady(setup.postSourceIds, setup.postDates, setup.postTarget));
+			recordedPostsReady(setup.postSourceIds, setup.postDates));
 		await ctx.db.patch(profileId, { outreachReady });
 	}
 	for (const row of existing) {

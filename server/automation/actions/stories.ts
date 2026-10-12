@@ -12,7 +12,7 @@ export async function watchStories(
   log: ActionLogger,
   shouldStop: StopCheck,
   timing: { minSeconds: number; maxSeconds: number; deadline?: number } = { minSeconds: 2, maxSeconds: 5 },
-): Promise<void> {
+): Promise<number> {
   await page.goto('https://www.instagram.com/', {
     waitUntil: 'domcontentloaded',
     timeout: 45_000,
@@ -21,7 +21,7 @@ export async function watchStories(
   try {
     await dismissPopups(page, new BrowseSession(timing.deadline ?? Date.now() + 15_000, shouldStop))
   } catch (error) {
-    if (error instanceof SessionEnded) return
+    if (error instanceof SessionEnded) return 0
     throw error
   }
   // Current trays use named buttons; older layouts used story links.
@@ -31,11 +31,11 @@ export async function watchStories(
     await story.waitFor({ state: 'visible', timeout: opening.timeout(15_000) })
     opening.check()
   } catch (error) {
-    if (error instanceof SessionEnded) return
+    if (error instanceof SessionEnded) return 0
   }
   if (!(await story.isVisible().catch(() => false))) {
     log({ event: 'automation.actions.stories.stories_story_tray_found', message: 'Stories: no story tray found' })
-    return
+    return 0
   }
   await (await actionLocator(story, opening.timeout(5_000))).click({ timeout: opening.timeout(5_000) })
   let watched = 0
@@ -48,8 +48,10 @@ export async function watchStories(
     )
     if (shouldStop()) break
     watched++
-    await clickVisible(page, '[aria-label*="Next"], button:has-text("Next")')
+    if (watched < maxStories && !shouldStop())
+      await clickVisible(page, '[aria-label*="Next"], button:has-text("Next")')
   }
   await page.keyboard.press('Escape').catch(() => undefined)
   log({ event: 'automation.stories_result', watchedCount: watched })
+  return watched
 }

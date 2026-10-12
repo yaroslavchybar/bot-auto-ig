@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { OUTREACH_MIN_POSTS } from '../../../../../convex/routinePolicy'
 
 // Setup progress for one profile, as returned by the warm-up endpoint.
 type ModelWarmup = {
@@ -250,6 +251,7 @@ function SetupSteps({
     { label: 'Full name', done: progress.fullNameDone === true },
     { label: 'Avatar', done: progress.avatarDone === true },
     { label: `Posts ${postsDone}/${postTarget}`, done: postsDone >= postTarget },
+    { label: `${OUTREACH_MIN_POSTS} posts for Outreach`, done: postsDone >= OUTREACH_MIN_POSTS },
   ]
   const doneCount = steps.filter((step) => step.done).length
   return (

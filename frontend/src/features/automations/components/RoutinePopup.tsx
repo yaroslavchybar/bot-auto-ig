@@ -7,6 +7,7 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../../convex/_generated/dataModel'
 import {
   defaultRoutine,
+  OUTREACH_MIN_POSTS,
   outreachRoutes,
   validateRoutine,
   warmupPostRange,
@@ -113,14 +114,14 @@ export function RoutinePopup({
   // Reads an activity setting, falling back to its default when it has never been saved.
   const num = (key: string) => Number(policy.activity[key] ?? feedSetting(key).default)
   const flag = (key: string) => Boolean(policy.activity[key] ?? feedSetting(key).default)
-  const setActivity = (patch: Record<string, number | boolean>) =>
+  const setActivity = (patch: Record<string, number | boolean | string>) =>
     change('activity', { ...policy.activity, ...patch })
 
   // Plain-English summaries shown at the top of the Warm-up and Outreach tabs.
   const [postsMin, postsMax] = warmupPostRange(policy)
-  const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Each profile needs ${span(postsMin, postsMax)} posts before outreach.`
+  const warmupSummary = `Browse ${span(num('warmup_min_minutes'), num('warmup_max_minutes'))} min a day in ${span(num('session_min_minutes'), num('session_max_minutes'))} min sessions, resting ${span(num('rest_min_minutes'), num('rest_max_minutes'))} min between them. Outreach starts from day 8 with ${OUTREACH_MIN_POSTS} posts. Posting continues to the ${span(postsMin, postsMax)} post target.`
   const outreachSummary = policy.outreachEnabled
-    ? `Follows from day ${policy.outreachStartDay}: ${policy.initialDms} a day, growing up to ${policy.maxDms}. DMs wait for a follow-back.`
+    ? `Outreach from day 8 with ${OUTREACH_MIN_POSTS} posts: ${policy.initialDms} follows a day, growing up to ${policy.maxDms}. DMs wait for a follow-back.`
     : 'Off. No outreach follows or DMs.'
 
   // Binds a 0–100 activity setting to a slider.
@@ -159,7 +160,7 @@ export function RoutinePopup({
       onChange={(min, max) => setActivity({ [minKey]: min, [maxKey]: max })}
     />
   )
-  // Binds a min/max pair stored on the routine itself, such as warm-up posts.
+  // Binds a min/max pair stored on the routine itself, such as the post target.
   const routineRange = (
     id: string,
     label: string,
@@ -173,7 +174,7 @@ export function RoutinePopup({
       id={id}
       label={label}
       unit={unit}
-      limits={{ min: 1, max: limit }}
+      limits={{ min: minKey === 'warmupMinPosts' ? OUTREACH_MIN_POSTS : 1, max: limit }}
       minValue={policy[minKey] ?? fallback}
       maxValue={policy[maxKey] ?? fallback}
       onChange={(min, max) => {
@@ -186,7 +187,7 @@ export function RoutinePopup({
   const routineNumber = (
     id: string,
     label: string,
-    key: 'outreachStartDay' | 'initialDms' | 'maxDms',
+    key: 'initialDms' | 'maxDms',
     limits: { min: number; max: number },
   ) => (
     <NumberField
@@ -343,6 +344,16 @@ export function RoutinePopup({
                 <p className="rounded-lg bg-panel-muted px-3 py-2 text-[13px] leading-5 text-copy">
                   {warmupSummary}
                 </p>
+                <SettingsGroup title="Browsing">
+                  <ToggleRow wide label="Home feed" checked={flag('browse_home_feed')}
+                    onChange={checked => setActivity({ browse_home_feed: checked })} />
+                  <ToggleRow wide label="Reels scroll" checked={flag('scroll_reels')}
+                    onChange={checked => setActivity({ scroll_reels: checked })} />
+                  <Field id="warmup-topics" label="Topic keywords">
+                    <Input id="warmup-topics" value={String(policy.activity.warmup_topics ?? '')} maxLength={300}
+                      placeholder="fitness, gym, workout" onChange={event => setActivity({ warmup_topics: event.target.value })} />
+                  </Field>
+                </SettingsGroup>
                 <SettingsGroup title="Schedule">
                   {rangeSetting(
                     'Daily browsing',
@@ -364,19 +375,13 @@ export function RoutinePopup({
                   )}
                   {routineRange(
                     'warmup-posts',
-                    'Warm-up posts',
+                    'Post target',
                     'posts',
                     'warmupMinPosts',
                     'warmupMaxPosts',
                     100,
                     9,
                   )}
-                </SettingsGroup>
-                <SettingsGroup title="Engagement">
-                  {percentSetting('Like', 'like_chance')}
-                  {percentSetting('Follow', 'follow_chance')}
-                  {percentSetting('Carousel watch', 'carousel_watch_chance')}
-                  {numberSetting('Max carousel slides', 'carousel_max_slides')}
                 </SettingsGroup>
                 <SettingsGroup title="Feed" collapsible defaultOpen={false}>
                   {percentSetting('Skip post', 'skip_post_chance')}
@@ -405,7 +410,6 @@ export function RoutinePopup({
                 </SettingsGroup>
                 <SettingsGroup title="Explore" collapsible defaultOpen={false}>
                   {percentSetting('Profile visit', 'profile_visit_chance')}
-                  {percentSetting('Visit author after like', 'liked_profile_visit_chance')}
                   {percentSetting('Own profile', 'own_profile_chance')}
                   {percentSetting('DM check', 'dm_chance')}
                   {percentSetting('Reels', 'reels_chance')}
@@ -430,10 +434,6 @@ export function RoutinePopup({
                 </label>
                 <div className={cn('space-y-6', !policy.outreachEnabled && 'opacity-60')}>
                   <SettingsGroup title="Daily follows">
-                    {routineNumber('outreach-start-day', 'Outreach from day', 'outreachStartDay', {
-                      min: 1,
-                      max: 365,
-                    })}
                     {routineNumber('initial-follows', 'Initial follows per day', 'initialDms', {
                       min: 1,
                       max: 35,

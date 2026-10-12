@@ -304,9 +304,10 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
         if outcome == "restore readiness" {
             let mut state = progress.lock().await;
             state["nameDone"] = json!(true);
-            state["postTarget"] = json!(1);
-            state["postSourceIds"] = json!(["post"]);
-            state["postDates"] = json!(["2026-09-25"]);
+            state["postTarget"] = json!(9);
+            state["postSourceIds"] = json!(["post1", "post2", "post3"]);
+            state["postDates"] = json!(["2026-09-25", "2026-09-26", "2026-09-27"]);
+            state["avatarDone"] = json!(true);
             state["outreachReadyMarked"] = json!(true);
             state["error"] = json!("stale setup error");
         }
@@ -402,7 +403,7 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
                 state["error"].is_null(),
                 "completed setup must reconfirm readiness when the profile flag is missing"
             );
-            assert_eq!(state["postSourceIds"], json!(["post"]));
+            assert_eq!(state["postSourceIds"], json!(["post1", "post2", "post3"]));
             continue;
         }
         if outcome == "retry pending" {

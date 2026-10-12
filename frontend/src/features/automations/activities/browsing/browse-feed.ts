@@ -18,12 +18,17 @@ export const browseFeed: ActivityDefinition = {
   color: '#3b82f6',
 
   inputs: [
+    { name: 'browse_home_feed', type: 'boolean', label: 'Home feed', default: true, group: 'Browsing' },
+    { name: 'scroll_reels', type: 'boolean', label: 'Reels scroll', default: true, group: 'Browsing' },
+    { name: 'warmup_topics', type: 'string', label: 'Topic keywords', default: '',
+      placeholder: 'fitness, gym, workout', group: 'Browsing',
+      helpText: 'Separate related keywords with commas. Blank uses normal browsing.' },
     // Warm-up plan: minutes assigned at random from this range each day
     {
       name: 'warmup_min_minutes',
       type: 'number',
       label: 'Min Minutes',
-      default: 30,
+      default: 10,
       min: 1,
       max: 100,
       group: 'Daily Budget',
@@ -33,7 +38,7 @@ export const browseFeed: ActivityDefinition = {
       name: 'warmup_max_minutes',
       type: 'number',
       label: 'Max Minutes',
-      default: 60,
+      default: 20,
       min: 1,
       max: 100,
       group: 'Daily Budget',
@@ -59,30 +64,6 @@ export const browseFeed: ActivityDefinition = {
       helpText: 'This profile rests between sessions while the automation runs other eligible profiles.',
     },
 
-    // Engagement chances
-    {
-      name: 'like_chance',
-      type: 'range',
-      label: 'Like Chance',
-      default: 10,
-      min: 0,
-      max: 100,
-      unit: '%',
-      group: 'Engagement',
-    },
-
-    // Follow Chance
-    {
-      name: 'follow_chance',
-      type: 'range',
-      label: 'Follow Chance',
-      default: 0,
-      min: 0,
-      max: 100,
-      unit: '%',
-      group: 'Engagement',
-    },
-
     // Carousel Watch Chance
     {
       name: 'carousel_watch_chance',
@@ -92,7 +73,7 @@ export const browseFeed: ActivityDefinition = {
       min: 0,
       max: 100,
       unit: '%',
-      group: 'Engagement',
+      group: 'Carousel',
     },
 
     // Carousel Max Slides
@@ -109,7 +90,7 @@ export const browseFeed: ActivityDefinition = {
       name: 'watch_stories',
       type: 'boolean',
       label: 'Watch Stories Before Feed',
-      default: false,
+      default: true,
       helpText: 'Open the stories tray before warm up starts.',
       group: 'Stories',
     },
@@ -193,17 +174,6 @@ export const browseFeed: ActivityDefinition = {
       helpText: 'Sometimes open the author or a liker profile, look around, then return to feed.',
     },
     {
-      name: 'liked_profile_visit_chance',
-      type: 'range',
-      label: 'Liked Post Visit Chance',
-      default: 80,
-      min: 0,
-      max: 100,
-      unit: '%',
-      group: 'Explore',
-      helpText: 'Chance to visit the author profile after liking their post.',
-    },
-    {
       name: 'own_profile_chance',
       type: 'range',
       label: 'Own Profile Chance',
@@ -229,7 +199,7 @@ export const browseFeed: ActivityDefinition = {
       name: 'reels_chance',
       type: 'range',
       label: 'Reels Chance',
-      default: 12,
+      default: 35,
       min: 0,
       max: 100,
       unit: '%',

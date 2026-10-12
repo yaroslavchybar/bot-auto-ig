@@ -330,7 +330,7 @@ export function profilesSetOutreachReady(profileId: string): Promise<void> {
 
 export type DbAutomationRow = {
   listIds?: string[]
-  routine?: { activity: Record<string, number | boolean>; headless: boolean }
+  routine?: { activity: Record<string, number | boolean | string>; headless: boolean }
   _id: string
   name: string
   nodes: import('../automation/graph.js').AutomationNode[]
@@ -418,6 +418,14 @@ export async function warmupGetByProfile(profileId: string): Promise<DbWarmupSta
   )
 }
 
+export type WarmupFollowRequest = { profileId: string; runId: string; date: string; username: string }
+export const warmupBeginFollow = (input: WarmupFollowRequest) =>
+  convexFetch<boolean>('/api/warmup/begin-follow', { method: 'POST', body: input, maxRetries: 0 })
+export const warmupConfirmFollow = (input: WarmupFollowRequest) =>
+  convexFetch('/api/warmup/confirm-follow', { method: 'POST', body: input })
+export const warmupPauseFollows = (profileId: string, date: string, reason: string) =>
+  convexFetch('/api/warmup/pause-follows', { method: 'POST', body: { profileId, date, reason } })
+
 export async function warmupBeginRun(input: {
   profileId: string
   automationId: string
@@ -428,7 +436,8 @@ export async function warmupBeginRun(input: {
   sessionMaxMinutes: number
   restMinMinutes: number
   restMaxMinutes: number
-}): Promise<{ date: string; minutes: number; remainingMinutes?: number }> {
+}): Promise<{ date: string; minutes: number; remainingMinutes?: number; day?: number;
+  activityPlan?: import('./warmupPlan.js').WarmupActivityCounts; activityUsed?: import('./warmupPlan.js').WarmupActivityCounts }> {
   return convexFetch('/api/warmup/begin', { method: 'POST', body: input })
 }
 
@@ -544,6 +553,7 @@ export async function warmupFinishRun(input: {
   runId: string
   date: string
   minutes: number
+  activity?: import('./warmupPlan.js').WarmupActivityCounts
 }): Promise<void> {
   await convexFetch('/api/warmup/finish', { method: 'POST', body: input })
 }

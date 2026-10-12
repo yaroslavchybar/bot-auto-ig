@@ -1,6 +1,10 @@
 import type { Locator, Page } from 'playwright-core'
 import { BrowseSession } from './session.js'
 import { viewVideo } from './viewing.js'
+import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
+import { assertInstagramReady } from './instagram-state.js'
+import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/warmupTopics.js'
+import { maintainPost } from './maintenance.js'
 import {
   chance,
   numeric,
@@ -96,30 +100,6 @@ async function inViewVideo(page: Page): Promise<Locator | null> {
   }
 }
 
-// Like button on the rail of the reel in view (a preloaded neighbor has
-// its own copy below the fold). Null when already liked or not visible.
-async function inViewLike(page: Page, label: 'Like' | 'Unlike' = 'Like'): Promise<Locator | null> {
-  try {
-    const btns = page.locator(`div[role="button"]:has(svg[aria-label="${label}"])`)
-    const n = await btns.count().catch(() => 0)
-    const vp = page.viewportSize() ?? { width: 1280, height: 800 }
-    for (let i = 0; i < n; i++) {
-      const box = await btns.nth(i).boundingBox().catch(() => null)
-      if (
-        box &&
-        box.y > 0 &&
-        box.y < vp.height &&
-        box.x > 0 &&
-        box.x < vp.width
-      )
-        return btns.nth(i)
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
 // How many videos sit centered on screen right now. After an overshoot
 // or a batch load this is 0 — the viewer hasn't seated on any reel.
 async function centeredCount(page: Page): Promise<number> {
@@ -187,8 +167,7 @@ async function advanceReel(page: Page, session: BrowseSession): Promise<boolean>
   }
 }
 
-// Watch a few reels: dwell on each per its clip length, sometimes like
-// (Like button only — never double-tap video), then tick to the next.
+// Watch a few reels without engagement, then advance to the next.
 export async function watchReels(
   page: Page,
   count: number,
@@ -197,15 +176,20 @@ export async function watchReels(
   shouldStop: StopCheck,
   end: number,
   session = new BrowseSession(end, shouldStop),
+  budget?: WarmupActivityBudget,
 ): Promise<void> {
+  if (config.scroll_reels === false) return
   const sleep = session.wait
   session.check()
   const viewMin = Math.max(0, numeric(config.post_view_min_seconds, 2))
   const viewMax = Math.max(viewMin, numeric(config.post_view_max_seconds, 5))
   const seen = new Set<string>()
   let watched = 0
-  const target = Math.max(1, Math.round(count))
-  while (watched < target && Date.now() < end && !shouldStop()) {
+  const target = Math.min(Math.max(0, Math.round(count)), budget?.remaining('reels') ?? Infinity)
+  const topics = warmupTopics(config.warmup_topics)
+  let inspected = 0
+  while (watched < target && inspected++ < target + 15 && Date.now() < end && !shouldStop()) {
+    await assertInstagramReady(page)
     const id = reelId(page.url())
     if (id) {
       if (seen.has(id)) {
@@ -227,8 +211,12 @@ export async function watchReels(
       await sleep(random(1200, 2200))
       continue
     }
-    // Bored flick: skip without watching, like the feed skip chance.
-    if (chance(config.reels_skip_chance ?? 25)) {
+    const video = await inViewVideo(page)
+    if (!video) break
+    const context = await video.evaluate(reelPostContext)
+    const preserveFollowed = context.relationship !== 'not-followed'
+    // Inspect the current author before deciding whether to skip.
+    if (!preserveFollowed && chance(config.reels_skip_chance ?? 25)) {
       await sleep(random(300, 800))
       if (Date.now() >= end || shouldStop()) break
       if (!(await advanceReel(page, session).catch(() => false))) {
@@ -238,8 +226,13 @@ export async function watchReels(
       await sleep(random(1200, 2200))
       continue
     }
-    const video = await inViewVideo(page)
-    if (!video) break
+    if (!feedPostMatches(context, topics)) {
+      log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
+      await sleep(random(300, 800))
+      if (!await advanceReel(page, session)) break
+      continue
+    }
+    if (budget && !budget.take('reels')) break
     // Clip length drives the watch time, same as feed videos.
     let clip = 0
     try {
@@ -252,18 +245,16 @@ export async function watchReels(
     }
     const dwell =
       (clip > 0
-        ? Math.min(Math.max(viewMin, clip * random(0.5, 1)), 20)
-        : random(Math.max(viewMin, 5), Math.max(viewMax, 12))) * 1000
-    const wantsLike = chance(config.like_chance)
+        ? Math.min(Math.max(viewMin, clip * random(0.5, 1)), 35)
+        : Math.random() > 0.85 ? random(Math.max(viewMin, 18), Math.max(viewMax, 35))
+        : random(Math.max(viewMin, 6), Math.max(viewMax, 16))) * 1000
     const viewed = await viewVideo(video, dwell, session)
-    if (viewed && wantsLike) {
-      const like = await inViewLike(page)
-      if (like) {
-        await like.click({ timeout: session.timeout(5_000) }).catch(() => undefined)
-        await sleep(400)
-        if (await inViewLike(page, 'Unlike')) log({ event: 'automation.actions.reels.liked_reel', message: 'Liked reel' })
-      }
+    if (viewed && budget) budget.browsed++
+    if (viewed && numeric(config.warmup_day, 1) >= 8 && budget) {
+      const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+      await maintainPost(page, post, context, topics, budget, session, log)
     }
+    await assertInstagramReady(page)
     if (Date.now() >= end || shouldStop()) break
     watched++
     if (watched >= target) break

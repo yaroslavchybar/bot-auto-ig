@@ -4,7 +4,7 @@ import type { ActionLogger, StopCheck } from './actions/shared.js';
 type Target = { target: number; remaining: number; sent: number };
 type Controls = {
   target: () => Promise<Target>;
-  send: () => Promise<'sent' | 'blocked' | 'unavailable'>;
+  send: () => Promise<'sent' | 'followed' | 'blocked' | 'unavailable'>;
   stopped: StopCheck;
   now: () => number;
   random: (min: number, max: number) => number;
@@ -38,7 +38,7 @@ export async function scheduleRoutine(
     const browsingMs = Math.min(remainingMs - 20_000,
       Math.max(10_000, Math.min(random(30_000, 90_000), spareMs)));
     const reason = await browse(browsingMs);
-    if (reason === 'stalled' || stopped()) return reason;
+    if (reason === 'stalled' || reason === 'skipped' || stopped()) return reason;
     const batch = Math.min(quota - sent, Math.floor(random(1, 6)));
     log({ event: 'automation.routine.outreach_batch', message: `Outreach batch: up to ${batch}; session target ${sent}/${quota}` });
     for (let i = 0; i < batch && !stopped(); i++) {
@@ -50,11 +50,13 @@ export async function scheduleRoutine(
       if (current.remaining <= 0) { available = false; break; }
       const result = await controls.send();
       if (result === 'unavailable') { available = false; break; }
-      if (result === 'sent') sent++;
+      if (result === 'sent' || result === 'followed') sent++;
       // Keep a random pause, but reserve enough time for the remaining target.
       const secondsPerDm = (session.deadline - now()) / 1000 / Math.max(1, quota - sent);
       const maxPause = Math.max(30, Math.min(90, Math.floor(secondsPerDm - 30)));
       nextSendAt = now() + Math.floor(random(30, maxPause + 1)) * 1000;
+      // Every successful follow ends its batch, so the next action starts with browsing.
+      if (result === 'followed') break;
     }
   }
   return stopped() ? 'stopped' : 'finished';

@@ -40,6 +40,22 @@ test('a session alternates browsing with multiple DM batches', async () => {
   assert.deepEqual(s.events.slice(0, 9), ['browse', 'send', 'send', 'browse', 'send', 'send', 'browse', 'send', 'send']);
 });
 
+test('every successful follow ends its batch and requires browsing before another action', async () => {
+  const s = setup(4, 5);
+  const send = s.controls.send;
+  await scheduleRoutine(s.session(15, 15), { ...s.controls, send: async () => { await send(); return 'followed'; } });
+  assert.equal(s.sent(), 4);
+  for (let i = 0; i < s.events.length - 1; i++)
+    if (s.events[i] === 'send') assert.equal(s.events[i + 1], 'browse');
+});
+
+test('disabled or exhausted browsing does not permit an outreach batch', async () => {
+  const s = setup(4, 5);
+  const session = { ...s.session(15, 15), browse: async () => 'skipped' as const };
+  assert.equal(await scheduleRoutine(session, s.controls), 'skipped');
+  assert.equal(s.sent(), 0);
+});
+
 test('a browser-only warmup spends its session browsing when outreach is unavailable', async () => {
   const s = setup(0);
   const session = s.session(10, 10);

@@ -3,8 +3,60 @@ import { api, internal } from '../../convex/_generated/api';
 import { defaultRoutine, dayKey, validateRoutine } from '../../convex/routinePolicy';
 import { ROUTINE_RETRY_MS } from '../../convex/routineErrors';
 import { createConvexTest, seedList, seedProfile } from './helpers';
-import type { Id } from '../../convex/_generated/dataModel';
+import type { Id, Doc } from '../../convex/_generated/dataModel';
+import type { MutationCtx } from '../../convex/_generated/server';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+test('outreach waits until day eight even when an old saved setting enables day one', async () => {
+  const { t, automation, args, loggedIn } = await setup();
+  await loggedIn();
+  await t.run(async ctx => {
+    await ctx.db.patch(automation._id, { routine: { ...automation.routine!, outreachStartDay: 1 } });
+    const warmup = await ctx.db.query('warmupStates').unique();
+    await ctx.db.patch(warmup!._id, { day: 7 });
+  });
+  expect(await t.query(api.routines.accounts, { automationId: automation._id }))
+    .toMatchObject([{ stage: 'Warm-up', allowance: 0 }]);
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  await t.run(async ctx => {
+    const warmup = await ctx.db.query('warmupStates').unique();
+    await ctx.db.patch(warmup!._id, { day: 8 });
+  });
+  expect(await t.query(api.routines.accounts, { automationId: automation._id }))
+    .toMatchObject([{ activeDays: 0, stage: 'Outreach', allowance: 2 }]);
+  expect(await t.query(internal.routines.target, args)).toMatchObject({ target: 2, remaining: 2 });
+  expect(await t.mutation(internal.routines.reserve, args)).not.toBeNull();
+  expect(await t.mutation(internal.routines.reserve, args)).not.toBeNull();
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+});
+
+test('day-seven outreach rejects existing pending DMs and follow authorization', async () => {
+  const { t, args, loggedIn } = await setup(); await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.run(async ctx => {
+    await ctx.db.patch(claim.leadId, { followed: true, followDate: Date.now() - 86_400_000,
+      unfollowAt: Date.now() + 86_400_000, dmEligible: true });
+    const warmup = await ctx.db.query('warmupStates').unique();
+    await ctx.db.patch(warmup!._id, { day: 7 });
+  });
+  expect(await t.query(internal.routines.dmTasks, args)).toEqual([]);
+  expect(await t.query(internal.routines.notifications, args)).toBeNull();
+  expect(await t.mutation(internal.routines.beginSend, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
+  expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
+});
+
+test('a follow warning stops new follows for the day without stopping browsing readiness', async () => {
+  const { t, args, loggedIn } = await setup(); await loggedIn();
+  const claim = (await t.mutation(internal.routines.reserve, args))!;
+  await t.mutation(internal.warmup.mutations.pauseFollowsInternal,
+    { profileId: args.profileId, date: dayKey(), reason: 'Follow stuck loading' });
+  expect(await t.query(internal.routines.target, args)).toEqual({ target: 0, remaining: 0, sent: 0 });
+  expect(await t.mutation(internal.routines.reserve, args)).toBeNull();
+  expect(await t.mutation(internal.routines.beginFollow, { ...args, leadId: claim.leadId, date: claim.date })).toBe(false);
+  expect(await t.query(internal.routines.ready, args)).toBe(true);
+});
 
 test.each([0, 0.999])('daily growth is saved once and applies next day (random=%s)', async random => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-21T10:00:00Z'));
@@ -170,8 +222,8 @@ test('uncertain sends remain reserved and show as an incomplete target when time
   const claim = (await t.mutation(internal.routines.reserve, args))!;
   await authorizeDm(t, args, claim);
   await t.mutation(internal.routines.finishSend, { profileId: profile._id, leadId: claim.leadId, date: claim.date, sent: false });
-  await t.run(ctx => ctx.db.insert('warmupStates', {
-    profileId: profile._id, date: dayKey(), day: 1, runsToday: 1, todayMinutes: 5, minutesUsedToday: 5, updatedAt: Date.now(),
+  await t.run(ctx => putWarmup(ctx, {
+    profileId: profile._id, date: dayKey(), day: 8, runsToday: 1, todayMinutes: 5, minutesUsedToday: 5, updatedAt: Date.now(),
   }));
   const row = (await t.query(api.routines.accounts, { automationId: args.automationId }))[0];
   expect(row).toMatchObject({ used: 1, sent: 0, allowance: 2, budgetExhausted: true });
@@ -233,6 +285,8 @@ async function setup() {
     isActive: true,
   });
   const args = { automationId: automation._id, profileId: profile._id };
+  await t.run(ctx => putWarmup(ctx, { profileId: profile._id, day: 8, date: dayKey(), runsToday: 1,
+    todayMinutes: 30, minutesUsedToday: 0, updatedAt: Date.now() }));
   // These fixtures represent accounts already classified by the scraper.
   await t.run(async ctx => {
     for (const username of ['alice', 'bob', 'carol', 'dave']) {
@@ -252,6 +306,12 @@ async function setup() {
       outreachReady: true,
     });
   return { t, list, profile, automation, args, leads, loggedIn, leadListId };
+}
+
+async function putWarmup(ctx: MutationCtx, value: Omit<Doc<'warmupStates'>, '_id' | '_creationTime'>) {
+  const existing = await ctx.db.query('warmupStates').withIndex('by_profile', q => q.eq('profileId', value.profileId)).unique();
+  if (existing) { await ctx.db.patch(existing._id, value); return existing._id; }
+  return ctx.db.insert('warmupStates', value);
 }
 
 test('model browsing starts the next Kyiv day while outreach waits for mobile login', async () => {
@@ -426,10 +486,10 @@ test('existing follows without saved deadlines still become due after seven days
 test.each([
   { unfollowMinDays: 0 }, { unfollowMaxDays: 366 },
   { unfollowMinDays: 8, unfollowMaxDays: 3 }, { unfollowMinDays: 1.5 },
-  { warmupMinPosts: 0 }, { warmupMaxPosts: 101 },
+  { warmupMinPosts: 0 }, { warmupMinPosts: 2 }, { warmupMaxPosts: 101 },
   { warmupMinPosts: 6, warmupMaxPosts: 3 }, { warmupMinPosts: Number.NaN },
 ])('invalid random ranges are rejected: %j', patch => {
-  expect(() => validateRoutine({ ...defaultRoutine, ...patch })).toThrow(/Unfollow days|Warm-up posts/);
+  expect(() => validateRoutine({ ...defaultRoutine, ...patch })).toThrow(/Unfollow days|Post target/);
 });
 
 test('a followed lead cannot receive a same-day DM and stays claimed after unfollow', async () => {
@@ -525,7 +585,7 @@ test('moving between models preserves account progress, warm-up budgets, and fol
   const ids = await t.run(async ctx => {
     const progress = (await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', profile._id)).unique())!;
     await ctx.db.patch(progress._id, { activeDays: 18, followIncrease: 10, nextRunAt: restUntil, lastNotificationsDate: dayKey(), lastNotificationsAt: Date.now() });
-    const warmup = await ctx.db.insert('warmupStates', {
+    const warmup = await putWarmup(ctx, {
       profileId: profile._id, day: 18, date: dayKey(), runsToday: 2,
       todayMinutes: 30, minutesUsedToday: 12, nextRunAt: restUntil,
       recentRunIds: ['completed-run'], lastAutomationId: automation._id, updatedAt: Date.now(),
@@ -560,7 +620,7 @@ test('moving between models preserves account progress, warm-up budgets, and fol
 test('session progress preserves fractional stored rest deadlines as integer milliseconds', async () => {
   const { t, args, profile } = await setup();
   const nextRunAt = Date.now() + 60_000.25;
-  await t.run(ctx => ctx.db.insert('warmupStates', {
+  await t.run(ctx => putWarmup(ctx, {
     profileId: profile._id, day: 1, date: dayKey(), runsToday: 1,
     todayMinutes: 30, minutesUsedToday: 5, nextRunAt, updatedAt: Date.now(),
   }));
@@ -584,7 +644,7 @@ test.each([
     const { t, args, profile, loggedIn } = await setup();
     await loggedIn();
     // A failed browser open must not reuse an expired rest deadline or yesterday's budget.
-    await t.run(ctx => ctx.db.insert('warmupStates', {
+    await t.run(ctx => putWarmup(ctx, {
       profileId: profile._id, day: 16, date: '2026-10-08', runsToday: 3,
       todayMinutes: 25, minutesUsedToday: 25, nextRunAt: Date.now() - 60_000, updatedAt: Date.now() - 60_000,
     }));
@@ -611,7 +671,7 @@ test('retry cooldown preserves a longer rest and resets after another failure', 
     const { t, args, profile, loggedIn } = await setup();
     await loggedIn();
     const restAt = Date.now() + 60 * 60_000;
-    await t.run(ctx => ctx.db.insert('warmupStates', {
+    await t.run(ctx => putWarmup(ctx, {
       profileId: profile._id, day: 1, date: dayKey(), runsToday: 1,
       todayMinutes: 25, minutesUsedToday: 5, nextRunAt: restAt, updatedAt: Date.now(),
     }));
@@ -705,7 +765,7 @@ test("completed daily browsing advances once; removing and readding profiles pre
   const { t, args, profile, list, loggedIn } = await setup();
   await loggedIn();
   await t.run((ctx) =>
-    ctx.db.insert("warmupStates", {
+    putWarmup(ctx, {
       profileId: profile._id,
       day: 1,
       date: dayKey(),

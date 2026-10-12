@@ -35,6 +35,9 @@ function setup(mode: 'dm' | 'follow' = 'dm', relationship: 'Follow' | 'Following
       ? { ...locator, waitFor: async () => { throw new Error('missing'); } } : locator,
   } as unknown as Page;
   const deps: NonNullable<Parameters<typeof runRoutineSession>[5]> = {
+    follow: async (_page, allowed, click, confirmed) => { if (!await allowed()) return false; await click(); await confirmed(); return true; },
+    pauseFollows: async () => {},
+    instagram: async () => {},
     now: () => now, ready: async () => true,
     target: async () => ({ target: mode === 'follow' ? 1 : 0, remaining: mode === 'follow' && !calls.includes('reserve') ? 1 : 0, sent: 0 }),
     sleep: async ms => { now += ms; }, random: min => min,
@@ -69,6 +72,26 @@ test('follow-first outreach never opens or sends a DM in the follow action', asy
   assert.deepEqual(s.calls.filter(c => !['browse', 'record-completed'].includes(c)),
     ['reserve', 'navigate', 'authorize-follow', 'follow', 'record-follow', 'optional-like']);
   assert.equal(s.result().sent, false);
+});
+
+test('before maintenance the routine only browses, even when ready lead and DM mocks are available', async () => {
+  const s = setup('follow');
+  s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
+    const result = await activity!({ day: 7, deadline: 600_000, remainingMinutes: 10,
+      browse: async () => { s.calls.push('browse'); return 'finished'; } });
+    return { minutes: 10, reason: result === 'finished' ? 'finished' : 'stopped' };
+  };
+  await s.run();
+  assert.ok(s.calls.includes('browse')); assert.ok(!s.calls.includes('reserve'));
+  assert.ok(!s.calls.includes('follow')); assert.ok(!s.calls.includes('send'));
+});
+
+test('Instagram warnings stop outreach before reserving or following a lead', async () => {
+  const s = setup('follow');
+  s.deps.instagram = async () => { throw new Error('Instagram limit needs attention'); };
+  await s.run();
+  assert.deepEqual(s.calls, ['record-incomplete']);
+  assert.equal(s.result().issue, 'Instagram limit needs attention');
 });
 
 test('a reciprocal recipient is verified and authorized before sending', async () => {

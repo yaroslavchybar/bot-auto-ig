@@ -177,8 +177,14 @@ test('provides default config for the start node', () => {
   })
 
   const browseFeedDefaults = getDefaultConfig('browse_feed')
+  expect(browseFeedDefaults).not.toHaveProperty('soft_warmup')
+  expect(browseFeedDefaults).not.toHaveProperty('like_chance')
+  expect(browseFeedDefaults).not.toHaveProperty('liked_profile_visit_chance')
   expect(browseFeedDefaults).toMatchObject({
-    watch_stories: false,
+    browse_home_feed: true,
+    scroll_reels: true,
+    warmup_topics: '',
+    watch_stories: true,
     stories_min_view_seconds: 2,
     stories_max_view_seconds: 5,
     skip_post_chance: 30,

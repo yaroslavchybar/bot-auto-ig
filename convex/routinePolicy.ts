@@ -2,7 +2,8 @@ import { v } from "convex/values";
 import { validateOutreachMessage } from '../server/shared/outreachMessage';
 
 export const routineValidator = v.object({
-  outreachStartDay: v.number(),
+  // Outreach now starts in maintenance on day 8; saved values are ignored.
+  outreachStartDay: v.optional(v.number()),
   // Stored names are retained; these settings now limit new follows, not DMs.
   initialDms: v.number(),
   // Accept saved routines from before random growth; this value is no longer used.
@@ -17,7 +18,7 @@ export const routineValidator = v.object({
     allProfiles: v.optional(v.boolean()),
     message: v.string(),
   }))),
-  activity: v.record(v.string(), v.union(v.number(), v.boolean())),
+  activity: v.record(v.string(), v.union(v.number(), v.boolean(), v.string())),
   headless: v.boolean(),
   unfollowMinDays: v.optional(v.number()),
   unfollowMaxDays: v.optional(v.number()),
@@ -26,6 +27,7 @@ export const routineValidator = v.object({
 });
 
 export type RoutinePolicy = typeof routineValidator.type;
+export const OUTREACH_MIN_POSTS = 3;
 export type OutreachRoute = NonNullable<RoutinePolicy['outreachRoutes']>[number];
 
 // Existing single-list settings open as one assignment and are saved in the new format.
@@ -42,7 +44,6 @@ export function profileOutreachRoutes(policy: RoutinePolicy, profileId: string):
   return routes.filter(route => route.allProfiles || route.profileIds.includes(profileId as OutreachRoute['profileIds'][number]));
 }
 export const defaultRoutine: RoutinePolicy = {
-  outreachStartDay: 7,
   initialDms: 3,
   maxDms: 30,
   outreachEnabled: false,
@@ -65,21 +66,24 @@ export const randomInRange = ([min, max]: readonly [number, number]) =>
 export function validateRoutine(p: RoutinePolicy) {
   for (const [name, range, limit] of [
     ['Unfollow days', unfollowRange(p), 365],
-    ['Warm-up posts', warmupPostRange(p), 100],
+    ['Post target', warmupPostRange(p), 100],
   ] as const) {
     const [min, max] = range;
-    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max < min || max > limit)
-      throw new Error(`${name} must be 1–${limit}, with min no greater than max`);
+    const minimum = name === 'Post target' ? OUTREACH_MIN_POSTS : 1;
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < minimum || max < min || max > limit)
+      throw new Error(`${name} must be ${minimum}–${limit}, with min no greater than max`);
   }
   for (const [key, value] of Object.entries(p.activity)) {
+    if (typeof value === 'string' && (key !== 'warmup_topics' || value.length > 300))
+      throw new Error(`Invalid activity setting: ${key}`);
     if (
       typeof value === "number" &&
       (!Number.isFinite(value) || value < 0 || value > 1440)
     )
       throw new Error(`Invalid activity setting: ${key}`);
   }
-  const minMinutes = Number(p.activity.warmup_min_minutes ?? 30),
-    maxMinutes = Number(p.activity.warmup_max_minutes ?? 60);
+  const minMinutes = Number(p.activity.warmup_min_minutes ?? 10),
+    maxMinutes = Number(p.activity.warmup_max_minutes ?? 20);
   if (minMinutes < 1 || maxMinutes < minMinutes || maxMinutes > 100)
     throw new Error("Daily browsing budget must be between 1 and 100 minutes");
   const sessionMin = Number(p.activity.session_min_minutes ?? 5),
@@ -91,7 +95,6 @@ export function validateRoutine(p: RoutinePolicy) {
   if (restMin < 1 || restMax < restMin)
     throw new Error("Rest between sessions must be positive, with min no greater than max");
   for (const [name, value, min, max] of [
-    ["Outreach start day", p.outreachStartDay, 1, 365],
     ["Initial follows", p.initialDms, 1, 35],
     ["Maximum follows", p.maxDms, 1, 35],
   ] as const) {
@@ -121,10 +124,9 @@ export const dayKey = (now = Date.now()) =>
 
 export function followAllowance(
   p: RoutinePolicy,
-  activeDays: number,
   accumulatedIncrease: number,
 ) {
-  return p.outreachEnabled && activeDays + 1 >= p.outreachStartDay
+  return p.outreachEnabled
     ? Math.min(p.maxDms, p.initialDms + accumulatedIncrease)
     : 0;
 }

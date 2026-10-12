@@ -30,3 +30,8 @@ test('zero budget never navigates the browser', async () => {
   const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
   assert.equal(await browseFeed(page, 0, {}, () => {}, () => false), 'stopped')
 })
+
+test('disabled home feed never navigates even with reels detours configured', async () => {
+  const page = { goto: async () => { throw new Error('Must not navigate') } } as unknown as Page
+  assert.equal(await browseFeed(page, 10, { browse_home_feed: false, reels_chance: 100 }, () => {}, () => false), 'finished')
+})

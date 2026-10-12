@@ -99,7 +99,7 @@ test('allocation can scan past unreadable available credentials', async () => {
     { count: 1, cursor: first.continueCursor })).page).toHaveLength(1)
 })
 
-test('model setup in Convex resets outreach on moves and opens it after nine posts', async () => {
+test('model setup in Convex resets outreach on moves and opens it after three posts', async () => {
   const t = createConvexTest()
   const first = (await seedList(t, 'First model'))!
   const second = (await seedList(t, 'Second model'))!
@@ -127,7 +127,7 @@ test('model setup in Convex resets outreach on moves and opens it after nine pos
     .toBeUndefined()
   await expect(t.mutation(internal.igAccounts.modelSetupPatchInternal,
     { profileId: profile._id, modelId: first._id, patch: { outreachReadyMarked: true }, clear: [] }))
-    .rejects.toThrow('9 recorded posts')
+    .rejects.toThrow('3 recorded posts')
   await t.mutation(internal.igAccounts.modelSetupPatchInternal, { profileId: profile._id, modelId: first._id,
     patch: { postDates: Array.from({ length: 9 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`) },
     clear: [] })

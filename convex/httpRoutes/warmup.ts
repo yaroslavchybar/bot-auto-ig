@@ -13,10 +13,33 @@ const warmupPaths = [
   '/api/warmup/by-profile',
   '/api/warmup/begin',
   '/api/warmup/finish',
+  '/api/warmup/begin-follow',
+  '/api/warmup/confirm-follow',
+  '/api/warmup/pause-follows',
 ];
 
 export function registerWarmupRoutes(http: HttpRouter): void {
   registerPreflight(http, warmupPaths);
+  http.route({ path: '/api/warmup/pause-follows', method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+    const body = await parseBody(request);
+    if (!body?.profileId || !body?.date || !body?.reason) throw new ValidationError('profileId, date and reason are required');
+    await ctx.runMutation(internal.warmup.mutations.pauseFollowsInternal, { profileId: body.profileId as any,
+      date: String(body.date), reason: String(body.reason) });
+    return jsonResponse({ ok: true });
+  }) });
+
+  for (const action of ['begin-follow', 'confirm-follow'] as const) http.route({
+    path: `/api/warmup/${action}`, method: 'POST', handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request);
+      if (!body?.profileId || !body?.runId || !body?.date || !body?.username)
+        throw new ValidationError('profileId, runId, date and username are required');
+      const result = await ctx.runMutation(action === 'begin-follow'
+        ? internal.warmup.mutations.beginFollowInternal : internal.warmup.mutations.confirmFollowInternal, {
+        profileId: body.profileId as any, runId: String(body.runId), date: String(body.date), username: String(body.username),
+      });
+      return jsonResponse(action === 'begin-follow' ? result : { ok: true });
+    }),
+  });
 
   http.route({
     path: '/api/warmup/states',
@@ -77,6 +100,7 @@ export function registerWarmupRoutes(http: HttpRouter): void {
       if (!Number.isFinite(minutes) || minutes < 0) throw new ValidationError('Invalid elapsed minutes');
       await ctx.runMutation(internal.warmup.mutations.finishRunInternal, {
         profileId: body.profileId as any, runId: String(body.runId), date: String(body.date), minutes,
+        ...(body.activity ? { activity: body.activity } : {}),
       });
       return jsonResponse({ ok: true });
     }),

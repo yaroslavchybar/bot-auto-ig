@@ -13,15 +13,10 @@ import { clickPointOnScreen } from './guards.js'
 import {
   clickVisible,
   driftMouse,
-  followVisible,
-  likeVisible,
 } from './mouse.js'
 import {
   alignPostOnScreen,
-  revealForClick,
-  scrollPastPost,
   smoothScroll,
-  type CursorState,
 } from './scroll.js'
 import { backToFeed, dismissPopups } from './navigation.js'
 import {
@@ -32,24 +27,16 @@ import {
 } from './profiles.js'
 import { openDMs } from './inbox.js'
 import { openReels, watchReels } from './reels.js'
+import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
+import { assertInstagramReady } from './instagram-state.js'
+import { feedPostContext, feedPostMatches, warmupTopics } from '../../shared/warmupTopics.js'
+import { maintainPost } from './maintenance.js'
 
-// Use the verified Like control; never double-click an arbitrary article region.
-async function likePost(page: Page, target: Locator, session: BrowseSession): Promise<boolean> {
-  if (await target.locator('svg[aria-label="Unlike"]').count()) return false
-  const button = target.locator('div[role="button"]:has(svg[aria-label="Like"]), button:has(svg[aria-label="Like"])').first()
-  if (!await revealForClick(page, button, session)) return false
-  return likeVisible(target, session)
-}
-
-// Promo posts (ads / suggested) get scrolled past, never engaged with.
-// Text markers plus structural ones: ad redirect links and tracking
+// Ads get scrolled past, never engaged with. Header labels are checked separately.
+// Structural markers: ad redirect links and tracking
 // query params on profile links (normal post links are always clean).
-async function isPromoPost(target: Locator): Promise<boolean> {
+async function isAdPost(target: Locator): Promise<boolean> {
   try {
-    if (
-      (await target.getByText(/suggested for you|sponsored|learn more/i).count()) > 0
-    )
-      return true
     if (
       (await target.locator('a[href*="facebook.com/ads"], a[href*="ig_redirect"]').count()) > 0
     )
@@ -64,6 +51,15 @@ async function isPromoPost(target: Locator): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+/** Advance just past this post, leaving the next author available for inspection. */
+async function advanceFeedPost(page: Page, target: Locator, session: BrowseSession, budget?: WarmupActivityBudget): Promise<void> {
+  const box = await target.boundingBox().catch(() => null)
+  const height = page.viewportSize()?.height ?? 800
+  await smoothScroll(page, box ? Math.max(50, box.y + box.height - height * 0.25) : 450, session)
+  if (budget) budget.browsed++
+  await session.wait(random(300, 700))
 }
 
 async function hasVideo(target: Locator): Promise<boolean> {
@@ -136,8 +132,10 @@ async function browseFeedSession(
   log: ActionLogger,
   shouldStop: StopCheck,
   session: BrowseSession,
+  budget?: WarmupActivityBudget,
 ): Promise<'finished' | 'stopped' | 'stalled'> {
   if (!(minutes > 0) || shouldStop()) return 'stopped'
+  if (config.browse_home_feed === false) return 'finished'
   const start = Date.now()
   const end = session.end
   const sleep = session.wait
@@ -173,7 +171,8 @@ async function browseFeedSession(
   )
 
   const durationMs = Math.max(1, end - start)
-  const cursor: CursorState = { onScrollbar: false }
+  const topics = warmupTopics(config.warmup_topics)
+  let skipsRemaining = 0
   // Detect lack of scroll progress, including skips and already-seen posts.
   let stuckRounds = 0
   let lastPosition = ''
@@ -188,6 +187,7 @@ async function browseFeedSession(
   log({ event: 'automation.actions.feed.starting_feed_session_for', message: `Starting feed session for ${minutes} minute(s)` })
   while (Date.now() < end && !shouldStop()) {
     session.check()
+    await assertInstagramReady(page)
     if (await dismissPopups(page, session)) {
       stuckRounds = 0
       lastPosition = ''
@@ -204,11 +204,11 @@ async function browseFeedSession(
         .waitFor({ state: 'visible', timeout: session.timeout(5_000) })
         .catch(() => undefined)
       await dismissPopups(page, session)
-      if (feedEnds >= 2 && end - Date.now() > 30_000 && !shouldStop()) {
+      if (config.scroll_reels !== false && feedEnds >= 2 && end - Date.now() > 30_000 && !shouldStop() && (!budget || budget.remaining('reels') > 0)) {
         const reels = Math.round(random(numeric(config.reels_min, 3), numeric(config.reels_max, 8)))
         if (await openReels(page, log, session)) {
           log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
-          await watchReels(page, reels, config, log, shouldStop, end, session)
+          await watchReels(page, reels, config, log, shouldStop, end, session, budget)
           await backToFeed(page, log, session)
           session.check()
           await focusPageContent(page)
@@ -261,27 +261,38 @@ async function browseFeedSession(
     const targetId = visible.id
 
     // Already read this one (Back nav landing or short scroll): nudge
-    // forward instead of dwelling and liking it again.
+    // forward instead of dwelling on it again.
     if (targetId && seen.has(targetId)) {
-      await smoothScroll(page, random(600, 1000), session)
-      await sleep(random(300, 700))
+      await advanceFeedPost(page, target, session, budget)
       continue
     }
 
-    // Bored skip: glide past posts fast without reading.
-    if (chance(config.skip_post_chance)) {
-      const skips = Math.round(random(1, skipMax))
-      for (let i = 0; i < skips && Date.now() < end && !shouldStop(); i++) {
-        await smoothScroll(page, random(450, 950), session)
-        await sleep(random(300, 900))
-      }
+    const context = await target.evaluate(feedPostContext).catch(() => ({
+      text: '', relationship: 'unknown' as const, sponsored: false,
+    }))
+    const preserveFollowed = context.relationship !== 'not-followed'
+    if (preserveFollowed) skipsRemaining = 0
+
+    // Ads remain excluded, including ads from followed authors.
+    if (context.sponsored || await isAdPost(target)) {
+      if (targetId) seen.add(targetId)
+      await advanceFeedPost(page, target, session, budget)
       continue
     }
 
-    // Ads / suggested posts: fast-scroll past, never engage.
-    if (await isPromoPost(target)) {
-      await smoothScroll(page, random(500, 950), session)
-      await sleep(random(300, 800))
+    if (!feedPostMatches(context, topics)) {
+      if (targetId) seen.add(targetId)
+      log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a recommended post outside the selected topics' })
+      await advanceFeedPost(page, target, session, budget)
+      continue
+    }
+
+    // Inspect each author between bored skips, so batches cannot skip followed accounts.
+    if (!preserveFollowed && (skipsRemaining > 0 || chance(config.skip_post_chance))) {
+      if (!skipsRemaining) skipsRemaining = Math.round(random(1, skipMax))
+      skipsRemaining--
+      if (targetId) seen.add(targetId)
+      await advanceFeedPost(page, target, session, budget)
       continue
     }
 
@@ -311,9 +322,9 @@ async function browseFeedSession(
     }
     if (Math.random() < 0.08) dwell *= random(2, 3) // found something interesting
     const choices = postChoices(config)
-    // Quiet viewing first. Engagement only follows actual viewing/playback.
+    // Week-one engagement is handled separately; maintenance engages only eligible content.
     const viewed = await viewContent(target, dwell, session)
-    let likedThisPost = false
+    if (viewed && budget) budget.browsed++
     if (viewed && choices.carousel) {
       const slides = Math.floor(random(1, carouselMax + 1))
       for (let i = 0; i < slides; i++) {
@@ -323,11 +334,10 @@ async function browseFeedSession(
         await session.wait(random(900, 2200))
       }
     }
-    if (viewed && choices.like)
-      likedThisPost = await likePost(page, target, session).catch(() => false)
-    if (viewed && choices.follow)
-      await followVisible(target, session).catch(() => false)
+    if (viewed && numeric(config.warmup_day, 1) >= 8 && budget)
+      await maintainPost(page, target, context, topics, budget, session, log)
     session.check()
+    await assertInstagramReady(page)
     // Re-read geometry after carousel/reveal scrolling, not before.
     const targetBox = await target.boundingBox().catch(() => null)
     const vpSize = page.viewportSize() ?? { width: 1280, height: 800 }
@@ -356,7 +366,7 @@ async function browseFeedSession(
           await wanderProfile(page, log, shouldStop, end, session)
         }
       }
-    } else if (canDetour && chance(config.reels_chance ?? 12)) {
+    } else if (config.scroll_reels !== false && canDetour && (!budget || budget.remaining('reels') > 0) && chance(config.reels_chance ?? 12)) {
       detoured = true
       // Sidebar Reels, watch a few, Back/Home returns to the feed.
       const reels = Math.round(
@@ -365,27 +375,23 @@ async function browseFeedSession(
       if (await openReels(page, log, session)) {
         openedDetour = true
         log({ event: 'automation.actions.feed.watching_reels', message: 'Watching reels' })
-        await watchReels(page, reels, config, log, shouldStop, end, session)
+        await watchReels(page, reels, config, log, shouldStop, end, session, budget)
       }
     } else if (
       canDetour &&
       targetOnScreen &&
-      chance(
-        likedThisPost
-          ? (config.liked_profile_visit_chance ?? 80)
-          : (config.profile_visit_chance ?? 35),
-      )
+      (!budget || budget.remaining('profiles') > 0) &&
+      chance(config.profile_visit_chance ?? 35)
     ) {
-      // Rabbit hole: author or a liker/commenter. Liked posts lead to
-      // the author; other posts use the base visit chance.
+      // Rabbit hole: visit the author or a liker/commenter without engagement.
       detoured = true
-      // Liked the post → visit its author; otherwise 50/50 author/visitor.
-      const viaVisitor = !likedThisPost && Math.random() < 0.5
+      const viaVisitor = Math.random() < 0.5
       log({ event: 'automation.actions.feed.detail', message: viaVisitor ? 'Opening a liker profile' : 'Opening the author profile' })
       const opened = viaVisitor
         ? await openVisitorProfile(page, target, session)
         : await openAuthorProfile(page, target, session)
       if (opened) {
+        budget?.take('profiles')
         openedDetour = true
         log({ event: 'automation.actions.feed.looking_around_the_profile', message: 'Looking around the profile' })
         await wanderProfile(page, log, shouldStop, end, session)
@@ -413,7 +419,7 @@ async function browseFeedSession(
     }
 
     if (Date.now() >= end || shouldStop()) break
-    await scrollPastPost(page, cursor, targetBox?.height ?? 0, session)
+    await advanceFeedPost(page, target, session, budget)
 
 
   }
@@ -424,11 +430,12 @@ async function browseFeedSession(
 export async function browseFeed(
   page: Page, minutes: number, config: Record<string, unknown>,
   log: ActionLogger, shouldStop: StopCheck,
+  budget?: WarmupActivityBudget,
 ): Promise<'finished' | 'stopped' | 'stalled'> {
   if (!(minutes > 0) || shouldStop()) return 'stopped'
   const session = new BrowseSession(Date.now() + minutes * 60_000, shouldStop)
   try {
-    return await browseFeedSession(page, minutes, config, log, shouldStop, session)
+    return await browseFeedSession(page, minutes, config, log, shouldStop, session, budget)
   } catch (error) {
     if (error instanceof SessionEnded || session.stopped())
       return shouldStop() ? 'stopped' : 'finished'

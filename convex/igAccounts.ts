@@ -12,7 +12,7 @@ import type { Id, Doc } from './_generated/dataModel'
 import { DomainError } from './errors'
 import { requireServerBridgeAuth } from './serverBridgeAuth'
 import { modelRoutine, recordedPostsReady } from './modelSetupPolicy'
-import { randomInRange, warmupPostRange } from './routinePolicy'
+import { OUTREACH_MIN_POSTS, randomInRange, warmupPostRange } from './routinePolicy'
 import { MAX_PAGE_SIZE, SCAN_BATCH_BYTES } from '../server/shared/pagination'
 
 const status = v.union(
@@ -252,10 +252,9 @@ export const modelSetupPatchInternal = internalMutation({
     const ready = recordedPostsReady(
       patch.postSourceIds ?? state.postSourceIds,
       patch.postDates ?? state.postDates,
-      state.postTarget,
     )
     if (patch.outreachReadyMarked === true && !ready)
-      throw new DomainError('VALIDATION', `${state.postTarget ?? 9} recorded posts are required for outreach`)
+      throw new DomainError('VALIDATION', `${OUTREACH_MIN_POSTS} recorded posts are required for outreach`)
     await ctx.db.patch(state._id, {
       ...patch,
       ...Object.fromEntries(clear.map((key) => [key, undefined])),
@@ -296,7 +295,7 @@ export const modelSetupReconcileInternal = internalMutation({
       if (!action.sourceId) throw new DomainError('VALIDATION', 'Post source is missing')
       const postSourceIds = [...state.postSourceIds, action.sourceId]
       const postDates = [...state.postDates, action.date]
-      const ready = recordedPostsReady(postSourceIds, postDates, state.postTarget)
+      const ready = recordedPostsReady(postSourceIds, postDates)
       await ctx.db.patch(state._id, {
         postSourceIds,
         postDates,

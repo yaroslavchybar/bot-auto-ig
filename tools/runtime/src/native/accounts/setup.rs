@@ -349,8 +349,9 @@ impl Accounts {
                 )
                 .await;
         }
-        if state["postSourceIds"].as_array().map_or(0, Vec::len)
-            >= state["postTarget"].as_u64().unwrap_or(9) as usize
+        if state["postSourceIds"].as_array().map_or(0, Vec::len) >= 3
+            && state["postSourceIds"].as_array().map_or(0, Vec::len)
+                == state["postDates"].as_array().map_or(0, Vec::len)
         {
             if state["outreachReadyMarked"] != true || profile["outreachReady"] != true {
                 self.patch_setup(
@@ -361,7 +362,6 @@ impl Accounts {
                 )
                 .await?;
             }
-            return Ok(());
         }
         if today < 4 || state["avatarDone"] == true {
             return Ok(());
@@ -616,7 +616,7 @@ impl Accounts {
             || state["modelId"] != model
             || !state["pending"].is_null()
             || state["postSourceIds"].as_array().map_or(0, Vec::len)
-                >= state["postTarget"].as_u64().unwrap_or(9) as usize
+                >= state["postTarget"].as_u64().unwrap_or(9).max(3) as usize
             || day(
                 api::timestamp_ms(&state["startedAt"]).unwrap_or(api::now_ms()),
                 api::now_ms(),
@@ -664,7 +664,7 @@ impl Accounts {
                 sources.push(state["pending"]["sourceId"].clone());
                 dates.push(state["pending"]["date"].clone());
                 let mut patch = json!({"postSourceIds":sources,"postDates":dates});
-                if sources.len() >= state["postTarget"].as_u64().unwrap_or(9) as usize {
+                if sources.len() >= 3 && sources.len() == dates.len() {
                     patch["outreachReadyMarked"] = json!(true);
                 }
                 self.patch_setup(id, model, patch, &["pending", "error"])

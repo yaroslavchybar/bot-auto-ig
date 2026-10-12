@@ -313,6 +313,52 @@ test('Rust imports existing credential format, hides secrets, and isolates unrea
   }
 }, 15_000)
 
+test('posting continues after Outreach unlocks, once daily until the configured target', async () => {
+  const native = await fixture()
+  try {
+    native.states = [{
+      profileId: 'p', modelId: 'model', startedAt: Date.now() - 12 * 86_400_000,
+      avatarDone: true, postSourceIds: ['first', 'second'],
+      postDates: ['2026-09-01', '2026-09-02'], postTarget: 4,
+    }]
+    const root = path.join(native.root, 'data/model-content/model')
+    const manifest = []
+    for (const id of ['third', 'fourth', 'fifth']) {
+      await fs.mkdir(path.join(root, 'posts', id, 'variants'), { recursive: true })
+      await fs.writeFile(path.join(root, 'posts', id, 'variants/one.jpg'), 'fixture')
+      manifest.push({ id, name: id + '.jpg', kind: 'posts', variants: ['one.jpg'], assigned: {}, createdAt: 1 })
+    }
+    await fs.writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest))
+    const publish = async () => {
+      const owner = await lease(native, '/accounts/post-lease', { profileId: 'p', modelId: 'model' })
+      expect(owner.ready.content).not.toBeNull()
+      const reply = owner.next()
+      owner.socket.send(JSON.stringify({ result: 'shared' }))
+      expect((await reply).saved).toBe(true)
+      owner.socket.terminate()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    const noPost = async () => {
+      const owner = await lease(native, '/accounts/post-lease', { profileId: 'p', modelId: 'model' })
+      expect(owner.ready.content).toBeNull()
+      owner.socket.terminate()
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    await publish()
+    expect(native.states[0].postSourceIds).toHaveLength(3)
+    expect(native.states[0].outreachReadyMarked).toBe(true)
+    await noPost() // Already posted on this Kyiv date.
+    native.states[0].postDates[2] = '2026-09-03'
+    await publish()
+    expect(native.states[0].postSourceIds).toHaveLength(4)
+    expect(native.states[0].outreachReadyMarked).toBe(true)
+    native.states[0].postDates[3] = '2026-09-04'
+    await noPost() // Target reached even though another source is available.
+  } finally {
+    await native.stop()
+  }
+}, 15_000)
+
 for (const outcome of ['shared', 'uncertain', 'disconnect', 'save failure', 'failed']) {
   test(`Rust post lease preserves duplicate protection: ${outcome}`, async () => {
     const native = await fixture()
@@ -325,7 +371,7 @@ for (const outcome of ['shared', 'uncertain', 'disconnect', 'save failure', 'fai
           avatarDone: true,
           postSourceIds: [],
           postDates: [],
-          postTarget: 1,
+          postTarget: 9,
         },
       ]
       const root = path.join(native.root, 'data/model-content/model')
@@ -373,7 +419,7 @@ for (const outcome of ['shared', 'uncertain', 'disconnect', 'save failure', 'fai
       if (outcome === 'shared') {
         expect(native.states[0].pending).toBeUndefined()
         expect(native.states[0].postSourceIds).toEqual(['photo'])
-        expect(native.states[0].outreachReadyMarked).toBe(true)
+        expect(native.states[0].outreachReadyMarked).toBeUndefined()
         const next = await lease(native, '/accounts/post-lease', {
           profileId: 'p',
           modelId: 'model',

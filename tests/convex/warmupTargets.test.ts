@@ -101,8 +101,8 @@ test('reconfirming completed setup repairs a previously cleared readiness flag',
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]).toEqual(saved)
 })
 
-test.each(['confirmed', 'reviewed'])('the saved post target gates %s posts', async mode => {
-  const { t, model, profile, enroll } = await setup(3, 3)
+test.each(['confirmed', 'reviewed'])('three %s posts unlock Outreach before the publishing target', async mode => {
+  const { t, model, profile, enroll } = await setup(9, 9)
   await enroll()
   const patch = (updates: Record<string, unknown>) => t.mutation(internal.igAccounts.modelSetupPatchInternal, {
     profileId: profile._id, modelId: model._id, patch: updates, clear: [],
@@ -118,8 +118,30 @@ test.each(['confirmed', 'reviewed'])('the saved post target gates %s posts', asy
     await patch({ postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] })
   }
   const state = (await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]!
-  expect(state).toMatchObject({ postTarget: 3, outreachReadyMarked: true, postSourceIds: ['p1', 'p2', 'p3'] })
+  expect(state).toMatchObject({ postTarget: 9, outreachReadyMarked: true, postSourceIds: ['p1', 'p2', 'p3'] })
   expect((await t.query(internal.profiles.queries.getByIdInternal, { profileId: profile._id }))?.outreachReady).toBe(true)
+})
+
+test('continued posting and target changes keep three-post accounts ready for Outreach', async () => {
+  const { t, model, automation, profile, enroll } = await setup(9, 9)
+  await enroll()
+  const args = { profileId: profile._id, modelId: model._id }
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+    patch: { postSourceIds: ['p1', 'p2', 'p3'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
+  })
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, { ...args,
+    patch: { pending: { kind: 'post', sourceId: 'p4', date: '2026-09-28' } }, clear: [],
+  })
+  await t.mutation(api.automations.mutations.update, { id: automation._id,
+    routine: { ...automation.routine!, warmupMinPosts: 6, warmupMaxPosts: 6 },
+  })
+  expect(await enroll()).toMatchObject({ postTarget: 6, outreachReadyMarked: true,
+    postSourceIds: ['p1', 'p2', 'p3'], pending: { sourceId: 'p4' } })
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
+  await t.mutation(internal.igAccounts.modelSetupReconcileInternal, { profileId: profile._id, resolution: 'completed' })
+  expect(await enroll()).toMatchObject({ postTarget: 6, outreachReadyMarked: true,
+    postSourceIds: ['p1', 'p2', 'p3', 'p4'] })
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true)
 })
 
 test('changing the range updates unfinished setups and preserves completed accounts and posts', async () => {
@@ -143,9 +165,10 @@ test('changing the range updates unfinished setups and preserves completed accou
     rng.mockReturnValue(0)
     await t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...policy, headless: true } })
     expect((await enroll())?.postTarget).toBe(6)
-    await t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...policy, warmupMinPosts: 2, warmupMaxPosts: 2 } })
-    expect((await enroll())).toMatchObject({ postTarget: 2, outreachReadyMarked: true, postSourceIds: ['p1', 'p2'] })
-    expect((await t.query(internal.profiles.queries.getByIdInternal, { profileId: profile._id }))?.outreachReady).toBe(true)
+    await expect(t.mutation(api.automations.mutations.update, { id: automation._id, routine: { ...policy, warmupMinPosts: 2, warmupMaxPosts: 2 } }))
+      .rejects.toThrow('Post target must be 3')
+    expect((await enroll())).toMatchObject({ postTarget: 6, postSourceIds: ['p1', 'p2'] })
+    expect((await t.query(internal.profiles.queries.getByIdInternal, { profileId: profile._id }))?.outreachReady).toBe(false)
   } finally { rng.mockRestore() }
 })
 

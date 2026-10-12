@@ -1,6 +1,7 @@
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 import { routineValidator } from './routinePolicy'
+import { warmupActivityValidator } from './warmup/helpers'
 
 const activityCounts = v.object({
   follows: v.number(),
@@ -391,6 +392,11 @@ export default defineSchema({
     todayMinutes: v.number(),
     // Elapsed session time, capped at the assigned daily budget.
     minutesUsedToday: v.optional(v.number()),
+    activityPlan: v.optional(warmupActivityValidator),
+    activityUsed: v.optional(warmupActivityValidator),
+    followAttempts: v.optional(v.array(v.object({ username: v.string(), runId: v.string(), confirmed: v.boolean() }))),
+    followBlockedDate: v.optional(v.string()),
+    followBlockReason: v.optional(v.string()),
     // An interrupted worker keeps its reservation until the next UTC day.
     activeRun: v.optional(
       v.object({ id: v.string(), minutes: v.number(), restMinutes: v.number() }),

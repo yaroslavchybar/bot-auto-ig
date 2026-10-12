@@ -1,3 +1,7 @@
+import { v } from 'convex/values';
+
+export const warmupActivityValidator = v.object({ likes: v.number(), profiles: v.number(), reels: v.number(), stories: v.number(), follows: v.optional(v.number()), saves: v.optional(v.number()), comments: v.optional(v.number()) });
+
 export type WarmupPlan = {
 	minMinutes: number;
 	maxMinutes: number;
@@ -5,8 +9,8 @@ export type WarmupPlan = {
 
 /** Default daily budget. */
 export const DEFAULT_WARMUP_PLAN: WarmupPlan = {
-	minMinutes: 30,
-	maxMinutes: 60,
+	minMinutes: 10,
+	maxMinutes: 20,
 };
 
 /** UTC date key (YYYY-MM-DD) for "today" counters. */

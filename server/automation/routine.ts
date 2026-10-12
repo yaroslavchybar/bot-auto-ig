@@ -10,14 +10,17 @@ import {
   routineRecordFollow,
   routineBeginFollow, routineNotifications, routineRecordNotifications, routineDmTasks, routineDismissDm,
   type DbAutomationRow,
+  warmupPauseFollows,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
 import { scheduleRoutine } from './routine-schedule.js';
-import { followButton, followingButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
+import { followButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage } from './follow.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
 import { readFollowNotifications, ownUsername, followsUs, likeRecentPost } from './follow-back.js';
 import type { ActionLogger, StopCheck } from "./actions/shared.js";
 import { sleep, random } from "./actions/shared.js";
+import { assertInstagramReady } from './actions/instagram-state.js';
+import { performProfileFollow } from './actions/follow-safety.js';
 
 const dependencies = {
   ready: routineReady,
@@ -41,6 +44,9 @@ const dependencies = {
   likeRecentPost,
   sleep,
   random,
+  instagram: assertInstagramReady,
+  follow: performProfileFollow,
+  pauseFollows: warmupPauseFollows,
 };
 
 /** Check membership at action boundaries; live subscriptions stop active work. */
@@ -63,7 +69,10 @@ export async function runRoutineSession(
       allowed = false;
       return;
     }
-    if (liveAccess && !forceRemote) return;
+    if (liveAccess && !forceRemote) {
+      await deps.instagram(page);
+      return;
+    }
     checking = true;
     try {
       allowed = await deps.ready(automation._id, profileId, true);
@@ -72,6 +81,7 @@ export async function runRoutineSession(
     } finally {
       checking = false;
     }
+    if (allowed) await deps.instagram(page);
   };
   let deadline = Infinity;
   const timeout = (ms: number) => Math.max(1, Math.min(ms, deadline - deps.now()));
@@ -86,10 +96,12 @@ export async function runRoutineSession(
     if (!await deps.beginFollow(automation._id, profileId, leadId, date))
       throw new Error('Follow was not authorized');
     if (shouldStop()) throw new Error('Session stopped before following');
-    await follow.click({ timeout: 10_000 });
-    await followingButton(page).waitFor({ state: 'visible', timeout: 15_000 });
-    await deps.recordFollow(profileId, leadId, true);
-    return true;
+    return deps.follow(page, async () => { await check(); return !shouldStop(); },
+      () => follow.click({ timeout: timeout(10_000) }),
+      () => deps.recordFollow(profileId, leadId, true).then(() => {}), async reason => {
+        log({ event: 'automation.follow_paused', reason });
+        await deps.pauseFollows(profileId, date, reason);
+      }, timeout(15_000));
   };
   let issue: string | undefined;
   try {
@@ -118,6 +130,7 @@ export async function runRoutineSession(
       undefined,
       async session => {
         deadline = session.deadline;
+        if (session.day !== undefined && session.day < 8) return session.browse(session.remainingMinutes);
         try {
           await cleanup();
           if (shouldStop()) return 'stopped';
@@ -166,11 +179,11 @@ export async function runRoutineSession(
               if (!isDm) {
                 const followed = await followIfNeeded(attempt.leadId, attempt.date);
                 if (followed && !shouldStop()) {
-                  await deps.likeRecentPost(page, async () => { await check(); return !shouldStop(); })
+                  await deps.likeRecentPost(page, async () => { await check(); return !shouldStop(); }, async () => session.takeLike?.() ?? true)
                     .catch(error => log({ event: 'automation.routine.optional_like', error, outcome: 'skipped' }));
                 }
                 log({ event: 'automation.routine.follow_result', targetUsername: attempt.username, followed });
-                return followed ? 'sent' : 'blocked';
+                return followed ? 'followed' : 'blocked';
               }
               if (!await isFollowing(page) || !await deps.followsUs(page, username)) {
                 await deps.dismissDm(profileId, attempt.leadId);

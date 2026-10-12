@@ -31,15 +31,20 @@ test('settling checks posts beyond six and ignores fully offscreen posts', async
   assert.equal(wheelCalls, 0)
 })
 
-test('post choices roll exactly once per action', () => {
+test('carousel choice rolls once per post', () => {
   const original = Math.random
   let rolls = 0
   Math.random = () => { rolls++; return 0.5 }
   try {
     assert.deepEqual(postChoices({ like_chance: 100, follow_chance: 0, carousel_watch_chance: 20 }),
-      { like: true, follow: false, carousel: false })
-    assert.equal(rolls, 3)
+      { carousel: false })
+    assert.equal(rolls, 1)
   } finally { Math.random = original }
+})
+
+test('browsing never selects feed likes or follows even with previously active settings', () => {
+  assert.deepEqual(postChoices({ soft_warmup: false, like_chance: 100, follow_chance: 100, carousel_watch_chance: 0 }),
+    { carousel: false })
 })
 
 test('detour spacing scales with session length and has a minimum', () => {
@@ -168,7 +173,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
     } as unknown as Page
-    await watchStories(page, 0, () => {}, () => stopped)
+    assert.equal(await watchStories(page, 0, () => {}, () => stopped), 0)
     assert.equal(clicks, stopWhileLoading ? 0 : 1)
   }
 })
@@ -194,8 +199,36 @@ test('stories skip a hidden first control in either tray layout', async () => {
           }) }
         },
       } as unknown as Page
-      await watchStories(page, 0, () => {}, () => false)
+      assert.equal(await watchStories(page, 0, () => {}, () => false), 0)
       assert.equal(clicked, 'visible-story')
     } finally { await window.happyDOM.close() }
+  }
+})
+
+test('stories return zero for missing trays and only completed views after an early stop', async () => {
+  for (const mode of ['missing', 'full', 'stop on open', 'stop on next']) {
+    let stopped = false
+    const control = {
+      first() { return this }, nth() { return this },
+      count: async () => 1, waitFor: async () => {},
+      isVisible: async () => mode !== 'missing',
+      boundingBox: async () => ({ x: 100, y: 100, width: 40, height: 40 }),
+      page: () => page,
+      elementHandle: async () => control, dispose: async () => {},
+      click: async () => { stopped = mode === 'stop on open' },
+    }
+    const next = { ...control, elementHandle: async () => ({
+      click: async () => { stopped = true }, dispose: async () => {},
+    }) }
+    const page = {
+      goto: async () => {}, url: () => 'https://www.instagram.com/',
+      viewportSize: () => ({ width: 1280, height: 800 }),
+      keyboard: { press: async () => {} },
+      locator: (selector: string) => selector.includes('Story by') ? control
+        : selector.includes('Next') ? next : { count: async () => 0 },
+    } as unknown as Page
+    const watched = await watchStories(page, mode === 'stop on next' ? 3 : 1, () => {}, () => stopped,
+      { minSeconds: 0, maxSeconds: 0 })
+    assert.equal(watched, mode === 'full' || mode === 'stop on next' ? 1 : 0)
   }
 })

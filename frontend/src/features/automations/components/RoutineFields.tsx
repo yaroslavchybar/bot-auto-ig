@@ -32,7 +32,7 @@ export function SettingsGroup({
             aria-expanded={open}
             aria-controls={open ? bodyId : undefined}
             onClick={() => setOpen((value) => !value)}
-            className="flex w-full items-center justify-between gap-2 rounded-md brand-focus text-left"
+            className="flex w-full cursor-pointer items-center justify-between gap-2 border-0 bg-transparent text-left shadow-none outline-none select-none focus-visible:underline focus-visible:underline-offset-4"
           >
             {title}
             <ChevronDown

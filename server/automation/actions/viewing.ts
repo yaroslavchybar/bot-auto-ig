@@ -2,11 +2,9 @@ import type { Locator } from 'playwright-core'
 import { chance } from './shared.js'
 import { BrowseSession } from './session.js'
 
-/** Make each choice once, independent of how many wait ticks a post needs. */
+/** Choose passive carousel viewing once per post. */
 export function postChoices(config: Record<string, unknown>) {
   return {
-    like: chance(config.like_chance),
-    follow: chance(config.follow_chance),
     carousel: chance(config.carousel_watch_chance),
   }
 }
