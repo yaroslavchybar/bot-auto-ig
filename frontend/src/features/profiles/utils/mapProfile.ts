@@ -14,6 +14,7 @@ export function mapProfileRecord(
     | 'fingerprintOs'
     | 'status'
     | 'using'
+    | 'paused'
     | 'renameFrom'
     | 'igLoggedIn'
     | 'outreachReady'
@@ -29,6 +30,7 @@ export function mapProfileRecord(
     fingerprintOs: record.fingerprintOs,
     status: record.status,
     using: record.using,
+    paused: record.paused,
     renameFrom: record.renameFrom,
     igLoggedIn: record.igLoggedIn,
     outreachReady: record.outreachReady,

@@ -57,6 +57,7 @@ fn login_templates_match_captured_typescript_requests_and_use_current_time() {
     let mobile = Mobile {
         state: super::new_session("profile-123", "source"),
         client: super::transport::client("").unwrap(),
+        budget: None,
         base: None,
     };
     let before = crate::api::now_ms();

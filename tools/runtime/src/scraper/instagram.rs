@@ -6,6 +6,7 @@ pub struct Web {
     client: reqwest::Client,
     cookies: String,
     csrf: String,
+    budget: Option<instagram::RequestBudget>,
     #[cfg(test)]
     base: Option<String>,
 }
@@ -52,9 +53,14 @@ impl Web {
             client: instagram::transport_client(&proxy).map_err(Error::mobile)?,
             cookies: cookie,
             csrf,
+            budget: None,
             #[cfg(test)]
             base: None,
         })
+    }
+    pub fn with_budget(mut self, budget: Option<instagram::RequestBudget>) -> Self {
+        self.budget = budget;
+        self
     }
     #[cfg(test)]
     pub fn with_base(mut self, base: Option<String>) -> Self {
@@ -96,6 +102,9 @@ impl Web {
                 .header("referer",format!("https://www.instagram.com/p/{code}/")).header("cookie",&self.cookies).timeout(Duration::from_secs(15));
             if !self.csrf.is_empty() {
                 request = request.header("x-csrftoken", &self.csrf);
+            }
+            if let Some(budget) = &self.budget {
+                budget.reserve().await.map_err(Error::mobile)?;
             }
             match request.send().await {
                 Err(_) => last = Error::failed("Instagram connection failed"),

@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query, type QueryCtx } from './_generated/server'
-import { limitFor } from './scraperPolicy'
+import { mobileRequestState } from './mobileRequests'
+import { MOBILE_REQUEST_LIMIT } from './mobileRequestPolicy'
 import { addActivity, emptyActivity, type ActivityCounts } from './analyticsActivity'
 
 const periodValidator = v.union(
@@ -46,16 +47,17 @@ export const initialize = mutation({
       ])
       add(progress?.followQuotaDate, { follows: progress?.followedToday ?? 0 })
       add(progress?.dmDate, { dms: progress?.sentToday ?? 0 })
-      add(warmup?.date, { warmupMinutes: warmup?.minutesUsedToday ?? 0,
-        follows: warmup?.followAttempts?.filter(attempt => attempt.confirmed).length ?? 0 })
-      add(
-        profile.scraperUsageDate,
-        limitFor(profile) === undefined
-          ? { unlimitedScraperUnits: profile.scraperUsageCount ?? 0 }
-          : { scraperUnits: profile.scraperUsageCount ?? 0 },
-      )
+      add(warmup?.date, {
+        warmupMinutes: warmup?.minutesUsedToday ?? 0,
+        follows: warmup?.followAttempts?.filter((attempt) => attempt.confirmed).length ?? 0,
+      })
     }
     let totals = emptyActivity()
+    // Request tracking starts before the first dashboard visit; preserve those counters.
+    for (const row of await ctx.db.query('analyticsDays').collect()) {
+      days.set(row.date, addActivity(row.counts, days.get(row.date) ?? emptyActivity()))
+      await ctx.db.delete(row._id)
+    }
     for (const [date, counts] of days) {
       await ctx.db.insert('analyticsDays', { date, counts })
       totals = addActivity(totals, counts)
@@ -91,7 +93,9 @@ export const overview = query({
         .take(days)
       counts = rows.reduce((sum, row) => addActivity(sum, row.counts), emptyActivity())
     }
-    const limited = accounts.filter((profile) => limitFor(profile) !== undefined)
+    const requestStates = await Promise.all(
+      accounts.map((account) => mobileRequestState(ctx, account.profileId)),
+    )
     return {
       period,
       historySince: new Date(history.startedAt).toISOString().slice(0, 10),
@@ -102,11 +106,15 @@ export const overview = query({
         warmupMinutes: counts.warmupMinutes,
       },
       quota: {
-        used: counts.scraperUnits,
-        limit: limited.reduce((sum, profile) => sum + (limitFor(profile) ?? 0), 0),
-        limitedAccounts: limited.length,
-        unlimitedAccounts: accounts.length - limited.length,
-        unlimitedUsed: counts.unlimitedScraperUnits,
+        used:
+          period === 'today'
+            ? requestStates.reduce((sum, state) => sum + state.used, 0)
+            : (counts.mobileRequests ?? 0),
+        limit: accounts.length * MOBILE_REQUEST_LIMIT,
+        totalRequests: counts.mobileRequests ?? 0,
+        limitedAccounts: accounts.length,
+        unlimitedAccounts: 0,
+        unlimitedUsed: 0,
       },
     }
   },

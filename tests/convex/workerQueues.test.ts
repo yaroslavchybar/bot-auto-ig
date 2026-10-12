@@ -1,12 +1,17 @@
 import { afterEach, expect, test, vi } from 'vite-plus/test'
 import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.useRealTimers()
+})
 
 test.each([10, undefined])(
-  'scraper exposes capacity reset and lease expiry with limit %s',
+  'scraper ignores old lead limits and exposes cooldown and lease expiry with old limit %s',
   async (limit) => {
     vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
     const t = createConvexTest()
     const args = { bridgeToken: 'test-bridge' }
     expect(await t.query(api.scraper.work, args)).toEqual({
@@ -20,6 +25,8 @@ test.each([10, undefined])(
     const ids = await t.run(async (ctx) => {
       const profile = await ctx.db.insert('profiles', {
         name: 'test',
+        proxy: 'proxy.test:8000',
+        proxyType: 'http',
         using: false,
         mode: 'direct',
         createdAt: 0,
@@ -27,6 +34,13 @@ test.each([10, undefined])(
         scraperDailyLimit: limit,
         scraperUsageCount: limit ?? 1000,
         scraperUsageDate: '2026-09-24',
+      })
+      await ctx.db.insert('proxies', {
+        name: 'test',
+        proxy: 'proxy.test:8000',
+        proxyType: 'http',
+        country: 'gb',
+        createdAt: 0,
       })
       const list = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
       const job = await ctx.db.insert('scrapeSources', {
@@ -41,8 +55,8 @@ test.each([10, undefined])(
       })
       return { profile, job }
     })
-    const midnight = Date.parse('2026-09-25T00:00:00Z')
-    expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight)
+    const midnight = Date.now()
+    expect((await t.query(api.scraper.work, args)).taskAt).toBe(0)
     await t.run((ctx) => ctx.db.patch(ids.profile, { scraperCooldownUntil: midnight + 60_000 }))
     expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight + 60_000)
     await t.run((ctx) => ctx.db.patch(ids.job, { running: true, leaseUntil: midnight + 120_000 }))
@@ -94,5 +108,8 @@ test('maintenance includes only deleting and renaming profiles', async () => {
     await ctx.db.delete(deleting)
     await ctx.db.patch(renaming, { renameFrom: undefined })
   })
-  expect(await t.query(api.profiles.queries.maintenanceWork, args)).toEqual({ profileIds: [], modelIds: [] })
+  expect(await t.query(api.profiles.queries.maintenanceWork, args)).toEqual({
+    profileIds: [],
+    modelIds: [],
+  })
 })

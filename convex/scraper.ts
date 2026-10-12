@@ -5,11 +5,11 @@ import { normalizeUsername } from './instagramUsername'
 import { addMembership, leadAvailable, setLeadAvailability } from './leadMemberships'
 import { requireServerBridgeAuth } from './serverBridgeAuth'
 
-import { capacityAt, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
+import { capacityAt, scraperBusy, scraperProfiles } from './scraperPolicy'
+import { mobileRequestState } from './mobileRequests'
 import { activeSource, nextWork } from './scrapeSources'
 import { patchProfile, refreshEnrichmentWork } from './workerMetadata'
 import { LeadStatsChanges } from './leadStats'
-import { recordActivity } from './analyticsActivity'
 
 /** Persisted due times wake Rust timers; this subscription never reads a clock. */
 export const work = query({
@@ -22,9 +22,17 @@ export const work = query({
     if (next) {
       const profiles = await scraperProfiles(ctx)
       blockedProfileIds = profiles.filter(scraperBusy).map((p) => p._id)
-      const times = profiles
-        .filter((p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom)
-        .map(capacityAt)
+      const available = profiles.filter(
+        (p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom,
+      )
+      const states = await Promise.all(
+        available.map((profile) => mobileRequestState(ctx, profile._id)),
+      )
+      const times = available.flatMap((profile, index) =>
+        states[index]!.availableAt === null
+          ? []
+          : [Math.max(capacityAt(profile), states[index]!.availableAt!)],
+      )
       if (times.length) taskAt = Math.max(next.at, Math.min(...times))
     }
     return {
@@ -42,8 +50,14 @@ export const enrichmentWork = query({
     const state = await ctx.db.query('enrichmentWork').unique()
     if (state) return { pending: state.pending }
     const [describing, pending] = await Promise.all([
-      ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'describing')).first(),
-      ctx.db.query('leads').withIndex('by_enrichment', q => q.eq('enrichmentStatus', 'pending')).first(),
+      ctx.db
+        .query('leads')
+        .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'describing'))
+        .first(),
+      ctx.db
+        .query('leads')
+        .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'pending'))
+        .first(),
     ])
     return { pending: !!(describing || pending) }
   },
@@ -52,14 +66,16 @@ export const enrichmentWork = query({
 export const accounts = query({
   args: {},
   handler: async (ctx) =>
-    (await scraperProfiles(ctx)).map((p) => ({
-      id: p._id,
-      name: p.name,
-      ready: p.scraperReady,
-      dailyLimit: limitFor(p),
-      used: usedToday(p),
-      cooldownUntil: p.scraperCooldownUntil,
-    })),
+    Promise.all(
+      (await scraperProfiles(ctx)).map(async (p) => ({
+        id: p._id,
+        name: p.name,
+        ready: p.scraperReady,
+        ...(await mobileRequestState(ctx, p._id)),
+        usage: undefined,
+        cooldownUntil: p.scraperCooldownUntil,
+      })),
+    ),
 })
 
 export const cooldownAccount = internalMutation({
@@ -80,16 +96,6 @@ export const cooldownAccount = internalMutation({
   },
 })
 
-export const setDailyLimit = mutation({
-  args: { profileId: v.id('profiles'), limit: v.optional(v.number()) },
-  handler: async (ctx, { profileId, limit }) => {
-    if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1 || limit > 100000))
-      throw new Error('Limit must be from 1 to 100000')
-    if (!(await ctx.db.get(profileId))) throw new Error('Profile not found')
-    await patchProfile(ctx, profileId, { scraperDailyLimit: limit ?? null })
-  },
-})
-
 const liker = v.object({
   igId: v.string(),
   username: v.string(),
@@ -97,7 +103,7 @@ const liker = v.object({
   profilePicUrl: v.optional(v.string()),
 })
 
-/** Indexed ID dedupe and quota reservation happen in one Convex transaction. */
+/** Saving leads is independent of request quotas; each HTTP dispatch is charged separately. */
 export const saveBatch = internalMutation({
   args: { sourceId: v.id('scrapeSources'), runId: v.string(), likers: v.array(liker) },
   handler: async (ctx, args) => {
@@ -106,9 +112,6 @@ export const saveBatch = internalMutation({
     if (!source.profileId) throw new Error('Scraper profile was deleted')
     const profile = await ctx.db.get(source.profileId)
     if (!profile) throw new Error('Scraper profile was deleted')
-    const limit = limitFor(profile)
-    const remaining =
-      limit === undefined ? args.likers.length : Math.max(0, limit - usedToday(profile))
     const seen = new Set<string>()
     const incoming = args.likers.map((p) => {
       const username = normalizeUsername(p.username)
@@ -152,7 +155,6 @@ export const saveBatch = internalMutation({
             )
             .first()
         : null
-      if (!membership && added >= remaining) break
       if (existing) {
         claimedExisting.add(existing._id)
         const fullName = p.fullName || existing.fullName
@@ -171,7 +173,10 @@ export const saveBatch = internalMutation({
             profilePicUrl,
             enrichmentStatus: existing.enrichmentStatus ?? 'pending',
           })
-          stats.add(existing, { ...existing, enrichmentStatus: existing.enrichmentStatus ?? 'pending' })
+          stats.add(existing, {
+            ...existing,
+            enrichmentStatus: existing.enrichmentStatus ?? 'pending',
+          })
         }
         await addMembership(
           ctx,
@@ -200,15 +205,6 @@ export const saveBatch = internalMutation({
       processed++
     }
     await stats.flush(ctx)
-    // Retried/repeated accounts already in this list never consume quota twice.
-    if (added) {
-      await patchProfile(ctx, profile._id, {
-        scraperUsageDate: day(),
-        scraperUsageCount: usedToday(profile) + added,
-      })
-      await recordActivity(ctx, day(), limit === undefined
-        ? { unlimitedScraperUnits: added } : { scraperUnits: added })
-    }
     await ctx.db.patch(source._id, {
       ...(added ? { discovered: source.discovered + added } : {}),
       leaseUntil: Date.now() + 10 * 60_000,
@@ -217,7 +213,7 @@ export const saveBatch = internalMutation({
     return {
       added,
       processed,
-      limitExhausted: limit !== undefined && usedToday(profile) + added >= limit,
+      limitExhausted: false,
     }
   },
 })
@@ -233,22 +229,36 @@ export const pendingLeads = internalQuery({
       .query('leads')
       .withIndex('by_enrichment', (q) => q.eq('enrichmentStatus', 'pending'))
       .take(10 - describing.length)
-    return [...describing, ...pending].map(lead => ({
-      _id: lead._id, username: lead.username, fullName: lead.fullName,
-      profilePicUrl: lead.profilePicUrl, profilePicDescription: lead.profilePicDescription,
+    return [...describing, ...pending].map((lead) => ({
+      _id: lead._id,
+      username: lead.username,
+      fullName: lead.fullName,
+      profilePicUrl: lead.profilePicUrl,
+      profilePicDescription: lead.profilePicDescription,
     }))
   },
 })
 
 /** Checkpoints and completions are bounded batches; errors do not discard successful results. */
 export const saveEnrichmentBatch = internalMutation({
-  args: { entries: v.array(v.union(
-    v.object({ leadId: v.id('leads'), description: v.string() }),
-    v.object({ leadId: v.id('leads'), classification: v.union(v.literal('male'), v.literal('female'), v.literal('business')) }),
-    v.object({ leadId: v.id('leads'), error: v.literal(true) }),
-  )) },
+  args: {
+    entries: v.array(
+      v.union(
+        v.object({ leadId: v.id('leads'), description: v.string() }),
+        v.object({
+          leadId: v.id('leads'),
+          classification: v.union(v.literal('male'), v.literal('female'), v.literal('business')),
+        }),
+        v.object({ leadId: v.id('leads'), error: v.literal(true) }),
+      ),
+    ),
+  },
   handler: async (ctx, { entries }) => {
-    if (!entries.length || entries.length > 10 || new Set(entries.map(e => e.leadId)).size !== entries.length)
+    if (
+      !entries.length ||
+      entries.length > 10 ||
+      new Set(entries.map((e) => e.leadId)).size !== entries.length
+    )
       throw new Error('Invalid enrichment batch')
     const stats = new LeadStatsChanges()
     for (const entry of entries) {
@@ -256,12 +266,32 @@ export const saveEnrichmentBatch = internalMutation({
       if (!lead || !['pending', 'describing'].includes(lead.enrichmentStatus ?? '')) continue
       if ('description' in entry) {
         const description = entry.description.slice(0, 500)
-        if (lead.profilePicDescription !== description || lead.enrichmentStatus !== 'pending' || lead.pictureBatchId)
-          await ctx.db.patch(lead._id, { profilePicDescription: description, enrichmentStatus: 'pending', pictureBatchId: undefined })
+        if (
+          lead.profilePicDescription !== description ||
+          lead.enrichmentStatus !== 'pending' ||
+          lead.pictureBatchId
+        )
+          await ctx.db.patch(lead._id, {
+            profilePicDescription: description,
+            enrichmentStatus: 'pending',
+            pictureBatchId: undefined,
+          })
       } else if ('classification' in entry) {
-        await ctx.db.patch(lead._id, { classification: entry.classification, enrichmentStatus: 'ready', pictureBatchId: undefined })
-        await setLeadAvailability(ctx, lead._id, entry.classification === 'male' && !lead.senderId && !lead.dmSent && !lead.followed)
-        stats.add(lead, { ...lead, classification: entry.classification, enrichmentStatus: 'ready' })
+        await ctx.db.patch(lead._id, {
+          classification: entry.classification,
+          enrichmentStatus: 'ready',
+          pictureBatchId: undefined,
+        })
+        await setLeadAvailability(
+          ctx,
+          lead._id,
+          entry.classification === 'male' && !lead.senderId && !lead.dmSent && !lead.followed,
+        )
+        stats.add(lead, {
+          ...lead,
+          classification: entry.classification,
+          enrichmentStatus: 'ready',
+        })
       } else {
         await ctx.db.patch(lead._id, { enrichmentStatus: 'error', pictureBatchId: undefined })
         await setLeadAvailability(ctx, lead._id, false)

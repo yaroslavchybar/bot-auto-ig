@@ -443,6 +443,7 @@ export async function warmupBeginRun(input: {
 
 /** Reduced profile payload returned by runtimeListPageInternal (see toRuntimeProfile). */
 export type RuntimeProfile = {
+  paused?: boolean
   id: string
   name: string
   status?: string

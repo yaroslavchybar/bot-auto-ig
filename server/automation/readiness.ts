@@ -12,7 +12,7 @@ export function routineDueAt(snapshot: RuntimeSnapshot, now = Date.now()): numbe
   let earliest = fallback
   for (const profile of snapshot.profiles) {
     if (!profile.igLoggedIn || !accountReady(profile, now)) continue
-    if (profile.using || profile.status === 'running' || profile.status === 'deleting' || profile.renameFrom) continue
+    if (profile.paused || profile.using || profile.status === 'running' || profile.status === 'deleting' || profile.renameFrom) continue
     const state = progress.get(String(profile.id))
     const warmup = warmups.get(String(profile.id))
     if (state?.paused || state?.issue) continue

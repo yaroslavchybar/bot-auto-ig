@@ -32,13 +32,6 @@ impl Error {
             retry_after_ms: None,
         }
     }
-    fn daily_limit() -> Self {
-        Self {
-            message: "Daily account limit reached; resumes when capacity is available".into(),
-            paused: true,
-            retry_after_ms: None,
-        }
-    }
     fn rate_limited(ms: u64) -> Self {
         Self {
             message: "Instagram HTTP 429; account or proxy rate limited. Retry later.".into(),
@@ -47,7 +40,7 @@ impl Error {
         }
     }
     fn mobile(error: crate::instagram::Error) -> Self {
-        if error.name == "ScraperProfileBusy" {
+        if ["ScraperProfileBusy", "MobileRequestBudget"].contains(&error.name.as_str()) {
             Self {
                 message: error.message,
                 paused: true,
@@ -359,7 +352,7 @@ impl Scraper {
                 .acknowledge(&job.list_id, &ids)
                 .map_err(|_| Error::failed("Scraper cache unavailable"))?;
             if processed < chunk.len() {
-                return Err(Error::daily_limit());
+                return Err(Error::failed("Scraper batch was not fully saved"));
             }
         }
         let new_ids = self
@@ -423,7 +416,8 @@ impl Scraper {
                     retry_after_ms: None,
                 });
             }
-            let fallback = instagram::Web::new(&profile)?;
+            let fallback = instagram::Web::new(&profile)?
+                .with_budget(self.mobile.request_budget(&job.profile_id));
             #[cfg(test)]
             let fallback = fallback.with_base(self.provider_url.clone());
             *web = Some(fallback);

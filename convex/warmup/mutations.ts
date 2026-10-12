@@ -22,7 +22,9 @@ export const beginRunInternal = internalMutation({
       if (!Number.isFinite(min) || !Number.isFinite(max) || min < floor || max < min)
         throw new Error('Invalid warm-up range')
     }
-    if (!(await ctx.db.get(args.profileId))) throw new Error('Profile not found')
+    const profile = await ctx.db.get(args.profileId)
+    if (!profile) throw new Error('Profile not found')
+    if (profile.paused) return { date: todayDate(Date.now()), minutes: 0 }
     const now = Date.now()
     const date = todayDate(now)
     let state = await ctx.db.query('warmupStates')
@@ -118,7 +120,7 @@ export const beginFollowInternal = internalMutation({
     const automationId = ctx.db.normalizeId('automations', state.lastAutomationId ?? '')
     const automation = automationId ? await ctx.db.get(automationId) : null
     const progress = await ctx.db.query('accountProgress').withIndex('by_profile', q => q.eq('profileId', args.profileId)).unique()
-    if (!profile?.igLoggedIn || profile.status === 'deleting' || profile.renameFrom || progress?.paused || progress?.issue ||
+    if (!profile?.igLoggedIn || profile.paused || profile.status === 'deleting' || profile.renameFrom || progress?.paused || progress?.issue ||
       !automation?.isActive || !routineLists(automation).some(id => profile.listIds?.some(listId => listId === id))) return false
     const used = { ...emptyWarmupActivity(), ...state.activityUsed }
     if (used.follows >= (state.activityPlan?.follows ?? 0)) return false

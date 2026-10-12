@@ -47,7 +47,7 @@ test('new scraper leads count once even when the same liker is saved to another 
     }
     return sources
   })
-  await t.run(ctx => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
+  await t.run((ctx) => ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true }))
   await t.mutation(api.analytics.initialize, {})
   const likers = [{ igId: '123', username: 'liker' }]
   await t.mutation(internal.scraper.saveBatch, { ...sources[0], likers })
@@ -61,7 +61,9 @@ test('new scraper leads count once even when the same liker is saved to another 
     ready: 0,
     assigned: 0,
   })
-  expect((await t.run(ctx => ctx.db.query('analyticsHistory').unique()))?.totals.scraperUnits).toBe(2)
+  expect(
+    (await t.run((ctx) => ctx.db.query('analyticsHistory').unique()))?.totals.scraperUnits,
+  ).toBe(0)
 })
 
 test('initial backfill counts unique people, classification and outreach eligibility', async () => {

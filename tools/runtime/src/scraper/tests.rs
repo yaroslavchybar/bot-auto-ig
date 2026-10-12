@@ -200,7 +200,9 @@ async fn liker_checks_cache_only_acknowledged_prefix_and_scope_dedupe_to_list() 
     }).await;
     let scraper = scraper_fixture(&fixture);
     let mut job = task(TaskKind::Likers);
-    assert!(scraper.run_task(&job).await.unwrap_err().paused);
+    let error = scraper.run_task(&job).await.unwrap_err();
+    assert!(!error.paused);
+    assert_eq!(error.message, "Scraper batch was not fully saved");
     assert!(scraper
         .cache
         .lock()

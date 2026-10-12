@@ -1,4 +1,5 @@
 export type Profile = {
+  paused?: boolean
   igLoggedIn?: boolean
   outreachReady?: boolean
   renameFrom?: string

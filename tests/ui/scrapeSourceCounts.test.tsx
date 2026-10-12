@@ -4,7 +4,11 @@ import { getFunctionName } from 'convex/server'
 import { ScrapeSourcesView } from '@/features/scraper/ScrapeSourcesView'
 import { mount } from './mount'
 
-const mocks = vi.hoisted(() => ({ count: 2 as number | null, includePrivate: false, ensure: vi.fn().mockResolvedValue(undefined) }))
+const mocks = vi.hoisted(() => ({
+  count: 2 as number | null,
+  includePrivate: false,
+  ensure: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/lib/router', () => ({
   useLocation: () => ({ search: '?listId=list' }),
   useNavigate: () => vi.fn(),
@@ -13,10 +17,19 @@ vi.mock('@/lib/router', () => ({
 vi.mock('convex/react', () => ({
   useQuery: (reference: Parameters<typeof getFunctionName>[0]) => {
     switch (getFunctionName(reference)) {
-      case 'leads:getList': return { _id: 'list', name: 'Saved', createdAt: 0, scrapeIncludePrivate: mocks.includePrivate }
-      case 'scrapeSources:sources': return []
-      case 'scrapeSources:summary': return { sources: 0, leads: mocks.count }
-      default: throw new Error('Unexpected query')
+      case 'leads:getList':
+        return {
+          _id: 'list',
+          name: 'Saved',
+          createdAt: 0,
+          scrapeIncludePrivate: mocks.includePrivate,
+        }
+      case 'scrapeSources:sources':
+        return []
+      case 'scrapeSources:summary':
+        return { sources: 0, leads: mocks.count }
+      default:
+        throw new Error('Unexpected query')
     }
   },
   useMutation: () => mocks.ensure,
@@ -46,14 +59,24 @@ test('private-profile checkbox saves only on Save and restores the list preferen
   expect(checkbox.getAttribute('aria-checked')).toBe('false')
   await act(async () => checkbox.click())
   expect(mocks.ensure).not.toHaveBeenCalled()
-  const save = [...view.container.querySelectorAll('button')].find(button => button.textContent === 'Save')!
+  const save = [...view.container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Save',
+  )!
   await act(async () => save.click())
-  expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, monitorDays: 3, postLimit: 10, includePrivate: true })
+  expect(mocks.ensure).toHaveBeenCalledExactlyOnceWith({
+    listId: 'list',
+    days: 90,
+    monitor: true,
+    postLimit: 10,
+    includePrivate: true,
+  })
   mocks.includePrivate = true
   await view.unmount()
   view = mount()
   await view.render(<ScrapeSourcesView />)
-  expect(view.container.querySelector('#source-private-profiles')?.getAttribute('aria-checked')).toBe('true')
+  expect(
+    view.container.querySelector('#source-private-profiles')?.getAttribute('aria-checked'),
+  ).toBe('true')
 })
 
 test('existing lists backfill once and replace the loading count with the saved total', async () => {

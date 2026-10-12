@@ -24,6 +24,10 @@ test('routine prefilter skips rest and spent budgets, then allows the next UTC d
   assert.equal(routineMayRun(snapshot, 'p', now + 60_000), true)
   snapshot.progress = [{ profileId: 'p', paused: true }]
   assert.equal(routineMayRun(snapshot, 'p', now), false)
+  snapshot.progress = []
+  snapshot.profiles = [{ id: 'p', paused: true }]
+  assert.equal(routineMayRun(snapshot, 'p', now), false)
+  snapshot.profiles = [{ id: 'p', paused: false }]
   snapshot.progress = [{ profileId: 'p', issue: 'review' }]
   assert.equal(routineMayRun(snapshot, 'p', now), false)
 })

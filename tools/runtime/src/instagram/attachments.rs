@@ -63,6 +63,7 @@ async fn request(
             )),
         );
     }
+    mobile.reserve_request().await?;
     let response = request
         .send()
         .await
@@ -179,6 +180,7 @@ pub async fn profile_picture(mobile: &mut Mobile, image: Vec<u8>) -> Result<()> 
     let url: reqwest::Url = format!("https://i.instagram.com/rupload_igphoto/{entity}")
         .parse()
         .unwrap();
+    mobile.reserve_request().await?;
     let response=mobile.client.post(mobile.endpoint("i.instagram.com",url.path())).headers(mobile.headers(&url)?)
         .header("x-instagram-rupload-params",json!({"retry_context":"{\"num_step_auto_retry\":0,\"num_reupload\":0,\"num_step_manual_retry\":0}","media_type":"1","upload_id":upload_id,"xsharing_user_ids":"[]","image_compression":"{\"lib_name\":\"moz\",\"lib_version\":\"3.1.m\",\"quality\":\"80\"}"}).to_string())
         .header("x_fb_photo_waterfall_id",uuid::Uuid::new_v4().to_string())

@@ -1,5 +1,4 @@
 import { DomainError } from '../errors';
-import { DEFAULT_SCRAPER_DAILY_LIMIT } from '../scraperKeys';
 import { clearChatCounter } from '../chatCache'
 import { clearProfileChatArchives } from '../chatArchives'
 import { syncProxyUsage, clearProxyUsage } from '../proxyUsage'
@@ -157,7 +156,7 @@ export async function getAvailableProfilesForLists(ctx: any, listIdsRaw: string[
 	const allowed = new Set(cleanIds);
 	const rows = await ctx.db.query("profiles").collect();
 	const filtered = rows.filter((p: any) => {
-		if (p.status === 'deleting' || p.renameFrom) return false;
+		if (p.paused || p.status === 'deleting' || p.renameFrom) return false;
 		const listIds = getProfileListIds(p);
 		if (!listIds.some((listId) => allowed.has(String(listId)))) return false;
 		if (typeof p.lastOpenedAt !== "number") return true;
@@ -207,7 +206,6 @@ export async function insertProfileRow(ctx: any, args: any) {
 		mode: computeProfileMode(args.proxy),
 		cookiesJson: cookiesJsonRaw ? cookiesJsonRaw : undefined,
 		sessionId: sessionIdFromCookies(cookiesJsonRaw),
-		scraperDailyLimit: DEFAULT_SCRAPER_DAILY_LIMIT,
 		using: false,
 		fingerprintOs: args.fingerprintOs,
 		fingerprintSeed: args.fingerprintSeed,

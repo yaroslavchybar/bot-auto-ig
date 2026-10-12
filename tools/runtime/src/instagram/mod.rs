@@ -4,7 +4,6 @@ mod context;
 mod crypto;
 mod device;
 mod operations;
-mod pacing;
 mod session;
 #[cfg(test)]
 mod tests;
@@ -30,6 +29,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 pub use transport::client as transport_client;
+pub(crate) use transport::RequestBudget;
 
 /// Only public Instagram image hosts may be used for picture downloads.
 pub fn picture_url(raw: &str) -> Option<String> {
@@ -159,13 +159,12 @@ pub fn retry_after(headers: &HeaderMap) -> u64 {
 }
 
 // Per-profile serialization prevents logout, login and session saves from racing.
-// Only idle entries without a live login cooldown or liker window may be evicted.
+// Request windows live in Convex, so evicting an idle entry cannot reset them.
 #[derive(Default)]
 struct Entry {
     proxy: String,
     client: Option<reqwest::Client>,
     login_retry_at_ms: u64,
-    liker_pacing: Arc<pacing::Pacing>,
     saved: Option<Value>,
 }
 pub struct Service {
@@ -174,7 +173,8 @@ pub struct Service {
     locks: Mutex<HashMap<String, Arc<Mutex<Entry>>>>,
     contexts: std::sync::RwLock<Option<context::ContextSnapshot>>,
     scraper_blocked: std::sync::RwLock<HashSet<String>>,
-    liker_pacing: pacing::Settings,
+    #[cfg(test)]
+    pub(crate) request_budget_enabled: bool,
     #[cfg(test)]
     pub base: Option<String>,
 }
@@ -184,12 +184,6 @@ impl Service {
         let mut service = Self::new(api, uploads);
         let service_mut = Arc::get_mut(&mut service).unwrap();
         service_mut.base = Some(base);
-        // Unrelated HTTP fixtures avoid real waits; dedicated pacing tests use the live policy.
-        service_mut.liker_pacing = pacing::Settings {
-            min_gap: std::time::Duration::ZERO,
-            max_gap: std::time::Duration::ZERO,
-            window: std::time::Duration::ZERO,
-        };
         service
     }
     #[cfg(test)]
@@ -209,7 +203,8 @@ impl Service {
             locks: Mutex::new(HashMap::new()),
             contexts: Default::default(),
             scraper_blocked: Default::default(),
-            liker_pacing: Default::default(),
+            #[cfg(test)]
+            request_budget_enabled: false,
             #[cfg(test)]
             base: None,
         })
@@ -247,9 +242,8 @@ impl Service {
                 .iter()
                 .find(|(_, v)| {
                     Arc::strong_count(v) == 1
-                        && v.try_lock().is_ok_and(|entry| {
-                            entry.login_retry_at_ms <= now && !entry.liker_pacing.cooling_down()
-                        })
+                        && v.try_lock()
+                            .is_ok_and(|entry| entry.login_retry_at_ms <= now)
                 })
                 .map(|(k, _)| k.clone())
             {
@@ -260,56 +254,26 @@ impl Service {
                 ));
             }
         }
-        let entry = Arc::new(Mutex::new(Entry {
-            liker_pacing: Arc::new(pacing::Pacing::new(self.liker_pacing)),
-            ..Entry::default()
-        }));
+        let entry = Arc::new(Mutex::new(Entry { ..Entry::default() }));
         locks.insert(id.into(), entry.clone());
         Ok(entry)
     }
     pub async fn invoke(&self, action: &str, request: &Command) -> Result<Value> {
-        if action != "likers" {
-            return self.invoke_serialized(action, request, false, None).await;
-        }
-        if request.profile_id.trim().is_empty() || request.profile_id.len() > 128 {
-            return Err(Error::new("Profile ID is required"));
-        }
-        let media_id = operations::liker_media_id(&request.args)?;
-        let entry = self.entry(&request.profile_id).await?;
-        let pacing = {
-            let guard = entry.lock().await;
-            guard.liker_pacing.clone()
-        };
-        let mut args = request.args.clone();
-        let mut like_count = None;
-        if !media_id.contains('_') {
-            let mut permit = pacing.wait().await;
-            let info = self
-                .invoke_serialized(action, request, true, Some(&mut permit))
-                .await?;
-            like_count = operations::media_like_count(&info);
-            args["mediaId"] = json!(operations::media_owner_id(&media_id, &info)?);
-        }
-        // Wait outside Entry; each actual request reloads and saves the current session under lock.
-        let mut permit = pacing.wait().await;
-        let request = Command {
-            profile_id: request.profile_id.clone(),
-            token: request.token.clone(),
-            args,
-        };
-        let result = self
-            .invoke_serialized(action, &request, false, Some(&mut permit))
-            .await?;
-        operations::liker_count(result, like_count)
+        self.invoke_serialized(action, request).await
     }
 
-    async fn invoke_serialized(
-        &self,
-        action: &str,
-        request: &Command,
-        liker_info: bool,
-        permit: Option<&mut pacing::Permit<'_>>,
-    ) -> Result<Value> {
+    pub(crate) fn request_budget(&self, profile_id: &str) -> Option<RequestBudget> {
+        #[cfg(test)]
+        if !self.request_budget_enabled {
+            return None;
+        }
+        Some(RequestBudget {
+            api: self.api.clone(),
+            profile_id: profile_id.into(),
+        })
+    }
+
+    async fn invoke_serialized(&self, action: &str, request: &Command) -> Result<Value> {
         if request.profile_id.trim().is_empty() || request.profile_id.len() > 128 {
             return Err(Error::new("Profile ID is required"));
         }
@@ -425,6 +389,7 @@ impl Service {
         let mut mobile = Mobile {
             state,
             client: entry.client.clone().unwrap(),
+            budget: self.request_budget(&request.profile_id),
             #[cfg(test)]
             base: self.base.clone(),
         };
@@ -450,14 +415,7 @@ impl Service {
             entry.login_retry_at_ms = 0;
             json!({"token":token,"viewerId":mobile.state.viewer_id()?})
         } else {
-            if let Some(permit) = permit {
-                permit.record();
-            }
-            let result = if liker_info {
-                operations::media_info(&mut mobile, &request.args).await
-            } else {
-                operations::invoke(self, &mut mobile, action, &request.args).await
-            };
+            let result = operations::invoke(self, &mut mobile, action, &request.args).await;
             match result {
                 Ok(result) => result,
                 Err(error) => {

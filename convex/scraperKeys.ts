@@ -1,1 +1,0 @@
-export const DEFAULT_SCRAPER_DAILY_LIMIT = 1000

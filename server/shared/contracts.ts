@@ -1,5 +1,6 @@
 /** Internal profile DTO. Field names and timestamps match Convex. */
 export type ProfileRecord = {
+  paused?: boolean
   renameFrom?: string
   id: string
   igAccountId?: string

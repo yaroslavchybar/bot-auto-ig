@@ -296,6 +296,8 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
         "save failure",
         "retry pending",
         "restore readiness",
+        "paused during setup",
+        "hourly request limit",
     ] {
         let root = tempfile::tempdir().unwrap();
         let progress = Arc::new(Mutex::new(
@@ -328,10 +330,16 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
             }
         }).await;
         let observed = progress.clone();
+        let budget = Arc::new(AtomicUsize::new(0));
         let fixture=Fixture::start(move |request| {
             let state=observed.clone();
+            let budget=budget.clone();
             async move {
                 match request.uri().path() {
+                    "/api/mobile-requests/reserve" => {
+                        let allowed=budget.fetch_add(1,Ordering::SeqCst)>0;
+                        Json(json!({"allowed":allowed,"retryAt":api::now_ms()+3_600_000,"reason":if outcome=="paused during setup" {"Profile is paused"} else {"Hourly mobile request limit reached"}})).into_response()
+                    },
                     "/api/automations/by-id"=>Json(json!({"isActive":true,"routine":{},"listIds":["model"]})).into_response(),
                     "/api/profiles"=>Json(json!([{"id":"p","name":"example","proxy":"http://proxy.test:8080","igLoggedIn":true,"listIds":["model"]}])).into_response(),
                     "/api/profiles/by-id"=>Json(json!({"id":"p","name":"changed_name"})).into_response(),
@@ -371,7 +379,7 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
         api.convex_url = fixture.url.clone();
         api.key = "fixture".into();
         let api = Arc::new(api);
-        let mobile = Service::fixture(
+        let mut mobile = Service::fixture(
             api.clone(),
             Arc::new(crate::uploads::Uploads {
                 entries: Default::default(),
@@ -379,6 +387,9 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
             }),
             mobile.url.clone(),
         );
+        if ["paused during setup", "hourly request limit"].contains(&outcome) {
+            Arc::get_mut(&mut mobile).unwrap().request_budget_enabled = true;
+        }
         let processes = super::super::processes::Processes::new(api.clone(), root.path().into());
         let profiles = Profiles::new(api.clone(), processes, root.path().into());
         let mut accounts = Accounts::new(
@@ -396,6 +407,15 @@ async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
             result.unwrap();
         }
         let state = progress.lock().await.clone();
+        if ["paused during setup", "hourly request limit"].contains(&outcome) {
+            assert_eq!(attempts.load(Ordering::SeqCst), 0);
+            assert!(state["pending"].is_null());
+            assert!(state["error"].is_string());
+            accounts.advance_setup("p", "automation").await.unwrap();
+            assert_eq!(attempts.load(Ordering::SeqCst), 1);
+            assert_eq!(progress.lock().await["nameDone"], true);
+            continue;
+        }
         if outcome == "restore readiness" {
             assert_eq!(attempts.load(Ordering::SeqCst), 0);
             assert_eq!(state["outreachReadyMarked"], true);

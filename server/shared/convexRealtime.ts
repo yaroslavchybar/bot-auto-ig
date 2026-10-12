@@ -113,3 +113,9 @@ export const watchRoutineAccess = (
 export async function closeConvexRealtime(): Promise<void> {
   for (const close of subscriptions) close()
 }
+
+export const watchProfileAccess = (
+  profileId: string,
+  update: (value: boolean) => void,
+  error: (error: Error) => void,
+) => subscribeToConvexQuery('profiles/queries:automationAccess', { profileId }, update, error)

@@ -41,6 +41,7 @@ test('selected lists restrict eligible profiles and enforce cooldown', () => {
     false,
   )
   assert.equal(profileEligible({ ...profile, using: true }, lists), false)
+  assert.equal(profileEligible({ ...profile, paused: true }, lists), false)
   assert.equal(
     profileEligible(
       { ...profile, lastOpenedAt: Date.now() },

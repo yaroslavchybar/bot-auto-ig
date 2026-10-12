@@ -7,6 +7,7 @@ export const emptyActivity = (): ActivityCounts => ({
   dms: 0,
   warmupMinutes: 0,
   scraperUnits: 0,
+  mobileRequests: 0,
   unlimitedScraperUnits: 0,
 })
 
@@ -19,6 +20,7 @@ export function addActivity(
     dms: counts.dms + (delta.dms ?? 0),
     warmupMinutes: counts.warmupMinutes + (delta.warmupMinutes ?? 0),
     scraperUnits: counts.scraperUnits + (delta.scraperUnits ?? 0),
+    mobileRequests: (counts.mobileRequests ?? 0) + (delta.mobileRequests ?? 0),
     unlimitedScraperUnits: counts.unlimitedScraperUnits + (delta.unlimitedScraperUnits ?? 0),
   }
 }
@@ -32,7 +34,7 @@ export async function recordActivity(
   if (!Object.values(delta).some((value) => value > 0)) return
   const history = await ctx.db.query('analyticsHistory').unique()
   // The first dashboard visit seeds surviving daily counters before tracking new activity.
-  if (!history) return
+  if (!history && !delta.mobileRequests) return
   const row = await ctx.db
     .query('analyticsDays')
     .withIndex('by_date', (q) => q.eq('date', date))
@@ -40,5 +42,5 @@ export async function recordActivity(
   const counts = addActivity(row?.counts ?? emptyActivity(), delta)
   if (row) await ctx.db.patch(row._id, { counts })
   else await ctx.db.insert('analyticsDays', { date, counts })
-  await ctx.db.patch(history._id, { totals: addActivity(history.totals, delta) })
+  if (history) await ctx.db.patch(history._id, { totals: addActivity(history.totals, delta) })
 }

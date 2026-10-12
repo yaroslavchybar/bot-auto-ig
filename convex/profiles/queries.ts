@@ -25,6 +25,7 @@ export type ProfileListRow = Pick<
   | 'renameFrom'
   | 'igLoggedIn'
   | 'outreachReady'
+  | 'paused'
 >
 
 export const listBatchInternal = internalQuery({
@@ -48,6 +49,7 @@ export const listBatchInternal = internalQuery({
           renameFrom,
           igLoggedIn,
           outreachReady,
+          paused,
         }) => ({
           _id,
           name,
@@ -59,6 +61,7 @@ export const listBatchInternal = internalQuery({
           renameFrom,
           igLoggedIn,
           outreachReady,
+          paused,
         }),
       ),
     }
@@ -143,7 +146,7 @@ export const chatWorkerContexts = query({
           token: session.token,
           storageId: session.storageId,
           reconnectRequired: session.reconnectRequired === true,
-          enabled: profile.igLoggedIn === true && session.reconnectRequired !== true,
+          enabled: !profile.paused && profile.igLoggedIn === true && session.reconnectRequired !== true,
           proxy: profile.proxy ?? '',
           proxyType: profile.proxyType ?? '',
         }
@@ -283,6 +286,16 @@ export const chatOptions = query({
         .withIndex('by_chat', (q) => q.eq('igLoggedIn', true))
         .collect()
     )
-      .filter((profile) => profile.igLoggedIn && profile.status !== 'deleting')
+      .filter((profile) => profile.igLoggedIn && !profile.paused && profile.status !== 'deleting')
       .map(({ _id, name, status }) => ({ _id, name, status })),
+})
+
+/** Live permission for graph workers; pausing closes their automated browser session. */
+export const automationAccess = query({
+  args: { bridgeToken: v.string(), profileId: v.id('profiles') },
+  handler: async (ctx, { bridgeToken, profileId }) => {
+    requireServerBridgeAuth(bridgeToken)
+    const profile = await ctx.db.get(profileId)
+    return Boolean(profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom)
+  },
 })

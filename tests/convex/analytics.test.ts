@@ -3,7 +3,7 @@ import { api } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
 import { emptyActivity, recordActivity } from '../../convex/analyticsActivity'
 
-test('analytics counts confirmed daily activity, excludes deleted profiles, and separates unlimited quota', async () => {
+test('analytics counts confirmed daily activity, excludes deleted profiles, and does not reuse old lead quotas', async () => {
   const t = createConvexTest()
   await t.run(async (ctx) => {
     await ctx.db.insert('workerMetadataMigration', { cursor: null, complete: true })
@@ -66,14 +66,14 @@ test('analytics counts confirmed daily activity, excludes deleted profiles, and 
   })
   expect(result.leads).toBeNull()
   expect(result.quota).toMatchObject({
-    used: 99,
-    limit: 1000,
-    unlimitedAccounts: 1,
+    used: 0,
+    limit: 20,
+    unlimitedAccounts: 0,
     unlimitedUsed: 0,
   })
   const previous = await t.query(api.analytics.overview, { date: '2026-10-10' })
   expect(previous.totals).toEqual({ follows: 4, dms: 2, warmupMinutes: 12.5 })
-  expect(previous.quota.unlimitedUsed).toBe(99)
+  expect(previous.quota.unlimitedUsed).toBe(0)
   expect((await t.run((ctx) => ctx.db.query('analyticsDays').collect())).length).toBe(2)
 })
 
@@ -114,7 +114,7 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
         follows: count,
         dms: count * 2,
         warmupMinutes: count / 2,
-        scraperUnits: count,
+        mobileRequests: count,
       })
     }
   })
@@ -126,7 +126,8 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
   ] as const) {
     const result = await t.query(api.analytics.overview, { date: '2026-10-11', period })
     expect(result.totals).toEqual({ follows: count, dms: count * 2, warmupMinutes: count / 2 })
-    expect(result.quota.used).toBe(count)
+    expect(result.quota.totalRequests).toBe(count)
+    expect(result.quota.used).toBe(period === 'today' ? 0 : count)
     expect(result.leads).toMatchObject({ total: 0, pending: 0 })
     expect(result.period).toBe(period)
   }
@@ -146,11 +147,11 @@ test('zero activity does not write counters and re-initializing preserves existi
   await t.mutation(api.analytics.initialize, {})
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', emptyActivity()))
   expect(await t.run((ctx) => ctx.db.query('analyticsDays').collect())).toEqual([])
-  await t.run((ctx) => recordActivity(ctx, '2026-10-11', { follows: 2, unlimitedScraperUnits: 4 }))
+  await t.run((ctx) => recordActivity(ctx, '2026-10-11', { follows: 2, mobileRequests: 4 }))
   await t.mutation(api.analytics.initialize, {})
   const result = await t.query(api.analytics.overview, { date: '2026-10-11', period: 'all' })
   expect(result.totals.follows).toBe(2)
-  expect(result.quota).toMatchObject({ unlimitedAccounts: 0, unlimitedUsed: 4 })
+  expect(result.quota).toMatchObject({ unlimitedAccounts: 0, unlimitedUsed: 0, totalRequests: 4 })
 })
 
 test('analytics refuses incomplete account metadata and invalid dates', async () => {

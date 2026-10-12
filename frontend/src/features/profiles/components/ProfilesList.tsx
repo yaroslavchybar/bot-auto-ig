@@ -1,4 +1,9 @@
 import { maskProxyForDisplay } from '../../proxies/utils/maskProxy'
+import { useState } from 'react'
+import { useMutation } from 'convex/react'
+import { toast } from 'sonner'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import {
   Table,
   TableBody,
@@ -20,6 +25,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import {
   MoreHorizontal,
   Play,
+  Pause,
   Square,
   Pencil,
   Trash2,
@@ -71,6 +77,7 @@ function getStatusMeta(profile: Profile) {
     }
   }
   const label = profile.using ? 'ACTIVE' : String(profile.status ?? 'IDLE').toUpperCase()
+  if (profile.paused) return { label: 'PAUSED', className: 'text-muted-copy' }
 
   if (profile.using) {
     return { label, className: 'text-status-success font-bold' }
@@ -88,6 +95,8 @@ function ProfileActionsMenu({
   onToggleStatus,
 }: ProfileActionsMenuProps) {
   const navigate = useNavigate()
+  const setPaused = useMutation(api.profiles.mutations.setPaused)
+  const [pausing, setPausing] = useState(false)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -116,6 +125,23 @@ function ProfileActionsMenu({
               <Play className="mr-2 h-4 w-4" /> Start Browser
             </>
           )}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={pausing || profile.status === 'deleting' || Boolean(profile.renameFrom)}
+          onClick={async () => {
+            setPausing(true)
+            try {
+              await setPaused({ profileId: profile.id as Id<'profiles'>, paused: !profile.paused })
+            } catch (error) {
+              toast.error(String(error))
+            } finally {
+              setPausing(false)
+            }
+          }}
+          className="cursor-pointer hover:bg-panel-hover focus:bg-panel-hover"
+        >
+          {profile.paused ? <Play className="mr-2 h-4 w-4" /> : <Pause className="mr-2 h-4 w-4" />}
+          {profile.paused ? 'Resume Profile' : 'Pause Profile'}
         </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => onEdit(profile)}
@@ -319,7 +345,7 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
       <div
         className={cn(
           'flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium',
-          profile.using
+          profile.using && !profile.paused
             ? 'status-glow-success bg-status-success-soft text-status-success border-status-success-border'
             : 'bg-panel-muted text-copy border-line',
         )}
@@ -327,16 +353,18 @@ function DesktopStatusBadge({ profile }: { profile: Profile }) {
         <span
           className={cn(
             'flex h-1.5 w-1.5 rounded-full',
-            profile.using ? 'status-dot-success-tight' : 'bg-subtle-copy',
+            profile.using && !profile.paused ? 'status-dot-success-tight' : 'bg-subtle-copy',
           )}
         />
         {profile.status === 'deleting'
           ? 'Deleting'
           : profile.renameFrom
             ? 'Renaming'
-            : profile.using
-              ? 'Active'
-              : 'Idle'}
+            : profile.paused
+              ? 'Paused'
+              : profile.using
+                ? 'Active'
+                : 'Idle'}
       </div>
     </div>
   )

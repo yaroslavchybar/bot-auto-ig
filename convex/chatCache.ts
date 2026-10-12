@@ -43,6 +43,10 @@ export async function setChatCounterEnabled(
   profileId: Id<'profiles'>,
   enabled: boolean,
 ): Promise<void> {
+  if (enabled) {
+    const profile = await ctx.db.get(profileId)
+    enabled = Boolean(profile && !profile.paused && profile.status !== 'deleting')
+  }
   const row = await ctx.db
     .query('chatCounters')
     .withIndex('by_profile', (q) => q.eq('profileId', profileId))
@@ -71,7 +75,7 @@ export const saveUnreadCount = internalMutation({
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .unique()
     const profile = await ctx.db.get(profileId)
-    const enabled = Boolean(profile?.igLoggedIn && profile.status !== 'deleting')
+    const enabled = Boolean(profile?.igLoggedIn && !profile.paused && profile.status !== 'deleting')
     if (
       existing?.token === token &&
       existing.enabled === enabled &&

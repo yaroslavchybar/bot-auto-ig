@@ -371,7 +371,8 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
     let warmups = keyed(&snapshot["warmups"], "profileId");
     let mut earliest = fallback;
     for profile in snapshot["profiles"].as_array().into_iter().flatten() {
-        if profile["igLoggedIn"] != true
+        if profile["paused"] == true
+            || profile["igLoggedIn"] != true
             || profile["using"] == true
             || matches!(profile["status"].as_str(), Some("running" | "deleting"))
             || profile["renameFrom"]
@@ -451,6 +452,7 @@ mod readiness_tests {
         );
         for profile in [
             json!({"igLoggedIn": false}),
+            json!({"igLoggedIn": true, "paused": true}),
             json!({"igLoggedIn": true, "using": true}),
             json!({"igLoggedIn": true, "igAccountStatus": "assigned", "browserLoggedInAt": now - 1000}),
         ] {

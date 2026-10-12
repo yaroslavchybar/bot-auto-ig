@@ -110,7 +110,10 @@ impl Accounts {
         let profiles = self.profiles.list().await?;
         let existing = self.store("modelSetupList", json!({})).await?;
         for profile in profiles.as_array().into_iter().flatten() {
-            if profile["igLoggedIn"] != true || profile["status"] == "deleting" {
+            if profile["paused"] == true
+                || profile["igLoggedIn"] != true
+                || profile["status"] == "deleting"
+            {
                 continue;
             }
             let Some(model) = profile["listIds"]
@@ -205,6 +208,7 @@ impl Accounts {
             .as_array()
             .is_some_and(|v| v.iter().any(|v| v == model_id))
             || profile["igLoggedIn"] != true
+            || profile["paused"] == true
             || profiles::text(profile, "proxy").is_empty()
             || profile["using"] == true
             || profile["status"] == "deleting"
@@ -411,6 +415,11 @@ impl Accounts {
                 self.patch_setup(id, model, patch, &["pending", "error"])
                     .await
             }
+            Err(e) if e.name == "MobileRequestBudget" => {
+                // The requested edit was never dispatched, so it needs no manual review.
+                self.patch_setup(id, model, json!({"error": e.message}), &["pending"])
+                    .await
+            }
             Err(e) => {
                 self.patch_setup(
                     id,
@@ -478,6 +487,11 @@ impl Accounts {
                     if candidates.len() == 1 {
                         candidates.extend(self.username_candidates(model, index, &used).await?);
                     }
+                }
+                Err(e) if e.name == "MobileRequestBudget" => {
+                    return self
+                        .patch_setup(id, model_id, json!({"error": e.message}), &["pending"])
+                        .await;
                 }
                 Err(e) => {
                     self.patch_setup(

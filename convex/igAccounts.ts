@@ -124,9 +124,12 @@ export const loginWork = query({
         q.eq('status', 'assigned').eq('browserLoggedInAt', undefined),
       )
       .take(100)
-    return rows
-      .filter((row) => row.profileId)
-      .map((row) => ({ profileId: row.profileId!, retryAfter: row.retryAfter ?? 0 }))
+    const work = await Promise.all(rows.filter(row => row.profileId).map(async row => {
+      const profile = await ctx.db.get(row.profileId!)
+      return profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom
+        ? { profileId: row.profileId!, retryAfter: row.retryAfter ?? 0 } : null
+    }))
+    return work.filter(row => row !== null)
   },
 })
 

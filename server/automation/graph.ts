@@ -65,6 +65,7 @@ export function startConfig(nodes: AutomationNode[]): Record<string, any> {
 
 export function profileEligible(
   profile: {
+    paused?: boolean
     using: boolean
     status?: string | null
     listIds?: string[] | null
@@ -73,7 +74,7 @@ export function profileEligible(
   lists: string[],
   cooldownMinutes = 0,
 ): boolean {
-  if (profile.using || profile.status === 'running')
+  if (profile.paused || profile.using || profile.status === 'running')
     return false
   if (lists.length && !profile.listIds?.some((id) => lists.includes(id)))
     return false

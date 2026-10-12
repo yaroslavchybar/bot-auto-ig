@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { Pencil, Plus, RotateCcw, Search, Trash2, UserCheck } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
+import type { FunctionReturnType } from 'convex/server'
+import { requestsInHour, sessionWindow } from '../../../../convex/mobileRequestPolicy'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,14 +46,7 @@ import { SCRAPER_TABS, parseScraperTab, type ScraperTabId } from './scraperTabs'
 import { ScrapeSourcesView } from './ScrapeSourcesView'
 import { useLeadListSummary } from './useLeadListSummary'
 
-type Account = {
-  id: Id<'profiles'>
-  name: string
-  ready: boolean
-  dailyLimit?: number
-  used: number
-  cooldownUntil?: number
-}
+type Account = FunctionReturnType<typeof api.scraper.accounts>[number]
 
 export function ScraperPage() {
   const { search } = useLocation()
@@ -279,7 +274,7 @@ function AccountsFilters() {
         <SelectContent className="panel-dropdown">
           <SelectItem value="all">All statuses</SelectItem>
           <SelectItem value="ready">Ready</SelectItem>
-          <SelectItem value="cooling">Cooling down</SelectItem>
+          <SelectItem value="cooling">Waiting</SelectItem>
           <SelectItem value="needs-session">Needs session</SelectItem>
         </SelectContent>
       </Select>
@@ -298,11 +293,12 @@ function AccountsToolbarStats() {
     let used = 0
     let capacity = 0
     for (const a of accounts ?? []) {
-      if (!a.ready) needsSession += 1
-      else if (a.cooldownUntil && a.cooldownUntil > now) cooling += 1
+      if (a.paused) cooling += 1
+      else if (!a.ready) needsSession += 1
+      else if (accountStatus(a, now).label !== 'Ready') cooling += 1
       else ready += 1
-      used += a.used
-      if (a.dailyLimit !== undefined) capacity += a.dailyLimit
+      used += requestsInHour(a.requestTimes, now).length
+      capacity += a.hourlyLimit
     }
     return { ready, cooling, needsSession, used, capacity }
   }, [accounts, now])
@@ -319,7 +315,7 @@ function AccountsToolbarStats() {
           <span className="text-sm font-semibold text-status-danger tabular-nums">
             {summary.cooling}
           </span>
-          <span className="text-xs text-subtle-copy">cooling</span>
+          <span className="text-xs text-subtle-copy">waiting</span>
         </span>
       )}
       {summary.needsSession > 0 && (
@@ -333,7 +329,7 @@ function AccountsToolbarStats() {
       <span className="h-4 w-px bg-line" aria-hidden />
       <span className="text-xs whitespace-nowrap text-subtle-copy tabular-nums">
         {summary.used.toLocaleString()}
-        {summary.capacity > 0 ? ` / ${summary.capacity.toLocaleString()} today` : ' today'}
+        {summary.capacity > 0 ? ` / ${summary.capacity.toLocaleString()} this hour` : ' this hour'}
       </span>
     </div>
   )
@@ -401,40 +397,19 @@ function AccountsView() {
   const now = useNow()
   const f = useFilters()
   const accounts = useQuery(api.scraper.accounts, {})
-  const setLimit = useMutation(api.scraper.setDailyLimit)
   const mobile = useIsMobile()
-  const [editTarget, setEditTarget] = useState<Account | null>(null)
-  const [editBusy, setEditBusy] = useState(false)
 
   const filtered = useMemo(() => {
     const q = f.accountsQuery.trim().toLowerCase()
     return (accounts ?? []).filter((a) => {
       if (q && !a.name.toLowerCase().includes(q)) return false
-      const cooling = a.ready && a.cooldownUntil !== undefined && a.cooldownUntil > now
+      const cooling = a.paused || a.ready && accountStatus(a, now).label !== 'Ready'
       if (f.accountsStatus === 'ready' && (!a.ready || cooling)) return false
       if (f.accountsStatus === 'cooling' && !cooling) return false
-      if (f.accountsStatus === 'needs-session' && a.ready) return false
+      if (f.accountsStatus === 'needs-session' && (a.ready || a.paused)) return false
       return true
     })
   }, [accounts, f.accountsQuery, f.accountsStatus, now])
-
-  const saveOne = async (limit: number | undefined) => {
-    if (!editTarget) return
-    setEditBusy(true)
-    try {
-      await setLimit({ profileId: editTarget.id, limit })
-      toast.success(
-        limit === undefined
-          ? `No daily limit for ${editTarget.name}`
-          : `Daily limit for ${editTarget.name}: ${limit.toLocaleString()}`,
-      )
-      setEditTarget(null)
-    } catch (e) {
-      toast.error(String(e))
-    } finally {
-      setEditBusy(false)
-    }
-  }
 
   if (accounts === undefined) {
     return <div className="p-12 text-center text-sm text-muted-foreground">Loading accounts...</div>
@@ -460,12 +435,7 @@ function AccountsView() {
       ) : mobile ? (
         <div className="space-y-3">
           {filtered.map((account) => (
-            <AccountCard
-              key={account.id}
-              account={account}
-              now={now}
-              onEdit={() => setEditTarget(account)}
-            />
+            <AccountCard key={account.id} account={account} now={now} />
           ))}
         </div>
       ) : (
@@ -476,46 +446,24 @@ function AccountsView() {
                 <TableHead className="h-12 pl-4 font-medium text-muted-copy">Account</TableHead>
                 <TableHead className="h-12 w-[130px] font-medium text-muted-copy">Status</TableHead>
                 <TableHead className="h-12 w-[300px] pr-4 font-medium text-muted-copy">
-                  Quota today
+                  Requests / hour
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((account) => (
-                <AccountDesktopRow
-                  key={account.id}
-                  account={account}
-                  now={now}
-                  onEdit={() => setEditTarget(account)}
-                />
+                <AccountDesktopRow key={account.id} account={account} now={now} />
               ))}
             </TableBody>
           </Table>
         </div>
-      )}
-
-      {editTarget && (
-        <LimitDialog
-          key={editTarget.id}
-          title={`Daily limit · ${editTarget.name}`}
-          subtitle={
-            editTarget.dailyLimit === undefined
-              ? 'Currently no limit.'
-              : `Currently ${editTarget.dailyLimit.toLocaleString()} per day.`
-          }
-          initialLimit={editTarget.dailyLimit}
-          busy={editBusy}
-          onSave={(limit) => void saveOne(limit)}
-          onClose={() => {
-            if (!editBusy) setEditTarget(null)
-          }}
-        />
       )}
     </div>
   )
 }
 
 function accountStatus(account: Account, now: number) {
+  if (account.paused) return { label: 'Paused', className: 'bg-panel-muted text-copy border-line', dot: 'bg-subtle-copy' }
   if (!account.ready)
     return {
       label: 'Needs session',
@@ -527,6 +475,24 @@ function accountStatus(account: Account, now: number) {
       label: 'Cooling down',
       className: 'bg-status-danger-soft text-status-danger border-status-danger-border',
       dot: 'status-dot-danger',
+    }
+  if (!account.timezone)
+    return {
+      label: 'Needs proxy country',
+      className: 'bg-panel-muted text-copy border-line',
+      dot: 'bg-subtle-copy',
+    }
+  if (sessionWindow(String(account.id), account.timezone, now).sleeping)
+    return {
+      label: 'Sleeping',
+      className: 'bg-panel-muted text-copy border-line',
+      dot: 'bg-subtle-copy',
+    }
+  if (requestsInHour(account.requestTimes, now).length >= account.hourlyLimit)
+    return {
+      label: 'Hourly limit',
+      className: 'bg-panel-muted text-copy border-line',
+      dot: 'bg-subtle-copy',
     }
   return {
     label: 'Ready',
@@ -556,99 +522,30 @@ function UsageBar({ used, limit }: { used: number; limit?: number }) {
   )
 }
 
-function LimitDialog({
-  title,
-  subtitle,
-  initialLimit,
-  busy,
-  onSave,
-  onClose,
-}: {
-  title: string
-  subtitle?: string
-  initialLimit?: number
-  busy: boolean
-  onSave: (limit: number | undefined) => void
-  onClose: () => void
-}) {
-  const [value, setValue] = useState(initialLimit?.toString() ?? '')
-  const empty = value.trim() === ''
-  const parsed = Number(value)
-  const valid = empty || (Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 100000)
-  const unchanged = (empty ? undefined : parsed) === initialLimit
-
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose()
-      }}
-    >
-      <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[400px]">
-        <DialogHeader className="shrink-0">
-          <DialogTitle className="page-title-gradient">{title}</DialogTitle>
-        </DialogHeader>
-        {subtitle && <p className="text-sm text-subtle-copy">{subtitle}</p>}
-        <div className="grid gap-2 py-1">
-          <Label htmlFor="scraper-limit-value">Daily limit</Label>
-          <Input
-            id="scraper-limit-value"
-            type="number"
-            min={1}
-            max={100000}
-            placeholder="No limit"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && valid && !busy && !unchanged)
-                onSave(empty ? undefined : parsed)
-            }}
-            className="brand-focus border-line bg-field"
-            autoFocus
-          />
-          <p className="text-xs text-subtle-copy">
-            {valid
-              ? 'Leave empty for no limit.'
-              : 'Enter a whole number from 1 to 100000, or leave empty.'}
-          </p>
-        </div>
-        <DialogFooter className="shrink-0 gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={busy} className="button-ghost">
-            Cancel
-          </Button>
-          <Button
-            onClick={() => onSave(empty ? undefined : parsed)}
-            disabled={busy || !valid || unchanged}
-            className="brand-button"
-          >
-            {busy ? 'Saving...' : 'Save'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
+function requestDetails(account: Account) {
+  const clock = (minute: number) =>
+    String(Math.floor(minute / 60) % 24).padStart(2, '0') +
+    ':' +
+    String(minute % 60).padStart(2, '0')
+  if (!account.timezone || account.wakeMinute === undefined)
+    return 'Set the country on the saved proxy'
+  return [
+    account.country?.toUpperCase(),
+    account.timezone,
+    clock(account.wakeMinute) + '–' + clock(account.wakeMinute + 960),
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
-function AccountDesktopRow({
-  account,
-  now,
-  onEdit,
-}: {
-  account: Account
-  now: number
-  onEdit: () => void
-}) {
+function AccountDesktopRow({ account, now }: { account: Account; now: number }) {
   const status = accountStatus(account, now)
   return (
     <TableRow className="group h-14 border-b border-line-soft hover:bg-panel-subtle">
       <TableCell className="pl-4 font-medium">
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate text-ink">{account.name}</span>
-          {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
-            <span className="text-xs font-normal text-status-danger">
-              Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
-            </span>
-          )}
+          <span className="text-xs font-normal text-subtle-copy">{requestDetails(account)}</span>
         </div>
       </TableCell>
       <TableCell>
@@ -663,64 +560,36 @@ function AccountDesktopRow({
         </span>
       </TableCell>
       <TableCell className="pr-4">
-        <div className="flex items-center gap-1">
-          <div className="min-w-0 flex-1">
-            <UsageBar used={account.used} limit={account.dailyLimit} />
-          </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            title={`Edit ${account.name} daily limit`}
-            aria-label={`Edit ${account.name} daily limit`}
-            onClick={onEdit}
-            className="shrink-0 text-muted-copy hover:bg-panel-muted hover:text-ink"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+        <UsageBar
+          used={requestsInHour(account.requestTimes, now).length}
+          limit={account.hourlyLimit}
+        />
       </TableCell>
     </TableRow>
   )
 }
 
-function AccountCard({
-  account,
-  now,
-  onEdit,
-}: {
-  account: Account
-  now: number
-  onEdit: () => void
-}) {
+function AccountCard({ account, now }: { account: Account; now: number }) {
   const status = accountStatus(account, now)
   return (
     <div className="rounded-2xl border border-line bg-panel-strong p-4 shadow-xs">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate text-base font-semibold text-ink">{account.name}</h3>
-        </div>
+        <h3 className="truncate text-base font-semibold text-ink">{account.name}</h3>
         <span
           className={cn(
             'inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium',
             status.className,
           )}
         >
-          <span className={cn('h-1.5 w-1.5 rounded-full', status.dot)} />
           {status.label}
         </span>
       </div>
-      {account.ready && account.cooldownUntil && account.cooldownUntil > now && (
-        <p className="mt-2 text-xs text-status-danger">
-          Instagram 429 · retry after {new Date(account.cooldownUntil).toLocaleTimeString()}
-        </p>
-      )}
+      <p className="mt-1 text-xs text-subtle-copy">{requestDetails(account)}</p>
       <div className="mt-3">
-        <UsageBar used={account.used} limit={account.dailyLimit} />
-      </div>
-      <div className="mt-3 border-t border-line pt-3">
-        <Button variant="outline" className="w-full font-medium" onClick={onEdit}>
-          <Pencil className="mr-2 h-3.5 w-3.5" /> Edit daily limit
-        </Button>
+        <UsageBar
+          used={requestsInHour(account.requestTimes, now).length}
+          limit={account.hourlyLimit}
+        />
       </div>
     </div>
   )

@@ -233,19 +233,21 @@ export function AnalyticsPage() {
                 icon={<UserCheck className="size-5" />}
               />
               <Panel
-                title={data.period === 'today' ? 'Scraper quota today' : 'Scraper usage'}
+                title={data.period === 'today' ? 'Mobile requests / hour' : 'Mobile requests'}
                 to="/scraper"
               >
                 <p className="text-2xl font-medium tabular-nums">
                   {format(data.quota.used)}{' '}
                   <span className="text-sm font-normal text-muted-copy">
-                    {data.period === 'today' ? `/ ${format(data.quota.limit)} units` : 'units'}
+                    {data.period === 'today'
+                      ? `/ ${format(data.quota.limit)} requests`
+                      : 'requests'}
                   </span>
                 </p>
                 {data.period === 'today' && data.quota.limit > 0 && (
                   <div
                     role="progressbar"
-                    aria-label="Scraper daily quota used"
+                    aria-label="Hourly mobile request quota used"
                     aria-valuemin={0}
                     aria-valuemax={data.quota.limit}
                     aria-valuenow={Math.min(data.quota.used, data.quota.limit)}
@@ -260,13 +262,10 @@ export function AnalyticsPage() {
                   </div>
                 )}
                 <p className="mt-2 text-xs text-subtle-copy">
-                  Saved lead entries and mobile liker checks.
+                  All mobile API calls.{' '}
+                  {data.period === 'today' &&
+                    `Today: ${format(data.quota.totalRequests)} requests.`}
                 </p>
-                {(data.quota.unlimitedAccounts > 0 || data.quota.unlimitedUsed > 0) && (
-                  <p className="mt-2 text-xs text-muted-copy">
-                    Unlimited sessions used {format(data.quota.unlimitedUsed)} additional units.
-                  </p>
-                )}
               </Panel>
             </div>
             <p className="text-xs text-subtle-copy">

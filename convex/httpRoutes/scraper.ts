@@ -21,6 +21,19 @@ const paths = [
 
 /** Server-only bridge. The HTTP wrapper verifies INTERNAL_API_KEY. */
 export function registerScraperRoutes(http: HttpRouter): void {
+  http.route({
+    path: '/api/mobile-requests/reserve',
+    method: 'POST',
+    handler: withErrorHandling(async (ctx, request) => {
+      const body = await parseBody(request)
+      return jsonResponse(
+        await ctx.runMutation(internal.mobileRequests.reserve, {
+          profileId: body.profileId,
+          requestId: body.requestId,
+        }),
+      )
+    }),
+  })
   registerPreflight(
     http,
     paths.map((path) => `/api/scraper/${path}`),
@@ -37,7 +50,7 @@ export function registerScraperRoutes(http: HttpRouter): void {
   http.route({
     path: '/api/scraper/initialize',
     method: 'POST',
-    handler: withErrorHandling(async ctx => {
+    handler: withErrorHandling(async (ctx) => {
       await ctx.runMutation(internal.workerMetadata.initialize, {})
       return jsonResponse({ ok: true })
     }),

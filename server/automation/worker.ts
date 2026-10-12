@@ -17,6 +17,7 @@ import {
 import {
   closeConvexRealtime,
   watchRoutineAccess,
+  watchProfileAccess,
   watchRoutineRuntime,
   type RuntimeSnapshot,
 } from '../shared/convexRealtime.js'
@@ -111,6 +112,7 @@ function isTruncatedSnapshot(snapshot: RuntimeSnapshot): boolean {
 
 /** Local prefilter; the server still authorizes each session and DM. */
 export function routineMayRun(snapshot: RuntimeSnapshot, profileId: string, now = Date.now()): boolean {
+  if (snapshot?.profiles?.find(profile => profile.id === profileId)?.paused) return false
   const state = snapshot?.progress?.find(row => row.profileId === profileId)
   const warmup = snapshot?.warmups?.find(row => row.profileId === profileId)
   if (state?.paused || state?.issue || (state?.nextRunAt ?? 0) > now || (warmup?.nextRunAt ?? 0) > now) return false
@@ -224,7 +226,7 @@ class RuntimeMonitor {
   private onSnapshot(snapshot: RuntimeSnapshot): void {
     const profileRevision = JSON.stringify((snapshot?.profiles ?? []).map(profile => ({
       id: profile.id, name: profile.name, status: profile.status,
-      using: profile.using, igLoggedIn: profile.igLoggedIn,
+      paused: profile.paused, using: profile.using, igLoggedIn: profile.igLoggedIn,
       outreachReady: profile.outreachReady, listIds: profile.listIds,
       lastOpenedAt: profile.lastOpenedAt, renameFrom: profile.renameFrom,
     })))
@@ -364,6 +366,7 @@ async function runRoutineProfile(options: {
     }
   } catch (error) {
     if (shouldStop()) throw error
+    if (!access) return
     await routineRecordSession(automationId, profile.id, false, error instanceof Error ? error.message : String(error))
   } finally {
     accessSubscription?.unsubscribe()
@@ -443,21 +446,31 @@ export async function runAutomation(
         return
       }
       if (hasWarmup && !warmupReady(await warmupGetByProfile(profile.id))) return
-      await withProfile(
-        profile,
-        {
-          headless: setupConfig.headlessMode ?? false,
-          openSession,
-          automationId,
-        },
-        async (session, controls) => {
-          previousProxy = profileProxyKey(profile)
-          await executeGraphProfile({
-            automationId, profile, session, controls, nodes, edges,
-            aggregateStates, repeat, emit: event, log,
-          })
-        },
-      )
+      let access = !profile.paused
+      const accessSubscription = useRealtime
+        ? watchProfileAccess(profile.id, value => { access = value }, () => { access = false })
+        : null
+      try {
+        if (accessSubscription && !await accessSubscription.initial) return
+        await withProfile(
+          profile,
+          {
+            headless: setupConfig.headlessMode ?? false,
+            openSession,
+            automationId,
+          },
+          async (session, controls) => {
+            previousProxy = profileProxyKey(profile)
+            await executeGraphProfile({
+              automationId, profile, session, controls, nodes, edges,
+              aggregateStates, repeat, emit: event, log,
+              canContinue: () => access,
+            })
+          },
+        )
+      } finally {
+        accessSubscription?.unsubscribe()
+      }
     }
     const runQueue = async (profiles: DbProfileRow[], snapshot: RuntimeSnapshot = null) => {
       const pending = profiles.filter(profile => !profileDone(profile.id) &&

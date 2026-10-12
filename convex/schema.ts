@@ -8,12 +8,14 @@ const activityCounts = v.object({
   dms: v.number(),
   warmupMinutes: v.number(),
   scraperUnits: v.number(),
+  mobileRequests: v.optional(v.number()),
   unlimitedScraperUnits: v.number(),
 })
 
 export default defineSchema({
-  analyticsDays: defineTable({ date: v.string(), counts: activityCounts })
-    .index('by_date', ['date']),
+  analyticsDays: defineTable({ date: v.string(), counts: activityCounts }).index('by_date', [
+    'date',
+  ]),
   analyticsHistory: defineTable({ startedAt: v.number(), totals: activityCounts }),
   leadStats: defineTable({
     counts: v.object({
@@ -128,8 +130,7 @@ export default defineSchema({
     usernames: v.optional(v.array(v.string())),
     createdAt: v.number(),
   }),
-  modelContentCleanup: defineTable({ modelId: v.id('lists') })
-    .index('by_model', ['modelId']),
+  modelContentCleanup: defineTable({ modelId: v.id('lists') }).index('by_model', ['modelId']),
 
   proxies: defineTable({
     name: v.string(),
@@ -148,6 +149,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_name', ['name'])
+    .index('by_proxy', ['proxy'])
     .index('by_purpose', ['purpose'])
     .index('by_created', ['createdAt']),
 
@@ -211,6 +213,7 @@ export default defineSchema({
   }).index('by_model_group', ['modelId', 'group']),
 
   profiles: defineTable({
+    paused: v.optional(v.boolean()),
     igAccountId: v.optional(v.id('igAccounts')),
     igLoggedIn: v.optional(v.boolean()),
     outreachReady: v.optional(v.boolean()),
@@ -242,8 +245,11 @@ export default defineSchema({
     .index('by_proxy', ['proxy', 'proxyType']),
   // Worker subscriptions only depend on these small, independently changing projections.
   scraperProfiles: defineTable({
+    paused: v.optional(v.boolean()),
     profileId: v.id('profiles'),
     name: v.string(),
+    proxy: v.optional(v.string()),
+    proxyType: v.optional(v.string()),
     using: v.boolean(),
     status: v.optional(v.string()),
     renameFrom: v.optional(v.string()),
@@ -252,6 +258,11 @@ export default defineSchema({
     scraperUsageDate: v.optional(v.string()),
     scraperUsageCount: v.optional(v.number()),
     scraperCooldownUntil: v.optional(v.number()),
+  }).index('by_profile', ['profileId']),
+  mobileRequestUsage: defineTable({
+    profileId: v.id('profiles'),
+    requests: v.array(v.object({ id: v.string(), at: v.number() })),
+    sleepUntil: v.optional(v.number()),
   }).index('by_profile', ['profileId']),
   chatWorkerMetadata: defineTable({
     profileId: v.id('profiles'),
@@ -263,6 +274,7 @@ export default defineSchema({
     proxyType: v.string(),
   }).index('by_profile', ['profileId']),
   workerMetadataMigration: defineTable({
+    projectionVersion: v.optional(v.number()),
     cursor: v.union(v.string(), v.null()),
     complete: v.boolean(),
     jobId: v.optional(v.id('_scheduled_functions')),
@@ -329,6 +341,7 @@ export default defineSchema({
     postsFromApify: v.optional(v.boolean()),
     createdAt: v.number(),
   })
+    .index('by_profile', ['profileId', 'running'])
     .index('by_list_username', ['listId', 'username'])
     .index('by_due', ['enabled', 'running', 'nextCheckAt'])
     .index('by_lease', ['running', 'leaseUntil']),
@@ -355,6 +368,7 @@ export default defineSchema({
       ),
     ),
     lastScrapedAt: v.optional(v.number()),
+    firstScrapedAt: v.optional(v.number()),
     error: v.optional(v.string()),
   })
     .index('by_source_media', ['sourceId', 'mediaId'])
@@ -394,7 +408,9 @@ export default defineSchema({
     minutesUsedToday: v.optional(v.number()),
     activityPlan: v.optional(warmupActivityValidator),
     activityUsed: v.optional(warmupActivityValidator),
-    followAttempts: v.optional(v.array(v.object({ username: v.string(), runId: v.string(), confirmed: v.boolean() }))),
+    followAttempts: v.optional(
+      v.array(v.object({ username: v.string(), runId: v.string(), confirmed: v.boolean() })),
+    ),
     followBlockedDate: v.optional(v.string()),
     followBlockReason: v.optional(v.string()),
     // An interrupted worker keeps its reservation until the next UTC day.

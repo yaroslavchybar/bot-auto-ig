@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, Pause, Play, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { api } from '../../../../convex/_generated/api'
 import type { Doc, Id } from '../../../../convex/_generated/dataModel'
-import { DEFAULT_MONITOR_DAYS, DEFAULT_SCRAPE_POST_LIMIT } from '../../../../convex/scrapeMonitoring'
+import { DEFAULT_SCRAPE_POST_LIMIT } from '../../../../convex/scrapeMonitoring'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -42,7 +42,12 @@ function SourceStatusBadge({
       }
     : source.running
       ? {
-          label: source.kind === 'posts' ? 'Finding posts' : source.kind === 'likers' ? 'Checking likers' : 'Checking',
+          label:
+            source.kind === 'posts'
+              ? 'Finding posts'
+              : source.kind === 'likers'
+                ? 'Checking likers'
+                : 'Checking',
           className: 'bg-status-info-soft text-status-info border-status-info-border',
           dot: 'bg-status-info',
         }
@@ -93,41 +98,57 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
   const [baseline, setBaseline] = useState({
     days: list.scrapeLookbackDays ?? 90,
     monitor: list.scrapeMonitor ?? true,
-    monitorDays: list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS,
     postLimit: list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT,
     includePrivate: list.scrapeIncludePrivate ?? false,
   })
   const [daysText, setDaysText] = useState(String(list.scrapeLookbackDays ?? 90))
   const [monitor, setMonitor] = useState(list.scrapeMonitor ?? true)
-  const [monitorDaysText, setMonitorDaysText] = useState(String(list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS))
-  const [postLimitText, setPostLimitText] = useState(String(list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT))
+  const [postLimitText, setPostLimitText] = useState(
+    String(list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT),
+  )
   const [includePrivate, setIncludePrivate] = useState(list.scrapeIncludePrivate ?? false)
   const serverDays = list.scrapeLookbackDays ?? 90
   const serverMonitor = list.scrapeMonitor ?? true
-  const serverMonitorDays = list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS
   const serverPostLimit = list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT
   const serverIncludePrivate = list.scrapeIncludePrivate ?? false
-  if (baseline.days !== serverDays || baseline.monitor !== serverMonitor || baseline.monitorDays !== serverMonitorDays || baseline.postLimit !== serverPostLimit || baseline.includePrivate !== serverIncludePrivate) {
-    setBaseline({ days: serverDays, monitor: serverMonitor, monitorDays: serverMonitorDays, postLimit: serverPostLimit, includePrivate: serverIncludePrivate })
+  if (
+    baseline.days !== serverDays ||
+    baseline.monitor !== serverMonitor ||
+    baseline.postLimit !== serverPostLimit ||
+    baseline.includePrivate !== serverIncludePrivate
+  ) {
+    setBaseline({
+      days: serverDays,
+      monitor: serverMonitor,
+      postLimit: serverPostLimit,
+      includePrivate: serverIncludePrivate,
+    })
     setDaysText(String(serverDays))
     setMonitor(serverMonitor)
-    setMonitorDaysText(String(serverMonitorDays))
     setPostLimitText(String(serverPostLimit))
     setIncludePrivate(serverIncludePrivate)
   }
   const leads = counts?.leads
   const days = Number(daysText)
-  const monitorDays = Number(monitorDaysText)
   const postLimit = Number(postLimitText)
-  const valid = Number.isSafeInteger(days) && days >= 1 && days <= 3650 &&
-    Number.isSafeInteger(monitorDays) && monitorDays >= 1 && monitorDays <= 3650 &&
-    Number.isSafeInteger(postLimit) && postLimit >= 1 && postLimit <= 5000
-  const changed = valid && (days !== baseline.days || monitor !== baseline.monitor || monitorDays !== baseline.monitorDays || postLimit !== baseline.postLimit || includePrivate !== baseline.includePrivate)
+  const valid =
+    Number.isSafeInteger(days) &&
+    days >= 1 &&
+    days <= 3650 &&
+    Number.isSafeInteger(postLimit) &&
+    postLimit >= 1 &&
+    postLimit <= 5000
+  const changed =
+    valid &&
+    (days !== baseline.days ||
+      monitor !== baseline.monitor ||
+      postLimit !== baseline.postLimit ||
+      includePrivate !== baseline.includePrivate)
   const saveSettings = async () => {
     if (busy || !valid || !changed) return
     setBusy(true)
     try {
-      await settings({ listId: list._id, days, monitor, monitorDays, postLimit, includePrivate })
+      await settings({ listId: list._id, days, monitor, postLimit, includePrivate })
       toast.success('Scanning settings saved')
     } catch (e) {
       toast.error(String(e))
@@ -150,10 +171,11 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
   )
   return (
     <div className="space-y-4 pt-2 md:pt-3">
-      {headerSlot && createPortal(
-        <div className="flex min-w-0 flex-1 items-center">{listSummary}</div>,
-        headerSlot,
-      )}
+      {headerSlot &&
+        createPortal(
+          <div className="flex min-w-0 flex-1 items-center">{listSummary}</div>,
+          headerSlot,
+        )}
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
         <Button variant="ghost" onClick={onBack} className="-ml-2 text-muted-copy hover:text-ink">
           <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Lists
@@ -181,7 +203,9 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
           </div>
           <span className="h-4 w-px bg-line" aria-hidden />
           <div className="flex items-center gap-1.5">
-            <Label htmlFor="source-post-limit" className="text-muted-copy">Latest</Label>
+            <Label htmlFor="source-post-limit" className="text-muted-copy">
+              Latest
+            </Label>
             <Input
               id="source-post-limit"
               type="number"
@@ -196,30 +220,29 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
           </div>
           <span className="h-4 w-px bg-line" aria-hidden />
           <div className="flex items-center gap-1.5">
-            <span className="whitespace-nowrap text-copy">Watch hot posts</span>
+            <span className="whitespace-nowrap text-copy">Monitor posts</span>
             <Switch
               checked={monitor}
               onCheckedChange={setMonitor}
               disabled={busy}
-              aria-label="Watch hot posts"
+              aria-label="Monitor posts"
             />
           </div>
           <span className="h-4 w-px bg-line" aria-hidden />
           <div className="flex items-center gap-1.5">
             <Label htmlFor="source-monitor-days" className="whitespace-nowrap text-copy">
-              Monitor last
+              Monitor for
             </Label>
             <Input
               id="source-monitor-days"
               type="number"
               min={1}
               max={3650}
-              value={monitorDaysText}
-              disabled={busy || !monitor}
-              onChange={(e) => setMonitorDaysText(e.target.value)}
+              value="1"
+              disabled
               className="h-6 w-14 rounded-full bg-field text-center tabular-nums"
             />
-            <span className="text-muted-copy">days</span>
+            <span className="text-muted-copy">day · every 1–3 hours</span>
           </div>
           <span className="h-4 w-px bg-line" aria-hidden />
           <div className="flex items-center gap-1.5 pr-1">
@@ -229,7 +252,10 @@ function ListDetail({ list, onBack }: { list: Doc<'leadLists'>; onBack: () => vo
               onCheckedChange={(checked) => setIncludePrivate(checked === true)}
               disabled={busy}
             />
-            <Label htmlFor="source-private-profiles" className="cursor-pointer whitespace-nowrap text-copy">
+            <Label
+              htmlFor="source-private-profiles"
+              className="cursor-pointer whitespace-nowrap text-copy"
+            >
               Include private profiles
             </Label>
           </div>
@@ -405,10 +431,7 @@ function SourceCards({
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1">
-                  <Button
-                    variant="outline"
-                    onClick={() => setSelectedId(source._id)}
-                  >
+                  <Button variant="outline" onClick={() => setSelectedId(source._id)}>
                     View posts
                   </Button>
                   <Button
@@ -449,18 +472,30 @@ function SourceCards({
         </div>
       )}
       {selected && (
-        <Dialog open onOpenChange={(open) => { if (!open) setSelectedId(null) }}>
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSelectedId(null)
+          }}
+        >
           <DialogContent className="flex max-h-[85vh] w-[calc(100%_-_2rem)] flex-col sm:max-w-4xl">
             <DialogHeader className="shrink-0 pr-5">
               <DialogTitle>Posts from @{selected.username}</DialogTitle>
               <DialogDescription>
-                Liker checks update live. {list.scrapeMonitor === false
+                Liker checks update live.{' '}
+                {list.scrapeMonitor === false
                   ? 'Monitoring is disabled for this list.'
-                  : `Monitoring covers posts from the last ${list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS} days.`}
+                  : `Monitoring lasts 24 hours from the first scrape, with checks every 1–3 hours.`}
               </DialogDescription>
             </DialogHeader>
             <div className="min-h-0 overflow-y-auto">
-              <SourcePosts sourceId={selected._id} enabled={selected.enabled} monitor={list.scrapeMonitor !== false} running={selected.enabled && selected.running} currentPostId={selected.currentPostId} />
+              <SourcePosts
+                sourceId={selected._id}
+                enabled={selected.enabled}
+                monitor={list.scrapeMonitor !== false}
+                running={selected.enabled && selected.running}
+                currentPostId={selected.currentPostId}
+              />
             </div>
           </DialogContent>
         </Dialog>
@@ -493,7 +528,13 @@ function SourceCards({
   )
 }
 
-function SourcePosts({ sourceId, enabled, monitor, running, currentPostId }: {
+function SourcePosts({
+  sourceId,
+  enabled,
+  monitor,
+  running,
+  currentPostId,
+}: {
   sourceId: Id<'scrapeSources'>
   enabled: boolean
   monitor: boolean
@@ -528,20 +569,17 @@ function SourcePosts({ sourceId, enabled, monitor, running, currentPostId }: {
                 {!enabled
                   ? 'Paused'
                   : running && currentPostId === post._id
-                  ? 'Checking likers now'
-                  : post.error
-                  ? post.error
-                  : monitoring
-                    ? `Monitoring · Next: ${stamp(post.nextCheckAt)}`
-                    : post.monitorStoppedAt
-                      ? 'Stopped: low traffic'
-                      : post.lastScrapedAt
-                        ? `Scraped ${stamp(post.lastScrapedAt)}`
-                        : 'Waiting for first scrape'}
+                    ? 'Checking likers now'
+                    : post.error
+                      ? post.error
+                      : monitoring
+                        ? `Monitoring · Next: ${stamp(post.nextCheckAt)} · Ends: ${stamp(post.monitorEndsAt)}`
+                        : post.monitorStoppedAt
+                          ? 'Monitoring completed'
+                          : post.lastScrapedAt
+                            ? `Scraped ${stamp(post.lastScrapedAt)}`
+                            : 'Waiting for first scrape'}
                 {post.lastScrapedAt && monitoring && ` · Last check: ${stamp(post.lastScrapedAt)}`}
-                {post.averageNewIds !== undefined &&
-                  ` · ${post.averageNewIds.toFixed(1)} new IDs/check (${post.checkCount}/10)`}
-                {post.likesPerHour !== undefined && ` · ${post.likesPerHour.toFixed(1)} likes/hour`}
               </span>
             </div>
           )

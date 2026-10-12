@@ -5,6 +5,12 @@ import { mutation } from "../_generated/server";
 import { DomainError } from '../errors';
 import { proxyKey, proxyPurpose, resolveMaxProfiles } from '../proxies';
 import { clearChatCounter, setChatCounterEnabled } from '../chatCache'
+import { setProfilePaused } from '../profilePause'
+
+export const setPaused = mutation({
+  args: { profileId: v.id('profiles'), paused: v.boolean() },
+  handler: async (ctx, { profileId, paused }) => setProfilePaused(ctx, profileId, paused),
+})
 
 export const setIgState = mutation({
   args: {

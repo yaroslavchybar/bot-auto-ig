@@ -98,6 +98,7 @@ function toRuntimeProfile(profile: any) {
 		name: profile.name,
 		status: profile.status,
 		using: profile.using,
+    paused: profile.paused,
 		listIds: profile.listIds,
 		lastOpenedAt: profile.lastOpenedAt,
 		igLoggedIn: profile.igLoggedIn,

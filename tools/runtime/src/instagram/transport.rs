@@ -1,4 +1,5 @@
 use super::{crypto, Error, Result};
+use crate::api::Api;
 use crate::api::{bounded_json, now_ms};
 use cookie_store::CookieStore;
 use rand::Rng;
@@ -8,7 +9,43 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::BTreeMap, sync::LazyLock, time::Duration};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
+
+#[derive(Clone)]
+pub(crate) struct RequestBudget {
+    pub api: Arc<Api>,
+    pub profile_id: String,
+}
+impl RequestBudget {
+    pub async fn reserve(&self) -> Result<()> {
+        let body = serde_json::json!({"profileId":self.profile_id,"requestId":uuid::Uuid::new_v4().to_string()});
+        let result = self
+            .api
+            .convex_retry(Method::POST, "/api/mobile-requests/reserve", Some(&body))
+            .await
+            .map_err(Error::new)?;
+        if result["allowed"] == true {
+            return Ok(());
+        }
+        Err(Error {
+            name: "MobileRequestBudget".into(),
+            status: 429,
+            message: result["reason"]
+                .as_str()
+                .unwrap_or("Mobile request budget unavailable")
+                .into(),
+            retry_after_ms: result["retryAt"]
+                .as_u64()
+                .unwrap_or(now_ms() + 3_600_000)
+                .saturating_sub(now_ms())
+                .max(1000),
+        })
+    }
+}
 
 pub const BLOKS_VERSION: &str = "0bc46a03e177bfc9bc8d611918815acf248fa9c77754d807d6a5951dc9ce9432";
 pub const APP_ID: &str = "567067343352427";
@@ -114,10 +151,17 @@ pub fn client(proxy: &str) -> Result<Client> {
 pub struct Mobile {
     pub state: Session,
     pub client: Client,
+    pub(crate) budget: Option<RequestBudget>,
     #[cfg(test)]
     pub base: Option<String>,
 }
 impl Mobile {
+    pub async fn reserve_request(&self) -> Result<()> {
+        if let Some(budget) = &self.budget {
+            budget.reserve().await?;
+        }
+        Ok(())
+    }
     pub fn endpoint(&self, host: &str, path: &str) -> String {
         #[cfg(test)]
         if let Some(base) = &self.base {
@@ -253,6 +297,7 @@ impl Mobile {
         for (key, value) in extra {
             request = request.header(key, value);
         }
+        self.reserve_request().await?;
         let response = request
             .send()
             .await

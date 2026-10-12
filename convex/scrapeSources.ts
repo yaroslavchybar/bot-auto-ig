@@ -1,21 +1,44 @@
 import { v } from 'convex/values'
 import { paginationOptsValidator } from 'convex/server'
 import { internalMutation, mutation, query } from './_generated/server'
-import type { QueryCtx } from './_generated/server'
+import type { MutationCtx, QueryCtx } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { normalizeUsername } from './instagramUsername'
-import { capacityAt, DAY, day, limitFor, scraperBusy, scraperProfiles, usedToday } from './scraperPolicy'
-import { DEFAULT_MONITOR_DAYS, DEFAULT_SCRAPE_POST_LIMIT, HOUR, MONITOR_WINDOW, monitorTraffic } from './scrapeMonitoring'
+import { capacityAt, DAY, scraperBusy, scraperProfiles } from './scraperPolicy'
+import { mobileRequestState, publishSleep } from './mobileRequests'
+import {
+  DEFAULT_MONITOR_DAYS,
+  DEFAULT_SCRAPE_POST_LIMIT,
+  HOUR,
+  monitorDelay,
+} from './scrapeMonitoring'
 import { patchProfile, syncSourceCount } from './workerMetadata'
-import { recordActivity } from './analyticsActivity'
 
 const LEASE = 10 * 60_000
 export const lookbackDays = (list: Doc<'leadLists'>) => list.scrapeLookbackDays ?? 90
-const monitorDays = (list: Doc<'leadLists'>) => list.scrapeMonitorDays ?? DEFAULT_MONITOR_DAYS
+const monitorDays = (_list: Doc<'leadLists'>) => DEFAULT_MONITOR_DAYS
 const postLimit = (list: Doc<'leadLists'>) => list.scrapePostLimit ?? DEFAULT_SCRAPE_POST_LIMIT
-const withinMonitorRange = (list: Doc<'leadLists'>, takenAt: number) =>
-  takenAt >= Date.now() - monitorDays(list) * DAY
+const firstScrape = (post: Doc<'scrapePosts'>) => post.firstScrapedAt ?? post.lastScrapedAt
+const withinMonitorRange = (list: Doc<'leadLists'>, firstScrapedAt: number | undefined) =>
+  list.scrapeMonitor !== false &&
+  (firstScrapedAt === undefined || firstScrapedAt + DAY > Date.now())
+
+/** Backfill the oldest known scrape time once; rediscovery never extends the window. */
+async function ensureExpiry(ctx: MutationCtx, post: Doc<'scrapePosts'>) {
+  if (post.firstScrapedAt !== undefined || post.lastScrapedAt === undefined) return
+  const firstScrapedAt = Math.min(
+    post.lastScrapedAt,
+    ...(post.checks ?? []).map((check) => check.at - check.elapsedMs),
+  )
+  await ctx.db.patch(post._id, { firstScrapedAt })
+  await ctx.scheduler.runAt(
+    Math.max(Date.now(), firstScrapedAt + DAY),
+    internal.scrapeSources.expirePost,
+    { postId: post._id, firstScrapedAt },
+  )
+  post.firstScrapedAt = firstScrapedAt
+}
 
 export const sources = query({
   args: { listId: v.id('leadLists') },
@@ -48,9 +71,12 @@ export const sources = query({
 export const summary = query({
   args: { listId: v.id('leadLists') },
   handler: async (ctx, { listId }) => {
-    const counter = await ctx.db.query('leadListCounts')
-      .withIndex('by_list', q => q.eq('listId', listId)).unique()
-    if (counter?.sourceCount !== undefined) return { sources: counter.sourceCount, leads: counter.count ?? null }
+    const counter = await ctx.db
+      .query('leadListCounts')
+      .withIndex('by_list', (q) => q.eq('listId', listId))
+      .unique()
+    if (counter?.sourceCount !== undefined)
+      return { sources: counter.sourceCount, leads: counter.count ?? null }
     const rows = (
       await ctx.db
         .query('scrapeSources')
@@ -72,7 +98,6 @@ export const posts = query({
     return {
       ...result,
       page: result.page.map((post) => {
-        const traffic = monitorTraffic(post.checks ?? [], 0.5)
         return {
           _id: post._id,
           code: post.code,
@@ -84,9 +109,8 @@ export const posts = query({
           lastScrapedAt: post.lastScrapedAt,
           error: post.error,
           monitorStoppedAt: post.monitorStoppedAt,
-          averageNewIds: traffic.averageNewIds,
-          likesPerHour: traffic.likesPerHour,
-          checkCount: post.checks?.length ?? 0,
+          firstScrapedAt: post.firstScrapedAt,
+          monitorEndsAt: firstScrape(post) === undefined ? undefined : firstScrape(post)! + DAY,
         }
       }),
     }
@@ -130,25 +154,46 @@ export const add = mutation({
 })
 
 export const settings = mutation({
-  args: { listId: v.id('leadLists'), days: v.number(), monitor: v.boolean(), monitorDays: v.optional(v.number()), postLimit: v.optional(v.number()), includePrivate: v.optional(v.boolean()) },
-  handler: async (ctx, { listId, days, monitor, monitorDays: requestedMonitorDays, postLimit: requestedPostLimit, includePrivate }) => {
+  args: {
+    listId: v.id('leadLists'),
+    days: v.number(),
+    monitor: v.boolean(),
+    postLimit: v.optional(v.number()),
+    includePrivate: v.optional(v.boolean()),
+  },
+  handler: async (
+    ctx,
+    { listId, days, monitor, postLimit: requestedPostLimit, includePrivate },
+  ) => {
     if (!Number.isSafeInteger(days) || days < 1 || days > 3650)
       throw new Error('Days must be from 1 to 3650')
     const list = await ctx.db.get(listId)
     if (!list) throw new Error('Lead list not found')
-    const monitoringDays = requestedMonitorDays ?? monitorDays(list)
-    if (!Number.isSafeInteger(monitoringDays) || monitoringDays < 1 || monitoringDays > 3650)
-      throw new Error('Monitor days must be from 1 to 3650')
+    const monitoringDays = DEFAULT_MONITOR_DAYS
     const latestPosts = requestedPostLimit ?? postLimit(list)
     if (!Number.isSafeInteger(latestPosts) || latestPosts < 1 || latestPosts > 5000)
       throw new Error('Post limit must be from 1 to 5000')
     const privateProfiles = includePrivate ?? list.scrapeIncludePrivate ?? false
-    if (lookbackDays(list) === days && (list.scrapeMonitor ?? true) === monitor &&
-      monitorDays(list) === monitoringDays && postLimit(list) === latestPosts && (list.scrapeIncludePrivate ?? false) === privateProfiles) return
-    const monitorAgeOnly = lookbackDays(list) === days &&
-      (list.scrapeMonitor ?? true) === monitor && postLimit(list) === latestPosts &&
+    if (
+      lookbackDays(list) === days &&
+      (list.scrapeMonitor ?? true) === monitor &&
+      monitorDays(list) === monitoringDays &&
+      postLimit(list) === latestPosts &&
       (list.scrapeIncludePrivate ?? false) === privateProfiles
-    await ctx.db.patch(listId, { scrapeLookbackDays: days, scrapeMonitor: monitor, scrapeMonitorDays: monitoringDays, scrapePostLimit: latestPosts, scrapeIncludePrivate: privateProfiles })
+    )
+      return
+    const monitorAgeOnly =
+      lookbackDays(list) === days &&
+      (list.scrapeMonitor ?? true) === monitor &&
+      postLimit(list) === latestPosts &&
+      (list.scrapeIncludePrivate ?? false) === privateProfiles
+    await ctx.db.patch(listId, {
+      scrapeLookbackDays: days,
+      scrapeMonitor: monitor,
+      scrapeMonitorDays: monitoringDays,
+      scrapePostLimit: latestPosts,
+      scrapeIncludePrivate: privateProfiles,
+    })
     const sources = await ctx.db
       .query('scrapeSources')
       .withIndex('by_list_username', (q) => q.eq('listId', listId))
@@ -162,7 +207,9 @@ export const settings = mutation({
         kind: undefined,
         currentPostId: undefined,
         // An age-only change can reconcile stored posts without another Instagram discovery.
-        ...(!monitorAgeOnly || (source.running && source.kind === 'posts') ? { nextCheckAt: Date.now() } : {}),
+        ...(!monitorAgeOnly || (source.running && source.kind === 'posts')
+          ? { nextCheckAt: Date.now() }
+          : {}),
         error: undefined,
       })
       await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, { sourceId: source._id })
@@ -257,8 +304,8 @@ export const resumeMonitoring = internalMutation({
       .paginate({ cursor: cursor ?? null, numItems: 100 })
     for (const post of batch.page) {
       if (post.lastScrapedAt === undefined) continue
-      const monitoring = list.scrapeMonitor !== false && !!post.monitorEligible &&
-        !post.monitorStoppedAt && withinMonitorRange(list, post.takenAt)
+      await ensureExpiry(ctx, post)
+      const monitoring = withinMonitorRange(list, firstScrape(post))
       if (post.monitoring !== monitoring || post.scheduled !== monitoring)
         await ctx.db.patch(post._id, { monitoring, scheduled: monitoring })
     }
@@ -274,7 +321,8 @@ export const resumeMonitoring = internalMutation({
 export const applyScrapeLimits = internalMutation({
   args: { cursor: v.optional(v.string()) },
   handler: async (ctx, { cursor }) => {
-    const batch = await ctx.db.query('scrapeSources')
+    const batch = await ctx.db
+      .query('scrapeSources')
       .paginate({ cursor: cursor ?? null, numItems: 100 })
     for (const source of batch.page)
       if (!source.deleting)
@@ -289,8 +337,11 @@ export const applyScrapeLimits = internalMutation({
 /** Keep the newest selected posts and cancel outdated monitors, in bounded batches. */
 export const trimPosts = internalMutation({
   args: {
-    sourceId: v.id('scrapeSources'), cursor: v.optional(v.string()),
-    kept: v.optional(v.number()), likes: v.optional(v.number()), known: v.optional(v.number()),
+    sourceId: v.id('scrapeSources'),
+    cursor: v.optional(v.string()),
+    kept: v.optional(v.number()),
+    likes: v.optional(v.number()),
+    known: v.optional(v.number()),
     settingsKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -301,40 +352,62 @@ export const trimPosts = internalMutation({
     const key = `${lookbackDays(list)}:${postLimit(list)}:${monitorDays(list)}:${list.scrapeMonitor !== false}:${source.lastCheckAt ?? 0}`
     // A later settings save starts a fresh pass; stale continuations must not delete posts.
     if (args.settingsKey && args.settingsKey !== key) return
-    const batch = await ctx.db.query('scrapePosts')
-      .withIndex('by_source_date', q => q.eq('sourceId', source._id))
-      .order('desc').paginate({ cursor: args.cursor ?? null, numItems: 100 })
+    const batch = await ctx.db
+      .query('scrapePosts')
+      .withIndex('by_source_date', (q) => q.eq('sourceId', source._id))
+      .order('desc')
+      .paginate({ cursor: args.cursor ?? null, numItems: 100 })
     let kept = args.kept ?? 0
     let likes = args.likes ?? 0
     let known = args.known ?? 0
     let cancelled = false
     for (const post of batch.page) {
       const remove = kept >= postLimit(list)
-      const monitoring = source.enabled && list.scrapeMonitor !== false &&
-        !!post.monitorEligible && !post.monitorStoppedAt && withinMonitorRange(list, post.takenAt)
+      if (!remove) await ensureExpiry(ctx, post)
+      const monitoring = source.enabled && withinMonitorRange(list, firstScrape(post))
       const reconcile = post.lastScrapedAt !== undefined || post.monitoring
       const cancelMonitor = reconcile && !monitoring
       if (remove) await ctx.db.delete(post._id)
       else {
         kept++
-        if (post.likeCount !== undefined) { likes += post.likeCount; known++ }
+        if (post.likeCount !== undefined) {
+          likes += post.likeCount
+          known++
+        }
         if (reconcile && (post.monitoring !== monitoring || post.scheduled !== monitoring))
-          await ctx.db.patch(post._id, { monitoring, scheduled: monitoring })
+          await ctx.db.patch(post._id, {
+            monitoring,
+            scheduled: monitoring,
+            ...(firstScrape(post) !== undefined && firstScrape(post)! + DAY <= Date.now()
+              ? { monitorStoppedAt: Date.now() }
+              : {}),
+          })
       }
-      if ((remove || cancelMonitor) && source.running && source.currentPostId === post._id) cancelled = true
+      if ((remove || cancelMonitor) && source.running && source.currentPostId === post._id)
+        cancelled = true
     }
     if (cancelled)
       await ctx.db.patch(source._id, {
-        running: false, runId: undefined, leaseUntil: undefined,
-        currentPostId: undefined, kind: undefined,
+        running: false,
+        runId: undefined,
+        leaseUntil: undefined,
+        currentPostId: undefined,
+        kind: undefined,
       })
     if (!batch.isDone)
       await ctx.scheduler.runAfter(0, internal.scrapeSources.trimPosts, {
-        sourceId: source._id, cursor: batch.continueCursor, kept, likes, known, settingsKey: key,
+        sourceId: source._id,
+        cursor: batch.continueCursor,
+        kept,
+        likes,
+        known,
+        settingsKey: key,
       })
-    else await ctx.db.patch(source._id, {
-      postCount: kept, averageLikes: kept > 0 && known === kept ? likes / kept : undefined,
-    })
+    else
+      await ctx.db.patch(source._id, {
+        postCount: kept,
+        averageLikes: kept > 0 && known === kept ? likes / kept : undefined,
+      })
   },
 })
 
@@ -412,12 +485,13 @@ export async function activeSource(
   if (!list) throw new Error('Lead list was deleted')
   const profile = source.profileId ? await ctx.db.get(source.profileId) : null
   if (!profile) throw new Error('Scraper profile was deleted')
+  if (profile.paused) throw new Error('Profile is paused')
   if (scraperBusy(profile)) throw new Error('Scraper profile is busy in the browser')
   if (source.kind === 'likers') {
     const post = source.currentPostId ? await ctx.db.get(source.currentPostId) : null
     if (!post || (!post.monitoring && post.takenAt < Date.now() - lookbackDays(list) * DAY))
       throw new Error('Post is outside the selected range')
-    if (post.monitoring && (list.scrapeMonitor === false || !withinMonitorRange(list, post.takenAt)))
+    if (firstScrape(post) !== undefined && !withinMonitorRange(list, firstScrape(post)))
       throw new Error('Post is outside the monitoring range')
   }
   return source
@@ -428,12 +502,27 @@ export const claim = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now()
-    const profiles = (await scraperProfiles(ctx))
+    const candidates = (await scraperProfiles(ctx)).filter(
+      (p) =>
+        p.scraperReady &&
+        !scraperBusy(p) &&
+        p.status !== 'deleting' &&
+        !p.renameFrom &&
+        capacityAt(p) <= now,
+    )
+    const states = await Promise.all(
+      candidates.map((profile) => mobileRequestState(ctx, profile._id, now)),
+    )
+    const profiles = candidates
       .filter(
-        (p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom && capacityAt(p) <= now,
+        (_, index) => states[index]!.availableAt !== null && states[index]!.availableAt! <= now,
       )
-      .sort((a, b) => usedToday(a) - usedToday(b))
-    if (!profiles.length) return null
+      .sort((a, b) => states[candidates.indexOf(a)]!.used - states[candidates.indexOf(b)]!.used)
+    if (!profiles.length) {
+      for (let i = 0; i < candidates.length; i++)
+        await publishSleep(ctx, candidates[i]!._id, states[i]!)
+      return null
+    }
     let source = await ctx.db
       .query('scrapeSources')
       .withIndex('by_lease', (q) => q.eq('running', true).lt('leaseUntil', now))
@@ -464,11 +553,9 @@ export const claim = internalMutation({
           const owner = await ctx.db.get(candidate.sourceId)
           const list = owner ? await ctx.db.get(owner.listId) : null
           const expired =
-            !!candidate.lastScrapedAt &&
-            (!candidate.monitorEligible ||
-              !!candidate.monitorStoppedAt ||
-              list?.scrapeMonitor === false ||
-              (!!list && !withinMonitorRange(list, candidate.takenAt)))
+            candidate.lastScrapedAt !== undefined &&
+            (list?.scrapeMonitor === false ||
+              (!!list && !withinMonitorRange(list, firstScrape(candidate))))
           if (
             !owner ||
             !owner.enabled ||
@@ -477,7 +564,10 @@ export const claim = internalMutation({
             (!candidate.monitoring && candidate.takenAt < now - lookbackDays(list) * DAY) ||
             expired
           ) {
-            await ctx.db.patch(candidate._id, { scheduled: false, ...(expired ? { monitoring: false } : {}) })
+            await ctx.db.patch(candidate._id, {
+              scheduled: false,
+              ...(expired ? { monitoring: false } : {}),
+            })
             continue
           }
           if (owner.running) continue
@@ -508,9 +598,8 @@ export const claim = internalMutation({
       kind === 'likers' &&
       (!post ||
         (!post.monitoring && post.takenAt < now - lookbackDays(list) * DAY) ||
-        (post.lastScrapedAt &&
-          (!post.monitorEligible || post.monitorStoppedAt || list.scrapeMonitor === false ||
-            !withinMonitorRange(list, post.takenAt))))
+        (post.lastScrapedAt !== undefined &&
+          (list.scrapeMonitor === false || !withinMonitorRange(list, firstScrape(post)))))
     ) {
       if (post) await ctx.db.patch(post._id, { scheduled: false, monitoring: false })
       await ctx.db.patch(source._id, {
@@ -599,11 +688,12 @@ export const registerPosts = internalMutation({
         .query('scrapePosts')
         .withIndex('by_source_media', (q) => q.eq('sourceId', source._id).eq('mediaId', post.id))
         .first()
-      // Daily discovery must not restart a post stopped for low traffic.
-      const monitorEligible = old?.monitorEligible || (args.averageLikes ?? 0) > 100
-      const eligible = list.scrapeMonitor !== false && monitorEligible && !old?.monitorStoppedAt &&
-        withinMonitorRange(list, post.takenAt)
-      const pending = !old?.lastScrapedAt
+      if (old) await ensureExpiry(ctx, old)
+      // Daily discovery must not extend a post's original monitoring window.
+      const monitorEligible = true
+      const eligible =
+        list.scrapeMonitor !== false && withinMonitorRange(list, old ? firstScrape(old) : undefined)
+      const pending = old?.lastScrapedAt === undefined
       const monitoring = !pending && eligible
       const patch = {
         code: post.code,
@@ -615,7 +705,7 @@ export const registerPosts = internalMutation({
         nextCheckAt: pending
           ? (old?.nextCheckAt ?? now)
           : monitoring && !old?.scheduled
-            ? now + monitorTraffic(old?.checks ?? []).delay
+            ? Math.min(now + monitorDelay(), firstScrape(old!)! + DAY)
             : (old?.nextCheckAt ?? now),
       }
       if (old) {
@@ -682,64 +772,69 @@ export const finish = internalMutation({
               (!Number.isSafeInteger(args.likeCount) || args.likeCount < 0)))
         )
           throw new Error('Invalid post traffic')
-        const checks =
-          success && post.lastScrapedAt !== undefined
-            ? [
-                ...(post.checks ?? []),
-                {
-                  at: now,
-                  elapsedMs: Math.max(1, now - post.lastScrapedAt),
-                  newIds: args.newIds!,
-                  likesGained:
-                    args.likeCount !== undefined && post.observedLikeCount !== undefined
-                      ? Math.max(0, args.likeCount - post.observedLikeCount)
-                      : undefined,
-                },
-              ].slice(-MONITOR_WINDOW)
-            : (post.checks ?? [])
-        const traffic = monitorTraffic(checks)
-        const next = now + (success ? traffic.delay : delay)
+        const firstScrapedAt =
+          post.firstScrapedAt ?? post.lastScrapedAt ?? (success ? now : undefined)
+        const endsAt = firstScrapedAt === undefined ? Infinity : firstScrapedAt + DAY
+        const next = Math.min(endsAt, now + (success ? monitorDelay() : delay))
         const monitoring =
           !!list &&
           list.scrapeMonitor !== false &&
-          !!post.monitorEligible &&
-          withinMonitorRange(list, post.takenAt) &&
-          !post.monitorStoppedAt &&
-          !traffic.stopped
+          firstScrapedAt !== undefined &&
+          withinMonitorRange(list, firstScrapedAt)
         await ctx.db.patch(post._id, {
+          firstScrapedAt,
           lastScrapedAt: success ? now : post.lastScrapedAt,
-          scheduled: success ? monitoring : true,
+          scheduled: success ? monitoring : firstScrapedAt === undefined || monitoring,
           monitoring,
           nextCheckAt: next,
           error: args.error?.slice(0, 500),
           ...(success
             ? {
-                checks,
-                observedLikeCount: args.likeCount,
                 likeCount: args.likeCount ?? post.likeCount,
-                monitorStoppedAt: traffic.stopped ? now : post.monitorStoppedAt,
+                monitorStoppedAt: now >= endsAt ? now : undefined,
               }
             : {}),
         })
+        if (success && post.firstScrapedAt === undefined) {
+          const firstScrapedAt = post.lastScrapedAt ?? now
+          await ctx.scheduler.runAt(firstScrapedAt + DAY, internal.scrapeSources.expirePost, {
+            postId: post._id,
+            firstScrapedAt,
+          })
+        }
       }
       if (success && source.profileId) {
         const profile = await ctx.db.get(source.profileId)
-        if (profile) {
-          const limit = limitFor(profile)
-          const charge = source.postsFromApify === false ? 1 : 0
-          const charged = limit === undefined ? charge : Math.min(charge, Math.max(0, limit - usedToday(profile)))
+        if (profile && (profile.scraperCooldownUntil ?? 0) <= now)
           await patchProfile(ctx, profile._id, {
-            scraperUsageDate: day(),
-            scraperUsageCount: usedToday(profile) + charged,
-            ...((profile.scraperCooldownUntil ?? 0) <= now
-              ? { scraperRateLimitCount: 0, scraperCooldownUntil: undefined }
-              : {}),
+            scraperRateLimitCount: 0,
+            scraperCooldownUntil: undefined,
           })
-          await recordActivity(ctx, day(), limit === undefined
-            ? { unlimitedScraperUnits: charged } : { scraperUnits: charged })
-        }
       }
     }
     await ctx.db.patch(source._id, patch)
+  },
+})
+
+/** Stop at 24 hours even if every session is sleeping or at its request limit. */
+export const expirePost = internalMutation({
+  args: { postId: v.id('scrapePosts'), firstScrapedAt: v.number() },
+  handler: async (ctx, { postId, firstScrapedAt }) => {
+    const post = await ctx.db.get(postId)
+    if (!post || post.firstScrapedAt !== firstScrapedAt || Date.now() < firstScrapedAt + DAY) return
+    await ctx.db.patch(postId, {
+      monitoring: false,
+      scheduled: false,
+      monitorStoppedAt: Date.now(),
+    })
+    const source = await ctx.db.get(post.sourceId)
+    if (source?.currentPostId === postId)
+      await ctx.db.patch(source._id, {
+        running: false,
+        runId: undefined,
+        leaseUntil: undefined,
+        currentPostId: undefined,
+        kind: undefined,
+      })
   },
 })

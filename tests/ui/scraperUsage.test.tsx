@@ -8,7 +8,21 @@ import { mount } from './mount'
 
 const mocks = vi.hoisted(() => ({
   search: '?tab=accounts',
-  accounts: [{ id: 'profile', name: 'scraper', ready: true, dailyLimit: 1000, used: 0 }],
+  accounts: [
+    {
+      id: 'profile',
+      name: 'scraper',
+      ready: true,
+      hourlyLimit: 10,
+      used: 0,
+      requestTimes: [] as number[],
+      timezone: 'Europe/London',
+      country: 'gb',
+      wakeMinute: 420,
+      availableAt: 0,
+      sleeping: false,
+    },
+  ],
   lists: [{ _id: 'list', name: 'Purpose', createdAt: 0 }] as Array<{
     _id: string
     name: string
@@ -49,11 +63,25 @@ vi.mock('@/lib/router', () => ({
   Navigate: () => null,
 }))
 vi.mock('@/lib/api', () => ({ apiFetch: vi.fn() }))
-vi.mock('@/hooks/use-now', () => ({ useNow: () => 0 }))
+vi.mock('@/hooks/use-now', () => ({ useNow: () => Date.parse('2026-10-12T12:00:00Z') }))
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }))
 vi.mock('@/hooks/use-near-viewport', () => ({ useNearViewport: () => mocks.nearViewport }))
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ open, children, onOpenChange }: { open: boolean; children: ReactNode; onOpenChange: (open: boolean) => void }) => (open ? <div role="dialog">{children}<button onClick={() => onOpenChange(false)}>Close</button></div> : null),
+  Dialog: ({
+    open,
+    children,
+    onOpenChange,
+  }: {
+    open: boolean
+    children: ReactNode
+    onOpenChange: (open: boolean) => void
+  }) =>
+    open ? (
+      <div role="dialog">
+        {children}
+        <button onClick={() => onOpenChange(false)}>Close</button>
+      </div>
+    ) : null,
   DialogContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   DialogTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -241,10 +269,18 @@ test('source settings save only explicit changes and posts load only when opened
   await typeInto(days, '7')
   expect(mocks.save).not.toHaveBeenCalled()
   await act(async () => button('Save').click())
-  expect(mocks.save).toHaveBeenCalledWith({ listId: 'list', days: 7, monitor: true, monitorDays: 3, postLimit: 10, includePrivate: false })
+  expect(mocks.save).toHaveBeenCalledWith({
+    listId: 'list',
+    days: 7,
+    monitor: true,
+    postLimit: 10,
+    includePrivate: false,
+  })
   expect(usePaginatedQuery).not.toHaveBeenCalled()
   await act(async () => button('View posts').click())
-  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain('Posts from @example')
+  expect(view.container.querySelector('[role="dialog"]')?.textContent).toContain(
+    'Posts from @example',
+  )
   expect(vi.mocked(usePaginatedQuery).mock.calls.at(-1)?.[1]).toEqual({ sourceId: 'source' })
   expect(vi.mocked(usePaginatedQuery).mock.calls.at(-1)?.[2]).toEqual({ initialNumItems: 50 })
   expect(vi.mocked(useQuery).mock.calls.some(([q]) => getFunctionName(q) === 'leads:lists')).toBe(
@@ -257,35 +293,69 @@ test('source settings save only explicit changes and posts load only when opened
   expect(usePaginatedQuery).not.toHaveBeenCalled()
 })
 
-test('monitor age saves separately and live source updates identify the active post', async () => {
+test('monitor duration is fixed and live source updates identify the active post', async () => {
   mocks.search = '?tab=sources&listId=list'
-  mocks.sources = [{ _id: 'source', username: 'example', enabled: true, running: true, kind: 'likers', currentPostId: 'post', nextCheckAt: Date.now() + 86_400_000, lastCheckAt: Date.now() - 1000, postCount: 1, discovered: 3 }]
+  mocks.sources = [
+    {
+      _id: 'source',
+      username: 'example',
+      enabled: true,
+      running: true,
+      kind: 'likers',
+      currentPostId: 'post',
+      nextCheckAt: Date.now() + 86_400_000,
+      lastCheckAt: Date.now() - 1000,
+      postCount: 1,
+      discovered: 3,
+    },
+  ]
   vi.mocked(usePaginatedQuery).mockReturnValue({
-    results: [{ _id: 'post', code: 'one', takenAt: Date.now(), likeCount: 200, monitoring: true, scheduled: true, nextCheckAt: Date.now() + 1000 }],
-    status: 'Exhausted', loadMore: mocks.loadMore, isLoading: false,
+    results: [
+      {
+        _id: 'post',
+        code: 'one',
+        takenAt: Date.now(),
+        likeCount: 200,
+        monitoring: true,
+        scheduled: true,
+        nextCheckAt: Date.now() + 1000,
+      },
+    ],
+    status: 'Exhausted',
+    loadMore: mocks.loadMore,
+    isLoading: false,
   })
   view = mount()
   await view.render(<ScrapeSourcesView />)
-  const button = (text: string) => [...view!.container.querySelectorAll('button')].find(b => b.textContent === text)!
+  const button = (text: string) =>
+    [...view!.container.querySelectorAll('button')].find((b) => b.textContent === text)!
   const days = view.container.querySelector<HTMLInputElement>('#source-monitor-days')!
-  expect(days.value).toBe('3')
+  expect(days.value).toBe('1')
+  expect(days.disabled).toBe(true)
   expect(view.container.querySelector<HTMLInputElement>('#source-post-limit')!.value).toBe('10')
-  await typeInto(days, '5')
-  expect(mocks.save).not.toHaveBeenCalled()
-  await act(async () => button('Save').click())
-  expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, monitorDays: 5, postLimit: 10, includePrivate: false })
+  expect(button('Save')).toBeUndefined()
   await act(async () => button('View posts').click())
   expect(view.container.textContent).toContain('Checking likers now')
   expect(view.container.textContent).toContain('Next discovery:')
-  mocks.sources = [{ ...mocks.sources[0], running: false, kind: undefined, currentPostId: undefined, lastLikerCheckAt: Date.now() }]
+  mocks.sources = [
+    {
+      ...mocks.sources[0],
+      running: false,
+      kind: undefined,
+      currentPostId: undefined,
+      lastLikerCheckAt: Date.now(),
+    },
+  ]
   mocks.lists = [{ ...mocks.lists[0] }]
   await view.render(<ScrapeSourcesView />)
   expect(view.container.textContent).not.toContain('Checking likers now')
   expect(view.container.textContent).toContain('Monitoring · Next:')
-  expect(view.container.textContent).toContain(`Last liker check: ${new Date(mocks.sources[0].lastLikerCheckAt!).toLocaleString()}`)
+  expect(view.container.textContent).toContain(
+    `Last liker check: ${new Date(mocks.sources[0].lastLikerCheckAt!).toLocaleString()}`,
+  )
   mocks.lists = [{ ...mocks.lists[0], scrapeMonitorDays: 5 }]
   await view.render(<ScrapeSourcesView />)
-  expect(days.value).toBe('5')
+  expect(days.value).toBe('1')
   expect(button('Save')).toBeUndefined()
   // Removing the source also unmounts its posts subscription.
   mocks.sources = []
@@ -333,13 +403,21 @@ test('latest-post count defaults to ten and saves only on explicit Save', async 
   expect(input.value).toBe('10')
   await typeInto(input, '6')
   expect(mocks.save).not.toHaveBeenCalled()
-  const save = [...view.container.querySelectorAll('button')].find(b => b.textContent === 'Save')!
+  const save = [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'Save')!
   await act(async () => save.click())
-  expect(mocks.save).toHaveBeenCalledExactlyOnceWith({ listId: 'list', days: 90, monitor: true, monitorDays: 3, postLimit: 6, includePrivate: false })
+  expect(mocks.save).toHaveBeenCalledExactlyOnceWith({
+    listId: 'list',
+    days: 90,
+    monitor: true,
+    postLimit: 6,
+    includePrivate: false,
+  })
   mocks.lists = [{ ...mocks.lists[0], scrapePostLimit: 6 }]
   await view.render(<ScrapeSourcesView />)
   expect(input.value).toBe('6')
-  expect([...view.container.querySelectorAll('button')].some(b => b.textContent === 'Save')).toBe(false)
+  expect([...view.container.querySelectorAll('button')].some((b) => b.textContent === 'Save')).toBe(
+    false,
+  )
 })
 
 test('lead search waits for typing to settle and pauses obsolete pagination', async () => {
@@ -370,22 +448,12 @@ test('lead search waits for typing to settle and pauses obsolete pagination', as
   expect(mocks.loadMore).toHaveBeenCalledTimes(1)
 })
 
-test('limit editing writes only a changed value after explicit Save', async () => {
+test('request quota is fixed at ten per hour and shows the proxy-country schedule', async () => {
   view = mount()
   await view.render(<ScraperPage />)
-  const edit = view.container.querySelector<HTMLButtonElement>(
-    'button[aria-label="Edit scraper daily limit"]',
-  )!
-  await act(async () => edit.click())
-  const save = [...view.container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Save',
-  )!
-  expect(save.disabled).toBe(true)
-  const input = view.container.querySelector<HTMLInputElement>('#scraper-limit-value')!
-  await typeInto(input, '1500')
+  expect(view.container.textContent).toContain('Requests / hour')
+  expect(view.container.textContent).toContain('0 / 10')
+  expect(view.container.textContent).toContain('GB · Europe/London')
+  expect(view.container.querySelector('button[aria-label="Edit scraper daily limit"]')).toBeNull()
   expect(mocks.save).not.toHaveBeenCalled()
-  expect(save.disabled).toBe(false)
-  await act(async () => save.click())
-  expect(mocks.save).toHaveBeenCalledTimes(1)
-  expect(mocks.save).toHaveBeenCalledWith({ profileId: 'profile', limit: 1500 })
 })

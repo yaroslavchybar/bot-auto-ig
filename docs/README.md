@@ -59,7 +59,7 @@ The API, automation/manual workers, Convex HTTP bridge, and image-processing
 service emit structured JSON completion events. Logs include request/operation
 IDs, duration, outcome, business identifiers/counts, and environment metadata.
 Only `info` and `error` levels are used. Expected rejection, cancellation,
-and daily-limit/rate-limit pauses use `info` with an explicit outcome.
+and request-limit/rate-limit pauses use `info` with an explicit outcome.
 
 `X-Request-Id` links API requests, Convex HTTP calls, worker processes, and
 image-processing requests. Worker `__EVENT__` messages remain a separate control
@@ -283,22 +283,16 @@ The scraper calls Apify's HTTP endpoint directly with `reqwest`; it does not use
 `apify-client-rust`.
 The Sources tab attaches Instagram URLs or usernames to a lead list. Each list
 sets a rolling "posts from the last X days" range (default 90 days). Sources
-discover posts daily and scrape each qualifying post once. When the profile's
-average likes across all returned posts in that range exceeds 100, recent posts
-start with 1–2 hour checks, then adapt between 15 minutes and 6 hours based on
-new liker IDs and like-count growth. Monitoring has no age expiry, including after
-a post leaves the discovery range. It stops when the latest 10 successful checks
-average fewer than 3 new IDs per check and less than 1 new like per hour. The first
-scrape sets the baseline; failures and quota pauses do not count. Daily discovery
-does not restart stopped posts. Hidden like counts prevent an automatic
-low-traffic stop; new IDs still adjust frequency. Missing counts do not qualify a profile for new
-monitoring. Discovery is capped at
-5,000 posts per profile. Sources can be paused, resumed, checked now, or removed;
+discover posts daily (default: latest 10 posts, maximum 5,000) and scrape each selected
+post once. Every successfully scraped post can be monitored, regardless of its likes
+or publication age. Checks run at randomized 1–3 hour intervals and stop 24 hours
+after the first successful scrape. Sleep windows and request limits can delay checks,
+but never extend the 24-hour cutoff. Rediscovery, pausing, and changing settings cannot
+restart that clock. Expiration keeps collected leads. Sources can be paused, resumed, checked now, or removed;
 removing a source keeps its collected leads.
 The UI subscribes only to active tab data and the selected list. Post details use
 explicitly opened, paginated queries. Lead searches wait 300 ms after typing and
 pause obsolete page loads. Range and monitoring settings save explicitly.
-Daily limit edits write only changed values after an explicit Save.
 Persisted due times drive Rust timers through a compact Convex subscription;
 there is no periodic idle claim polling. Fenced leases recover interrupted work
 and reject stale writes after settings changes, pauses, or deletion. A local
@@ -317,12 +311,19 @@ batches of 25, and waits 10–20 seconds between posts. Mobile requests resolve
 the post owner through media metadata when only a numeric post PK is available.
 Profile pictures are described through regular OpenRouter GPT-6 Luna calls
 with reasoning disabled. Descriptions are saved before TypeSafe Jev classifies leads,
-so a classification retry does not repeat the picture call. Profiles default to
-a daily scraping limit of 1,000, including profiles without a saved limit.
-Clearing the daily limit explicitly removes its cap. Saved likers and completed mobile-discovered posts
-share that quota; repeated list memberships and stale completions do not add usage. The quota is
-separate from Instagram's
-request limits. A 429 cools down that account for at least 30 minutes, with
+so a classification retry does not repeat the picture call. Every mobile session shares a fixed rolling limit of 10 actual Instagram API
+requests per hour across login, Chat, setup, scraping, metadata, and uploads. Failed
+dispatches count; bridge retries do not double-charge. Browser-cookie liker fallback
+shares the same limit. Saving leads consumes no request slots. Usage survives runtime
+restarts and session reconnects. Each session has a stable randomized local wake time
+between 06:00 and 10:00, followed by 16 active hours. The saved proxy country selects
+a representative IANA timezone; missing countries block requests until configured.
+Requests happen only for real work, not to fill the budget. The Scrapers table shows
+rolling-hour usage, sleep status, and local wake/sleep times.
+The profile menu has Pause Profile / Resume Profile. Pausing excludes a profile
+from automations, setup, login queues, scraping, and mobile API calls. It stops its
+automated browser work and releases scraper leases while preserving credentials,
+progress, and request usage. The automation account pause control uses the same flag. A real Instagram 429 cools down that account for at least 30 minutes, with
 longer waits after repeated 429s or when Instagram sends `Retry-After`.
 `OPENROUTER_API_KEY` powers both AI steps.
 `BROWSER_MAX_CONCURRENCY` (default `1`, free Cloak tier allows one browser) caps active browser sessions across all

@@ -1,4 +1,5 @@
 import { patchProfile } from './workerMetadata'
+import { setProfilePaused } from './profilePause'
 import { LeadStatsChanges } from './leadStats'
 import { recordActivity } from './analyticsActivity'
 import { v } from "convex/values";
@@ -83,6 +84,7 @@ async function eligibility(
     !a?.routine ||
     !a.isActive ||
     !p ||
+    p.paused ||
     p.status === "deleting" ||
     p.renameFrom
   )
@@ -123,6 +125,7 @@ export const setAccount = mutation({
     if (!(await ctx.db.get(args.profileId)))
       throw new Error("Profile not found");
     const state = await ensureProgress(ctx, args.profileId);
+    if (args.paused !== undefined) await setProfilePaused(ctx, args.profileId, args.paused)
     await ctx.db.patch(state._id, {
       ...(args.paused !== undefined ? { paused: args.paused } : {}),
       ...(args.clearIssue ? { issue: undefined } : {}),
@@ -165,7 +168,7 @@ export const accounts = query({
         return {
           profileId: p._id,
           name: p.name,
-          paused: state?.paused ?? false,
+          paused: p.paused === true || (state?.paused ?? false),
           issue: state?.issue,
           stage: !p.igLoggedIn
             ? "Not logged in"

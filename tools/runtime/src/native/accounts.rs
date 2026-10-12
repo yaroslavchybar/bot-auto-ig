@@ -283,7 +283,8 @@ impl Accounts {
                 let body = super::body(request).await?;
                 let profile_id = params.get("profileId").map(String::as_str).unwrap_or("");
                 let profile = self.profiles.by_id(profile_id).await?;
-                if profile.is_null() || profile["status"] == "deleting" {
+                if profile.is_null() || profile["paused"] == true || profile["status"] == "deleting"
+                {
                     return Err(Failure::invalid("Choose a logged-in profile"));
                 }
                 let mut account = if let Some(id) = body["credentialId"].as_str() {
@@ -676,6 +677,7 @@ impl Accounts {
         if account.is_null()
             || account["status"] != "assigned"
             || profile.is_null()
+            || profile["paused"] == true
             || profile["status"] == "deleting"
             || profile["renameFrom"].is_string()
             || (!mobile && !account["browserLoggedInAt"].is_null())

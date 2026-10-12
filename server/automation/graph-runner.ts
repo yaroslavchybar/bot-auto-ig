@@ -20,6 +20,7 @@ type GraphProfileContext = {
   repeat: boolean
   emit: (type: WorkerEvent['type'], data: AnyRecord) => Promise<void>
   log: ActionLogger
+  canContinue?: () => boolean
 }
 
 const random = (min: number, max: number) =>
@@ -68,6 +69,7 @@ function chooseBranch(config: AnyRecord): string {
 /** Execute one profile's saved graph and report each checkpoint. */
 export async function executeGraphProfile(context: GraphProfileContext): Promise<void> {
   const { automationId, profile, session, controls, nodes, edges, aggregateStates, repeat, emit, log } = context
+  const stopped = () => shouldStop() || context.canContinue?.() === false
   const runs = (aggregateStates.__profileRuns ??= {})
   const date = new Date().toISOString().slice(0, 10)
   if (repeat && (runs[profile.id]?.completed || runs[profile.id]?.date !== date)) delete runs[profile.id]
@@ -100,6 +102,7 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
 
   while (current && iterations++ < 500) {
     shutdownSignal.throwIfAborted()
+    if (stopped()) return
     const activity = nodeActivity(current)
     const config = nodeConfig(current)
     run.currentNodeId = current.id
@@ -115,18 +118,15 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
       nodeId: current.id,
       task: activity,
     })
+    if (stopped()) return
 
     let handle = ['start', 'delay'].includes(activity)
       ? 'next'
       : 'success'
     try {
       if (activity === 'delay') {
-        await sleep(
-          random(
-            number(config.minSeconds, 1),
-            number(config.maxSeconds, 1),
-          ) * 1000,
-        )
+        const end = Date.now() + random(number(config.minSeconds, 1), number(config.maxSeconds, 1)) * 1000
+        while (!stopped() && Date.now() < end) await sleep(Math.min(1000, end - Date.now()))
       } else if (activity === 'condition') {
         handle = chooseCondition(config)
       } else if (activity === 'random_branch') {
@@ -137,13 +137,13 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
           number(config.iterations, 3),
         )
       } else if (activity === 'browse_feed') {
-        await runWarmup(profile.id, automationId, config, session.page, log, shouldStop)
+        await runWarmup(profile.id, automationId, config, session.page, log, stopped)
       } else if (activity === 'watch_stories') {
         await watchStories(
           session.page,
           number(config.stories_max, 3),
           log,
-          shouldStop,
+          stopped,
           {
             minSeconds: number(config.stories_min_view_seconds, 2),
             maxSeconds: number(config.stories_max_view_seconds, 5),
@@ -157,6 +157,7 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
         throw new Error(`Unsupported automation activity: ${activity}`)
       }
     } catch (error) {
+      if (stopped()) return
       nodeStates[current.id] = {
         ...nodeStates[current.id],
         status: 'failed',
@@ -184,6 +185,7 @@ export async function executeGraphProfile(context: GraphProfileContext): Promise
       continue
     }
 
+    if (stopped()) return
     nodeStates[current.id] = {
       ...nodeStates[current.id],
       status: 'completed',
