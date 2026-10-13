@@ -4,19 +4,18 @@ import type { Page } from 'playwright-core'
 import { decideLead, screenLead, LEAD_SCREENING_MODEL } from './lead-screening.js'
 import { BrowseSession } from './session.js'
 
-const response = (category: string, evidence = 1, confidence = 0.97) =>
+const response = (category: string, confidence = 0.97) =>
   Response.json({
     answers: {
       account_type: {
         type: 'choice',
         probabilities: Object.fromEntries(
-          ['male', 'female', 'business', 'unknown'].map((value) => [
+          ['male', 'female', 'business'].map((value) => [
             value,
-            value === category ? confidence : (1 - confidence) / 3,
+            value === category ? confidence : (1 - confidence) / 2,
           ]),
         ),
       },
-      explicit_gender: { type: 'noul', noul: evidence },
     },
   })
 const options = (result: Response) => ({
@@ -24,7 +23,7 @@ const options = (result: Response) => ({
   fetcher: (async () => result) as typeof fetch,
 })
 
-test('screening sends the screenshot to Luna Decisions with explicit-text gender criteria', async () => {
+test('screening sends the screenshot to Luna Decisions and scores all three categories from it', async () => {
   const screenshot = Buffer.from('screenshot bytes')
   const fetcher = (async (_url: unknown, init: RequestInit) => {
     const body = JSON.parse(init.body as string)
@@ -33,9 +32,11 @@ test('screening sends the screenshot to Luna Decisions with explicit-text gender
       type: 'image_url',
       image_url: { url: `data:image/jpeg;base64,${screenshot.toString('base64')}` },
     })
-    assert.match(body.questions.account_type.instructions, /Never infer gender/)
-    assert.match(body.questions.explicit_gender.instructions, /pronouns alone/)
-    return response('business', 0)
+    assert.deepEqual(Object.keys(body.questions), ['account_type'])
+    assert.deepEqual(Object.keys(body.questions.account_type.criteria), ['male', 'female', 'business'])
+    for (const signal of ['username', 'full name', 'bio', 'profile picture', 'visible posts'])
+      assert.match(body.questions.account_type.instructions, new RegExp(signal))
+    return response('business')
   }) as typeof fetch
   assert.deepEqual(await decideLead(screenshot, 5000, { key: 'fixture', fetcher }), {
     category: 'business',
@@ -43,31 +44,60 @@ test('screening sends the screenshot to Luna Decisions with explicit-text gender
   })
 })
 
-for (const category of ['male', 'female'])
-  test(`${category} requires explicit public self-description`, async () => {
-    assert.equal(
-      (await decideLead(Buffer.from('jpeg'), 100, options(response(category, 0)))).category,
-      'unknown',
-    )
-    assert.equal(
-      (await decideLead(Buffer.from('jpeg'), 100, options(response(category, 1)))).category,
-      category,
-    )
-    assert.equal(
-      (await decideLead(Buffer.from('jpeg'), 100, options(response(category, 1, 0.79)))).category,
-      'unknown',
-    )
-  })
-
 test('missing or malformed decisions never approve a lead', async () => {
   for (const result of [
     Response.json(null),
     Response.json({ answers: {} }),
-    response('business', 0, 2),
+    response('business', 2),
     new Response('', { status: 503 }),
   ])
     await assert.rejects(decideLead(Buffer.from('jpeg'), 100, options(result)))
   await assert.rejects(decideLead(Buffer.from('jpeg'), 100, { key: '' }), /key is missing/)
+})
+
+test('all-zero scores and ties for the highest score never approve a lead', async () => {
+  for (const scores of [
+    [0, 0, 0],
+    [1 / 3, 1 / 3, 1 / 3],
+    [0.5, 0.5, 0],
+    [0.5, 0, 0.5],
+    [0, 0.5, 0.5],
+  ]) {
+    const result = Response.json({
+      answers: {
+        account_type: {
+          type: 'choice',
+          probabilities: Object.fromEntries(
+            ['male', 'female', 'business'].map((category, index) => [category, scores[index]]),
+          ),
+        },
+      },
+    })
+    await assert.rejects(
+      decideLead(Buffer.from('jpeg'), 100, options(result)),
+      /Ambiguous lead probabilities/,
+    )
+  }
+})
+
+for (const category of ['male', 'female', 'business'] as const)
+  test(`the highest ${category} score wins without a category confidence cutoff`, async () => {
+    assert.deepEqual(await decideLead(Buffer.from('jpeg'), 100, options(response(category, 0.4))), {
+      category, confidence: 0.4,
+    })
+  })
+
+test('a lead is classified from screenshot evidence alone, never from a text evidence answer', async () => {
+  const screenshot = Buffer.from('profile screenshot')
+  const fetcher = (async (_url: unknown, init: RequestInit) => {
+    const body = JSON.parse(init.body as string)
+    assert.equal(body.questions.explicit_gender, undefined)
+    return response('male', 0.9)
+  }) as typeof fetch
+  assert.deepEqual(await decideLead(screenshot, 100, { key: 'fixture', fetcher }), {
+    category: 'male',
+    confidence: 0.9,
+  })
 })
 
 test('a changed recipient or stopped session cannot capture or classify the wrong profile', async () => {

@@ -222,7 +222,7 @@ export function VncViewer({
   return (
     <div
       ref={containerRef}
-      className={cn('bg-overlay-strong relative h-full w-full overflow-hidden', className)}
+      className={cn('bg-overlay-strong relative h-full w-full overflow-hidden', !interactive && 'cursor-none', className)}
     >
       <div
         ref={screenRef}
@@ -234,7 +234,7 @@ export function VncViewer({
         type="button"
         variant="outline"
         size="icon"
-        className="absolute top-2 right-2 z-10"
+        className="absolute top-2 right-2 z-10 cursor-default"
         aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
         onClick={(event) => void toggleFullscreen(event.currentTarget)}

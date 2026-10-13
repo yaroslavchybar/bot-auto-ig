@@ -2,7 +2,7 @@ import type { Page } from 'playwright-core'
 import { BROWSER_WINDOW_WIDTH, BROWSER_WINDOW_HEIGHT } from './config.js'
 
 // Move focus from browser chrome (address bar) into page content and park
-// the OS cursor over the page so wheel input scrolls the feed.
+// the browser pointer over the page so wheel input scrolls the feed.
 //
 // Per Playwright docs, Mouse coords are viewport-relative and
 // page.bringToFront() activates the tab (moves focus off the address bar).

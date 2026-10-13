@@ -291,6 +291,21 @@ test('a login challenge stops all actions and is reported', async () => {
   assert.deepEqual(s.calls, ['record-incomplete']); assert.match(s.result().issue!, /login or challenge/);
 });
 
+test('stopping the browser worker records an incomplete session without blocking the profile', async () => {
+  const s = setup(); let stopped = false;
+  s.deps.warmup = async () => { stopped = true; throw new Error('Browser worker stopped'); };
+  await s.run(() => stopped);
+  assert.equal(s.result().issue, undefined);
+  assert.deepEqual(s.calls, ['record-incomplete']);
+});
+
+test('stopping the worker never hides an uncertain delivery issue', async () => {
+  const s = setup(); let stopped = false;
+  s.deps.warmup = async () => { stopped = true; throw new Error('Delivery needs review: Browser worker stopped'); };
+  await s.run(() => stopped);
+  assert.equal(s.result().issue, 'Delivery needs review: Browser worker stopped');
+});
+
 test('pending DMs do not need a daily DM allowance', async () => {
   const s = setup(); s.deps.target = async () => ({ target: 0, remaining: 0, sent: 0 });
   s.deps.dmTasks = async () => Array.from({ length: 4 }, (_, i) => ({ leadId: `lead-${i}`, date: '2026-09-21', username: 'alice', message: 'Hello alice',

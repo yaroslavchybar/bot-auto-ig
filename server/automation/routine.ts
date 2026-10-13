@@ -306,8 +306,10 @@ export async function runRoutineSession(
     if (target && target.target > 0) log({ event: 'automation.daily_follow_target', followedCount: target.sent, targetCount: target.target,
       });
   } catch (error) {
-    issue = error instanceof Error ? error.message : String(error);
-    log({ event: 'automation.routine_result', error, outcome: 'error' });
+    const message = error instanceof Error ? error.message : String(error);
+    const cancelled = stopped() && message === 'Browser worker stopped';
+    if (!cancelled) issue = message;
+    log({ event: 'automation.routine_result', error, outcome: cancelled ? 'cancelled' : 'error' });
   } finally {
     await deps.record(automation._id, profileId, activityCompleted, issue);
   }

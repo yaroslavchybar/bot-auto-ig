@@ -20,7 +20,7 @@ export const finish = internalMutation({
     screeningToken: v.string(),
     date: v.string(),
     category: v.optional(
-      v.union(v.literal('male'), v.literal('female'), v.literal('business'), v.literal('unknown')),
+      v.union(v.literal('male'), v.literal('female'), v.literal('business')),
     ),
     confidence: v.optional(v.number()),
   },
@@ -56,10 +56,7 @@ export const finish = internalMutation({
               : followAllowance(e.policy, state.followIncrease ?? 0),
           )
         : 0
-    const classification =
-      args.category && args.category !== 'unknown' && (args.confidence ?? 0) >= 0.8
-        ? args.category
-        : undefined
+    const classification = args.category
     const membership = lead.screeningListId
       ? await ctx.db
           .query('leadMemberships')

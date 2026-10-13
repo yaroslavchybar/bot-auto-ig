@@ -11,6 +11,7 @@ import {
 } from './config.js'
 import { shutdownSignal, sleep } from './lifecycle.js'
 import { focusPageContent } from './focus.js'
+import { installSessionCursor } from './sessionCursor.js'
 import { acquireBrowserSlot } from './budget.js'
 import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
@@ -414,6 +415,7 @@ export async function openBrowserSession(
       throw describeProxyLaunchError(profile.name, launchOptions.proxy, launchError)
     }
     if (display) stopFilePicker = await startFilePicker(context, pickerSocket(display.vncPort))
+    if (display && !options.inspect) await installSessionCursor(context).catch(() => undefined)
     context.once('close', () => {
       browserClosed = true
       requestClose()

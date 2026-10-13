@@ -689,7 +689,7 @@ test('retry cooldown preserves a longer rest and resets after another failure', 
   }
 });
 
-test.each(['goto: Timeout 45000ms exceeded.', 'Element "<ElementHandle>" failed visible check: element is not visible'])(
+test.each(['goto: Timeout 45000ms exceeded.', 'Element "<ElementHandle>" failed visible check: element is not visible', 'Browser worker stopped'])(
   'saved navigation failures recover through HTTP readiness and runtime snapshots: %s', async issue => {
   vi.useFakeTimers();
   try {
@@ -1021,7 +1021,7 @@ test.each(['male', 'female', 'business'] as const)(
       date: claim.date,
       screeningToken: claim.screeningToken,
       category,
-      confidence: 0.95,
+      confidence: 0.4,
     }
     expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(true)
     expect(await t.mutation(internal.leadScreening.finish, completion)).toBe(false)
@@ -1030,6 +1030,7 @@ test.each(['male', 'female', 'business'] as const)(
       classification: category,
       enrichmentStatus: 'ready',
       enrichmentModel: 'openai/gpt-6-luna-decisions',
+      enrichmentConfidence: 0.4,
     })
     expect((await t.query(internal.routines.target, args)).remaining).toBe(1)
     expect(
@@ -1103,20 +1104,9 @@ test('expired screening leases are recoverable and stale results cannot assign a
   ).toBe(false)
 })
 
-test('unknown decisions and provider failures skip without assignment or quota consumption', async () => {
+test('provider failures skip without assignment or quota consumption', async () => {
   const { t, args, loggedIn } = await setup()
   await loggedIn()
-  const claim = (await t.mutation(internal.routines.reserve, args))!
-  expect(
-    await t.mutation(internal.leadScreening.finish, {
-      ...args,
-      leadId: claim.leadId,
-      date: claim.date,
-      screeningToken: claim.screeningToken,
-      category: 'unknown',
-      confidence: 0.97,
-    }),
-  ).toBe(false)
   const failed = (await t.mutation(internal.routines.reserve, args))!
   expect(
     await t.mutation(internal.leadScreening.finish, {

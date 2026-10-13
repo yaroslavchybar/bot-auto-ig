@@ -5,10 +5,13 @@ import { assertInstagramReady } from './instagram-state.js'
 
 export const LEAD_SCREENING_MODEL = TOPIC_MODEL
 export type LeadCategory = 'male' | 'female' | 'business'
-export type LeadDecision = { category: LeadCategory | 'unknown'; confidence: number }
-const categories = ['male', 'female', 'business', 'unknown'] as const
+export type LeadDecision = { category: LeadCategory; confidence: number }
+const categories = ['male', 'female', 'business'] as const
 
-/** Gender labels require explicit self-description in profile text, never appearance. */
+/**
+ * Classify one profile from its screenshot alone: the highest of male, female and business wins.
+ * The model reads username, full name, bio, profile picture and visible posts from that image.
+ */
 export async function decideLead(
   screenshot: Buffer,
   timeout: number,
@@ -33,21 +36,13 @@ export async function decideLead(
         account_type: {
           type: 'choice',
           instructions:
-            'Business takes priority. Personal gender labels require an explicit public self-description in the target profile text. Never infer gender from a name, face, body, clothing, photos or stereotypes. If that evidence is absent or the page is unavailable, choose unknown.',
+            'Score these three account categories from the profile screenshot alone. Use everything visible on it: username, full name, bio, profile picture and the visible posts. Weigh those signals together and score all three categories, so the closest match wins.',
           criteria: {
-            male: 'The target explicitly describes himself as a man or male in public profile text.',
-            female:
-              'The target explicitly describes herself as a woman or female in public profile text.',
+            male: 'The account belongs to a man or male person.',
+            female: 'The account belongs to a woman or female person.',
             business:
               'The account represents a brand, shop, company, organization or commercial service.',
-            unknown:
-              'Insufficient explicit text to classify a personal account, or unavailable/ambiguous profile.',
           },
-        },
-        explicit_gender: {
-          type: 'noul',
-          instructions:
-            'Does the target explicitly state that they are a man/male or woman/female in their public profile text? Names, appearance, pronouns alone, photos and inferred presentation do not count.',
         },
       },
     }),
@@ -56,7 +51,6 @@ export async function decideLead(
   const data = (await response.json()) as {
     answers?: {
       account_type?: { type?: unknown; probabilities?: Record<string, unknown> }
-      explicit_gender?: { type?: unknown; noul?: unknown }
     }
   }
   const answer = data?.answers?.account_type
@@ -69,22 +63,11 @@ export async function decideLead(
     )
   )
     throw new Error('Invalid lead probabilities')
-  const best = scores.indexOf(Math.max(...scores))
-  const confidence = scores[best]
-  let category: LeadDecision['category'] = categories[best]
-  if (category === 'male' || category === 'female') {
-    const evidence = data.answers?.explicit_gender
-    if (
-      evidence?.type !== 'noul' ||
-      typeof evidence.noul !== 'number' ||
-      !Number.isFinite(evidence.noul) ||
-      evidence.noul < 0.8 ||
-      evidence.noul > 1
-    )
-      category = 'unknown'
-  }
-  if (confidence < 0.8) category = 'unknown'
-  return { category, confidence }
+  const highest = Math.max(...scores)
+  if (highest === 0 || scores.filter((score) => score === highest).length !== 1)
+    throw new Error('Ambiguous lead probabilities')
+  const best = scores.indexOf(highest)
+  return { category: categories[best], confidence: scores[best] }
 }
 
 /** Capture the loaded recipient once, with the same session deadline as outreach. */

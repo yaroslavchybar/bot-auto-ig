@@ -521,7 +521,7 @@ export const routineFinishScreening = (
   leadId: string,
   screeningToken: string,
   date: string,
-  decision?: { category: 'male' | 'female' | 'business' | 'unknown'; confidence: number },
+  decision?: { category: 'male' | 'female' | 'business'; confidence: number },
 ) =>
   convexFetch<boolean>('/api/routines/screening', {
     method: 'POST',
