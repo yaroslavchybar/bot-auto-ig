@@ -8,7 +8,7 @@ Sidebar navigation works with both collapsed icons and expanded labels. Notifica
 
 Feed, Reels, profiles, overlays, and notification scanning use the same eased wheel scrolling. Controls are revealed inside their own scroll container before cursor movement and clicking, while staying bound to the selected element. Reel glides stop when the next reel appears. Explore opens a tile already near the viewport with a longer click budget; temporary search or Explore failures skip that phase and continue normal browsing.
 
-Visible automation sessions paint a cursor indicator into the browser stream, following browser mouse events and turning green while pressing. The viewer hides its separate local cursor while the agent controls the session. Manual sessions keep normal cursor control.
+Visible automation sessions move the native desktop pointer along Cloak's mouse path before clicking. TigerVNC includes that remote cursor in the stream; no cursor is injected into the page. The viewer hides its local cursor while the agent controls the session. Manual sessions keep normal cursor control.
 
 ## Lead screening
 

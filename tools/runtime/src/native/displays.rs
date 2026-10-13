@@ -17,6 +17,8 @@ use std::{
 };
 use tokio::sync::{Mutex, Semaphore};
 mod clipboard;
+mod pointer;
+pub use pointer::upgrade as pointer;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

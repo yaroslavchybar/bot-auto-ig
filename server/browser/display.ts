@@ -2,6 +2,7 @@ import { nativeLease } from '../shared/runtimeSockets.js'
 import { shutdownSignal, requestStop } from './lifecycle.js'
 
 export type Display = {
+  id: string
   display: string
   displayNum: number
   vncPort: number
@@ -10,7 +11,7 @@ export type Display = {
 
 export async function allocateDisplay(profileName: string): Promise<Display | undefined> {
   if (process.platform !== 'linux') return undefined
-  const lease = await nativeLease<{ display: { displayNum: number; vncPort: number } }>(
+  const lease = await nativeLease<{ display: { id: string; displayNum: number; vncPort: number } }>(
     '/displays/lease',
     {
       profileName,
@@ -20,6 +21,7 @@ export async function allocateDisplay(profileName: string): Promise<Display | un
     () => requestStop(),
   )
   return {
+    id: lease.value.display.id,
     display: ':' + lease.value.display.displayNum,
     displayNum: lease.value.display.displayNum,
     vncPort: lease.value.display.vncPort,

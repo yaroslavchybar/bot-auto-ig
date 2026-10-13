@@ -11,7 +11,7 @@ import {
 } from './config.js'
 import { shutdownSignal, sleep } from './lifecycle.js'
 import { focusPageContent } from './focus.js'
-import { installSessionCursor } from './sessionCursor.js'
+import { installDesktopPointer } from './desktopPointer.js'
 import { acquireBrowserSlot } from './budget.js'
 import { allocateDisplay, type Display } from './display.js'
 import type { BrowserContext, Page, Cookie } from 'playwright-core'
@@ -207,7 +207,7 @@ async function browserOptions(profile: DbProfileRow, profileDir: string, options
     proxy,
     geoip: Boolean(proxy),
     // Behavioral stealth: human mouse curves, typing rhythm, scroll shape.
-    humanize: true as const,
+    humanize: true,
     humanPreset: 'careful' as const,
     ...(process.env.CLOAKBROWSER_LICENSE_KEY
       ? { licenseKey: process.env.CLOAKBROWSER_LICENSE_KEY }
@@ -235,10 +235,7 @@ export class BrowserLaunchTimeout extends Error {
 
 const LAUNCH_TIMEOUT_MS = 90_000
 
-function withLaunchTimeout<T>(
-  promise: Promise<T>,
-  close: () => Promise<void>,
-): Promise<T> {
+function withLaunchTimeout<T>(promise: Promise<T>, close: () => Promise<void>): Promise<T> {
   let timer: ReturnType<typeof setTimeout>
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -310,6 +307,7 @@ export async function openBrowserSession(
   let launch: Promise<BrowserContext> | undefined
   let stopFilePicker: (() => void) | undefined
   let stopDomInspector: (() => Promise<void>) | undefined
+  let stopDesktopPointer: (() => void) | undefined
   let ready = false
   let browserClosed = false
   let budgetLost = false
@@ -339,6 +337,7 @@ export async function openBrowserSession(
       const errors: unknown[] = []
       const steps = [
         () => stopDomInspector?.(),
+        () => stopDesktopPointer?.(),
         () => stopFilePicker?.(),
         () =>
           ready && !browserClosed && profile && context ? saveSession(profile, context) : undefined,
@@ -390,6 +389,8 @@ export async function openBrowserSession(
       ...options,
       display: display?.display ?? options.display,
     })
+    // Native hooks must precede Cloak's capture of raw mouse methods.
+    if (display && !options.inspect) launchOptions.humanize = false
     checkStartup()
     // The license seat can lag a few seconds behind a clean close. Retry a
     // genuinely-held seat briefly instead of failing the run over timing.
@@ -415,7 +416,8 @@ export async function openBrowserSession(
       throw describeProxyLaunchError(profile.name, launchOptions.proxy, launchError)
     }
     if (display) stopFilePicker = await startFilePicker(context, pickerSocket(display.vncPort))
-    if (display && !options.inspect) await installSessionCursor(context).catch(() => undefined)
+    if (display && !options.inspect)
+      stopDesktopPointer = await installDesktopPointer(context, display)
     context.once('close', () => {
       browserClosed = true
       requestClose()

@@ -305,6 +305,7 @@ pub fn router(state: Arc<Native>) -> Router {
             Router::new()
                 .route("/browser/lease", get(displays::browser_lease))
                 .route("/displays/lease", get(displays::display_lease))
+                .route("/displays/{port}/pointer", get(displays::pointer))
                 .with_state(state.displays.clone()),
         )
 }

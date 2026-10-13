@@ -128,8 +128,11 @@ for (const scenario of [
     let inspectorClosed = false
     const cookies = [{ name: 'sessionid', value: 'test-session', domain: '.instagram.com', path: '/' }]
     const context = new EventEmitter()
-    let cursorScripts = 0, cursorPages = 0
-    context.addInitScript = async () => { cursorScripts++ }
+    let pointerInstalls = 0
+    mock.module('./server/browser/desktopPointer.ts', () => ({ installDesktopPointer: async () => {
+      pointerInstalls++
+      return () => {}
+    } }))
     let jar = [{ name: 'old-session', value: 'stale', domain: '.instagram.com', path: '/' }]
     context.clearCookies = async () => { jar = [] }
     context.addCookies = async values => { jar.push(...values) }
@@ -137,7 +140,7 @@ for (const scenario of [
     let closed = false
     let launchOptions
     context.pages = () => [{
-      evaluate: async fn => { if (fn.name === 'renderSessionCursor') cursorPages++ },
+      evaluate: async () => {},
       url: () => ['startup failure', 'stop during navigation', 'cancel during navigation'].includes(scenario) ? 'about:blank' : 'https://www.instagram.com/',
       goto: async () => {
         if (['stop during navigation', 'cancel during navigation'].includes(scenario)) {
@@ -307,8 +310,7 @@ for (const scenario of [
         const session = await openBrowserSession('test', { inspect })
         assert.equal(fs.existsSync(inspectorPath), inspect, 'only manual sessions expose a DOM port')
         assert.equal(fs.existsSync(devToolsPortFile), inspect, 'only manual sessions expose a DevTools port')
-        assert.equal(cursorScripts, inspect ? 0 : 1, 'only visible automation sessions install the stream cursor')
-        assert.equal(cursorPages, inspect ? 0 : 1, 'restored automation tabs also receive the cursor')
+        assert.equal(pointerInstalls, inspect ? 0 : 1, 'only visible automation sessions sync the native pointer')
         if (scenario === 'seed persistence retry') {
           assert.deepEqual(seedWrites, [43210], 'a local seed missing from Convex must be persisted again')
           assert.ok(launchOptions.args.includes('--fingerprint=43210'))
@@ -317,7 +319,7 @@ for (const scenario of [
         if (scenario === 'replace cookies') assert.deepEqual(jar, cookies, 'imports must replace rather than merge old cookies')
         // Cloak stealth wiring: persistent profile, human behavior, seed identity.
         assert.ok(String(launchOptions.userDataDir).endsWith('test'))
-        assert.equal(launchOptions.humanize, true)
+        assert.equal(launchOptions.humanize, inspect, 'automation patches human behavior after native hooks')
         assert.ok(launchOptions.args.some(arg => String(arg).startsWith('--fingerprint=')))
         assert.ok(launchOptions.args.includes('--fingerprint-portable-cookies'))
         if (scenario === 'crash') {
