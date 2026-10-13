@@ -12,6 +12,24 @@ type Controls = {
   log: ActionLogger;
 };
 
+type BrowseControls = Pick<Controls, 'now' | 'stopped' | 'random' | 'sleep' | 'log'>;
+const pauseBeforeBrowsing = async (deadline: number, reason: string, controls: BrowseControls) => {
+  if (reason === 'stalled') controls.log({ event: 'automation.routine.browsing_retry', reason, remainingSeconds: Math.max(0, deadline - controls.now()) / 1000 });
+  await controls.sleep(Math.min(controls.random(1000, 3000), Math.max(0, deadline - controls.now())));
+};
+
+/** All browsing-only paths share retries, surface limits, and one reservation deadline. */
+export async function browseUntilEnd(
+  session: Pick<Parameters<SessionActivity>[0], 'deadline' | 'browse'>, controls: BrowseControls,
+): ReturnType<SessionActivity> {
+  while (!controls.stopped() && controls.now() < session.deadline) {
+    const reason = await session.browse((session.deadline - controls.now()) / 60_000);
+    if (reason === 'skipped' || reason === 'stopped' || controls.stopped()) return reason;
+    await pauseBeforeBrowsing(session.deadline, reason, controls);
+  }
+  return controls.stopped() ? 'stopped' : 'finished';
+}
+
 /** Allocate follow/DM work across active time, mixing feed visits with small batches. */
 export async function scheduleRoutine(
   session: Parameters<SessionActivity>[0], controls: Controls,
@@ -24,21 +42,27 @@ export async function scheduleRoutine(
   let sent = 0;
   let nextSendAt = 0;
   let available = true;
+  let retryBrowsing = false;
   const browse = async (ms: number) => {
     if (ms <= 0 || stopped()) return 'stopped' as const;
     return session.browse(ms / 60_000);
   };
   while (!stopped() && now() < session.deadline) {
     const remainingMs = session.deadline - now();
-    if (!available || sent >= quota || remainingMs < 20_000) {
-      return browse(remainingMs);
-    }
+    const browsingOnly = !available || sent >= quota || remainingMs < 20_000;
+    if (browsingOnly) return browseUntilEnd(session, controls);
     // Reserve about 90 seconds per remaining DM; shorten browsing when time is tight.
     const spareMs = remainingMs - (quota - sent) * 90_000;
     const browsingMs = Math.min(remainingMs - 20_000,
-      Math.max(10_000, Math.min(random(30_000, 90_000), spareMs)));
+      Math.max(retryBrowsing ? 60_000 : 10_000, Math.min(random(30_000, 90_000), spareMs)));
     const reason = await browse(browsingMs);
-    if (reason === 'stalled' || reason === 'skipped' || stopped()) return reason;
+    if (reason === 'skipped' || reason === 'stopped' || stopped()) return reason;
+    if (reason === 'stalled') {
+      retryBrowsing = true;
+      await pauseBeforeBrowsing(session.deadline, reason, controls);
+      continue;
+    }
+    retryBrowsing = false;
     const batch = Math.min(quota - sent, Math.floor(random(1, 6)));
     log({ event: 'automation.routine.outreach_batch', message: `Outreach batch: up to ${batch}; session target ${sent}/${quota}` });
     for (let i = 0; i < batch && !stopped(); i++) {

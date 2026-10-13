@@ -3,7 +3,7 @@ import type { Page } from 'playwright-core'
 import { warmupBeginRun, warmupFinishRun, type DbWarmupState } from '../shared/convexClient.js'
 import { browseFeed } from './actions/feed.js'
 import { watchStories } from './actions/stories.js'
-import { random, type ActionLogger, type StopCheck } from './actions/shared.js'
+import { random, sleep, type ActionLogger, type StopCheck } from './actions/shared.js'
 import { assertInstagramReady, checkNotifications } from './actions/instagram-state.js'
 import { openDMs } from './actions/inbox.js'
 import { backToFeed } from './actions/navigation.js'
@@ -12,6 +12,7 @@ import { WarmupActivityBudget, warmupActivityPlan } from '../shared/warmupPlan.j
 import { warmupTopics } from '../shared/warmupTopics.js'
 import { browseTopics, type TopicBrowseState } from './actions/topic-browsing.js'
 import { engageWeekOne } from './actions/week-one.js'
+import { browseUntilEnd } from './routine-schedule.js'
 
 const defaults = {
   warmup_min_minutes: 10, warmup_max_minutes: 20,
@@ -54,7 +55,7 @@ export function warmupReady(state: Pick<DbWarmupState, 'date' | 'nextRunAt' | 'r
 }
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, feed: browseFeed, stories: watchStories,
-  check: assertInstagramReady, notifications: checkNotifications, inbox: openDMs, home: backToFeed, topics: browseTopics, engage: engageWeekOne, now: Date.now }
+  check: assertInstagramReady, notifications: checkNotifications, inbox: openDMs, home: backToFeed, topics: browseTopics, engage: engageWeekOne, now: Date.now, sleep }
 export type WarmupResult = { minutes: number; reason: 'finished' | 'stopped' | 'stalled' | 'skipped' }
 export type SessionActivity = (session: {
   deadline: number; remainingMinutes: number;
@@ -101,6 +102,21 @@ export async function runWarmup(
     : warmupTopics(config.warmup_topics).length || !config.browse_home_feed
     ? deps.topics(page, end, config, budget, topicState, log, stop)
     : deps.feed(page, Math.max(0, end - deps.now()) / 60_000, config, log, stop, budget)
+  let storiesWatched = false
+  const browseChunk: Parameters<SessionActivity>[0]['browse'] = async minutes => {
+    const browseDeadline = Math.min(deadline, deps.now() + minutes * 60_000)
+    const browseStopped = () => stopped() || deps.now() >= browseDeadline
+    if (config.watch_stories && !storiesWatched && !browseStopped()) {
+      storiesWatched = true
+      await stories(browseDeadline, browseStopped)
+    }
+    if (browseStopped()) return stopped() ? 'stopped' : 'stalled'
+    const before = budget.browsed
+    let result = await browse(browseDeadline, browseStopped)
+    // A chunk deadline is not a stop request for the entire profile session.
+    if (result === 'stopped' && !stopped() && deps.now() >= browseDeadline) result = 'finished'
+    return result === 'finished' && budget.browsed === before ? 'stalled' : result
+  }
   let reason: WarmupResult['reason'] = 'stopped'
   let elapsed = 0
   try {
@@ -127,28 +143,14 @@ export async function runWarmup(
       }
     }
     if (!stopped() && activity) {
-      let storiesWatched = false
       reason = await activity({ deadline, day, takeLike: () => budget.take('likes'), remainingMinutes: Math.max(0, Math.min(plan.remainingMinutes ?? plan.minutes,
         Math.max(0, Date.parse(`${plan.date}T00:00:00Z`) + 86_400_000 - startedAt) / 60_000) - (deps.now() - startedAt) / 60_000),
-        browse: async minutes => {
-          const browseDeadline = Math.min(deadline, deps.now() + minutes * 60_000)
-          const browseStopped = () => stopped() || deps.now() >= browseDeadline
-          if (config.watch_stories && !storiesWatched && !browseStopped()) {
-            storiesWatched = true
-            await stories(browseDeadline, browseStopped)
-          }
-          if (browseStopped()) return 'finished'
-          const before = budget.browsed
-          const result = await browse(browseDeadline, browseStopped)
-          return result === 'finished' && budget.browsed === before ? 'skipped' : result
-        },
+        browse: browseChunk,
       })
     } else if (!stopped()) {
-      if (config.watch_stories && !stopped())
-        await stories(deadline, stopped)
-      if (!stopped()) {
-        reason = await browse(deadline, stopped)
-      }
+      reason = await browseUntilEnd({ deadline, browse: browseChunk }, {
+        now: deps.now, stopped: shouldStop, random, sleep: deps.sleep, log,
+      })
     }
     if (!shouldStop() && deps.now() >= deadline) reason = 'finished'
     if (!shouldStop() && deps.now() < closingDeadline) {

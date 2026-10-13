@@ -133,13 +133,35 @@ test('before maintenance the routine only browses, even when ready lead and DM m
   const s = setup('follow');
   s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
     const result = await activity!({ day: 7, deadline: 600_000, remainingMinutes: 10,
-      browse: async () => { s.calls.push('browse'); return 'finished'; },
+      browse: async () => { s.calls.push('browse'); return 'skipped'; },
     });
     return { minutes: 10, reason: result === 'finished' ? 'finished' : 'stopped' };
   };
   await s.run();
   assert.ok(s.calls.includes('browse')); assert.ok(!s.calls.includes('reserve'));
   assert.ok(!s.calls.includes('follow')); assert.ok(!s.calls.includes('send'));
+});
+
+test('week-one browsing retries a stall without running outreach', async () => {
+  const s = setup('follow');
+  let tries = 0;
+  s.deps.warmup = async (_p, _a, _c, _page, _log, _stopped, _deps, activity) => {
+    const reason = await activity!({ day: 7, deadline: 600_000, remainingMinutes: 10,
+      browse: async minutes => {
+        s.calls.push('browse');
+        await s.deps.sleep(++tries === 1 ? 30_000 : minutes * 60_000);
+        return tries === 1 ? 'stalled' : 'finished';
+      },
+    });
+    assert.equal(reason, 'finished');
+    return { minutes: s.deps.now() / 60_000, reason };
+  };
+  await s.run();
+  assert.equal(tries, 2);
+  assert.equal(s.deps.now(), 600_000);
+  assert.ok(!s.calls.includes('reserve'));
+  assert.ok(!s.calls.includes('authorize-follow'));
+  assert.ok(!s.calls.includes('send'));
 });
 
 test('Instagram warnings stop outreach before reserving or following a lead', async () => {

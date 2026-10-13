@@ -2,6 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { runWarmup, warmupConfig, warmupReady } from './warmup.js'
+import { scheduleRoutine } from './routine-schedule.js'
+import { watchStories } from './actions/stories.js'
 
 function setup(minutes = 40) {
   let now = Date.parse('2026-09-19T12:00:00Z')
@@ -11,11 +13,11 @@ function setup(minutes = 40) {
     begin: async () => ({ date: '2026-09-19', minutes, day: 8,
       activityPlan: { likes: 6, profiles: 4, reels: 20, stories: 3 } }),
     finish: async (input: { minutes: number }) => { recorded.push(input.minutes) },
-    feed: async () => { calls.push('feed'); now += 5 * 60_000; return 'stalled' as const },
+    feed: async (_page, minutes, _config, _log, _stop, budget) => { calls.push('feed'); now += minutes * 60_000; if (budget) budget.browsed++; return 'finished' as const },
     stories: async (_page, count) => { calls.push('stories'); now += 60_000; return count },
-    now: () => now,
+    now: () => now, sleep: async ms => { now += ms },
     check: async () => {}, notifications: async () => false, inbox: async () => false, home: async () => {},
-    topics: async () => 'finished',
+    topics: async (_page, end, _config, budget) => { now = end; budget.browsed++; return 'finished' },
     engage: async () => {},
   }
   const run = (config = {}) => runWarmup('profile', 'automation', config, {} as Page, () => {}, () => false, deps)
@@ -23,7 +25,9 @@ function setup(minutes = 40) {
 }
 
 test('records elapsed time instead of the planned duration, including stories', async () => {
-  const { run, calls, recorded } = setup()
+  const { run, calls, recorded, deps } = setup()
+  const feed = deps.feed
+  deps.feed = async (page, _minutes, ...rest) => { await feed(page, 5, ...rest); return 'stopped' }
   await run({ watch_stories: true })
   assert.deepEqual(calls, ['stories', 'feed'])
   assert.deepEqual(recorded, [6])
@@ -34,6 +38,53 @@ test('records elapsed time when browsing fails and propagates the failure', asyn
   deps.feed = async () => { throw new Error('navigation failed') }
   await assert.rejects(run({ watch_stories: true }), /navigation failed/)
   assert.deepEqual(recorded, [1])
+})
+
+test('standalone warm-up retries a short stall within the original reservation', async () => {
+  const s = setup(10)
+  const feed = s.deps.feed
+  let tries = 0
+  s.deps.feed = async (page, minutes, ...rest) => {
+    if (++tries === 1) { await s.deps.sleep(30_000); return 'stalled' }
+    return feed(page, minutes, ...rest)
+  }
+  const result = await s.run({ watch_stories: false })
+  assert.equal(tries, 2)
+  assert.equal(result.reason, 'finished')
+  assert.equal(result.minutes, 9.8)
+  assert.deepEqual(s.recorded, [9.8])
+})
+
+test('a story opening chunk expiry retries browsing instead of completing the whole session', async () => {
+  const originalNow = Date.now
+  const s = setup(10)
+  let now = s.deps.now(), browses = 0
+  Date.now = () => now
+  s.deps.now = () => now
+  s.deps.sleep = async ms => { now += ms }
+  s.deps.stories = watchStories
+  s.deps.feed = async (_page, minutes, _config, _log, _stop, budget) => {
+    browses++; now += minutes * 60_000; if (budget) budget.browsed++
+    return 'finished'
+  }
+  const story = { first() { return this }, waitFor: async () => {},
+    isVisible: async () => { now += 11_000; return true },
+    elementHandle: async () => { throw new Error('Expired story must not be clicked') },
+  }
+  const page = { goto: async () => {}, url: () => 'https://www.instagram.com/',
+    keyboard: { press: async () => {} },
+    locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
+  } as unknown as Page
+  try {
+    const result = await runWarmup('profile', 'automation', {}, page, () => {}, () => false, s.deps,
+      async session => {
+        assert.equal(await session.browse(10 / 60), 'stalled')
+        return session.browse((session.deadline - now) / 60_000)
+      })
+    assert.equal(browses, 1)
+    assert.equal(result.reason, 'finished')
+    assert.equal(result.minutes, 9.8)
+  } finally { Date.now = originalNow }
 })
 
 test('mixed activity shares one reservation and counts DM time up to midnight', async () => {
@@ -96,7 +147,7 @@ test('home-feed and reels toggles normalize independently and route reels-only w
     assert.equal(config.scroll_reels, true)
     assert.equal(config.warmup_topics, '')
     s.calls.push('reels-only')
-    return 'finished'
+    return 'stopped'
   }
   await s.run({ browse_home_feed: false, watch_stories: false })
   assert.deepEqual(s.calls, ['reels-only'])
@@ -116,7 +167,7 @@ test('maintenance enables its shared like budget without restoring a mode toggle
     assert.equal('soft_warmup' in config, false)
     assert.equal(budget?.plan.likes, 6)
     assert.equal(budget?.take('likes'), true)
-    return 'finished'
+    return 'stopped'
   }
   await s.run({ soft_warmup: false, watch_stories: false, like_chance: 100 })
 })
@@ -152,6 +203,51 @@ test('topic warm-up uses the same daily budget and state across mixed browsing c
   assert.equal(states[0], states[1])
   assert.equal(budgets[0], budgets[1])
   assert.deepEqual(s.calls, [])
+})
+
+test('reels-only retries an incomplete Explore view and reaches outreach within its reservation', async () => {
+  const s = setup(5)
+  let now = s.deps.now(), browses = 0, follows = 0
+  const order: string[] = []
+  s.deps.now = () => now
+  s.deps.feed = async () => { throw new Error('Home feed is disabled') }
+  s.deps.topics = async (_page, end, config, budget) => {
+    assert.equal(config.browse_home_feed, false)
+    order.push('browse')
+    if (++browses > 1) budget.browsed++
+    now = end
+    // The first view uses its chunk deadline without completing playback.
+    return browses === 1 ? 'stopped' : 'finished'
+  }
+  const result = await runWarmup('profile', 'automation', {
+    browse_home_feed: false, warmup_topics: 'fitness', watch_stories: false,
+  }, {} as Page, () => {}, () => false, s.deps, async session => scheduleRoutine(session, {
+    now: () => now, stopped: () => false, random: min => min, log: () => {},
+    sleep: async ms => { now += ms },
+    target: async () => ({ target: 5, remaining: 5 - follows, sent: follows }),
+    send: async () => { follows++; order.push('follow'); now += 10_000; return 'followed' },
+  }))
+  assert.deepEqual(order.slice(0, 3), ['browse', 'browse', 'follow'])
+  assert.ok(follows > 0)
+  assert.equal(result.reason, 'finished')
+  assert.ok(result.minutes <= 5)
+})
+
+test('mixed browsing distinguishes temporary empty views from disabled or exhausted surfaces', async () => {
+  for (const unavailable of ['empty', 'disabled', 'exhausted']) {
+    const s = setup()
+    s.deps.topics = async () => 'finished'
+    s.deps.begin = async () => ({ date: '2026-09-19', minutes: 10, day: 8,
+      activityPlan: { likes: 0, profiles: 0, reels: unavailable === 'exhausted' ? 0 : 20, stories: 0 } })
+    const result = await runWarmup('profile', 'automation', {
+      browse_home_feed: false, scroll_reels: unavailable !== 'disabled', watch_stories: false,
+    }, {} as Page, () => {}, () => false, s.deps, async session => {
+      const reason = await session.browse(1)
+      assert.equal(reason, unavailable === 'empty' ? 'stalled' : 'skipped')
+      return reason
+    })
+    assert.equal(result.reason, unavailable === 'empty' ? 'stalled' : 'skipped')
+  }
 })
 
 test('checks notifications and inbox before activity and records attempts even on failure', async () => {
@@ -219,7 +315,7 @@ test('passes story timing settings and subtracts story time from the feed budget
   }
   deps.feed = async (_page, minutes) => {
     assert.equal(minutes, 8.8)
-    return 'finished'
+    return 'stopped'
   }
   await run({ watch_stories: true, stories_min_view_seconds: 3, stories_max_view_seconds: 7 })
 })
@@ -248,7 +344,7 @@ test('limits a session to the UTC day it reserved', async () => {
   deps.now = () => Date.parse('2026-09-19T23:59:00Z')
   deps.feed = async (_page, minutes) => {
     assert.equal(minutes, 0.8)
-    return 'finished'
+    return 'stopped'
   }
   await run()
 })

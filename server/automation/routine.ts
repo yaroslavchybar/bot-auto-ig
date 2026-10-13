@@ -14,7 +14,7 @@ import {
   routineFinishScreening,
 } from "../shared/convexClient.js";
 import { runWarmup } from "./warmup.js";
-import { scheduleRoutine } from './routine-schedule.js';
+import { browseUntilEnd, scheduleRoutine } from './routine-schedule.js';
 import { followButton, isFollowing, messageButton, messageComposer, messageWasBlocked, unfollow, unsendMessage,
 } from './follow.js';
 import { renderOutreachMessage } from '../shared/outreachMessage.js';
@@ -140,7 +140,10 @@ export async function runRoutineSession(
       undefined,
       async (session) => {
         deadline = session.deadline;
-        if (session.day !== undefined && session.day < 8) return session.browse(session.remainingMinutes);
+        if (session.day !== undefined && session.day < 8) return browseUntilEnd(session, {
+          now: deps.now, random: deps.random, sleep: deps.sleep, log,
+          stopped: () => stopped() || !allowed || Boolean(liveAccess && !liveAccess()),
+        });
         try {
           await cleanup();
           if (shouldStop()) return 'stopped';

@@ -186,3 +186,48 @@ test('topic results use the outer Next control and never carousel or engagement 
   assert.deepEqual([...seen], ['/p/one/', '/p/two/'])
   assert.equal(closed, true)
 })
+
+test('completed playback is recorded before optional comment reading expires', async () => {
+  const originalNow = Date.now, originalRandom = Math.random
+  let now = originalNow(), url = '', closed = false
+  const started = now
+  Date.now = () => now
+  Math.random = () => 0
+  const video = { first() { return this }, count: async () => 1,
+    evaluate: async (read: (media: { currentTime: number; paused: boolean; ended: boolean }) => unknown) =>
+      read({ currentTime: (now - started) / 1000, paused: false, ended: false }),
+  }
+  const thread = { first() { return this }, isVisible: async () => true }
+  const article = { waitFor: async () => {}, getByText: () => ({ count: async () => 0 }),
+    evaluate: async () => ({ text: 'Strength exercises', relationship: 'followed' }),
+    locator: (selector: string) => {
+      if (selector === 'video') return video
+      assert.equal(selector, 'ul'); return thread
+    },
+  }
+  const dialog = { filter() { return this }, first() { return this }, count: async () => 1,
+    getByRole: () => article,
+  }
+  const tile = { ...visibleActionGeometry, getAttribute: async () => '/p/one/', isVisible: async () => true,
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => {},
+      click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {},
+    }),
+  }
+  const tiles = { first: () => ({ waitFor: async () => {} }), count: async () => 1, nth: () => tile }
+  const page = { viewportSize: () => ({ width: 1280, height: 800 }), url: () => url,
+    goto: async (value: string) => { url = value }, getByRole: () => dialog,
+    locator: (selector: string) => selector.startsWith('main a') ? tiles
+      : { filter: () => ({ evaluateAll: async () => null }) },
+    keyboard: { press: async () => { closed = true } },
+  } as unknown as Page
+  const session = new BrowseSession(now + 10_000)
+  session.wait = async ms => { now = Math.min(session.end, now + ms); session.check() }
+  const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0, comments: 1 })
+  try {
+    await assert.rejects(watchTopicPosts(page, 'fitness', 1, budget, new Set(), session, () => {}, true, async () => true), SessionEnded)
+    assert.equal(budget.browsed, 1)
+    assert.equal(budget.used.reels, 1)
+    assert.equal(budget.used.comments, 1)
+    assert.equal(closed, true)
+  } finally { Date.now = originalNow; Math.random = originalRandom }
+})

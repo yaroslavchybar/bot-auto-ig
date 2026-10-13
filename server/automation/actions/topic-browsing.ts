@@ -95,10 +95,10 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
           const hasVideo = await article.locator('video').count() > 0
           if (hasVideo && !budget.take('reels')) break
           const viewed = await viewContent(article, (Math.random() > 0.85 ? random(18, 35) : random(6, 16)) * 1000, session)
+          if (viewed) { watched++; budget.browsed++ }
           if (viewed && maintenance) {
             await maintainPost(page, article, context, [topic], budget, session, log, matchesTopic)
           }
-          if (viewed) { watched++; budget.browsed++ }
         }
       }
       if (watched >= count) break

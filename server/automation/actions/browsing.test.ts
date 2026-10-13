@@ -2,6 +2,7 @@ import { visibleActionGeometry } from './action-locator.test-support.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Locator, Page } from 'playwright-core'
+import { errors } from 'playwright-core'
 import { Window } from 'happy-dom'
 import { BrowseSession, SessionEnded } from './session.js'
 import { revealForClick, settleOnPost, smoothScroll } from './scroll.js'
@@ -210,6 +211,38 @@ test('stories wait for the button tray and honor a stop while it loads', async (
     assert.equal(await watchStories(page, 0, () => {}, () => stopped), 0)
     assert.equal(clicks, stopWhileLoading ? 0 : 1)
   }
+})
+
+test('story navigation and opening expiry stay local to the optional story chunk', async () => {
+  const originalNow = Date.now
+  for (const expiresAt of ['navigation', 'visibility', 'hover']) {
+    let now = originalNow(), clicks = 0
+    const deadline = now + 10_000
+    Date.now = () => now
+    const story = { first() { return this }, waitFor: async () => {},
+      isVisible: async () => { if (expiresAt === 'visibility') now += 11_000; return true },
+      elementHandle: async () => ({ ...visibleActionGeometry, dispose: async () => {},
+        hover: async () => { now += 11_000; throw new errors.TimeoutError('Story opening expired') },
+        click: async () => { clicks++ },
+      }),
+    }
+    const page = { url: () => 'https://www.instagram.com/',
+      goto: async (_url: string, options: { timeout: number }) => {
+        assert.equal(options.timeout, 10_000)
+        if (expiresAt === 'navigation') { now += 11_000; throw new errors.TimeoutError('Navigation expired') }
+      }, keyboard: { press: async () => {} },
+      locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
+    } as unknown as Page
+    try {
+      assert.equal(await watchStories(page, 1, () => {}, () => false, { minSeconds: 2, maxSeconds: 5, deadline }), 0)
+      assert.equal(clicks, 0)
+    } finally { Date.now = originalNow }
+  }
+})
+
+test('unexpected story failures still propagate', async () => {
+  const page = { goto: async () => { throw new Error('Browser connection lost') } } as unknown as Page
+  await assert.rejects(watchStories(page, 1, () => {}, () => false), /Browser connection lost/)
 })
 
 test('stories skip a hidden first control in either tray layout', async () => {
