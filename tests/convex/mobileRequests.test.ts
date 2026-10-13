@@ -58,6 +58,29 @@ test('proxy-country local sleep blocks calls without consuming slots', async () 
   expect((await s.reserve('awake')).allowed).toBe(true)
 })
 
+test('manual reconnect can use a paused profile without resuming it or bypassing hourly limits', async () => {
+  const { t, profileId, reserve } = await setup()
+  await t.run((ctx) => ctx.db.patch(profileId, { paused: true }))
+  expect(await reserve('automatic')).toMatchObject({ allowed: false, reason: 'Profile is paused' })
+  const reconnect = (requestId: string) =>
+    t.mutation(internal.mobileRequests.reserve, { profileId, requestId, manualReconnect: true })
+  for (let i = 0; i < 10; i++) expect((await reconnect(`manual-${i}`)).allowed).toBe(true)
+  expect(await reconnect('manual-over-limit')).toMatchObject({
+    allowed: false, reason: 'Hourly mobile request limit reached',
+  })
+  expect((await t.run((ctx) => ctx.db.get(profileId)))?.paused).toBe(true)
+  expect(await reserve('still-automatic')).toMatchObject({ allowed: false, reason: 'Profile is paused' })
+})
+
+test('manual reconnect preserves the proxy-country sleep window', async () => {
+  const { t, profileId } = await setup('us')
+  await t.run((ctx) => ctx.db.patch(profileId, { paused: true }))
+  vi.setSystemTime(new Date('2026-10-12T08:00:00Z'))
+  expect(await t.mutation(internal.mobileRequests.reserve, {
+    profileId, requestId: 'manual-asleep', manualReconnect: true,
+  })).toMatchObject({ allowed: false, reason: 'Mobile session is sleeping' })
+})
+
 test('unknown proxy country never silently uses the server timezone', async () => {
   const s = await setup('zz')
   expect(await s.reserve('missing-country')).toMatchObject({

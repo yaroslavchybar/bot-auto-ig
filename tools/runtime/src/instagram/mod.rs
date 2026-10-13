@@ -237,7 +237,12 @@ impl Service {
         Ok(entry)
     }
     pub async fn invoke(&self, action: &str, request: &Command) -> Result<Value> {
-        self.invoke_serialized(action, request).await
+        self.invoke_serialized(action, request, false).await
+    }
+
+    /// Only an explicit reconnect may log in while paused; normal dispatches stay blocked.
+    pub async fn reconnect(&self, request: &Command) -> Result<Value> {
+        self.invoke_serialized("login", request, true).await
     }
 
     pub(crate) fn request_budget(&self, profile_id: &str) -> Option<RequestBudget> {
@@ -248,10 +253,16 @@ impl Service {
         Some(RequestBudget {
             api: self.api.clone(),
             profile_id: profile_id.into(),
+            manual_reconnect: false,
         })
     }
 
-    async fn invoke_serialized(&self, action: &str, request: &Command) -> Result<Value> {
+    async fn invoke_serialized(
+        &self,
+        action: &str,
+        request: &Command,
+        manual_reconnect: bool,
+    ) -> Result<Value> {
         if request.profile_id.trim().is_empty() || request.profile_id.len() > 128 {
             return Err(Error::new("Profile ID is required"));
         }
@@ -364,10 +375,14 @@ impl Service {
             entry.proxy = proxy;
         }
         let previous = saved["state"].as_str().unwrap_or("");
+        let mut budget = self.request_budget(&request.profile_id);
+        if let Some(budget) = &mut budget {
+            budget.manual_reconnect = manual_reconnect;
+        }
         let mut mobile = Mobile {
             state,
             client: entry.client.clone().unwrap(),
-            budget: self.request_budget(&request.profile_id),
+            budget,
             #[cfg(test)]
             base: self.base.clone(),
         };

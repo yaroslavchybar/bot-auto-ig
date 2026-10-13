@@ -37,6 +37,30 @@ test('outreach waits until day eight even when an old saved setting enables day 
   expect(await reserveFollow(t, args)).toBeNull();
 });
 
+test('confirmed posts automatically unlock outreach on day eight without a profile toggle', async () => {
+  const { t, profile, list, args } = await setup();
+  await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true });
+  await t.mutation(internal.igAccounts.modelSetupEnrollInternal, {
+    profileId: profile._id, modelId: list._id, startedAt: Date.now(),
+  });
+  await t.run(async ctx => {
+    const warmup = await ctx.db.query('warmupStates').unique();
+    await ctx.db.patch(warmup!._id, { day: 7 });
+  });
+  await t.mutation(internal.igAccounts.modelSetupPatchInternal, {
+    profileId: profile._id, modelId: list._id,
+    patch: { postSourceIds: ['one', 'two', 'three'], postDates: ['2026-09-25', '2026-09-26', '2026-09-27'] }, clear: [],
+  });
+  expect((await t.run(ctx => ctx.db.get(profile._id)))?.outreachReady).toBe(true);
+  expect((await t.query(internal.routines.target, args)).target).toBe(0);
+  await t.run(async ctx => {
+    const warmup = await ctx.db.query('warmupStates').unique();
+    await ctx.db.patch(warmup!._id, { day: 8 });
+  });
+  expect((await t.query(internal.routines.target, args)).target).toBe(2);
+  expect(await reserveFollow(t, args)).not.toBeNull();
+});
+
 test('day-seven outreach rejects existing pending DMs and follow authorization', async () => {
   const { t, args, loggedIn } = await setup(); await loggedIn();
   const claim = (await reserveFollow(t, args))!;
@@ -303,12 +327,13 @@ async function setup() {
     }
   });
   const leads = await readLeads(t);
-  const loggedIn = () =>
-    t.mutation(api.profiles.mutations.setIgState, {
+  const loggedIn = async () => {
+    await t.mutation(api.profiles.mutations.setIgState, {
       profileId: profile._id,
       igLoggedIn: true,
-      outreachReady: true,
     });
+    await t.run(ctx => ctx.db.patch(profile._id, { outreachReady: true }));
+  };
   return { t, list, profile, automation, args, leads, loggedIn, leadListId };
 }
 

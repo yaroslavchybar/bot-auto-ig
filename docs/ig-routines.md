@@ -2,6 +2,8 @@
 
 Create one automation per model. Select browsing surfaces, daily time, and session/rest ranges, then optionally enable Outreach. Outreach starts on warm-up day 8 once the account has at least three posts and its mobile login is connected. Posting continues daily to the configured target without blocking outreach.
 
+Profile outreach readiness is automatic; it has no manual toggle. Setup confirms the three-post requirement, and the routine unlocks lead follows and DMs on day 8 when the automation's Outreach setting is enabled. The profile's Logged in toggle remains available.
+
 Warm-up days 1–7 gradually engage topic-related accounts. Maintenance mixes browsing with lead outreach. Each new follow is separated by browsing. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
 
 Topic post searches run only on warm-up days 1–4. The worker opens Search, types a generated hashtag, presses Enter, and clicks its exact native result. It scrolls the grid, opens visible posts, and closes each post before continuing. From day 5, browsing uses the enabled Home feed/Reels surfaces with the same screenshot topic rule. Week-one topic account searches for likes/follows continue through day 7.

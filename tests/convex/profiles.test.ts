@@ -3,6 +3,17 @@ import { expect, test } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest, seedList, seedProfile } from './helpers'
 
+test('login changes preserve automatic outreach readiness and reject manual overrides', async () => {
+  const t = createConvexTest()
+  const profile = (await seedProfile(t))!
+  await t.run(ctx => ctx.db.patch(profile._id, { outreachReady: true }))
+  await t.mutation(api.profiles.mutations.setIgState, { profileId: profile._id, igLoggedIn: true })
+  expect((await t.query(api.profiles.queries.getById, { profileId: profile._id }))?.outreachReady).toBe(true)
+  await expect(t.mutation(api.profiles.mutations.setIgState, {
+    profileId: profile._id, igLoggedIn: true, outreachReady: false,
+  } as never)).rejects.toThrow()
+})
+
 test('creates profiles and selects available profiles by list with cooldown logic', async () => {
   const t = createConvexTest()
   const list = await seedList(t, 'List A')

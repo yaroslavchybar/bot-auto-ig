@@ -324,14 +324,6 @@ export function profilesSetIgLoggedIn(profileId: string, igLoggedIn: boolean): P
   })
 }
 
-export function profilesSetOutreachReady(profileId: string): Promise<void> {
-  return convexFetch('/api/profiles/ig-state', {
-    method: 'POST',
-    body: { profileId, outreachReady: true },
-    maxRetries: 0,
-  })
-}
-
 // ==================== AUTOMATIONS ====================
 
 export type DbAutomationRow = {

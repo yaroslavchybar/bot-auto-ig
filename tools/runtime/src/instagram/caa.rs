@@ -386,6 +386,11 @@ pub async fn login(
     password: &str,
     authenticator: &str,
 ) -> Result<()> {
+    // A credential login starts logged out; rejected session headers/cookies must not
+    // leak into device registration or attestation. The saved device/key stays intact.
+    mobile.state.authorization.clear();
+    mobile.state.claim.clear();
+    mobile.state.cookies.clear();
     mobile
         .request(
             "i.instagram.com",

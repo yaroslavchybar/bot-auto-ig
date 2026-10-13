@@ -280,18 +280,28 @@ impl Accounts {
                 json!({"count":created.as_array().map_or(0,Vec::len),"created":created})
             }
             "ig-accounts.post.profileId_connect" => {
+                let request_context = request
+                    .extensions()
+                    .get::<ig_service_common::RequestContext>()
+                    .cloned();
                 let body = super::body(request).await?;
                 let profile_id = params.get("profileId").map(String::as_str).unwrap_or("");
                 let profile = self.profiles.by_id(profile_id).await?;
-                if profile.is_null() || profile["paused"] == true || profile["status"] == "deleting"
-                {
-                    return Err(Failure::invalid("Choose a logged-in profile"));
+                if profile.is_null() || profile["status"] == "deleting" {
+                    return Err(Failure::invalid("Profile is unavailable"));
                 }
                 let mut account = if let Some(id) = body["credentialId"].as_str() {
                     self.account("byId", json!({"id":id})).await?
                 } else {
                     Value::Null
                 };
+                if profile["paused"] == true
+                    && !(account["status"] == "connected" && account["profileId"] == profile_id)
+                {
+                    return Err(Failure::invalid(
+                        "Resume the profile before connecting a new credential",
+                    ));
+                }
                 if account.is_null() {
                     if let Some(raw) = body["credentials"].as_str() {
                         if profile["igLoggedIn"] != true {
@@ -315,7 +325,16 @@ impl Accounts {
                     return Err(Failure::invalid("Choose an available credential"));
                 }
                 if account["status"] == "connected" && account["profileId"] == profile_id {
-                    if let Some(retry) = self.reconnect(profiles::text(&account, "id")).await? {
+                    if let Some(context) = &request_context {
+                        context.add("operation", "mobile.reconnect");
+                        context.add("profileId", profile_id);
+                        context.add("paused", profile["paused"] == true);
+                    }
+                    let result = self.reconnect(profiles::text(&account, "id")).await;
+                    if let (Err(error), Some(context)) = (&result, &request_context) {
+                        context.add("reason", error.message.clone());
+                    }
+                    if let Some(retry) = result? {
                         let mut response = api::error(
                             axum::http::StatusCode::TOO_MANY_REQUESTS,
                             "RATE_LIMITED",
@@ -617,14 +636,11 @@ impl Accounts {
         }
         match self
             .mobile
-            .invoke(
-                "login",
-                &Command {
-                    profile_id: profile.into(),
-                    token: None,
-                    args: account.clone(),
-                },
-            )
+            .reconnect(&Command {
+                profile_id: profile.into(),
+                token: None,
+                args: account.clone(),
+            })
             .await
         {
             Ok(_) => {

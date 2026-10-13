@@ -185,7 +185,7 @@ function registerProfileStatusRoutes(http: HttpRouter): void {
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request);
       await ctx.runMutation(internal.profiles.mutations.setIgStateInternal, {
-        profileId: body.profileId, igLoggedIn: body.igLoggedIn, outreachReady: body.outreachReady,
+        profileId: body.profileId, igLoggedIn: body.igLoggedIn,
       });
       return jsonResponse({ ok: true });
     }),

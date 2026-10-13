@@ -26,8 +26,7 @@ export const saveUnreadChatsInternal = internalMutation({
 export const setIgState = mutation({
   args: {
     profileId: v.id('profiles'),
-    igLoggedIn: v.optional(v.boolean()),
-    outreachReady: v.optional(v.boolean()),
+    igLoggedIn: v.boolean(),
   },
   handler: async (ctx, { profileId, ...state }) => {
     const profile = await ctx.db.get(profileId)
@@ -44,23 +43,13 @@ export const setIgState = mutation({
 export const setIgStateInternal = internalMutation({
   args: {
     profileId: v.id('profiles'),
-    igLoggedIn: v.optional(v.boolean()),
-    outreachReady: v.optional(v.boolean()),
+    igLoggedIn: v.boolean(),
   },
-  handler: async (ctx, { profileId, igLoggedIn, outreachReady }) => {
+  handler: async (ctx, { profileId, igLoggedIn }) => {
     const profile = await ctx.db.get(profileId)
     if (!profile || profile.status === 'deleting')
       throw new DomainError('NOT_FOUND', 'Profile unavailable')
-    if (igLoggedIn === undefined && outreachReady === undefined)
-      throw new DomainError('VALIDATION', 'No IG state provided')
-    const patch = {
-      ...(igLoggedIn !== undefined ? { igLoggedIn } : {}),
-      ...(outreachReady !== undefined ? { outreachReady } : {}),
-    }
-    if (
-      Object.entries(patch).some(([key, value]) => profile[key as keyof typeof profile] !== value)
-    )
-      await patchProfile(ctx, profileId, patch)
+    if (profile.igLoggedIn !== igLoggedIn) await patchProfile(ctx, profileId, { igLoggedIn })
   },
 })
 

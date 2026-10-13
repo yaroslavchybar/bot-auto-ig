@@ -1,6 +1,121 @@
 use super::*;
 
 #[tokio::test]
+async fn paused_profiles_allow_only_manual_reconnect_and_preserve_request_limits() {
+    use crate::test_support::{self, Fixture};
+    use axum::{body::Body, response::IntoResponse, Json};
+    for limited in [true, false] {
+        let flags = Arc::new(Mutex::new(Vec::new()));
+        let observed = flags.clone();
+        let fixture = Fixture::start(move |request| {
+        let flags = observed.clone();
+        async move {
+            match request.uri().path() {
+                "/api/profiles/by-id" => Json(json!({"id":"p","name":"example","paused":true,"proxy":"work.test:8000","igLoggedIn":true})).into_response(),
+                "/api/ig-accounts-store" => {
+                    let body = test_support::body(request).await;
+                    assert_eq!(body["operation"], "byId");
+                    let mut account = serde_json::to_value(encrypt(&[0xaa; 32], &parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap()).unwrap()).unwrap();
+                    account["_id"] = json!("a");
+                    account["status"] = json!(if body["id"] == "new" { "assigned" } else { "connected" });
+                    account["profileId"] = json!("p");
+                    Json(account).into_response()
+                }
+                "/api/mobile/context" => Json(json!({"connected":true,"reconnectRequired":true,"token":"old","state":Service::fixture_session(),"profile":{"proxy":"","proxyType":""}})).into_response(),
+                "/api/mobile-requests/reserve" => {
+                    let body = test_support::body(request).await;
+                    let manual = body["manualReconnect"] == true;
+                    flags.lock().await.push(manual);
+                    Json(json!({"allowed":manual && !limited,"retryAt":api::now_ms()+3_600_000,"reason":if manual {"Hourly mobile request limit reached"} else {"Profile is paused"}})).into_response()
+                }
+                "/api/v1/qe/sync/" if !limited => (axum::http::StatusCode::BAD_REQUEST, Json(json!({"error_type":"device_verification_failed"}))).into_response(),
+                _ => panic!("No Instagram request or background job may run"),
+            }
+        }
+    }).await;
+        let root = tempfile::tempdir().unwrap();
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let api = Arc::new(api);
+        let profiles = Profiles::new(
+            api.clone(),
+            super::super::processes::Processes::new(api.clone(), root.path().into()),
+            root.path().into(),
+        );
+        let mut mobile = Service::fixture(api.clone(), fixture.url.clone());
+        Arc::get_mut(&mut mobile).unwrap().request_budget_enabled = true;
+        let mut accounts = Accounts::new(
+            api.clone(),
+            profiles,
+            mobile.clone(),
+            Content::new(root.path().join("content")),
+            Subscriptions::new(api),
+        );
+        Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
+        let context = ig_service_common::RequestContext(Arc::new(std::sync::Mutex::new(
+            serde_json::Map::new(),
+        )));
+        let request = Request::builder()
+            .method("POST")
+            .extension(context.clone())
+            .body(Body::from(r#"{"credentialId":"a"}"#))
+            .unwrap();
+        let result = accounts
+            .public(
+                "ig-accounts.post.profileId_connect",
+                &HashMap::from([("profileId".into(), "p".into())]),
+                request,
+            )
+            .await;
+        if limited {
+            let response = result.unwrap();
+            assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+            assert!(response.headers().contains_key("retry-after"));
+        } else {
+            let error = result.unwrap_err();
+            assert_eq!(
+                error.message,
+                "Instagram mobile sync HTTP 400: device_verification_failed"
+            );
+            assert_eq!(context.0.lock().unwrap()["reason"], error.message);
+        }
+        assert_eq!(context.0.lock().unwrap()["paused"], true);
+        // Another automatic call uses its own session entry, avoiding the manual login cooldown.
+        let result = mobile
+            .invoke(
+                "login",
+                &Command {
+                    profile_id: "automatic".into(),
+                    token: None,
+                    args: json!({"username":"example","password":"password"}),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(result.message, "Profile is paused");
+        assert_eq!(*flags.lock().await, [true, false]);
+        let request = Request::builder()
+            .method("POST")
+            .body(Body::from(r#"{"credentialId":"new"}"#))
+            .unwrap();
+        let error = accounts
+            .public(
+                "ig-accounts.post.profileId_connect",
+                &HashMap::from([("profileId".into(), "p".into())]),
+                request,
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.message,
+            "Resume the profile before connecting a new credential"
+        );
+        assert_eq!(*flags.lock().await, [true, false]);
+    }
+}
+
+#[tokio::test]
 async fn content_recovery_failure_does_not_block_periodic_account_setup() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};

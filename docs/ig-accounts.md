@@ -32,8 +32,11 @@ success refreshes the row to Connected. Failed attempts show an error and allow
 retry without deleting the previous session. Session version metadata is stored
 in Convex so lists can identify sessions needing login without loading their files.
 Existing TypeScript sessions are imported without another login. Reconnect reuses
-the saved device IDs, model, cookies, and device signing key. Failed login attempts
-leave the saved session intact.
+the saved device IDs, model, and device signing key. A credential login clears
+expired authorization and cookies in memory; failed attempts leave the saved
+session intact. Manual reconnect is available while paused and keeps the profile
+paused. Automatic work stays blocked; hourly request limits and the sleep window
+still apply to manual reconnect.
 Instagram rate limits show a readable message. Login respects `Retry-After`
 without sending another login request during the cooldown; when Instagram sends
 no retry time, the default cooldown is one hour.

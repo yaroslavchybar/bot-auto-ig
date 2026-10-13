@@ -445,7 +445,13 @@ async fn complete_caa_login_follows_attestation_and_totp_flow() {
     let observed = calls.clone();
     let fixture=Fixture::start(move|request|{let public=public.clone();let observed=observed.clone();async move{
         let path=request.uri().path().to_string();
-        if path.ends_with("qe/sync/"){return (StatusCode::METHOD_NOT_ALLOWED,[("ig-set-password-encryption-pub-key",public.as_str()),("ig-set-password-encryption-key-id","7")],Json(json!({}))).into_response();}
+        assert!(!request.headers().contains_key("authorization"), "Credential login must not reuse expired authorization");
+        assert_eq!(request.headers()["x-ig-www-claim"], "0");
+        if path.ends_with("qe/sync/"){
+            assert!(!request.headers().contains_key("cookie"));
+            return (StatusCode::METHOD_NOT_ALLOWED,[("ig-set-password-encryption-pub-key",public.as_str()),("ig-set-password-encryption-key-id","7"),("set-cookie","mid=fresh-mid; Domain=.instagram.com; Path=/; Secure")],Json(json!({}))).into_response();
+        }
+        assert_eq!(request.headers()["cookie"], "mid=fresh-mid");
         let attest=request.headers().get("x-ig-attest-params").map(|v|v.to_str().unwrap().to_string());
         let bytes=axum::body::to_bytes(request.into_body(),1_000_000).await.unwrap();let query=reqwest::Url::parse(&format!("http://local/?{}",String::from_utf8(bytes.to_vec()).unwrap())).unwrap();let fields:HashMap<_,_>=query.query_pairs().into_owned().collect();
         let params:Value=serde_json::from_str(fields.get("params").map(String::as_str).unwrap_or("{}")).unwrap();observed.lock().await.push(path.clone());
@@ -466,7 +472,12 @@ async fn complete_caa_login_follows_attestation_and_totp_flow() {
         Json(json!({"status":"ok"})).into_response()
     }}).await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    mobile.state.authorization.clear();
+    let device = (mobile.state.uuid.clone(), mobile.state.phone_id.clone(), mobile.state.device_id.clone());
+    let (identity, _) = crypto::Usdid::create(&mobile.state.phone_id).unwrap();
+    let identity_before = serde_json::to_value(&identity).unwrap();
+    mobile.state.usdid = Some(identity);
+    mobile.state.claim = "expired-claim".into();
+    mobile.state.set_cookie("sessionid=expired; Domain=.instagram.com; Path=/", &"https://i.instagram.com/".parse().unwrap());
     caa::login(
         &mut mobile,
         "source",
@@ -478,6 +489,8 @@ async fn complete_caa_login_follows_attestation_and_totp_flow() {
     assert_eq!(mobile.state.viewer_id().unwrap(), "9007199254740993");
     assert_eq!(mobile.state.authorization, "Bearer native-session");
     assert_eq!(mobile.state.cookie("sessionid"), "opaque%3Acookie");
+    assert_eq!((mobile.state.uuid.clone(), mobile.state.phone_id.clone(), mobile.state.device_id.clone()), device);
+    assert_eq!(serde_json::to_value(&mobile.state.usdid).unwrap(), identity_before);
     assert_eq!(calls.lock().await.len(), 9);
 }
 fn mobile(base: Option<String>) -> Mobile {

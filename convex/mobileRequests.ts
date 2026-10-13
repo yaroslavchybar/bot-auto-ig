@@ -87,13 +87,18 @@ export async function publishSleep(
 
 /** All mobile dispatches share the hourly/sleep budget. */
 export const reserve = internalMutation({
-  args: { profileId: v.id('profiles'), requestId: v.string() },
-  handler: async (ctx, { profileId, requestId }) => {
+  args: {
+    profileId: v.id('profiles'),
+    requestId: v.string(),
+    manualReconnect: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { profileId, requestId, manualReconnect }) => {
     if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
     const now = Date.now()
     const state = await mobileRequestState(ctx, profileId, now)
     // Resume is controlled by the flag; pausing must not create a one-hour login cooldown.
-    if (state.paused) return { allowed: false, retryAt: now, reason: 'Profile is paused' }
+    if (state.paused && !manualReconnect)
+      return { allowed: false, retryAt: now, reason: 'Profile is paused' }
     if (
       state.usage?.requests.some(
         (request) => request.id === requestId && request.at > now - 3_600_000,
