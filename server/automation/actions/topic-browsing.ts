@@ -16,7 +16,7 @@ import { viewContent } from './viewing.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
 
-export type TopicBrowseState = { feedViewed: boolean; profilesChecked: boolean; seenPosts: Set<string> }
+export type TopicBrowseState = { feedViewed: boolean; profilesChecked: boolean; seenPosts: Set<string>; searchTerms?: readonly string[] }
 export const topicGridUrl = (topic: string) => `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(topic)}`
 // Carousel slides have another Next inside article; the result navigator is outside it.
 export const TOPIC_NEXT_RESULT = 'xpath=.//*[self::button or @role="button"][not(ancestor::article)][@aria-label="Next" or .//*[@aria-label="Next"] or normalize-space(.)="Next"]'
@@ -52,7 +52,8 @@ export async function visitTopicProfiles(page: Page, topic: string, budget: Warm
 
 /** Keyword grid opens a post dialog; its Next control advances the search results. */
 export async function watchTopicPosts(page: Page, topic: string, count: number, budget: WarmupActivityBudget,
-  seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false, matchesTopic: TopicMatcher = topicContentMatches): Promise<void> {
+  seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false, matchesTopic: TopicMatcher = topicContentMatches,
+  topics: readonly string[]): Promise<void> {
   if (count <= 0 || budget.remaining('reels') <= 0) return
   await page.goto(topicGridUrl(topic), { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
   const tiles = page.locator('main a[href*="/p/"], main a[href*="/reel/"]')
@@ -90,14 +91,14 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
       if (!seen.has(path) && !sponsored) {
         seen.add(path)
         const context = await article.evaluate(feedPostContext)
-        const related = context.relationship === 'not-followed' && await matchesTopic(context, [topic], session, log)
-        if (feedPostMatches(context, [topic], related)) {
+        const related = context.relationship === 'not-followed' && topics.length > 0 && await matchesTopic(context, topics, session, log, article)
+        if (feedPostMatches(context, topics, related)) {
           const hasVideo = await article.locator('video').count() > 0
           if (hasVideo && !budget.take('reels')) break
           const viewed = await viewContent(article, (Math.random() > 0.85 ? random(18, 35) : random(6, 16)) * 1000, session)
           if (viewed) { watched++; budget.browsed++ }
           if (viewed && maintenance) {
-            await maintainPost(page, article, context, [topic], budget, session, log, matchesTopic)
+            await maintainPost(page, article, context, topics, budget, session, log, matchesTopic)
           }
         }
       }
@@ -130,7 +131,8 @@ export async function browseTopics(page: Page, end: number, config: Record<strin
   if (!homeFeed && !reels) return stopped() ? 'stopped' : 'finished'
   if (!topics.length && homeFeed)
     return deps.feed(page, Math.max(0, end - deps.now()) / 60_000, config, log, stopped, budget)
-  const topic = topics.length ? topics[Math.floor(deps.random(0, topics.length))]! : ''
+  const searchTerms = state.searchTerms ?? []
+  const topic = topics.length && searchTerms.length ? searchTerms[Math.floor(deps.random(0, searchTerms.length))]! : ''
   const started = deps.now()
   const bounded = async (action: () => Promise<void>) => {
     try { await action() }
@@ -159,7 +161,8 @@ export async function browseTopics(page: Page, end: number, config: Record<strin
     const topicEnd = deps.now() + Math.max(0, end - deps.now()) * 0.7
     if (reels && topic && budget.remaining('reels') > 0 && topicEnd - deps.now() > 5000)
       await bounded(() => deps.topic(page, topic, Math.min(budget.remaining('reels'), Math.ceil(budget.plan.reels * 0.7)),
-        budget, state.seenPosts, new BrowseSession(topicEnd, stopped), log, Number(config.warmup_day ?? 1) >= 8))
+        budget, state.seenPosts, new BrowseSession(topicEnd, stopped), log, Number(config.warmup_day ?? 1) >= 8,
+        topicContentMatches, topics))
     if (reels && end - deps.now() > 10_000 && budget.remaining('reels') > 0 && !stopped()) {
       if (await deps.openReels(page, log, session))
         await deps.reels(page, budget.remaining('reels'), config, log, stopped, end, session, budget)

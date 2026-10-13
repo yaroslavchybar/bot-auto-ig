@@ -19,6 +19,7 @@ function setup(minutes = 40) {
     check: async () => {}, notifications: async () => false, inbox: async () => false, home: async () => {},
     topics: async (_page, end, _config, budget) => { now = end; budget.browsed++; return 'finished' },
     engage: async () => {},
+    searchTerms: async () => ['strength training'],
   }
   const run = (config = {}) => runWarmup('profile', 'automation', config, {} as Page, () => {}, () => false, deps)
   return { deps, calls, recorded, run }
@@ -158,7 +159,7 @@ test('soft warm-up forces passive settings even when saved engagement chances ar
   assert.equal('soft_warmup' in config, false)
   assert.equal('like_chance' in config, false)
   assert.equal('follow_chance' in config, false)
-  assert.equal(config.warmup_topics, 'fitness,gym')
+  assert.equal(config.warmup_topics, 'Fitness, gym, FITNESS,')
 })
 
 test('maintenance enables its shared like budget without restoring a mode toggle', async () => {
@@ -187,19 +188,54 @@ test('only days 2–7 with keywords run the engagement phase, using the shared d
   }
 })
 
+test('week-one engagement generates search terms with both browsing surfaces disabled', async () => {
+  for (const day of [1, 2, 7, 8]) for (const description of ['', 'fitness']) for (const stopped of [false, true]) {
+    const s = setup(10)
+    const terms = ['strength training']
+    let generations = 0, engagements = 0
+    s.deps.begin = async () => ({ date: '2026-09-19', minutes: 10, day,
+      activityPlan: { likes: 4, follows: 2, profiles: 2, reels: 18, stories: 0 } })
+    s.deps.searchTerms = async input => {
+      assert.equal(input, description); generations++
+      return terms
+    }
+    s.deps.engage = async (_page, input, _budget, _session, _request, _log, _deps, _interlude, searchTerms) => {
+      assert.equal(input, description)
+      assert.equal(searchTerms, terms)
+      engagements++
+    }
+    s.deps.feed = async () => { throw new Error('Home feed is disabled') }
+    s.deps.topics = async () => { throw new Error('Both browsing surfaces are disabled') }
+    await runWarmup('profile', 'automation', { warmup_topics: description, watch_stories: false,
+      browse_home_feed: false, scroll_reels: false }, {} as Page, () => {}, () => stopped, s.deps)
+    const expected = !stopped && description && day >= 2 && day <= 7 ? 1 : 0
+    assert.equal(generations, expected)
+    assert.equal(engagements, expected)
+  }
+})
+
 test('topic warm-up uses the same daily budget and state across mixed browsing chunks', async () => {
   const s = setup()
+  let generations = 0
+  const description = 'Fitness training, excluding competitions'
+  s.deps.searchTerms = async input => {
+    assert.equal(input, description); generations++
+    return ['strength training', 'home workouts']
+  }
   const states: unknown[] = [], budgets: unknown[] = []
   s.deps.topics = async (_p, _end, config, budget, state) => {
     assert.equal('soft_warmup' in config, false)
     assert.equal('like_chance' in config, false)
     assert.equal(budget.plan.likes, 6)
+    assert.equal(config.warmup_topics, description)
+    assert.deepEqual(state.searchTerms, ['strength training', 'home workouts'])
     states.push(state); budgets.push(budget)
     return 'finished'
   }
-  await runWarmup('profile', 'automation', { warmup_topics: 'fitness', watch_stories: false }, {} as Page, () => {}, () => false, s.deps,
+  await runWarmup('profile', 'automation', { warmup_topics: description, watch_stories: false }, {} as Page, () => {}, () => false, s.deps,
     async session => { await session.browse(1); await session.browse(1); return 'finished' })
   assert.equal(states.length, 2)
+  assert.equal(generations, 1)
   assert.equal(states[0], states[1])
   assert.equal(budgets[0], budgets[1])
   assert.deepEqual(s.calls, [])

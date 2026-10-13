@@ -21,6 +21,7 @@ test('smooth reel advance stops emitting wheel input as soon as the next reel ap
     Object.defineProperties(node, { duration: { value: 0 }, currentTime: { get: () => (now - start) / 1000 },
       paused: { value: false }, ended: { value: false } })
     const video = { boundingBox: async () => ({ x: 200, y: 0, width: 500, height: 600 }),
+      locator: () => ({}),
       evaluate: async (fn: (el: Element) => unknown) => fn(node as unknown as Element) }
     const page = { url: () => url, viewportSize: () => ({ width: 1280, height: 800 }), evaluate: async () => false,
       mouse: { move: async () => {}, wheel: async (_x: number, delta: number) => {
@@ -46,8 +47,9 @@ for (const followed of [false, true]) test(followed
   const start = now
   Date.now = () => now
   try {
-    window.document.body.innerHTML = `<main><div><div><a href="/author/reels/">author</a>${followed ? '' : '<button>Follow</button>'}</div>
-      <video></video><p>${followed ? 'Cooking dinner' : 'Barbell squats and progressive overload'}</p></div></main>`
+    window.document.body.innerHTML = `<main><section><div id="current-reel"><div><a href="/author/reels/">author</a>${followed ? '' : '<button>Follow</button>'}</div>
+      <video></video><p>${followed ? 'Cooking dinner' : 'Barbell squats and progressive overload'}</p></div>
+      <div><video></video><p>Neighboring reel caption</p></div></section></main>`
     for (const control of window.document.querySelectorAll('button'))
       Object.defineProperty(control, 'getBoundingClientRect', { value: () => ({ width: 50, height: 20 }) })
     const video = window.document.querySelector('video')!
@@ -55,7 +57,12 @@ for (const followed of [false, true]) test(followed
       duration: { value: 0 }, currentTime: { get: () => (now - start) / 1000 },
       paused: { value: false }, ended: { value: false },
     })
+    const post = { evaluate: async (read: (element: Element) => unknown) => read(video.parentElement!) }
     const target = {
+      locator: (selector: string) => {
+        assert.equal(selector, 'xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+        return post
+      },
       boundingBox: async () => ({ x: 200, y: 0, width: 500, height: 600 }),
       evaluate: async (fn: (element: Element) => unknown) => fn(video as unknown as Element),
     }
@@ -73,8 +80,14 @@ for (const followed of [false, true]) test(followed
     const budget = new WarmupActivityBudget({ likes: 6, profiles: 2, reels: 1, stories: 0 })
     let decisions = 0
     await watchReels(page, 1, { soft_warmup: false, warmup_topics: 'fitness', like_chance: 100, reels_skip_chance: followed ? 100 : 0 },
-      () => {}, () => false, session.end, session, budget, async context => {
+      () => {}, () => false, session.end, session, budget, async (context, _topics, _session, _log, screenshotTarget) => {
         decisions++
+        assert.equal(screenshotTarget, post, 'topic screenshot must include the reel frame and its caption')
+        await post.evaluate(node => {
+          assert.equal(node.querySelectorAll('video').length, 1)
+          assert.match(node.textContent ?? '', /Barbell squats/)
+          assert.doesNotMatch(node.textContent ?? '', /Neighboring reel caption/)
+        })
         assert.match(context.text, /Barbell squats/)
         return true
       })

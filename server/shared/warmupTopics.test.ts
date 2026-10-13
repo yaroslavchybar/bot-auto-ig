@@ -3,9 +3,12 @@ import assert from 'node:assert/strict'
 import { Window } from 'happy-dom'
 import { warmupTopics, reelPostContext, feedPostContext, feedPostMatches, maintenancePostMatches } from './warmupTopics.js'
 
-test('topics normalize and deduplicate comma-separated input', () => {
-  const topics = warmupTopics(' Fitness, strength training, FITNESS, ')
-  assert.deepEqual(topics, ['fitness', 'strength training'])
+test('topic descriptions preserve intent, case, commas and exclusions', () => {
+  const description = 'Strength training, mobility, but no bodybuilding competitions'
+  assert.deepEqual(warmupTopics(` ${description} `), [description])
+  assert.deepEqual(warmupTopics('   '), [])
+  assert.deepEqual(warmupTopics(null), [])
+  assert.equal(warmupTopics('x'.repeat(1001))[0].length, 1000)
 })
 
 test('maintenance engagement requires a followed author or topic evidence, including with blank keywords', () => {

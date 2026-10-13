@@ -76,7 +76,10 @@ test('feed skips avoid topic requests and both reel paths receive the supplied m
       viewContent: async () => { now += 31_000; return true },
       postChoices: () => ({ carousel: false }), detourDelay: () => 0
     })
-    const matcher = async () => { decisions++; if (mode === 'match') stopped = true; return true }
+    const matcher = async (_context, _topics, _session, _log, target) => {
+      assert.equal(target, post, 'topic screenshot must use the current feed article')
+      decisions++; if (mode === 'match') stopped = true; return true
+    }
     await replace('./server/automation/actions/reels.ts', {
       openReels: async () => true,
       watchReels: async (...args) => { assert.equal(args[8], matcher); reels++; stopped = true }

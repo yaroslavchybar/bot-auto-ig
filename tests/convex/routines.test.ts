@@ -7,6 +7,11 @@ import type { Id, Doc } from '../../convex/_generated/dataModel';
 import type { MutationCtx } from '../../convex/_generated/server';
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+test('routine settings accept plain-English topic descriptions up to 1,000 characters', () => {
+  expect(() => validateRoutine({ ...defaultRoutine, activity: { warmup_topics: 'x'.repeat(1000) } })).not.toThrow();
+  expect(() => validateRoutine({ ...defaultRoutine, activity: { warmup_topics: 'x'.repeat(1001) } })).toThrow('Invalid activity setting');
+});
+
 test('outreach waits until day eight even when an old saved setting enables day one', async () => {
   const { t, automation, args, loggedIn } = await setup();
   await loggedIn();

@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
@@ -358,12 +359,13 @@ export function RoutinePopup({
                     checked={flag('scroll_reels')}
                     onChange={(checked) => setActivity({ scroll_reels: checked })}
                   />
-                  <Field id="warmup-topics" label="Topic keywords">
-                    <Input
+                  <Field id="warmup-topics" label="Topic description" wide>
+                    <Textarea
                       id="warmup-topics"
                       value={String(policy.activity.warmup_topics ?? '')}
-                      maxLength={300}
-                      placeholder="fitness, gym, workout"
+                      maxLength={1000}
+                      rows={3}
+                      placeholder="People sharing gym workouts and strength training tips"
                       onChange={(event) => setActivity({ warmup_topics: event.target.value })}
                     />
                   </Field>

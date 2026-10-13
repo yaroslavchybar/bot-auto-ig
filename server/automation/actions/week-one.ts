@@ -18,10 +18,10 @@ const dependencies = { beginFollow: warmupBeginFollow, confirmFollow: warmupConf
 /** Week-one engagement visits topic search accounts; missing topic evidence always blocks engagement. */
 export async function engageWeekOne(page: Page, keywords: string, budget: WarmupActivityBudget,
   session: BrowseSession, request: Omit<WarmupFollowRequest, 'username'>, log: ActionLogger, deps: Omit<typeof dependencies, 'topic'> & { topic?: TopicMatcher } = dependencies,
-  interlude?: () => Promise<boolean>): Promise<void> {
+  interlude?: () => Promise<boolean>, searchTerms: readonly string[] = []): Promise<void> {
   const topics = warmupTopics(keywords)
   const matchesTopic = deps.topic ?? topicContentMatches
-  if (!topics.length || !budget.remaining('profiles') || (!budget.remaining('likes') && !budget.remaining('follows'))) return
+  if (!topics.length || !searchTerms.length || !budget.remaining('profiles') || (!budget.remaining('likes') && !budget.remaining('follows'))) return
   session.check()
   const own = (await deps.ownUsername(page)).toLowerCase()
   const search = page.locator('a:has(svg[aria-label="Search"])').filter({ visible: true }).first()
@@ -29,7 +29,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
   await (await actionLocator(search, session.timeout(5000))).click({ timeout: session.timeout(5000) })
   const input = page.getByRole('textbox', { name: 'Search input', exact: true })
   await input.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
-  await (await actionLocator(input, session.timeout(5000))).fill(topics[Math.floor(Math.random() * topics.length)], { timeout: session.timeout(5000) })
+  await (await actionLocator(input, session.timeout(5000))).fill(searchTerms[Math.floor(Math.random() * searchTerms.length)], { timeout: session.timeout(5000) })
   await session.wait(random(2500, 4000))
   await assertInstagramReady(page)
   const hrefs = await page.locator('main a[href]').evaluateAll(links => [...new Set(links
@@ -47,7 +47,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
     await header.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
     await allowed()
     const text = await header.innerText()
-    if (!await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log)) {
+    if (!await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, page.locator('main'))) {
       log({ event: 'automation.warmup.account_off_topic', targetUsername: href.split('/')[1] })
       continue
     }
@@ -57,7 +57,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
         session.check()
         const post = page.getByRole('dialog').getByRole('article')
         const text = await post.innerText()
-        return await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log) && budget.take('likes')
+        return await matchesTopic({ text, relationship: 'not-followed' }, topics, session, log, post) && budget.take('likes')
       })
       if (liked) log({ event: 'automation.warmup.topic_like', targetUsername: href.split('/')[1] })
     }

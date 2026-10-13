@@ -15,7 +15,7 @@ const control = (target: Locator, label: string) => target.locator(
 export async function maintainPost(page: Page, target: Locator,
   context: Pick<FeedPostContext, 'text' | 'relationship'>, topics: readonly string[], budget: WarmupActivityBudget,
   session: BrowseSession, log: ActionLogger, matchesTopic: TopicMatcher = topicContentMatches): Promise<void> {
-  const related = context.relationship !== 'followed' && topics.length > 0 && await matchesTopic(context, topics, session, log)
+  const related = context.relationship !== 'followed' && topics.length > 0 && await matchesTopic(context, topics, session, log, target)
   if (!maintenancePostMatches(context, topics, related)) return
   if (budget.remaining('likes') && chance(25) && !await target.locator('svg[aria-label="Unlike"]').count()) {
     const like = control(target, 'Like')

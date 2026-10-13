@@ -291,7 +291,9 @@ async function browseFeedSession(
       continue
     }
 
-    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log)
+    // Settle content into view before the screenshot decision or any interaction.
+    await alignPostOnScreen(page, target, session)
+    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log, target)
     if (!feedPostMatches(context, topics, related)) {
       if (targetId) seen.add(targetId)
       log({ event: 'automation.warmup.feed_post_off_topic', message: 'Skipped a recommended post outside the selected topics' })
@@ -299,8 +301,6 @@ async function browseFeedSession(
       continue
     }
 
-    // Settle the post fully into view before reading or touching it.
-    await alignPostOnScreen(page, target, session)
     if (targetId) seen.add(targetId)
 
     // Quiet viewing, with longer waits for video content.

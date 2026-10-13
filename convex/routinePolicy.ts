@@ -92,7 +92,7 @@ export function validateRoutine(p: RoutinePolicy) {
       throw new Error(`${name} must be ${minimum}–${limit}, with min no greater than max`);
   }
   for (const [key, value] of Object.entries(p.activity)) {
-    if (typeof value === 'string' && (key !== 'warmup_topics' || value.length > 300))
+    if (typeof value === 'string' && (key !== 'warmup_topics' || value.length > 1000))
       throw new Error(`Invalid activity setting: ${key}`);
     if (
       typeof value === "number" &&

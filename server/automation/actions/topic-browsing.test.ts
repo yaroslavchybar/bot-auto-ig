@@ -14,7 +14,7 @@ for (const keywords of ['', 'fitness']) {
       let now = Date.now()
       const end = now + 600_000, calls: string[] = []
       const budget = new WarmupActivityBudget({ likes: 0, profiles: 3, reels: 20, stories: 2 })
-      const state: TopicBrowseState = { feedViewed: false, profilesChecked: true, seenPosts: new Set() }
+      const state: TopicBrowseState = { feedViewed: false, profilesChecked: true, seenPosts: new Set(), searchTerms: ['strength training'] }
       const config = { browse_home_feed: homeFeed, scroll_reels: reels, warmup_topics: keywords }
       const deps: NonNullable<Parameters<typeof browseTopics>[7]> = {
         now: () => now, random: min => min,
@@ -40,7 +40,7 @@ for (const keywords of ['', 'fitness']) {
 
 test('reels-only does not fall back to the home feed after the daily reel cap', async () => {
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 0, stories: 0 })
-  const state = { feedViewed: false, profilesChecked: false, seenPosts: new Set<string>() }
+  const state = { feedViewed: false, profilesChecked: false, seenPosts: new Set<string>(), searchTerms: ['strength training'] }
   const deps = { now: Date.now, random: (min: number) => min,
     feed: async () => { throw new Error('Disabled feed') },
     topic: async () => { throw new Error('Reel quota exhausted') },
@@ -57,7 +57,7 @@ test('topic browsing keeps the feed glance brief and continues into normal reels
   try {
     const start = now, end = now + 600_000, calls: string[] = []
     const budget = new WarmupActivityBudget({ likes: 0, profiles: 3, reels: 20, stories: 2 })
-    const state: TopicBrowseState = { feedViewed: false, profilesChecked: false, seenPosts: new Set() }
+    const state: TopicBrowseState = { feedViewed: false, profilesChecked: false, seenPosts: new Set(), searchTerms: ['strength training'] }
     const config = { warmup_topics: 'strength training, gym' }
     const deps: NonNullable<Parameters<typeof browseTopics>[7]> = {
       now: () => now, random: min => min,
@@ -73,8 +73,9 @@ test('topic browsing keeps the feed glance brief and continues into normal reels
         assert.equal(topic, 'strength training'); calls.push('profiles')
         now = session.end; throw new SessionEnded()
       },
-      topic: async (_p, topic, _c, _b, seen, session) => {
+      topic: async (_p, topic, _c, _b, seen, session, _log, _maintenance, _matcher, intent) => {
         assert.equal(topic, 'strength training'); assert.equal(seen, state.seenPosts)
+        assert.deepEqual(intent, ['strength training, gym'])
         calls.push('topic'); now = session.end; throw new SessionEnded()
       },
       openReels: async () => { calls.push('open-reels'); return true },
@@ -90,9 +91,28 @@ test('topic browsing keeps the feed glance brief and continues into normal reels
   } finally { Date.now = originalNow }
 })
 
+test('unavailable generated searches continue enabled browsing without searching the raw description', async () => {
+  const calls: string[] = []
+  const deps = { now: Date.now, random: (min: number) => min,
+    profiles: async () => { throw new Error('Must not search without generated phrases') },
+    topic: async () => { throw new Error('Must not search without generated phrases') },
+    openReels: async () => { calls.push('open-reels'); return true },
+    reels: async (_p: Page, _count: number, config: Record<string, unknown>) => {
+      assert.equal(config.warmup_topics, 'Fitness, excluding competitions'); calls.push('reels')
+    },
+    feed: async () => { calls.push('feed'); return 'finished' },
+  } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
+  assert.equal(await browseTopics({} as Page, Date.now() + 120_000,
+    { warmup_topics: 'Fitness, excluding competitions' },
+    new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 0 }),
+    { feedViewed: true, profilesChecked: false, seenPosts: new Set(), searchTerms: [] },
+    () => {}, () => false, deps), 'finished')
+  assert.deepEqual(calls, ['open-reels', 'reels', 'feed'])
+})
+
 test('Instagram warnings are propagated instead of treated as the end of a topic phase', async () => {
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 3, reels: 20, stories: 2 })
-  const state = { feedViewed: true, profilesChecked: true, seenPosts: new Set<string>() }
+  const state = { feedViewed: true, profilesChecked: true, seenPosts: new Set<string>(), searchTerms: ['strength training'] }
   const deps = { now: Date.now, random: (min: number) => min,
     topic: async () => { throw new Error('Instagram limit needs attention') } } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
   await assert.rejects(browseTopics({} as Page, Date.now() + 60_000, { warmup_topics: 'fitness' },
@@ -112,7 +132,7 @@ for (const failure of [new errors.TimeoutError('Click timed out while moving to 
     } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
     const result = await browseTopics(page, Date.now() + 60_000, { warmup_topics: 'fitness' },
       new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 20, stories: 0 }),
-      { feedViewed: true, profilesChecked: true, seenPosts: new Set() },
+      { feedViewed: true, profilesChecked: true, seenPosts: new Set(), searchTerms: ['strength training'] },
       event => { assert.equal(event.outcome, 'skipped'); calls.push('skipped') }, () => false, deps)
     assert.equal(result, 'finished')
     assert.deepEqual(calls, ['skipped', 'open-reels', 'reels', 'feed'])
@@ -126,7 +146,7 @@ test('Explore timeout recovery still stops on an Instagram checkpoint', async ()
   } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
   await assert.rejects(browseTopics(page, Date.now() + 60_000, { warmup_topics: 'fitness' },
     new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 20, stories: 0 }),
-    { feedViewed: true, profilesChecked: true, seenPosts: new Set() }, () => {}, () => false, deps), /checkpoint needs attention/)
+    { feedViewed: true, profilesChecked: true, seenPosts: new Set(), searchTerms: ['strength training'] }, () => {}, () => false, deps), /checkpoint needs attention/)
 })
 
 test('a stop during an Explore failure prevents fallback browsing', async () => {
@@ -137,7 +157,7 @@ test('a stop during an Explore failure prevents fallback browsing', async () => 
   } as unknown as NonNullable<Parameters<typeof browseTopics>[7]>
   assert.equal(await browseTopics({} as Page, Date.now() + 60_000, { warmup_topics: 'fitness' },
     new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 20, stories: 0 }),
-    { feedViewed: true, profilesChecked: true, seenPosts: new Set() }, () => {}, () => stopped, deps), 'stopped')
+    { feedViewed: true, profilesChecked: true, seenPosts: new Set(), searchTerms: ['strength training'] }, () => {}, () => stopped, deps), 'stopped')
 })
 
 test('topic results use the outer Next control and never carousel or engagement buttons', async () => {
@@ -180,7 +200,10 @@ test('topic results use the outer Next control and never carousel or engagement 
   Date.now = () => now
   try {
     await watchTopicPosts(page, 'fitness', 2, new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 2 }),
-      seen, session, () => {}, false, async () => true)
+      seen, session, () => {}, false, async (_context, topics) => {
+        assert.deepEqual(topics, ['Fitness training, excluding competitions'])
+        return true
+      }, ['Fitness training, excluding competitions'])
   } finally { Date.now = originalNow }
   assert.equal(nextClicks, 1)
   assert.deepEqual([...seen], ['/p/one/', '/p/two/'])
@@ -224,7 +247,7 @@ test('completed playback is recorded before optional comment reading expires', a
   session.wait = async ms => { now = Math.min(session.end, now + ms); session.check() }
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0, comments: 1 })
   try {
-    await assert.rejects(watchTopicPosts(page, 'fitness', 1, budget, new Set(), session, () => {}, true, async () => true), SessionEnded)
+    await assert.rejects(watchTopicPosts(page, 'fitness', 1, budget, new Set(), session, () => {}, true, async () => true, ['fitness']), SessionEnded)
     assert.equal(budget.browsed, 1)
     assert.equal(budget.used.reels, 1)
     assert.equal(budget.used.comments, 1)

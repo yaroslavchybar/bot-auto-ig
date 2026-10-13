@@ -1,6 +1,6 @@
 export function warmupTopics(value: unknown): string[] {
-  return typeof value === 'string' ? [...new Set(value.slice(0, 300).split(',')
-    .map(topic => topic.trim().toLowerCase()).filter(Boolean))] : []
+  const description = typeof value === 'string' ? value.slice(0, 1000).trim() : ''
+  return description ? [description] : []
 }
 
 /** Stop before neighboring reels or the page root; never match sidebar/background text. */

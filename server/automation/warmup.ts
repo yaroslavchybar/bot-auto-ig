@@ -13,6 +13,7 @@ import { warmupTopics } from '../shared/warmupTopics.js'
 import { browseTopics, type TopicBrowseState } from './actions/topic-browsing.js'
 import { engageWeekOne } from './actions/week-one.js'
 import { browseUntilEnd } from './routine-schedule.js'
+import { topicSearchTerms } from './actions/topic-search.js'
 
 const defaults = {
   warmup_min_minutes: 10, warmup_max_minutes: 20,
@@ -30,7 +31,7 @@ export type WarmupConfig = typeof defaults & {
 
 export function warmupConfig(input: Record<string, unknown>): WarmupConfig {
   const config = { ...defaults,
-    warmup_topics: warmupTopics(input.warmup_topics).join(','),
+    warmup_topics: warmupTopics(input.warmup_topics)[0] ?? '',
     browse_home_feed: input.browse_home_feed !== false,
     scroll_reels: input.scroll_reels !== false,
     watch_stories: input.watch_stories !== false }
@@ -55,7 +56,7 @@ export function warmupReady(state: Pick<DbWarmupState, 'date' | 'nextRunAt' | 'r
 }
 
 const dependencies = { begin: warmupBeginRun, finish: warmupFinishRun, feed: browseFeed, stories: watchStories,
-  check: assertInstagramReady, notifications: checkNotifications, inbox: openDMs, home: backToFeed, topics: browseTopics, engage: engageWeekOne, now: Date.now, sleep }
+  check: assertInstagramReady, notifications: checkNotifications, inbox: openDMs, home: backToFeed, topics: browseTopics, engage: engageWeekOne, searchTerms: topicSearchTerms, now: Date.now, sleep }
 export type WarmupResult = { minutes: number; reason: 'finished' | 'stopped' | 'stalled' | 'skipped' }
 export type SessionActivity = (session: {
   deadline: number; remainingMinutes: number;
@@ -127,6 +128,8 @@ export async function runWarmup(
       if (!stopped()) await deps.inbox(page, log, session)
       if (!stopped()) await deps.home(page, log, session)
       if (!stopped()) await deps.check(page)
+      if (!stopped() && config.warmup_topics && (engage || config.browse_home_feed || config.scroll_reels))
+        topicState.searchTerms = await deps.searchTerms(config.warmup_topics, session, log)
       if (!stopped() && engage && (budget.remaining('likes') || budget.remaining('follows'))) {
         const engagementSession = new BrowseSession(Math.min(deadline, deps.now() + plan.minutes * 60_000 * 0.4), stopped)
         try {
@@ -135,7 +138,7 @@ export async function runWarmup(
               const before = budget.browsed
               const result = await browse(Math.min(engagementSession.end, deps.now() + random(15_000, 30_000)), () => engagementSession.stopped())
               return result === 'finished' && budget.browsed > before
-            })
+            }, topicState.searchTerms)
         } catch (error) {
           if (!(error instanceof SessionEnded) || stopped()) throw error
         }

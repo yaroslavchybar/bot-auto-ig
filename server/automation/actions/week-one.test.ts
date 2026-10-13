@@ -10,7 +10,8 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   let url = 'https://www.instagram.com/', followed = false
   const calls: string[] = []
   const control = { filter() { return this }, first() { return this }, isVisible: async () => true,
-    waitFor: async () => {}, ...visibleActionGeometry, hover: async () => {}, click: async () => {}, fill: async () => {}, dispose: async () => {},
+    waitFor: async () => {}, ...visibleActionGeometry, hover: async () => {}, click: async () => {},
+    fill: async (query: string) => { assert.equal(query, 'strength training') }, dispose: async () => {},
     elementHandle: async function() { return this } }
   const page = {
     url: () => url,
@@ -30,7 +31,10 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   const deps: NonNullable<Parameters<typeof engageWeekOne>[6]> = {
     follow: async (_page, allowed, click, confirmed) => { if (!await allowed()) return false; await click(); await confirmed(); return true },
     pauseFollows: async () => {},
-    topic: async context => context.text.toLowerCase().includes('fitness'),
+    topic: async (context, topics) => {
+      assert.deepEqual(topics, ['fitness'])
+      return context.text.toLowerCase().includes('fitness')
+    },
     ownUsername: async () => 'self',
     beginFollow: async () => { calls.push('authorize'); return authorize },
     confirmFollow: async () => { calls.push('confirm-follow') },
@@ -44,7 +48,7 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
   const session = new BrowseSession(Date.now() + 60_000)
   session.wait = async () => { session.check() }
   const run = (topics = 'fitness', interlude?: () => Promise<boolean>) => engageWeekOne(page, topics, budget, session,
-    { profileId: 'profile', runId: 'run', date: '2026-10-12' }, () => {}, deps, interlude)
+    { profileId: 'profile', runId: 'run', date: '2026-10-12' }, () => {}, deps, interlude, ['strength training'])
   return { calls, budget, run }
 }
 

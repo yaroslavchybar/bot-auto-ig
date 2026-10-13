@@ -222,7 +222,9 @@ export async function watchReels(
       await sleep(random(1200, 2200))
       continue
     }
-    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log)
+    // Include caption siblings while stopping before containers with neighboring reels.
+    const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
+    const related = !preserveFollowed && topics.length > 0 && await matchesTopic(context, topics, session, log, post)
     if (!feedPostMatches(context, topics, related)) {
       log({ event: 'automation.warmup.reel_off_topic', message: 'Skipped a reel outside the selected topics' })
       await sleep(random(300, 800))
@@ -248,7 +250,6 @@ export async function watchReels(
     const viewed = await viewVideo(video, dwell, session)
     if (viewed && budget) budget.browsed++
     if (viewed && numeric(config.warmup_day, 1) >= 8 && budget) {
-      const post = video.locator('xpath=ancestor::*[ancestor::main][count(.//video)=1][last()]')
       await maintainPost(page, post, context, topics, budget, session, log, matchesTopic)
     }
     await assertInstagramReady(page)

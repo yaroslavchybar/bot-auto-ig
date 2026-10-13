@@ -79,14 +79,23 @@ Required production secrets:
 - `OPENROUTER_API_KEY`: already used by the scraper; GPT-6 Luna generates
   usernames after imported examples and subtle full-name variations.
 
+Warm-up accepts a plain-English topic description (up to 1,000 characters).
+Normal `openai/gpt-6-luna` generates short Instagram search phrases for Explore
+and week-one account searches. The worker shares in-flight generation and caches
+phrases per description for 24 hours; restart or an edited description regenerates them.
+Generation failures skip topic searches for a minute while enabled Feed/Reels
+browsing continues. Blank descriptions use normal browsing without generation.
+Screenshot relevance checks always use the original description, preserving exclusions,
+rather than the generated search phrase.
+
 Warm-up topic filtering uses `openai/gpt-6-luna-decisions` through the same
-OpenRouter key. It judges captions, hashtags, and visible post/profile text by
-meaning, not exact keyword overlap; no images or video frames are sent. A topic
+OpenRouter key and the same JPEG image format as lead screening. It judges the
+visible post, current reel frame, or profile screenshot, including any text visible in the image. A topic
 decision must reach 70% confidence. Followed accounts remain included. Unknown
 author layouts remain viewable, but likes and saves require a confirmed followed
-author or a positive topic decision. Empty text or failed decisions cannot
-qualify an unfollowed account for engagement. Each decision has a four-second limit and is reused when
-the same post is viewed and engaged with.
+author or a positive topic decision. Caption-free images can qualify; missing screenshots or failed decisions cannot
+qualify an unfollowed account for engagement. Capture and classification share a twelve-second limit and the result is reused when
+the same post is viewed and engaged with. Screenshots stay in memory and are not saved or logged.
 
 Create one automation per model and enable it after profiles are browser logged in.
 The automation starts model setup from the browser login date; browsing starts

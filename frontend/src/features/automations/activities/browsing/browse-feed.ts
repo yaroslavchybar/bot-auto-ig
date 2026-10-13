@@ -20,9 +20,9 @@ export const browseFeed: ActivityDefinition = {
   inputs: [
     { name: 'browse_home_feed', type: 'boolean', label: 'Home feed', default: true, group: 'Browsing' },
     { name: 'scroll_reels', type: 'boolean', label: 'Reels scroll', default: true, group: 'Browsing' },
-    { name: 'warmup_topics', type: 'string', label: 'Topic keywords', default: '',
-      placeholder: 'fitness, gym, workout', group: 'Browsing',
-      helpText: 'Separate related keywords with commas. Blank uses normal browsing.' },
+    { name: 'warmup_topics', type: 'string', label: 'Topic description', default: '',
+      placeholder: 'People sharing gym workouts and strength training tips', group: 'Browsing',
+      helpText: 'Describe your interests in plain English. Luna generates search phrases. Blank uses normal browsing.' },
     // Warm-up plan: minutes assigned at random from this range each day
     {
       name: 'warmup_min_minutes',
