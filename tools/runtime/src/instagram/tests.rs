@@ -472,12 +472,19 @@ async fn complete_caa_login_follows_attestation_and_totp_flow() {
         Json(json!({"status":"ok"})).into_response()
     }}).await;
     let mut mobile = mobile(Some(fixture.url.clone()));
-    let device = (mobile.state.uuid.clone(), mobile.state.phone_id.clone(), mobile.state.device_id.clone());
+    let device = (
+        mobile.state.uuid.clone(),
+        mobile.state.phone_id.clone(),
+        mobile.state.device_id.clone(),
+    );
     let (identity, _) = crypto::Usdid::create(&mobile.state.phone_id).unwrap();
     let identity_before = serde_json::to_value(&identity).unwrap();
     mobile.state.usdid = Some(identity);
     mobile.state.claim = "expired-claim".into();
-    mobile.state.set_cookie("sessionid=expired; Domain=.instagram.com; Path=/", &"https://i.instagram.com/".parse().unwrap());
+    mobile.state.set_cookie(
+        "sessionid=expired; Domain=.instagram.com; Path=/",
+        &"https://i.instagram.com/".parse().unwrap(),
+    );
     caa::login(
         &mut mobile,
         "source",
@@ -489,8 +496,18 @@ async fn complete_caa_login_follows_attestation_and_totp_flow() {
     assert_eq!(mobile.state.viewer_id().unwrap(), "9007199254740993");
     assert_eq!(mobile.state.authorization, "Bearer native-session");
     assert_eq!(mobile.state.cookie("sessionid"), "opaque%3Acookie");
-    assert_eq!((mobile.state.uuid.clone(), mobile.state.phone_id.clone(), mobile.state.device_id.clone()), device);
-    assert_eq!(serde_json::to_value(&mobile.state.usdid).unwrap(), identity_before);
+    assert_eq!(
+        (
+            mobile.state.uuid.clone(),
+            mobile.state.phone_id.clone(),
+            mobile.state.device_id.clone()
+        ),
+        device
+    );
+    assert_eq!(
+        serde_json::to_value(&mobile.state.usdid).unwrap(),
+        identity_before
+    );
     assert_eq!(calls.lock().await.len(), 9);
 }
 fn mobile(base: Option<String>) -> Mobile {
