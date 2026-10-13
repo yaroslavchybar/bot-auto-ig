@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNow } from '@/hooks/use-now'
-import { Check, CircleAlert, Copy, Eye, EyeOff, LogOut, Pause, RefreshCw } from 'lucide-react'
+import { Check, CircleAlert, Copy, Eye, EyeOff, Pause, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,6 @@ type Credential = {
   error?: string
   createdAt: number
   browserLoggedInAt?: number
-  reconnectRequired?: boolean
 }
 
 type WarmupProgress = {
@@ -167,7 +166,6 @@ function WarmupStages({
   }
 
   const day = dayNumber(progress.startedAt, now)
-  const connected = credential.status === 'connected' && !credential.reconnectRequired
   const posts = progress.postSourceIds.length
   const postTarget = progress.postTarget ?? 9
   const fullNameSkipped = !progress.fullNameDone && (progress.avatarDone || posts > 0)
@@ -191,13 +189,9 @@ function WarmupStages({
       state: day >= 3 ? 'done' : credential.browserLoggedInAt ? 'current' : 'waiting',
     },
     {
-      label: 'Mobile login (day 3)',
-      state: connected ? 'done' : day >= 3 ? 'current' : 'waiting',
-    },
-    {
       label: 'Username change',
       detail: progress.targetUsername ? `@${progress.targetUsername}` : undefined,
-      state: progress.nameDone ? 'done' : connected && !progress.pending ? 'current' : 'waiting',
+      state: progress.nameDone ? 'done' : day >= 3 && !progress.pending ? 'current' : 'waiting',
     },
     {
       label: 'Full name',
@@ -306,8 +300,6 @@ function WarmupStages({
 type AccountDetailsDialogProps = {
   account: Account | null
   onClose: () => void
-  onLoggedOut?: (accountId: string) => void
-  sessionBusy?: boolean
 }
 
 export function AccountDetailsDialog(props: AccountDetailsDialogProps) {
@@ -315,35 +307,11 @@ export function AccountDetailsDialog(props: AccountDetailsDialogProps) {
   return <AccountDetailsContent key={key} {...props} />
 }
 
-function AccountDetailsContent({
-  account,
-  onClose,
-  onLoggedOut,
-  sessionBusy,
-}: AccountDetailsDialogProps) {
+function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) {
   const [credential, setCredential] = useState<Credential | null>(null)
   const [progress, setProgress] = useState<WarmupProgress | null | undefined>(undefined)
   const [error, setError] = useState('')
   const [warmupError, setWarmupError] = useState('')
-  const [loggingOut, setLoggingOut] = useState(false)
-  const [sessionError, setSessionError] = useState('')
-
-  async function logout() {
-    if (!account?.profileId || loggingOut || sessionBusy) return
-    setLoggingOut(true)
-    setSessionError('')
-    try {
-      await apiFetch(`/api/ig-accounts/${encodeURIComponent(account.id)}/logout`, {
-        method: 'POST',
-      })
-      onLoggedOut?.(account.id)
-    } catch (error) {
-      setSessionError(error instanceof Error ? error.message : 'Logout failed')
-    } finally {
-      setLoggingOut(false)
-    }
-  }
-
   useEffect(() => {
     if (!account) return
     const controller = new AbortController()
@@ -389,27 +357,9 @@ function AccountDetailsContent({
               {account?.username ? `@${account.username}` : 'Credential'}
             </span>
             {account && <StatusBadge account={account} />}
-            {account?.profileId && account.status === 'connected' && !account.reconnectRequired && (
-              <Button
-                type="button"
-                variant="outline"
-                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-                disabled={loggingOut || sessionBusy}
-                aria-busy={loggingOut}
-                onClick={() => void logout()}
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                {loggingOut ? 'Logging out...' : 'Logout'}
-              </Button>
-            )}
           </DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {sessionError && (
-            <p role="alert" className="mb-3 text-sm text-status-danger">
-              {sessionError}
-            </p>
-          )}
           {error ? (
             <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
               {error}

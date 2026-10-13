@@ -1,6 +1,6 @@
 # Daily IG routines
 
-Create one automation per model. Select browsing surfaces, daily time, and session/rest ranges, then optionally enable Outreach. Outreach starts on warm-up day 8 once the account has at least three posts and its mobile login is connected. Posting continues daily to the configured target without blocking outreach.
+Create one automation per model. Select browsing surfaces, daily time, and session/rest ranges, then optionally enable Outreach. Outreach starts on warm-up day 8 once the account has at least three posts and its browser is logged in. Posting continues daily to the configured target without blocking outreach.
 
 Profile outreach readiness is automatic; it has no manual toggle. Setup confirms the three-post requirement, and the routine unlocks lead follows and DMs on day 8 when the automation's Outreach setting is enabled. The profile's Logged in toggle remains available.
 

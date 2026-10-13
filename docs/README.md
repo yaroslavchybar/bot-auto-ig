@@ -2,7 +2,7 @@
 
 Account onboarding, model content, and warmup: [ig-accounts.md](ig-accounts.md).
 
-Profile unread chat counts come from Instagram’s browser badge at session close. Mobile login storage remains shared by scraping and setup.
+Profile unread chat counts come from Instagram’s browser badge at session close. Scraping and monitoring use saved browser cookies; account post discovery uses Apify.
 
 Browser caching, memory changes, and measurements: [frontend-performance.md](frontend-performance.md).
 Profiles, proxies, and account lists use 50-row pages with server-side search.
@@ -27,7 +27,7 @@ Bun browser workers, CloakBrowser stealth Chromium automation, and Convex shared
   `vnc`, `auth`); shared
   `components/ui|layout|shared`, `hooks/`, `lib/`. Browser reads/writes Convex
   directly (no per-user identity); Axum handles the public API.
-- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, custom Instagram mobile client, and scraper HTTP/batching/enrichment.
+- `tools/runtime/`: Rust/Axum public REST (`/api/profiles|automations|displays|lead-lists|ig-accounts|health`), Telegram authentication, public WebSocket (`/ws`), VNC gateway, browser-cookie Instagram scraper HTTP/batching, Apify post discovery, and browser screening.
   `src/native/` owns model content and assignments,
   worker supervision, browser slots, display lifecycles, native X11/JPEG previews,
   routine scheduling, profile locks and folder maintenance, account services, login/model
@@ -234,12 +234,9 @@ leave frontend and Convex watchers running.
 Routine browser workers exit after draining their ready profiles. Rust watches
 Convex readiness, calculates wakeup deadlines, and launches the next Bun worker.
 Concurrency is capped by `AUTOMATION_MAX_CONCURRENCY` (default 3).
-The custom Rust mobile client keeps at most 32 profile transport entries and
-serializes operations per profile. Four mobile HTTP commands may run at once.
-Sessions are persisted in Convex; existing SDK sessions are imported with the
-same login and device, without reconnecting. Browser cookies and mobile sessions remain separate.
-Attachments stream to temporary files managed by Rust (four simultaneous uploads,
-32 pending files, 15-minute expiry), then stream through the account's proxy.
+Account setup uses the active browser for username, full name, avatar, and posting.
+There is no separate mobile client or mobile session storage. Scraping uses saved
+browser cookies through the profile's Work proxy, without opening a browser window.
 Images: `oven/bun:1.4.2-*` for the server; `node:24.21.0-bookworm-slim` with Bun
 for the frontend build and `nginx:alpine` for its runtime. Production frontend builds require `VITE_API_URL`,
 `VITE_CONVEX_URL` as build args.
@@ -277,8 +274,8 @@ dev-login button (`POST /api/auth/dev-login`, non-production only) or
 Secrets live in `.env.local`, never committed. Key vars: `VITE_CONVEX_URL`
 (convex dev manages it; server also accepts `CONVEX_URL`), `TELEGRAM_BOT_TOKEN`/`TELEGRAM_BOT_USERNAME`/`TELEGRAM_ADMIN_ID`,
 `INTERNAL_API_KEY` (server→Convex calls).
-The scraper uses an existing Instagram mobile session to get recent posts.
-`APIFY_API_KEY` enables fallback when mobile post discovery is unavailable.
+The scraper always uses Apify to discover recent account posts.
+`APIFY_API_KEY` is required for post discovery; browser cookies are not needed for this step.
 The scraper calls Apify's HTTP endpoint directly with `reqwest`; it does not use
 `apify-client-rust`.
 The Sources tab attaches Instagram URLs or usernames to a lead list. Each list
@@ -298,11 +295,12 @@ there is no periodic idle claim polling. Fenced leases recover interrupted work
 and reject stale writes after settings changes, pauses, or deletion. A local
 SQLite cache remembers acknowledged list memberships and skips repeated writes.
 Leads are stored once by Instagram ID, with indexed rows linking them to lists.
-Post likers use the saved mobile session first, matching the local
-instagrapi `media_likers` request and full media ID normalization. Browser session
-cookies are loaded only as a fallback when mobile scraping fails or is unavailable.
-A mobile or browser 429 pauses the account without trying another session.
-Accounts with a mobile session can scrape without saved browser cookies.
+Post likers and monitoring use each saved browser profile's sessionid cookie,
+csrftoken, and Work proxy. This restores the cookie-based collection introduced
+in commit `761af570`, using its Rust implementation from `53f9b3f7`.
+Cookies refresh on browser open and close. Each HTTP dispatch verifies the source
+lease, browser ownership, pause state, request capacity, and proxy-country sleep window.
+A 429 cools down the profile; no other session can bypass it.
 Private accounts are included only when enabled in the source settings.
 Scraped likers wait for browser screening during outreach. The worker opens the
 lead profile, captures the viewport, and sends it to `openai/gpt-6-luna-decisions`.
@@ -310,31 +308,30 @@ Each automation selects its allowed categories: male, female, or business.
 Personal gender labels require explicit public self-description, never appearance;
 unclear decisions are saved and skipped. Screenshots stay in memory, not storage.
 Liker collection requests up to 100 accounts per post, saves them in Convex
-batches of 25, and waits 10–20 seconds between posts. Mobile requests resolve
-the post owner through media metadata when only a numeric post PK is available.
+batches of 25, and waits 10–20 seconds between post checks. No mobile metadata request is needed.
 There is no background enrichment or separate profile-picture description call.
 Screening decisions must reach 80% confidence; errors retry after five minutes.
 Only accepted categories receive a sender assignment and consume a follow slot.
-Every mobile session shares a fixed rolling limit of 10 actual Instagram API
-requests per hour across automated login, setup, scraping, metadata, and uploads.
-Failed dispatches count; bridge retries do not double-charge. Browser-cookie liker fallback
-shares the same limit. Saving leads consumes no request slots. Usage survives runtime
-restarts and session reconnects. Each session has a stable randomized local wake time
+Every browser profile shares a fixed rolling limit of 10 browser-cookie scraper
+requests per hour across initial liker collection and monitoring. Failed dispatches
+count; bridge retries do not double-charge. Apify discovery and Playwright browser
+actions do not consume this quota. Saving leads consumes no request slots. Usage
+survives runtime restarts. Each profile has a stable randomized local wake time
 between 06:00 and 10:00, followed by 16 active hours. The saved proxy country selects
 a representative IANA timezone; missing countries block requests until configured.
 Requests happen only for real work, not to fill the budget. The Scrapers table shows
 rolling-hour usage, sleep status, and local wake/sleep times.
 The profile menu has Pause Profile / Resume Profile. Pausing excludes a profile
-from automations, setup, login queues, scraping, and mobile API calls. It stops its
+from automations, setup, login queues, scraping, and browser-cookie requests. It stops its
 automated browser work and releases scraper leases while preserving credentials,
 progress, and request usage. The automation account pause control uses the same flag. A real Instagram 429 cools down that account for at least 30 minutes, with
 longer waits after repeated 429s or when Instagram sends `Retry-After`.
-`OPENROUTER_API_KEY` powers both AI steps.
+`OPENROUTER_API_KEY` powers screenshot decisions and topic search generation.
 `BROWSER_MAX_CONCURRENCY` (default `1`, free Cloak tier allows one browser) caps active browser sessions across all
 workers launched by one server, including manual/login sessions. Workers must be
 launched through the server so they share its resource budget; waiting is cancellable.
 `DISABLE_AUTH=true` bypasses auth in local dev only. High-risk edit
-areas: `tools/runtime/src/api/`, `tools/runtime/src/instagram/`,
+areas: `tools/runtime/src/api/`, `tools/runtime/src/scraper/`,
 `tools/runtime/src/native/`, `server/worker/`, and `convex/http.ts`.
 
 ## Automation & Quality Gates
@@ -364,3 +361,11 @@ in-memory buffers to Playwright (less than 50 MiB total, up to 20 files); the ap
 no upload files or temporary files. Nginx request buffering is disabled for this
 route. If browser permissions prevent opening the local picker automatically,
 the viewer shows a Choose files from this PC button.
+
+Temporary deployment cleanup: `browserScrapingMigration:run` runs once per minute,
+in bounded batches, until it removes old mobile session files and worker metadata,
+merges unexpired request usage into `scraperRequestUsage`, and renames historical
+request counters. Browser cookies, credentials, warmup, and leads remain intact.
+After it returns `removed: 0`, remove the migration module, its cron job, generated
+API entry, the temporary `activityCounts.mobileRequests` schema field, and the
+counter conversion in `analyticsActivity.addActivity`.

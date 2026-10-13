@@ -346,14 +346,6 @@ export async function removeProfileByNameRow(ctx: any, name: string) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
     .collect())
     await ctx.db.delete(assignment._id)
-  const session = await ctx.db
-    .query('chatSessions')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', existing._id))
-    .first()
-  if (session) {
-    await ctx.storage.delete(session.storageId)
-    await ctx.db.delete(session._id)
-  }
   await releaseIgAccount(ctx, existing._id)
   const setup = await ctx.db
     .query('modelSetupStates')
@@ -376,14 +368,6 @@ export async function removeProfileByIdRow(ctx: any, profileId: any) {
     .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
     .collect())
     await ctx.db.delete(assignment._id)
-  const session = await ctx.db
-    .query('chatSessions')
-    .withIndex('by_profile', (q: any) => q.eq('profileId', profileId))
-    .first()
-  if (session) {
-    await ctx.storage.delete(session.storageId)
-    await ctx.db.delete(session._id)
-  }
   await releaseIgAccount(ctx, profileId)
   const setup = await ctx.db
     .query('modelSetupStates')

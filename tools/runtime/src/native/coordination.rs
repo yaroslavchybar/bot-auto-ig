@@ -23,7 +23,6 @@ pub struct Coordination {
     api: Arc<Api>,
     subscriptions: Arc<Subscriptions>,
     processes: Arc<Processes>,
-    mobile: Arc<crate::instagram::Service>,
     scraper: Arc<scraper::Scraper>,
     started: AtomicBool,
     tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
@@ -34,7 +33,6 @@ impl Coordination {
         api: Arc<Api>,
         subscriptions: Arc<Subscriptions>,
         processes: Arc<Processes>,
-        mobile: Arc<crate::instagram::Service>,
         scraper: Arc<scraper::Scraper>,
     ) -> Arc<Self> {
         let (stop, _) = watch::channel(false);
@@ -42,7 +40,6 @@ impl Coordination {
             api,
             subscriptions,
             processes,
-            mobile,
             scraper,
             started: AtomicBool::new(false),
             tasks: Default::default(),
@@ -60,12 +57,12 @@ impl Coordination {
         if *self.stop.borrow() {
             return;
         }
-        for kind in ["scraper", "mobile", "routines"] {
+        for kind in ["scraper", "routines"] {
             let state = self.clone();
             let mut stop = self.stop.subscribe();
             tasks.push(tokio::spawn(async move {
                 loop {
-                    let task = async { match kind { "scraper" => state.scraper().await, "mobile" => state.mobile().await, _ => state.routines().await } };
+                    let task = async { match kind { "scraper" => state.scraper().await, _ => state.routines().await } };
                     tokio::select! { _ = stop.changed() => break, result = task => { if let Err(error) = result { ig_service_common::service_error("coordination.subscription_failed", &error.message); } } }
                     tokio::select! { _ = stop.changed() => break, _ = tokio::time::sleep(Duration::from_secs(3)) => {} }
                 }
@@ -89,59 +86,6 @@ impl Coordination {
             self.scraper.update(value).await?;
         }
         Err(Failure::unavailable("Scraper subscription ended"))
-    }
-    async fn mobile(&self) -> Result<()> {
-        let _cache_guard = MobileContexts(self.mobile.clone());
-        let mut epoch = self.subscriptions.connection_epoch();
-        let mut subscription = self
-            .subscriptions
-            .subscribe(
-                "profiles/queries:mobileWorkerContexts",
-                json!({"subscriptionId": uuid::Uuid::new_v4().to_string()}),
-            )
-            .await?;
-        let mut reconnects = tokio::task::JoinSet::new();
-        loop {
-            tokio::select! {
-                biased;
-                _ = epoch.changed() => {
-                    self.mobile.clear_contexts();
-                    reconnects.abort_all();
-                    let subscriptions = self.subscriptions.clone();
-                    // A unique query avoids reusing the SDK's old result after reconnect.
-                    reconnects.spawn(async move {
-                        subscriptions.subscribe("profiles/queries:mobileWorkerContexts", json!({"subscriptionId":uuid::Uuid::new_v4().to_string()})).await
-                    });
-                }
-                result = reconnects.join_next(), if !reconnects.is_empty() => {
-                    match result {
-                        Some(Ok(Ok(next))) => subscription = next,
-                        Some(Err(error)) if error.is_cancelled() => {},
-                        _ => return Err(Failure::unavailable("Mobile subscription reconnect failed")),
-                    }
-                }
-                update = subscription.next(), if reconnects.is_empty() => {
-                    let Some(update) = update else { return Err(Failure::unavailable("Mobile profile subscription ended")); };
-                    let value = match subscriptions::value(update) {
-                        Ok(value) => value,
-                        Err(error) => {
-                            self.mobile.clear_contexts();
-                            ig_service_common::service_error("mobile.subscription_failed", &error.message);
-                            continue;
-                        }
-                    };
-                    let contexts: Vec<crate::instagram::SessionContext> = match serde_json::from_value(value) {
-                        Ok(contexts) => contexts,
-                        Err(error) => {
-                            self.mobile.clear_contexts();
-                            ig_service_common::service_error("mobile.subscription_failed", &error.to_string());
-                            continue;
-                        }
-                    };
-                    self.mobile.update_contexts(contexts, self.subscriptions.clone());
-                }
-            }
-        }
     }
     async fn routines(&self) -> Result<()> {
         let mut subscription = self
@@ -264,12 +208,6 @@ impl Coordination {
         Ok(due_at(&snapshot, api::now_ms()))
     }
 }
-struct MobileContexts(Arc<crate::instagram::Service>);
-impl Drop for MobileContexts {
-    fn drop(&mut self) {
-        self.0.clear_contexts();
-    }
-}
 struct Watcher {
     row: Value,
     snapshot: Option<Value>,
@@ -319,9 +257,9 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
             continue;
         }
         if let Some(status) = profile["igAccountStatus"].as_str() {
-            if status != "connected" {
+            if status != "connected" || api::timestamp_ms(&profile["browserLoggedInAt"]).is_some() {
                 let login = api::timestamp_ms(&profile["browserLoggedInAt"]).unwrap_or(0);
-                if status != "assigned"
+                if !["assigned", "connected"].contains(&status)
                     || login == 0
                     || now <= login
                     || Utc
@@ -357,8 +295,7 @@ pub fn due_at(snapshot: &Value, now: u64) -> u64 {
     }
     earliest
 }
-#[cfg(test)]
-mod mobile_tests;
+
 #[cfg(test)]
 mod tests;
 #[cfg(test)]

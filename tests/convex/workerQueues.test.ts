@@ -62,7 +62,7 @@ test.each([10, undefined])(
     await t.run((ctx) =>
       patchProfile(ctx, ids.profile, { scraperCooldownUntil: midnight + 60_000 }),
     )
-    expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight + 60_000)
+    expect((await t.query(api.scraper.work, args)).taskAt).toBe(0)
     await t.run((ctx) => ctx.db.patch(ids.job, { running: true, leaseUntil: midnight + 120_000 }))
     expect((await t.query(api.scraper.work, args)).taskAt).toBe(midnight + 120_001)
     await t.run((ctx) => ctx.db.patch(ids.job, { enabled: false, running: false }))

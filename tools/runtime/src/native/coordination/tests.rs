@@ -92,14 +92,12 @@ async fn yielded_routines_reload_all_runtime_pages_without_subscription_changes(
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let mobile = crate::instagram::Service::new(api.clone());
     let processes = Processes::new(api.clone(), root.path().into());
     let coordination = Coordination::new(
         api.clone(),
         Subscriptions::new(api.clone()),
         processes.clone(),
-        mobile.clone(),
-        scraper::Scraper::start(api, mobile).unwrap(),
+        scraper::Scraper::start(api).unwrap(),
     );
     let run = coordination.clone();
     let task = tokio::spawn(async move { run.routines().await });
@@ -195,14 +193,12 @@ async fn subscriptions_and_deadlines_start_routines_retry_capacity_and_stop_disa
     api.convex_url = fixture.url.clone();
     api.key = "fixture".into();
     let api = Arc::new(api);
-    let mobile = crate::instagram::Service::new(api.clone());
     let processes = Processes::new(api.clone(), root.path().into());
     let coordination = Coordination::new(
         api.clone(),
         Subscriptions::new(api.clone()),
         processes.clone(),
-        mobile.clone(),
-        scraper::Scraper::start(api, mobile).unwrap(),
+        scraper::Scraper::start(api).unwrap(),
     );
     let run = coordination.clone();
     let task = tokio::spawn(async move { run.routines().await });

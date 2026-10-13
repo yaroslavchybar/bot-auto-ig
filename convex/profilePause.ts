@@ -2,7 +2,7 @@ import type { Id } from './_generated/dataModel'
 import type { MutationCtx } from './_generated/server'
 import { patchProfile } from './workerMetadata'
 
-/** One pause switch covers browser automation, setup, scraping, and mobile calls. */
+/** One pause switch covers browser automation, setup, scraping, and browser-cookie requests. */
 export async function setProfilePaused(
   ctx: MutationCtx,
   profileId: Id<'profiles'>,

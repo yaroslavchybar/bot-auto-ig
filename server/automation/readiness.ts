@@ -76,7 +76,7 @@ export async function loadFullRuntimeSnapshot(
 
 const kyivDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Kyiv', year: 'numeric', month: '2-digit', day: '2-digit' })
 function accountReady(profile: Record<string, any>, now: number): boolean {
-  if (profile.igAccountStatus === undefined || profile.igAccountStatus === 'connected') return true
-  return profile.igAccountStatus === 'assigned' && !!profile.browserLoggedInAt &&
-    kyivDate.format(now) !== kyivDate.format(profile.browserLoggedInAt) && now > profile.browserLoggedInAt
+  if (profile.igAccountStatus && !['assigned','connected'].includes(profile.igAccountStatus)) return false
+  if (profile.browserLoggedInAt) return kyivDate.format(now) !== kyivDate.format(profile.browserLoggedInAt) && now > profile.browserLoggedInAt
+  return profile.igAccountStatus === undefined || profile.igAccountStatus === 'connected'
 }

@@ -8,7 +8,7 @@ import { Pencil, Plus, RotateCcw, Search, Trash2, UserCheck } from 'lucide-react
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import type { FunctionReturnType } from 'convex/server'
-import { requestsInHour, sessionWindow } from '../../../../convex/mobileRequestPolicy'
+import { requestsInHour, sessionWindow } from '../../../../convex/scraperRequestPolicy'
 import { ConfirmDeleteDialog } from '@/components/shared/ConfirmDeleteDialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'

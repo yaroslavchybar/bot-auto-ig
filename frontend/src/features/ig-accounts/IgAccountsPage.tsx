@@ -42,7 +42,6 @@ export function IgAccountsPage() {
   const connectable = options.accounts.filter((account) => account.status === 'available')
   const [isImportOpen, setIsImportOpen] = useState(false)
   const [detailsAccount, setDetailsAccount] = useState<Account | null>(null)
-  const [reconnectingId, setReconnectingId] = useState<string | null>(null)
 
   const [text, setText] = useState('')
   const [selected, setSelected] = useState('')
@@ -101,26 +100,6 @@ export function IgAccountsPage() {
     }
   }
 
-  async function reconnect(account: Account) {
-    if (reconnectingId || !account.profileId) return
-    setReconnectingId(account.id)
-    setError('')
-    setNotice('')
-    try {
-      await apiFetch(`/api/ig-accounts/${encodeURIComponent(account.profileId)}/connect`, {
-        method: 'POST',
-        body: { credentialId: account.id },
-        timeout: 360_000,
-      })
-      setNotice(`@${account.username} reconnected.`)
-      await refresh()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Reconnect failed')
-    } finally {
-      setReconnectingId(null)
-    }
-  }
-
   return (
     <div className="relative flex h-full flex-col bg-shell text-ink">
       {headerSlot
@@ -173,8 +152,6 @@ export function IgAccountsPage() {
             accounts={filteredAccounts}
             loading={loading}
             onSelect={setDetailsAccount}
-            onReconnect={(account) => void reconnect(account)}
-            reconnectingId={reconnectingId}
             emptyTitle={search.trim() ? 'No matching accounts' : 'No accounts'}
             emptyDescription={
               search.trim()
@@ -340,24 +317,14 @@ export function IgAccountsPage() {
                 disabled={connecting || (!selected && !text.trim())}
                 className="brand-button font-medium"
               >
-                {connecting ? 'Connecting...' : 'Connect mobile session'}
+                {connecting ? 'Connecting...' : 'Connect credential'}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      <AccountDetailsDialog
-        account={detailsAccount}
-        onClose={() => setDetailsAccount(null)}
-        sessionBusy={reconnectingId === detailsAccount?.id}
-        onLoggedOut={(accountId) => {
-          setDetailsAccount((current) =>
-            current?.id === accountId ? { ...current, reconnectRequired: true } : current,
-          )
-          void refresh()
-        }}
-      />
+      <AccountDetailsDialog account={detailsAccount} onClose={() => setDetailsAccount(null)} />
     </div>
   )
 }

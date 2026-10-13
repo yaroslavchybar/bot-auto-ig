@@ -8,6 +8,8 @@ const activityCounts = v.object({
   dms: v.number(),
   warmupMinutes: v.number(),
   scraperUnits: v.number(),
+  scraperRequests: v.optional(v.number()),
+  // Temporary: remove with browserScrapingMigration after its first deployment completes.
   mobileRequests: v.optional(v.number()),
   unlimitedScraperUnits: v.number(),
 })
@@ -265,20 +267,10 @@ export default defineSchema({
     scraperUsageCount: v.optional(v.number()),
     scraperCooldownUntil: v.optional(v.number()),
   }).index('by_profile', ['profileId']),
-  mobileRequestUsage: defineTable({
+  scraperRequestUsage: defineTable({
     profileId: v.id('profiles'),
     requests: v.array(v.object({ id: v.string(), at: v.number() })),
     sleepUntil: v.optional(v.number()),
-  }).index('by_profile', ['profileId']),
-  // Mobile session/proxy projection; contains no conversation data.
-  chatWorkerMetadata: defineTable({
-    profileId: v.id('profiles'),
-    storageId: v.id('_storage'),
-    token: v.string(),
-    reconnectRequired: v.boolean(),
-    enabled: v.boolean(),
-    proxy: v.string(),
-    proxyType: v.string(),
   }).index('by_profile', ['profileId']),
   // Proxy tables read this small projection instead of profile cookies and runtime state.
   proxyProfileAssignments: defineTable({
@@ -289,14 +281,6 @@ export default defineSchema({
   })
     .index('by_profile', ['profileId'])
     .index('by_proxy', ['proxy', 'proxyType']),
-  // Mobile credentials retain their existing storage table so connected accounts stay usable.
-  chatSessions: defineTable({
-    profileId: v.id('profiles'),
-    storageId: v.id('_storage'),
-    token: v.string(),
-    sessionVersion: v.optional(v.literal(1)),
-    reconnectRequired: v.optional(v.boolean()),
-  }).index('by_profile', ['profileId']),
   scrapeSources: defineTable({
     username: v.string(),
     listId: v.id('leadLists'),

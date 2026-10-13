@@ -1,4 +1,4 @@
-import { patchProfile, syncWorkerProfile } from '../workerMetadata'
+import { patchProfile } from '../workerMetadata'
 import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { mutation } from "../_generated/server";
@@ -50,53 +50,6 @@ export const setIgStateInternal = internalMutation({
     if (!profile || profile.status === 'deleting')
       throw new DomainError('NOT_FOUND', 'Profile unavailable')
     if (profile.igLoggedIn !== igLoggedIn) await patchProfile(ctx, profileId, { igLoggedIn })
-  },
-})
-
-export const saveMobileSessionInternal = internalMutation({
-  args: {
-    profileId: v.id('profiles'),
-    storageId: v.id('_storage'),
-    token: v.string(),
-    expectedToken: v.optional(v.string()),
-    sessionVersion: v.optional(v.literal(1)),
-    reconnectRequired: v.optional(v.boolean()),
-  },
-  handler: async (ctx, { profileId, storageId, token, expectedToken, sessionVersion, reconnectRequired }) => {
-    const profile = await ctx.db.get(profileId)
-    if (!profile || profile.status === 'deleting') throw new Error('Profile unavailable')
-    const existing = await ctx.db
-      .query('chatSessions')
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-      .first()
-    if (expectedToken !== undefined && existing?.token !== expectedToken)
-      throw new Error('Mobile session changed')
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        storageId,
-        token,
-        sessionVersion,
-        reconnectRequired,
-      })
-      if (existing.storageId !== storageId) await ctx.storage.delete(existing.storageId)
-    } else await ctx.db.insert('chatSessions', { profileId, storageId, token, sessionVersion, reconnectRequired })
-    await syncWorkerProfile(ctx, profile)
-  },
-})
-
-export const deleteMobileSessionInternal = internalMutation({
-  args: { profileId: v.id('profiles') },
-  handler: async (ctx, { profileId }) => {
-    const existing = await ctx.db
-      .query('chatSessions')
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-      .first()
-    if (existing) {
-      await ctx.storage.delete(existing.storageId)
-      await ctx.db.delete(existing._id)
-    }
-    const profile = await ctx.db.get(profileId)
-    if (profile) await syncWorkerProfile(ctx, profile)
   },
 })
 

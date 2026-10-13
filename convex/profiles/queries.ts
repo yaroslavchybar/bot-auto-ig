@@ -123,18 +123,6 @@ export const maintenanceWork = query({
   },
 })
 
-/** Server-only revisions: session bytes stay in storage and are fetched only after changes. */
-export const mobileWorkerContexts = query({
-  args: { bridgeToken: v.string(), subscriptionId: v.string() },
-  handler: async (ctx, { bridgeToken }) => {
-    requireServerBridgeAuth(bridgeToken)
-    const rows = await ctx.db.query('chatWorkerMetadata').take(1001)
-    if (rows.length > 1000) throw new Error('Too many connected mobile accounts')
-    return rows
-      .map(({ _id: _rowId, _creationTime: _created, ...context }) => context)
-      .sort((a, b) => a.profileId.localeCompare(b.profileId))
-  },
-})
 import {
   listProfileRows,
   getProfileByNameRow,
@@ -182,33 +170,6 @@ export const getById = query({
     if (!row) return null
     const { sessionId: _sessionId, ...publicRow } = row
     return publicRow
-  },
-})
-
-export const getMobileSessionInternal = internalQuery({
-  args: { profileId: v.id('profiles') },
-  handler: async (ctx, { profileId }) =>
-    ctx.db
-      .query('chatSessions')
-      .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-      .first(),
-})
-
-/** Read session metadata and its proxy configuration in the same database snapshot. */
-export const getMobileContextInternal = internalQuery({
-  args: { profileId: v.id('profiles') },
-  handler: async (ctx, { profileId }) => {
-    const [profile, session] = await Promise.all([
-      ctx.db.get(profileId),
-      ctx.db
-        .query('chatSessions')
-        .withIndex('by_profile', (q) => q.eq('profileId', profileId))
-        .first(),
-    ])
-    return {
-      profile: profile ? { proxy: profile.proxy ?? '', proxyType: profile.proxyType ?? '' } : null,
-      session,
-    }
   },
 })
 

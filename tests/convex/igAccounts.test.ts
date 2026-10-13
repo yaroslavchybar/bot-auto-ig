@@ -226,7 +226,7 @@ test.each(['post', 'avatar', 'username'] as const)('pending %s prevents model ch
   expect((await t.query(internal.igAccounts.modelSetupListInternal, {}))[0]?.pending).toBeUndefined()
 })
 
-test('browser login records success and waits for model setup to connect mobile', async () => {
+test('browser login records a connected browser account and starts model setup', async () => {
   vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
   const t = createConvexTest()
   const loginProxy = (await t.mutation(api.proxies.create, {

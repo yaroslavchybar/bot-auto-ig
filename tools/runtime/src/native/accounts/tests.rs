@@ -1,206 +1,6 @@
 use super::*;
 
 #[tokio::test]
-async fn mobile_logout_preserves_credentials_and_checks_profile_assignment() {
-    use crate::test_support::{self, Fixture};
-    use axum::{body::Body, response::IntoResponse, Json};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    for reassigned in [false, true] {
-        let reads = Arc::new(AtomicUsize::new(0));
-        let observed = reads.clone();
-        let writes = Arc::new(AtomicUsize::new(0));
-        let saved = writes.clone();
-        let fixture = Fixture::start(move |request| {
-            let reads = observed.clone();
-            let writes = saved.clone();
-            async move {
-                match request.uri().path() {
-                    "/api/ig-accounts-store" => {
-                        let body = test_support::body(request).await;
-                        assert_eq!(body["operation"], "byId");
-                        assert_eq!(body["id"], "account");
-                        let second = reads.fetch_add(1, Ordering::SeqCst) > 0;
-                        Json(json!({"_id":"account","profileId":if reassigned && second { "different" } else { "profile" },"status":"connected"})).into_response()
-                    }
-                    "/api/mobile/context" if !reassigned => Json(json!({"connected":true,"token":"11111111-1111-4111-8111-111111111111","state":Service::fixture_session()})).into_response(),
-                    "/api/mobile/session" if !reassigned => {
-                        assert_eq!(request.method(), Method::POST);
-                        let body = test_support::body(request).await;
-                        assert_eq!(body["profileId"], "profile");
-                        assert_eq!(body["reconnectRequired"], true);
-                        let state: Value = serde_json::from_str(body["state"].as_str().unwrap()).unwrap();
-                        assert_eq!(state["authorization"], "");
-                        writes.fetch_add(1, Ordering::SeqCst);
-                        Json(json!({"connected":true})).into_response()
-                    }
-                    _ => panic!("Logout must not modify credentials, profiles or contact Instagram"),
-                }
-            }
-        }).await;
-        let root = tempfile::tempdir().unwrap();
-        let mut api = Api::from_env().unwrap();
-        api.convex_url = fixture.url.clone();
-        api.key = "fixture".into();
-        let api = Arc::new(api);
-        let profiles = Profiles::new(
-            api.clone(),
-            super::super::processes::Processes::new(api.clone(), root.path().into()),
-            root.path().into(),
-        );
-        let accounts = Accounts::new(
-            api.clone(),
-            profiles,
-            Service::fixture(api.clone(), fixture.url.clone()),
-            Content::new(root.path().join("content")),
-            Subscriptions::new(api),
-        );
-        let result = accounts
-            .public(
-                "ig-accounts.post.id_logout",
-                &HashMap::from([("id".into(), "account".into())]),
-                Request::builder()
-                    .method("POST")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await;
-        if reassigned {
-            assert_eq!(result.unwrap_err().message, "Account profile changed");
-        } else {
-            assert_eq!(result.unwrap().status(), axum::http::StatusCode::OK);
-        }
-        assert_eq!(reads.load(Ordering::SeqCst), 2);
-        assert_eq!(writes.load(Ordering::SeqCst), usize::from(!reassigned));
-    }
-}
-
-#[tokio::test]
-async fn paused_profiles_allow_only_manual_reconnect_and_preserve_sleep() {
-    use crate::test_support::{self, Fixture};
-    use axum::{body::Body, response::IntoResponse, Json};
-    for limited in [true, false] {
-        let flags = Arc::new(Mutex::new(Vec::new()));
-        let observed = flags.clone();
-        let fixture = Fixture::start(move |request| {
-        let flags = observed.clone();
-        async move {
-            match request.uri().path() {
-                "/api/profiles/by-id" => Json(json!({"id":"p","name":"example","paused":true,"proxy":"work.test:8000","igLoggedIn":true})).into_response(),
-                "/api/ig-accounts-store" => {
-                    let body = test_support::body(request).await;
-                    assert_eq!(body["operation"], "byId");
-                    let mut account = serde_json::to_value(encrypt(&[0xaa; 32], &parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap()).unwrap()).unwrap();
-                    account["_id"] = json!("a");
-                    account["status"] = json!(if body["id"] == "new" { "assigned" } else { "connected" });
-                    account["profileId"] = json!("p");
-                    Json(account).into_response()
-                }
-                "/api/mobile/context" => Json(json!({"connected":true,"reconnectRequired":true,"token":"old","state":Service::fixture_session(),"profile":{"proxy":"","proxyType":""}})).into_response(),
-                "/api/mobile-requests/reserve" => {
-                    let body = test_support::body(request).await;
-                    assert_eq!(body["login"], true);
-                    let manual = body["manualReconnect"] == true;
-                    flags.lock().await.push(manual);
-                    Json(json!({"allowed":manual && !limited,"retryAt":api::now_ms()+3_600_000,"reason":if manual {"Mobile session is sleeping"} else {"Profile is paused"}})).into_response()
-                }
-                "/api/v1/qe/sync/" if !limited => (axum::http::StatusCode::BAD_REQUEST, Json(json!({"error_type":"device_verification_failed"}))).into_response(),
-                _ => panic!("No Instagram request or background job may run"),
-            }
-        }
-    }).await;
-        let root = tempfile::tempdir().unwrap();
-        let mut api = Api::from_env().unwrap();
-        api.convex_url = fixture.url.clone();
-        api.key = "fixture".into();
-        let api = Arc::new(api);
-        let profiles = Profiles::new(
-            api.clone(),
-            super::super::processes::Processes::new(api.clone(), root.path().into()),
-            root.path().into(),
-        );
-        let mut mobile = Service::fixture(api.clone(), fixture.url.clone());
-        Arc::get_mut(&mut mobile).unwrap().request_budget_enabled = true;
-        let mut accounts = Accounts::new(
-            api.clone(),
-            profiles,
-            mobile.clone(),
-            Content::new(root.path().join("content")),
-            Subscriptions::new(api),
-        );
-        Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
-        let context = ig_service_common::RequestContext(Arc::new(std::sync::Mutex::new(
-            serde_json::Map::new(),
-        )));
-        let request = Request::builder()
-            .method("POST")
-            .extension(context.clone())
-            .body(Body::from(r#"{"credentialId":"a"}"#))
-            .unwrap();
-        let result = accounts
-            .public(
-                "ig-accounts.post.profileId_connect",
-                &HashMap::from([("profileId".into(), "p".into())]),
-                request,
-            )
-            .await;
-        if limited {
-            let response = result.unwrap();
-            assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
-            assert!(response.headers().contains_key("retry-after"));
-            let body = axum::body::to_bytes(response.into_body(), 4096)
-                .await
-                .unwrap();
-            let body: Value = serde_json::from_slice(&body).unwrap();
-            assert_eq!(body["error"]["code"], "MOBILE_REQUEST_LIMIT");
-            assert_eq!(body["error"]["message"], "Mobile session is sleeping");
-            assert_eq!(
-                context.0.lock().unwrap()["errorType"],
-                "MobileRequestBudget"
-            );
-        } else {
-            let error = result.unwrap_err();
-            assert_eq!(
-                error.message,
-                "Instagram mobile sync HTTP 400: device_verification_failed"
-            );
-            assert_eq!(context.0.lock().unwrap()["reason"], error.message);
-        }
-        assert_eq!(context.0.lock().unwrap()["paused"], true);
-        // Another automatic call uses its own session entry, avoiding the manual login cooldown.
-        let result = mobile
-            .invoke(
-                "login",
-                &Command {
-                    profile_id: "automatic".into(),
-                    token: None,
-                    args: json!({"username":"example","password":"password"}),
-                },
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(result.message, "Profile is paused");
-        assert_eq!(*flags.lock().await, [true, false]);
-        let request = Request::builder()
-            .method("POST")
-            .body(Body::from(r#"{"credentialId":"new"}"#))
-            .unwrap();
-        let error = accounts
-            .public(
-                "ig-accounts.post.profileId_connect",
-                &HashMap::from([("profileId".into(), "p".into())]),
-                request,
-            )
-            .await
-            .unwrap_err();
-        assert_eq!(
-            error.message,
-            "Resume the profile before connecting a new credential"
-        );
-        assert_eq!(*flags.lock().await, [true, false]);
-    }
-}
-
-#[tokio::test]
 async fn content_recovery_failure_does_not_block_periodic_account_setup() {
     use crate::test_support::Fixture;
     use axum::{response::IntoResponse, Json};
@@ -246,11 +46,9 @@ async fn content_recovery_failure_does_not_block_periodic_account_setup() {
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(api.clone());
     let mut accounts = Accounts::new(
         api.clone(),
         profiles,
-        mobile,
         Content::new(root.path().join("content")),
         Subscriptions::new(api),
     );
@@ -326,14 +124,7 @@ async fn content_recovery_queues_only_orphans_and_cleanup_retries_failed_acknowl
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(api.clone());
-    let accounts = Accounts::new(
-        api.clone(),
-        profiles,
-        mobile,
-        content,
-        Subscriptions::new(api),
-    );
+    let accounts = Accounts::new(api.clone(), profiles, content, Subscriptions::new(api));
     accounts.recover_content_cleanup().await.unwrap();
     assert_eq!(*queued.lock().await, vec!["model-orphan"]);
     let work = json!(["model-orphan"]);
@@ -378,11 +169,9 @@ async fn native_shutdown_drains_inline_browser_logins_before_returning() {
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(api.clone());
     let accounts = Accounts::new(
         api.clone(),
         profiles,
-        mobile,
         Content::new(root.path().join("content")),
         Subscriptions::new(api),
     );
@@ -546,7 +335,6 @@ async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pendi
         let mut accounts = Accounts::new(
             api.clone(),
             profiles,
-            Service::fixture(api.clone(), fixture.url.clone()),
             Content::new(root.path().join("content")),
             Subscriptions::new(api),
         );
@@ -749,18 +537,16 @@ async fn login_claims_wait_for_cleanup_and_distinct_rejections_invalidate_creden
             super::super::processes::Processes::new(api.clone(), root.path().into()),
             root.path().into(),
         );
-        let mobile = Service::new(api.clone());
         let mut accounts = Accounts::new(
             api.clone(),
             profiles,
-            mobile,
             Content::new(root.path().join("content")),
             Subscriptions::new(api),
         );
         let mutable = Arc::get_mut(&mut accounts).unwrap();
         mutable.credential_key = Some(vec![0xaa; 32]);
         Arc::get_mut(&mut mutable.proxies).unwrap().probe_url = "http://geo.fixture/".into();
-        accounts.login("p", false).await.unwrap();
+        accounts.login("p").await.unwrap();
         let state = state.lock().await;
         match outcome {
             "success" => {
@@ -850,11 +636,9 @@ async fn enrollment_skips_an_unreadable_account_without_blocking_the_next_profil
         super::super::processes::Processes::new(api.clone(), root.path().into()),
         root.path().into(),
     );
-    let mobile = Service::new(api.clone());
     let mut accounts = Accounts::new(
         api.clone(),
         profiles,
-        mobile,
         Content::new(root.path().join("content")),
         Subscriptions::new(api),
     );

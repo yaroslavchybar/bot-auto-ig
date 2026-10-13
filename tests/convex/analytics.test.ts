@@ -107,7 +107,7 @@ test('date ranges include today, respect UTC boundaries and leave current lead i
         follows: count,
         dms: count * 2,
         warmupMinutes: count / 2,
-        mobileRequests: count,
+        scraperRequests: count,
       })
     }
   })
@@ -137,7 +137,7 @@ test('zero activity does not write counters and re-initializing preserves existi
   await t.mutation(api.analytics.initialize, {})
   await t.run((ctx) => recordActivity(ctx, '2026-10-11', emptyActivity()))
   expect(await t.run((ctx) => ctx.db.query('analyticsDays').collect())).toEqual([])
-  await t.run((ctx) => recordActivity(ctx, '2026-10-11', { follows: 2, mobileRequests: 4 }))
+  await t.run((ctx) => recordActivity(ctx, '2026-10-11', { follows: 2, scraperRequests: 4 }))
   await t.mutation(api.analytics.initialize, {})
   const result = await t.query(api.analytics.overview, { date: '2026-10-11', period: 'all' })
   expect(result.totals.follows).toBe(2)

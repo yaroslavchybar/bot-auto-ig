@@ -12,6 +12,7 @@ test('new scraper leads count once even when the same liker is saved to another 
   const sources = await t.run(async (ctx) => {
     const profileId = await ctx.db.insert('profiles', {
       name: 'scraper',
+      sessionId: 'browser-cookie',
       using: false,
       createdAt: 0,
     })

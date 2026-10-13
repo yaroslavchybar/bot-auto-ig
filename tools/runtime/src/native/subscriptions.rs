@@ -7,27 +7,16 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use convex::{
-    ConvexClient, ConvexClientBuilder, FunctionResult, QuerySubscription, WebSocketState,
-};
+use convex::{ConvexClient, ConvexClientBuilder, FunctionResult, QuerySubscription};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
-use std::{
-    collections::BTreeMap,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tokio::sync::{mpsc, watch, Mutex, Semaphore};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::sync::{Mutex, Semaphore};
 
 pub struct Subscriptions {
     api: Arc<Api>,
     client: Mutex<Option<ConvexClient>>,
     slots: Arc<Semaphore>,
-    online: Arc<AtomicBool>,
-    epoch: watch::Sender<u64>,
 }
 impl Subscriptions {
     pub fn new(api: Arc<Api>) -> Arc<Self> {
@@ -35,8 +24,6 @@ impl Subscriptions {
             api,
             client: Mutex::new(None),
             slots: Arc::new(Semaphore::new(1000)),
-            online: Default::default(),
-            epoch: watch::channel(0).0,
         })
     }
     pub async fn subscribe(&self, name: &str, args: Value) -> Result<QuerySubscription> {
@@ -59,25 +46,8 @@ impl Subscriptions {
             if url.is_empty() || self.api.key.is_empty() {
                 return Err(Failure::unavailable("Convex is not configured"));
             }
-            let (sender, mut states) = mpsc::channel(100);
-            let online = self.online.clone();
-            let epoch = self.epoch.clone();
-            tokio::spawn(async move {
-                while let Some(state) = states.recv().await {
-                    match state {
-                        WebSocketState::Connecting => {
-                            online.store(false, Ordering::Release);
-                            epoch.send_modify(|value| *value += 1);
-                        }
-                        WebSocketState::Connected => online.store(true, Ordering::Release),
-                    }
-                }
-                online.store(false, Ordering::Release);
-                epoch.send_modify(|value| *value += 1);
-            });
             *client = Some(
                 ConvexClientBuilder::new(&url)
-                    .with_on_state_change(sender)
                     .build()
                     .await
                     .map_err(|_| Failure::unavailable("Convex subscription connection failed"))?,
@@ -89,14 +59,6 @@ impl Subscriptions {
             .subscribe(name, args)
             .await
             .map_err(|_| Failure::unavailable("Convex subscription failed"))
-    }
-    pub fn connection_epoch(&self) -> watch::Receiver<u64> {
-        self.epoch.subscribe()
-    }
-    pub fn current_epoch(&self) -> Option<u64> {
-        self.online
-            .load(Ordering::Acquire)
-            .then(|| *self.epoch.borrow())
     }
 }
 pub fn value(result: FunctionResult) -> Result<Value> {
@@ -138,7 +100,6 @@ fn allowed(name: &str) -> bool {
         name,
         "scraper:work"
             | "profiles/queries:maintenanceWork"
-            | "profiles/queries:mobileWorkerContexts"
             | "igAccounts:loginWork"
             | "automations/queries:runtimeSnapshot"
             | "routines:access"

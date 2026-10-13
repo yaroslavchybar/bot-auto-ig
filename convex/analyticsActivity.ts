@@ -7,7 +7,7 @@ export const emptyActivity = (): ActivityCounts => ({
   dms: 0,
   warmupMinutes: 0,
   scraperUnits: 0,
-  mobileRequests: 0,
+  scraperRequests: 0,
   unlimitedScraperUnits: 0,
 })
 
@@ -20,7 +20,12 @@ export function addActivity(
     dms: counts.dms + (delta.dms ?? 0),
     warmupMinutes: counts.warmupMinutes + (delta.warmupMinutes ?? 0),
     scraperUnits: counts.scraperUnits + (delta.scraperUnits ?? 0),
-    mobileRequests: (counts.mobileRequests ?? 0) + (delta.mobileRequests ?? 0),
+    // Temporary until browserScrapingMigration finishes: preserve counters during concurrent writes.
+    scraperRequests:
+      (counts.scraperRequests ?? 0) +
+      (counts.mobileRequests ?? 0) +
+      (delta.scraperRequests ?? 0) +
+      (delta.mobileRequests ?? 0),
     unlimitedScraperUnits: counts.unlimitedScraperUnits + (delta.unlimitedScraperUnits ?? 0),
   }
 }
@@ -34,7 +39,7 @@ export async function recordActivity(
   if (!Object.values(delta).some((value) => value > 0)) return
   const history = await ctx.db.query('analyticsHistory').unique()
   // The first dashboard visit seeds surviving daily counters before tracking new activity.
-  if (!history && !delta.mobileRequests) return
+  if (!history && !delta.scraperRequests) return
   const row = await ctx.db
     .query('analyticsDays')
     .withIndex('by_date', (q) => q.eq('date', date))

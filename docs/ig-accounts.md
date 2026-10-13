@@ -18,45 +18,23 @@ The **IG Accounts** page imports one `username:password:base32-2FA-key` per line
 Rust encrypts each credential with `IG_CREDENTIALS_KEY` (64 hex characters)
 before saving it to the Convex `igAccounts` table. Convex stores ciphertext and a
 keyed username lookup hash; the key stays in the server environment. Keep that
-key stable: losing it makes imported credentials unreadable. Mobile
-sessions live in Convex; content uses the persisted `data/` volume. Model setup progress
+key stable: losing it makes imported credentials unreadable. Browser cookies
+live on each saved profile in Convex; content uses the persisted `data/` volume. Model setup progress
 and shared full-name variations live in Convex.
 Unreadable credentials appear as Invalid and are skipped for new profiles;
 the stored rows are preserved so restoring the key can recover them.
 Back up the key separately from Convex.
 
-Accounts with a missing or expired mobile session show **Reconnect needed** and a
-**Reconnect** button on desktop and mobile. It reuses saved credentials and the
-profile's Work proxy with the Rust client. During login the button is disabled;
-success refreshes the row to Connected. Failed attempts show an error and allow
-retry without deleting the previous session. Session version metadata is stored
-in Convex so lists can identify sessions needing login without loading their files.
-Existing TypeScript sessions are imported without another login. Reconnect reuses
-the saved device IDs, model, and device signing key. A credential login clears
-expired authorization and cookies in memory; failed attempts leave the saved
-session intact. Manual reconnect is available while paused and keeps the profile
-paused. Automatic work stays blocked. Login and verification requests are excluded
-from the hourly quota; the proxy-country sleep window still applies.
-The account details popup offers **Logout** for its mobile session. It clears
-mobile authorization and cookies while retaining the device IDs, model, signing
-key, credentials, browser cookies, and warmup progress. Reconnect is then required.
-Local quota and sleep errors keep
-their own messages and retry times, separate from Instagram rate limits.
-Login payloads and verification-context parsing are checked against offline
-fixtures from instagrapi 3.0.24. Mobile transport uses TLS 1.3 and one runtime
-Pigeon ID per client while retaining the saved device identifiers and Android
-448 app profile.
-The transport retains Instagram's `ig-set-x-mid` machine ID and sends one
-`Content-Type` header for form requests, including keystore attestation.
-Instagram rate limits show a readable message. Login respects `Retry-After`
-without sending another login request during the cooldown; when Instagram sends
-no retry time, the default cooldown is one hour.
+Connection status reflects the browser login. There is no separate mobile login,
+reconnect, device state, or mobile logout. Browser cookies are refreshed whenever
+the saved profile opens and closes. To refresh an expired Instagram session,
+open that browser profile and sign in again. Account credentials stay encrypted.
 
 The **Create Profile** dialog selects a model and a count. It uses unused
 credentials and saved **Work** proxies, respecting each proxy's profile limit.
 Import login proxies manually from TXT on the Proxies page. The import popup
 sets HTTP or SOCKS5, Work or Login, and the country for the imported batch.
-Rust owns account endpoints, imports, assignments, reconnect, proxy checks and
+Rust owns account endpoints, imports, assignments, browser login, proxy checks and
 the proxy blacklist. It keeps the existing AES-256-GCM credential format and keyed
 username lookup, so saved credentials use the same key.
 Rust consumes login-work subscriptions and owns retries, proxy claims and cooldowns.
@@ -77,18 +55,13 @@ From day 3, the active automation browser updates the username and full name
 through Instagram's Accounts Center. The full-name update waits until the model
 has a full name configured. From day 4, it clicks the current profile picture
 on the own-profile page and uploads the model's allocated avatar. These edits
-do not require a mobile session or consume the mobile request quota.
+do not consume the scraper request quota.
 Each browser edit holds a native account lease until its verified result is saved.
 An interrupted or unconfirmed save remains pending for review. Unavailable
 usernames can try the remaining generated candidates in the same lease.
 The credential username is updated after confirmation; the saved browser profile
 folder is renamed after the browser closes, preserving its cookies and device.
-After a browser warmup session closes on day 3 or later, the mobile session logs in
-through the profile's saved Work proxy for scraping and monitoring.
-Profiles already marked Logged in skip browser login and connect the mobile
-session through their Work proxy after warmup.
-
-Rust owns model enrollment, Kyiv calendar dates, name generation, mobile login
+Rust owns model enrollment, Kyiv calendar dates, name generation
 and reconciliation. Profile edits and posting use Playwright in TypeScript. A native socket lease
 holds the account action lock until the browser result is saved. A disconnected
 browser or uncertain Instagram result leaves pending work for operator review;
@@ -134,21 +107,19 @@ applied, even when the profile is past day 3 or already posting. Posting can
 continue while no full name is configured. One full-name variation is shared by four accounts.
 From day 4, in the same browser after warmup, it changes the avatar and starts daily
 posts without captions, up to the account's saved random target from the automation's
-warm-up post range (default 9–9). Mobile login starts in the background after closing the browser, while the
-browser worker can move to its next profile. Each post uses a different uploaded
+warm-up post range (default 9–9). The browser worker moves to its next profile after closing the current session. Each post uses a different uploaded
 image; if the bank is empty, posting waits for the next upload. An uncertain browser
 action is shown for review rather than retried blindly. In the automation's
 Profiles tab, check Instagram and mark the action as successful, or confirm
 it failed to let the worker retry. Model moves reset outreach readiness.
-After mobile login, or after the browser closes following a confirmed username change,
+After the browser closes following a confirmed username change,
 the profile name follows the IG username. The existing profile maintenance flow moves its browser data
 directory; sync errors appear on the connected account and retry in the background.
 After the account's post target is reached, the automation marks the profile ready for outreach.
 
 The Rust spoofer runs in its own Docker container, using the shared `data/`
 volume. The server submits image jobs over the private Docker network. Warmup
-uses the saved browser profile and its Work proxy. Scraping and monitoring reuse
-the connected mobile session and its saved proxy.
+uses the saved browser profile and its Work proxy. Scraping and monitoring use the saved browser sessionid cookie and Work proxy.
 
 The spoofer handles one image at a time. Docker limits it to 0.45 CPU and
 768 MB memory. It decodes the source once, creates and verifies JPEG variants in Rust,

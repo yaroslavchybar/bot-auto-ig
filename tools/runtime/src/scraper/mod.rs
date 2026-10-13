@@ -4,10 +4,7 @@ mod providers;
 #[cfg(test)]
 mod tests;
 
-use crate::{
-    api::{self, Api},
-    instagram::{Command, Service},
-};
+use crate::api::{self, Api};
 use axum::{extract::State, http::Method, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -39,19 +36,6 @@ impl Error {
             retry_after_ms: Some(ms),
         }
     }
-    fn mobile(error: crate::instagram::Error) -> Self {
-        if ["ScraperProfileBusy", "MobileRequestBudget"].contains(&error.name.as_str()) {
-            Self {
-                message: error.message,
-                paused: true,
-                retry_after_ms: None,
-            }
-        } else if error.status == 429 {
-            Self::rate_limited(error.retry_after_ms)
-        } else {
-            Self::failed(&error.message)
-        }
-    }
 }
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,7 +47,6 @@ pub struct Work {
 }
 pub struct Scraper {
     api: Arc<Api>,
-    mobile: Arc<Service>,
     apify_key: String,
     work: watch::Sender<(u64, Work)>,
     cache: Mutex<cache::Cache>,
@@ -105,15 +88,13 @@ impl Scraper {
                 .ok_or_else(|| crate::native::Failure::invalid("Invalid scraper deadline"))?);
         }
         let value: Work = serde_json::from_value(value)?;
-        self.mobile
-            .block_scraper_profiles(&value.blocked_profile_ids);
         self.work.send_modify(|(revision, state)| {
             *revision += 1;
             *state = value;
         });
         Ok(())
     }
-    pub fn start(api: Arc<Api>, mobile: Arc<Service>) -> crate::native::Result<Arc<Self>> {
+    pub fn start(api: Arc<Api>) -> crate::native::Result<Arc<Self>> {
         #[cfg(not(test))]
         let file = crate::native::project_root().join("data/scraper-cache/cache.sqlite");
         #[cfg(test)]
@@ -122,7 +103,6 @@ impl Scraper {
         let (work, _) = watch::channel((0, Work::default()));
         let service = Arc::new(Self {
             api,
-            mobile,
             work,
             cache: Mutex::new(cache),
             apify_key: api::env("APIFY_API_KEY", ""),
@@ -188,8 +168,8 @@ impl Scraper {
             Err(mut error) => {
                 // A browser may take ownership after claim, while a Convex checkpoint is in flight.
                 if error.message == "Convex rejected the request" {
-                    if let Err(busy) = self.mobile.check_scraper_available(&job.profile_id) {
-                        error = Error::mobile(busy);
+                    if let Err(busy) = self.check_available(&job.profile_id) {
+                        error = busy;
                     }
                 }
                 if let Some(ms) = error.retry_after_ms {
@@ -226,27 +206,10 @@ impl Scraper {
         Ok(())
     }
     async fn run_task(&self, job: &Task) -> Result<Option<Activity>> {
-        self.mobile
-            .check_scraper_available(&job.profile_id)
-            .map_err(Error::mobile)?;
         if job.kind == TaskKind::Posts {
-            let command = Command {
-                profile_id: job.profile_id.clone(),
-                token: None,
-                args: json!({"username":job.username,"sinceDate":job.since_date,"postLimit":job.post_limit,"sourceId":job.id,"runId":job.run_id,"profileId":job.profile_id}),
-            };
-            let (posts, apify) = match self.mobile.invoke("posts", &command).await {
-                Ok(Value::Array(posts)) => (posts, false),
-                Ok(_) => return Err(Error::failed("Instagram returned invalid posts")),
-                Err(error) if error.status == 429 || error.name == "ScraperProfileBusy" => {
-                    return Err(Error::mobile(error))
-                }
-                Err(_) => (
-                    self.apify_posts(&job.username, job.since_date, job.post_limit)
-                        .await?,
-                    true,
-                ),
-            };
+            let posts = self
+                .apify_posts(&job.username, job.since_date, job.post_limit)
+                .await?;
             // Hidden/missing like counts cannot safely qualify a profile for monitoring.
             let counts: Option<Vec<u64>> = posts.iter().map(|p| p["likeCount"].as_u64()).collect();
             let average = counts
@@ -260,12 +223,13 @@ impl Scraper {
                 self.request(
                     "posts",
                     json!({"sourceId":job.id,"runId":job.run_id,"posts":chunk,
-                    "averageLikes":average,"postCount":posts.len(),"postsFromApify":apify}),
+                    "averageLikes":average,"postCount":posts.len(),"postsFromApify":true}),
                 )
                 .await?;
             }
             return Ok(None);
         }
+        self.check_available(&job.profile_id)?;
         let post = job
             .post
             .as_ref()
@@ -332,29 +296,29 @@ impl Scraper {
             like_count: snapshot.like_count,
         }))
     }
+    fn check_available(&self, profile_id: &str) -> Result<()> {
+        if self
+            .work
+            .borrow()
+            .1
+            .blocked_profile_ids
+            .iter()
+            .any(|id| id == profile_id)
+        {
+            return Err(Error {
+                message: "Scraper profile is busy in the browser or paused".into(),
+                paused: true,
+                retry_after_ms: None,
+            });
+        }
+        Ok(())
+    }
     async fn likers(
         &self,
         job: &Task,
         post: &Value,
         web: &mut Option<instagram::Web>,
     ) -> Result<instagram::Likers> {
-        let command = Command {
-            profile_id: job.profile_id.clone(),
-            token: None,
-            args: json!({"mediaId":post["id"]}),
-        };
-        match self.mobile.invoke("likers", &command).await {
-            Ok(data) => {
-                if let Ok(rows) = instagram::snapshot(&data, job.include_private) {
-                    return Ok(rows);
-                }
-            }
-            // A second session must not bypass account/proxy cooldowns.
-            Err(error) if error.status == 429 || error.name == "ScraperProfileBusy" => {
-                return Err(Error::mobile(error))
-            }
-            Err(_) => {}
-        }
         if web.is_none() {
             let query =
                 reqwest::Url::parse_with_params("http://local/", [("profileId", &job.profile_id)])
@@ -371,15 +335,24 @@ impl Scraper {
             if profile.is_null() {
                 return Err(Error::failed("Scraper profile was deleted"));
             }
-            if profile["using"] == true || profile["status"] == "running" {
+            if profile["paused"] == true
+                || profile["renameFrom"].is_string()
+                || profile["status"] == "deleting"
+                || profile["using"] == true
+                || profile["status"] == "running"
+            {
                 return Err(Error {
                     message: "Scraper profile is busy in the browser".into(),
                     paused: true,
                     retry_after_ms: None,
                 });
             }
-            let fallback = instagram::Web::new(&profile)?
-                .with_budget(self.mobile.request_budget(&job.profile_id));
+            let fallback = instagram::Web::new(&profile)?.with_budget(
+                self.api.clone(),
+                &job.profile_id,
+                &job.id,
+                &job.run_id,
+            );
             #[cfg(test)]
             let fallback = fallback.with_base(self.provider_url.clone());
             *web = Some(fallback);
@@ -387,9 +360,7 @@ impl Scraper {
         web.as_ref()
             .unwrap()
             .likers(post, job.include_private, &|| {
-                self.mobile
-                    .check_scraper_available(&job.profile_id)
-                    .map_err(Error::mobile)
+                self.check_available(&job.profile_id)
             })
             .await
     }

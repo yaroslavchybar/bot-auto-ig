@@ -9,6 +9,7 @@
  */
 
 import type * as analytics from "../analytics.js";
+import type * as browserScrapingMigration from "../browserScrapingMigration.js";
 import type * as analyticsActivity from "../analyticsActivity.js";
 import type * as automations_helpers from "../automations/helpers.js";
 import type * as automations_mutations from "../automations/mutations.js";
@@ -21,7 +22,6 @@ import type * as httpRoutes_igAccounts from "../httpRoutes/igAccounts.js";
 import type * as httpRoutes_leadLists from "../httpRoutes/leadLists.js";
 import type * as httpRoutes_lists from "../httpRoutes/lists.js";
 import type * as httpRoutes_messageTemplates from "../httpRoutes/messageTemplates.js";
-import type * as httpRoutes_mobile from "../httpRoutes/mobile.js";
 import type * as httpRoutes_profiles from "../httpRoutes/profiles.js";
 import type * as httpRoutes_routines from "../httpRoutes/routines.js";
 import type * as httpRoutes_scraper from "../httpRoutes/scraper.js";
@@ -35,8 +35,8 @@ import type * as leadStats from "../leadStats.js";
 import type * as leads from "../leads.js";
 import type * as lists from "../lists.js";
 import type * as messageTemplates from "../messageTemplates.js";
-import type * as mobileRequestPolicy from "../mobileRequestPolicy.js";
-import type * as mobileRequests from "../mobileRequests.js";
+import type * as scraperRequestPolicy from "../scraperRequestPolicy.js";
+import type * as scraperRequests from "../scraperRequests.js";
 import type * as modelSetupPolicy from "../modelSetupPolicy.js";
 import type * as profilePause from "../profilePause.js";
 import type * as profiles_helpers from "../profiles/helpers.js";
@@ -66,6 +66,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
+  browserScrapingMigration: typeof browserScrapingMigration;
   analyticsActivity: typeof analyticsActivity;
   "automations/helpers": typeof automations_helpers;
   "automations/mutations": typeof automations_mutations;
@@ -78,7 +79,6 @@ declare const fullApi: ApiFromModules<{
   "httpRoutes/leadLists": typeof httpRoutes_leadLists;
   "httpRoutes/lists": typeof httpRoutes_lists;
   "httpRoutes/messageTemplates": typeof httpRoutes_messageTemplates;
-  "httpRoutes/mobile": typeof httpRoutes_mobile;
   "httpRoutes/profiles": typeof httpRoutes_profiles;
   "httpRoutes/routines": typeof httpRoutes_routines;
   "httpRoutes/scraper": typeof httpRoutes_scraper;
@@ -92,8 +92,8 @@ declare const fullApi: ApiFromModules<{
   leads: typeof leads;
   lists: typeof lists;
   messageTemplates: typeof messageTemplates;
-  mobileRequestPolicy: typeof mobileRequestPolicy;
-  mobileRequests: typeof mobileRequests;
+  scraperRequestPolicy: typeof scraperRequestPolicy;
+  scraperRequests: typeof scraperRequests;
   modelSetupPolicy: typeof modelSetupPolicy;
   profilePause: typeof profilePause;
   "profiles/helpers": typeof profiles_helpers;

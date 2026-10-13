@@ -33,11 +33,7 @@ pub struct Native {
     pub accounts: Arc<accounts::Accounts>,
 }
 impl Native {
-    pub fn new(
-        api: Arc<api::Api>,
-        mobile: Arc<crate::instagram::Service>,
-        scraper: Arc<crate::scraper::Scraper>,
-    ) -> Result<Arc<Self>> {
+    pub fn new(api: Arc<api::Api>, scraper: Arc<crate::scraper::Scraper>) -> Result<Arc<Self>> {
         let root = project_root();
         let content = content::Content::new(
             std::env::var("MODEL_CONTENT_DIR")
@@ -51,7 +47,6 @@ impl Native {
         let accounts = accounts::Accounts::new(
             api.clone(),
             profiles.clone(),
-            mobile.clone(),
             content.clone(),
             subscriptions.clone(),
         );
@@ -59,7 +54,6 @@ impl Native {
             api.clone(),
             subscriptions.clone(),
             processes.clone(),
-            mobile,
             scraper,
         );
         Ok(Arc::new(Self {

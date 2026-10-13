@@ -33,8 +33,6 @@ async function setup() {
       country: 'ua',
       createdAt: 0,
     })
-    const storageId = await ctx.storage.store(new Blob(['saved-login']))
-    await ctx.db.insert('chatSessions', { profileId, storageId, token: 'token' })
     await ctx.db.insert('profileListAssignments', { profileId, listId: modelId })
     await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
     const listId = await ctx.db.insert('leadLists', { name: 'leads', createdAt: 0 })
@@ -62,17 +60,17 @@ async function setup() {
       nextCheckAt: 0,
     })
     await ctx.db.patch(sourceId, { currentPostId: postId })
-    return { profileId, modelId, sourceId, postId, storageId }
+    return { profileId, modelId, sourceId, postId }
   })
   const automation = (await seedAutomation(t, { listIds: [ids.modelId], routine: defaultRoutine }))!
   const pause = (paused: boolean) =>
     t.mutation(api.profiles.mutations.setPaused, { profileId: ids.profileId, paused })
   const reserve = (requestId: string) =>
-    t.mutation(internal.mobileRequests.reserve, { profileId: ids.profileId, requestId })
+    t.mutation(internal.scraperRequests.reserve, { profileId: ids.profileId, requestId })
   return { t, ...ids, automation, pause, reserve }
 }
 
-test('pause blocks automation, scraping, warm-up, and mobile calls while preserving login and quota', async () => {
+test('pause blocks automation, scraping, warm-up, and browser-cookie calls while preserving login and quota', async () => {
   const s = await setup()
   const args = { bridgeToken: 'test', automationId: s.automation._id, profileId: s.profileId }
   expect(await s.t.query(api.routines.access, args)).toBe(true)
@@ -85,7 +83,9 @@ test('pause blocks automation, scraping, warm-up, and mobile calls while preserv
       profileId: s.profileId,
     }),
   ).toBe(false)
-  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
+  const discovery=(await s.t.mutation(internal.scrapeSources.claim, {}))!
+  expect(discovery).toMatchObject({kind:'posts',profileId:''})
+  await s.t.mutation(internal.scrapeSources.finish,{sourceId:s.sourceId,runId:discovery.runId,status:'completed'})
   await expect(
     s.t.mutation(internal.scraper.saveBatch, {
       sourceId: s.sourceId,
@@ -115,12 +115,6 @@ test('pause blocks automation, scraping, warm-up, and mobile calls while preserv
     (await s.t.query(api.profiles.queries.listPage, { search: '', cursor: null, pageSize: 25 }))
       .page[0].paused,
   ).toBe(true)
-  expect(
-    await s.t.query(api.profiles.queries.mobileWorkerContexts, {
-      bridgeToken: 'test',
-      subscriptionId: 'test',
-    }),
-  ).toMatchObject([{ enabled: false }])
   expect((await s.t.query(api.scraper.accounts, {}))[0]).toMatchObject({
     paused: true,
     ready: false,
@@ -129,19 +123,9 @@ test('pause blocks automation, scraping, warm-up, and mobile calls while preserv
   expect(await s.t.run((ctx) => ctx.db.get(s.postId))).toMatchObject({ scheduled: true })
   await s.pause(false)
   expect(await s.t.query(api.routines.access, args)).toBe(true)
-  expect(
-    await s.t.query(api.profiles.queries.mobileWorkerContexts, {
-      bridgeToken: 'test',
-      subscriptionId: 'test',
-    }),
-  ).toMatchObject([{ enabled: true }])
-  expect(await s.t.run((ctx) => ctx.db.query('chatSessions').unique())).toMatchObject({
-    token: 'token',
-    storageId: s.storageId,
-  })
   expect(await s.reserve('no-reset')).toMatchObject({
     allowed: false,
-    reason: 'Hourly mobile request limit reached',
+    reason: 'Hourly scraper request limit reached',
   })
   vi.setSystemTime(Date.now() + 3_600_000)
   expect((await s.reserve('next-hour')).allowed).toBe(true)

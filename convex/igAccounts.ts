@@ -21,14 +21,14 @@ const status = v.union(
   v.literal('invalid'),
 )
 
-/** Session metadata keeps account lists fast without loading private session files. */
+/** Connection status describes the browser login, never a separate mobile session. */
 async function withConnectionStatus(ctx: QueryCtx, account: Doc<'igAccounts'>) {
-  if (account.status !== 'connected' || !account.profileId) return account
-  const session = await ctx.db
-    .query('chatSessions')
-    .withIndex('by_profile', (q) => q.eq('profileId', account.profileId!))
-    .first()
-  return { ...account, reconnectRequired: !session || session.reconnectRequired === true }
+  if (!account.profileId || !['connected', 'assigned'].includes(account.status)) return account
+  const profile = await ctx.db.get(account.profileId)
+  return {
+    ...account,
+    status: profile?.igLoggedIn ? ('connected' as const) : ('assigned' as const),
+  }
 }
 
 export const listInternal = internalQuery({
@@ -123,12 +123,17 @@ export const loginWork = query({
         q.eq('status', 'assigned').eq('browserLoggedInAt', undefined),
       )
       .take(100)
-    const work = await Promise.all(rows.filter(row => row.profileId).map(async row => {
-      const profile = await ctx.db.get(row.profileId!)
-      return profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom
-        ? { profileId: row.profileId!, retryAfter: row.retryAfter ?? 0 } : null
-    }))
-    return work.filter(row => row !== null)
+    const work = await Promise.all(
+      rows
+        .filter((row) => row.profileId)
+        .map(async (row) => {
+          const profile = await ctx.db.get(row.profileId!)
+          return profile && !profile.paused && profile.status !== 'deleting' && !profile.renameFrom
+            ? { profileId: row.profileId!, retryAfter: row.retryAfter ?? 0 }
+            : null
+        }),
+    )
+    return work.filter((row) => row !== null)
   },
 })
 
@@ -188,7 +193,10 @@ export const modelSetupEnrollInternal = internalMutation({
       .first()
     if (existing?.modelId === modelId) return existing
     if (existing?.pending)
-      throw new DomainError('CONFLICT', 'Resolve the pending model setup action before changing models')
+      throw new DomainError(
+        'CONFLICT',
+        'Resolve the pending model setup action before changing models',
+      )
     const postTarget = randomInRange(warmupPostRange(await modelRoutine(ctx, modelId)))
     const progress = {
       profileId,
@@ -222,7 +230,12 @@ const modelSetupPatchKeys = new Set([
 ])
 
 export const modelSetupPatchInternal = internalMutation({
-  args: { profileId: v.id('profiles'), modelId: v.id('lists'), patch: v.any(), clear: v.array(v.string()) },
+  args: {
+    profileId: v.id('profiles'),
+    modelId: v.id('lists'),
+    patch: v.any(),
+    clear: v.array(v.string()),
+  },
   handler: async (ctx, { profileId, modelId, patch, clear }) => {
     if (
       !patch ||
@@ -257,7 +270,10 @@ export const modelSetupPatchInternal = internalMutation({
       patch.postDates ?? state.postDates,
     )
     if (patch.outreachReadyMarked === true && !ready)
-      throw new DomainError('VALIDATION', `${OUTREACH_MIN_POSTS} recorded posts are required for outreach`)
+      throw new DomainError(
+        'VALIDATION',
+        `${OUTREACH_MIN_POSTS} recorded posts are required for outreach`,
+      )
     await ctx.db.patch(state._id, {
       ...patch,
       ...Object.fromEntries(clear.map((key) => [key, undefined])),
@@ -402,12 +418,23 @@ const loginClaimMs = 15 * 60_000
 
 /** A Convex write serializes claims across workers before Instagram is contacted. */
 export const claimLoginProxyInternal = internalMutation({
-  args: { id: v.id('igAccounts'), loginProxyId: v.id('proxies'), proxy: v.string(), token: v.string() },
+  args: {
+    id: v.id('igAccounts'),
+    loginProxyId: v.id('proxies'),
+    proxy: v.string(),
+    token: v.string(),
+  },
   handler: async (ctx, { id, loginProxyId, proxy: expectedProxy, token }) => {
     if (!/^[0-9a-f-]{36}$/i.test(token)) throw new DomainError('VALIDATION', 'Invalid login claim')
     const account = await ctx.db.get(id)
     const proxy = await ctx.db.get(loginProxyId)
-    if (!account || account.status !== 'assigned' || proxy?.purpose !== 'login' || proxy.proxy !== expectedProxy) return false
+    if (
+      !account ||
+      account.status !== 'assigned' ||
+      proxy?.purpose !== 'login' ||
+      proxy.proxy !== expectedProxy
+    )
+      return false
     const now = Date.now()
     if ((proxy.loginCooldownUntil ?? 0) > now || (proxy.loginClaim?.expiresAt ?? 0) > now)
       return false
@@ -470,7 +497,12 @@ export const recordBrowserLoginInternal = internalMutation({
   handler: async (ctx, { id, browserLoggedInAt, loginProxyId, claimToken, cooldownMs }) => {
     const account = await ctx.db.get(id)
     const profile = account?.profileId ? await ctx.db.get(account.profileId) : null
-    if (!account || account.status !== 'assigned' || !profile || profile.status === 'deleting')
+    if (
+      !account ||
+      !['assigned', 'connected'].includes(account.status) ||
+      !profile ||
+      profile.status === 'deleting'
+    )
       throw new DomainError('CONFLICT', 'Credential is not assigned to an active profile')
     if (!Number.isSafeInteger(browserLoggedInAt) || browserLoggedInAt < 1)
       throw new DomainError('VALIDATION', 'Invalid browser login time')
@@ -482,7 +514,12 @@ export const recordBrowserLoginInternal = internalMutation({
       claimToken,
       cooldownMs,
     )
-    await ctx.db.patch(id, { browserLoggedInAt, error: undefined, retryAfter: undefined })
+    await ctx.db.patch(id, {
+      status: 'connected',
+      browserLoggedInAt,
+      error: undefined,
+      retryAfter: undefined,
+    })
     if (!profile.igLoggedIn) {
       await patchProfile(ctx, profile._id, { igLoggedIn: true })
     }

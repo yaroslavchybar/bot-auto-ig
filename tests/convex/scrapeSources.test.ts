@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vite-plus/test'
 import { api, internal } from '../../convex/_generated/api'
 import { createConvexTest } from './helpers'
-import { sessionWindow } from '../../convex/mobileRequestPolicy'
+import { sessionWindow } from '../../convex/scraperRequestPolicy'
 import { proxyCountryZones } from '../../convex/proxyCountryZones'
 import { patchProfile, syncWorkerProfile } from '../../convex/workerMetadata'
 
@@ -21,7 +21,7 @@ async function setup(
   options: {
     limit?: number | null
     used?: number
-    mobileOnly?: boolean
+    noCookie?: boolean
     monitorDays?: number
   } = {},
 ) {
@@ -34,7 +34,7 @@ async function setup(
       proxy: 'proxy.test:8000',
       proxyType: 'http',
       createdAt: 0,
-      sessionId: options.mobileOnly ? undefined : 'browser-cookie',
+      sessionId: options.noCookie ? undefined : 'browser-cookie',
       scraperDailyLimit: options.limit,
       scraperUsageCount: options.used ?? 0,
       scraperUsageDate: new Date().toISOString().slice(0, 10),
@@ -50,10 +50,6 @@ async function setup(
       country,
       createdAt: 0,
     })
-    if (options.mobileOnly) {
-      const storageId = await ctx.storage.store(new Blob(['{}']))
-      await ctx.db.insert('chatSessions', { profileId, storageId, token: 'mobile-token' })
-    }
     await syncWorkerProfile(ctx, (await ctx.db.get(profileId))!)
     const listId = await ctx.db.insert('leadLists', {
       name: 'leads',
@@ -83,7 +79,7 @@ test('saving leads never consumes request slots or truncates at an old daily lea
     limitExhausted: false,
   })
   expect(await s.t.run((ctx) => ctx.db.query('leadMemberships').collect())).toHaveLength(25)
-  expect(await s.t.run((ctx) => ctx.db.query('mobileRequestUsage').collect())).toEqual([])
+  expect(await s.t.run((ctx) => ctx.db.query('scraperRequestUsage').collect())).toEqual([])
 })
 
 test('the first successful scrape starts a hard 24-hour cutoff even with an active lease', async () => {
@@ -149,6 +145,7 @@ test('fractional scraper cooldowns produce integer scheduler deadlines and preve
   const now = Date.parse('2026-10-10T12:00:00Z')
   vi.setSystemTime(now)
   const s = await setup()
+  await discover(s)
   await s.t.mutation(internal.scraper.cooldownAccount, {
     profileId: s.profileId,
     retryAfterMs: 1_800_000.25,
@@ -374,9 +371,10 @@ test.each([
 ])('busy browser profiles suspend scraper work and resume when idle (%j)', async (busy) => {
   vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
   const s = await setup()
+  await discover(s)
   await s.t.run((ctx) => patchProfile(ctx, s.profileId, busy))
   expect(await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).toMatchObject({
-    taskAt: null,
+    taskAt: Date.now() + DAY,
     blockedProfileIds: [s.profileId],
   })
   expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
@@ -486,33 +484,14 @@ test('sources awaiting deletion still count toward list capacity', async () => {
   })
 })
 
-test('mobile-only accounts lose capacity on reconnect; browser cookies remain eligible', async () => {
-  vi.stubEnv('INTERNAL_API_KEY', 'test-bridge')
-  const s = await setup({ mobileOnly: true })
-  expect((await s.t.query(api.scraper.accounts, {}))[0]).toMatchObject({
-    ready: true,
-    hourlyLimit: 10,
-  })
-  const claim = (await s.t.mutation(internal.scrapeSources.claim, {}))!
-  await s.t.mutation(internal.scrapeSources.finish, {
-    sourceId: s.sourceId,
-    runId: claim.runId,
-    status: 'paused',
-  })
-  await s.t.run(async (ctx) => {
-    const session = await ctx.db
-      .query('chatSessions')
-      .withIndex('by_profile', (q) => q.eq('profileId', s.profileId))
-      .first()
-    await ctx.db.patch(session!._id, { reconnectRequired: true })
-    await syncWorkerProfile(ctx, (await ctx.db.get(s.profileId))!)
-  })
-  expect((await s.t.query(api.scraper.work, { bridgeToken: 'test-bridge' })).taskAt).toBeNull()
-  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toBeNull()
-  await s.t.run((ctx) => patchProfile(ctx, s.profileId, { sessionId: 'browser-cookie' }))
-  expect(await s.t.mutation(internal.scrapeSources.claim, {})).toMatchObject({
-    profileId: s.profileId,
-  })
+test('scraping requires a browser cookie and resumes when it is refreshed', async () => {
+  vi.stubEnv('INTERNAL_API_KEY','test-bridge')
+  const s=await setup({noCookie:true})
+  expect((await s.t.query(api.scraper.accounts,{}))[0].ready).toBe(false)
+  await discover(s)
+  expect(await s.t.mutation(internal.scrapeSources.claim,{})).toBeNull()
+  await s.t.run(ctx=>patchProfile(ctx,s.profileId,{sessionId:'browser-cookie'}))
+  expect(await s.t.mutation(internal.scrapeSources.claim,{})).toMatchObject({profileId:s.profileId})
 })
 
 test('daily discovery uses a rolling range and durable due times without sending worker state to UI', async () => {

@@ -232,14 +232,6 @@
     "imageRead": false
   },
   {
-    "id": "ig-accounts.post.id_logout",
-    "method": "POST",
-    "path": "/api/ig-accounts/:id/logout",
-    "body": "json",
-    "maxBody": 1048576,
-    "imageRead": false
-  },
-  {
     "id": "displays.get.vncPort_clipboard",
     "method": "GET",
     "path": "/api/displays/:vncPort/clipboard",

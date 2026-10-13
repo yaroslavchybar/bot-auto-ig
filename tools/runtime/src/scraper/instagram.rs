@@ -1,12 +1,37 @@
 use super::{Error, Result};
-use crate::{api::bounded_json, instagram};
+use crate::{
+    api::{bounded_json, Api},
+    instagram,
+};
 use serde_json::{json, Value};
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+struct RequestBudget {
+    api: Arc<Api>,
+    profile_id: String,
+    source_id: String,
+    run_id: String,
+}
+impl RequestBudget {
+    async fn reserve(&self) -> Result<()> {
+        let result=self.api.convex_retry(reqwest::Method::POST,"/api/scraper/requests/reserve",Some(&json!({"profileId":self.profile_id,"sourceId":self.source_id,"runId":self.run_id,"requestId":uuid::Uuid::new_v4().to_string()}))).await.map_err(Error::failed)?;
+        if result["allowed"] == true {
+            return Ok(());
+        }
+        Err(Error {
+            message: result["reason"]
+                .as_str()
+                .unwrap_or("Scraper request unavailable")
+                .into(),
+            paused: true,
+            retry_after_ms: None,
+        })
+    }
+}
 pub struct Web {
     client: reqwest::Client,
     cookies: String,
     csrf: String,
-    budget: Option<instagram::RequestBudget>,
+    budget: Option<RequestBudget>,
     #[cfg(test)]
     base: Option<String>,
 }
@@ -48,9 +73,9 @@ impl Web {
             &instagram::string(&profile["proxy"]),
             &instagram::string(&profile["proxyType"]),
         )
-        .map_err(Error::mobile)?;
+        .map_err(|error| Error::failed(&error))?;
         Ok(Self {
-            client: instagram::transport_client(&proxy).map_err(Error::mobile)?,
+            client: instagram::transport_client(&proxy).map_err(|error| Error::failed(&error))?,
             cookies: cookie,
             csrf,
             budget: None,
@@ -58,8 +83,19 @@ impl Web {
             base: None,
         })
     }
-    pub fn with_budget(mut self, budget: Option<instagram::RequestBudget>) -> Self {
-        self.budget = budget;
+    pub fn with_budget(
+        mut self,
+        api: Arc<Api>,
+        profile_id: &str,
+        source_id: &str,
+        run_id: &str,
+    ) -> Self {
+        self.budget = Some(RequestBudget {
+            api,
+            profile_id: profile_id.into(),
+            source_id: source_id.into(),
+            run_id: run_id.into(),
+        });
         self
     }
     #[cfg(test)]
@@ -104,8 +140,9 @@ impl Web {
                 request = request.header("x-csrftoken", &self.csrf);
             }
             if let Some(budget) = &self.budget {
-                budget.reserve().await.map_err(Error::mobile)?;
+                budget.reserve().await?;
             }
+            check_available()?;
             match request.send().await {
                 Err(_) => last = Error::failed("Instagram connection failed"),
                 Ok(response) => {

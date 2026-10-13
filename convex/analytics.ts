@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query, type QueryCtx } from './_generated/server'
-import { mobileRequestState } from './mobileRequests'
-import { MOBILE_REQUEST_LIMIT } from './mobileRequestPolicy'
+import { scraperRequestState } from './scraperRequests'
+import { SCRAPER_REQUEST_LIMIT } from './scraperRequestPolicy'
 import { addActivity, emptyActivity, type ActivityCounts } from './analyticsActivity'
 
 const periodValidator = v.union(
@@ -80,7 +80,7 @@ export const overview = query({
       ctx.db.query('analyticsHistory').unique(),
     ])
     if (!history) throw new Error('Activity history is initializing. Please refresh shortly.')
-    let counts = history.totals
+    let counts = addActivity(history.totals, {})
     if (period !== 'all') {
       const days = period === '7days' ? 7 : period === '30days' ? 30 : 1
       const start = new Date(timestamp - (days - 1) * 86_400_000).toISOString().slice(0, 10)
@@ -91,7 +91,7 @@ export const overview = query({
       counts = rows.reduce((sum, row) => addActivity(sum, row.counts), emptyActivity())
     }
     const requestStates = await Promise.all(
-      accounts.map((account) => mobileRequestState(ctx, account.profileId)),
+      accounts.map((account) => scraperRequestState(ctx, account.profileId)),
     )
     return {
       period,
@@ -106,9 +106,9 @@ export const overview = query({
         used:
           period === 'today'
             ? requestStates.reduce((sum, state) => sum + state.used, 0)
-            : (counts.mobileRequests ?? 0),
-        limit: accounts.length * MOBILE_REQUEST_LIMIT,
-        totalRequests: counts.mobileRequests ?? 0,
+            : (counts.scraperRequests ?? 0),
+        limit: accounts.length * SCRAPER_REQUEST_LIMIT,
+        totalRequests: counts.scraperRequests ?? 0,
         limitedAccounts: accounts.length,
         unlimitedAccounts: 0,
         unlimitedUsed: 0,

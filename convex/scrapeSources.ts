@@ -6,7 +6,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { normalizeUsername } from './instagramUsername'
 import { capacityAt, DAY, scraperBusy, scraperProfiles } from './scraperPolicy'
-import { mobileRequestState, publishSleep } from './mobileRequests'
+import { scraperRequestState, publishSleep } from './scraperRequests'
 import {
   DEFAULT_MONITOR_DAYS,
   DEFAULT_SCRAPE_POST_LIMIT,
@@ -416,7 +416,7 @@ export const cleanupList = internalMutation({
   },
 })
 
-export async function nextWork(ctx: Pick<QueryCtx, 'db'>) {
+export async function nextWork(ctx: Pick<QueryCtx, 'db'>, likerAt: number | null = 0) {
   const [source, running, monitor, pending] = await Promise.all([
     ctx.db
       .query('scrapeSources')
@@ -425,6 +425,7 @@ export async function nextWork(ctx: Pick<QueryCtx, 'db'>) {
     ctx.db
       .query('scrapeSources')
       .withIndex('by_lease', (q) => q.eq('running', true))
+      .filter((q) => (likerAt !== null ? true : q.neq(q.field('kind'), 'likers')))
       .first(),
     ctx.db
       .query('scrapePosts')
@@ -438,10 +439,18 @@ export async function nextWork(ctx: Pick<QueryCtx, 'db'>) {
   const work = [
     source ? { at: source.nextCheckAt, key: `source:${source._id}:${source.nextCheckAt}` } : null,
     running
-      ? { at: (running.leaseUntil ?? 0) + 1, key: `lease:${running._id}:${running.leaseUntil}` }
+      ? {
+          at:
+            running.kind === 'likers'
+              ? Math.max((running.leaseUntil ?? 0) + 1, likerAt ?? Infinity)
+              : (running.leaseUntil ?? 0) + 1,
+          key: `lease:${running._id}:${running.leaseUntil}`,
+        }
       : null,
     ...[monitor, pending].map((p) =>
-      p ? { at: p.nextCheckAt, key: `post:${p._id}:${p.nextCheckAt}` } : null,
+      p && likerAt !== null
+        ? { at: Math.max(p.nextCheckAt, likerAt), key: `post:${p._id}:${p.nextCheckAt}` }
+        : null,
     ),
   ].filter((w): w is { at: number; key: string } => !!w)
   return work.sort((a, b) => a.at - b.at)[0] ?? null
@@ -466,11 +475,12 @@ export async function activeSource(
     throw new Error('Source run is no longer active')
   const list = await ctx.db.get(source.listId)
   if (!list) throw new Error('Lead list was deleted')
-  const profile = source.profileId ? await ctx.db.get(source.profileId) : null
-  if (!profile) throw new Error('Scraper profile was deleted')
-  if (profile.paused) throw new Error('Profile is paused')
-  if (scraperBusy(profile)) throw new Error('Scraper profile is busy in the browser')
   if (source.kind === 'likers') {
+    const profile = source.profileId ? await ctx.db.get(source.profileId) : null
+    if (!profile) throw new Error('Scraper profile was deleted')
+    if (profile.paused) throw new Error('Profile is paused')
+    if (scraperBusy(profile)) throw new Error('Scraper profile is busy in the browser')
+    if (!profile.sessionId) throw new Error('Browser session is missing')
     const post = source.currentPostId ? await ctx.db.get(source.currentPostId) : null
     if (!post || (!post.monitoring && post.takenAt < Date.now() - lookbackDays(list) * DAY))
       throw new Error('Post is outside the selected range')
@@ -494,7 +504,7 @@ export const claim = internalMutation({
         capacityAt(p) <= now,
     )
     const states = await Promise.all(
-      candidates.map((profile) => mobileRequestState(ctx, profile._id, now)),
+      candidates.map((profile) => scraperRequestState(ctx, profile._id, now)),
     )
     const profiles = candidates
       .filter(
@@ -504,11 +514,11 @@ export const claim = internalMutation({
     if (!profiles.length) {
       for (let i = 0; i < candidates.length; i++)
         await publishSleep(ctx, candidates[i]!._id, states[i]!)
-      return null
     }
     let source = await ctx.db
       .query('scrapeSources')
       .withIndex('by_lease', (q) => q.eq('running', true).lt('leaseUntil', now))
+      .filter((q) => (profiles.length ? true : q.neq(q.field('kind'), 'likers')))
       .first()
     let post = source?.currentPostId ? await ctx.db.get(source.currentPostId) : null
     let kind: 'posts' | 'likers' = source?.kind ?? 'posts'
@@ -525,6 +535,7 @@ export const claim = internalMutation({
           if (source) break
           continue
         }
+        if (!profiles.length) continue
         const monitoring = queue === 'monitor'
         const due = await ctx.db
           .query('scrapePosts')
@@ -594,12 +605,13 @@ export const claim = internalMutation({
       })
       return null
     }
-    const profile = profiles[0]!
+    const profile = kind === 'likers' ? profiles[0] : undefined
+    if (kind === 'likers' && !profile) return null
     const runId = `${now}-${Math.random()}`
     await ctx.db.patch(source._id, {
       running: true,
       kind,
-      profileId: profile._id,
+      profileId: profile?._id,
       runId,
       currentPostId: post?._id,
       leaseUntil: now + LEASE,
@@ -610,7 +622,7 @@ export const claim = internalMutation({
       listId: source.listId,
       username: source.username,
       kind,
-      profileId: profile._id,
+      profileId: profile?._id ?? '',
       runId,
       sinceDate: Math.max(0, now - lookbackDays(list) * DAY),
       postLimit: postLimit(list),

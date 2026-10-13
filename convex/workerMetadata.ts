@@ -4,10 +4,6 @@ import type { Doc, Id } from './_generated/dataModel'
 
 /** Only writes when worker-visible fields change; cookies and setup progress stay isolated. */
 export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles'>) {
-  const session = await ctx.db
-    .query('chatSessions')
-    .withIndex('by_profile', (q) => q.eq('profileId', profile._id))
-    .unique()
   const scraper = await ctx.db
     .query('scraperProfiles')
     .withIndex('by_profile', (q) => q.eq('profileId', profile._id))
@@ -21,8 +17,7 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
     using: profile.using,
     status: profile.status,
     renameFrom: profile.renameFrom,
-    scraperReady:
-      !profile.paused && (!!profile.sessionId || (!!session && !session.reconnectRequired)),
+    scraperReady: !profile.paused && !!profile.sessionId,
     scraperCooldownUntil: profile.scraperCooldownUntil,
   }
   if (!scraper) await ctx.db.insert('scraperProfiles', fields)
@@ -30,29 +25,6 @@ export async function syncWorkerProfile(ctx: MutationCtx, profile: Doc<'profiles
     Object.entries(fields).some(([key, value]) => scraper[key as keyof typeof fields] !== value)
   )
     await ctx.db.patch(scraper._id, fields)
-
-  const mobile = await ctx.db
-    .query('chatWorkerMetadata')
-    .withIndex('by_profile', (q) => q.eq('profileId', profile._id))
-    .unique()
-  if (!session || profile.status === 'deleting') {
-    if (mobile) await ctx.db.delete(mobile._id)
-    return
-  }
-  const context = {
-    profileId: profile._id,
-    storageId: session.storageId,
-    token: session.token,
-    reconnectRequired: session.reconnectRequired === true,
-    enabled: !profile.paused && profile.igLoggedIn === true && session.reconnectRequired !== true,
-    proxy: profile.proxy ?? '',
-    proxyType: profile.proxyType ?? '',
-  }
-  if (!mobile) await ctx.db.insert('chatWorkerMetadata', context)
-  else if (
-    Object.entries(context).some(([key, value]) => mobile[key as keyof typeof context] !== value)
-  )
-    await ctx.db.patch(mobile._id, context)
 }
 
 const workerFields = new Set([
@@ -81,7 +53,7 @@ export async function patchProfile(
 }
 
 export async function clearWorkerProfile(ctx: MutationCtx, profileId: Id<'profiles'>) {
-  for (const table of ['scraperProfiles', 'chatWorkerMetadata', 'mobileRequestUsage'] as const) {
+  for (const table of ['scraperProfiles', 'scraperRequestUsage'] as const) {
     const row = await ctx.db
       .query(table)
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))

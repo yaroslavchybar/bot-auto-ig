@@ -8,10 +8,9 @@ Docs system contract:
 - `AGENTS.md` is a short navigation map.
 # Scraper
 
-Set `OPENROUTER_API_KEY` in the server environment for regular GPT-6 Luna
-profile-picture descriptions and TypeSafe Jev classification. Each scraper account uses its
-saved Instagram `sessionid` and proxy. Opening a profile refreshes that cookie
-in Convex. Scraper limits reset at midnight UTC and default to 1,000 processed
-liker IDs per account per day.
-Set `APIFY_API_KEY` for the Apify Instagram Post Scraper. It finds recent posts;
-our Instagram accounts still collect likers and enrich leads.
+Set `OPENROUTER_API_KEY` for browser screenshot decisions during automation.
+Each scraper profile uses its saved Instagram `sessionid`, csrf cookie, and proxy.
+Opening and closing a profile refreshes its cookies in Convex. Liker collection
+and monitoring share 10 requests per rolling hour and a proxy-country sleep window.
+Set `APIFY_API_KEY` for all account post discovery through Apify Instagram Post Scraper;
+browser-cookie requests collect likers, and automation screenshots classify leads.

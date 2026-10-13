@@ -36,11 +36,9 @@ Image output is intentionally changed, so the two encoders are not bit-identical
 
 - Public API: Rust/Axum, 64 in-flight HTTP requests and 128 event sockets.
   JSON is capped at 1 MiB; media routes stream bodies with their own limits.
-- Instagram: custom Rust transport, CAA login/password encryption, TOTP, DMs,
-  reactions, uploads, and profile edits. At most 32 profile transport entries
-  and four mobile commands; per-profile locks serialize session updates.
-  Session cookies and authorization persist in Convex. Existing SDK sessions
-  are reused without login; reconnect preserves their saved device identity.
+- Instagram: browser login, profile edits, and posting use Playwright. Rust
+  collects likers using saved browser cookies and proxies; Apify discovers account
+  posts. There is no mobile client, device state, or separate login session.
 - Scraper: Rust HTTP, source discovery, batches of 25, resume checkpoints,
   cooldowns. Lead screenshot classification runs in the active browser worker; Rust-owned Convex
   subscriptions wake native jobs; there is no idle work polling.
@@ -81,16 +79,11 @@ permit stays inside each blocking task if the HTTP caller disconnects, following
 HTTP clients already reuse their connection pools, as recommended by
 [reqwest](https://docs.rs/reqwest/latest/reqwest/struct.Client.html).
 
-Mobile commands fetch the saved session and current proxy configuration together
-through the authenticated `/api/mobile/context` endpoint. One Convex query reads both
-records in the same snapshot, and the response includes only the proxy fields needed
-by the transport. Session load/status/logout keep their existing single-request paths.
+Scraper jobs read the browser cookie jar and proxy together from the saved profile.
+Every liker HTTP attempt reserves capacity through its fenced source lease.
+Pause state, browser ownership, the hourly limit, and local sleep are checked before
+dispatch. Quota and cooldown state persist in Convex across runtime restarts.
 The existing deployment workflow updates Convex before starting the new runtime.
-
-The 32-entry mobile cache never evicts an active profile or one with a live reconnect
-cooldown. Expired cooldowns are eligible for eviction. If every entry is active or
-cooling down, requests for new profiles are rejected until capacity becomes available; the cache remains
-bounded. Cooldowns remain local to the process and do not survive a runtime restart.
 
 WebSocket read buffers are 16 KiB on VNC and public event connections. Public
 events originate in Rust; there is no Bun event relay. Event connections have
@@ -120,11 +113,10 @@ The smaller fixture took about 14% less time; the larger one took about 3% less.
 Peak RSS differences were small and mixed. Fewer allocations and file operations
 are verified by the implementation; VPS throughput and memory need separate measurements.
 
-## API and mobile migration validation
+## API migration validation
 
-Compatibility fixtures exercise CAA login and TOTP, cookie persistence, authenticated
-SOCKS connections and remote DNS, messaging, profile edits, streaming uploads,
-scraper fallbacks/checkpoints, Telegram sessions, and public HTTP/WebSocket routing.
+Fixtures exercise browser-cookie scraping, Apify discovery, scraper leases and
+checkpoints, Telegram sessions, browser profile edits, and public HTTP/WebSocket routing.
 Live Instagram behavior and VPS memory have not been measured for this migration.
 React, Convex functions and Playwright browser actions remain TypeScript.
 Content, worker supervision, desktop previews, profile/account services,
@@ -139,7 +131,7 @@ Profile leases hold SQLite OS locks across browser cleanup; folder maintenance
 and worker startup share the native process gate. Pending rename/deletion work
 retries from Convex state after a restart.
 
-Account coordination limits login and mobile setup to four concurrent operations.
+Account coordination limits browser login to four concurrent operations.
 Proxy probes are limited to eight; the Work proxy exit cache holds at most 1,000
 entries for six hours. Login proxy probes always bypass that cache.
 Browser login attempts have unique IDs and explicit cancellation acknowledgements.

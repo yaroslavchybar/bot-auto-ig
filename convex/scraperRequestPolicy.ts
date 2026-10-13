@@ -1,4 +1,4 @@
-export const MOBILE_REQUEST_LIMIT = 10
+export const SCRAPER_REQUEST_LIMIT = 10
 export const REQUEST_HOUR = 3_600_000
 const DAY = 24 * REQUEST_HOUR
 const ACTIVE_HOURS = 16
@@ -56,7 +56,7 @@ export function requestsInHour(times: number[], now: number) {
 }
 
 export function requestCapacityAt(times: number[]) {
-  return times.length >= MOBILE_REQUEST_LIMIT
-    ? times[times.length - MOBILE_REQUEST_LIMIT]! + REQUEST_HOUR
+  return times.length >= SCRAPER_REQUEST_LIMIT
+    ? times[times.length - SCRAPER_REQUEST_LIMIT]! + REQUEST_HOUR
     : 0
 }

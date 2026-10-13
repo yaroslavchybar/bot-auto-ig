@@ -233,7 +233,7 @@ export function AnalyticsPage() {
                 icon={<UserCheck className="size-5" />}
               />
               <Panel
-                title={data.period === 'today' ? 'Mobile requests / hour' : 'Mobile requests'}
+                title={data.period === 'today' ? 'Scraper requests / hour' : 'Scraper requests'}
                 to="/scraper"
               >
                 <p className="text-2xl font-medium tabular-nums">
@@ -247,7 +247,7 @@ export function AnalyticsPage() {
                 {data.period === 'today' && data.quota.limit > 0 && (
                   <div
                     role="progressbar"
-                    aria-label="Hourly mobile request quota used"
+                    aria-label="Hourly scraper request quota used"
                     aria-valuemin={0}
                     aria-valuemax={data.quota.limit}
                     aria-valuenow={Math.min(data.quota.used, data.quota.limit)}
@@ -262,7 +262,7 @@ export function AnalyticsPage() {
                   </div>
                 )}
                 <p className="mt-2 text-xs text-subtle-copy">
-                  All mobile API calls.{' '}
+                  Liker scraping and monitoring.{' '}
                   {data.period === 'today' &&
                     `Today: ${format(data.quota.totalRequests)} requests.`}
                 </p>

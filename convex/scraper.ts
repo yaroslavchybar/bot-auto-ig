@@ -6,7 +6,7 @@ import { addMembership, leadAvailable, setLeadAvailability } from './leadMembers
 import { requireServerBridgeAuth } from './serverBridgeAuth'
 
 import { capacityAt, scraperBusy, scraperProfiles } from './scraperPolicy'
-import { mobileRequestState } from './mobileRequests'
+import { scraperRequestState } from './scraperRequests'
 import { activeSource, nextWork } from './scrapeSources'
 import { patchProfile } from './workerMetadata'
 import { LeadStatsChanges } from './leadStats'
@@ -16,25 +16,19 @@ export const work = query({
   args: { bridgeToken: v.string() },
   handler: async (ctx, { bridgeToken }) => {
     requireServerBridgeAuth(bridgeToken)
-    const next = await nextWork(ctx)
-    let taskAt: number | null = null
-    let blockedProfileIds: Id<'profiles'>[] = []
-    if (next) {
-      const profiles = await scraperProfiles(ctx)
-      blockedProfileIds = profiles.filter(scraperBusy).map((p) => p._id)
-      const available = profiles.filter(
-        (p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom,
-      )
-      const states = await Promise.all(
-        available.map((profile) => mobileRequestState(ctx, profile._id)),
-      )
-      const times = available.flatMap((profile, index) =>
-        states[index]!.availableAt === null
-          ? []
-          : [Math.max(capacityAt(profile), states[index]!.availableAt!)],
-      )
-      if (times.length) taskAt = Math.max(next.at, Math.min(...times))
-    }
+    const profiles = await scraperProfiles(ctx)
+    const blockedProfileIds = profiles
+      .filter((p) => scraperBusy(p) || p.paused || !p.scraperReady)
+      .map((p) => p._id)
+    const available = profiles.filter(
+      (p) => p.scraperReady && !scraperBusy(p) && p.status !== 'deleting' && !p.renameFrom,
+    )
+    const states = await Promise.all(available.map((p) => scraperRequestState(ctx, p._id)))
+    const times = available.flatMap((p, i) =>
+      states[i]!.availableAt === null ? [] : [Math.max(capacityAt(p), states[i]!.availableAt!)],
+    )
+    const next = await nextWork(ctx, times.length ? Math.min(...times) : null)
+    const taskAt = next?.at ?? null
     return {
       taskAt,
       blockedProfileIds,
@@ -51,7 +45,7 @@ export const accounts = query({
         id: p._id,
         name: p.name,
         ready: p.scraperReady,
-        ...(await mobileRequestState(ctx, p._id)),
+        ...(await scraperRequestState(ctx, p._id)),
         usage: undefined,
         cooldownUntil: p.scraperCooldownUntil,
       })),

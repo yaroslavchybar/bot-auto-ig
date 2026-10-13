@@ -8,37 +8,17 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-test('quota and cookies cannot change chat metadata, while proxy, login and session changes do', async () => {
-  const t = createConvexTest()
-  const profile = await t.mutation(api.profiles.mutations.create, { name: 'profile' })
-  const profileId = profile!._id
-  await t.mutation(api.profiles.mutations.setIgState, { profileId, igLoggedIn: true })
-  const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['session'])))
-  await t.mutation(internal.profiles.mutations.saveMobileSessionInternal, {
-    profileId,
-    storageId,
-    token: 'token',
-  })
-  const before = await t.run((ctx) => ctx.db.query('chatWorkerMetadata').unique())
-  await t.run((ctx) =>
-    patchProfile(ctx, profileId, { scraperUsageCount: 20, cookiesJson: 'new cookies' }),
-  )
-  expect(await t.run((ctx) => ctx.db.query('chatWorkerMetadata').unique())).toEqual(before)
-  await t.run((ctx) =>
-    patchProfile(ctx, profileId, { proxy: 'new:8080', proxyType: 'http', igLoggedIn: false }),
-  )
-  expect(await t.run((ctx) => ctx.db.query('chatWorkerMetadata').unique())).toMatchObject({
-    proxy: 'new:8080',
-    enabled: false,
-  })
-  await t.mutation(internal.profiles.mutations.deleteMobileSessionInternal, { profileId })
-  expect(await t.run((ctx) => ctx.db.query('chatWorkerMetadata').unique())).toBeNull()
-  expect(await t.run((ctx) => ctx.db.query('scraperProfiles').unique())).toMatchObject({
-    scraperReady: false,
-  })
-  await t.mutation(internal.profiles.mutations.beginDeleteInternal, { name: 'profile' })
-  await t.mutation(internal.profiles.mutations.removeByIdInternal, { profileId })
-  expect(await t.run((ctx) => ctx.db.query('scraperProfiles').unique())).toBeNull()
+test('scraper metadata follows browser cookie availability and proxy changes',async()=>{
+ const t=createConvexTest();const profile=(await t.mutation(api.profiles.mutations.create,{name:'profile'}))!;
+ const profileId=profile._id
+ expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:false})
+ await t.run(ctx=>patchProfile(ctx,profileId,{sessionId:'cookie',proxy:'new:8080',proxyType:'http'}))
+ expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:true,proxy:'new:8080'})
+ await t.run(ctx=>patchProfile(ctx,profileId,{sessionId:undefined}))
+ expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toMatchObject({scraperReady:false})
+ await t.mutation(internal.profiles.mutations.beginDeleteInternal,{name:'profile'})
+ await t.mutation(internal.profiles.mutations.removeByIdInternal,{profileId})
+ expect(await t.run(ctx=>ctx.db.query('scraperProfiles').unique())).toBeNull()
 })
 
 test('source totals follow add and remove but ignore running state and heartbeats', async () => {

@@ -1,23 +1,31 @@
 import type { HttpRouter } from 'convex/server'
 import type { Id } from '../_generated/dataModel'
 import { api, internal } from '../_generated/api'
-import { jsonResponse, parseBody, registerPreflight, withErrorHandling } from './shared'
+import {
+  jsonResponse,
+  parseBody,
+  registerPreflight,
+  withErrorHandling,
+  ValidationError,
+} from './shared'
 
 const paths = ['claim', 'heartbeat', 'posts', 'batch', 'finish', 'accounts', 'cooldown']
 
 /** Server-only bridge. The HTTP wrapper verifies INTERNAL_API_KEY. */
 export function registerScraperRoutes(http: HttpRouter): void {
   http.route({
-    path: '/api/mobile-requests/reserve',
+    path: '/api/scraper/requests/reserve',
     method: 'POST',
     handler: withErrorHandling(async (ctx, request) => {
       const body = await parseBody(request)
+      if (typeof body.sourceId !== 'string' || typeof body.runId !== 'string')
+        throw new ValidationError('A scraper source lease is required')
       return jsonResponse(
-        await ctx.runMutation(internal.mobileRequests.reserve, {
+        await ctx.runMutation(internal.scraperRequests.reserve, {
           profileId: body.profileId,
           requestId: body.requestId,
-          manualReconnect: body.manualReconnect,
-          login: body.login,
+          sourceId: body.sourceId as Id<'scrapeSources'>,
+          runId: body.runId,
         }),
       )
     }),

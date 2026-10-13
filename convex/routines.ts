@@ -170,11 +170,8 @@ export const accounts = query({
           issue: state?.issue,
           stage: !p.igLoggedIn
             ? "Not logged in"
-            : p.igAccountId && igAccount?.status !== 'connected'
-            ? igAccount?.browserLoggedInAt
-              ? kyivDateKey(Date.now()) <= kyivDateKey(igAccount.browserLoggedInAt)
-                ? "Browser logged in" : "Warm-up"
-              : "Connecting"
+            : igAccount?.browserLoggedInAt && kyivDateKey(Date.now()) <= kyivDateKey(igAccount.browserLoggedInAt)
+            ? "Browser logged in"
             : !p.outreachReady || (warmup?.day ?? 0) < 8
               ? "Warm-up"
               : "Outreach",
@@ -184,7 +181,7 @@ export const accounts = query({
           followed: state?.followQuotaDate === date ? (state.followedToday ?? 0) : 0,
           budgetExhausted: warmup?.date === date && (warmup.minutesUsedToday ?? 0) >= warmup.todayMinutes,
           allowance:
-            a.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || igAccount?.status === 'connected')
+            a.routine && a.routine.outreachEnabled && profileOutreachRoutes(a.routine, p._id).length && p.outreachReady && (warmup?.day ?? 0) >= 8 && warmup?.followBlockedDate !== date && (!p.igAccountId || p.igLoggedIn)
               ? state?.followQuotaDate === date
                 ? state.allowance
                 : followAllowance(
@@ -203,7 +200,7 @@ export const target = internalQuery({
   args: { automationId: v.id('automations'), profileId: v.id('profiles') },
   handler: async (ctx, args) => {
     const e = await eligibility(ctx, args.automationId, args.profileId);
-    if (!e || !e.maintenance || e.followsBlocked || (e.profile.igAccountId && e.igAccount?.status !== 'connected') ||
+    if (!e || !e.maintenance || e.followsBlocked || (e.profile.igAccountId && !e.profile.igLoggedIn) ||
       !e.profile.outreachReady || !e.policy.outreachEnabled || !profileOutreachRoutes(e.policy, args.profileId).length) return { target: 0, remaining: 0, sent: 0 };
     const today = dayKey();
     const s = e.state;
@@ -227,7 +224,7 @@ export const ready = internalQuery({
     const result = await eligibility(ctx, args.automationId, args.profileId);
     if (!result) return false;
     const now = args.now ?? Date.now();
-    if (result.igAccount?.status === 'assigned' && result.igAccount.browserLoggedInAt &&
+    if (result.igAccount?.browserLoggedInAt &&
       kyivDateKey(now) <= kyivDateKey(result.igAccount.browserLoggedInAt)) return false;
     if (args.checkpoint) return true;
     const date = dayKey(now);
@@ -363,7 +360,7 @@ export const beginFollow = internalMutation({
       e &&
       (e.policy.allowedCategories ?? ['male']).includes(lead.classification) &&
       !lead.followed && lead.followStartedAt === undefined && !lead.dmSent && !lead.dmBlocked &&
-      e.maintenance && !e.followsBlocked && (!e.profile.igAccountId || e.igAccount?.status === 'connected') &&
+      e.maintenance && !e.followsBlocked && (!e.profile.igAccountId || e.profile.igLoggedIn) &&
       e.profile.outreachReady && e.policy.outreachEnabled && today === args.date &&
       (!lead.outreachListId || ((await ctx.db.get(lead.outreachListId)) && lead.outreachAutomationId === args.automationId && profileOutreachRoutes(e.policy, args.profileId).some(
             (route) => route.leadListId === lead.outreachListId,

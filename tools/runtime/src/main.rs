@@ -57,9 +57,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "helper".into());
     let api_state = Arc::new(api::Api::from_env()?);
     let app = if mode == "helper" || mode == "supervise" {
-        let mobile = instagram::Service::new(api_state.clone());
-        let scraper = scraper::Scraper::start(api_state.clone(), mobile.clone())?;
-        let native = native::Native::new(api_state.clone(), mobile.clone(), scraper.clone())?;
+        let scraper = scraper::Scraper::start(api_state.clone())?;
+        let native = native::Native::new(api_state.clone(), scraper.clone())?;
         native.processes.cleanup_orphans().await?;
         api_state
             .native
@@ -68,7 +67,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             .expect("Native services initialize once");
         Router::new()
             .merge(native::router(native))
-            .merge(instagram::router(mobile))
             .merge(scraper::router(scraper))
     } else {
         return Err("Use helper or supervise".into());

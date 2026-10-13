@@ -1,5 +1,5 @@
 use super::{profiles, Accounts, Failure, Result};
-use crate::{api, instagram::Command};
+use crate::api;
 use axum::{
     extract::{
         ws::{Message, WebSocketUpgrade},
@@ -199,34 +199,6 @@ impl Accounts {
                     json!({"name":account["username"]}),
                 )
                 .await?;
-        }
-        if day(
-            api::timestamp_ms(&state["startedAt"]).unwrap_or(api::now_ms()),
-            api::now_ms(),
-        ) < 3
-            || api::timestamp_ms(&account["retryAfter"]).unwrap_or(0) > api::now_ms()
-        {
-            return Ok(());
-        }
-        let _slot = self
-            .slots
-            .acquire()
-            .await
-            .map_err(|_| Failure::unavailable("Account service stopped"))?;
-        let status = self
-            .mobile
-            .invoke(
-                "has",
-                &Command {
-                    profile_id: id.into(),
-                    token: None,
-                    args: json!({}),
-                },
-            )
-            .await
-            .map_err(|error| Failure::unavailable(error.message))?;
-        if status["connected"] != true || status["reconnectRequired"] == true {
-            self.login(id, true).await?;
         }
         Ok(())
     }

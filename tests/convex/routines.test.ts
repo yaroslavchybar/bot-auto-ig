@@ -343,7 +343,7 @@ async function putWarmup(ctx: MutationCtx, value: Omit<Doc<'warmupStates'>, '_id
   return ctx.db.insert('warmupStates', value);
 }
 
-test('model browsing starts the next Kyiv day while outreach waits for mobile login', async () => {
+test('browser login starts warmup the next Kyiv day and outreach after seven warmup days', async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-26T20:30:00Z'));
   const { t, profile, args } = await setup();
   const accountId = await t.run(async (ctx) => {
@@ -351,6 +351,7 @@ test('model browsing starts the next Kyiv day while outreach waits for mobile lo
       ciphertext: 'encrypted', usernameHash: 'account-for-routine', status: 'assigned',
       profileId: profile._id, createdAt: Date.now(),
     });
+    const warmup=(await ctx.db.query('warmupStates').unique())!;await ctx.db.patch(warmup._id,{day:2});
     await ctx.db.patch(profile._id, { igAccountId: id, igLoggedIn: true,
       outreachReady: true });
     return id;
@@ -378,7 +379,7 @@ test('model browsing starts the next Kyiv day while outreach waits for mobile lo
   expect(session.minutes).toBeGreaterThanOrEqual(5);
   expect(session.minutes).toBeLessThanOrEqual(10);
   expect(session.remainingMinutes).toBeGreaterThanOrEqual(30);
-  await t.run((ctx) => ctx.db.patch(accountId, { status: 'connected' }));
+  await t.run(async ctx=>{const warmup=(await ctx.db.query('warmupStates').unique())!;await ctx.db.patch(warmup._id,{day:8});});
   expect(await t.query(internal.routines.ready, { ...args, checkpoint: true })).toBe(true);
   expect((await t.query(internal.routines.target, args)).target).toBeGreaterThan(0);
 });

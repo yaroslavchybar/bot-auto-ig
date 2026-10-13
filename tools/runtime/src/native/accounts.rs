@@ -9,10 +9,7 @@ use super::{
     subscriptions::Subscriptions,
     Failure, Result,
 };
-use crate::{
-    api::{self, Api},
-    instagram::{Command, Service},
-};
+use crate::api::{self, Api};
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
     Aes256Gcm, Nonce,
@@ -184,7 +181,6 @@ const MAX_PAGE_SIZE: usize = 100;
 pub struct Accounts {
     pub api: Arc<Api>,
     pub profiles: Arc<Profiles>,
-    pub mobile: Arc<Service>,
     pub content: Arc<Content>,
     pub proxies: Arc<proxy::Proxies>,
     subscriptions: Arc<Subscriptions>,
@@ -280,10 +276,6 @@ impl Accounts {
                 json!({"count":created.as_array().map_or(0,Vec::len),"created":created})
             }
             "ig-accounts.post.profileId_connect" => {
-                let request_context = request
-                    .extensions()
-                    .get::<ig_service_common::RequestContext>()
-                    .cloned();
                 let body = super::body(request).await?;
                 let profile_id = params.get("profileId").map(String::as_str).unwrap_or("");
                 let profile = self.profiles.by_id(profile_id).await?;
@@ -324,78 +316,27 @@ impl Accounts {
                 {
                     return Err(Failure::invalid("Choose an available credential"));
                 }
-                if account["status"] == "connected" && account["profileId"] == profile_id {
-                    if let Some(context) = &request_context {
-                        context.add("operation", "mobile.reconnect");
-                        context.add("profileId", profile_id);
-                        context.add("paused", profile["paused"] == true);
-                    }
-                    let result = self.reconnect(profiles::text(&account, "id")).await;
-                    if let (Err(error), Some(context)) = (&result, &request_context) {
-                        context.add("reason", error.message.clone());
-                    }
-                    if let Some(error) = result? {
-                        if let Some(context) = &request_context {
-                            context.add("reason", error.message.clone());
-                            context.add("errorType", error.name.clone());
-                            context.add("retryAfterMs", error.retry_after_ms);
-                        }
-                        let mut response = api::error(
-                            axum::http::StatusCode::TOO_MANY_REQUESTS,
-                            if error.name == "MobileRequestBudget" {
-                                "MOBILE_REQUEST_LIMIT"
-                            } else {
-                                "RATE_LIMITED"
-                            },
-                            &error.message,
-                        );
-                        response.headers_mut().insert(
-                            "Retry-After",
-                            axum::http::HeaderValue::from_str(
-                                &error.retry_after_ms.div_ceil(1000).to_string(),
-                            )
-                            .unwrap(),
-                        );
-                        return Ok(response);
-                    }
-                    json!({"ok":true})
-                } else {
-                    if profile["igLoggedIn"] != true {
-                        return Err(Failure::invalid("Choose a logged-in profile"));
-                    }
+                if profile["igLoggedIn"] != true {
+                    return Err(Failure::invalid("Choose a logged-in browser profile"));
+                }
+                if !profiles::text(&profile, "name")
+                    .eq_ignore_ascii_case(profiles::text(&account, "username"))
+                {
+                    return Err(Failure::invalid(
+                        "Credential username must match the logged-in browser profile",
+                    ));
+                }
+                let _guard = self.action_lock(profile_id).await?;
+                if account["profileId"] != profile_id {
                     self.store("assign", json!({"id":account["id"],"profileId":profile_id}))
                         .await?;
-                    self.queue(profile_id.into()).await;
-                    return Ok((
-                        axum::http::StatusCode::ACCEPTED,
-                        Json(json!({"queued":true,"username":account["username"]})),
-                    )
-                        .into_response());
                 }
-            }
-            "ig-accounts.post.id_logout" => {
-                let id = params.get("id").map(String::as_str).unwrap_or("");
-                let account = self.store("byId", json!({"id":id})).await?;
-                let profile = profiles::text(&account, "profileId");
-                if account.is_null() || profile.is_empty() {
-                    return Err(Failure::invalid("Account is not connected to a profile"));
-                }
-                let _guard = self.action_lock(profile).await?;
-                let current = self.store("byId", json!({"id":id})).await?;
-                if current["profileId"] != profile {
-                    return Err(Failure::invalid("Account profile changed"));
-                }
-                self.mobile
-                    .invoke(
-                        "logout",
-                        &Command {
-                            profile_id: profile.into(),
-                            token: None,
-                            args: json!({}),
-                        },
-                    )
-                    .await
-                    .map_err(|error| Failure::unavailable(error.message))?;
+                self.sync_name(
+                    profile_id,
+                    profiles::text(&account, "id"),
+                    profiles::text(&account, "username"),
+                )
+                .await?;
                 json!({"ok":true})
             }
             _ => return Err(Failure::missing("Unknown account operation")),
@@ -405,7 +346,6 @@ impl Accounts {
     pub fn new(
         api: Arc<Api>,
         profiles: Arc<Profiles>,
-        mobile: Arc<Service>,
         content: Arc<Content>,
         subscriptions: Arc<Subscriptions>,
     ) -> Arc<Self> {
@@ -414,7 +354,6 @@ impl Accounts {
             proxies: proxy::Proxies::new(profiles.root.clone()),
             api,
             profiles,
-            mobile,
             content,
             subscriptions,
             actions: Default::default(),
@@ -628,70 +567,6 @@ impl Accounts {
         self.store("setState", body).await?;
         Ok(())
     }
-    pub async fn mobile_login(&self, profile: &str, account: &Value) -> Result<()> {
-        self.mobile
-            .invoke(
-                "login",
-                &Command {
-                    profile_id: profile.into(),
-                    token: None,
-                    args: account.clone(),
-                },
-            )
-            .await
-            .map_err(|e| Failure {
-                status: axum::http::StatusCode::from_u16(e.status)
-                    .unwrap_or(axum::http::StatusCode::BAD_GATEWAY),
-                message: e.message,
-            })?;
-        self.sync_name(
-            profile,
-            profiles::text(account, "id"),
-            profiles::text(account, "username"),
-        )
-        .await
-    }
-    pub async fn reconnect(&self, id: &str) -> Result<Option<crate::instagram::Error>> {
-        let account = self.account("byId", json!({"id":id})).await?;
-        let profile = profiles::text(&account, "profileId");
-        if profile.is_empty() || account["status"] != "connected" {
-            return Err(Failure::invalid("Account is not connected to a profile"));
-        }
-        let _guard = self.action_lock(profile).await?;
-        let _slot = self
-            .slots
-            .acquire()
-            .await
-            .map_err(|_| Failure::unavailable("Account service stopped"))?;
-        let row = self.profiles.by_id(profile).await?;
-        if row.is_null() || row["status"] == "deleting" {
-            return Err(Failure::invalid("Profile is unavailable"));
-        }
-        if profiles::text(&row, "proxy").is_empty() {
-            return Err(Failure::invalid("Profile has no Work proxy"));
-        }
-        match self
-            .mobile
-            .reconnect(&Command {
-                profile_id: profile.into(),
-                token: None,
-                args: account.clone(),
-            })
-            .await
-        {
-            Ok(_) => {
-                self.sync_name(
-                    profile,
-                    profiles::text(&account, "id"),
-                    profiles::text(&account, "username"),
-                )
-                .await?;
-                Ok(None)
-            }
-            Err(e) if e.status == 429 => Ok(Some(e)),
-            Err(e) => Err(Failure::invalid(e.message)),
-        }
-    }
     pub async fn queue(self: &Arc<Self>, profile: String) {
         let state = self.clone();
         self.launch(async move {
@@ -704,7 +579,7 @@ impl Accounts {
             if *state.stop.borrow() {
                 return;
             }
-            let _ = state.login(&profile, false).await;
+            let _ = state.login(&profile).await;
         })
         .await;
     }
@@ -716,14 +591,14 @@ impl Accounts {
         }
         jobs.spawn(work);
     }
-    pub async fn login(&self, id: &str, mobile: bool) -> Result<()> {
+    pub async fn login(&self, id: &str) -> Result<()> {
         let started = Instant::now();
-        let mut context = json!({"profileId": id, "connectMobile": mobile, "outcome": "skipped"});
-        let result = self.login_inner(id, mobile, &mut context).await;
+        let mut context = json!({"profileId": id, "outcome": "skipped"});
+        let result = self.login_inner(id, &mut context).await;
         completion("accounts.login", context, started, result.as_ref().err());
         result
     }
-    async fn login_inner(&self, id: &str, mobile: bool, context: &mut Value) -> Result<()> {
+    async fn login_inner(&self, id: &str, context: &mut Value) -> Result<()> {
         let account = self.account_for_profile(id).await?;
         let profile = self.profiles.by_id(id).await?;
         if account.is_null()
@@ -732,15 +607,14 @@ impl Accounts {
             || profile["paused"] == true
             || profile["status"] == "deleting"
             || profile["renameFrom"].is_string()
-            || (!mobile && !account["browserLoggedInAt"].is_null())
-            || (mobile && profile["using"] == true)
+            || profile["using"] == true
         {
             return Ok(());
         }
         context["accountId"] = account["id"].clone();
         context["outcome"] = json!("success");
         let result = async {
-            if profile["igLoggedIn"]==true { return self.mobile_login(id,&account).await; }
+            if profile["igLoggedIn"]==true { return self.sync_name(id,profiles::text(&account,"id"),profiles::text(&account,"username")).await; }
             let country = self.proxies.exit(profiles::text(&profile,"proxy"),true).await?["country"].as_str().unwrap_or("").to_owned();
             context["country"] = json!(country);
             let blocked = self.proxies.blacklist().await?;
@@ -1057,7 +931,6 @@ fn account_row(row: &Value, key: &[u8]) -> Result<Value> {
         "createdAt",
         "retryAfter",
         "browserLoggedInAt",
-        "reconnectRequired",
     ] {
         if !row[field].is_null() {
             value[field] = row[field].clone();

@@ -3,16 +3,17 @@ import { internalMutation, type MutationCtx, type QueryCtx } from './_generated/
 import type { Id } from './_generated/dataModel'
 import { proxyCountryZones } from './proxyCountryZones'
 import {
-  MOBILE_REQUEST_LIMIT,
+  SCRAPER_REQUEST_LIMIT,
   requestCapacityAt,
   requestsInHour,
   sessionWindow,
-} from './mobileRequestPolicy'
+} from './scraperRequestPolicy'
 import { recordActivity } from './analyticsActivity'
 import { proxyKey } from './proxies'
+import { activeSource } from './scrapeSources'
 
 /** Lightweight projections keep cookie blobs out of request-budget reads. */
-export async function mobileRequestState(
+export async function scraperRequestState(
   ctx: Pick<QueryCtx, 'db'>,
   profileId: Id<'profiles'>,
   now = Date.now(),
@@ -23,7 +24,7 @@ export async function mobileRequestState(
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .unique(),
     ctx.db
-      .query('mobileRequestUsage')
+      .query('scraperRequestUsage')
       .withIndex('by_profile', (q) => q.eq('profileId', profileId))
       .unique(),
   ])
@@ -51,10 +52,15 @@ export async function mobileRequestState(
   return {
     usage,
     paused: profile.paused === true,
+    blocked:
+      profile.using ||
+      profile.status === 'running' ||
+      profile.status === 'deleting' ||
+      !!profile.renameFrom,
     country,
     timezone,
     requestTimes: times,
-    hourlyLimit: MOBILE_REQUEST_LIMIT,
+    hourlyLimit: SCRAPER_REQUEST_LIMIT,
     used: requestsInHour(times, now).length,
     wakeMinute: window?.wakeMinute,
     sleeping: window?.sleeping ?? false,
@@ -68,7 +74,7 @@ export async function mobileRequestState(
 export async function publishSleep(
   ctx: MutationCtx,
   profileId: Id<'profiles'>,
-  state: Awaited<ReturnType<typeof mobileRequestState>>,
+  state: Awaited<ReturnType<typeof scraperRequestState>>,
 ) {
   if (
     !state.sleeping ||
@@ -78,33 +84,32 @@ export async function publishSleep(
     return
   if (state.usage) await ctx.db.patch(state.usage._id, { sleepUntil: state.availableAt })
   else
-    await ctx.db.insert('mobileRequestUsage', {
+    await ctx.db.insert('scraperRequestUsage', {
       profileId,
       requests: [],
       sleepUntil: state.availableAt,
     })
 }
 
-/** Login calls follow pause/sleep rules but do not consume the hourly scraping quota. */
+/** Each browser-cookie HTTP attempt consumes one slot; Apify and browser login do not. */
 export const reserve = internalMutation({
   args: {
     profileId: v.id('profiles'),
     requestId: v.string(),
-    manualReconnect: v.optional(v.boolean()),
-    login: v.optional(v.boolean()),
+    sourceId: v.optional(v.id('scrapeSources')),
+    runId: v.optional(v.string()),
   },
-  handler: async (ctx, { profileId, requestId, manualReconnect, login }) => {
+  handler: async (ctx, { profileId, requestId, sourceId, runId }) => {
     if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
     const now = Date.now()
-    const state = await mobileRequestState(ctx, profileId, now)
-    // Resume is controlled by the flag; pausing must not create a one-hour login cooldown.
-    if (state.paused && !(manualReconnect && login))
-      return { allowed: false, retryAt: now, reason: 'Profile is paused' }
-    if (login && state.timezone) {
-      const window = sessionWindow(String(profileId), state.timezone, now)
-      if (window.sleeping)
-        return { allowed: false, retryAt: window.availableAt, reason: 'Mobile session is sleeping' }
-      return { allowed: true, retryAt: now }
+    const state = await scraperRequestState(ctx, profileId, now)
+    if (state.paused) return { allowed: false, retryAt: now, reason: 'Profile is paused' }
+    if (state.blocked)
+      return { allowed: false, retryAt: now, reason: 'Scraper profile is busy in the browser' }
+    if (sourceId) {
+      if (!runId) throw new Error('Missing scraper run ID')
+      const source = await activeSource(ctx, sourceId, runId, 'likers')
+      if (source.profileId !== profileId) throw new Error('Scraper profile changed')
     }
     if (
       state.usage?.requests.some(
@@ -124,15 +129,15 @@ export const reserve = internalMutation({
         allowed: false,
         retryAt: state.availableAt,
         reason: state.sleeping
-          ? 'Mobile session is sleeping'
-          : 'Hourly mobile request limit reached',
+          ? 'Browser session is sleeping'
+          : 'Hourly scraper request limit reached',
       }
     }
     const requests = (state.usage?.requests ?? []).filter((request) => request.at > now - 3_600_000)
     requests.push({ id: requestId, at: now })
     if (state.usage) await ctx.db.patch(state.usage._id, { requests })
-    else await ctx.db.insert('mobileRequestUsage', { profileId, requests })
-    await recordActivity(ctx, new Date(now).toISOString().slice(0, 10), { mobileRequests: 1 })
+    else await ctx.db.insert('scraperRequestUsage', { profileId, requests })
+    await recordActivity(ctx, new Date(now).toISOString().slice(0, 10), { scraperRequests: 1 })
     return { allowed: true, retryAt: now }
   },
 })
