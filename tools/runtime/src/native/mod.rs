@@ -281,6 +281,7 @@ pub fn router(state: Arc<Native>) -> Router {
         .merge(
             Router::new()
                 .route("/accounts/post-lease", get(accounts::setup::post_lease))
+                .route("/accounts/setup-lease", get(accounts::setup::setup_lease))
                 .with_state(state.accounts.clone()),
         )
         .merge(

@@ -149,6 +149,7 @@ export const connectedNamesInternal = internalQuery({
             profileName: profile?.name,
             renameFrom: profile?.renameFrom,
             profileStatus: profile?.status,
+            profileUsing: profile?.using,
           }
         }),
       ),

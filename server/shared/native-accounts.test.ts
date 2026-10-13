@@ -9,6 +9,75 @@ import { nativeFixture } from './native-fixture.testing.js'
 
 const credentialKey = 'aa'.repeat(32)
 
+for (const outcome of ['applied', 'uncertain', 'disconnect']) {
+  test(`Rust browser setup lease preserves account ownership and pending state: ${outcome}`, async () => {
+    const native = await fixture()
+    try {
+      await native.post('/api/ig-accounts/import', { text: 'old:password:JBSWY3DPEHPK3PXP' })
+      Object.assign(native.accounts[0], {
+        profileId: 'p',
+        status: 'assigned',
+        browserLoggedInAt: Date.now() - 5 * 86_400_000,
+      })
+      native.states = [
+        {
+          profileId: 'p',
+          modelId: 'model',
+          startedAt: Date.now() - 5 * 86_400_000,
+          postSourceIds: [],
+          postDates: [],
+        },
+      ]
+      const owner = await lease(native, '/accounts/setup-lease', {
+        profileId: 'p',
+        automationId: 'automation',
+      })
+      expect(owner.ready.task).toMatchObject({
+        kind: 'username',
+        value: 'new',
+        currentUsername: 'old',
+      })
+      expect(native.states[0].pending.kind).toBe('username')
+      const busy = await lease(native, '/accounts/setup-lease', {
+        profileId: 'p',
+        automationId: 'automation',
+      })
+      expect(busy.ready.error).toContain('busy')
+      busy.socket.terminate()
+      if (outcome === 'disconnect') owner.socket.terminate()
+      else {
+        const acknowledgement = owner.next()
+        owner.socket.send(JSON.stringify({ result: outcome }))
+        expect((await acknowledgement).saved).toBe(true)
+        owner.socket.terminate()
+      }
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      if (outcome === 'applied') {
+        expect(native.states[0].nameDone).toBe(true)
+        expect(native.states[0].pending).toBeUndefined()
+        const credentials = await (
+          await fetch(native.publicUrl + '/api/ig-accounts/credentials/a0')
+        ).json()
+        expect(credentials.username).toBe('new')
+        expect(native.profile!.name).toBe('Old')
+        expect(native.profile!.using).toBe(true)
+      } else {
+        expect(native.states[0].pending.kind).toBe('username')
+        const retry = await lease(native, '/accounts/setup-lease', {
+          profileId: 'p',
+          automationId: 'automation',
+        })
+        expect(retry.ready.task).toBeNull()
+        retry.socket.terminate()
+      }
+      expect(native.calls.some((call) => call.includes('/api/mobile'))).toBe(false)
+      expect(native.calls.some((call) => call.includes('update-by-name'))).toBe(false)
+    } finally {
+      await native.stop()
+    }
+  }, 15_000)
+}
+
 async function fixture() {
   let profile: Record<string, unknown> | null = {
     id: 'p',
@@ -18,6 +87,7 @@ async function fixture() {
     cookiesJson: '[]',
     listIds: ['model'],
     igLoggedIn: true,
+    proxy: 'work.test:80',
   }
   const accounts: Array<Record<string, unknown>> = []
   let states: Array<Record<string, any>> = []
@@ -33,7 +103,10 @@ async function fixture() {
     res.setHeader('Content-Type', 'application/json')
     const reply = (value: unknown) => res.end(JSON.stringify(value))
     calls.push(route + ':' + (body.operation || req.method))
-    if (route === '/api/lists') return reply([{ id: 'model' }])
+    if (route === '/api/lists') return reply([{ id: 'model', usernames: ['new', 'other'] }])
+    if (route === '/api/automations/by-id')
+      return reply({ isActive: true, routine: {}, listIds: ['model'] })
+    if (route === '/api/routines/ready') return reply(true)
     if (route === '/api/profiles/by-id' || route === '/api/profiles/by-name') return reply(profile)
     if (route === '/api/profiles' && req.method === 'GET') return reply(profile ? [profile] : [])
     if (route === '/api/profiles/sync-status') {
@@ -84,6 +157,14 @@ async function fixture() {
           return reply({ page: accounts.slice(0, body.count), continueCursor: '', isDone: true })
         case 'byId':
           return reply(accounts.find((a) => a._id === body.id) || null)
+        case 'byProfile':
+          return reply(accounts.find((a) => a.profileId === body.profileId) || null)
+        case 'setUsername':
+          Object.assign(
+            accounts.find((a) => a._id === body.id)!,
+            { ciphertext: body.ciphertext, usernameHash: body.usernameHash },
+          )
+          return reply({ ok: true })
         case 'availableCount':
           return reply({ available: accounts.length })
         case 'modelSetupList':
@@ -316,33 +397,52 @@ test('Rust imports existing credential format, hides secrets, and isolates unrea
 test('posting continues after Outreach unlocks, once daily until the configured target', async () => {
   const native = await fixture()
   try {
-    native.states = [{
-      profileId: 'p', modelId: 'model', startedAt: Date.now() - 12 * 86_400_000,
-      avatarDone: true, postSourceIds: ['first', 'second'],
-      postDates: ['2026-09-01', '2026-09-02'], postTarget: 4,
-    }]
+    native.states = [
+      {
+        profileId: 'p',
+        modelId: 'model',
+        startedAt: Date.now() - 12 * 86_400_000,
+        avatarDone: true,
+        postSourceIds: ['first', 'second'],
+        postDates: ['2026-09-01', '2026-09-02'],
+        postTarget: 4,
+      },
+    ]
     const root = path.join(native.root, 'data/model-content/model')
     const manifest = []
     for (const id of ['third', 'fourth', 'fifth']) {
       await fs.mkdir(path.join(root, 'posts', id, 'variants'), { recursive: true })
       await fs.writeFile(path.join(root, 'posts', id, 'variants/one.jpg'), 'fixture')
-      manifest.push({ id, name: id + '.jpg', kind: 'posts', variants: ['one.jpg'], assigned: {}, createdAt: 1 })
+      manifest.push({
+        id,
+        name: id + '.jpg',
+        kind: 'posts',
+        variants: ['one.jpg'],
+        assigned: {},
+        createdAt: 1,
+      })
     }
     await fs.writeFile(path.join(root, 'manifest.json'), JSON.stringify(manifest))
     const publish = async () => {
-      const owner = await lease(native, '/accounts/post-lease', { profileId: 'p', modelId: 'model' })
+      const owner = await lease(native, '/accounts/post-lease', {
+        profileId: 'p',
+        modelId: 'model',
+      })
       expect(owner.ready.content).not.toBeNull()
       const reply = owner.next()
       owner.socket.send(JSON.stringify({ result: 'shared' }))
       expect((await reply).saved).toBe(true)
       owner.socket.terminate()
-      await new Promise(resolve => setTimeout(resolve, 20))
+      await new Promise((resolve) => setTimeout(resolve, 20))
     }
     const noPost = async () => {
-      const owner = await lease(native, '/accounts/post-lease', { profileId: 'p', modelId: 'model' })
+      const owner = await lease(native, '/accounts/post-lease', {
+        profileId: 'p',
+        modelId: 'model',
+      })
       expect(owner.ready.content).toBeNull()
       owner.socket.terminate()
-      await new Promise(resolve => setTimeout(resolve, 20))
+      await new Promise((resolve) => setTimeout(resolve, 20))
     }
     await publish()
     expect(native.states[0].postSourceIds).toHaveLength(3)

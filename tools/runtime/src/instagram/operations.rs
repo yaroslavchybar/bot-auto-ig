@@ -1,5 +1,4 @@
 use super::{
-    attachments, crypto,
     transport::{Fields, Mobile},
     Error, Result, Service,
 };
@@ -31,64 +30,6 @@ pub async fn invoke(
     args: &Value,
 ) -> Result<Value> {
     match action {
-        "username" | "fullName" => {
-            let current = mobile
-                .mobile(
-                    Method::GET,
-                    "accounts/current_user/",
-                    None,
-                    &fields(json!({"edit":"true"})),
-                )
-                .await?;
-            let current = &current["user"];
-            if current["username"].as_str().is_none_or(str::is_empty)
-                || current["full_name"].as_str().is_none()
-            {
-                return Err(Error::new(
-                    "Instagram did not return the current profile identity",
-                ));
-            }
-            let username = if action == "username" {
-                string_arg(args, "username", 30)?
-            } else {
-                super::string(&current["username"])
-            };
-            let full_name = if action == "fullName" {
-                string_arg(args, "fullName", 64)?
-            } else {
-                super::string(&current["full_name"])
-            };
-            let mut body = json!({"username":username,"first_name":full_name,"_csrftoken":mobile.state.cookie("csrftoken"),"_uid":mobile.state.viewer_id()?,"device_id":mobile.state.device_id,"_uuid":mobile.state.uuid});
-            for key in [
-                "external_url",
-                "gender",
-                "phone_number",
-                "biography",
-                "email",
-            ] {
-                body[key] = json!(super::string(&current[key]));
-            }
-            let result = mobile
-                .mobile(
-                    Method::POST,
-                    "accounts/edit_profile/",
-                    Some(&crypto::signed_fields(&body)),
-                    &Fields::new(),
-                )
-                .await?;
-            if result["user"]["username"] != username || result["user"]["full_name"] != full_name {
-                return Err(Error::new("Instagram did not confirm the profile change"));
-            }
-            Ok(json!({"ok":true}))
-        }
-        "avatar" => {
-            use base64::Engine;
-            let bytes = base64::engine::general_purpose::STANDARD
-                .decode(args["image"].as_str().unwrap_or(""))
-                .map_err(|_| Error::new("Invalid profile photo"))?;
-            attachments::profile_picture(mobile, bytes).await?;
-            Ok(json!({"ok":true}))
-        }
         "posts" => recent_posts(service, mobile, args).await,
         "likers" => media_likers(mobile, args).await,
         _ => Err(Error::new("Unknown Instagram operation")),

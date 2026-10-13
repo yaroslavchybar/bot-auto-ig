@@ -1,4 +1,3 @@
-mod attachments;
 mod caa;
 mod context;
 mod crypto;

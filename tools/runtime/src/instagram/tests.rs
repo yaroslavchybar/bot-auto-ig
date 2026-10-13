@@ -503,64 +503,6 @@ async fn socks_proxy_authenticates_and_resolves_instagram_at_proxy() {
 }
 
 #[tokio::test]
-async fn profile_edits_and_avatar_preserve_native_contracts() {
-    let calls = Arc::new(Mutex::new(vec![]));
-    let observed = calls.clone();
-    let fixture = Fixture::start(move |request| {
-        let calls = observed.clone();
-        async move {
-            let path = request.uri().path().to_string();
-            calls.lock().await.push(path.clone());
-            if path.ends_with("current_user/") {
-                return Json(json!({"user":{"username":"old","full_name":"Name","email":"keep@example.test","biography":"keep bio"}})).into_response();
-            }
-            if path.contains("rupload_igphoto") {
-                assert!(request.headers().contains_key("x_fb_photo_waterfall_id"));
-                let params: Value = serde_json::from_str(request.headers()["x-instagram-rupload-params"].to_str().unwrap()).unwrap();
-                assert_eq!(params["media_type"], "1");
-                assert_eq!(axum::body::to_bytes(request.into_body(), 100).await.unwrap().as_ref(), &[255,216,255,217]);
-                return ([("set-cookie", "csrftoken=changed; Domain=.instagram.com; Path=/"), ("ig-set-authorization", "Bearer rotated")], Json(json!({"status":"ok"}))).into_response();
-            }
-            if path.ends_with("change_profile_picture/") { assert_eq!(request.headers()["authorization"], "Bearer rotated"); }
-            let bytes = axum::body::to_bytes(request.into_body(), 1_000_000).await.unwrap();
-            let url = reqwest::Url::parse(&format!("http://local/?{}", String::from_utf8(bytes.to_vec()).unwrap())).unwrap();
-            let fields: HashMap<_,_> = url.query_pairs().into_owned().collect();
-            if path.ends_with("edit_profile/") {
-                let (_, payload) = fields["signed_body"].split_once('.').unwrap();
-                let data: Value = serde_json::from_str(payload).unwrap();
-                assert_eq!(data["email"], "keep@example.test");
-                assert_eq!(data["biography"], "keep bio");
-                assert_eq!(data["username"], "new");
-                return Json(json!({"user":{"username":"new","full_name":"Name"}})).into_response();
-            }
-            if path.ends_with("change_profile_picture/") {
-                assert_eq!(fields["_csrftoken"], "changed");
-                return Json(json!({"status":"ok"})).into_response();
-            }
-            panic!("Unexpected profile operation: {path}");
-        }
-    }).await;
-    let service = Service::new(Arc::new(Api::from_env().unwrap()));
-    let mut mobile = mobile(Some(fixture.url.clone()));
-    operations::invoke(
-        &service,
-        &mut mobile,
-        "username",
-        &json!({"username":"new"}),
-    )
-    .await
-    .unwrap();
-    operations::invoke(
-        &service,
-        &mut mobile,
-        "avatar",
-        &json!({"image":STANDARD.encode([255,216,255,217])}),
-    )
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
 async fn complete_caa_login_follows_attestation_and_totp_flow() {
     use rsa::pkcs8::{EncodePublicKey, LineEnding};
     let key = rsa::RsaPrivateKey::new(&mut rand::rngs::OsRng, 2048).unwrap();

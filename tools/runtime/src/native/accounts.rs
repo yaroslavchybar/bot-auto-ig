@@ -1018,6 +1018,8 @@ impl Accounts {
                 if profile.is_empty()
                     || row["renameFrom"].is_string()
                     || row["profileStatus"] == "deleting"
+                    || row["profileStatus"] == "running"
+                    || row["profileUsing"] == true
                     || (row["profileName"] == account["username"]
                         && !profiles::text(&account, "error")
                             .starts_with("Profile name sync failed: "))

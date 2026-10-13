@@ -147,32 +147,95 @@ impl Accounts {
         }
         Ok(())
     }
+    /// Browser edits run under their socket lease. This hook runs only after browser close.
     pub async fn advance_setup(&self, id: &str, automation_id: &str) -> Result<()> {
         let Ok(_guard) = self.action_lock(id).await else {
             return Ok(());
         };
+        let query =
+            reqwest::Url::parse_with_params("http://local/", [("automationId", automation_id)])
+                .unwrap();
+        let automation = self
+            .api
+            .convex(
+                Method::GET,
+                &format!("/api/automations/by-id?{}", query.query().unwrap()),
+                None,
+            )
+            .await?;
+        if automation["isActive"] != true || !automation["routine"].is_object() {
+            return Ok(());
+        }
+        let profile = self.profiles.by_id(id).await?;
+        if profile.is_null()
+            || profile["paused"] == true
+            || profile["using"] == true
+            || profile["status"] == "running"
+            || profile["status"] == "deleting"
+            || profile["renameFrom"].is_string()
+            || profile["igLoggedIn"] != true
+        {
+            return Ok(());
+        }
+        let account = self.account_for_profile(id).await?;
+        if account.is_null() {
+            return Ok(());
+        }
+        let state = self.setup_state(id).await?;
+        if state.is_null()
+            || !automation["listIds"]
+                .as_array()
+                .is_some_and(|models| models.len() == 1 && models[0] == state["modelId"])
+            || !profile["listIds"]
+                .as_array()
+                .is_some_and(|models| models.contains(&state["modelId"]))
+        {
+            return Ok(());
+        }
+        if state["nameDone"] == true && profile["name"] != account["username"] {
+            self.profiles
+                .update(
+                    profiles::text(&profile, "name"),
+                    json!({"name":account["username"]}),
+                )
+                .await?;
+        }
+        if day(
+            api::timestamp_ms(&state["startedAt"]).unwrap_or(api::now_ms()),
+            api::now_ms(),
+        ) < 3
+            || api::timestamp_ms(&account["retryAfter"]).unwrap_or(0) > api::now_ms()
+        {
+            return Ok(());
+        }
         let _slot = self
             .slots
             .acquire()
             .await
             .map_err(|_| Failure::unavailable("Account service stopped"))?;
-        let mut model = None;
-        let result = self
-            .advance_setup_locked(id, automation_id, &mut model)
-            .await;
-        if let (Err(error), Some(model)) = (&result, model.as_deref()) {
-            let _ = self
-                .patch_setup(id, model, json!({"error":error.message}), &[])
-                .await;
+        let status = self
+            .mobile
+            .invoke(
+                "has",
+                &Command {
+                    profile_id: id.into(),
+                    token: None,
+                    args: json!({}),
+                },
+            )
+            .await
+            .map_err(|error| Failure::unavailable(error.message))?;
+        if status["connected"] != true || status["reconnectRequired"] == true {
+            self.login(id, true).await?;
         }
-        result
+        Ok(())
     }
-    async fn advance_setup_locked(
+    pub(super) async fn prepare_browser_setup(
         &self,
         id: &str,
         automation_id: &str,
         selected_model: &mut Option<String>,
-    ) -> Result<()> {
+    ) -> Result<Value> {
         let url =
             reqwest::Url::parse_with_params("http://local/", [("automationId", automation_id)])
                 .unwrap();
@@ -189,10 +252,10 @@ impl Accounts {
             .filter(|a| a.len() == 1)
             .and_then(|a| a[0].as_str())
         else {
-            return Ok(());
+            return Ok(Value::Null);
         };
         if automation["isActive"] != true || !automation["routine"].is_object() {
-            return Ok(());
+            return Ok(Value::Null);
         }
         *selected_model = Some(model_id.to_owned());
         let profiles = self.profiles.list().await?;
@@ -202,7 +265,7 @@ impl Accounts {
             .flatten()
             .find(|p| p["id"] == id)
         else {
-            return Ok(());
+            return Ok(Value::Null);
         };
         if !profile["listIds"]
             .as_array()
@@ -210,11 +273,10 @@ impl Accounts {
             || profile["igLoggedIn"] != true
             || profile["paused"] == true
             || profiles::text(profile, "proxy").is_empty()
-            || profile["using"] == true
             || profile["status"] == "deleting"
             || profile["renameFrom"].is_string()
         {
-            return Ok(());
+            return Ok(Value::Null);
         }
         let models = self.api.convex(Method::GET, "/api/lists", None).await?;
         let Some(model) = models
@@ -223,13 +285,13 @@ impl Accounts {
             .flatten()
             .find(|m| m["id"] == model_id)
         else {
-            return Ok(());
+            return Ok(Value::Null);
         };
         let account = self.account_for_profile(id).await?;
         if account.is_null()
             || (account["browserLoggedInAt"].is_null() && account["status"] != "connected")
         {
-            return Ok(());
+            return Ok(Value::Null);
         }
         let mut snapshot = self.store("modelSetupList", json!({})).await?;
         if !snapshot
@@ -247,28 +309,17 @@ impl Accounts {
             .flatten()
             .find(|s| s["profileId"] == id && s["modelId"] == model_id)
         else {
-            return Ok(());
+            return Ok(Value::Null);
         };
         if !state["pending"].is_null() {
-            return Ok(());
+            return Ok(Value::Null);
         }
         let today = day(
             api::timestamp_ms(&state["startedAt"]).unwrap_or(api::now_ms()),
             api::now_ms(),
         );
         if today < 3 {
-            return Ok(());
-        }
-        if account["status"] != "connected" {
-            if account["browserLoggedInAt"].is_null()
-                || api::timestamp_ms(&account["retryAfter"]).unwrap_or(0) > api::now_ms()
-            {
-                return Ok(());
-            }
-            self.login(id, true).await?;
-            if self.account_for_profile(id).await?["status"] != "connected" {
-                return Ok(());
-            }
+            return Ok(Value::Null);
         }
         if self
             .api
@@ -280,7 +331,7 @@ impl Accounts {
             .await?
             != true
         {
-            return Ok(());
+            return Ok(Value::Null);
         }
         let enrolled: HashSet<_> = snapshot
             .as_array()
@@ -302,7 +353,7 @@ impl Accounts {
             .collect();
         members.sort_by_key(|p| api::timestamp_ms(&p["createdAt"]).unwrap_or(0));
         let Some(index) = members.iter().position(|p| p["id"] == id) else {
-            return Ok(());
+            return Ok(Value::Null);
         };
         if state["nameDone"] != true {
             let mut used: HashSet<String> = profiles
@@ -321,7 +372,7 @@ impl Accounts {
                 .collect();
             used.remove(&profiles::text(profile, "name").to_lowercase());
             used.remove(&profiles::text(state, "targetUsername").to_lowercase());
-            return self.apply_username(state, model, index, used).await;
+            return self.prepare_username(state, model, index, used).await;
         }
         if state["fullNameDone"] != true
             && (state["fullName"].is_string()
@@ -343,15 +394,9 @@ impl Accounts {
                 &[],
             )
             .await?;
-            return self
-                .mobile_step(
-                    id,
-                    model_id,
-                    "fullName",
-                    json!({"fullName":name}),
-                    "fullNameDone",
-                )
-                .await;
+            return Ok(
+                json!({"kind":"fullName","value":name,"currentUsername":account["username"],"accountId":account["id"]}),
+            );
         }
         if state["postSourceIds"].as_array().map_or(0, Vec::len) >= 3
             && state["postSourceIds"].as_array().map_or(0, Vec::len)
@@ -367,151 +412,164 @@ impl Accounts {
             .await?;
         }
         if today < 4 || state["avatarDone"] == true {
-            return Ok(());
+            return Ok(Value::Null);
         }
         let content = self
             .content
             .allocate(model_id, "avatars", id, &[], false)
             .await?;
         if content.is_null() {
-            return Ok(());
+            return Ok(Value::Null);
         }
-        // Read before marking pending: a disk failure cannot have touched Instagram.
-        use base64::Engine;
-        let bytes = tokio::fs::read(profiles::text(&content, "path")).await?;
+        // Verify the content exists before acquiring a durable mutation lease.
+        tokio::fs::metadata(profiles::text(&content, "path")).await?;
         self.patch_setup(id,model_id,json!({"pending":{"kind":"avatar","sourceId":content["sourceId"],"date":date(api::now_ms())},"avatarSourceId":content["sourceId"]}),&[]).await?;
-        self.mobile_step(
-            id,
-            model_id,
-            "avatar",
-            json!({"image":base64::engine::general_purpose::STANDARD.encode(bytes)}),
-            "avatarDone",
+        Ok(
+            json!({"kind":"avatar","path":content["path"],"sourceId":content["sourceId"],"currentUsername":account["username"],"accountId":account["id"]}),
         )
-        .await
     }
-    async fn mobile_step(
+    async fn prepare_username(
+        &self,
+        state: &Value,
+        model: &Value,
+        index: usize,
+        used: HashSet<String>,
+    ) -> Result<Value> {
+        let id = profiles::text(state, "profileId");
+        let account = self.account_for_profile(id).await?;
+        if account.is_null() {
+            return Ok(Value::Null);
+        }
+        let candidates = if let Some(name) = state["targetUsername"].as_str() {
+            vec![name.to_owned()]
+        } else {
+            self.username_candidates(model, index, &used).await?
+        };
+        let Some(name) = candidates.first() else {
+            return Ok(Value::Null);
+        };
+        self.patch_setup(
+            id,
+            profiles::text(state, "modelId"),
+            json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":name}),
+            &[],
+        )
+        .await?;
+        Ok(
+            json!({"kind":"username","value":name,"nameIndex":index,"candidates":candidates.into_iter().take(8).collect::<Vec<_>>(),"currentUsername":account["username"],"accountId":account["id"]}),
+        )
+    }
+    async fn retry_browser_username(
+        &self,
+        model_id: &str,
+        task: &Value,
+        tried: &[Value],
+    ) -> Result<Vec<Value>> {
+        let models = self.api.convex(Method::GET, "/api/lists", None).await?;
+        let model = models
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|model| model["id"] == model_id)
+            .ok_or_else(|| Failure::missing("Model not found"))?;
+        let profiles = self.profiles.list().await?;
+        let snapshot = self.store("modelSetupList", json!({})).await?;
+        let used: HashSet<String> = profiles
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|profile| profile["name"].as_str())
+            .chain(
+                snapshot
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|state| state["targetUsername"].as_str()),
+            )
+            .chain(tried.iter().filter_map(Value::as_str))
+            .map(str::to_lowercase)
+            .collect();
+        Ok(self
+            .username_candidates(
+                model,
+                task["nameIndex"].as_u64().unwrap_or(0) as usize,
+                &used,
+            )
+            .await?
+            .into_iter()
+            .map(Value::String)
+            .collect())
+    }
+    pub(super) async fn finish_browser_setup(
         &self,
         id: &str,
         model: &str,
-        action: &str,
-        args: Value,
-        done: &str,
+        task: &Value,
+        result: &str,
     ) -> Result<()> {
-        match self
-            .mobile
-            .invoke(
-                action,
-                &Command {
-                    profile_id: id.into(),
-                    token: None,
-                    args,
-                },
-            )
-            .await
+        let state = self.setup_state(id).await?;
+        let kind = profiles::text(task, "kind");
+        if state["modelId"] != model || state["pending"]["kind"] != kind {
+            return Err(profiles::conflict("Browser setup request expired"));
+        }
+        if (kind == "fullName" && state["fullName"] != task["value"])
+            || (kind == "avatar" && state["pending"]["sourceId"] != task["sourceId"])
         {
-            Ok(_) => {
+            return Err(profiles::conflict("Browser setup target changed"));
+        }
+        let account = self.account_for_profile(id).await?;
+        if account.is_null() || account["id"] != task["accountId"] {
+            return Err(profiles::conflict("Browser account assignment changed"));
+        }
+        match result {
+            "applied" => {
+                let done = match kind {
+                    "username" => "nameDone",
+                    "fullName" => "fullNameDone",
+                    "avatar" => "avatarDone",
+                    _ => return Err(Failure::invalid("Unknown browser setup action")),
+                };
+                if kind == "username" {
+                    let target = profiles::text(task, "value");
+                    if state["targetUsername"] != target {
+                        return Err(profiles::conflict("Username request changed"));
+                    }
+                    self.set_username(profiles::text(&account, "id"), target)
+                        .await?;
+                }
                 let mut patch = json!({});
                 patch[done] = json!(true);
                 self.patch_setup(id, model, patch, &["pending", "error"])
                     .await
             }
-            Err(e) if e.name == "MobileRequestBudget" => {
-                // The requested edit was never dispatched, so it needs no manual review.
-                self.patch_setup(id, model, json!({"error": e.message}), &["pending"])
-                    .await
-            }
-            Err(e) => {
+            "unavailable" if kind == "username" => {
                 self.patch_setup(
                     id,
                     model,
-                    json!({"error":format!("{action} update needs review ({})",e.name)}),
+                    json!({"error":"Username is unavailable"}),
+                    &["pending", "targetUsername"],
+                )
+                .await
+            }
+            "failed" => {
+                self.patch_setup(
+                    id,
+                    model,
+                    json!({"error":format!("Browser {kind} failed before saving")}),
+                    &["pending"],
+                )
+                .await
+            }
+            _ => {
+                self.patch_setup(
+                    id,
+                    model,
+                    json!({"error":format!("Browser {kind} result needs review before retrying")}),
                     &[],
                 )
                 .await
             }
         }
-    }
-    async fn apply_username(
-        &self,
-        state: &Value,
-        model: &Value,
-        index: usize,
-        mut used: HashSet<String>,
-    ) -> Result<()> {
-        let id = profiles::text(state, "profileId");
-        let model_id = profiles::text(state, "modelId");
-        let account = self.account_for_profile(id).await?;
-        if account.is_null() {
-            return Ok(());
-        }
-        let mut candidates = if let Some(name) = state["targetUsername"].as_str() {
-            vec![name.to_owned()]
-        } else {
-            self.username_candidates(model, index, &used).await?
-        };
-        let mut attempt = 0;
-        while attempt < candidates.len().min(8) {
-            let name = candidates[attempt].clone();
-            attempt += 1;
-            used.insert(name.to_lowercase());
-            self.patch_setup(id,model_id,json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":name}),&[]).await?;
-            match self
-                .mobile
-                .invoke(
-                    "username",
-                    &Command {
-                        profile_id: id.into(),
-                        token: None,
-                        args: json!({"username":name}),
-                    },
-                )
-                .await
-            {
-                Ok(_) => {
-                    self.set_username(profiles::text(&account, "id"), &name)
-                        .await?;
-                    self.patch_setup(
-                        id,
-                        model_id,
-                        json!({"nameDone":true,"targetUsername":name}),
-                        &["pending", "error"],
-                    )
-                    .await?;
-                    return self
-                        .sync_name(id, profiles::text(&account, "id"), &name)
-                        .await;
-                }
-                Err(e) if e.name == "UsernameUnavailable" => {
-                    self.patch_setup(id, model_id, json!({}), &["pending", "targetUsername"])
-                        .await?;
-                    if candidates.len() == 1 {
-                        candidates.extend(self.username_candidates(model, index, &used).await?);
-                    }
-                }
-                Err(e) if e.name == "MobileRequestBudget" => {
-                    return self
-                        .patch_setup(id, model_id, json!({"error": e.message}), &["pending"])
-                        .await;
-                }
-                Err(e) => {
-                    self.patch_setup(
-                        id,
-                        model_id,
-                        json!({"error":format!("Username update needs review ({})",e.name)}),
-                        &[],
-                    )
-                    .await?;
-                    return Ok(());
-                }
-            }
-        }
-        self.patch_setup(
-            id,
-            model_id,
-            json!({"error":"No available username was accepted"}),
-            &["pending"],
-        )
-        .await
     }
     async fn generate_name(&self, prompt: String) -> Result<String> {
         let key = std::env::var("OPENROUTER_API_KEY").unwrap_or_default();
@@ -772,4 +830,48 @@ pub async fn post_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrade
                 }
             }
         })
+}
+
+/// Hold the account lock and pending marker throughout each browser profile edit.
+pub async fn setup_lease(State(state): State<Arc<Accounts>>, ws: WebSocketUpgrade) -> Response {
+    ws.max_message_size(4096).on_upgrade(move |mut socket| async move {
+        let Ok(Some(Ok(Message::Text(input)))) = tokio::time::timeout(Duration::from_secs(10),socket.recv()).await else { return; };
+        let Ok(input) = serde_json::from_str::<Value>(&input) else { return; };
+        let id = profiles::text(&input,"profileId");
+        let automation = profiles::text(&input,"automationId");
+        let Ok(_guard) = state.action_lock(id).await else { let _=socket.send(Message::Text(json!({"error":"Account action is busy"}).to_string().into())).await; return; };
+        let mut model = None;
+        let mut task = match state.prepare_browser_setup(id,automation,&mut model).await {
+            Ok(task)=>task,
+            Err(error)=>{ let _=socket.send(Message::Text(json!({"error":error.message}).to_string().into())).await; return; },
+        };
+        let model = model.unwrap_or_default();
+        let mut candidates = task["candidates"].as_array().cloned().unwrap_or_default();
+        let mut expanded = candidates.len() != 1;
+        let mut next = 1;
+        loop {
+            if socket.send(Message::Text(json!({"ready":true,"task":task}).to_string().into())).await.is_err() || task.is_null() { break; }
+            let result = match tokio::time::timeout(Duration::from_secs(600),socket.recv()).await {
+                Ok(Some(Ok(Message::Text(raw))))=>serde_json::from_str::<Value>(&raw).ok().and_then(|v|v["result"].as_str().map(str::to_owned)).unwrap_or_default(),
+                _=>String::new(),
+            };
+            if let Err(error) = state.finish_browser_setup(id,&model,&task,&result).await {
+                let _=socket.send(Message::Text(json!({"error":error.message}).to_string().into())).await; break;
+            }
+            if result == "unavailable" && task["kind"] == "username" && !expanded {
+                expanded = true;
+                match state.retry_browser_username(&model,&task,&candidates).await {
+                    Ok(more)=>candidates.extend(more),
+                    Err(error)=>{ let _=socket.send(Message::Text(json!({"error":error.message}).to_string().into())).await; break; },
+                }
+            }
+            if result == "unavailable" && task["kind"] == "username" && next < candidates.len().min(8) {
+                task["value"] = candidates[next].clone(); next += 1;
+                if state.patch_setup(id,&model,json!({"pending":{"kind":"username","date":date(api::now_ms())},"targetUsername":task["value"]}),&[]).await.is_err() { break; }
+                continue;
+            }
+            let _=socket.send(Message::Text(json!({"saved":true}).to_string().into())).await;
+            break;
+        }
+    })
 }

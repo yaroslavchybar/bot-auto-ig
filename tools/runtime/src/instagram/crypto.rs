@@ -118,26 +118,6 @@ pub fn encrypt_password(password: &str, key_id: u8, public: &str) -> Result<(Str
     Ok((time, STANDARD.encode(packet)))
 }
 
-pub fn signed_fields(payload: &Value) -> super::transport::Fields {
-    let body = payload.to_string();
-    let mut mac = <Hmac<sha2::Sha256> as Mac>::new_from_slice(
-        b"9193488027538fd3450b83b7d05286d4ca9599a0f7eeed90d8c85925698a05dc",
-    )
-    .unwrap();
-    mac.update(body.as_bytes());
-    let hash = mac
-        .finalize()
-        .into_bytes()
-        .iter()
-        .map(|v| format!("{v:02x}"))
-        .collect::<String>();
-    [
-        ("ig_sig_key_version".into(), "4".into()),
-        ("signed_body".into(), format!("{hash}.{body}")),
-    ]
-    .into()
-}
-
 pub fn authenticator_code(key: &str, now: u64) -> Result<String> {
     let mut bytes = Vec::new();
     let mut bits = 0;

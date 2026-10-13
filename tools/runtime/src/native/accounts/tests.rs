@@ -468,157 +468,139 @@ fn setup_days_follow_kyiv_midnight_and_dst() {
 }
 
 #[tokio::test]
-async fn model_setup_confirms_identity_and_keeps_uncertain_requests_pending() {
-    use crate::test_support::Fixture;
+async fn browser_setup_prepares_without_mobile_and_keeps_uncertain_results_pending() {
+    use crate::test_support::{self, Fixture};
     use axum::{response::IntoResponse, Json};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     for outcome in [
-        "success",
+        "applied",
+        "failed",
+        "unavailable",
         "uncertain",
         "save failure",
-        "retry pending",
+        "paused",
         "restore readiness",
-        "paused during setup",
-        "hourly request limit",
     ] {
         let root = tempfile::tempdir().unwrap();
         let progress = Arc::new(Mutex::new(
-            json!({"profileId":"p","modelId":"model","startedAt":api::now_ms() as f64 - 5.0*86_400_000.0 + 0.25,"postSourceIds":[],"postDates":[]}),
+            json!({"profileId":"p","modelId":"model","startedAt":api::now_ms()-5*86_400_000,"postSourceIds":[],"postDates":[]}),
         ));
         if outcome == "restore readiness" {
             let mut state = progress.lock().await;
             state["nameDone"] = json!(true);
-            state["postTarget"] = json!(9);
-            state["postSourceIds"] = json!(["post1", "post2", "post3"]);
-            state["postDates"] = json!(["2026-09-25", "2026-09-26", "2026-09-27"]);
             state["avatarDone"] = json!(true);
             state["outreachReadyMarked"] = json!(true);
-            state["error"] = json!("stale setup error");
+            state["postSourceIds"] = json!(["s1", "s2", "s3"]);
+            state["postDates"] = json!(["d1", "d2", "d3"]);
         }
-        let attempts = Arc::new(AtomicUsize::new(0));
-        let count = attempts.clone();
-        let mobile=Fixture::start(move |request| {
-            let count=count.clone();
-            async move {
-                match request.uri().path() {
-                    "/api/v1/accounts/current_user/"=>Json(json!({"status":"ok","user":{"username":"example","full_name":"Example"}})).into_response(),
-                    "/api/v1/accounts/edit_profile/"=> {
-                        count.fetch_add(1,Ordering::SeqCst);
-                        if outcome=="uncertain" { (axum::http::StatusCode::BAD_GATEWAY,Json(json!({"status":"fail","error_type":"unknown"}))).into_response() }
-                        else { Json(json!({"status":"ok","user":{"username":"changed_name","full_name":"Example"}})).into_response() }
-                    },
-                    _=>panic!("Unexpected mobile action")
-                }
-            }
-        }).await;
+        let account = Arc::new(Mutex::new({
+            let encrypted = encrypt(
+                &[0xaa; 32],
+                &parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap(),
+            )
+            .unwrap();
+            let mut value = serde_json::to_value(encrypted).unwrap();
+            value["_id"] = json!("a");
+            value["status"] = json!("assigned");
+            value["profileId"] = json!("p");
+            value["browserLoggedInAt"] = json!(api::now_ms() - 5 * 86_400_000);
+            value
+        }));
+        let stored = account.clone();
         let observed = progress.clone();
-        let budget = Arc::new(AtomicUsize::new(0));
-        let fixture=Fixture::start(move |request| {
-            let state=observed.clone();
-            let budget=budget.clone();
-            async move {
-                match request.uri().path() {
-                    "/api/mobile-requests/reserve" => {
-                        let allowed=budget.fetch_add(1,Ordering::SeqCst)>0;
-                        Json(json!({"allowed":allowed,"retryAt":api::now_ms()+3_600_000,"reason":if outcome=="paused during setup" {"Profile is paused"} else {"Hourly mobile request limit reached"}})).into_response()
-                    },
-                    "/api/automations/by-id"=>Json(json!({"isActive":true,"routine":{},"listIds":["model"]})).into_response(),
-                    "/api/profiles"=>Json(json!([{"id":"p","name":"example","proxy":"http://proxy.test:8080","igLoggedIn":true,"listIds":["model"]}])).into_response(),
-                    "/api/profiles/by-id"=>Json(json!({"id":"p","name":"changed_name"})).into_response(),
-                    "/api/lists"=>Json(json!([{"id":"model","usernames":["changed_name"]}])).into_response(),
-                    "/api/routines/ready"=>Json(json!(true)).into_response(),
-                    "/api/mobile/context"=>Json(json!({"connected":true,"token":"token","state":Service::fixture_session(),"profile":{"id":"p"}})).into_response(),
-                    "/api/ig-accounts-store"=> {
-                        let body=crate::test_support::body(request).await;
-                        let value=match profiles::text(&body,"operation") {
-                            "modelSetupList"=>json!([state.lock().await.clone()]),
-                            "byProfile"|"byId"=> {
-                                let encrypted=encrypt(&[0xaa;32],&parse_credentials("example:password:JBSWY3DPEHPK3PXP").unwrap()).unwrap();
-                                let mut value=serde_json::to_value(encrypted).unwrap();
-                                value["_id"]=json!("a"); value["status"]=json!(if outcome=="retry pending" {"assigned"} else {"connected"}); value["profileId"]=json!("p"); value["createdAt"]=json!(1);
-                                if outcome=="retry pending" { value["browserLoggedInAt"]=json!(api::now_ms()-5*86_400_000); value["retryAfter"]=json!(api::now_ms() as f64+60_000.25); } value
-                            },
-                            "modelSetupPatch"=> {
-                                if outcome=="save failure" && body["patch"]["nameDone"]==true { return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(); }
-                                let mut state=state.lock().await;
-                                for (key,value) in body["patch"].as_object().unwrap() { state[key]=value.clone(); }
-                                for key in body["clear"].as_array().unwrap() { state.as_object_mut().unwrap().remove(key.as_str().unwrap()); }
-                                json!({"ok":true})
-                            },
-                            "setUsername"=> {
-                                let encrypted:Encrypted=serde_json::from_value(body).unwrap();
-                                assert_eq!(decrypt(&[0xaa;32],&encrypted).unwrap().username,"changed_name"); json!({"ok":true})
-                            },
-                            "setState"=>json!({"ok":true}),
-                            _=>panic!("Unexpected store action: {}",body)
-                        }; Json(value).into_response()
-                    },
-                    _=>panic!("Unexpected fixture route: {}",request.uri().path())
-                }
+        let fixture=Fixture::start(move |request| {let account=stored.clone();let state=observed.clone();async move {
+            match request.uri().path() {
+                "/api/automations/by-id"=>Json(json!({"isActive":true,"routine":{},"listIds":["model"]})).into_response(),
+                "/api/profiles"=>Json(json!([{"id":"p","name":"example","createdAt":1,"igLoggedIn":true,"using":true,"status":"running","proxy":"work.test:80","paused":outcome=="paused","listIds":["model"]}])).into_response(),
+                "/api/lists"=>Json(json!([{"id":"model","usernames":["changed_name"]}])).into_response(),
+                "/api/routines/ready"=>Json(json!(true)).into_response(),
+                "/api/ig-accounts-store"=>{
+                    let body=test_support::body(request).await;
+                    let value=match profiles::text(&body,"operation") {
+                        "byProfile"|"byId"=>account.lock().await.clone(),
+                        "modelSetupList"=>json!([state.lock().await.clone()]),
+                        "modelSetupPatch"=>{
+                            if outcome=="save failure"&&body["patch"]["nameDone"]==true{return axum::http::StatusCode::INTERNAL_SERVER_ERROR.into_response();}
+                            let mut current=state.lock().await;
+                            for(key,value)in body["patch"].as_object().unwrap(){current[key]=value.clone();}
+                            for key in body["clear"].as_array().unwrap(){current.as_object_mut().unwrap().remove(key.as_str().unwrap());}
+                            json!({"ok":true})
+                        },
+                        "setUsername"=>{
+                            let encrypted:Encrypted=serde_json::from_value(body.clone()).unwrap();
+                            let credentials=decrypt(&[0xaa;32],&encrypted).unwrap();
+                            assert_eq!(credentials.username,"changed_name");assert_eq!(credentials.password,"password");
+                            let mut current=account.lock().await;current["ciphertext"]=body["ciphertext"].clone();current["usernameHash"]=body["usernameHash"].clone();json!({"ok":true})
+                        },
+                        _=>panic!("Unexpected setup mutation"),
+                    };Json(value).into_response()
+                },
+                _=>panic!("Browser setup must not invoke mobile APIs or rename a running browser"),
             }
-        }).await;
+        }}).await;
         let mut api = Api::from_env().unwrap();
         api.convex_url = fixture.url.clone();
         api.key = "fixture".into();
         let api = Arc::new(api);
-        let mut mobile = Service::fixture(api.clone(), mobile.url.clone());
-        if ["paused during setup", "hourly request limit"].contains(&outcome) {
-            Arc::get_mut(&mut mobile).unwrap().request_budget_enabled = true;
-        }
         let processes = super::super::processes::Processes::new(api.clone(), root.path().into());
         let profiles = Profiles::new(api.clone(), processes, root.path().into());
         let mut accounts = Accounts::new(
             api.clone(),
             profiles,
-            mobile,
+            Service::fixture(api.clone(), fixture.url.clone()),
             Content::new(root.path().join("content")),
             Subscriptions::new(api),
         );
         Arc::get_mut(&mut accounts).unwrap().credential_key = Some(vec![0xaa; 32]);
-        let result = accounts.advance_setup("p", "automation").await;
+        let mut model = None;
+        let task = accounts
+            .prepare_browser_setup("p", "automation", &mut model)
+            .await
+            .unwrap();
+        if outcome == "paused" {
+            assert!(task.is_null());
+            assert!(progress.lock().await["pending"].is_null());
+            continue;
+        }
+        if outcome == "restore readiness" {
+            assert!(task.is_null());
+            assert_eq!(progress.lock().await["outreachReadyMarked"], true);
+            continue;
+        }
+        assert_eq!(task["kind"], "username");
+        assert_eq!(task["value"], "changed_name");
+        assert_eq!(task["currentUsername"], "example");
+        assert_eq!(progress.lock().await["pending"]["kind"], "username");
+        let result = accounts
+            .finish_browser_setup(
+                "p",
+                "model",
+                &task,
+                if outcome == "save failure" {
+                    "applied"
+                } else {
+                    outcome
+                },
+            )
+            .await;
         if outcome == "save failure" {
             assert!(result.is_err());
         } else {
             result.unwrap();
         }
         let state = progress.lock().await.clone();
-        if ["paused during setup", "hourly request limit"].contains(&outcome) {
-            assert_eq!(attempts.load(Ordering::SeqCst), 0);
-            assert!(state["pending"].is_null());
-            assert!(state["error"].is_string());
-            accounts.advance_setup("p", "automation").await.unwrap();
-            assert_eq!(attempts.load(Ordering::SeqCst), 1);
-            assert_eq!(progress.lock().await["nameDone"], true);
-            continue;
-        }
-        if outcome == "restore readiness" {
-            assert_eq!(attempts.load(Ordering::SeqCst), 0);
-            assert_eq!(state["outreachReadyMarked"], true);
-            assert!(
-                state["error"].is_null(),
-                "completed setup must reconfirm readiness when the profile flag is missing"
-            );
-            assert_eq!(state["postSourceIds"], json!(["post1", "post2", "post3"]));
-            continue;
-        }
-        if outcome == "retry pending" {
-            assert_eq!(attempts.load(Ordering::SeqCst), 0);
-            assert!(state["pending"].is_null());
-            continue;
-        }
-        assert_eq!(attempts.load(Ordering::SeqCst), 1);
-        if outcome == "success" {
+        if outcome == "applied" {
             assert_eq!(state["nameDone"], true);
             assert!(state["pending"].is_null());
-        } else {
+        } else if ["uncertain", "save failure"].contains(&outcome) {
             assert_eq!(state["pending"]["kind"], "username");
+            assert!(accounts
+                .prepare_browser_setup("p", "automation", &mut model)
+                .await
+                .unwrap()
+                .is_null());
+        } else {
+            assert!(state["pending"].is_null());
             assert!(state["error"].is_string());
-            accounts.advance_setup("p", "automation").await.unwrap();
-            assert_eq!(
-                attempts.load(Ordering::SeqCst),
-                1,
-                "uncertain requests must never be repeated automatically"
-            );
         }
     }
 }
