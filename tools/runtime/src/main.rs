@@ -116,6 +116,15 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let public_api = api::router(api_state.clone());
     let api_port = api::env("SERVER_PORT", "3001");
     let api_listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{api_port}")).await?;
+    ig_service_common::service_event(
+        "runtime.ready",
+        "Runtime listeners bound",
+        json!({
+            "runtimePort": listener.local_addr()?.port(),
+            "serverPort": api_listener.local_addr()?.port(),
+            "gatewayPort": gateway_listener.local_addr()?.port(),
+        }),
+    );
     let auth = api_state.auth.clone();
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_secs(2)).await;

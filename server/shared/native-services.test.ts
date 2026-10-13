@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import sharp from 'sharp'
 import WebSocket from 'ws'
+import { nativeFixture } from './native-fixture.testing.js'
 
 async function freePort(): Promise<number> {
   const server = createServer()
@@ -58,7 +59,8 @@ async function start(name: string, mode: string, env: Record<string, string>) {
       await exited
       clearTimeout(timer)
     }
-    if (path.dirname(path.resolve(root)) !== path.resolve(tmpdir())) throw new Error('Invalid test root')
+    if (path.dirname(path.resolve(root)) !== path.resolve(tmpdir()))
+      throw new Error('Invalid test root')
     await fs.rm(root, { recursive: true, force: true })
   }
   try {
@@ -67,7 +69,8 @@ async function start(name: string, mode: string, env: Record<string, string>) {
       try {
         if ((await fetch(`${url}/health`)).ok)
           return {
-            url, headers,
+            url,
+            headers,
             logs: () =>
               output
                 .split('\n')
@@ -159,14 +162,13 @@ test('Rust gateway relays binary RFB data in both directions and releases discon
     })
     if (opened) break
   }
-  const gatewayPort = await freePort()
-  const service = await start('ig-runtime', 'helper', {
-    RUNTIME_PORT: String(await freePort()),
-    VNC_GATEWAY_PORT: String(gatewayPort),
-  })
+  const service = await nativeFixture()
   let ws: WebSocket | undefined
   try {
-    ws = new WebSocket(`ws://127.0.0.1:${gatewayPort}/vnc/${port + 180}/websockify`, 'binary')
+    ws = new WebSocket(
+      `${service.gatewayUrl.replace('http:', 'ws:')}/vnc/${port + 180}/websockify`,
+      'binary',
+    )
     const received: Buffer[] = []
     ws.on('message', (data, binary) => {
       expect(binary).toBe(true)

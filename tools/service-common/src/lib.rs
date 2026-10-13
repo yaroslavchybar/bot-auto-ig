@@ -24,16 +24,27 @@ impl RequestContext {
 
 /// Startup failures use the same schema as request completions and reach the collector.
 pub fn service_error(event: &str, message: &str) {
+    service_log(event, message, "error", "error", json!({}));
+}
+
+/// Startup metadata uses the same collector schema as request completions.
+pub fn service_event(event: &str, message: &str, context: Value) {
+    service_log(event, message, "info", "success", context);
+}
+
+fn service_log(event: &str, message: &str, level: &str, outcome: &str, context: Value) {
     let service = std::env::var("LOG_SERVICE").unwrap_or_else(|_| "runtime".into());
-    eprintln!(
-        "{}",
-        json!({ "id": Uuid::new_v4().to_string(), "ts": now_ms(),
-            "event": event, "message": message, "level": "error", "source": service,
-            "requestId": Uuid::new_v4().to_string(), "outcome": "error", "context": {},
-            "environment": { "service": service, "runtime": "rust",
-                "commitHash": std::env::var("COMMIT_SHA").unwrap_or_else(|_| "unknown".into()) }
-        })
-    );
+    let entry = json!({ "id": Uuid::new_v4().to_string(), "ts": now_ms(),
+        "event": event, "message": message, "level": level, "source": service,
+        "requestId": Uuid::new_v4().to_string(), "outcome": outcome, "context": context,
+        "environment": { "service": service, "runtime": "rust",
+            "commitHash": std::env::var("COMMIT_SHA").unwrap_or_else(|_| "unknown".into()) }
+    });
+    if level == "error" {
+        eprintln!("{entry}");
+    } else {
+        println!("{entry}");
+    }
 }
 
 /// Log one completion event. Payloads, headers, paths on disk and credentials stay out.
