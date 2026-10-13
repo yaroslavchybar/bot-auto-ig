@@ -81,7 +81,10 @@ Required production secrets:
 
 Warm-up accepts a plain-English topic description (up to 1,000 characters).
 Normal `openai/gpt-6-luna` generates short Instagram search phrases for Explore
-and week-one account searches. The worker shares in-flight generation and caches
+post searches on warm-up days 1–4 and week-one account searches through day 7.
+Post searches use typed hashtags and native result clicks, followed by scrolling
+the post grid. From day 5, browsing uses the enabled Home feed/Reels surfaces.
+The worker shares in-flight generation and caches
 phrases per description for 24 hours; restart or an edited description regenerates them.
 Generation failures skip topic searches for a minute while enabled Feed/Reels
 browsing continues. Blank descriptions use normal browsing without generation.

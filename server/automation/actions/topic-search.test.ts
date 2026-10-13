@@ -51,6 +51,34 @@ test('generation shares concurrent work, reuses phrases, and regenerates edited 
   assert.equal(events.length, 3)
 })
 
+test('editing the topic description or its exclusions regenerates terms before the cache expires', async () => {
+  const descriptions: string[] = []
+  const get = createTopicSearchTerms(async description => {
+    descriptions.push(description)
+    return description.includes('excluding') ? ['home workouts'] : ['bodybuilding competition']
+  })
+  const session = new BrowseSession(Date.now() + 10_000)
+  const original = 'Fitness training'
+  const edited = 'Fitness training, excluding competitions'
+  assert.deepEqual(await get(original, session, () => {}), ['bodybuilding competition'])
+  assert.deepEqual(await get(edited, session, () => {}), ['home workouts'])
+  assert.deepEqual(await get(edited, session, () => {}), ['home workouts'])
+  assert.deepEqual(descriptions, [original, edited])
+})
+
+test('an older generation finishing after a topic edit cannot replace the edited topic terms', async () => {
+  let finishOld!: (terms: readonly string[]) => void
+  const get = createTopicSearchTerms(description => description === 'Fitness training'
+    ? new Promise(resolve => { finishOld = resolve })
+    : Promise.resolve(['cooking recipes']))
+  const session = new BrowseSession(Date.now() + 10_000)
+  const pending = get('Fitness training', session, () => {})
+  assert.deepEqual(await get('Cooking at home', session, () => {}), ['cooking recipes'])
+  finishOld(['strength training'])
+  assert.deepEqual(await pending, ['strength training'])
+  assert.deepEqual(await get('Cooking at home', session, () => {}), ['cooking recipes'])
+})
+
 test('a generation failure skips queries, cools down and retries without using the raw description', async () => {
   let now = Date.now(), calls = 0
   const get = createTopicSearchTerms(async () => {

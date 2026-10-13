@@ -3,7 +3,7 @@ import { errors } from 'playwright-core'
 import { focusPageContent } from '../../browser/focus.js'
 import { randomDelay, type ActionLogger, type StopCheck } from './shared.js'
 import { clickVisible } from './mouse.js'
-import { dismissPopups } from './navigation.js'
+import { dismissPopups, isInstagramHome } from './navigation.js'
 import { BrowseSession, SessionEnded } from './session.js'
 import { actionLocator } from './action-locator.js'
 
@@ -17,7 +17,8 @@ export async function watchStories(
   const session = new BrowseSession(timing.deadline ?? Infinity, shouldStop)
   let watched = 0, opened = false
   try {
-    await page.goto('https://www.instagram.com/', {
+    session.check()
+    if (!isInstagramHome(page)) await page.goto('https://www.instagram.com/', {
       waitUntil: 'domcontentloaded', timeout: session.timeout(45_000),
     })
     await focusPageContent(page)

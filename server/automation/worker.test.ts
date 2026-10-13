@@ -249,11 +249,14 @@ test('automation action failures reject the run and close the browser', async ()
           return {
             page: {
               url: () => 'https://www.instagram.com/',
-              locator: () => ({ count: async () => 1, filter() { return this }, first() { return this },
-                evaluateAll: async () => false, isVisible: async () => false }),
+              locator: (selector: string) => {
+                if (selector === 'article') throw new Error('Feed content failed')
+                return { count: async () => 0, filter() { return this }, first() { return this },
+                  evaluateAll: async () => false, isVisible: async () => false }
+              },
               getByRole: () => ({ filter() { return this }, first() { return this }, isVisible: async () => false }),
               goto: async () => {
-                throw new Error('Navigation failed')
+                throw new Error('Home must not be refreshed')
               },
             },
             close: async () => {
@@ -262,7 +265,7 @@ test('automation action failures reject the run and close the browser', async ()
           } as unknown as BrowserSession
         },
       ),
-      /Navigation failed/,
+      /Feed content failed/,
     )
     assert.equal(closed, true)
     assert.deepEqual(statuses, ['running', 'idle'])

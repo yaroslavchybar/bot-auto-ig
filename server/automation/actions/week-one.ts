@@ -4,16 +4,17 @@ import { warmupTopics } from '../../shared/warmupTopics.js'
 import type { WarmupActivityBudget } from '../../shared/warmupPlan.js'
 import { followButton, profileControls } from '../follow.js'
 import { likeRecentPost, ownUsername } from '../follow-back.js'
-import { actionLocator, clickAction } from './action-locator.js'
+import { clickAction } from './action-locator.js'
 import { isUserHref } from './guards.js'
 import { assertInstagramReady } from './instagram-state.js'
 import { BrowseSession } from './session.js'
 import { random, type ActionLogger } from './shared.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { performProfileFollow } from './follow-safety.js'
+import { searchExplore } from './explore.js'
 
 const dependencies = { beginFollow: warmupBeginFollow, confirmFollow: warmupConfirmFollow, like: likeRecentPost, ownUsername,
-  follow: performProfileFollow, pauseFollows: warmupPauseFollows, topic: topicContentMatches }
+  follow: performProfileFollow, pauseFollows: warmupPauseFollows, topic: topicContentMatches, search: searchExplore }
 
 /** Week-one engagement visits topic search accounts; missing topic evidence always blocks engagement. */
 export async function engageWeekOne(page: Page, keywords: string, budget: WarmupActivityBudget,
@@ -24,13 +25,7 @@ export async function engageWeekOne(page: Page, keywords: string, budget: Warmup
   if (!topics.length || !searchTerms.length || !budget.remaining('profiles') || (!budget.remaining('likes') && !budget.remaining('follows'))) return
   session.check()
   const own = (await deps.ownUsername(page)).toLowerCase()
-  const search = page.locator('a:has(svg[aria-label="Search"])').filter({ visible: true }).first()
-  if (!await search.isVisible()) return
-  await (await actionLocator(search, session.timeout(5000))).click({ timeout: session.timeout(5000) })
-  const input = page.getByRole('textbox', { name: 'Search input', exact: true })
-  await input.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
-  await (await actionLocator(input, session.timeout(5000))).fill(searchTerms[Math.floor(Math.random() * searchTerms.length)], { timeout: session.timeout(5000) })
-  await session.wait(random(2500, 4000))
+  if (!await deps.search(page, searchTerms[Math.floor(Math.random() * searchTerms.length)], session)) return
   await assertInstagramReady(page)
   const hrefs = await page.locator('main a[href]').evaluateAll(links => [...new Set(links
     .filter(link => link.textContent?.trim()).map(link => link.getAttribute('href')))].filter(href => href !== null))

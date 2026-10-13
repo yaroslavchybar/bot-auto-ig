@@ -7,7 +7,6 @@ import { warmupTopics, feedPostMatches, reelPostContext } from '../../shared/war
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
 import { clickAction } from './action-locator.js'
-import { smoothScroll } from './scroll.js'
 import {
   chance,
   numeric,
@@ -91,72 +90,62 @@ async function inViewVideo(page: Page): Promise<Locator | null> {
   try {
     const vids = page.locator('video')
     const n = await vids.count().catch(() => 0)
-    const vpH = page.viewportSize()?.height ?? 800
+    const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    let best: Locator | null = null, bestArea = 0
     for (let i = 0; i < n; i++) {
       const box = await vids.nth(i).boundingBox().catch(() => null)
-      if (box && box.y < vpH * 0.7 && box.y + box.height > vpH * 0.3)
-        return vids.nth(i)
+      if (!box) continue
+      const width = Math.max(0, Math.min(viewport.width, box.x + box.width) - Math.max(0, box.x))
+      const height = Math.max(0, Math.min(viewport.height, box.y + box.height) - Math.max(0, box.y))
+      if (width * height > bestArea) { best = vids.nth(i); bestArea = width * height }
     }
-    return null
+    return best
   } catch {
     return null
   }
 }
 
-// How many videos sit centered on screen right now. After an overshoot
-// or a batch load this is 0 — the viewer hasn't seated on any reel.
-async function centeredCount(page: Page): Promise<number> {
-  try {
-    return await page.evaluate(() => {
-      const vh = window.innerHeight
-      let n = 0
-      document.querySelectorAll('video').forEach((v) => {
-        const r = (v as HTMLElement).getBoundingClientRect()
-        const c = r.top + r.height / 2
-        if (c > 0 && c < vh) n++
-      })
-      return n
-    })
-  } catch {
-    return 0
+/** Use the actual scrollport, including nested viewers and headed windows without a fixed viewport. */
+function reelViewBounds(video: Element) {
+  const view = video.ownerDocument.defaultView!
+  for (let parent = video.parentElement; parent; parent = parent.parentElement) {
+    if (!/(auto|scroll)/.test(view.getComputedStyle(parent).overflowY) || parent.scrollHeight <= parent.clientHeight) continue
+    const box = parent.getBoundingClientRect()
+    return { top: Math.max(0, box.top), bottom: Math.min(view.innerHeight, box.bottom) }
   }
+  return { top: 0, bottom: view.innerHeight }
 }
 
-// Wait until the viewer seats on exactly one reel (batch loads and snap
-// animation leave it floating between reels for a bit).
-async function waitForSettle(page: Page, session: BrowseSession): Promise<void> {
+// A changed URL or a video center anywhere onscreen does not mean snapping has finished.
+async function waitForSettle(page: Page, session: BrowseSession): Promise<boolean> {
   const sleep = session.wait
   session.check()
   for (let i = 0; i < 10; i++) {
-    if ((await centeredCount(page)) === 1) return
+    const video = await inViewVideo(page)
+    const box = await video?.boundingBox()
+    const port = await video?.evaluate(reelViewBounds)
+    if (box && port && port.bottom > port.top) {
+      const height = port.bottom - port.top
+      const visible = Math.max(0, Math.min(box.y + box.height, port.bottom) - Math.max(box.y, port.top))
+      if (visible >= Math.min(box.height, height) * 0.9 &&
+        Math.abs(box.y + box.height / 2 - (port.top + port.bottom) / 2) <= height * 0.15) return true
+    }
     await sleep(500)
   }
+  return false
 }
 
-// Short eased glides stop as soon as the reel changes, avoiding batch overshoot.
-async function advanceReel(page: Page, session: BrowseSession): Promise<boolean> {
-  const sleep = session.wait
+// Use the named Next control with cursor movement, then verify navigation and settling.
+export async function advanceReel(page: Page, session: BrowseSession): Promise<boolean> {
   session.check()
   const before = reelId(page.url())
+  const changed = () => { const id = reelId(page.url()); return !!id && id !== before }
   try {
-    const box = await (await inViewVideo(page))?.boundingBox().catch(() => null)
-    if (box) {
-      await page.mouse.move(
-        box.x + box.width * random(0.4, 0.6),
-        box.y + box.height * random(0.4, 0.6),
-      )
-      await sleep(random(200, 500))
-    }
-    for (let i = 0; i < 5; i++) {
-      await smoothScroll(page, random(200, 280), session, () => reelId(page.url()) !== before)
-      await sleep(random(1000, 1400))
-      const now = reelId(page.url())
-      if (now && now !== before) {
-        await waitForSettle(page, session)
-        return true
-      }
-    }
-    return false
+    const next = page.getByRole('button', { name: 'Navigate to next Reel', exact: true }).filter({ visible: true }).first()
+    if (!await next.isVisible() || !await next.isEnabled()) return false
+    await clickAction(next, session.timeout(5000))
+    await page.waitForURL(url => !!reelId(url.href) && reelId(url.href) !== before, { timeout: session.timeout(5000) })
+    return await waitForSettle(page, session) && changed()
   } catch {
     return false
   }
@@ -189,7 +178,7 @@ export async function watchReels(
     const id = reelId(page.url())
     if (id) {
       if (seen.has(id)) {
-        // Same reel stuck (advance failed): nudge once, then bail.
+        // Same reel stuck (advance failed): try Next once, then bail.
         if (!(await advanceReel(page, session).catch(() => false))) break
         continue
       }

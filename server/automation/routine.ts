@@ -25,7 +25,10 @@ import { assertInstagramReady } from './actions/instagram-state.js';
 import { performProfileFollow } from './actions/follow-safety.js';
 import { clickAction } from './actions/action-locator.js'
 import { screenLead, LEAD_SCREENING_MODEL } from './actions/lead-screening.js'
-import { BrowseSession } from './actions/session.js'
+import { BrowseSession, SessionEnded } from './actions/session.js'
+import { openProfileThroughSearch, publicProfileForSearch } from './actions/explore.js'
+import { errors } from 'playwright-core'
+import { isTransientDomIssue } from '../shared/domErrors.js'
 
 const dependencies = {
   ready: routineReady,
@@ -54,6 +57,8 @@ const dependencies = {
   pauseFollows: warmupPauseFollows,
   screenLead,
   finishScreening: routineFinishScreening,
+  searchProfile: openProfileThroughSearch,
+  publicProfile: publicProfileForSearch,
 };
 
 /** Check membership at action boundaries; live subscriptions stop active work. */
@@ -233,6 +238,27 @@ export async function runRoutineSession(
                   accepted,
                 })
                 if (!accepted || shouldStop()) return shouldStop() ? 'unavailable' : 'blocked'
+                // Privacy is known only once the profile opens. Some public leads
+                // are revisited through Search before the authorized follow.
+                if (deps.random(0, 1) < 0.3 && await deps.publicProfile(page)) {
+                  let searched = false
+                  try {
+                    searched = await deps.searchProfile(page, attempt.username,
+                      new BrowseSession(Math.min(deadline, Date.now() + 30_000), shouldStop))
+                  } catch (error) {
+                    if (shouldStop()) return 'unavailable'
+                    await deps.instagram(page)
+                    if (!(error instanceof SessionEnded) && !(error instanceof errors.TimeoutError) && !isTransientDomIssue(error)) throw error
+                  }
+                  if (shouldStop()) return 'unavailable'
+                  // Restore the exact lead on an empty/missing result; never follow a suggestion.
+                  if (!searched) await page.goto(`https://www.instagram.com/${attempt.username}/`, {
+                    waitUntil: 'domcontentloaded', timeout: timeout(30_000),
+                  })
+                  await check()
+                  log({ event: 'automation.routine.profile_navigation', targetUsername: attempt.username,
+                    route: searched ? 'search' : 'direct', outcome: searched ? 'opened' : 'fallback' })
+                }
                 followsRemaining = Math.max(0, followsRemaining - 1)
                 const followed = await followIfNeeded(attempt.leadId, attempt.date);
                 if (followed && !shouldStop()) {

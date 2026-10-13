@@ -15,22 +15,16 @@ import { random, type ActionLogger, type StopCheck } from './shared.js'
 import { viewContent } from './viewing.js'
 import { topicContentMatches, type TopicMatcher } from './topic-intent.js'
 import { maintainPost } from './maintenance.js'
+import { openTopicResults, searchExplore } from './explore.js'
+import { smoothScroll } from './scroll.js'
 
 export type TopicBrowseState = { feedViewed: boolean; profilesChecked: boolean; seenPosts: Set<string>; searchTerms?: readonly string[] }
-export const topicGridUrl = (topic: string) => `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(topic)}`
-// Carousel slides have another Next inside article; the result navigator is outside it.
-export const TOPIC_NEXT_RESULT = 'xpath=.//*[self::button or @role="button"][not(ancestor::article)][@aria-label="Next" or .//*[@aria-label="Next"] or normalize-space(.)="Next"]'
+export const TOPIC_SEARCH_LAST_DAY = 4
 
 /** Use account suggestions from the named search input, visiting without engagement. */
 export async function visitTopicProfiles(page: Page, topic: string, budget: WarmupActivityBudget,
   session: BrowseSession, log: ActionLogger): Promise<void> {
-  const search = page.locator('a:has(svg[aria-label="Search"])').filter({ visible: true }).first()
-  if (!await search.isVisible()) return
-  await (await actionLocator(search, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
-  const input = page.getByRole('textbox', { name: 'Search input', exact: true })
-  await input.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
-  await (await actionLocator(input, session.timeout(5_000))).fill(topic, { timeout: session.timeout(5_000) })
-  await session.wait(random(2500, 4000))
+  if (!await searchExplore(page, topic, session)) return
   const loading = page.locator('main [role="status"]')
   if (await loading.count()) await loading.first().waitFor({ state: 'hidden', timeout: session.timeout(8_000) })
   await assertInstagramReady(page)
@@ -40,56 +34,63 @@ export async function visitTopicProfiles(page: Page, topic: string, budget: Warm
   const count = Math.min(budget.remaining('profiles'), 2, candidates.length)
   for (let i = 0; i < count && session.end - Date.now() > 15_000; i++) {
     session.check()
-    if (!budget.take('profiles')) break
     const href = candidates.splice(Math.floor(Math.random() * candidates.length), 1)[0]!
     await page.goto(`https://www.instagram.com${href}`, { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
     await assertInstagramReady(page)
     await page.locator('main header').waitFor({ state: 'visible', timeout: session.timeout(8_000) })
+    if (!budget.take('profiles')) break
     await wanderProfile(page, log, () => session.stopped(), session.end, session)
     log({ event: 'automation.warmup.topic_profile_visited', topic, targetUsername: href.split('/')[1] })
   }
 }
 
-/** Keyword grid opens a post dialog; its Next control advances the search results. */
+/** Search through the UI, scan the grid, and return to it after each opened post. */
 export async function watchTopicPosts(page: Page, topic: string, count: number, budget: WarmupActivityBudget,
   seen: Set<string>, session: BrowseSession, log: ActionLogger, maintenance = false, matchesTopic: TopicMatcher = topicContentMatches,
-  topics: readonly string[]): Promise<void> {
+  topics: readonly string[], deps = { search: openTopicResults, scroll: smoothScroll }): Promise<void> {
   if (count <= 0 || budget.remaining('reels') <= 0) return
-  await page.goto(topicGridUrl(topic), { waitUntil: 'domcontentloaded', timeout: session.timeout(15_000) })
+  if (!await deps.search(page, topic, session)) return
   const tiles = page.locator('main a[href*="/p/"], main a[href*="/reel/"]')
   await tiles.first().waitFor({ state: 'visible', timeout: session.timeout(10_000) }).catch(() => {})
   session.check()
   await assertInstagramReady(page)
-  let opened = false
-  const total = Math.min(await tiles.count(), 24)
-  const order = Array.from({ length: total }, (_, i) => i)
-  // Draw without replacement instead of a random sort comparator.
-  while (order.length) {
-    const index = order.splice(Math.floor(Math.random() * order.length), 1)[0]!
-    const tile = tiles.nth(index)
-    const href = await tile.getAttribute('href')
-    if (!href || seen.has(href) || !await tile.isVisible()) continue
-    const box = await tile.boundingBox()
-    const height = page.viewportSize()?.height ?? 800
-    if (!box || box.y + box.height <= 0 || box.y >= height) continue
+  let watched = 0
+  for (let step = 0; step < count + 15 && watched < count; step++) {
+    session.check()
+    const viewport = page.viewportSize() ?? await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    const candidates: number[] = []
+    const tileCount = await tiles.count()
+    for (let i = 0; i < tileCount; i++) {
+      session.check()
+      const tile = tiles.nth(i), href = await tile.getAttribute('href', { timeout: session.timeout(1000) })
+      if (!href || seen.has(href)) continue
+      const box = await tile.boundingBox({ timeout: session.timeout(1000) })
+      if (box && box.x + box.width > 0 && box.x < viewport.width && box.y + box.height > 0 && box.y < viewport.height)
+        candidates.push(i)
+    }
+    if (!candidates.length) {
+      await page.mouse.move(viewport.width * 0.6, viewport.height * 0.6)
+      await deps.scroll(page, viewport.height * random(0.5, 0.8), session)
+      await session.wait(random(700, 1500))
+      continue
+    }
+    const tile = tiles.nth(candidates[Math.floor(Math.random() * candidates.length)]!)
+    const href = await tile.getAttribute('href', { timeout: session.timeout(1000) })
+    if (!href) continue
     await (await actionLocator(tile, session.timeout(20_000))).click({ timeout: session.timeout(20_000) })
-    opened = true
-    break
-  }
-  if (!opened) return
-  try {
-    const dialog = page.getByRole('dialog').filter({ visible: true }).first()
-    const article = dialog.getByRole('article')
-    await article.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
-    let watched = 0
-    for (let step = 0; step < count + 15 && watched < count; step++) {
+    try {
+      const dialog = page.getByRole('dialog').filter({ visible: true }).first()
+      const article = dialog.getByRole('article')
+      await article.waitFor({ state: 'visible', timeout: session.timeout(10_000) })
       session.check()
       await assertInstagramReady(page)
-      // The URL changes on Next; use the post id to avoid repeats across browsing chunks.
+      // The clicked post can use a different route than its grid tile.
       const path = new URL(page.url()).pathname
+      const previouslySeen = seen.has(path)
+      seen.add(href)
+      seen.add(path)
       const sponsored = await article.getByText(/^(?:Sponsored|Ad)$/i).count() > 0
-      if (!seen.has(path) && !sponsored) {
-        seen.add(path)
+      if (!previouslySeen && !sponsored) {
         const context = await article.evaluate(feedPostContext)
         const related = context.relationship === 'not-followed' && topics.length > 0 && await matchesTopic(context, topics, session, log, article)
         if (feedPostMatches(context, topics, related)) {
@@ -102,19 +103,17 @@ export async function watchTopicPosts(page: Page, topic: string, count: number, 
           }
         }
       }
-      if (watched >= count) break
-      const next = dialog.locator(TOPIC_NEXT_RESULT)
-      if (!await next.isVisible()) break
-      const previous = page.url()
-      await (await actionLocator(next, session.timeout(5_000))).click({ timeout: session.timeout(5_000) })
-      await page.waitForURL(url => url.href !== previous, { timeout: session.timeout(5_000) })
+    } finally {
+      if (!session.stopped()) await closeDialog(page, session)
+      else await page.keyboard.press('Escape').catch(() => {})
+    }
+    if (watched < count) {
+      await page.mouse.move(viewport.width * 0.6, viewport.height * 0.6)
+      await deps.scroll(page, viewport.height * random(0.5, 0.8), session)
       await session.wait(random(700, 1500))
     }
-    log({ event: 'automation.warmup.topic_results_watched', topic, watchedCount: watched })
-  } finally {
-    if (!session.stopped()) await closeDialog(page, session)
-    else await page.keyboard.press('Escape').catch(() => {})
   }
+  log({ event: 'automation.warmup.topic_results_watched', topic, watchedCount: watched })
 }
 
 const dependencies = { feed: browseFeed, profiles: visitTopicProfiles, topic: watchTopicPosts,
@@ -129,10 +128,11 @@ export async function browseTopics(page: Page, end: number, config: Record<strin
   const homeFeed = config.browse_home_feed !== false
   const reels = config.scroll_reels !== false
   if (!homeFeed && !reels) return stopped() ? 'stopped' : 'finished'
-  if (!topics.length && homeFeed)
+  const earlySearch = Number(config.warmup_day ?? 1) <= TOPIC_SEARCH_LAST_DAY
+  if ((!topics.length || !earlySearch) && homeFeed)
     return deps.feed(page, Math.max(0, end - deps.now()) / 60_000, config, log, stopped, budget)
   const searchTerms = state.searchTerms ?? []
-  const topic = topics.length && searchTerms.length ? searchTerms[Math.floor(deps.random(0, searchTerms.length))]! : ''
+  const topic = earlySearch && topics.length && searchTerms.length ? searchTerms[Math.floor(deps.random(0, searchTerms.length))]! : ''
   const started = deps.now()
   const bounded = async (action: () => Promise<void>) => {
     try { await action() }

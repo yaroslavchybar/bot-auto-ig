@@ -29,6 +29,7 @@ function setup(bio = 'Fitness coach', caption = 'Fitness workout', authorize = t
       ? { getByRole: () => ({ innerText: async () => caption }) } : control,
   } as unknown as Page
   const deps: NonNullable<Parameters<typeof engageWeekOne>[6]> = {
+    search: async (_page, query) => { assert.equal(query, 'strength training'); return true },
     follow: async (_page, allowed, click, confirmed) => { if (!await allowed()) return false; await click(); await confirmed(); return true },
     pauseFollows: async () => {},
     topic: async (context, topics) => {

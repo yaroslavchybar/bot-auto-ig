@@ -4,6 +4,14 @@ import { random, type ActionLogger } from './shared.js'
 import { BrowseSession } from './session.js'
 import { actionLocator, clickAction } from './action-locator.js'
 
+/** The Home route can retain query parameters or a fragment after closing a panel. */
+export function isInstagramHome(page: Pick<Page, 'url'>): boolean {
+  try {
+    const url = new URL(page.url())
+    return (url.hostname === 'www.instagram.com' || url.hostname === 'instagram.com') && url.pathname === '/'
+  } catch { return false }
+}
+
 function isInstagramConsentPage(page: Page): boolean {
   try {
     const url = new URL(page.url())
@@ -146,10 +154,10 @@ async function goHomeViaUi(page: Page, session: BrowseSession): Promise<boolean>
     if (!(await home.isVisible().catch(() => false))) return false
     await clickAction(home, session.timeout(5_000))
     await page
-      .waitForURL(/instagram\.com\/(\?.*)?$/, { timeout: session.timeout(10_000) })
+      .waitForURL(url => isInstagramHome({ url: () => url.href }), { timeout: session.timeout(10_000) })
       .catch(() => undefined)
     await sleep(random(1200, 2500))
-    return /instagram\.com\/(\?.*)?$/.test(page.url())
+    return isInstagramHome(page)
   } catch {
     return false
   }
@@ -161,12 +169,9 @@ export async function backToFeed(page: Page, log: ActionLogger, session = new Br
   const sleep = session.wait
   session.check()
   for (let i = 0; i < 3; i++) {
-    if (/instagram\.com\/(\?.*)?$/.test(page.url())) {
-      const posts = await page.locator('article').count().catch(() => 0)
-      if (posts > 0) {
-        if (i > 0) log({ event: 'automation.actions.navigation.went_back_to_feed', message: 'Went back to feed' })
-        return
-      }
+    if (isInstagramHome(page)) {
+      if (i > 0) log({ event: 'automation.actions.navigation.went_back_to_feed', message: 'Went back to feed' })
+      return
     }
     session.check()
     await page.keyboard.press('Alt+ArrowLeft').catch(() => undefined)

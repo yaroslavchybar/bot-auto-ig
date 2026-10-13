@@ -5,8 +5,34 @@ import type { Page } from 'playwright-core'
 import { errors } from 'playwright-core'
 import { ElementNotVisibleError } from 'cloakbrowser/human'
 import { WarmupActivityBudget } from '../../shared/warmupPlan.js'
-import { browseTopics, watchTopicPosts, topicGridUrl, TOPIC_NEXT_RESULT, type TopicBrowseState } from './topic-browsing.js'
+import { browseTopics, watchTopicPosts, type TopicBrowseState } from './topic-browsing.js'
 import { BrowseSession, SessionEnded } from './session.js'
+
+for (const day of [4, 5, 7, 8]) for (const homeFeed of [false, true])
+  test(`day ${day} uses ${day <= 4 ? 'topic search' : 'normal browsing'} with home feed=${homeFeed}`, async () => {
+    const calls: string[] = []
+    let now = Date.now()
+    const end = now + 180_000
+    const deps: NonNullable<Parameters<typeof browseTopics>[7]> = {
+      now: () => now, random: min => min,
+      feed: async (_page, minutes, config) => {
+        assert.equal(config.warmup_topics, 'Fitness, excluding competitions')
+        calls.push('feed'); now += minutes * 60_000; return 'finished'
+      },
+      profiles: async () => { calls.push('profiles') },
+      topic: async (_page, _topic, _count, _budget, _seen, session) => { calls.push('topic'); now = session.end },
+      openReels: async () => { calls.push('open-reels'); return true },
+      reels: async () => { calls.push('reels'); now = end },
+    }
+    await browseTopics({} as Page, end, { warmup_day: day, warmup_topics: 'Fitness, excluding competitions',
+      browse_home_feed: homeFeed, scroll_reels: true },
+      new WarmupActivityBudget({ likes: 0, profiles: 2, reels: 20, stories: 0 }),
+      { feedViewed: false, profilesChecked: false, seenPosts: new Set(), searchTerms: ['strength training'] },
+      () => {}, () => false, deps)
+    assert.equal(calls.includes('topic'), day <= 4)
+    assert.equal(calls.includes('profiles'), day <= 4)
+    if (day > 4) assert.deepEqual(calls, homeFeed ? ['feed'] : ['open-reels', 'reels'])
+  })
 
 for (const keywords of ['', 'fitness']) {
   for (const [homeFeed, reels] of [[true, true], [true, false], [false, true], [false, false]]) {
@@ -87,7 +113,6 @@ test('topic browsing keeps the feed glance brief and continues into normal reels
     assert.equal(now, end)
     assert.equal(state.feedViewed, true)
     assert.equal(state.profilesChecked, true)
-    assert.equal(topicGridUrl('strength training'), 'https://www.instagram.com/explore/search/keyword/?q=strength%20training')
   } finally { Date.now = originalNow }
 })
 
@@ -160,14 +185,10 @@ test('a stop during an Explore failure prevents fallback browsing', async () => 
     { feedViewed: true, profilesChecked: true, seenPosts: new Set(), searchTerms: ['strength training'] }, () => {}, () => stopped, deps), 'stopped')
 })
 
-test('topic results use the outer Next control and never carousel or engagement buttons', async () => {
+test('topic results scroll the grid between opened posts without direct URL navigation', async () => {
   const originalNow = Date.now
   let now = originalNow()
-  let url = '', nextClicks = 0, closed = false
-  const next = { isVisible: async () => true, elementHandle: async () => ({
-    ...visibleActionGeometry, hover: async () => {},
-    click: async () => { url = 'https://www.instagram.com/p/two/'; nextClicks++ }, dispose: async () => {} }),
-  }
+  let url = 'https://www.instagram.com/explore/', scrolls = 0, closed = 0
   const article = { evaluate: async () => ({ text: 'Strength exercises', relationship: 'not-followed' as const }), waitFor: async () => {}, getByText: () => ({ count: async () => 0 }),
     locator: (selector: string) => {
       assert.equal(selector, 'video')
@@ -177,13 +198,15 @@ test('topic results use the outer Next control and never carousel or engagement 
   }
   const dialog = { filter() { return this }, first() { return this }, getByRole: (role: string) => {
     assert.equal(role, 'article'); return article
-  }, locator: (selector: string) => { assert.equal(selector, TOPIC_NEXT_RESULT); return next } }
-  const tile = { ...visibleActionGeometry, getAttribute: async () => '/p/one/', isVisible: async () => true,
-    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { now += 6000 }, click: async () => { url = 'https://www.instagram.com/p/one/' }, dispose: async () => {} }) }
+  } }
+  const tile = { ...visibleActionGeometry, getAttribute: async () => scrolls ? '/p/two/' : '/p/one/', isVisible: async () => true,
+    elementHandle: async () => ({ ...visibleActionGeometry, hover: async () => { now += 6000 },
+      click: async () => { url = `https://www.instagram.com/p/${scrolls ? 'two' : 'one'}/` }, dispose: async () => {} }) }
   const tiles = { first: () => ({ waitFor: async () => {} }), count: async () => 1, nth: () => tile }
   const page = {
     viewportSize: () => ({ width: 1280, height: 800 }),
-    url: () => url, goto: async (value: string) => { url = value },
+    url: () => url, goto: async () => { throw new Error('Must use UI search') },
+    mouse: { move: async () => {} },
     waitForURL: async (matches: (value: URL) => boolean) => { assert.ok(matches(new URL(url))) },
     getByRole: (role: string) => { assert.equal(role, 'dialog'); return dialog },
     locator: (selector: string) => {
@@ -192,7 +215,7 @@ test('topic results use the outer Next control and never carousel or engagement 
       assert.equal(selector, '[role="dialog"], [role="alertdialog"], [role="alert"]')
       return { filter: () => ({ evaluateAll: async () => null }) }
     },
-    keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); closed = true } },
+    keyboard: { press: async (key: string) => { assert.equal(key, 'Escape'); closed++; url = 'https://www.instagram.com/explore/' } },
   } as unknown as Page
   const session = new BrowseSession(Date.now() + 60_000)
   session.wait = async () => {}
@@ -203,16 +226,19 @@ test('topic results use the outer Next control and never carousel or engagement 
       seen, session, () => {}, false, async (_context, topics) => {
         assert.deepEqual(topics, ['Fitness training, excluding competitions'])
         return true
-      }, ['Fitness training, excluding competitions'])
+      }, ['Fitness training, excluding competitions'], {
+        search: async (_page, topic) => { assert.equal(topic, 'fitness'); return true },
+        scroll: async () => { scrolls++ },
+      })
   } finally { Date.now = originalNow }
-  assert.equal(nextClicks, 1)
+  assert.equal(scrolls, 1)
   assert.deepEqual([...seen], ['/p/one/', '/p/two/'])
-  assert.equal(closed, true)
+  assert.equal(closed, 2)
 })
 
 test('completed playback is recorded before optional comment reading expires', async () => {
   const originalNow = Date.now, originalRandom = Math.random
-  let now = originalNow(), url = '', closed = false
+  let now = originalNow(), url = 'https://www.instagram.com/explore/', closed = false
   const started = now
   Date.now = () => now
   Math.random = () => 0
@@ -247,7 +273,9 @@ test('completed playback is recorded before optional comment reading expires', a
   session.wait = async ms => { now = Math.min(session.end, now + ms); session.check() }
   const budget = new WarmupActivityBudget({ likes: 0, profiles: 0, reels: 1, stories: 0, comments: 1 })
   try {
-    await assert.rejects(watchTopicPosts(page, 'fitness', 1, budget, new Set(), session, () => {}, true, async () => true, ['fitness']), SessionEnded)
+    await assert.rejects(watchTopicPosts(page, 'fitness', 1, budget, new Set(), session, () => {}, true, async () => true, ['fitness'], {
+      search: async () => true, scroll: async () => { throw new Error('No scrolling after final view') },
+    }), SessionEnded)
     assert.equal(budget.browsed, 1)
     assert.equal(budget.used.reels, 1)
     assert.equal(budget.used.comments, 1)

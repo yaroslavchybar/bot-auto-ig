@@ -203,7 +203,7 @@ test('stories wait for the button tray and honor a stop while it loads', async (
       click: async () => { assert.equal(loaded, true); clicks++ },
     }
     const page = {
-      goto: async () => {},
+      goto: async () => { throw new Error('Stories must reuse the already-open Home page') },
       url: () => 'https://www.instagram.com/',
       keyboard: { press: async () => {} },
       locator: (selector: string) => selector.includes('Story by') ? story : { count: async () => 0 },
@@ -226,7 +226,7 @@ test('story navigation and opening expiry stay local to the optional story chunk
         click: async () => { clicks++ },
       }),
     }
-    const page = { url: () => 'https://www.instagram.com/',
+    const page = { url: () => expiresAt === 'navigation' ? 'https://www.instagram.com/alice/' : 'https://www.instagram.com/',
       goto: async (_url: string, options: { timeout: number }) => {
         assert.equal(options.timeout, 10_000)
         if (expiresAt === 'navigation') { now += 11_000; throw new errors.TimeoutError('Navigation expired') }

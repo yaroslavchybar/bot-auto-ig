@@ -10,7 +10,7 @@ import { backToFeed } from './actions/navigation.js'
 import { BrowseSession, SessionEnded } from './actions/session.js'
 import { WarmupActivityBudget, warmupActivityPlan } from '../shared/warmupPlan.js'
 import { warmupTopics } from '../shared/warmupTopics.js'
-import { browseTopics, type TopicBrowseState } from './actions/topic-browsing.js'
+import { browseTopics, TOPIC_SEARCH_LAST_DAY, type TopicBrowseState } from './actions/topic-browsing.js'
 import { engageWeekOne } from './actions/week-one.js'
 import { browseUntilEnd } from './routine-schedule.js'
 import { topicSearchTerms } from './actions/topic-search.js'
@@ -128,7 +128,7 @@ export async function runWarmup(
       if (!stopped()) await deps.inbox(page, log, session)
       if (!stopped()) await deps.home(page, log, session)
       if (!stopped()) await deps.check(page)
-      if (!stopped() && config.warmup_topics && (engage || config.browse_home_feed || config.scroll_reels))
+      if (!stopped() && config.warmup_topics && (engage || (day <= TOPIC_SEARCH_LAST_DAY && (config.browse_home_feed || config.scroll_reels))))
         topicState.searchTerms = await deps.searchTerms(config.warmup_topics, session, log)
       if (!stopped() && engage && (budget.remaining('likes') || budget.remaining('follows'))) {
         const engagementSession = new BrowseSession(Math.min(deadline, deps.now() + plan.minutes * 60_000 * 0.4), stopped)

@@ -90,7 +90,7 @@ test('feed skips avoid topic requests and both reel paths receive the supplied m
       locator: () => empty,
       evaluate: async () => { reads++; return { text: 'Barbell squats', relationship: 'not-followed', sponsored: false } }
     }
-    const page = { goto: async () => {}, url: () => 'https://www.instagram.com/',
+    const page = { goto: async () => { throw new Error('The open Home feed must not be refreshed') }, url: () => 'https://www.instagram.com/',
       viewportSize: () => ({ width: 1280, height: 800 }),
       evaluate: async () => String(now),
       getByText: () => ({ first() { return this }, boundingBox: async () => mode === 'feed-end'

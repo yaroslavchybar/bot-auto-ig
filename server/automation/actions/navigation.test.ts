@@ -3,13 +3,51 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Page } from 'playwright-core'
 import { UnsupportedHumanizeSelectorError } from 'cloakbrowser/human'
-import { dismissPopups } from './navigation.js'
+import { backToFeed, dismissPopups, isInstagramHome } from './navigation.js'
 import { BrowseSession, SessionEnded } from './session.js'
 
 const consentLabels = [
   'Decline optional cookies', 'Get started', 'Use free of charge with ads',
   'Continue', 'Agree', 'Switch to less-personalized ads', 'OK', 'Confirm',
 ]
+
+test('Home detection accepts its route with query parameters and fragments, excluding other pages and hosts', () => {
+  for (const url of ['https://www.instagram.com/', 'https://instagram.com/',
+    'https://www.instagram.com/?source=home', 'https://www.instagram.com/#',
+    'https://www.instagram.com/?source=home#notifications'])
+    assert.equal(isInstagramHome({ url: () => url }), true)
+  for (const url of ['about:blank', 'invalid', 'https://www.instagram.com/direct/inbox/',
+    'https://www.instagram.com/reels/', 'https://fakeinstagram.com/', 'https://www.instagram.com/consent/'])
+    assert.equal(isInstagramHome({ url: () => url }), false)
+})
+
+test('returning to an already-open Home page does not navigate, including while posts are loading', async () => {
+  for (const url of ['https://www.instagram.com/', 'https://www.instagram.com/?source=home#']) {
+    const page = { url: () => url,
+      locator: () => { throw new Error('No need to inspect loading articles before retaining Home') },
+      keyboard: { press: async () => { throw new Error('Must not go back from Home') } },
+      goto: async () => { throw new Error('Must not refresh Home') },
+    } as unknown as Page
+    await backToFeed(page, () => {})
+  }
+})
+
+test('inbox returns to Home once and repeated browsing retains that page', async () => {
+  let url = 'https://www.instagram.com/direct/inbox/', backs = 0
+  const page = { url: () => url,
+    locator: () => { throw new Error('Home posts are still rendering') },
+    keyboard: { press: async (key: string) => {
+      assert.equal(key, 'Alt+ArrowLeft'); backs++
+      url = 'https://www.instagram.com/#'
+    } },
+    goto: async () => { throw new Error('Must not refresh after returning from the inbox') },
+  } as unknown as Page
+  const session = new BrowseSession()
+  session.wait = async () => {}
+  await backToFeed(page, () => {}, session)
+  await backToFeed(page, () => {}, session)
+  assert.equal(backs, 1)
+})
 
 function mockConsentLocator<T extends object>(selector: string, control: (label: string) => T) {
   const label = consentLabels.find(value => selector.includes(`:has-text(${JSON.stringify(value)})`))

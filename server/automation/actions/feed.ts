@@ -18,7 +18,7 @@ import {
   alignPostOnScreen,
   smoothScroll,
 } from './scroll.js'
-import { backToFeed, dismissPopups } from './navigation.js'
+import { backToFeed, dismissPopups, isInstagramHome } from './navigation.js'
 import {
   openAuthorProfile,
   openOwnProfile,
@@ -141,7 +141,7 @@ async function browseFeedSession(
   const start = Date.now()
   const end = session.end
   const sleep = session.wait
-  await page.goto('https://www.instagram.com/', {
+  if (!isInstagramHome(page)) await page.goto('https://www.instagram.com/', {
     waitUntil: 'domcontentloaded',
     timeout: session.timeout(45_000),
   })

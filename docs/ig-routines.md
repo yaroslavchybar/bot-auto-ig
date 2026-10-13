@@ -4,9 +4,11 @@ Create one automation per model. Select browsing surfaces, daily time, and sessi
 
 Warm-up days 1–7 gradually engage topic-related accounts. Maintenance mixes browsing with lead outreach. Each new follow is separated by browsing. The daily follow target starts small, grows after confirmed outreach days, and stays within the configured maximum. Paused profiles do not run.
 
+Topic post searches run only on warm-up days 1–4. The worker opens Search, types a generated hashtag, presses Enter, and clicks its exact native result. It scrolls the grid, opens visible posts, and closes each post before continuing. From day 5, browsing uses the enabled Home feed/Reels surfaces with the same screenshot topic rule. Week-one topic account searches for likes/follows continue through day 7.
+
 Sidebar navigation works with both collapsed icons and expanded labels. Notification checks retry a changing control once, then skip the optional check if it stays unavailable. Temporary DOM visibility, detachment, and animation errors use the normal retry cooldown; saved errors of these kinds also recover. Login, checkpoint, and uncertain delivery issues still require attention.
 
-Feed, Reels, profiles, overlays, and notification scanning use the same eased wheel scrolling. Controls are revealed inside their own scroll container before cursor movement and clicking, while staying bound to the selected element. Reel glides stop when the next reel appears. Explore opens a tile already near the viewport with a longer click budget; temporary search or Explore failures skip that phase and continue normal browsing. Week-one, standalone warm-up, and maintenance share bounded browsing retries. Story chunk expiry skips the optional story; completed views count before optional maintenance.
+Feed, profiles, overlays, and notification scanning use eased wheel scrolling. Controls are revealed inside their own scroll container before cursor movement and clicking, while staying bound to the selected element. Reels select the video with the largest visible area and advance only through the named Next button with cursor movement. Advancement succeeds only after the URL changes and the video settles into view. Explore opens a tile already near the viewport with a longer click budget; temporary search or Explore failures skip that phase and continue normal browsing. Week-one, standalone warm-up, and maintenance share bounded browsing retries. Story chunk expiry skips the optional story; completed views count before optional maintenance.
 
 Visible automation sessions move the native desktop pointer along Cloak's mouse path before clicking. TigerVNC includes that remote cursor in the stream; no cursor is injected into the page. The viewer hides its local cursor while the agent controls the session. Manual sessions keep normal cursor control.
 
@@ -25,6 +27,8 @@ The existing lead pool has been reset for browser screening. Assignments and out
 ## Outreach and cleanup
 
 An accepted recipient is followed if it is not already followed or requested. Confirmed follows are recorded for cleanup; public accounts may receive one like. Only confirmed follows advance the follow ramp. Approved claims remain permanent after an interrupted Instagram action, avoiding duplicate outreach.
+
+After screening, roughly 30% of unfollowed public profiles with visible posts are revisited through Search by typing the lead's username and clicking its exact result before following. Unknown, empty, private, and already-followed profiles keep the direct route. Missing or temporarily unavailable results restore the exact lead URL; checkpoints and stop requests prevent following.
 
 Notifications are checked daily. DMs begin on the next day only after a confirmed follow-back, using the message from the selected scraped list. Category settings are rechecked before Send. Message variations and placeholders are rendered once. An uncertain delivery stops that profile for review; it is never blindly resent.
 

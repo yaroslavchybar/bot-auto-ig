@@ -216,6 +216,8 @@ test('week-one engagement generates search terms with both browsing surfaces dis
 
 test('topic warm-up uses the same daily budget and state across mixed browsing chunks', async () => {
   const s = setup()
+  const begin = s.deps.begin
+  s.deps.begin = async request => ({ ...await begin(request), day: 4 })
   let generations = 0
   const description = 'Fitness training, excluding competitions'
   s.deps.searchTerms = async input => {
