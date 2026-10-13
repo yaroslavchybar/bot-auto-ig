@@ -254,6 +254,7 @@ impl Service {
             api: self.api.clone(),
             profile_id: profile_id.into(),
             manual_reconnect: false,
+            login: false,
         })
     }
 
@@ -278,13 +279,27 @@ impl Service {
                 .unwrap();
         let session_path = format!("/api/mobile/session?{}", query.query().unwrap());
         if action == "logout" {
-            let result = self
+            let saved = self
                 .api
-                .convex(Method::DELETE, &session_path, None)
+                .convex(
+                    Method::GET,
+                    &format!("/api/mobile/context?{}", query.query().unwrap()),
+                    None,
+                )
                 .await
                 .map_err(Error::new)?;
+            if saved["connected"] == true {
+                let mut state = Session::from_saved(saved["state"].as_str().unwrap_or(""))?;
+                state.clear_login();
+                // Retain the device and signing key; logout must not rotate them on reconnect.
+                let body = json!({"profileId":request.profile_id,"state":serde_json::to_string(&state).map_err(|_| Error::new("Invalid Instagram session"))?,"token":uuid::Uuid::new_v4().to_string(),"expectedToken":saved["token"],"reconnectRequired":true});
+                self.api
+                    .convex(Method::POST, "/api/mobile/session", Some(&body))
+                    .await
+                    .map_err(Error::new)?;
+            }
             self.invalidate_saved_context(&request.profile_id, &mut entry);
-            return Ok(result);
+            return Ok(json!({"connected":false,"reconnectRequired":true}));
         }
         if action == "has" {
             if let Some(status) = self.cached_status(&request.profile_id) {
@@ -378,6 +393,7 @@ impl Service {
         let mut budget = self.request_budget(&request.profile_id);
         if let Some(budget) = &mut budget {
             budget.manual_reconnect = manual_reconnect;
+            budget.login = action == "login";
         }
         let mut mobile = Mobile {
             state,
@@ -400,7 +416,7 @@ impl Service {
             }
             if let Err(error) = caa::login(&mut mobile, &username, &password, &authenticator).await
             {
-                if error.status == 429 {
+                if error.status == 429 && error.name != "MobileRequestBudget" {
                     entry.login_retry_at_ms = api::now_ms().saturating_add(error.retry_after_ms);
                 }
                 return Err(error);
@@ -518,6 +534,7 @@ pub(crate) fn new_session(profile_id: &str, username: &str) -> Session {
         phone_id,
         device_id,
         device: PERSONAS[index].into(),
+        mid: String::new(),
         cookies: Default::default(),
         authorization: String::new(),
         claim: String::new(),

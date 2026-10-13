@@ -20,15 +20,20 @@ pub(crate) struct RequestBudget {
     pub api: Arc<Api>,
     pub profile_id: String,
     pub manual_reconnect: bool,
+    pub login: bool,
 }
 impl RequestBudget {
     pub async fn reserve(&self) -> Result<()> {
-        let body = serde_json::json!({"profileId":self.profile_id,"requestId":uuid::Uuid::new_v4().to_string(),"manualReconnect":self.manual_reconnect});
+        let body = serde_json::json!({"profileId":self.profile_id,"requestId":uuid::Uuid::new_v4().to_string(),"manualReconnect":self.manual_reconnect,"login":self.login});
         let result = self
             .api
             .convex_retry(Method::POST, "/api/mobile-requests/reserve", Some(&body))
             .await
             .map_err(Error::new)?;
+        Self::check(&result)
+    }
+
+    fn check(result: &Value) -> Result<()> {
         if result["allowed"] == true {
             return Ok(());
         }
@@ -60,6 +65,8 @@ pub struct Session {
     pub phone_id: String,
     pub device_id: String,
     pub device: String,
+    #[serde(default)]
+    pub mid: String,
     #[serde(default, serialize_with = "serialize_cookies")]
     pub cookies: CookieStore,
     #[serde(default)]
@@ -88,6 +95,19 @@ fn serialize_cookies<S: serde::Serializer>(
     serializer.collect_seq(cookies)
 }
 impl Session {
+    pub fn mid(&self) -> String {
+        if self.mid.is_empty() {
+            self.cookie("mid")
+        } else {
+            self.mid.clone()
+        }
+    }
+    pub fn clear_login(&mut self) {
+        self.mid = self.mid();
+        self.authorization.clear();
+        self.claim.clear();
+        self.cookies.clear();
+    }
     pub fn cookie(&self, name: &str) -> String {
         static ORIGIN: LazyLock<reqwest::Url> = LazyLock::new(|| {
             "https://i.instagram.com/"
@@ -132,8 +152,17 @@ impl Session {
 
 pub fn client(proxy: &str) -> Result<Client> {
     let _ = rustls::crypto::ring::default_provider().install_default();
+    // Instagrapi reuses one runtime Pigeon ID per client, including reconnects.
+    let headers = [(
+        reqwest::header::HeaderName::from_static("x-pigeon-session-id"),
+        HeaderValue::from_str(&format!("UFS-{}-1", uuid::Uuid::new_v4())).unwrap(),
+    )]
+    .into_iter()
+    .collect();
     let mut builder = Client::builder()
+        .default_headers(headers)
         .no_proxy()
+        .min_tls_version(reqwest::tls::Version::TLS_1_3)
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(20))
         .pool_max_idle_per_host(2)
@@ -223,11 +252,6 @@ impl Mobile {
         insert(&mut headers, "user-agent", state.user_agent())?;
         insert(
             &mut headers,
-            "x-pigeon-session-id",
-            super::device::pigeon_session(&state.device_id, now),
-        )?;
-        insert(
-            &mut headers,
             "x-pigeon-rawclienttime",
             format!("{:.3}", now as f64 / 1000.0),
         )?;
@@ -236,7 +260,7 @@ impl Mobile {
             "x-ig-connection-speed",
             format!("{}kbps", rand::thread_rng().gen_range(1000..=3700)),
         )?;
-        let mid = state.cookie("mid");
+        let mid = state.mid();
         for (name, value) in [
             ("x-mid", mid.as_str()),
             (
@@ -290,10 +314,13 @@ impl Mobile {
             .headers(self.headers(&url)?)
             .timeout(Duration::from_secs(20));
         if let Some(fields) = fields {
-            request = request.form(fields).header(
-                "content-type",
-                "application/x-www-form-urlencoded; charset=UTF-8",
-            );
+            // Set this before form(): reqwest otherwise adds a second Content-Type.
+            request = request
+                .header(
+                    "content-type",
+                    "application/x-www-form-urlencoded; charset=UTF-8",
+                )
+                .form(fields);
         }
         for (key, value) in extra {
             request = request.header(key, value);
@@ -334,6 +361,14 @@ impl Mobile {
         Ok(data)
     }
     pub fn receive_headers(&mut self, headers: &HeaderMap, url: &reqwest::Url) {
+        // Instagram issues this machine ID as a header even when no cookie is set.
+        if let Some(mid) = headers
+            .get("ig-set-x-mid")
+            .and_then(|value| value.to_str().ok())
+            .filter(|value| !value.is_empty())
+        {
+            self.state.mid = mid.into();
+        }
         for cookie in headers
             .get_all("set-cookie")
             .iter()

@@ -1,7 +1,81 @@
 use super::*;
 
 #[tokio::test]
-async fn paused_profiles_allow_only_manual_reconnect_and_preserve_request_limits() {
+async fn mobile_logout_preserves_credentials_and_checks_profile_assignment() {
+    use crate::test_support::{self, Fixture};
+    use axum::{body::Body, response::IntoResponse, Json};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    for reassigned in [false, true] {
+        let reads = Arc::new(AtomicUsize::new(0));
+        let observed = reads.clone();
+        let writes = Arc::new(AtomicUsize::new(0));
+        let saved = writes.clone();
+        let fixture = Fixture::start(move |request| {
+            let reads = observed.clone();
+            let writes = saved.clone();
+            async move {
+                match request.uri().path() {
+                    "/api/ig-accounts-store" => {
+                        let body = test_support::body(request).await;
+                        assert_eq!(body["operation"], "byId");
+                        assert_eq!(body["id"], "account");
+                        let second = reads.fetch_add(1, Ordering::SeqCst) > 0;
+                        Json(json!({"_id":"account","profileId":if reassigned && second { "different" } else { "profile" },"status":"connected"})).into_response()
+                    }
+                    "/api/mobile/context" if !reassigned => Json(json!({"connected":true,"token":"11111111-1111-4111-8111-111111111111","state":Service::fixture_session()})).into_response(),
+                    "/api/mobile/session" if !reassigned => {
+                        assert_eq!(request.method(), Method::POST);
+                        let body = test_support::body(request).await;
+                        assert_eq!(body["profileId"], "profile");
+                        assert_eq!(body["reconnectRequired"], true);
+                        let state: Value = serde_json::from_str(body["state"].as_str().unwrap()).unwrap();
+                        assert_eq!(state["authorization"], "");
+                        writes.fetch_add(1, Ordering::SeqCst);
+                        Json(json!({"connected":true})).into_response()
+                    }
+                    _ => panic!("Logout must not modify credentials, profiles or contact Instagram"),
+                }
+            }
+        }).await;
+        let root = tempfile::tempdir().unwrap();
+        let mut api = Api::from_env().unwrap();
+        api.convex_url = fixture.url.clone();
+        api.key = "fixture".into();
+        let api = Arc::new(api);
+        let profiles = Profiles::new(
+            api.clone(),
+            super::super::processes::Processes::new(api.clone(), root.path().into()),
+            root.path().into(),
+        );
+        let accounts = Accounts::new(
+            api.clone(),
+            profiles,
+            Service::fixture(api.clone(), fixture.url.clone()),
+            Content::new(root.path().join("content")),
+            Subscriptions::new(api),
+        );
+        let result = accounts
+            .public(
+                "ig-accounts.post.id_logout",
+                &HashMap::from([("id".into(), "account".into())]),
+                Request::builder()
+                    .method("POST")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await;
+        if reassigned {
+            assert_eq!(result.unwrap_err().message, "Account profile changed");
+        } else {
+            assert_eq!(result.unwrap().status(), axum::http::StatusCode::OK);
+        }
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        assert_eq!(writes.load(Ordering::SeqCst), usize::from(!reassigned));
+    }
+}
+
+#[tokio::test]
+async fn paused_profiles_allow_only_manual_reconnect_and_preserve_sleep() {
     use crate::test_support::{self, Fixture};
     use axum::{body::Body, response::IntoResponse, Json};
     for limited in [true, false] {
@@ -24,9 +98,10 @@ async fn paused_profiles_allow_only_manual_reconnect_and_preserve_request_limits
                 "/api/mobile/context" => Json(json!({"connected":true,"reconnectRequired":true,"token":"old","state":Service::fixture_session(),"profile":{"proxy":"","proxyType":""}})).into_response(),
                 "/api/mobile-requests/reserve" => {
                     let body = test_support::body(request).await;
+                    assert_eq!(body["login"], true);
                     let manual = body["manualReconnect"] == true;
                     flags.lock().await.push(manual);
-                    Json(json!({"allowed":manual && !limited,"retryAt":api::now_ms()+3_600_000,"reason":if manual {"Hourly mobile request limit reached"} else {"Profile is paused"}})).into_response()
+                    Json(json!({"allowed":manual && !limited,"retryAt":api::now_ms()+3_600_000,"reason":if manual {"Mobile session is sleeping"} else {"Profile is paused"}})).into_response()
                 }
                 "/api/v1/qe/sync/" if !limited => (axum::http::StatusCode::BAD_REQUEST, Json(json!({"error_type":"device_verification_failed"}))).into_response(),
                 _ => panic!("No Instagram request or background job may run"),
@@ -72,6 +147,16 @@ async fn paused_profiles_allow_only_manual_reconnect_and_preserve_request_limits
             let response = result.unwrap();
             assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
             assert!(response.headers().contains_key("retry-after"));
+            let body = axum::body::to_bytes(response.into_body(), 4096)
+                .await
+                .unwrap();
+            let body: Value = serde_json::from_slice(&body).unwrap();
+            assert_eq!(body["error"]["code"], "MOBILE_REQUEST_LIMIT");
+            assert_eq!(body["error"]["message"], "Mobile session is sleeping");
+            assert_eq!(
+                context.0.lock().unwrap()["errorType"],
+                "MobileRequestBudget"
+            );
         } else {
             let error = result.unwrap_err();
             assert_eq!(

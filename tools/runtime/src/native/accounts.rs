@@ -334,16 +334,27 @@ impl Accounts {
                     if let (Err(error), Some(context)) = (&result, &request_context) {
                         context.add("reason", error.message.clone());
                     }
-                    if let Some(retry) = result? {
+                    if let Some(error) = result? {
+                        if let Some(context) = &request_context {
+                            context.add("reason", error.message.clone());
+                            context.add("errorType", error.name.clone());
+                            context.add("retryAfterMs", error.retry_after_ms);
+                        }
                         let mut response = api::error(
                             axum::http::StatusCode::TOO_MANY_REQUESTS,
-                            "RATE_LIMITED",
-                            "Instagram is limiting requests. Wait before trying again.",
+                            if error.name == "MobileRequestBudget" {
+                                "MOBILE_REQUEST_LIMIT"
+                            } else {
+                                "RATE_LIMITED"
+                            },
+                            &error.message,
                         );
                         response.headers_mut().insert(
                             "Retry-After",
-                            axum::http::HeaderValue::from_str(&retry.div_ceil(1000).to_string())
-                                .unwrap(),
+                            axum::http::HeaderValue::from_str(
+                                &error.retry_after_ms.div_ceil(1000).to_string(),
+                            )
+                            .unwrap(),
                         );
                         return Ok(response);
                     }
@@ -361,6 +372,31 @@ impl Accounts {
                     )
                         .into_response());
                 }
+            }
+            "ig-accounts.post.id_logout" => {
+                let id = params.get("id").map(String::as_str).unwrap_or("");
+                let account = self.store("byId", json!({"id":id})).await?;
+                let profile = profiles::text(&account, "profileId");
+                if account.is_null() || profile.is_empty() {
+                    return Err(Failure::invalid("Account is not connected to a profile"));
+                }
+                let _guard = self.action_lock(profile).await?;
+                let current = self.store("byId", json!({"id":id})).await?;
+                if current["profileId"] != profile {
+                    return Err(Failure::invalid("Account profile changed"));
+                }
+                self.mobile
+                    .invoke(
+                        "logout",
+                        &Command {
+                            profile_id: profile.into(),
+                            token: None,
+                            args: json!({}),
+                        },
+                    )
+                    .await
+                    .map_err(|error| Failure::unavailable(error.message))?;
+                json!({"ok":true})
             }
             _ => return Err(Failure::missing("Unknown account operation")),
         };
@@ -615,7 +651,7 @@ impl Accounts {
         )
         .await
     }
-    pub async fn reconnect(&self, id: &str) -> Result<Option<u64>> {
+    pub async fn reconnect(&self, id: &str) -> Result<Option<crate::instagram::Error>> {
         let account = self.account("byId", json!({"id":id})).await?;
         let profile = profiles::text(&account, "profileId");
         if profile.is_empty() || account["status"] != "connected" {
@@ -652,7 +688,7 @@ impl Accounts {
                 .await?;
                 Ok(None)
             }
-            Err(e) if e.status == 429 => Ok(Some(e.retry_after_ms)),
+            Err(e) if e.status == 429 => Ok(Some(e)),
             Err(e) => Err(Failure::invalid(e.message)),
         }
     }

@@ -85,20 +85,27 @@ export async function publishSleep(
     })
 }
 
-/** All mobile dispatches share the hourly/sleep budget. */
+/** Login calls follow pause/sleep rules but do not consume the hourly scraping quota. */
 export const reserve = internalMutation({
   args: {
     profileId: v.id('profiles'),
     requestId: v.string(),
     manualReconnect: v.optional(v.boolean()),
+    login: v.optional(v.boolean()),
   },
-  handler: async (ctx, { profileId, requestId, manualReconnect }) => {
+  handler: async (ctx, { profileId, requestId, manualReconnect, login }) => {
     if (!requestId || requestId.length > 100) throw new Error('Invalid request ID')
     const now = Date.now()
     const state = await mobileRequestState(ctx, profileId, now)
     // Resume is controlled by the flag; pausing must not create a one-hour login cooldown.
-    if (state.paused && !manualReconnect)
+    if (state.paused && !(manualReconnect && login))
       return { allowed: false, retryAt: now, reason: 'Profile is paused' }
+    if (login && state.timezone) {
+      const window = sessionWindow(String(profileId), state.timezone, now)
+      if (window.sleeping)
+        return { allowed: false, retryAt: window.availableAt, reason: 'Mobile session is sleeping' }
+      return { allowed: true, retryAt: now }
+    }
     if (
       state.usage?.requests.some(
         (request) => request.id === requestId && request.at > now - 3_600_000,

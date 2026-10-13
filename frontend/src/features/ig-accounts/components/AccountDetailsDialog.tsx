@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNow } from '@/hooks/use-now'
-import { Check, CircleAlert, Copy, Eye, EyeOff, Pause, RefreshCw } from 'lucide-react'
+import { Check, CircleAlert, Copy, Eye, EyeOff, LogOut, Pause, RefreshCw } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -306,6 +306,8 @@ function WarmupStages({
 type AccountDetailsDialogProps = {
   account: Account | null
   onClose: () => void
+  onLoggedOut?: (accountId: string) => void
+  sessionBusy?: boolean
 }
 
 export function AccountDetailsDialog(props: AccountDetailsDialogProps) {
@@ -313,11 +315,34 @@ export function AccountDetailsDialog(props: AccountDetailsDialogProps) {
   return <AccountDetailsContent key={key} {...props} />
 }
 
-function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) {
+function AccountDetailsContent({
+  account,
+  onClose,
+  onLoggedOut,
+  sessionBusy,
+}: AccountDetailsDialogProps) {
   const [credential, setCredential] = useState<Credential | null>(null)
   const [progress, setProgress] = useState<WarmupProgress | null | undefined>(undefined)
   const [error, setError] = useState('')
   const [warmupError, setWarmupError] = useState('')
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [sessionError, setSessionError] = useState('')
+
+  async function logout() {
+    if (!account?.profileId || loggingOut || sessionBusy) return
+    setLoggingOut(true)
+    setSessionError('')
+    try {
+      await apiFetch(`/api/ig-accounts/${encodeURIComponent(account.id)}/logout`, {
+        method: 'POST',
+      })
+      onLoggedOut?.(account.id)
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : 'Logout failed')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   useEffect(() => {
     if (!account) return
@@ -359,14 +384,32 @@ function AccountDetailsContent({ account, onClose }: AccountDetailsDialogProps) 
     >
       <DialogContent className="flex max-h-[90vh] flex-col border-line bg-panel text-ink sm:max-w-[560px]">
         <DialogHeader className="shrink-0">
-          <DialogTitle className="flex items-center gap-3 page-title-gradient">
+          <DialogTitle className="flex flex-wrap items-center gap-3 page-title-gradient pr-8">
             <span className="truncate">
               {account?.username ? `@${account.username}` : 'Credential'}
             </span>
             {account && <StatusBadge account={account} />}
+            {account?.profileId && account.status === 'connected' && !account.reconnectRequired && (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+                disabled={loggingOut || sessionBusy}
+                aria-busy={loggingOut}
+                onClick={() => void logout()}
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                {loggingOut ? 'Logging out...' : 'Logout'}
+              </Button>
+            )}
           </DialogTitle>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {sessionError && (
+            <p role="alert" className="mb-3 text-sm text-status-danger">
+              {sessionError}
+            </p>
+          )}
           {error ? (
             <div className="rounded-md border border-status-danger-border bg-status-danger-soft p-3 text-sm font-medium text-status-danger">
               {error}

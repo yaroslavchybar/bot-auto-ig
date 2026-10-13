@@ -35,8 +35,19 @@ Existing TypeScript sessions are imported without another login. Reconnect reuse
 the saved device IDs, model, and device signing key. A credential login clears
 expired authorization and cookies in memory; failed attempts leave the saved
 session intact. Manual reconnect is available while paused and keeps the profile
-paused. Automatic work stays blocked; hourly request limits and the sleep window
-still apply to manual reconnect.
+paused. Automatic work stays blocked. Login and verification requests are excluded
+from the hourly quota; the proxy-country sleep window still applies.
+The account details popup offers **Logout** for its mobile session. It clears
+mobile authorization and cookies while retaining the device IDs, model, signing
+key, credentials, browser cookies, and warmup progress. Reconnect is then required.
+Local quota and sleep errors keep
+their own messages and retry times, separate from Instagram rate limits.
+Login payloads and verification-context parsing are checked against offline
+fixtures from instagrapi 3.0.24. Mobile transport uses TLS 1.3 and one runtime
+Pigeon ID per client while retaining the saved device identifiers and Android
+448 app profile.
+The transport retains Instagram's `ig-set-x-mid` machine ID and sends one
+`Content-Type` header for form requests, including keystore attestation.
 Instagram rate limits show a readable message. Login respects `Retry-After`
 without sending another login request during the cooldown; when Instagram sends
 no retry time, the default cooldown is one hour.

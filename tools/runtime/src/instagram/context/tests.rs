@@ -80,6 +80,7 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
                     let body = test_support::body(request).await;
                     let mut saved = store.lock().await;
                     saved["state"] = body["state"].clone(); saved["storageId"] = json!("file-c");
+                    if body["reconnectRequired"] == true { saved["reconnectRequired"] = json!(true); }
                     saves.fetch_add(1,Ordering::Relaxed);
                     Json(json!({"connected":true,"storageId":"file-c"})).into_response()
                 },
@@ -238,13 +239,13 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
         service.invoke("load", &command).await.is_err(),
         "logout cannot reuse the old metadata before its echo"
     );
-    assert_eq!(reads.load(Ordering::Relaxed), 3);
+    assert_eq!(reads.load(Ordering::Relaxed), 4);
     metadata.send_replace(json!([]));
     update(&service, &connection, &mut subscription).await;
     assert!(service.invoke("load", &command).await.is_err());
     assert_eq!(
         reads.load(Ordering::Relaxed),
-        3,
+        4,
         "missing sessions are authoritative"
     );
 
@@ -259,7 +260,7 @@ async fn sessions_reuse_reads_and_observe_revisions_proxies_logout_and_disconnec
     assert!(service.invoke("load", &command).await.is_err());
     assert_eq!(
         reads.load(Ordering::Relaxed),
-        4,
+        5,
         "disconnects fall back to fresh HTTP reads"
     );
 }

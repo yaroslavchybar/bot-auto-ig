@@ -9,6 +9,134 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use transport::{Fields, Mobile};
 
 #[test]
+fn verification_contexts_match_instagrapi_3_0_24() {
+    let cases: Value =
+        serde_json::from_str(include_str!("fixtures/instagrapi-contexts.json")).unwrap();
+    for (index, case) in cases.as_array().unwrap().iter().enumerate() {
+        assert_eq!(
+            caa::extract_context(&case["input"]),
+            case["expected"].as_str().unwrap(),
+            "Reference case {index}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn runtime_pigeon_id_is_stable_per_transport_and_independent_of_saved_device() {
+    let captured = Arc::new(Mutex::new(Vec::new()));
+    let observed = captured.clone();
+    let fixture = Fixture::start(move |request| {
+        let captured = observed.clone();
+        async move {
+            assert!(!request.headers().contains_key("x-ig-salt-ids"));
+            captured.lock().await.push((
+                request.headers()["x-pigeon-session-id"]
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+                request.headers()["x-pigeon-rawclienttime"]
+                    .to_str()
+                    .unwrap()
+                    .to_string(),
+            ));
+            Json(json!({"status":"ok"})).into_response()
+        }
+    })
+    .await;
+    let mut first = mobile(Some(fixture.url.clone()));
+    let mut second = mobile(Some(fixture.url.clone()));
+    assert_eq!(first.state.device_id, second.state.device_id);
+    first
+        .request(
+            "i.instagram.com",
+            Method::GET,
+            "/probe",
+            None,
+            &Fields::new(),
+        )
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    first
+        .request(
+            "i.instagram.com",
+            Method::GET,
+            "/probe",
+            None,
+            &Fields::new(),
+        )
+        .await
+        .unwrap();
+    second
+        .request(
+            "i.instagram.com",
+            Method::GET,
+            "/probe",
+            None,
+            &Fields::new(),
+        )
+        .await
+        .unwrap();
+    let captured = captured.lock().await;
+    assert!(captured[0].0.starts_with("UFS-") && captured[0].0.ends_with("-1"));
+    assert_eq!(captured[0].0, captured[1].0);
+    assert_ne!(captured[0].0, captured[2].0);
+    assert_ne!(captured[0].1, captured[1].1);
+}
+
+#[tokio::test]
+async fn login_sleep_does_not_become_an_instagram_cooldown() {
+    let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let gate = ready.clone();
+    let spent = Arc::new(AtomicUsize::new(0));
+    let requests = spent.clone();
+    let upstream = Arc::new(AtomicUsize::new(0));
+    let hits = upstream.clone();
+    let fixture = Fixture::start(move |request| {
+        let ready = gate.clone();
+        let spent = requests.clone();
+        let upstream = hits.clone();
+        async move {
+            match request.uri().path() {
+                "/api/mobile/context" => Json(json!({"connected":true,"state":Service::fixture_session(),"token":"old","profile":{"proxy":"","proxyType":""}})).into_response(),
+                "/api/mobile-requests/reserve" => {
+                    let body = test_support::body(request).await;
+                    assert_eq!(body["login"], true);
+                    assert_eq!(body["manualReconnect"], true);
+                    let allowed = ready.load(Ordering::SeqCst);
+                    if allowed { spent.fetch_add(1, Ordering::SeqCst); }
+                    Json(json!({"allowed":allowed,"retryAt":api::now_ms()+3_600_000,"reason":"Mobile session is sleeping"})).into_response()
+                },
+                "/api/v1/qe/sync/" => { upstream.fetch_add(1, Ordering::SeqCst); (StatusCode::BAD_REQUEST, Json(json!({"status":"fail"}))).into_response() },
+                _ => panic!("Unexpected quota test request"),
+            }
+        }
+    }).await;
+    let mut api = Api::from_env().unwrap();
+    api.convex_url = fixture.url.clone();
+    api.key = "fixture".into();
+    let mut service = Service::fixture(Arc::new(api), fixture.url.clone());
+    Arc::get_mut(&mut service).unwrap().request_budget_enabled = true;
+    let command = Command {
+        profile_id: "profile".into(),
+        token: None,
+        args: json!({"username":"source","password":"fixture"}),
+    };
+    for _ in 0..2 {
+        let error = service.reconnect(&command).await.unwrap_err();
+        assert_eq!(error.name, "MobileRequestBudget");
+        assert_eq!(error.status, 429);
+        assert_eq!(error.message, "Mobile session is sleeping");
+    }
+    assert_eq!(spent.load(Ordering::SeqCst), 0);
+    assert_eq!(upstream.load(Ordering::SeqCst), 0);
+    ready.store(true, Ordering::SeqCst);
+    assert_eq!(service.reconnect(&command).await.unwrap_err().status, 400);
+    assert_eq!(spent.load(Ordering::SeqCst), 1);
+    assert_eq!(upstream.load(Ordering::SeqCst), 1);
+}
+
+#[test]
 fn mobile_headers_keep_profile_identity_cookie_scope_and_reject_invalid_values() {
     let mut first = mobile(None);
     let mut second = mobile(None);
@@ -452,6 +580,8 @@ async fn complete_caa_login_follows_attestation_and_totp_flow() {
             return (StatusCode::METHOD_NOT_ALLOWED,[("ig-set-password-encryption-pub-key",public.as_str()),("ig-set-password-encryption-key-id","7"),("set-cookie","mid=fresh-mid; Domain=.instagram.com; Path=/; Secure")],Json(json!({}))).into_response();
         }
         assert_eq!(request.headers()["cookie"], "mid=fresh-mid");
+        assert_eq!(request.headers().get_all("content-type").iter().count(), 1);
+        assert_eq!(request.headers()["content-type"], "application/x-www-form-urlencoded; charset=UTF-8");
         let attest=request.headers().get("x-ig-attest-params").map(|v|v.to_str().unwrap().to_string());
         let bytes=axum::body::to_bytes(request.into_body(),1_000_000).await.unwrap();let query=reqwest::Url::parse(&format!("http://local/?{}",String::from_utf8(bytes.to_vec()).unwrap())).unwrap();let fields:HashMap<_,_>=query.query_pairs().into_owned().collect();
         let params:Value=serde_json::from_str(fields.get("params").map(String::as_str).unwrap_or("{}")).unwrap();observed.lock().await.push(path.clone());
@@ -703,6 +833,7 @@ async fn mobile_transport_persists_response_headers_and_sanitizes_errors() {
                 [
                     ("ig-set-password-encryption-key-id", "7"),
                     ("ig-set-password-encryption-pub-key", "fixture"),
+                    ("ig-set-x-mid", "header-mid"),
                 ],
                 Json(json!({})),
             )
@@ -717,6 +848,7 @@ async fn mobile_transport_persists_response_headers_and_sanitizes_errors() {
                 .into_response();
         }
         assert_eq!(request.headers()["x-ig-app-id"], transport::APP_ID);
+        assert_eq!(request.headers()["x-mid"], "header-mid");
         assert!(request.headers()["cookie"]
             .to_str()
             .unwrap()
@@ -743,6 +875,9 @@ async fn mobile_transport_persists_response_headers_and_sanitizes_errors() {
         .await
         .unwrap();
     assert_eq!(mobile.state.password_key_id, 7);
+    assert_eq!(mobile.state.mid(), "header-mid");
+    let restored = Session::from_saved(&serde_json::to_string(&mobile.state).unwrap()).unwrap();
+    assert_eq!(restored.mid(), "header-mid");
     let result = mobile
         .mobile(Method::GET, "read/", None, &Fields::new())
         .await
@@ -977,7 +1112,14 @@ async fn latest_post_limit_uses_dates_instead_of_pinned_feed_order() {
 }
 #[tokio::test]
 async fn native_session_serialization_prevents_stale_saves_after_logout() {
-    let session = serde_json::to_string(&mobile(None).state).unwrap();
+    let mut original = mobile(None).state;
+    original.mid = "fixture-machine".into();
+    original.usdid = Some(crypto::Usdid::create(&original.phone_id).unwrap().0);
+    original.set_cookie(
+        "sessionid=fixture; Domain=.instagram.com; Path=/",
+        &"https://i.instagram.com/".parse().unwrap(),
+    );
+    let session = serde_json::to_string(&original).unwrap();
     let token = uuid::Uuid::new_v4().to_string();
     let store = Arc::new(Mutex::new(Some(
         json!({"connected":true,"state":session,"token":token}),
@@ -1002,8 +1144,13 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
                         .unwrap_or(json!({"connected":false})),
                 )
                 .into_response(),
-                Method::DELETE => {
-                    *store.lock().await = None;
+                Method::POST => {
+                    let body = test_support::body(request).await;
+                    let mut saved = store.lock().await;
+                    assert_eq!(body["expectedToken"], saved.as_ref().unwrap()["token"]);
+                    assert_ne!(body["token"], body["expectedToken"]);
+                    assert_eq!(body["reconnectRequired"], true);
+                    *saved = Some(json!({"connected":true,"state":body["state"],"token":body["token"],"reconnectRequired":true}));
                     d.fetch_add(1, Ordering::SeqCst);
                     Json(json!({"connected":false})).into_response()
                 }
@@ -1025,7 +1172,21 @@ async fn native_session_serialization_prevents_stale_saves_after_logout() {
     service.invoke("logout", &request).await.unwrap();
     assert!(service.invoke("load", &request).await.is_err());
     assert_eq!(deletes.load(Ordering::SeqCst), 1);
-    let _ = test_support::body;
+    let saved = store.lock().await;
+    let logged_out =
+        Session::from_saved(saved.as_ref().unwrap()["state"].as_str().unwrap()).unwrap();
+    assert_eq!(logged_out.uuid, original.uuid);
+    assert_eq!(logged_out.phone_id, original.phone_id);
+    assert_eq!(logged_out.device_id, original.device_id);
+    assert_eq!(logged_out.device, original.device);
+    assert_eq!(logged_out.mid(), original.mid());
+    assert_eq!(
+        serde_json::to_value(&logged_out.usdid).unwrap(),
+        serde_json::to_value(&original.usdid).unwrap()
+    );
+    assert!(logged_out.authorization.is_empty());
+    assert!(logged_out.claim.is_empty());
+    assert_eq!(logged_out.cookie("sessionid"), "");
 }
 
 #[tokio::test]

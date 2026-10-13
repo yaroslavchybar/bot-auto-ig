@@ -192,11 +192,11 @@
       "machine_id": "$mid"
     },
     "server_params": {
+      "should_fallback_to_sms": 0,
+      "family_device_id": "$phoneId",
       "device_id": "$deviceId",
       "two_step_verification_context": "$context",
-      "flow_source": "two_factor_login",
-      "should_fallback_to_sms": 0,
-      "family_device_id": "$phoneId"
+      "flow_source": "two_factor_login"
     }
   },
   "com.bloks.www.two_step_verification.method_picker": {
@@ -204,10 +204,10 @@
       "is_whatsapp_installed": 0
     },
     "server_params": {
+      "should_fallback_to_sms": 0,
       "device_id": "$deviceId",
       "two_step_verification_context": "$context",
-      "flow_source": "two_factor_login",
-      "should_fallback_to_sms": 0
+      "flow_source": "two_factor_login"
     }
   },
   "com.bloks.www.two_step_verification.method_picker.navigation.async": {
@@ -217,11 +217,11 @@
       "network_bssid": null
     },
     "server_params": {
-      "device_id": "$deviceId",
-      "two_step_verification_context": "$context",
-      "flow_source": "two_factor_login",
       "should_fallback_to_sms": 0,
-      "spectra_reg_login_data": null
+      "device_id": "$deviceId",
+      "spectra_reg_login_data": null,
+      "two_step_verification_context": "$context",
+      "flow_source": "two_factor_login"
     }
   },
   "com.bloks.www.two_step_verification.verify_code.async": {
@@ -237,12 +237,12 @@
       "machine_id": "$mid"
     },
     "server_params": {
-      "device_id": "$deviceId",
-      "two_step_verification_context": "$context",
-      "flow_source": "two_factor_login",
       "should_fallback_to_sms": 0,
+      "device_id": "$deviceId",
       "spectra_reg_login_data": null,
-      "challenge": "totp"
+      "challenge": "totp",
+      "two_step_verification_context": "$context",
+      "flow_source": "two_factor_login"
     }
   }
 }

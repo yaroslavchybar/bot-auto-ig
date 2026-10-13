@@ -26,6 +26,7 @@ impl Session {
             phone_id: field("phoneId")?,
             device_id: field("deviceId")?,
             device: field("deviceString")?,
+            mid: super::string(&value["mid"]),
             cookies: Default::default(),
             authorization: super::string(&value["authorization"]),
             claim: super::string(&value["igWWWClaim"]),

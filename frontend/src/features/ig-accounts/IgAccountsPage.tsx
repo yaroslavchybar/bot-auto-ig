@@ -347,7 +347,17 @@ export function IgAccountsPage() {
         </DialogContent>
       </Dialog>
 
-      <AccountDetailsDialog account={detailsAccount} onClose={() => setDetailsAccount(null)} />
+      <AccountDetailsDialog
+        account={detailsAccount}
+        onClose={() => setDetailsAccount(null)}
+        sessionBusy={reconnectingId === detailsAccount?.id}
+        onLoggedOut={(accountId) => {
+          setDetailsAccount((current) =>
+            current?.id === accountId ? { ...current, reconnectRequired: true } : current,
+          )
+          void refresh()
+        }}
+      />
     </div>
   )
 }

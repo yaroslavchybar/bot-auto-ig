@@ -44,7 +44,6 @@ test('Mobile HTTP attempts share ten rolling-hour slots and retries do not doubl
   expect((await s.reserve('next-hour')).allowed).toBe(true)
 })
 
-
 test('proxy-country local sleep blocks calls without consuming slots', async () => {
   const s = await setup('us')
   vi.setSystemTime(new Date('2026-10-12T08:00:00Z')) // 04:00 in New York.
@@ -58,32 +57,113 @@ test('proxy-country local sleep blocks calls without consuming slots', async () 
   expect((await s.reserve('awake')).allowed).toBe(true)
 })
 
-test('manual reconnect can use a paused profile without resuming it or bypassing hourly limits', async () => {
+test('manual login is excluded from quota and can reconnect a paused profile', async () => {
   const { t, profileId, reserve } = await setup()
+  for (let i = 0; i < 10; i++) expect((await reserve(`scrape-${i}`)).allowed).toBe(true)
   await t.run((ctx) => ctx.db.patch(profileId, { paused: true }))
   expect(await reserve('automatic')).toMatchObject({ allowed: false, reason: 'Profile is paused' })
   const reconnect = (requestId: string) =>
-    t.mutation(internal.mobileRequests.reserve, { profileId, requestId, manualReconnect: true })
-  for (let i = 0; i < 10; i++) expect((await reconnect(`manual-${i}`)).allowed).toBe(true)
-  expect(await reconnect('manual-over-limit')).toMatchObject({
-    allowed: false, reason: 'Hourly mobile request limit reached',
+    t.mutation(internal.mobileRequests.reserve, {
+      profileId,
+      requestId,
+      manualReconnect: true,
+      login: true,
+    })
+  for (let i = 0; i < 20; i++) expect((await reconnect(`manual-${i}`)).allowed).toBe(true)
+  expect(
+    (await t.run((ctx) => ctx.db.query('mobileRequestUsage').unique()))?.requests,
+  ).toHaveLength(10)
+  expect(
+    await t.mutation(internal.mobileRequests.reserve, {
+      profileId,
+      requestId: 'not-login',
+      manualReconnect: true,
+    }),
+  ).toMatchObject({
+    allowed: false,
+    reason: 'Profile is paused',
   })
   expect((await t.run((ctx) => ctx.db.get(profileId)))?.paused).toBe(true)
-  expect(await reserve('still-automatic')).toMatchObject({ allowed: false, reason: 'Profile is paused' })
+  expect(await reserve('still-automatic')).toMatchObject({
+    allowed: false,
+    reason: 'Profile is paused',
+  })
+  await t.run((ctx) => ctx.db.patch(profileId, { paused: false }))
+  expect(await reserve('still-limited')).toMatchObject({
+    allowed: false,
+    reason: 'Hourly mobile request limit reached',
+  })
 })
 
 test('manual reconnect preserves the proxy-country sleep window', async () => {
   const { t, profileId } = await setup('us')
   await t.run((ctx) => ctx.db.patch(profileId, { paused: true }))
   vi.setSystemTime(new Date('2026-10-12T08:00:00Z'))
-  expect(await t.mutation(internal.mobileRequests.reserve, {
-    profileId, requestId: 'manual-asleep', manualReconnect: true,
-  })).toMatchObject({ allowed: false, reason: 'Mobile session is sleeping' })
+  expect(
+    await t.mutation(internal.mobileRequests.reserve, {
+      profileId,
+      requestId: 'manual-asleep',
+      manualReconnect: true,
+      login: true,
+    }),
+  ).toMatchObject({ allowed: false, reason: 'Mobile session is sleeping' })
 })
 
 test('unknown proxy country never silently uses the server timezone', async () => {
   const s = await setup('zz')
   expect(await s.reserve('missing-country')).toMatchObject({
+    allowed: false,
+    reason: expect.stringContaining('country'),
+  })
+})
+
+test('automatic login attempts do not create quota usage or analytics history', async () => {
+  const { t, profileId, reserve } = await setup()
+  for (let i = 0; i < 20; i++) {
+    expect(
+      (
+        await t.mutation(internal.mobileRequests.reserve, {
+          profileId,
+          requestId: `login-${i}`,
+          login: true,
+        })
+      ).allowed,
+    ).toBe(true)
+  }
+  expect(await t.run((ctx) => ctx.db.query('mobileRequestUsage').unique())).toBeNull()
+  await t.mutation(api.analytics.initialize, {})
+  expect(
+    (await t.query(api.analytics.overview, { date: '2026-10-12', period: 'all' })).quota
+      .totalRequests,
+  ).toBe(0)
+  await reserve('previous-scrape')
+  expect(
+    (await t.run((ctx) => ctx.db.query('mobileRequestUsage').unique()))?.requests,
+  ).toHaveLength(1)
+})
+
+test('login exemption still respects pause, sleep and proxy country', async () => {
+  const { t, profileId } = await setup('us')
+  await t.run((ctx) => ctx.db.patch(profileId, { paused: true }))
+  const ready = (manualReconnect = false) =>
+    t.mutation(internal.mobileRequests.reserve, {
+      profileId,
+      requestId: 'login',
+      manualReconnect,
+      login: true,
+    })
+  expect(await ready()).toMatchObject({ allowed: false, reason: 'Profile is paused' })
+  vi.setSystemTime(new Date('2026-10-12T16:00:00Z'))
+  expect((await ready(true)).allowed).toBe(true)
+  vi.setSystemTime(new Date('2026-10-13T08:00:00Z'))
+  expect(await ready(true)).toMatchObject({ allowed: false, reason: 'Mobile session is sleeping' })
+  expect(await t.run((ctx) => ctx.db.query('mobileRequestUsage').unique())).toBeNull()
+  expect((await t.run((ctx) => ctx.db.get(profileId)))?.paused).toBe(true)
+  await t.run(async (ctx) => {
+    const proxy = (await ctx.db.query('proxies').unique())!
+    await ctx.db.patch(proxy._id, { country: 'zz' })
+  })
+  expect(await ready(true)).toMatchObject({
     allowed: false,
     reason: expect.stringContaining('country'),
   })

@@ -69,11 +69,6 @@ pub fn identifiers(seed: &str) -> (String, String, String) {
     (rng.guid(), rng.guid(), device_id)
 }
 
-pub fn pigeon_session(device_id: &str, now: u64) -> String {
-    let window = now.saturating_add(600_000) / 1_200_000;
-    Seeded::new(&format!("pigeonSessionId{device_id}{window}")).guid()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,18 +99,5 @@ mod tests {
                 (uuid.into(), phone.into(), android.into())
             );
         }
-    }
-    #[test]
-    fn pigeon_session_matches_previous_sdk_and_is_stable_during_login() {
-        let device = "android-40dca286d0981087";
-        let now = 1_790_806_085_788;
-        assert_eq!(
-            pigeon_session(device, now),
-            "b6691fe5-d1d7-5066-a6eb-efdf4b255627"
-        );
-        assert_eq!(
-            pigeon_session(device, now),
-            pigeon_session(device, now + 5000)
-        );
     }
 }

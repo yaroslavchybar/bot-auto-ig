@@ -3,15 +3,7 @@ import type { Id } from '../_generated/dataModel'
 import { api, internal } from '../_generated/api'
 import { jsonResponse, parseBody, registerPreflight, withErrorHandling } from './shared'
 
-const paths = [
-  'claim',
-  'heartbeat',
-  'posts',
-  'batch',
-  'finish',
-  'accounts',
-  'cooldown',
-]
+const paths = ['claim', 'heartbeat', 'posts', 'batch', 'finish', 'accounts', 'cooldown']
 
 /** Server-only bridge. The HTTP wrapper verifies INTERNAL_API_KEY. */
 export function registerScraperRoutes(http: HttpRouter): void {
@@ -25,6 +17,7 @@ export function registerScraperRoutes(http: HttpRouter): void {
           profileId: body.profileId,
           requestId: body.requestId,
           manualReconnect: body.manualReconnect,
+          login: body.login,
         }),
       )
     }),

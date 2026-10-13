@@ -20,7 +20,7 @@ fn params(action: &str, mobile: &Mobile, values: &[(&str, Value)]) -> Result<Val
         ("$uuid", json!(mobile.state.uuid)),
         ("$phoneId", json!(mobile.state.phone_id)),
         ("$deviceId", json!(mobile.state.device_id)),
-        ("$mid", json!(mobile.state.cookie("mid"))),
+        ("$mid", json!(mobile.state.mid())),
         ("$now", json!(crate::api::now_ms())),
     ]
     .into();
@@ -49,10 +49,10 @@ fn params(action: &str, mobile: &Mobile, values: &[(&str, Value)]) -> Result<Val
 
 #[cfg(test)]
 #[test]
-fn login_templates_match_captured_typescript_requests_and_use_current_time() {
+fn login_templates_match_instagrapi_3_0_24_and_use_current_time() {
     let actual: Value = serde_json::from_str(include_str!("caa-params.json")).unwrap();
     let previous: Value =
-        serde_json::from_str(include_str!("fixtures/typescript-login-params.json")).unwrap();
+        serde_json::from_str(include_str!("fixtures/instagrapi-login-params.json")).unwrap();
     assert_eq!(actual, previous);
     let mobile = Mobile {
         state: super::new_session("profile-123", "source"),
@@ -112,11 +112,11 @@ fn quoted_at(text: &str, start: usize) -> &str {
     }
     ""
 }
-fn list(expression: &str) -> Vec<&str> {
-    if !expression.starts_with("(dkc") || !expression.ends_with(')') {
+fn expression_items(expression: &str) -> Vec<&str> {
+    if !expression.starts_with('(') || !expression.ends_with(')') {
         return vec![];
     }
-    let mut index = 4;
+    let mut index = 1;
     let end = expression.len() - 1;
     let mut items = vec![];
     while index < end {
@@ -142,7 +142,7 @@ fn list(expression: &str) -> Vec<&str> {
         } else {
             while index < end
                 && !expression.as_bytes()[index].is_ascii_whitespace()
-                && expression.as_bytes()[index] != b')'
+                && !matches!(expression.as_bytes()[index], b'(' | b')' | b'"')
             {
                 index += 1;
             }
@@ -165,6 +165,7 @@ pub fn extract_context(value: &Value) -> String {
         }
         if let Some(text) = value["two_step_verification_context"]
             .as_str()
+            .map(str::trim)
             .filter(|v| !v.is_empty())
         {
             return text.into();
@@ -195,32 +196,45 @@ pub fn extract_context(value: &Value) -> String {
         .pointer("/layout/bloks_payload/action")
         .and_then(Value::as_str)
         .unwrap_or("");
-    if !action.contains("two_step_verification.entrypoint") {
-        return String::new();
+    // Pair keys with direct operands in this exact app's static server map.
+    // Searching for a token alone can borrow a context from another app or client map.
+    let anchor = "\"com.bloks.www.two_step_verification.entrypoint\"";
+    for (position, _) in action.match_indices(anchor) {
+        let tail = &action[position + anchor.len()..];
+        let Some(start) = tail.find("(f4i") else {
+            continue;
+        };
+        if tail[..start].contains("com.bloks.") {
+            continue;
+        }
+        let mut expression = expression_at(tail, start);
+        for _ in 0..40 {
+            let map = expression_items(expression);
+            if map.len() != 3 || map[0] != "f4i" {
+                break;
+            }
+            let keys = expression_items(map[1]);
+            let values = expression_items(map[2]);
+            if keys.first() != Some(&"dkc")
+                || values.first() != Some(&"dkc")
+                || keys.len() != values.len()
+            {
+                break;
+            }
+            expression = "";
+            for (key, value) in keys.iter().skip(1).zip(values.iter().skip(1)) {
+                match decoded(key).as_str() {
+                    "two_step_verification_context" => return decoded(value).trim().into(),
+                    "server_params" => expression = value,
+                    _ => {}
+                }
+            }
+            if expression.is_empty() {
+                break;
+            }
+        }
     }
-    let Some(position) = action.find("\"two_step_verification_context\"") else {
-        return String::new();
-    };
-    let Some(start) = action[..position].rfind("(dkc") else {
-        return String::new();
-    };
-    let keys = expression_at(action, start);
-    let Some(index) = list(keys)
-        .iter()
-        .position(|v| decoded(v) == "two_step_verification_context")
-    else {
-        return String::new();
-    };
-    let Some(values) = action[start + keys.len()..]
-        .find("(dkc")
-        .map(|p| p + start + keys.len())
-    else {
-        return String::new();
-    };
-    list(expression_at(action, values))
-        .get(index)
-        .map(|v| decoded(v))
-        .unwrap_or_default()
+    String::new()
 }
 pub fn extract_aac(value: &Value) -> String {
     for node in value
@@ -388,9 +402,7 @@ pub async fn login(
 ) -> Result<()> {
     // A credential login starts logged out; rejected session headers/cookies must not
     // leak into device registration or attestation. The saved device/key stays intact.
-    mobile.state.authorization.clear();
-    mobile.state.claim.clear();
-    mobile.state.cookies.clear();
+    mobile.state.clear_login();
     mobile
         .request(
             "i.instagram.com",
